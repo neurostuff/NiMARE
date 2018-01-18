@@ -26,3 +26,15 @@ class Dataset(object):
         if algorithm:
             req_data = algorithm.req_data
             temp = [stud for stud in self.data if stud.has_data(req_data)]
+
+    def get_studies(self):
+        pass
+
+    def get_metadata(self):
+        pass
+
+    def get_images(self):
+        pass
+
+    def get_coordinates(self):
+        pass

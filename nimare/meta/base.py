@@ -14,8 +14,8 @@ class MetaEstimator(object):
     """
     Base class for meta-analysis estimators.
 
-    TODO: Actually write/refactor class methods. They mostly come directly from
-    sklearn (https://github.com/scikit-learn/scikit-learn/blob/master/sklearn/base.py#L176)
+    TODO: Actually write/refactor class methods. They mostly come directly from sklearn
+    (https://github.com/scikit-learn/scikit-learn/blob/afe540c7f2cbad259dd333e6744b088213180bee/sklearn/base.py#L176)
     """
     @classmethod
     def _get_param_names(cls):

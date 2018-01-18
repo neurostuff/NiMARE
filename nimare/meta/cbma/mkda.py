@@ -6,11 +6,11 @@ Coordinate-based meta-analysis estimators
 """
 import warnings
 
-from ..base import MetaEstimator
+from .base import CBMAEstimator
 from ...utils import intersection, diff
 
 
-class MKDA(MetaEstimator):
+class MKDA(CBMAEstimator):
     """
     Multilevel kernel density analysis
     """

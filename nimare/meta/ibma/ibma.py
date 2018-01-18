@@ -4,10 +4,16 @@
 """
 Image-based meta-analysis estimators
 """
-from ..base import MetaEstimator
+from __future__ import division
+
+import numpy as np
+from sklearn.preprocessing import normalize
+from scipy import stats
+
+from .base import IBMAEstimator
 
 
-class MFX_GLM(MetaEstimator):
+class MFX_GLM(IBMAEstimator):
     """
     The gold standard image-based meta-analytic test. Uses contrast and standard
     error images.
@@ -26,7 +32,7 @@ class MFX_GLM(MetaEstimator):
         pass
 
 
-class RFX_GLM(MetaEstimator):
+class RFX_GLM(IBMAEstimator):
     """
     An image-based meta-analytic test using contrast images.
     Analyze per-study contrasts as "dat"
@@ -45,7 +51,7 @@ class RFX_GLM(MetaEstimator):
         pass
 
 
-class FFX_GLM(MetaEstimator):
+class FFX_GLM(IBMAEstimator):
     """
     An image-based meta-analytic test using contrast and standard error images.
     Don't estimate variance, just take from first level
@@ -64,7 +70,7 @@ class FFX_GLM(MetaEstimator):
         studies_matching_criteria = self.dataset.get(images='con AND se')
 
 
-class Fishers(MetaEstimator):
+class Fishers(IBMAEstimator):
     """
     An image-based meta-analytic test using t- or z-statistic images.
     Sum of -log P-values (from T/Zs converted to Ps)
@@ -83,7 +89,7 @@ class Fishers(MetaEstimator):
         pass
 
 
-class Stouffers(MetaEstimator):
+class Stouffers(IBMAEstimator):
     """
     An image-based meta-analytic test using z-statistic images.
     Average Z, rescaled to N(0,1)
@@ -99,10 +105,18 @@ class Stouffers(MetaEstimator):
         self.n_cores = n_cores
 
     def fit(self, sample):
-        pass
+        # Rescale z maps to mean of zero, variance of one
+        z_maps = sample.get('z')
+        z_maps = normalize(z_maps, axis=1)
+        k = z_maps.shape[0]
+
+        # Combine
+        z_map = np.sqrt(k) * np.mean(z_maps, axis=0)
+        p_map = stats.norm.sf(abs(z_map))*2
+        return z_map, p_map
 
 
-class StouffersRFX(MetaEstimator):
+class StouffersRFX(IBMAEstimator):
     """
     An image-based meta-analytic test using z-statistic images.
     Submit Zs to one-sample t-test
@@ -118,10 +132,13 @@ class StouffersRFX(MetaEstimator):
         self.n_cores = n_cores
 
     def fit(self, sample):
-        pass
+        # Rescale z maps to mean of zero, variance of one
+        z_maps = sample.get('z')
+        t_map, p_map = stats.ttest_1samp(z_maps, popmean=0, axis=0)
+        return t_map, p_map
 
 
-class WeightedStouffers(MetaEstimator):
+class WeightedStouffers(IBMAEstimator):
     """
     An image-based meta-analytic test using z-statistic images and sample sizes.
     Zs from bigger studies get bigger weight
