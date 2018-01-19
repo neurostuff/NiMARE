@@ -10,12 +10,49 @@ from collections import defaultdict
 import nibabel as nib
 
 
+class MetaResult(object):
+    """Base class for meta-analytic results.
+    Will contain slots for different kinds of results maps (e.g., z-map, p-map)
+    """
+    def __init__(self, z=None, p=None, mask=None):
+        self.z = z
+        self.p = p
+        self.mask = mask
+
+    def save_results(self, output_dir='.', prefix='', prefix_sep='_'):
+        """Save results to files.
+        """
+        if prefix == '':
+            prefix_sep = ''
+
+        if not exists(output_dir):
+            makedirs(output_dir)
+
+        image_list = self.images.keys()
+        for suffix, dat in self.images.items():
+            if suffix in image_list:
+                filename = prefix + prefix_sep + suffix + '.nii.gz'
+                outpath = join(output_dir, filename)
+                img = nib.Nifti1Image(dat, self.dataset.affine)
+                img.to_filename(outpath)
+
+    def get_images(self, unmask=True):
+        images = {'z': self.z,
+                  'p': self.p}
+        return images
+
+
 class MetaEstimator(object):
     """
     Base class for meta-analysis estimators.
 
     TODO: Actually write/refactor class methods. They mostly come directly from sklearn
-    (https://github.com/scikit-learn/scikit-learn/blob/afe540c7f2cbad259dd333e6744b088213180bee/sklearn/base.py#L176)
+    https://github.com/scikit-learn/scikit-learn/blob/afe540c7f2cbad259dd333e6744b088213180bee/sklearn/base.py#L176
+
+    At minimum, we want:
+      - get_params: return dict of model parameters and values
+      - set_params: overwrite parameters in model from dict
+
     """
     @classmethod
     def _get_param_names(cls):
@@ -104,20 +141,3 @@ class MetaEstimator(object):
         """Run meta-analysis on dataset.
         """
         pass
-
-    def save_results(self, output_dir='.', prefix='', prefix_sep='_'):
-        """Save results to files.
-        """
-        if prefix == '':
-            prefix_sep = ''
-
-        if not exists(output_dir):
-            makedirs(output_dir)
-
-        image_list = self.images.keys()
-        for suffix, dat in self.images.items():
-            if suffix in image_list:
-                filename = prefix + prefix_sep + suffix + '.nii.gz'
-                outpath = join(output_dir, filename)
-                img = nib.Nifti1Image(dat, self.dataset.affine)
-                img.to_filename(outpath)
