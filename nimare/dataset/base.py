@@ -4,6 +4,7 @@
 import json
 
 
+# Move these to "Inputs" module
 class Analyzable(object):
     def to_array(self):
         pass

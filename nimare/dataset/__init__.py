@@ -5,4 +5,4 @@
 Top-level namespace for datasets.
 """
 
-from .dataset import Dataset
+from .dataset import Dataset, Contrast

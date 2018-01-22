@@ -5,7 +5,7 @@ import json
 
 from .base import ConnMatrix, Image, ActivationSet, Surface
 
-
+# Move to base module
 class Contrast(object):
     """Container for contrasts (aka experiments or comparisons) nested within
     studies.
@@ -14,6 +14,8 @@ class Contrast(object):
     """
     def __init__(self, images=None, conn_matrices=None, activations=None,
                  surfaces=None):
+        # Add validation method instead of doing this here. That way it can be applied to other objects.
+        # Should check things like name, min/max,
         self.images = {'z': None,
                        'p': None,
                        'beta': None,
