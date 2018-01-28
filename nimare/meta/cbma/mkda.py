@@ -7,9 +7,11 @@ Coordinate-based meta-analysis estimators
 import warnings
 
 from .base import CBMAEstimator
-from ...utils import intersection, diff
+from ...due import due, Doi
 
 
+@due.dcite(Doi('10.1093/scan/nsm015'),
+           description='Introduces the MKDA algorithm.')
 class MKDA(CBMAEstimator):
     """
     Multilevel kernel density analysis

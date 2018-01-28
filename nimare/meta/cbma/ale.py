@@ -15,11 +15,11 @@ import numpy as np
 from scipy import ndimage
 from scipy.special import ndtri
 
-from ...due import due, Doi
 from .base import CBMAEstimator
+from .utils import _make_hist, _compute_ale
+from ...due import due, Doi
 from ...utils import (intersection, diff, save_nifti, read_nifti,
                       round2, thresh_str, get_resource_path, cite_mni152)
-from .utils import _make_hist, _compute_ale
 
 
 class ALE(CBMAEstimator):

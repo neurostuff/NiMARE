@@ -8,10 +8,9 @@ from __future__ import division
 
 from os.path import abspath, join, dirname, sep
 
+import numpy as np
 import nibabel as nib
 from scipy import signal
-import numpy as np
-import numpy.linalg as npl
 
 from .due import due, Doi, BibTeX
 
@@ -60,7 +59,7 @@ def mm2vox(xyz, affine):
     From here:
     http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
     """
-    ijk = nib.affines.apply_affine(npl.inv(affine), xyz)
+    ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz)
     return ijk
 
 
