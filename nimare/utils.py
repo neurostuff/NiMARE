@@ -295,5 +295,4 @@ def get_resource_path():
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    #return abspath(join(dirname(__file__), pardir, 'resources') + sep)
     return abspath(join(dirname(__file__), 'resources') + sep)
