@@ -409,7 +409,38 @@ class SCALE(CBMAEstimator):
         self.n_cores = n_cores
 
     def fit(self, sample):
-        pass
+        """
+        Perform specific coactivation likelihood estimation[1]_ meta-analysis on dataset.
+
+        Parameters
+        ----------
+        dataset : ale.Dataset
+            Dataset to analyze.
+        voxel_thresh : float
+            Uncorrected voxel-level threshold.
+        n_iters : int
+            Number of iterations for correction. Default 2500
+        verbose : bool
+            If True, prints out status updates.
+        prefix : str
+            String prepended to default output filenames. May include path.
+        database_file : str
+            Tab-delimited file of coordinates from database. Voxels are rows and
+            i, j, k (meaning matrix-space) values are the three columnns.
+
+        Examples
+        --------
+
+        References
+        ----------
+        .. [1] Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., &
+               Eickhoff, S. B. (2014). Meta-analytic connectivity modeling
+               revisited: controlling for activation base rates.
+               NeuroImage, 99, 559-570.
+        """
+        database_coords = self.dataset.get_coords()
+        self.scale(self.dataset, database_file=database_coords)
+
 
     def scale(self, dataset, n_cores=1, voxel_thresh=0.001, n_iters=2500, verbose=True,
               prefix='', database_file='grey_matter_ijk.txt',

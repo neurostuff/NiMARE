@@ -4,8 +4,6 @@
 """
 Base classes for datasets.
 """
-import json
-
 from ..base import ConnMatrix, Image, ActivationSet, Surface
 
 
