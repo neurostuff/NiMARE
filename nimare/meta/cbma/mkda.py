@@ -16,13 +16,27 @@ class MKDA(CBMAEstimator):
     """
     Multilevel kernel density analysis
     """
-    def __init__(self, dataset, voxel_thresh=0.01, corr='FDR', prior=0.5,
-                 min_studies=1):
+    def __init__(self, dataset, voxel_thresh=0.01, corr='FDR', n_iters=10000):
         self.dataset = dataset
         self.voxel_thresh = voxel_thresh
         self.corr = corr
-        self.prior = prior
-        self.min_studies = min_studies
+        self.n_iters = n_iters
+
+    def fit(self, sample):
+        pass
+
+
+@due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
+           description='Introduces the KDA algorithm.')
+class KDA(CBMAEstimator):
+    """
+    Kernel density analysis
+    """
+    def __init__(self, dataset, voxel_thresh=0.01, corr='FDR', n_iters=10000):
+        self.dataset = dataset
+        self.voxel_thresh = voxel_thresh
+        self.corr = corr
+        self.n_iters = n_iters
 
     def fit(self, sample):
         pass
