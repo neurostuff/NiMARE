@@ -2,22 +2,9 @@
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """
-Coordinate-based meta-analysis estimators
+Utilities for coordinate-based meta-analysis estimators
 """
-import os
-import copy
-import warnings
-from time import time
-import multiprocessing as mp
-
 import numpy as np
-from scipy import ndimage
-from scipy.special import ndtri
-
-from ...due import due, Doi
-from ..base import MetaEstimator
-from ...utils import (intersection, diff, save_nifti, read_nifti,
-                      round2, thresh_str, get_resource_path, cite_mni152)
 
 
 def compute_ma(shape, ijk, kernel):
@@ -48,9 +35,7 @@ def compute_ma(shape, ijk, kernel):
         i = ijk[j_peak, 0]
         j = ijk[j_peak, 1]
         k = ijk[j_peak, 2]
-        ma_values[i:i+31, j:j+31, k:k+31] = np.maximum(ma_values[i:i+31,  # pylint: disable=no-member
-                                                                 j:j+31,
-                                                                 k:k+31],
+        ma_values[i:i+31, j:j+31, k:k+31] = np.maximum(ma_values[i:i+31, j:j+31, k:k+31],
                                                        kernel)
 
     # Reduce to original dimensions and convert to 1d.

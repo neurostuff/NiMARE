@@ -28,12 +28,13 @@ class MetaResult(object):
         if not exists(output_dir):
             makedirs(output_dir)
 
-        image_list = self.images.keys()
-        for suffix, dat in self.images.items():
+        images = self.get_images()
+        image_list = images.keys()
+        for suffix, dat in images.items():
             if suffix in image_list:
                 filename = prefix + prefix_sep + suffix + '.nii.gz'
                 outpath = join(output_dir, filename)
-                img = nib.Nifti1Image(dat, self.dataset.affine)
+                img = nib.Nifti1Image(dat, self.mask.affine)
                 img.to_filename(outpath)
 
     def get_images(self, unmask=True):

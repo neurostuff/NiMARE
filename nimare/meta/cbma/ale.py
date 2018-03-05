@@ -15,13 +15,22 @@ import numpy as np
 from scipy import ndimage
 from scipy.special import ndtri
 
-from ...due import due, Doi
 from .base import CBMAEstimator
+from .utils import _make_hist, _compute_ale
+from ...due import due, Doi
 from ...utils import (intersection, diff, save_nifti, read_nifti,
                       round2, thresh_str, get_resource_path, cite_mni152)
-from .utils import _make_hist, _compute_ale
 
-
+@due.dcite(Doi('10.1002/hbm.20718'),
+           description='Introduces the ALE algorithm.')
+@due.dcite(Doi('10.1002/hbm.21186'),
+           description='Modifies ALE algorithm to eliminate within-experiment '
+                       'effects and generate MA maps based on subject group '
+                       'instead of experiment.')
+@due.dcite(Doi('10.1016/j.neuroimage.2011.09.017'),
+           description='Modifies ALE algorithm to allow FWE correction and to '
+                       'more quickly and accurately generate the null '
+                       'distribution for significance testing.')
 class ALE(CBMAEstimator):
     """
     Activation likelihood estimation
@@ -38,16 +47,27 @@ class ALE(CBMAEstimator):
 
         self.images = {}
 
-    @due.dcite(Doi('10.1002/hbm.20718'),
-               description='Introduces the ALE algorithm.')
-    @due.dcite(Doi('10.1002/hbm.21186'),
-               description='Modifies ALE algorithm to eliminate within-experiment '
-                           'effects and generate MA maps based on subject group '
-                           'instead of experiment.')
-    @due.dcite(Doi('10.1016/j.neuroimage.2011.09.017'),
-               description='Modifies ALE algorithm to allow FWE correction and to '
-                           'more quickly and accurately generate the null '
-                           'distribution for significance testing.')
+    def fit(self, sample):
+        """
+        """
+        # Step 1: Search dataset for studies in sample matching criteria
+        # for this estimator
+        studies_matching_criteria = self.dataset.get(images=criteria)
+        reduced_sample = intersection(sample, studies_matching_criteria)
+        warnings.warn('{0} of {1} studies in sample include {2} images '
+                      'necessary for {3} estimator'.format(len(reduced_sample),
+                                                           len(sample),
+                                                           criteria,
+                                                           self.__class__.__name__))
+
+        # Step 2 (for SCALE and MKDA): Search dataset for studies not in sample
+        # matching criteria for this estimator
+        reduced_sample = intersection(sample, studies_matching_criteria)
+        studies_not_in_sample = diff(studies_matching_criteria, sample)
+
+        # Step 3: Perform analysis
+        return None
+
     def ale(self, dataset, n_cores=1, voxel_thresh=0.001, clust_thresh=0.05,
             n_iters=10000, verbose=True, plot_thresh=True, prefix='',
             template_file='Grey10.nii.gz'):
@@ -371,26 +391,10 @@ class ALE(CBMAEstimator):
 
         return max_clusts
 
-    def fit(self, sample):
-        # Step 1: Search dataset for studies in sample matching criteria
-        # for this estimator
-        studies_matching_criteria = self.dataset.get(images=criteria)
-        reduced_sample = intersection(sample, studies_matching_criteria)
-        warnings.warn('{0} of {1} studies in sample include {2} images '
-                      'necessary for {3} estimator'.format(len(reduced_sample),
-                                                           len(sample),
-                                                           criteria,
-                                                           self.__class__.__name__))
 
-        # Step 2 (for SCALE and MKDA): Search dataset for studies not in sample
-        # matching criteria for this estimator
-        reduced_sample = intersection(sample, studies_matching_criteria)
-        studies_not_in_sample = diff(studies_matching_criteria, sample)
-
-        # Step 3: Perform analysis
-        return None
-
-
+@due.dcite(Doi('10.1016/j.neuroimage.2014.06.007'),
+           description='Introduces the specific co-activation likelihood '
+                       'estimation (SCALE) algorithm.')
 class SCALE(CBMAEstimator):
     """
     Specific coactivation likelihood estimation
@@ -405,11 +409,39 @@ class SCALE(CBMAEstimator):
         self.n_cores = n_cores
 
     def fit(self, sample):
-        pass
+        """
+        Perform specific coactivation likelihood estimation[1]_ meta-analysis on dataset.
 
-    @due.dcite(Doi('10.1016/j.neuroimage.2014.06.007'),
-               description='Introduces the specific co-activation likelihood '
-                           'estimation (SCALE) algorithm.')
+        Parameters
+        ----------
+        dataset : ale.Dataset
+            Dataset to analyze.
+        voxel_thresh : float
+            Uncorrected voxel-level threshold.
+        n_iters : int
+            Number of iterations for correction. Default 2500
+        verbose : bool
+            If True, prints out status updates.
+        prefix : str
+            String prepended to default output filenames. May include path.
+        database_file : str
+            Tab-delimited file of coordinates from database. Voxels are rows and
+            i, j, k (meaning matrix-space) values are the three columnns.
+
+        Examples
+        --------
+
+        References
+        ----------
+        .. [1] Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., &
+               Eickhoff, S. B. (2014). Meta-analytic connectivity modeling
+               revisited: controlling for activation base rates.
+               NeuroImage, 99, 559-570.
+        """
+        database_coords = self.dataset.get_coords()
+        self.scale(self.dataset, database_file=database_coords)
+
+
     def scale(self, dataset, n_cores=1, voxel_thresh=0.001, n_iters=2500, verbose=True,
               prefix='', database_file='grey_matter_ijk.txt',
               template_file='Grey10.nii.gz'):
