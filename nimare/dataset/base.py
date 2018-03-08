@@ -5,6 +5,25 @@
 Base classes for datasets.
 """
 from ..base import ConnMatrix, Image, ActivationSet, Surface
+from nimare.utils import listify
+
+
+class Study(object):
+    ''' Represents a single published or unpublished study--including one or
+    more contrasts, and study-level metadata. '''
+
+    def __init__(self, contrasts=None, **kwargs):
+        self.contrasts = contrasts or []
+
+    def add_contrasts(self, contrasts):
+        self.contrasts.extend(listify(contrasts))
+
+    @classmethod
+    def merge(cls, studies):
+        ''' Harmonizes/merges Contrasts extracted from different sources, based
+        on common indexes (e.g., DOIs / table numbers, etc.).
+        '''
+        pass
 
 
 class Contrast(object):
@@ -13,28 +32,19 @@ class Contrast(object):
     Should store an arbitrary number of ConnMatrices, Images, and Surfaces,
     along with at most one ActivationSet.
     """
+
     def __init__(self, images=None, conn_matrices=None, activations=None,
                  surfaces=None):
-        # Add validation method instead of doing this here. That way it can be applied to other objects.
-        # Should check things like name, min/max,
-        self.images = {'z': None,
-                       'p': None,
-                       'beta': None,
-                       'se': None}
-        self.surfaces = {'z': None,
-                         'p': None,
-                         'beta': None,
-                         'se': None}
-        self.connectomes = {}
+        # Add validation method instead of doing this here. That way it can be
+        # applied to other objects. Should check things like name, min/max,
 
-        if not isinstance(images, list):
-            images = [images]
+        self.images = []
+        self.activations = []
+        self.connectomes = []
+        self.surfaces = []
 
-        for image in images:
-            if not isinstance(image, Image) and image is not None:
-                raise ValueError('All images inputs must be nimare Images.')
-            elif image.type in self.images.keys():
-                self.images[image.type] = image
+        if images:
+            self.add_images(images)
 
         if not isinstance(activations, ActivationSet) and activations is not None:
             raise ValueError('Input activations must be ActivationSet or None')
@@ -55,3 +65,20 @@ class Contrast(object):
                 raise ValueError('All conn_matrices inputs must be nimare ConnMatrices.')
             elif surf.type in self.surfaces.keys():
                 self.surfaces[surf.type] = surf
+
+    def add_images(self, images):
+        ''' Add one or more images to the current list. '''
+        for image in listify(images):
+            if not isinstance(image, Image) and image is not None:
+                raise ValueError('All images inputs must be nimare Images.')
+            elif image.type in self.images.keys():
+                self.images[image.type] = image
+
+
+
+    @classmethod
+    def merge(cls, contrasts):
+        ''' Harmonizes/merges Contrasts extracted from different sources, based
+        on common indexes (e.g., DOIs / table numbers, etc.).
+        '''
+        pass

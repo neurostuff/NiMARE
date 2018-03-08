@@ -15,6 +15,12 @@ from scipy import signal
 from .due import due, Doi, BibTeX
 
 
+def listify(obj):
+    ''' Wraps all non-list or tuple objects in a list; provides a simple way
+    to accept flexible arguments. '''
+    return obj if isinstance(obj, (list, tuple, type(None))) else [obj]
+
+
 def intersection(alpha, beta):
     """Return subset of alpha and beta that are present in both.
     """

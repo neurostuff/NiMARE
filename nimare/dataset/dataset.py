@@ -11,11 +11,11 @@ import gzip
 import pickle
 from os import mkdir
 from os.path import join, isdir, isfile
-
 import pandas as pd
 from pyneurovault import api
-
 from ..utils import get_resource_path
+from .extract import (NeuroVaultDataSource, NeurosynthDataSource,
+                      BrainSpellDataSource)
 
 
 def to_chunks(l, n):
@@ -139,7 +139,7 @@ class Database(object):
         with open(database_file, 'r') as fo:
             self.data = json.load(fo)
 
-    def get(self, search='', algorithm=None, target=None):
+    def get_dataset(self, search='', algorithm=None, target=None):
         """
         Retrieve files and/or metadata from the current Dataset.
 
