@@ -14,4 +14,6 @@ from ..base import MetaEstimator
 
 
 class IBMAEstimator(MetaEstimator):
+    """Base class for image-based meta-analysis methods.
+    """
     pass

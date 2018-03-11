@@ -7,6 +7,9 @@ from os import makedirs
 from os.path import exists, join
 from collections import defaultdict
 
+from abc import ABCMeta, abstractmethod
+from six import with_metaclass
+
 import nibabel as nib
 
 
@@ -15,9 +18,7 @@ class MetaResult(object):
     Will contain slots for different kinds of results maps (e.g., z-map, p-map)
     """
     def __init__(self, z=None, p=None, mask=None):
-        self.z = z
-        self.p = p
-        self.mask = mask
+        pass
 
     def save_results(self, output_dir='.', prefix='', prefix_sep='_'):
         """Save results to files.
@@ -37,13 +38,14 @@ class MetaResult(object):
                 img = nib.Nifti1Image(dat, self.mask.affine)
                 img.to_filename(outpath)
 
+    @abstractmethod
     def get_images(self, unmask=True):
-        images = {'z': self.z,
-                  'p': self.p}
-        return images
+        """Return a dictionary of output images from meta-analysis.
+        """
+        pass
 
 
-class MetaEstimator(object):
+class MetaEstimator(with_metaclass(ABCMeta)):
     """
     Base class for meta-analysis estimators.
 
@@ -55,6 +57,9 @@ class MetaEstimator(object):
       - set_params: overwrite parameters in model from dict
 
     """
+    def __init__(self):
+        pass
+    
     @classmethod
     def _get_param_names(cls):
         """Get parameter names for the estimator"""
@@ -138,6 +143,7 @@ class MetaEstimator(object):
 
         return self
 
+    @abstractmethod
     def fit(self, sample):
         """Run meta-analysis on dataset.
         """

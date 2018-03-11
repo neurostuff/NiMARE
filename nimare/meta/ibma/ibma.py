@@ -36,8 +36,6 @@ class Stouffers(IBMAEstimator):
         different input maps, but also some way of logging level of specificity
         (e.g., exps vs studies), study IDs, and mask.
 
-        think about names for filtered database.
-
         """
         self.sample = sample
         self.mask = sample.mask
