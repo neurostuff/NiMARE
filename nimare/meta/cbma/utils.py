@@ -5,6 +5,20 @@
 Utilities for coordinate-based meta-analysis estimators
 """
 import numpy as np
+from scipy.stats import norm
+
+
+def p_to_z(p, sign):
+    """From Neurosynth.
+    """
+    p = p/2  # convert to two-tailed
+    # prevent underflow
+    p[p < 1e-240] = 1e-240
+    # Convert to z and assign tail
+    z = np.abs(norm.ppf(p)) * sign
+    # Set very large z's to max precision
+    z[np.isinf(z)] = norm.ppf(1e-240)*-1
+    return z
 
 
 def compute_ma(shape, ijk, kernel):

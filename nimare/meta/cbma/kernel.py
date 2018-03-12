@@ -74,15 +74,20 @@ class MKDAKernel(KernelEstimator):
     """
     def __init__(self, dataset):
         self.studies = dataset.get_coordinates()
+        self.r = None
 
-    def transform(self, r=6):
+    def transform(self, ids, r=6):
         """
         Generate MKDA modeled activation images for each Contrast in dataset.
-        Differs from KDA in that overlapping voxels are set to 1 (i.e.,
-        resulting image remains binary).
+        For each Contrast, a binary sphere of radius ``r`` is placed around
+        each coordinate. Voxels within overlapping regions between proximal
+        coordinates are set to 1, rather than the sum.
 
         Parameters
         ----------
+        ids : :obj:`list`
+            A list of Contrast IDs for which to generate modeled activation
+            images.
         r : :obj:`int`, optional
             Sphere radius, in mm.
 
