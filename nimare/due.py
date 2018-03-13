@@ -1,6 +1,3 @@
-# emacs: at the end of the file
-# ex: set sts=4 ts=4 sw=4 et:
-# ## ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### #
 """
 Stub file for a guaranteed safe import of duecredit constructs:  if duecredit
 is not available.

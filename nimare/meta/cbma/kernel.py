@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft=python sts=4 ts=4 sw=4 et:
 """
 Methods for estimating thresholded cluster maps from neuroimaging experiments
 (Contrasts) from sets of foci and optional additional information (e.g., sample
