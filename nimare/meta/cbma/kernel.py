@@ -6,7 +6,10 @@ size and test statistic values).
 NOTE: Currently imagining output from "dataset.get_coordinates" as a DataFrame
 of peak coords and sample sizes/statistics (a la Neurosynth).
 """
+import numpy as np
 import pandas as pd
+import nibabel as nib
+from nltools.mask import create_sphere
 
 from .base import KernelEstimator
 from .utils import compute_ma
@@ -70,10 +73,12 @@ class MKDAKernel(KernelEstimator):
     Generate MKDA modeled activation images from coordinates.
     """
     def __init__(self, dataset):
+        self.mask = dataset.mask
         self.studies = dataset.get_coordinates()
         self.r = None
+        self.value = None
 
-    def transform(self, ids, r=6):
+    def transform(self, ids, r=6, value=1):
         """
         Generate MKDA modeled activation images for each Contrast in dataset.
         For each Contrast, a binary sphere of radius ``r`` is placed around
@@ -87,14 +92,28 @@ class MKDAKernel(KernelEstimator):
             images.
         r : :obj:`int`, optional
             Sphere radius, in mm.
+        value : :obj:`int`, optional
+            Value for sphere.
 
         Returns
         -------
-        imgs : :obj:`list` of `nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
-        pass
+        self.r = r
+        self.value = value
+        r = float(r)
+        sample_df = self.studies.loc[self.studies['id'].isin(ids)]
+        imgs = []
+        for i, (_, data) in enumerate(sample_df.groupby('id')):
+            xyz = data[['x', 'y', 'z']].values.tolist()
+            img = create_sphere(xyz, [r]*len(xyz), self.mask)
+            if value != 1:
+                kernel_data = img.get_data() * value
+                img = nib.Nifti1Image(kernel_data, self.mask.affine)
+            imgs.append(img)
+        return imgs
 
 
 class KDAKernel(KernelEstimator):
@@ -102,9 +121,12 @@ class KDAKernel(KernelEstimator):
     Generate KDA modeled activation images from coordinates.
     """
     def __init__(self, dataset):
+        self.mask = dataset.mask
         self.studies = dataset.get_coordinates()
+        self.r = None
+        self.value = None
 
-    def transform(self, r=6):
+    def transform(self, ids, r=6, value=1):
         """
         Generate KDA modeled activation images for each Contrast in dataset.
         Differs from MKDA images in that binary spheres are summed together in
@@ -113,13 +135,33 @@ class KDAKernel(KernelEstimator):
 
         Parameters
         ----------
+        ids : :obj:`list`
+            A list of Contrast IDs for which to generate modeled activation
+            images.
         r : :obj:`int`, optional
             Sphere radius, in mm.
+        value : :obj:`int`, optional
+            Value for sphere.
 
         Returns
         -------
-        imgs : :obj:`list` of `nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
-        pass
+        self.r = r
+        self.value = value
+        r = float(r)
+        sample_df = self.studies.loc[self.studies['id'].isin(ids)]
+        imgs = []
+        for i, (_, data) in enumerate(sample_df.groupby('id')):
+            xyz = data[['x', 'y', 'z']].values.tolist()
+            for focus in xyz:
+                temp_img = create_sphere([focus], [r], self.mask)
+                if i == 0:
+                    kernel_data = temp_img.get_data() * value
+                else:
+                    kernel_data += (temp_img.get_data() * value)
+            img = nib.Nifti1Image(kernel_data, self.mask.affine)
+            imgs.append(img)
+        return imgs
