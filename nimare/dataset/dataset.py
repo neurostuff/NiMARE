@@ -23,8 +23,8 @@ class Database(object):
         Json file containing dictionary with database information.
     """
     def __init__(self, database_file):
-        with open(database_file, 'r') as fo:
-            self.data = json.load(fo)
+        with open(database_file, 'r') as f_obj:
+            self.data = json.load(f_obj)
 
     def get_dataset(self, search='', algorithm=None, target=None):
         """
@@ -62,9 +62,19 @@ class Dataset(object):
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
     """
-    def __init__(self, dataset_file, target='Icbm Mni152 Linear'):
-        with open(dataset_file, 'r') as f_obj:
-            self.data = json.load(f_obj)
+    def __init__(self, database, ids=None, target='Icbm Mni152 Linear'):
+        if ids is None:
+            self.data = database.data
+        else:
+            data = {}
+            for id_ in ids:
+                pid, expid = id_.split('-')
+                if pid not in data.keys():
+                    data[pid] = database.data[pid]
+                    data[pid]['experiments'] = {}
+                data[pid]['experiments'][expid] = database.data[pid]['experiments'][expid]
+            self.data = data
+
         self.coordinates = None
         self.space = target
         self._load_coordinates()
