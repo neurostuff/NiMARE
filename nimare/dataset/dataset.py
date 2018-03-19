@@ -57,8 +57,10 @@ class Dataset(object):
 
     Parameters
     ----------
-    dataset_file : :obj:`str`
-        Json file containing dictionary with database information.
+    database : :obj:`nimare.dataset.Database`
+        Database object to be transformed into a dataset.
+    ids : :obj:`list`
+        List of contrast IDs to be taken from the database and kept in the dataset.
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
     """
