@@ -5,11 +5,13 @@ from __future__ import print_function
 import json
 import gzip
 import pickle
+from os.path import join
 
 import numpy as np
 import pandas as pd
+import nibabel as nib
 
-from ..utils import tal2mni, mni2tal
+from ..utils import tal2mni, mni2tal, get_resource_path, mm2vox
 
 
 class Database(object):
@@ -25,8 +27,13 @@ class Database(object):
     def __init__(self, database_file):
         with open(database_file, 'r') as f_obj:
             self.data = json.load(f_obj)
+        ids = []
+        for pid in self.data.keys():
+            for cid in self.data[pid]['experiments'].keys():
+                ids.append('{0}-{1}'.format(pid, cid))
+        self.ids = ids
 
-    def get_dataset(self, search='', algorithm=None, target=None):
+    def get_dataset(self, ids=None, search='', algorithm=None, target=None):
         """
         Retrieve files and/or metadata from the current Dataset.
 
@@ -45,9 +52,10 @@ class Database(object):
             A Dataset object containing selection of database.
 
         """
-        if algorithm:
-            req_data = algorithm.req_data
-            temp = [stud for stud in self.data if stud.has_data(req_data)]
+        #if algorithm:
+        #    req_data = algorithm.req_data
+        #    temp = [stud for stud in self.data if stud.has_data(req_data)]
+        return Dataset(self, ids=ids)
 
 
 class Dataset(object):
@@ -64,9 +72,17 @@ class Dataset(object):
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
     """
-    def __init__(self, database, ids=None, target='Icbm Mni152 Linear'):
+    def __init__(self, database, ids=None, target='Icbm Mni305 Linear',
+                 mask_file=None):
+        if mask_file is None:
+            mask_file = join(get_resource_path(), 'templates/MNI305_1mm_mask.nii.gz')
+            self.mask = nib.load(mask_file)
+        else:
+            self.mask = nib.load(mask_file)
+
         if ids is None:
             self.data = database.data
+            ids = database.ids
         else:
             data = {}
             for id_ in ids:
@@ -76,7 +92,7 @@ class Dataset(object):
                     data[pid]['experiments'] = {}
                 data[pid]['experiments'][expid] = database.data[pid]['experiments'][expid]
             self.data = data
-
+        self.ids = ids
         self.coordinates = None
         self.space = target
         self._load_coordinates()
@@ -127,9 +143,10 @@ class Dataset(object):
                     temp_data = np.vstack((temp_data, k_data))
 
                 # Place data in list of dataframes to merge
-                all_dfs.append(pd.DataFrame(temp_data.T, columns=exp_columns))
+                con_df = pd.DataFrame(temp_data.T, columns=exp_columns)
+                all_dfs.append(con_df)
         df = pd.concat(all_dfs, axis=0, join='outer')
-        df = df[columns]
+        df = df[columns].reset_index()
         df = df.replace(to_replace='None', value=np.nan)
         df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
 
@@ -146,6 +163,9 @@ class Dataset(object):
             idx = df['space'] == trans
             df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
             df.loc[idx, 'space'] = self.space
+        xyz = df[['x', 'y', 'z']].values
+        ijk = pd.DataFrame(mm2vox(xyz, self.mask.affine), columns=['i', 'j', 'k'])
+        df = pd.concat([df, ijk], axis=1)
         self.coordinates = df
 
     def has_data(self, dat_str):

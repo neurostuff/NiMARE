@@ -3,6 +3,9 @@ Utilities for coordinate-based meta-analysis estimators
 """
 import numpy as np
 from scipy.stats import norm
+from scipy import signal
+
+from ...due import due, Doi, BibTeX
 
 
 def p_to_z(p, sign):
@@ -51,7 +54,7 @@ def compute_ma(shape, ijk, kernel):
 
     # Reduce to original dimensions and convert to 1d.
     ma_values = ma_values[15:-15, 15:-15, 15:-15]
-    ma_values = ma_values.ravel()
+    #ma_values = ma_values.ravel()
     return ma_values
 
 
@@ -141,3 +144,88 @@ def _make_hist(oned_arr, hist_bins):
                          range=(np.min(hist_bins), np.max(hist_bins)),
                          density=False)[0]
     return hist_
+
+
+@due.dcite(BibTeX("""
+    @book{penny2011statistical,
+    title={Statistical parametric mapping: the analysis of functional brain images},
+    author={Penny, William D and Friston, Karl J and Ashburner, John T and Kiebel, Stefan J and Nichols, Thomas E},
+    year={2011},
+    publisher={Academic press}
+    }
+    """), 'Smoothing function originally taken from SPM MATLAB code.')
+def mem_smooth_64bit(data, fwhm, V):
+    """
+    Originally an SPM function translated from MATLAB.
+    TODO: Add comments
+    """
+    eps = np.spacing(1)  # pylint: disable=no-member
+    vx = np.sqrt(np.sum(V.affine[:3, :3]**2, axis=1))
+    s = (fwhm / vx / np.sqrt(8 * np.log(2.)) + eps) ** 2  # pylint: disable=no-member
+
+    r = [{} for _ in range(3)]
+    for i in range(3):
+        r[i]['s'] = int(np.ceil(3.5 * np.sqrt(s[i])))
+        x = np.array(range(-int(r[i]['s']), int(r[i]['s'])+1))
+        r[i]['k'] = np.exp(-0.5 * (x ** 2) / s[i]) / np.sqrt(2 * np.pi * s[i])
+        r[i]['k'] = r[i]['k'] / np.sum(r[i]['k'])
+
+    buff = np.zeros((data.shape[0], data.shape[1], (r[2]['s']*2)+1))
+    sdata = np.zeros(data.shape)
+
+    k0 = r[0]['k'][None, :]
+    k1 = r[1]['k'][None, :]
+    k2 = r[2]['k'][None, :]
+
+    inter_shape = (data.shape[0] * data.shape[1], r[2]['s']*2+1)
+    final_shape = (data.shape[0], data.shape[1])
+
+    for i in range(data.shape[2]+int(r[2]['s'])):
+        slice_ = (i % (r[2]['s']*2+1))
+        thing = np.array(range(i, i+r[2]['s']*2+1))
+        thing = thing[:, None]
+        other_thing = r[2]['s']*2+1
+        slice2_ = np.squeeze(((thing+1) % other_thing).astype(int))
+
+        if i < data.shape[2]:
+            inter = signal.convolve2d(data[:, :, i], k0, 'same')
+            buff[:, :, slice_] = signal.convolve2d(inter, k1.transpose(),
+                                                   'same')
+        else:
+            buff[:, :, slice_] = 0
+
+        if i >= r[2]['s']:
+            kern = np.zeros(k2.shape).transpose()
+            kern[slice2_, :] = k2.transpose()
+
+            #kern = k2[:, slice2_].transpose()
+            buff2 = np.reshape(buff, inter_shape)
+            buff2 = np.dot(buff2, kern)
+            buff3 = np.reshape(buff2, final_shape)
+            sdata[:, :, i-r[2]['s']] = buff3
+    return sdata
+
+
+def get_kernel(n, template_header):
+    r"""
+    Get kernel using Python implementation of SPM's MemSmooth_64bit and
+    sample size.
+    ED between templates is assumed to be 5.7 mm
+    ..math::
+        Uncertainty_{Templates} = \frac{5.7}{2 *  \
+        \sqrt{\frac{2}{\pi} } } * \sqrt{8 * ln(2) }
+    ED between subjects is assumed to be 11.6m
+    ..math::
+        Uncertainty_{Subjects} = \frac{\frac{11.6}{2 *  \sqrt{\frac{2}{\pi} }\
+        } * \sqrt{8 * ln(2) } }{\sqrt{n} }
+    """
+    data = np.zeros((31, 31, 31))
+    data[15, 15, 15] = 1.
+    # Assuming 5.7 mm ED between templates
+    uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
+    # Assuming 11.6 mm ED between matching points
+    uncertain_subjects = (11.6/(2*np.sqrt(2/np.pi)) * \
+                          np.sqrt(8*np.log(2))) / np.sqrt(n)  # pylint: disable=no-member
+    fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
+    kernel = mem_smooth_64bit(data, fwhm, template_header)
+    return fwhm, kernel

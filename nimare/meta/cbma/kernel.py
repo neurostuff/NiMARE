@@ -6,13 +6,13 @@ size and test statistic values).
 NOTE: Currently imagining output from "dataset.get_coordinates" as a DataFrame
 of peak coords and sample sizes/statistics (a la Neurosynth).
 """
+from __future__ import division
 import numpy as np
 import pandas as pd
 import nibabel as nib
-from nltools.mask import create_sphere
 
 from .base import KernelEstimator
-from .utils import compute_ma
+from .utils import compute_ma, mem_smooth_64bit, get_kernel
 from .transformations import xyz2ijk
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel']
@@ -23,10 +23,12 @@ class ALEKernel(KernelEstimator):
     Generate ALE modeled activation images from coordinates and sample size.
     """
     def __init__(self, dataset):
-        self.studies = dataset.get_coordinates()
-        self.mask = dataset.mask_img
+        self.mask = dataset.mask
+        self.coordinates = dataset.coordinates
+        self.fwhm = None
+        self.n = None
 
-    def transform(self, fwhm=None, n=None):
+    def transform(self, ids, fwhm=None, n=None):
         """
         Generate ALE modeled activation images for each Contrast in dataset.
 
@@ -47,25 +49,33 @@ class ALEKernel(KernelEstimator):
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
+        self.fwhm = fwhm
+        self.n = n
         if fwhm is not None and n is not None:
             raise ValueError('Only one of fwhm and n may be provided.')
 
-        temp_df = self.studies.copy()
-        xyz = temp_df[['x', 'y', 'z']].values
-        ijk = pd.DataFrame(xyz2ijk(xyz, self.mask.affine), columns=['i', 'j', 'k'])
-        temp_df = pd.concat([temp_df, ijk], axis=1)
-        for i, (name, data) in enumerate(temp_df.groupby('id')):
-            ijk = data[['i', 'j', 'k']].values
+        exp_dims = np.array(self.mask.shape) + np.array([30, 30, 30])
+        sample_df = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        imgs = []
+        for i, (_, data) in enumerate(sample_df.groupby('id')):
+            ijk = data[['i', 'j', 'k']].values.astype(int)
             if n is not None:
                 n_subjects = n
             else:
                 n_subjects = data['n'].values[0]
 
+            assert np.isfinite(n_subjects), 'Sample size must be finite number'
+
             if fwhm is not None:
-                kernel = smooth(data, fwhm, self.mask.affine)
+                temp_arr = np.zeros((31, 31, 31))
+                temp_arr[15, 15, 15] = 1
+                kern = mem_smooth_64bit(temp_arr, fwhm, self.mask)
             else:
-                kernel = get_kernel(data, n_subjects, self.mask.affine)
-            exp_dat = compute_ma(ijk, kernel)
+                _, kern = get_kernel(n_subjects, self.mask)
+            kernel_data = compute_ma(exp_dims, ijk, kern)
+            img = nib.Nifti1Image(kernel_data, self.mask.affine)
+            imgs.append(img)
+        return imgs
 
 
 class MKDAKernel(KernelEstimator):
@@ -74,7 +84,7 @@ class MKDAKernel(KernelEstimator):
     """
     def __init__(self, dataset):
         self.mask = dataset.mask
-        self.studies = dataset.get_coordinates()
+        self.coordinates = dataset.coordinates
         self.r = None
         self.value = None
 
@@ -104,14 +114,22 @@ class MKDAKernel(KernelEstimator):
         self.r = r
         self.value = value
         r = float(r)
-        sample_df = self.studies.loc[self.studies['id'].isin(ids)]
+        dims = self.mask.shape
+        vox_dims = self.mask.header.get_zooms()
+
+        sample_df = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         imgs = []
         for i, (_, data) in enumerate(sample_df.groupby('id')):
-            xyz = data[['x', 'y', 'z']].values.tolist()
-            img = create_sphere(xyz, [r]*len(xyz), self.mask)
-            if value != 1:
-                kernel_data = img.get_data() * value
-                img = nib.Nifti1Image(kernel_data, self.mask.affine)
+            kernel_data = np.zeros(dims)
+            for ijk in data[['i', 'j', 'k']].values:
+                xx, yy, zz = [slice(-r / vox_dims[i], r / vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
+                cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
+                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
+                sphere = np.round(sphere.T + ijk)
+                idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
+                sphere = sphere[idx, :].astype(int)
+                kernel_data[tuple(sphere.T)] = value
+            img = nib.Nifti1Image(kernel_data, self.mask.affine)
             imgs.append(img)
         return imgs
 
@@ -122,7 +140,7 @@ class KDAKernel(KernelEstimator):
     """
     def __init__(self, dataset):
         self.mask = dataset.mask
-        self.studies = dataset.get_coordinates()
+        self.coordinates = dataset.coordinates
         self.r = None
         self.value = None
 
@@ -152,16 +170,21 @@ class KDAKernel(KernelEstimator):
         self.r = r
         self.value = value
         r = float(r)
-        sample_df = self.studies.loc[self.studies['id'].isin(ids)]
+        dims = self.mask.shape
+        vox_dims = self.mask.header.get_zooms()
+
+        sample_df = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         imgs = []
         for i, (_, data) in enumerate(sample_df.groupby('id')):
-            xyz = data[['x', 'y', 'z']].values.tolist()
-            for focus in xyz:
-                temp_img = create_sphere([focus], [r], self.mask)
-                if i == 0:
-                    kernel_data = temp_img.get_data() * value
-                else:
-                    kernel_data += (temp_img.get_data() * value)
+            kernel_data = np.zeros(dims)
+            for ijk in data[['i', 'j', 'k']].values:
+                xx, yy, zz = [slice(-r / vox_dims[i], r / vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
+                cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
+                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
+                sphere = np.round(sphere.T + ijk)
+                idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
+                sphere = sphere[idx, :].astype(int)
+                kernel_data[tuple(sphere.T)] += value
             img = nib.Nifti1Image(kernel_data, self.mask.affine)
             imgs.append(img)
         return imgs
