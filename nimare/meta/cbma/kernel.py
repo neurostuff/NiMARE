@@ -8,11 +8,10 @@ of peak coords and sample sizes/statistics (a la Neurosynth).
 """
 from __future__ import division
 import numpy as np
-import pandas as pd
 import nibabel as nib
 
 from .base import KernelEstimator
-from .utils import compute_ma, mem_smooth_64bit, get_kernel
+from .utils import compute_ma, get_ale_kernel
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel']
 
@@ -53,25 +52,32 @@ class ALEKernel(KernelEstimator):
         if fwhm is not None and n is not None:
             raise ValueError('Only one of fwhm and n may be provided.')
 
-        exp_dims = np.array(self.mask.shape) + np.array([30, 30, 30])
-        sample_df = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         imgs = []
-        for _, (_, data) in enumerate(sample_df.groupby('id')):
+        kernels = {}
+        for id_ in ids:
+            data = self.coordinates.loc[self.coordinates['id'] == id_]
             ijk = data[['i', 'j', 'k']].values.astype(int)
             if n is not None:
                 n_subjects = n
-            else:
+            elif fwhm is None:
                 n_subjects = data['n'].values[0]
 
-            assert np.isfinite(n_subjects), 'Sample size must be finite number'
-
             if fwhm is not None:
-                temp_arr = np.zeros((31, 31, 31))
-                temp_arr[15, 15, 15] = 1
-                kern = mem_smooth_64bit(temp_arr, fwhm, self.mask)
+                assert np.isfinite(fwhm), 'FWHM must be finite number'
+                _, kern = get_ale_kernel(self.mask, fwhm=fwhm)
+                if fwhm not in kernels.keys():
+                    _, kern = get_ale_kernel(self.mask, n=n_subjects)
+                    kernels[fwhm] = kern
+                else:
+                    kern = kernels[fwhm]
             else:
-                _, kern = get_kernel(n_subjects, self.mask)
-            kernel_data = compute_ma(exp_dims, ijk, kern)
+                assert np.isfinite(n_subjects), 'Sample size must be finite number'
+                if n not in kernels.keys():
+                    _, kern = get_ale_kernel(self.mask, n=n_subjects)
+                    kernels[n] = kern
+                else:
+                    kern = kernels[n]
+            kernel_data = compute_ma(self.mask.shape, ijk, kern)
             img = nib.Nifti1Image(kernel_data, self.mask.affine)
             imgs.append(img)
         return imgs
@@ -116,9 +122,9 @@ class MKDAKernel(KernelEstimator):
         dims = self.mask.shape
         vox_dims = self.mask.header.get_zooms()
 
-        sample_df = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         imgs = []
-        for i, (_, data) in enumerate(sample_df.groupby('id')):
+        for id_ in ids:
+            data = self.coordinates.loc[self.coordinates['id'] == id_]
             kernel_data = np.zeros(dims)
             for ijk in data[['i', 'j', 'k']].values:
                 xx, yy, zz = [slice(-r / vox_dims[i], r / vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
@@ -172,9 +178,9 @@ class KDAKernel(KernelEstimator):
         dims = self.mask.shape
         vox_dims = self.mask.header.get_zooms()
 
-        sample_df = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         imgs = []
-        for i, (_, data) in enumerate(sample_df.groupby('id')):
+        for id_ in ids:
+            data = self.coordinates.loc[self.coordinates['id'] == id_]
             kernel_data = np.zeros(dims)
             for ijk in data[['i', 'j', 'k']].values:
                 xx, yy, zz = [slice(-r / vox_dims[i], r / vox_dims[i] + 0.01, 1) for i in range(len(ijk))]

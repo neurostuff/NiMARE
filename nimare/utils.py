@@ -22,6 +22,8 @@ def get_template(space='Mni305_1mm'):
 def get_mask(space='Mni305_1mm'):
     if space == 'Mni305_1mm':
         mask_file = join(get_resource_path(), 'templates/MNI305_1mm_mask.nii.gz')
+    elif space == 'Mni152_2mm':
+        mask_file = join(get_resource_path(), 'templates/MNI152_2mm_mask.nii.gz')
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return mask_file

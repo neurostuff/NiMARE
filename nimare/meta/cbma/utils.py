@@ -45,16 +45,23 @@ def compute_ma(shape, ijk, kernel):
         1d array of modeled activation values.
     """
     ma_values = np.zeros(shape)
+    mid = int(np.floor(kernel.shape[0] / 2.))
     for j_peak in range(ijk.shape[0]):
-        i = ijk[j_peak, 0]
-        j = ijk[j_peak, 1]
-        k = ijk[j_peak, 2]
-        ma_values[i:i+31, j:j+31, k:k+31] = np.maximum(ma_values[i:i+31, j:j+31, k:k+31],
-                                                       kernel)
-
-    # Reduce to original dimensions and convert to 1d.
-    ma_values = ma_values[15:-15, 15:-15, 15:-15]
-    #ma_values = ma_values.ravel()
+        i, j, k = ijk[j_peak, :]
+        xl = max(i-mid, 0)
+        xh = min(i+mid+1, ma_values.shape[0])
+        yl = max(j-mid, 0)
+        yh = min(j+mid+1, ma_values.shape[1])
+        zl = max(k-mid, 0)
+        zh = min(k+mid+1, ma_values.shape[2])
+        xlk = mid - (i - xl)
+        xhk = mid - (i - xh)
+        ylk = mid - (j - yl)
+        yhk = mid - (j - yh)
+        zlk = mid - (k - zl)
+        zhk = mid - (k - zh)
+        ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(ma_values[xl:xh, yl:yh, zl:zh],
+                                                    kernel[xlk:xhk, ylk:yhk, zlk:zhk])
     return ma_values
 
 
@@ -206,26 +213,35 @@ def mem_smooth_64bit(data, fwhm, V):
     return sdata
 
 
-def get_kernel(n, template_header):
-    r"""
-    Get kernel using Python implementation of SPM's MemSmooth_64bit and
-    sample size.
-    ED between templates is assumed to be 5.7 mm
-    ..math::
-        Uncertainty_{Templates} = \frac{5.7}{2 *  \
-        \sqrt{\frac{2}{\pi} } } * \sqrt{8 * ln(2) }
-    ED between subjects is assumed to be 11.6m
-    ..math::
-        Uncertainty_{Subjects} = \frac{\frac{11.6}{2 *  \sqrt{\frac{2}{\pi} }\
-        } * \sqrt{8 * ln(2) } }{\sqrt{n} }
-    """
-    data = np.zeros((31, 31, 31))
-    data[15, 15, 15] = 1.
-    # Assuming 5.7 mm ED between templates
-    uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
+def get_fwhm(n, img):
+    uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * \
+                           np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
     # Assuming 11.6 mm ED between matching points
     uncertain_subjects = (11.6/(2*np.sqrt(2/np.pi)) * \
                           np.sqrt(8*np.log(2))) / np.sqrt(n)  # pylint: disable=no-member
     fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
-    kernel = mem_smooth_64bit(data, fwhm, template_header)
-    return fwhm, kernel
+    return fwhm
+
+
+def get_ale_kernel(img, n=None, fwhm=None):
+    if n is not None and fwhm is not None:
+        raise ValueError('Only one of n and fwhm may be specified')
+    elif n is None and fwhm is None:
+        raise ValueError('Either n or fwhm must be provided')
+    elif n is not None:
+        fwhm = get_fwhm(n, img)
+
+    fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
+    sigma_vox = fwhm_vox * np.sqrt(2.) / ( np.sqrt(2. * np.log(2.)) * 2. )  # pylint: disable=no-member
+
+    data = np.zeros((31, 31, 31))
+    mid = int(np.floor(data.shape[0] / 2.))
+    data[mid, mid, mid] = 1.
+    kernel = ndimage.filters.gaussian_filter(data, sigma_vox, mode='constant')
+
+    # Crop kernel to drop surrounding zeros
+    mn = np.min(np.where(kernel > np.spacing(1))[0])
+    mx = np.max(np.where(kernel > np.spacing(1))[0])
+    kernel = kernel[mn:mx+1, mn:mx+1, mn:mx+1]
+    mid = int(np.floor(data.shape[0] / 2.))
+    return sigma_vox, kernel

@@ -94,15 +94,15 @@ class MKDA(CBMAEstimator):
         pFgA_z_FDR[p_vals > fdr_thresh] = 0
 
         # Retain any images we may want to save or access later
-        pA = nib.Nifti1Image(unmask(pA, self.dataset.mask), self.dataset.mask.affine)
-        pAgF = nib.Nifti1Image(unmask(pAgF, self.dataset.mask), self.dataset.mask.affine)
-        pFgA = nib.Nifti1Image(unmask(pFgA, self.dataset.mask), self.dataset.mask.affine)
-        pAgF_prior = nib.Nifti1Image(unmask(pAgF_prior, self.dataset.mask), self.dataset.mask.affine)
-        pFgA_prior = nib.Nifti1Image(unmask(pFgA_prior, self.dataset.mask), self.dataset.mask.affine)
-        pAgF_z = nib.Nifti1Image(unmask(pAgF_z, self.dataset.mask), self.dataset.mask.affine)
-        pFgA_z = nib.Nifti1Image(unmask(pFgA_z, self.dataset.mask), self.dataset.mask.affine)
-        pAgF_z_FDR = nib.Nifti1Image(unmask(pAgF_z_FDR, self.dataset.mask), self.dataset.mask.affine)
-        pFgA_z_FDR = nib.Nifti1Image(unmask(pFgA_z_FDR, self.dataset.mask), self.dataset.mask.affine)
+        pA = unmask(pA, self.dataset.mask)
+        pAgF = unmask(pAgF, self.dataset.mask)
+        pFgA = unmask(pFgA, self.dataset.mask)
+        pAgF_prior = unmask(pAgF_prior, self.dataset.mask)
+        pFgA_prior = unmask(pFgA_prior, self.dataset.mask)
+        pAgF_z = unmask(pAgF_z, self.dataset.mask)
+        pFgA_z = unmask(pFgA_z, self.dataset.mask)
+        pAgF_z_FDR = unmask(pAgF_z_FDR, self.dataset.mask)
+        pFgA_z_FDR = unmask(pFgA_z_FDR, self.dataset.mask)
         self.images = {
             'pA': pA,
             'pAgF': pAgF,

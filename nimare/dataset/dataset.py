@@ -72,7 +72,7 @@ class Dataset(object):
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
     """
-    def __init__(self, database, ids=None, target='Mni305_1mm',
+    def __init__(self, database, ids=None, target='Mni152_2mm',
                  mask_file=None):
         if mask_file is None:
             mask_file = get_mask(target)
