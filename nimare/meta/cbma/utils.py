@@ -153,67 +153,7 @@ def _make_hist(oned_arr, hist_bins):
     return hist_
 
 
-@due.dcite(BibTeX("""
-    @book{penny2011statistical,
-    title={Statistical parametric mapping: the analysis of functional brain images},
-    author={Penny, William D and Friston, Karl J and Ashburner, John T and Kiebel, Stefan J and Nichols, Thomas E},
-    year={2011},
-    publisher={Academic press}
-    }
-    """), 'Smoothing function originally taken from SPM MATLAB code.')
-def mem_smooth_64bit(data, fwhm, V):
-    """
-    Originally an SPM function translated from MATLAB.
-    TODO: Add comments
-    """
-    eps = np.spacing(1)  # pylint: disable=no-member
-    vx = np.sqrt(np.sum(V.affine[:3, :3]**2, axis=1))
-    s = (fwhm / vx / np.sqrt(8 * np.log(2.)) + eps) ** 2  # pylint: disable=no-member
-
-    r = [{} for _ in range(3)]
-    for i in range(3):
-        r[i]['s'] = int(np.ceil(3.5 * np.sqrt(s[i])))
-        x = np.array(range(-int(r[i]['s']), int(r[i]['s'])+1))
-        r[i]['k'] = np.exp(-0.5 * (x ** 2) / s[i]) / np.sqrt(2 * np.pi * s[i])
-        r[i]['k'] = r[i]['k'] / np.sum(r[i]['k'])
-
-    buff = np.zeros((data.shape[0], data.shape[1], (r[2]['s']*2)+1))
-    sdata = np.zeros(data.shape)
-
-    k0 = r[0]['k'][None, :]
-    k1 = r[1]['k'][None, :]
-    k2 = r[2]['k'][None, :]
-
-    inter_shape = (data.shape[0] * data.shape[1], r[2]['s']*2+1)
-    final_shape = (data.shape[0], data.shape[1])
-
-    for i in range(data.shape[2]+int(r[2]['s'])):
-        slice_ = (i % (r[2]['s']*2+1))
-        thing = np.array(range(i, i+r[2]['s']*2+1))
-        thing = thing[:, None]
-        other_thing = r[2]['s']*2+1
-        slice2_ = np.squeeze(((thing+1) % other_thing).astype(int))
-
-        if i < data.shape[2]:
-            inter = signal.convolve2d(data[:, :, i], k0, 'same')
-            buff[:, :, slice_] = signal.convolve2d(inter, k1.transpose(),
-                                                   'same')
-        else:
-            buff[:, :, slice_] = 0
-
-        if i >= r[2]['s']:
-            kern = np.zeros(k2.shape).transpose()
-            kern[slice2_, :] = k2.transpose()
-
-            #kern = k2[:, slice2_].transpose()
-            buff2 = np.reshape(buff, inter_shape)
-            buff2 = np.dot(buff2, kern)
-            buff3 = np.reshape(buff2, final_shape)
-            sdata[:, :, i-r[2]['s']] = buff3
-    return sdata
-
-
-def get_fwhm(n, img):
+def get_fwhm(img, n):
     uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * \
                            np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
     # Assuming 11.6 mm ED between matching points
@@ -229,7 +169,7 @@ def get_ale_kernel(img, n=None, fwhm=None):
     elif n is None and fwhm is None:
         raise ValueError('Either n or fwhm must be provided')
     elif n is not None:
-        fwhm = get_fwhm(n, img)
+        fwhm = get_fwhm(img, n)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = fwhm_vox * np.sqrt(2.) / ( np.sqrt(2. * np.log(2.)) * 2. )  # pylint: disable=no-member
