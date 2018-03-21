@@ -8,7 +8,23 @@ from os.path import abspath, join, dirname, sep
 import numpy as np
 import nibabel as nib
 
-from .due import due, Doi, BibTeX
+from .due import due, Doi
+
+
+def get_template(space='Mni305_1mm'):
+    if space == 'Mni305_1mm':
+        template_file = join(get_resource_path(), 'templates/MNI305_1mm.nii.gz')
+    else:
+        raise ValueError('Space {0} not supported'.format(space))
+    return template_file
+
+
+def get_mask(space='Mni305_1mm'):
+    if space == 'Mni305_1mm':
+        mask_file = join(get_resource_path(), 'templates/MNI305_1mm_mask.nii.gz')
+    else:
+        raise ValueError('Space {0} not supported'.format(space))
+    return mask_file
 
 
 def listify(obj):
@@ -20,13 +36,13 @@ def listify(obj):
 def intersection(alpha, beta):
     """Return subset of alpha and beta that are present in both.
     """
-    return beta
+    raise Exception('Not implemented')
 
 
 def diff(alpha, beta):
     """Return subset of alpha that is not present in beta.
     """
-    return alpha
+    raise Exception('Not implemented')
 
 
 def round2(ndarray):

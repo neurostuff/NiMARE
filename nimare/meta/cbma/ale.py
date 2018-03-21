@@ -13,6 +13,7 @@ from scipy import ndimage
 from scipy.special import ndtri
 
 from .base import CBMAEstimator
+from .kernel import ALEKernel
 from .utils import _make_hist, _compute_ale
 from ...due import due, Doi
 from ...utils import (intersection, diff, save_nifti, read_nifti,
@@ -32,38 +33,31 @@ class ALE(CBMAEstimator):
     """
     Activation likelihood estimation
     """
-    def __init__(self, dataset, n_iters=10000, voxel_thresh=0.001, clust_thresh=0.05,
-                 corr='FWE', verbose=True, n_cores=4):
-        self.dataset = dataset
-        self.n_iters = n_iters
-        self.voxel_thresh = voxel_thresh
-        self.clust_thresh = clust_thresh
-        self.corr = corr
-        self.verbose = verbose
-        self.n_cores = n_cores
+    def __init__(self, dataset, ids, kernel_estimator=ALEKernel, **kwargs):
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()\
+                       if k.startswith('kernel__')}
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
+        self.dataset = dataset
+
+        k_est = kernel_estimator(self.dataset.coordinates, self.dataset.mask)
+        ma_maps1 = k_est.transform(ids, **kernel_args)
+        self.ma_maps = [ma_maps1]
+        self.ids = [ids]
+        self.voxel_thresh = None
+        self.clust_thresh = None
+        self.corr = None
+        self.n_iters = None
+        self.n_cores = None
         self.images = {}
 
-    def fit(self, sample):
+    def fit(self, n_iters=10000, voxel_thresh=0.001, clust_thresh=0.05,
+            corr='FWE', verbose=True, n_cores=4):
         """
         """
-        # Step 1: Search dataset for studies in sample matching criteria
-        # for this estimator
-        studies_matching_criteria = self.dataset.get(images=criteria)
-        reduced_sample = intersection(sample, studies_matching_criteria)
-        warnings.warn('{0} of {1} studies in sample include {2} images '
-                      'necessary for {3} estimator'.format(len(reduced_sample),
-                                                           len(sample),
-                                                           criteria,
-                                                           self.__class__.__name__))
+        sample_df = self.dataset.coordinates.loc[self.dataset.coordinates['id'].isin(self.ids[0])]
 
-        # Step 2 (for SCALE and MKDA): Search dataset for studies not in sample
-        # matching criteria for this estimator
-        reduced_sample = intersection(sample, studies_matching_criteria)
-        studies_not_in_sample = diff(studies_matching_criteria, sample)
 
-        # Step 3: Perform analysis
-        return None
 
     def ale(self, dataset, n_cores=1, voxel_thresh=0.001, clust_thresh=0.05,
             n_iters=10000, verbose=True, plot_thresh=True, prefix='',
@@ -113,50 +107,31 @@ class ALE(CBMAEstimator):
                (2012). Activation likelihood estimation meta-analysis revisited.
                Neuroimage, 59(3), 2349-2361.
         """
-        name = dataset.name
-        experiments = dataset.experiments
-
-        # Cite MNI152 paper if default template is used
-        if template_file == 'Grey10.nii.gz':
-            cite_mni152()
-
-        # Check path for template file
-        if not os.path.dirname(template_file):
-            template_file = os.path.join(get_resource_path(), template_file)
-
         max_cores = mp.cpu_count()
         if not 1 <= n_cores <= max_cores:
             print('Desired number of cores ({0}) outside range of acceptable values. '
                   'Setting number of cores to max ({1}).'.format(n_cores, max_cores))
             n_cores = max_cores
 
-        if prefix == '':
-            prefix = name
-
-        if os.path.basename(prefix) == '':
-            prefix_sep = ''
-        else:
-            prefix_sep = '_'
-
         max_poss_ale = 1
-        for exp in experiments:
-            max_poss_ale *= (1 - np.max(exp.kernel))
+        for ma in self.ma_maps[0]:
+            max_poss_ale *= (1 - np.max(ma.get_data()))
 
         max_poss_ale = 1 - max_poss_ale
         hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
 
         # Compute ALE values
-        template_data, affine = read_nifti(template_file)
-        dims = template_data.shape
+        template_data = self.dataset.mask.get_data()
+        affine = self.dataset.mask.affine
+        dims = np.array(self.dataset.mask.shape)
         template_arr = template_data.flatten()
         prior = np.where(template_arr != 0)[0]
         shape = dims + np.array([30, 30, 30])
 
         # Gray matter coordinates
-        perm_ijk = np.where(template_data)
-        perm_ijk = np.vstack(perm_ijk).transpose()
+        perm_ijk = np.vstack(np.where(template_data)).transpose()
 
-        ale_values, null_distribution = _compute_ale(experiments, dims, shape, prior, hist_bins)
+        ale_values, null_distribution = _compute_ale(sample_df, dims, shape, prior, hist_bins)
         p_values, z_values = self._ale_to_p(ale_values, hist_bins, null_distribution)
 
         # Write out unthresholded value images
@@ -194,18 +169,16 @@ class ALE(CBMAEstimator):
         out_matrix = out_matrix.reshape(dims)
 
         thresh_suffix = 'thresh_{0}unc.nii.gz'.format(thresh_str(voxel_thresh))
-        filename = prefix + prefix_sep + thresh_suffix
-        save_nifti(out_matrix, filename, affine)
         if verbose:
             print('File {0} saved.'.format(filename))
 
         # Find number of voxels per cluster (includes 0, which is empty space in
         # the matrix)
-        conn_mat = np.ones((3, 3, 3))  # 18 connectivity
-        for i in [0, -1]:
-            for j in [0, -1]:
-                for k in [0, -1]:
-                    conn_mat[i, j, k] = 0
+        conn_mat = np.zeros((3, 3, 3), int)
+        conn_mat[:, :, 1] = 1
+        conn_mat[:, 1, :] = 1
+        conn_mat[1, :, :] = 1
+
         labeled_matrix = ndimage.measurements.label(sig_matrix, conn_mat)[0]
         labeled_vector = labeled_matrix.flatten()
         labeled_vector = labeled_vector[prior]
@@ -216,7 +189,7 @@ class ALE(CBMAEstimator):
         ## Multiple comparisons correction
         if verbose:
             print('Performing FWE correction.')
-        rd_experiments = copy.deepcopy(experiments)
+        rd_experiments = copy.deepcopy(sample_df)
         results = self._FWE_correction(rd_experiments, perm_ijk, null_distribution, hist_bins,
                                        prior, dims, n_cores, voxel_thresh, n_iters)
         rd_max_ales, rd_clust_sizes = zip(*results)

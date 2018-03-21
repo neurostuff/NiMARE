@@ -13,7 +13,6 @@ import nibabel as nib
 
 from .base import KernelEstimator
 from .utils import compute_ma, mem_smooth_64bit, get_kernel
-from .transformations import xyz2ijk
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel']
 
@@ -22,9 +21,9 @@ class ALEKernel(KernelEstimator):
     """
     Generate ALE modeled activation images from coordinates and sample size.
     """
-    def __init__(self, dataset):
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
+    def __init__(self, coordinates, mask):
+        self.mask = mask
+        self.coordinates = coordinates
         self.fwhm = None
         self.n = None
 
@@ -57,7 +56,7 @@ class ALEKernel(KernelEstimator):
         exp_dims = np.array(self.mask.shape) + np.array([30, 30, 30])
         sample_df = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         imgs = []
-        for i, (_, data) in enumerate(sample_df.groupby('id')):
+        for _, (_, data) in enumerate(sample_df.groupby('id')):
             ijk = data[['i', 'j', 'k']].values.astype(int)
             if n is not None:
                 n_subjects = n
@@ -82,9 +81,9 @@ class MKDAKernel(KernelEstimator):
     """
     Generate MKDA modeled activation images from coordinates.
     """
-    def __init__(self, dataset):
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
+    def __init__(self, coordinates, mask):
+        self.mask = mask
+        self.coordinates = coordinates
         self.r = None
         self.value = None
 
@@ -138,9 +137,9 @@ class KDAKernel(KernelEstimator):
     """
     Generate KDA modeled activation images from coordinates.
     """
-    def __init__(self, dataset):
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
+    def __init__(self, coordinates, mask):
+        self.mask = mask
+        self.coordinates = coordinates
         self.r = None
         self.value = None
 

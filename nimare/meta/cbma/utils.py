@@ -1,9 +1,11 @@
 """
 Utilities for coordinate-based meta-analysis estimators
 """
+import numba
 import numpy as np
-from scipy.stats import norm
 from scipy import signal
+from scipy import ndimage
+from scipy.stats import norm
 
 from ...due import due, Doi, BibTeX
 
@@ -24,11 +26,9 @@ def p_to_z(p, sign):
 def compute_ma(shape, ijk, kernel):
     """
     Generate modeled activation (MA) maps.
-
     Replaces the values around each focus in ijk with the experiment-specific kernel.
     Takes the element-wise maximum when looping through foci, which accounts for foci
     which are near to one another and may have overlapping kernels.
-
     Parameters
     ----------
     shape : tuple

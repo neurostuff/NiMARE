@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from ..utils import tal2mni, mni2tal, get_resource_path, mm2vox
+from ..utils import tal2mni, mni2tal, mm2vox, get_mask
 
 
 class Database(object):
@@ -33,7 +33,7 @@ class Database(object):
                 ids.append('{0}-{1}'.format(pid, cid))
         self.ids = ids
 
-    def get_dataset(self, ids=None, search='', algorithm=None, target=None):
+    def get_dataset(self, ids=None, search='', algorithm=None, target='Mni305_1mm'):
         """
         Retrieve files and/or metadata from the current Dataset.
 
@@ -55,7 +55,7 @@ class Database(object):
         #if algorithm:
         #    req_data = algorithm.req_data
         #    temp = [stud for stud in self.data if stud.has_data(req_data)]
-        return Dataset(self, ids=ids)
+        return Dataset(self, ids=ids, target=target)
 
 
 class Dataset(object):
@@ -72,13 +72,11 @@ class Dataset(object):
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
     """
-    def __init__(self, database, ids=None, target='Icbm Mni305 Linear',
+    def __init__(self, database, ids=None, target='Mni305_1mm',
                  mask_file=None):
         if mask_file is None:
-            mask_file = join(get_resource_path(), 'templates/MNI305_1mm_mask.nii.gz')
-            self.mask = nib.load(mask_file)
-        else:
-            self.mask = nib.load(mask_file)
+            mask_file = get_mask(target)
+        self.mask = nib.load(mask_file)
 
         if ids is None:
             self.data = database.data
@@ -214,13 +212,19 @@ class Dataset(object):
     def get_coordinates(self):
         pass
 
-    def save(self, filename):
+    def save(self, filename, compress=True):
         """
         Pickle the Dataset instance to the provided file.
-        If the filename ends with 'z', gzip will be used to write out a
-        compressed file. Otherwise, an uncompressed file will be created.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            File to which dataset will be saved.
+        compress : :obj:`bool`, optional
+            If True, the file will be compressed with gzip. Otherwise, the
+            uncompressed version will be saved. Default = True.
         """
-        if filename.endswith('z'):
+        if compress:
             with gzip.GzipFile(filename, 'wb') as file_object:
                 pickle.dump(self, file_object)
         else:
@@ -228,14 +232,25 @@ class Dataset(object):
                 pickle.dump(self, file_object)
 
     @classmethod
-    def load(cls, filename):
+    def load(cls, filename, compressed=True):
         """
         Load a pickled Dataset instance from file.
-        If the filename ends with 'z', it will be assumed that the file is
-        compressed, and gzip will be used to load it. Otherwise, it will
-        be assumed that the file is not compressed.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            Name of file containing dataset.
+        compressed : :obj:`bool`, optional
+            If True, the file is assumed to be compressed and gzip will be used
+            to load it. Otherwise, it will assume that the file is not
+            compressed. Default = True.
+
+        Returns
+        -------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Loaded dataset object.
         """
-        if filename.endswith('z'):
+        if compressed:
             try:
                 with gzip.GzipFile(filename, 'rb') as file_object:
                     dataset = pickle.load(file_object)
