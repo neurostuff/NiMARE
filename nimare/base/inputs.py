@@ -37,7 +37,7 @@ class Image(Mappable):
         pass
 
 
-class ActivationSet(Mappable):
+class CoordinateSet(Mappable):
     """Container for peak information, with optional additional metadata (e.g.,
     intensity values).
     """
