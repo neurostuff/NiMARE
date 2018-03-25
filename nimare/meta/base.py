@@ -7,15 +7,18 @@ from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 from six import with_metaclass
 
-import nibabel as nib
+from nilearn.masking import unmask
 
 
 class MetaResult(object):
     """Base class for meta-analytic results.
     Will contain slots for different kinds of results maps (e.g., z-map, p-map)
     """
-    def __init__(self, z=None, p=None, mask=None):
-        pass
+    def __init__(self, mask=None, **kwargs):
+        self.mask = mask
+        self.images = {}
+        for key, array in kwargs.items():
+            self.images[key] = unmask(array, self.mask)
 
     def save_results(self, output_dir='.', prefix='', prefix_sep='_'):
         """Save results to files.
@@ -26,20 +29,10 @@ class MetaResult(object):
         if not exists(output_dir):
             makedirs(output_dir)
 
-        images = self.get_images()
-        image_list = images.keys()
-        for suffix, dat in images.items():
-            if suffix in image_list:
-                filename = prefix + prefix_sep + suffix + '.nii.gz'
-                outpath = join(output_dir, filename)
-                img = nib.Nifti1Image(dat, self.mask.affine)
-                img.to_filename(outpath)
-
-    @abstractmethod
-    def get_images(self, unmask=True):
-        """Return a dictionary of output images from meta-analysis.
-        """
-        pass
+        for imgtype, img in self.images.items():
+            filename = prefix + prefix_sep + imgtype + '.nii.gz'
+            outpath = join(output_dir, filename)
+            img.to_filename(outpath)
 
 
 class MetaEstimator(with_metaclass(ABCMeta)):
