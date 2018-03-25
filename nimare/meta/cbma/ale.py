@@ -16,7 +16,7 @@ from .base import CBMAEstimator
 from .kernel import ALEKernel
 from .utils import _make_hist, _compute_ale
 from ...due import due, Doi
-from ...utils import (intersection, diff, save_nifti, read_nifti,
+from ...utils import (save_nifti, read_nifti,
                       round2, thresh_str, get_resource_path, cite_mni152)
 
 @due.dcite(Doi('10.1002/hbm.20718'),
@@ -189,8 +189,8 @@ class ALE(CBMAEstimator):
         ## Multiple comparisons correction
         if verbose:
             print('Performing FWE correction.')
-        rd_experiments = copy.deepcopy(sample_df)
-        results = self._FWE_correction(rd_experiments, perm_ijk, null_distribution, hist_bins,
+        rd_contrasts = copy.deepcopy(sample_df)
+        results = self._FWE_correction(rd_contrasts, perm_ijk, null_distribution, hist_bins,
                                        prior, dims, n_cores, voxel_thresh, n_iters)
         rd_max_ales, rd_clust_sizes = zip(*results)
 
@@ -280,17 +280,17 @@ class ALE(CBMAEstimator):
         Run a single random permutation of a dataset. Does the shared work between
         vFWE and cFWE.
         """
-        exps, ijk, null_dist, hist_bins, prior, dims, shape, voxel_thresh, start, iter_num = params
+        cons, ijk, null_dist, hist_bins, prior, dims, shape, voxel_thresh, start, iter_num = params
         ijk = np.squeeze(ijk)
 
-        # Assign random GM coordinates to experiments
+        # Assign random GM coordinates to contrasts
         start_idx = 0
-        for exp in exps:
-            n_peaks = exp.ijk.shape[0]
+        for con in cons:
+            n_peaks = con.ijk.shape[0]
             end_idx = start_idx + n_peaks
-            exp.ijk = ijk[start_idx:end_idx]
+            con.ijk = ijk[start_idx:end_idx]
             start_idx = end_idx
-        ale_values, _ = _compute_ale(exps, dims, shape, prior, hist_bins=None)
+        ale_values, _ = _compute_ale(cons, dims, shape, prior, hist_bins=None)
         _, z_values = self._ale_to_p(ale_values, hist_bins, null_dist)
         rd_max_ale = np.max(ale_values)
 
@@ -330,12 +330,12 @@ class ALE(CBMAEstimator):
                                                                    elapsed))
         return rd_max_ale, rd_clust_size
 
-    def _FWE_correction(self, experiments, ijk, null_distribution, hist_bins, prior,
+    def _FWE_correction(self, contrasts, ijk, null_distribution, hist_bins, prior,
                         dims, n_cores, voxel_thresh=0.001, n_iters=100):
         """
         Performs both cluster-level (cFWE) and voxel-level (vFWE) correction.
         """
-        n_foci = np.sum([exp.ijk.shape[0] for exp in experiments])
+        n_foci = np.sum([con.ijk.shape[0] for con in contrasts])
         np.random.seed(0)  # pylint: disable=no-member
         rand_idx = np.random.choice(ijk.shape[0], size=(n_foci, n_iters))  # pylint: disable=no-member
         rand_ijk = ijk[rand_idx, :]
@@ -344,7 +344,7 @@ class ALE(CBMAEstimator):
         # Define parameters
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         shapes = [shape] * n_iters
-        exp_list = [experiments] * n_iters
+        exp_list = [contrasts] * n_iters
         null_distributions = [null_distribution] * n_iters
         priors = [prior] * n_iters
         dims_arrs = [dims] * n_iters
@@ -445,7 +445,7 @@ class SCALE(CBMAEstimator):
                NeuroImage, 99, 559-570.
         """
         name = dataset.name
-        experiments = dataset.experiments
+        contrasts = dataset.contrasts
 
         # Cite MNI152 paper if default template is used
         if template_file == 'Grey10.nii.gz':
@@ -473,8 +473,8 @@ class SCALE(CBMAEstimator):
             prefix_sep = '_'
 
         max_poss_ale = 1
-        for exp in experiments:
-            max_poss_ale *= (1 - np.max(exp.kernel))
+        for con in contrasts:
+            max_poss_ale *= (1 - np.max(con.kernel))
 
         max_poss_ale = 1 - max_poss_ale
         hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
@@ -496,9 +496,9 @@ class SCALE(CBMAEstimator):
             raise Exception('Float(s) detected. Database coordinates must all be '
                             'integers.')
 
-        ale_values, _ = _compute_ale(experiments, dims, shape, prior)
+        ale_values, _ = _compute_ale(contrasts, dims, shape, prior)
 
-        n_foci = np.sum([exp.ijk.shape[0] for exp in experiments])
+        n_foci = np.sum([con.ijk.shape[0] for con in contrasts])
         np.random.seed(0)  # pylint: disable=no-member
         rand_idx = np.random.choice(database_ijk.shape[0], size=(n_foci, n_iters))  # pylint: disable=no-member
         rand_ijk = database_ijk[rand_idx, :]
@@ -506,7 +506,7 @@ class SCALE(CBMAEstimator):
         # Define parameters
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         shapes = [shape] * n_iters
-        exp_list = [experiments] * n_iters
+        exp_list = [contrasts] * n_iters
         priors = [prior] * n_iters
         dims_arrs = [dims] * n_iters
         iter_nums = range(1, n_iters+1)
@@ -595,17 +595,17 @@ class SCALE(CBMAEstimator):
         """
         Run a single random SCALE permutation of a dataset.
         """
-        exps, ijk, prior, dims, shape, start, iter_num = params
+        cons, ijk, prior, dims, shape, start, iter_num = params
         ijk = np.squeeze(ijk)
 
-        # Assign random GM coordinates to experiments
+        # Assign random GM coordinates to contrasts
         start_idx = 0
-        for exp in exps:
-            n_peaks = exp.ijk.shape[0]
+        for con in cons:
+            n_peaks = con.ijk.shape[0]
             end_idx = start_idx + n_peaks
-            exp.ijk = ijk[start_idx:end_idx]
+            con.ijk = ijk[start_idx:end_idx]
             start_idx = end_idx
-        ale_values, _ = _compute_ale(exps, dims, shape, prior)
+        ale_values, _ = _compute_ale(cons, dims, shape, prior)
 
         if iter_num % 250 == 0:
             elapsed = (time() - start) / 60.

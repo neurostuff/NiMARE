@@ -26,7 +26,7 @@ def p_to_z(p, sign):
 def compute_ma(shape, ijk, kernel):
     """
     Generate modeled activation (MA) maps.
-    Replaces the values around each focus in ijk with the experiment-specific kernel.
+    Replaces the values around each focus in ijk with the contrast-specific kernel.
     Takes the element-wise maximum when looping through foci, which accounts for foci
     which are near to one another and may have overlapping kernels.
     Parameters
@@ -108,21 +108,21 @@ def _get_null(hist_bins, ma_hists):
     return null_distribution
 
 
-def _compute_ale(experiments, dims, shape, prior, hist_bins=None):
+def _compute_ale(contrasts, dims, shape, prior, hist_bins=None):
     """
-    Generate ALE-value array and null distribution from list of experiments.
+    Generate ALE-value array and null distribution from list of contrasts.
     For ALEs on the original dataset, computes the null distribution.
     For permutation ALEs and all SCALEs, just computes ALE values.
     Returns masked array of ALE values and 1XnBins null distribution.
     """
     ale_values = np.ones(dims).ravel()
     if hist_bins is not None:
-        ma_hists = np.zeros((len(experiments), hist_bins.shape[0]))
+        ma_hists = np.zeros((len(contrasts), hist_bins.shape[0]))
     else:
         ma_hists = None
 
-    for i, exp in enumerate(experiments):
-        ma_values = compute_ma(shape, exp.ijk, exp.kernel)
+    for i, con in enumerate(contrasts):
+        ma_values = compute_ma(shape, con.ijk, con.kernel)
 
         # Remember that histogram uses bin edges (not centers), so it returns
         # a 1xhist_bins-1 array

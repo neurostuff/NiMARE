@@ -29,7 +29,7 @@ class Database(object):
             self.data = json.load(f_obj)
         ids = []
         for pid in self.data.keys():
-            for cid in self.data[pid]['experiments'].keys():
+            for cid in self.data[pid]['contrasts'].keys():
                 ids.append('{0}-{1}'.format(pid, cid))
         self.ids = ids
 
@@ -87,8 +87,8 @@ class Dataset(object):
                 pid, expid = id_.split('-')
                 if pid not in data.keys():
                     data[pid] = database.data[pid]
-                    data[pid]['experiments'] = {}
-                data[pid]['experiments'][expid] = database.data[pid]['experiments'][expid]
+                    data[pid]['contrasts'] = {}
+                data[pid]['contrasts'][expid] = database.data[pid]['contrasts'][expid]
             self.data = data
         self.ids = ids
         self.coordinates = None
@@ -100,16 +100,16 @@ class Dataset(object):
         """
         # Required columns
         columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'n', 'space']
-        core_columns = columns[:]  # Used in experiment for loop
+        core_columns = columns[:]  # Used in contrast for loop
 
         all_dfs = []
         for pid in self.data.keys():
-            for expid in self.data[pid]['experiments'].keys():
-                if 'coords' not in self.data[pid]['experiments'][expid].keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                if 'coords' not in self.data[pid]['contrasts'][expid].keys():
                     continue
 
                 exp_columns = core_columns[:]
-                exp = self.data[pid]['experiments'][expid]
+                exp = self.data[pid]['contrasts'][expid]
 
                 # Required info (ids, x, y, z, space)
                 n_coords = len(exp['coords']['x'])
@@ -168,7 +168,7 @@ class Dataset(object):
 
     def has_data(self, dat_str):
         """
-        Check if an experiment has necessary data (e.g., sample size or some
+        Check if an contrast has necessary data (e.g., sample size or some
         image type).
         """
         dat_str = dat_str.split(' AND ')

@@ -1,5 +1,5 @@
 """
-Methods for estimating thresholded cluster maps from neuroimaging experiments
+Methods for estimating thresholded cluster maps from neuroimaging contrasts
 (Contrasts) from sets of foci and optional additional information (e.g., sample
 size and test statistic values).
 
