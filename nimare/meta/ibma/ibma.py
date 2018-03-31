@@ -22,6 +22,49 @@ from ...due import due, Doi, BibTeX
              }
            """),
            description='Stouffers citation.')
+def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None):
+    if inference == 'rfx':
+        if null == 'theoretical':
+            t_map, p_map = stats.ttest_1samp(z_maps, popmean=0, axis=0)
+        elif null == 'empirical':
+            k = z_maps.shape[0]
+            t_map, _ = stats.ttest_1samp(z_maps, popmean=0, axis=0)
+            p_map = np.ones(t_map.shape)
+            iter_t_maps = np.zeros((n_iters, t_map.shape[0]))
+
+            data_signs = np.sign(z_maps[z_maps != 0])
+            data_signs[data_signs < 0] = 0
+            posprop = np.mean(data_signs)
+            for i in range(n_iters):
+                iter_z_maps = np.copy(z_maps)
+                signs = np.random.choice(a=2, size=k, p=[1-posprop, posprop])
+                signs[signs == 0] = -1
+                iter_z_maps *= signs[:, None]
+                iter_t_maps[i, :], _ = stats.ttest_1samp(iter_z_maps, popmean=0, axis=0)
+
+            for voxel in range(iter_t_maps.shape[0]):
+                p_value = (50 - np.abs(stats.percentileofscore(iter_t_maps[:, voxel], t_map[voxel]) - 50.)) * 2. / 100.
+                p_map[voxel] = p_value
+        else:
+            raise ValueError('Input null must be "theoretical" or "empirical".')
+
+        log_p_map = -np.log10(p_map)
+        result = MetaResult(mask=mask, t=t_map, p=p_map, log_p=log_p_map)
+    elif inference == 'ffx':
+        if null == 'theoretical':
+            k = z_maps.shape[0]
+            z_map = np.sum(z_maps, axis=0) / np.sqrt(k)
+            p_map = stats.norm.cdf(z_map, loc=0, scale=1)
+            log_p_map = -np.log10(p_map)
+            result = MetaResult(mask=mask, z=z_map, p=p_map, log_p=log_p_map)
+        else:
+            raise ValueError('Only theoretical null distribution may be used '
+                             'for FFX Stouffers.')
+    else:
+        raise ValueError('Input inference must be "rfx" or "ffx".')
+    return result
+
+
 class Stouffers(IBMAEstimator):
     """
     A t-test on z-statistic images.
@@ -53,42 +96,8 @@ class Stouffers(IBMAEstimator):
         self.null = null
         self.n_iters = n_iters
         z_maps = self.dataset.get(self.ids, 'z')
-        if self.inference == 'rfx':
-            if self.null == 'theoretical':
-                t_map, p_map = stats.ttest_1samp(z_maps, popmean=0, axis=0)
-            elif self.null == 'empirical':
-                k = z_maps.shape[0]
-                t_map, _ = stats.ttest_1samp(z_maps, popmean=0, axis=0)
-                p_map = np.ones(t_map.shape)
-                iter_t_maps = np.zeros((self.n_iters, t_map.shape[0]))
-                for i in range(self.n_iters):
-                    iter_z_maps = np.copy(z_maps)
-                    negprop = 0.5
-                    signs = np.random.choice(a=2, size=k, p=[negprop, 1-negprop])
-                    signs[signs == 0] = -1
-                    iter_z_maps *= signs[:, None]
-                    iter_t_maps[i, :], _ = stats.ttest_1samp(iter_z_maps, popmean=0, axis=0)
-
-                for voxel in range(iter_t_maps.shape[0]):
-                    voxel_perc = stats.percentileofscore(iter_t_maps[:, voxel], t_map[voxel]) / 100.
-                    p_map[voxel] = 1. - (np.abs(voxel_perc - 0.5) * 2)
-            else:
-                raise ValueError('Input null must be "theoretical" or "empirical".')
-
-            log_p_map = -np.log10(p_map)
-            result = MetaResult(mask=self.mask, t=t_map, p=p_map, log_p=log_p_map)
-        elif self.inference == 'ffx':
-            if self.null == 'theoretical':
-                k = z_maps.shape[0]
-                z_map = np.sum(z_maps, axis=0) / np.sqrt(k)
-                p_map = stats.norm.cdf(z_map, loc=0, scale=1)
-                log_p_map = -np.log10(p_map)
-                result = MetaResult(mask=self.mask, z=z_map, p=p_map, log_p=log_p_map)
-            else:
-                raise ValueError('Only theoretical null distribution may be used '
-                                 'for FFX Stouffers.')
-        else:
-            raise ValueError('Input inference must be "rfx" or "ffx".')
+        result = stouffers(z_maps, self.mask, inference=inference, null=null,
+                           n_iters=n_iters)
         return result
 
 
@@ -101,6 +110,16 @@ class Stouffers(IBMAEstimator):
               }
            """),
            description='Fishers citation.')
+def fishers(z_maps, mask):
+    k = z_maps.shape[0]
+    ffx_stat_map = -2 * np.sum(np.log10(stats.norm.cdf(-z_maps, loc=0, scale=1)),
+                               axis=0)
+    p_map = stats.chi2.sf(ffx_stat_map, 2*k)
+    log_p_map = -np.log10(p_map)
+    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
+    return result
+
+
 class Fishers(IBMAEstimator):
     """
     An image-based meta-analytic test using t- or z-statistic images.
@@ -116,12 +135,7 @@ class Fishers(IBMAEstimator):
 
     def fit(self):
         z_maps = self.dataset.get(self.ids, 'z')
-        k = z_maps.shape[0]
-        ffx_stat_map = -2 * np.sum(np.log10(stats.norm.cdf(-z_maps, loc=0,
-                                                           scale=1)), axis=0)
-        p_map = stats.chi2.cdf(ffx_stat_map, 2*k)
-        log_p_map = -np.log10(p_map)
-        result = MetaResult(mask=self.mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
+        result = fishers(z_maps, self.mask)
         return result
 
 
@@ -139,6 +153,16 @@ class Fishers(IBMAEstimator):
              }
            """),
            description='Weighted Stouffers citation.')
+def weighted_stouffers(z_maps, sample_sizes, mask):
+    assert z_maps.shape[0] == sample_sizes.shape[0]
+    weighted_z_maps = z_maps * np.sqrt(sample_sizes)[:, None]
+    ffx_stat_map = np.sum(weighted_z_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
+    p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
+    log_p_map = -np.log10(p_map)
+    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
+    return result
+
+
 class WeightedStouffers(IBMAEstimator):
     """
     An image-based meta-analytic test using z-statistic images and sample sizes.
@@ -156,12 +180,39 @@ class WeightedStouffers(IBMAEstimator):
     def fit(self):
         z_maps = self.dataset.get(self.ids, 'z')
         sample_sizes = self.dataset.get(self.ids, 'n')
-        weighted_z_maps = z_maps * np.sqrt(sample_sizes)[:, None]
-        ffx_stat_map = np.sum(weighted_z_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
-        p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
-        log_p_map = -np.log10(p_map)
-        result = MetaResult(mask=self.mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
+        result = weighted_stouffers(z_maps, sample_sizes, self.mask)
         return result
+
+
+def rfx_glm(con_maps, mask, null='theoretical', n_iters=None):
+    # Normalize contrast maps to have unit variance
+    con_maps = con_maps / np.std(con_maps, axis=1)[:, None]
+    if null == 'theoretical':
+        t_map, p_map = stats.ttest_1samp(con_maps, popmean=0, axis=0)
+    elif null == 'empirical':
+        k = con_maps.shape[0]
+        t_map, _ = stats.ttest_1samp(con_maps, popmean=0, axis=0)
+        p_map = np.ones(t_map.shape)
+        iter_t_maps = np.zeros((n_iters, t_map.shape[0]))
+
+        data_signs = np.sign(con_maps[con_maps != 0])
+        data_signs[data_signs < 0] = 0
+        posprop = np.mean(data_signs)
+        for i in range(n_iters):
+            iter_con_maps = np.copy(con_maps)
+            signs = np.random.choice(a=2, size=k, p=[1-posprop, posprop])
+            signs[signs == 0] = -1
+            iter_con_maps *= signs[:, None]
+            iter_t_maps[i, :], _ = stats.ttest_1samp(iter_con_maps, popmean=0, axis=0)
+
+        for voxel in range(iter_t_maps.shape[0]):
+            p_value = (50 - np.abs(stats.percentileofscore(iter_t_maps[:, voxel], t_map[voxel]) - 50.)) * 2. / 100.
+            p_map[voxel] = p_value
+    else:
+        raise ValueError('Input null must be "theoretical" or "empirical".')
+    log_p_map = -np.log10(p_map)
+    result = MetaResult(mask=mask, t=t_map, p=p_map, log_p=log_p_map)
+    return result
 
 
 class RFX_GLM(IBMAEstimator):
@@ -182,30 +233,29 @@ class RFX_GLM(IBMAEstimator):
         self.null = null
         self.n_iters = n_iters
         con_maps = self.dataset.get(self.ids, 'con')
-        if self.null == 'theoretical':
-            t_map, p_map = stats.ttest_1samp(con_maps, popmean=0, axis=0)
-        elif self.null == 'empirical':
-            n_iters = self.n_iters
-            k = con_maps.shape[0]
-            t_map, _ = stats.ttest_1samp(con_maps, popmean=0, axis=0)
-            p_map = np.ones(t_map.shape)
-            iter_t_maps = np.zeros((n_iters, t_map.shape[0]))
-            for i in n_iters:
-                iter_con_maps = np.copy(con_maps)
-                negprop = 0.5
-                signs = np.random.choice(a=2, size=k, p=[negprop, 1-negprop])
-                signs[signs == 0] = -1
-                iter_con_maps *= signs[:, None]
-                iter_t_maps[i, :], _ = stats.ttest_1samp(iter_con_maps, popmean=0, axis=0)
-
-            for voxel in range(iter_t_maps.shape[0]):
-                voxel_perc = stats.percentileofscore(iter_t_maps[:, voxel], t_map[voxel]) / 100.
-                p_map[voxel] = 1. - (np.abs(voxel_perc - 0.5) * 2)
-        else:
-            raise ValueError('Input null must be "theoretical" or "empirical".')
-        log_p_map = -np.log10(p_map)
-        result = MetaResult(mask=self.mask, t=t_map, p=p_map, log_p=log_p_map)
+        result = rfx_glm(con_maps, self.mask, null=self.null, n_iters=self.n_iters)
         return result
+
+
+def ffx_glm(con_maps, var_maps, n_subjects, mask, equal_var=True):
+    assert con_maps.shape[1] == var_maps.shape[1]
+    assert con_maps.shape[0] == var_maps.shape[0] == n_subjects.shape[0]
+    if equal_var:
+        weighted_con_maps = con_maps * n_subjects[:, None]
+        sum_weighted_con_map = np.sum(weighted_con_maps, axis=0)
+        adj_con_map = (1. / np.sqrt(np.sum(n_subjects))) * sum_weighted_con_map
+        weighted_ss_maps = var_maps * (n_subjects[:, None] - 1)
+        sum_weighted_ss_map = np.sum(weighted_ss_maps, axis=0)
+        est_ss_map = (1. / np.sqrt(np.sum(n_subjects - 1))) * sum_weighted_ss_map
+        ffx_stat_map = adj_con_map / np.sqrt(est_ss_map)
+        dof = np.sum(n_subjects - 1)
+    else:
+        raise Exception('Unequal variances not available yet.')
+
+    p_map = stats.t.cdf(-ffx_stat_map, df=dof, loc=0, scale=1)
+    log_p_map = -np.log10(p_map)
+    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
+    return result
 
 
 class FFX_GLM(IBMAEstimator):
@@ -234,20 +284,7 @@ class FFX_GLM(IBMAEstimator):
             n_subjects = np.repeat(self.n_subjects, k)
         else:
             n_subjects = self.dataset.get(self.ids, 'n')
-
-        if self.equal_var:
-            weighted_con_maps = con_maps * n_subjects[:, None]
-            sum_weighted_con_map = np.sum(weighted_con_maps, axis=0)
-            weighted_ss_maps = var_maps * (n_subjects[:, None] - 1)
-            est_ss_map = (1. / (n_subjects - 1)) * np.sum(weighted_ss_maps, axis=0)
-            ffx_stat_map = (1. / np.sqrt(np.sum(n_subjects))) * sum_weighted_con_map / np.sqrt(est_ss_map)
-            dof = np.sum(n_subjects - 1)
-        else:
-            raise Exception('Unequal variances not available yet.')
-
-        p_map = stats.t.cdf(-ffx_stat_map, df=dof, loc=0, scale=1)
-        log_p_map = -np.log10(p_map)
-        result = MetaResult(mask=self.mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
+        result = ffx_glm(con_maps, var_maps, n_subjects, self.mask, equal_var=self.equal_var)
         return result
 
 
