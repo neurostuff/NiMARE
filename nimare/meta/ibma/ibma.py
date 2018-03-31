@@ -23,6 +23,32 @@ from ...due import due, Doi, BibTeX
            """),
            description='Stouffers citation.')
 def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None):
+    """
+    Run a Stouffer's image-based meta-analysis on z-statistic maps.
+
+    Parameters
+    ----------
+    z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of z-statistic maps in the same space, after masking.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+    inference : {'ffx', 'rfx'}, optional
+        Whether to use fixed-effects inference (default) or random-effects
+        inference.
+    null : {'theoretical', 'empirical'}, optional
+        Whether to use a theoretical null T distribution or an empirically-
+        derived null distribution determined via sign flipping. Empirical null
+        is only possible if ``inference = 'rfx'``.
+    n_iters : :obj:`int` or :obj:`None`, optional
+        The number of iterations to run in estimating the null distribution.
+        Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
     if inference == 'rfx':
         if null == 'theoretical':
             t_map, p_map = stats.ttest_1samp(z_maps, popmean=0, axis=0)
@@ -111,6 +137,22 @@ class Stouffers(IBMAEstimator):
            """),
            description='Fishers citation.')
 def fishers(z_maps, mask):
+    """
+    Run a Fisher's image-based meta-analysis on z-statistic maps.
+
+    Parameters
+    ----------
+    z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of z-statistic maps in the same space, after masking.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
     k = z_maps.shape[0]
     ffx_stat_map = -2 * np.sum(np.log10(stats.norm.cdf(-z_maps, loc=0, scale=1)),
                                axis=0)
@@ -154,6 +196,25 @@ class Fishers(IBMAEstimator):
            """),
            description='Weighted Stouffers citation.')
 def weighted_stouffers(z_maps, sample_sizes, mask):
+    """
+    Run a Stouffer's image-based meta-analysis on z-statistic maps.
+
+    Parameters
+    ----------
+    z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of z-statistic maps in the same space, after masking.
+    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+        A 1D array of sample sizes associated with contrasts in ``z_maps``.
+        Must be in same order as rows in ``z_maps``.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
     assert z_maps.shape[0] == sample_sizes.shape[0]
     weighted_z_maps = z_maps * np.sqrt(sample_sizes)[:, None]
     ffx_stat_map = np.sum(weighted_z_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
@@ -185,6 +246,28 @@ class WeightedStouffers(IBMAEstimator):
 
 
 def rfx_glm(con_maps, mask, null='theoretical', n_iters=None):
+    """
+    Run a random-effects (RFX) GLM on contrast maps.
+
+    Parameters
+    ----------
+    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast maps in the same space, after masking.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+    null : {'theoretical', 'empirical'}, optional
+        Whether to use a theoretical null T distribution or an empirically-
+        derived null distribution determined via sign flipping.
+    n_iters : :obj:`int` or :obj:`None`, optional
+        The number of iterations to run in estimating the null distribution.
+        Only used if ``null = 'empirical'``.
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
     # Normalize contrast maps to have unit variance
     con_maps = con_maps / np.std(con_maps, axis=1)[:, None]
     if null == 'theoretical':
@@ -237,18 +320,44 @@ class RFX_GLM(IBMAEstimator):
         return result
 
 
-def ffx_glm(con_maps, var_maps, n_subjects, mask, equal_var=True):
+def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True):
+    """
+    Run a Stouffer's image-based meta-analysis on z-statistic maps.
+
+    Parameters
+    ----------
+    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast maps in the same space, after masking.
+    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast standard error maps in the same space, after
+        masking. Must match shape and order of ``con_maps``.
+    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+        A 1D array of sample sizes associated with contrasts in ``con_maps``
+        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
+        ``var_maps``.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+    equal_var : :obj:`bool`, optional
+        Whether equal variance is assumed across contrasts. Default is True.
+        False is not yet implemented.
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
     assert con_maps.shape[1] == var_maps.shape[1]
-    assert con_maps.shape[0] == var_maps.shape[0] == n_subjects.shape[0]
+    assert con_maps.shape[0] == var_maps.shape[0] == sample_sizes.shape[0]
     if equal_var:
-        weighted_con_maps = con_maps * n_subjects[:, None]
+        weighted_con_maps = con_maps * sample_sizes[:, None]
         sum_weighted_con_map = np.sum(weighted_con_maps, axis=0)
-        adj_con_map = (1. / np.sqrt(np.sum(n_subjects))) * sum_weighted_con_map
-        weighted_ss_maps = var_maps * (n_subjects[:, None] - 1)
+        adj_con_map = (1. / np.sqrt(np.sum(sample_sizes))) * sum_weighted_con_map
+        weighted_ss_maps = var_maps * (sample_sizes[:, None] - 1)
         sum_weighted_ss_map = np.sum(weighted_ss_maps, axis=0)
-        est_ss_map = (1. / np.sqrt(np.sum(n_subjects - 1))) * sum_weighted_ss_map
+        est_ss_map = (1. / np.sqrt(np.sum(sample_sizes - 1))) * sum_weighted_ss_map
         ffx_stat_map = adj_con_map / np.sqrt(est_ss_map)
-        dof = np.sum(n_subjects - 1)
+        dof = np.sum(sample_sizes - 1)
     else:
         raise Exception('Unequal variances not available yet.')
 
@@ -271,20 +380,23 @@ class FFX_GLM(IBMAEstimator):
         self.dataset = dataset
         self.mask = self.dataset.mask
         self.ids = ids
-        self.n_subjects = None
+        self.sample_sizes = None
         self.equal_var = None
 
-    def fit(self, n_subjects=None, equal_var=True):
-        self.n_subjects = n_subjects
+    def fit(self, sample_sizes=None, equal_var=True):
+        """
+        Perform meta-analysis given parameters.
+        """
+        self.sample_sizes = sample_sizes
         self.equal_var = equal_var
         con_maps = self.dataset.get(self.ids, 'con')
         var_maps = self.dataset.get(self.ids, 'con_se')
         k = con_maps.shape[0]
-        if self.n_subjects is not None:
-            n_subjects = np.repeat(self.n_subjects, k)
+        if self.sample_sizes is not None:
+            sample_sizes = np.repeat(self.sample_sizes, k)
         else:
-            n_subjects = self.dataset.get(self.ids, 'n')
-        result = ffx_glm(con_maps, var_maps, n_subjects, self.mask, equal_var=self.equal_var)
+            sample_sizes = self.dataset.get(self.ids, 'n')
+        result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask, equal_var=self.equal_var)
         return result
 
 
