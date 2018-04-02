@@ -62,6 +62,8 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None):
             data_signs[data_signs < 0] = 0
             posprop = np.mean(data_signs)
             for i in range(n_iters):
+                # Randomly flip signs of z-maps based on proportion of z-value
+                # signs across all maps.
                 iter_z_maps = np.copy(z_maps)
                 signs = np.random.choice(a=2, size=k, p=[1-posprop, posprop])
                 signs[signs == 0] = -1
@@ -80,7 +82,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None):
         if null == 'theoretical':
             k = z_maps.shape[0]
             z_map = np.sum(z_maps, axis=0) / np.sqrt(k)
-            p_map = stats.norm.cdf(z_map, loc=0, scale=1)
+            p_map = stats.norm.cdf(-z_map, loc=0, scale=1)
             log_p_map = -np.log10(p_map)
             result = MetaResult(mask=mask, z=z_map, p=p_map, log_p=log_p_map)
         else:
