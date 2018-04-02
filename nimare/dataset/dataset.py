@@ -33,7 +33,7 @@ class Database(object):
                 ids.append('{0}-{1}'.format(pid, cid))
         self.ids = ids
 
-    def get_dataset(self, ids=None, search='', algorithm=None, target='Mni305_1mm'):
+    def get_dataset(self, ids=None, search='', algorithm=None, target='Mni152_2mm'):
         """
         Retrieve files and/or metadata from the current Dataset.
 

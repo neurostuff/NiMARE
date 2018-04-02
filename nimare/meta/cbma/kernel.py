@@ -93,7 +93,7 @@ class MKDAKernel(KernelEstimator):
         self.r = None
         self.value = None
 
-    def transform(self, ids, r=6, value=1):
+    def transform(self, ids, r=10, value=1):
         """
         Generate MKDA modeled activation images for each Contrast in dataset.
         For each Contrast, a binary sphere of radius ``r`` is placed around
