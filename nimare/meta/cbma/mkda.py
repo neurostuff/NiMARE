@@ -2,6 +2,7 @@
 Coordinate-based meta-analysis estimators
 """
 import warnings
+import multiprocessing as mp
 
 import numpy as np
 import nibabel as nib
@@ -41,7 +42,7 @@ class MKDADensity(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.01, q=0.05, corr='FDR', n_iters=1000):
+    def fit(self, voxel_thresh=0.01, q=0.05, corr='FDR', n_iters=1000, n_cores=4):
         null_img = self.dataset.mask
         null_ijk = np.vstack(np.where(null_img.get_data())).T
         self.voxel_thresh = voxel_thresh
@@ -70,36 +71,30 @@ class MKDADensity(CBMAEstimator):
         vthresh_of_map = of_map.get_data().copy()
         vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
 
-        rand_idx = np.random.choice(null_ijk.shape[0], size=(sel_df.shape[0], n_iters))  # pylint: disable=no-member
+        rand_idx = np.random.choice(null_ijk.shape[0],
+                                    size=(sel_df.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         iter_df = sel_df.copy()
-        iter_max_values = np.zeros(n_iters)
-        iter_max_clust = np.zeros(n_iters)
-        conn = np.ones((3, 3, 3))
-        for i in range(n_iters):
-            iter_ijk = np.squeeze(iter_ijks[i])
-            iter_df[['i', 'j', 'k']] = iter_ijk
-            k_est = self.kernel_estimator(iter_df, self.dataset.mask)
-            iter_ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
-            iter_ma_maps = apply_mask(iter_ma_maps, self.dataset.mask)
-            iter_ma_maps *= weight_vec
-            iter_of_map = np.sum(iter_ma_maps, axis=0)
-            iter_max_values[i] = np.max(iter_of_map)
-            iter_of_map = unmask(iter_of_map, self.dataset.mask)
-            vthresh_iter_of_map = iter_of_map.get_data().copy()
-            vthresh_iter_of_map[vthresh_iter_of_map < voxel_thresh] = 0
 
-            labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
-            clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-            clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-            iter_max_clust[i] = np.max(clust_sizes)
+        conn = np.ones((3, 3, 3))
+
+        # Define parameters
+        iter_conn = [conn] * n_iters
+        iter_wv = [weight_vec] * n_iters
+        iter_dfs = [iter_df] * n_iters
+        params = zip(iter_ijks, iter_dfs, iter_wv, iter_conn)
+
+        pool = mp.Pool(n_cores)
+        perm_results = pool.map(self._perm, params)
+        pool.close()
+        perm_max_values, perm_clust_sizes = zip(*perm_results)
 
         percentile = 100 * (1 - q)
 
         ## Cluster-level FWE
         # Determine size of clusters in [1 - clust_thresh]th percentile (e.g. 95th)
-        clust_size_thresh = np.percentile(iter_max_clust, percentile)
+        clust_size_thresh = np.percentile(perm_clust_sizes, percentile)
 
         cfwe_of_map = np.zeros(of_map.shape)
         labeled_matrix = ndimage.measurements.label(vthresh_of_map, conn)[0]
@@ -113,7 +108,7 @@ class MKDADensity(CBMAEstimator):
 
         ## Voxel-level FWE
         # Determine ALE values in [1 - clust_thresh]th percentile (e.g. 95th)
-        vfwe_thresh = np.percentile(iter_max_values, percentile)
+        vfwe_thresh = np.percentile(perm_max_values, percentile)
         vfwe_of_map = of_map.get_data().copy()
         vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
         vfwe_of_map = apply_mask(nib.Nifti1Image(vfwe_of_map, of_map.affine), self.dataset.mask)
@@ -122,6 +117,26 @@ class MKDADensity(CBMAEstimator):
         results = MetaResult(vthresh=vthresh_of_map, cfwe=cfwe_of_map,
                              vfwe=vfwe_of_map, mask=self.dataset.mask)
         self.results = results
+
+    def _perm(self, params):
+        iter_ijk, iter_df, weight_vec, conn = params
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[['i', 'j', 'k']] = iter_ijk
+        k_est = self.kernel_estimator(iter_df, self.dataset.mask)
+        iter_ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        iter_ma_maps = apply_mask(iter_ma_maps, self.dataset.mask)
+        iter_ma_maps *= weight_vec
+        iter_of_map = np.sum(iter_ma_maps, axis=0)
+        iter_max_value = np.max(iter_of_map)
+        iter_of_map = unmask(iter_of_map, self.dataset.mask)
+        vthresh_iter_of_map = iter_of_map.get_data().copy()
+        vthresh_iter_of_map[vthresh_iter_of_map < self.voxel_thresh] = 0
+
+        labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
+        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
+        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+        iter_max_cluster = np.max(clust_sizes)
+        return iter_max_value, iter_max_cluster
 
 
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces the MKDA algorithm.')
