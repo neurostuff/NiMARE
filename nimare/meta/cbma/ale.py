@@ -9,12 +9,15 @@ from time import time
 import multiprocessing as mp
 
 import numpy as np
+import nibabel as nib
 from scipy import ndimage
 from scipy.special import ndtri
+from nilearn.masking import apply_mask, unmask
 
 from .base import CBMAEstimator
 from .kernel import ALEKernel
-from .utils import _make_hist, _compute_ale
+from .utils import _make_hist, compute_ma
+from ..base import MetaResult
 from ...due import due, Doi
 from ...utils import (save_nifti, read_nifti,
                       round2, thresh_str, get_resource_path, cite_mni152)
@@ -40,218 +43,184 @@ class ALE(CBMAEstimator):
 
         self.dataset = dataset
 
+        self.kernel_estimator = kernel_estimator
+        self.kernel_arguments = kernel_args
+
         k_est = kernel_estimator(self.dataset.coordinates, self.dataset.mask)
-        ma_maps1 = k_est.transform(ids, **kernel_args)
-        self.ma_maps = [ma_maps1]
-        self.ids = [ids]
+        ma_maps = k_est.transform(ids, **kernel_args)
+        self.ma_maps = ma_maps
+        self.ids = ids
         self.voxel_thresh = None
         self.clust_thresh = None
         self.corr = None
         self.n_iters = None
-        self.n_cores = None
-        self.images = {}
+        self.results = None
 
-    def fit(self, n_iters=10000, voxel_thresh=0.001, clust_thresh=0.05,
-            corr='FWE', verbose=True, n_cores=4):
+    def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000, n_cores=4):
         """
         """
-        sample_df = self.dataset.coordinates.loc[self.dataset.coordinates['id'].isin(self.ids[0])]
+        null_ijk = np.vstack(np.where(self.dataset.mask.get_data())).T
+        self.voxel_thresh = voxel_thresh
+        self.clust_thresh = q
+        self.corr = corr
+        self.n_iters = n_iters
 
+        sel_df = self.dataset.coordinates.loc[self.dataset.coordinates['id'].isin(self.ids)]
 
-
-    def ale(self, dataset, n_cores=1, voxel_thresh=0.001, clust_thresh=0.05,
-            n_iters=10000, verbose=True, plot_thresh=True, prefix='',
-            template_file='Grey10.nii.gz'):
-        """
-        Perform activation likelihood estimation[1]_[2]_[3]_ meta-analysis on dataset.
-        General steps:
-        - Create ALE image
-        - Create null distribution
-        - Convert ALE to Z/p
-        - Voxel-level threshold image
-        - Perform iterations for FWE correction
-        - Cluster-extent threshold image
-
-        Parameters
-        ----------
-        dataset : ale.Dataset
-            Dataset to analyze.
-        voxel_thresh : float
-            Uncorrected voxel-level threshold.
-        clust_thresh : float
-            Corrected threshold. Used for both voxel- and cluster-level FWE.
-        corr : str
-            Correction type. Currently supported: FWE.
-        n_iters : int
-            Number of iterations for correction. Default 10000
-        verbose : bool
-            If True, prints out status updates.
-        prefix : str
-            String prepended to default output filenames. May include path.
-
-        Examples
-        ----------
-
-        References
-        ----------
-        .. [1] Eickhoff, S. B., Laird, A. R., Grefkes, C., Wang, L. E.,
-               Zilles, K., & Fox, P. T. (2009). Coordinate-based activation likelihood
-               estimation meta-analysis of neuroimaging data: A random-effects
-               approach based on empirical estimates of spatial uncertainty.
-               Human brain mapping, 30(9), 2907-2926.
-        .. [2] Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M.,
-               Wiener, M., & Fox, P. (2012). Minimizing within-experiment and
-               within-group effects in activation likelihood estimation
-               meta-analyses. Human brain mapping, 33(1), 1-13.
-        .. [3] Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T.
-               (2012). Activation likelihood estimation meta-analysis revisited.
-               Neuroimage, 59(3), 2349-2361.
-        """
-        max_cores = mp.cpu_count()
-        if not 1 <= n_cores <= max_cores:
-            print('Desired number of cores ({0}) outside range of acceptable values. '
-                  'Setting number of cores to max ({1}).'.format(n_cores, max_cores))
-            n_cores = max_cores
-
-        max_poss_ale = 1
-        for ma in self.ma_maps[0]:
-            max_poss_ale *= (1 - np.max(ma.get_data()))
+        max_poss_ale = 1.
+        for ma_map in self.ma_maps:
+            max_poss_ale *= (1 - np.max(ma_map.get_data()))
 
         max_poss_ale = 1 - max_poss_ale
         hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
 
-        # Compute ALE values
-        template_data = self.dataset.mask.get_data()
-        affine = self.dataset.mask.affine
-        dims = np.array(self.dataset.mask.shape)
-        template_arr = template_data.flatten()
-        prior = np.where(template_arr != 0)[0]
-        shape = dims + np.array([30, 30, 30])
-
-        # Gray matter coordinates
-        perm_ijk = np.vstack(np.where(template_data)).transpose()
-
-        ale_values, null_distribution = _compute_ale(sample_df, dims, shape, prior, hist_bins)
+        ale_values, null_distribution = self._compute_ale(df=None, hist_bins=hist_bins)
         p_values, z_values = self._ale_to_p(ale_values, hist_bins, null_distribution)
-
-        # Write out unthresholded value images
-        out_images = {'ale': ale_values,
-                      'p': p_values,
-                      'z': z_values,}
-
-        for (f, vals) in out_images.items():
-            mat = np.zeros(dims).ravel()
-            mat[prior] = vals
-            mat = mat.reshape(dims)
-
-            thresh_suffix = '{0}.nii.gz'.format(f)
-            filename = prefix + prefix_sep + thresh_suffix
-            save_nifti(mat, filename, affine)
-            if verbose:
-                print('File {0} saved.'.format(filename))
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        z_thresh = ndtri(1-voxel_thresh)
-        sig_idx = np.where(z_values > z_thresh)[0]
-        sig_vector = np.zeros(prior.shape)
-        sig_vector[sig_idx] = 1
-
-        sig_matrix = np.zeros(dims).ravel()
-        sig_matrix[prior] = sig_vector
-        sig_matrix = sig_matrix.reshape(dims)
-
-        out_vector = np.zeros(prior.shape)
-        out_vector[sig_idx] = z_values[sig_idx]
-
-        out_matrix = np.zeros(dims).ravel()
-        out_matrix[prior] = out_vector
-        out_matrix = out_matrix.reshape(dims)
-
-        thresh_suffix = 'thresh_{0}unc.nii.gz'.format(thresh_str(voxel_thresh))
-        if verbose:
-            print('File {0} saved.'.format(filename))
+        z_thresh = ndtri(1 - self.voxel_thresh)
+        vthresh_z_values = z_values.copy()
+        vthresh_z_values[vthresh_z_values < z_thresh] = 0
 
         # Find number of voxels per cluster (includes 0, which is empty space in
         # the matrix)
-        conn_mat = np.zeros((3, 3, 3), int)
-        conn_mat[:, :, 1] = 1
-        conn_mat[:, 1, :] = 1
-        conn_mat[1, :, :] = 1
-
-        labeled_matrix = ndimage.measurements.label(sig_matrix, conn_mat)[0]
-        labeled_vector = labeled_matrix.flatten()
-        labeled_vector = labeled_vector[prior]
-
-        clust_sizes = [len(np.where(labeled_vector == val)[0]) for val in np.unique(labeled_vector)]
-        clust_sizes = clust_sizes[1:]  # First is zeros
+        conn = np.zeros((3, 3, 3), int)
+        conn[:, :, 1] = 1
+        conn[:, 1, :] = 1
+        conn[1, :, :] = 1
 
         ## Multiple comparisons correction
-        if verbose:
-            print('Performing FWE correction.')
-        rd_contrasts = copy.deepcopy(sample_df)
-        results = self._FWE_correction(rd_contrasts, perm_ijk, null_distribution, hist_bins,
-                                       prior, dims, n_cores, voxel_thresh, n_iters)
-        rd_max_ales, rd_clust_sizes = zip(*results)
+        iter_df = sel_df.copy()
+        rand_idx = np.random.choice(null_ijk.shape[0],
+                                    size=(sel_df.shape[0], n_iters))
+        rand_ijk = null_ijk[rand_idx, :]
+        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
-        percentile = 100 * (1 - clust_thresh)
+        # Define parameters
+        iter_conns = [conn] * n_iters
+        iter_dfs = [iter_df] * n_iters
+        iter_null_dists = [null_distribution] * n_iters
+        iter_hist_bins = [hist_bins] * n_iters
+        params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins, iter_conns)
+        pool = mp.Pool(n_cores)
+        perm_results = pool.map(self._perm, params)
+        pool.close()
+        perm_max_values, perm_clust_sizes = zip(*perm_results)
 
-        # Generate plot of threshold convergence
-        if plot_thresh:
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-            sns.set_style('whitegrid')
-
-            plot_range = range(100, n_iters+1)
-            cFWE_thresholds = np.empty(len(plot_range))
-            vFWE_thresholds = np.empty(len(plot_range))
-            for i, n in enumerate(plot_range):
-                cFWE_thresholds[i] = np.percentile(rd_clust_sizes[:n], percentile)
-                vFWE_thresholds[i] = np.percentile(rd_max_ales[:n], percentile)
-            fig, axes = plt.subplots(2, sharex=True)
-            axes[0].plot(plot_range, cFWE_thresholds, 'b')
-            axes[0].set_ylabel('Minimum Cluster Size')
-            axes[1].plot(plot_range, vFWE_thresholds, 'r')
-            axes[1].set_ylabel('Minimum ALE Value')
-            axes[1].set_xlabel('Number of FWE Iterations')
-            fig.suptitle(os.path.basename(prefix), fontsize=20)
-            fig.savefig(prefix+prefix_sep+'thresholds.png', dpi=400)
+        percentile = 100 * (1 - self.clust_thresh)
 
         ## Cluster-level FWE
         # Determine size of clusters in [1 - clust_thresh]th percentile (e.g. 95th)
-        clust_size_thresh = np.percentile(rd_clust_sizes, percentile)
-
-        sig_values = np.zeros(prior.shape)
+        vthresh_z_map = unmask(vthresh_z_values, self.dataset.mask).get_data()
+        labeled_matrix = ndimage.measurements.label(vthresh_z_map, conn)[0]
+        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
+        clust_size_thresh = np.percentile(perm_clust_sizes, percentile)
+        z_map = unmask(z_values, self.dataset.mask).get_data()
+        cfwe_map = np.zeros(self.dataset.mask.shape)
         for i, clust_size in enumerate(clust_sizes):
-            if clust_size >= clust_size_thresh:
-                clust_idx = np.where(labeled_vector == i+1)[0]
-                sig_values[clust_idx] = z_values[clust_idx]
-        sig_matrix = np.zeros(dims).ravel()
-        sig_matrix[prior] = sig_values
-        sig_matrix = sig_matrix.reshape(dims)
-
-        thresh_suffix = 'thresh_{0}cFWE_{1}unc.nii.gz'.format(thresh_str(clust_thresh),
-                                                              thresh_str(voxel_thresh))
-        filename = prefix + prefix_sep + thresh_suffix
-        save_nifti(sig_matrix, filename, affine)
-        if verbose:
-            print('File {0} saved.'.format(filename))
+            if clust_size >= clust_size_thresh and i > 0:
+                clust_idx = np.where(labeled_matrix == i)
+                cfwe_map[clust_idx] = z_map[clust_idx]
+        cfwe_map = apply_mask(nib.Nifti1Image(cfwe_map, self.dataset.mask.affine),
+                              self.dataset.mask)
 
         ## Voxel-level FWE
         # Determine ALE values in [1 - clust_thresh]th percentile (e.g. 95th)
-        ale_value_thresh = np.percentile(rd_max_ales, percentile)
-
+        ale_value_thresh = np.percentile(perm_max_values, percentile)
         sig_idx = ale_values >= ale_value_thresh
-        sig_values = z_values * sig_idx
-        sig_matrix = np.zeros(dims).ravel()
-        sig_matrix[prior] = sig_values
-        sig_matrix = sig_matrix.reshape(dims)
+        vfwe_map = z_values * sig_idx
 
-        thresh_suffix = 'thresh_{0}vFWE.nii.gz'.format(thresh_str(clust_thresh))
-        filename = prefix + prefix_sep + thresh_suffix
-        save_nifti(sig_matrix, filename, affine)
-        if verbose:
-            print('File {0} saved.'.format(filename))
+        # Write out unthresholded value images
+        images = {'ale': ale_values,
+                  'p': p_values,
+                  'z': z_values,
+                  'vthresh': vthresh_z_values,
+                  'vfwe': vfwe_map,
+                  'cfwe': cfwe_map}
+        self.results = MetaResult(mask=self.dataset.mask, **images)
+
+    def _compute_ale(self, df=None, hist_bins=None):
+        """
+        Generate ALE-value array and null distribution from list of contrasts.
+        For ALEs on the original dataset, computes the null distribution.
+        For permutation ALEs and all SCALEs, just computes ALE values.
+        Returns masked array of ALE values and 1XnBins null distribution.
+        """
+        if hist_bins is not None:
+            ma_hists = np.zeros((len(self.ma_maps), hist_bins.shape[0]))
+        else:
+            ma_hists = None
+
+        if df is not None:
+            k_est = self.kernel_estimator(df, self.dataset.mask)
+            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        else:
+            ma_maps = self.ma_maps
+
+        ma_values = apply_mask(ma_maps, self.dataset.mask)
+        ale_values = np.ones(ma_values.shape[1])
+        for i in range(ma_values.shape[0]):
+            # Remember that histogram uses bin edges (not centers), so it returns
+            # a 1xhist_bins-1 array
+            if hist_bins is not None:
+                n_zeros = len(np.where(ma_values[i, :] == 0)[0])
+                reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
+                ma_hists[i, 0] = n_zeros
+                ma_hists[i, 1:] = np.histogram(a=reduced_ma_values, bins=hist_bins,
+                                               density=False)[0]
+            ale_values *= (1. - ma_values[i, :])
+
+        ale_values = 1 - ale_values
+
+        if hist_bins is not None:
+            null_distribution = self._compute_null(hist_bins, ma_hists)
+        else:
+            null_distribution = None
+
+        return ale_values, null_distribution
+
+    def _compute_null(self, hist_bins, ma_hists):
+        """
+        Compute ALE null distribution.
+        """
+        # Inverse of step size in histBins (0.0001) = 10000
+        step = 1 / np.mean(np.diff(hist_bins))
+
+        # Null distribution to convert ALE to p-values.
+        ale_hist = ma_hists[0, :]
+        for i_exp in range(1, ma_hists.shape[0]):
+            temp_hist = np.copy(ale_hist)
+            ma_hist = np.copy(ma_hists[i_exp, :])
+
+            # Find histogram bins with nonzero values for each histogram.
+            ale_idx = np.where(temp_hist > 0)[0]
+            exp_idx = np.where(ma_hist > 0)[0]
+
+            # Normalize histograms.
+            temp_hist /= np.sum(temp_hist)
+            ma_hist /= np.sum(ma_hist)
+
+            # Perform weighted convolution of histograms.
+            ale_hist = np.zeros(hist_bins.shape[0])
+            for j_idx in exp_idx:
+                # Compute probabilities of observing each ALE value in histBins
+                # by randomly combining maps represented by maHist and aleHist.
+                # Add observed probabilities to corresponding bins in ALE
+                # histogram.
+                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
+                ale_scores = 1 - (1 - hist_bins[j_idx]) * (1 - hist_bins[ale_idx])
+                score_idx = np.floor(ale_scores * step).astype(int)
+                np.add.at(ale_hist, score_idx, probabilities)
+
+        # Convert aleHist into null distribution. The value in each bin
+        # represents the probability of finding an ALE value (stored in
+        # histBins) of that value or lower.
+        last_used = np.where(ale_hist > 0)[0][-1]
+        null_distribution = ale_hist[:last_used+1] / np.sum(ale_hist)
+        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+        null_distribution /= np.max(null_distribution)
+        return null_distribution
 
     def _ale_to_p(self, ale_values, hist_bins, null_distribution):
         """
@@ -267,99 +236,37 @@ class ALE(CBMAEstimator):
         ale_bins = round2(ale_values[idx] * step)
         p_values[idx] = null_distribution[ale_bins]
 
-        # NOTE: ndtri gives slightly different results from spm_invNcdf, so
-        # z-values will differ between languages.
-        z_values = ndtri(1-p_values)
-        z_values[p_values < eps] = ndtri(1-eps) + (ale_values[p_values < eps] * 2)
+        z_values = ndtri(1 - p_values)
+        z_values[p_values < eps] = ndtri(1 - eps) + (ale_values[p_values < eps] * 2)
         z_values[z_values < 0] = 0
 
         return p_values, z_values
 
-    def _perm_ale(self, params):
+    def _perm(self, params):
         """
         Run a single random permutation of a dataset. Does the shared work between
         vFWE and cFWE.
         """
-        cons, ijk, null_dist, hist_bins, prior, dims, shape, voxel_thresh, start, iter_num = params
-        ijk = np.squeeze(ijk)
-
-        # Assign random GM coordinates to contrasts
-        start_idx = 0
-        for con in cons:
-            n_peaks = con.ijk.shape[0]
-            end_idx = start_idx + n_peaks
-            con.ijk = ijk[start_idx:end_idx]
-            start_idx = end_idx
-        ale_values, _ = _compute_ale(cons, dims, shape, prior, hist_bins=None)
+        iter_df, iter_ijk, null_dist, hist_bins, conn = params
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[['i', 'j', 'k']] = iter_ijk
+        ale_values, _ = self._compute_ale(iter_df, hist_bins=None)
         _, z_values = self._ale_to_p(ale_values, hist_bins, null_dist)
-        rd_max_ale = np.max(ale_values)
+        iter_max_value = np.max(ale_values)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        z_thresh = ndtri(1-voxel_thresh)
+        z_thresh = ndtri(1 - self.voxel_thresh)
 
-        sig_idx = np.where(z_values > z_thresh)[0]
-        if sig_idx.size:
-            sig_vector = np.zeros(prior.shape)
-            sig_vector[sig_idx] = 1
-            sig_matrix = np.zeros(dims).ravel()
-            sig_matrix[prior] = sig_vector
-            sig_matrix = sig_matrix.reshape(dims)
+        iter_z_map = unmask(z_values, self.dataset.mask)
+        vthresh_iter_z_map = iter_z_map.get_data()
+        vthresh_iter_z_map[vthresh_iter_z_map < self.voxel_thresh] = 0
 
-            # Find number of voxels per cluster (includes 0, which is empty space
-            # in the matrix)
-            conn_mat = np.ones((3, 3, 3))  # 18 connectivity
-            for i in [0, -1]:
-                for j in [0, -1]:
-                    for k in [0, -1]:
-                        conn_mat[i, j, k] = 0
-            labeled_matrix = ndimage.measurements.label(sig_matrix, conn_mat)[0]
-            labeled_vector = labeled_matrix.ravel()
-            labeled_vector = labeled_vector[prior]
-
-            clust_sizes = [len(np.where(labeled_vector == val)[0]) for val in \
-                           np.unique(labeled_vector)]
-            clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-            rd_clust_size = np.max(clust_sizes)
-        else:
-            rd_clust_size = 0
-
-        if iter_num % 1000 == 0:
-            elapsed = (time() - start) / 60.
-            print('Iteration {0} completed after {1} mins.'.format(iter_num,
-                                                                   elapsed))
-        return rd_max_ale, rd_clust_size
-
-    def _FWE_correction(self, contrasts, ijk, null_distribution, hist_bins, prior,
-                        dims, n_cores, voxel_thresh=0.001, n_iters=100):
-        """
-        Performs both cluster-level (cFWE) and voxel-level (vFWE) correction.
-        """
-        n_foci = np.sum([con.ijk.shape[0] for con in contrasts])
-        np.random.seed(0)  # pylint: disable=no-member
-        rand_idx = np.random.choice(ijk.shape[0], size=(n_foci, n_iters))  # pylint: disable=no-member
-        rand_ijk = ijk[rand_idx, :]
-        shape = dims + np.array([30, 30, 30])
-
-        # Define parameters
-        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        shapes = [shape] * n_iters
-        exp_list = [contrasts] * n_iters
-        null_distributions = [null_distribution] * n_iters
-        priors = [prior] * n_iters
-        dims_arrs = [dims] * n_iters
-        hist_bin_arrs = [hist_bins] * n_iters
-        voxel_thresholds = [voxel_thresh] * n_iters
-        iter_nums = range(1, n_iters+1)
-        start = [time()] * n_iters
-
-        params = zip(exp_list, iter_ijks, null_distributions, hist_bin_arrs,
-                     priors, dims_arrs, shapes, voxel_thresholds, start, iter_nums)
-        pool = mp.Pool(n_cores)
-        max_clusts = pool.map(self._perm_ale, params)
-        pool.close()
-
-        return max_clusts
+        labeled_matrix = ndimage.measurements.label(vthresh_iter_z_map, conn)[0]
+        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
+        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+        iter_max_cluster = np.max(clust_sizes)
+        return iter_max_value, iter_max_cluster
 
 
 @due.dcite(Doi('10.1016/j.neuroimage.2014.06.007'),

@@ -60,7 +60,7 @@ class ALEKernel(KernelEstimator):
             if n is not None:
                 n_subjects = n
             elif fwhm is None:
-                n_subjects = data['n'].values[0]
+                n_subjects = data['n'].astype(float).values[0]
 
             if fwhm is not None:
                 assert np.isfinite(fwhm), 'FWHM must be finite number'

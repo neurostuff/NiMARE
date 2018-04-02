@@ -38,14 +38,15 @@ class MKDADensity(CBMAEstimator):
         self.ma_maps = ma_maps
         self.ids = ids
         self.voxel_thresh = None
+        self.clust_thresh = None
         self.corr = None
         self.n_iters = None
         self.results = None
 
     def fit(self, voxel_thresh=0.01, q=0.05, corr='FDR', n_iters=1000, n_cores=4):
-        null_img = self.dataset.mask
-        null_ijk = np.vstack(np.where(null_img.get_data())).T
+        null_ijk = np.vstack(np.where(self.dataset.mask.get_data())).T
         self.voxel_thresh = voxel_thresh
+        self.clust_thresh = q
         self.corr = corr
         self.n_iters = n_iters
 
@@ -99,7 +100,6 @@ class MKDADensity(CBMAEstimator):
         cfwe_of_map = np.zeros(of_map.shape)
         labeled_matrix = ndimage.measurements.label(vthresh_of_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        labeled_vector = labeled_matrix.flatten()
         for i, clust_size in enumerate(clust_sizes):
             if clust_size >= clust_size_thresh and i > 0:
                 clust_idx = np.where(labeled_matrix == i)
@@ -114,9 +114,8 @@ class MKDADensity(CBMAEstimator):
         vfwe_of_map = apply_mask(nib.Nifti1Image(vfwe_of_map, of_map.affine), self.dataset.mask)
 
         vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map, of_map.affine), self.dataset.mask)
-        results = MetaResult(vthresh=vthresh_of_map, cfwe=cfwe_of_map,
-                             vfwe=vfwe_of_map, mask=self.dataset.mask)
-        self.results = results
+        self.results = MetaResult(vthresh=vthresh_of_map, cfwe=cfwe_of_map,
+                                  vfwe=vfwe_of_map, mask=self.dataset.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df, weight_vec, conn = params
@@ -145,6 +144,7 @@ class MKDAChi2(CBMAEstimator):
     Multilevel kernel density analysis- Chi-square analysis
     """
     def __init__(self, dataset, ids, ids2=None, kernel_estimator=MKDAKernel, **kwargs):
+        assert isinstance(kernel_estimator, MKDAKernel)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()\
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
@@ -232,8 +232,7 @@ class MKDAChi2(CBMAEstimator):
             ('pAgF_z_FDR_%s' % q): pAgF_z_FDR,
             ('pFgA_z_FDR_%s' % q): pFgA_z_FDR
         }
-        results = MetaResult(mask=self.dataset.mask, **images)
-        self.results = results
+        self.results = MetaResult(mask=self.dataset.mask, **images)
 
 
 @due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
