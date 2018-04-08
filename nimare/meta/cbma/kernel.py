@@ -9,6 +9,7 @@ of peak coords and sample sizes/statistics (a la Neurosynth).
 from __future__ import division
 import numpy as np
 import nibabel as nib
+from nilearn.masking import _utils
 
 from .base import KernelEstimator
 from .utils import compute_ma, get_ale_kernel
@@ -52,6 +53,7 @@ class ALEKernel(KernelEstimator):
         if fwhm is not None and n is not None:
             raise ValueError('Only one of fwhm and n may be provided.')
 
+        mask_data = self.mask.get_data().astype(float)
         imgs = []
         kernels = {}
         for id_ in ids:
@@ -78,6 +80,7 @@ class ALEKernel(KernelEstimator):
                 else:
                     kern = kernels[n]
             kernel_data = compute_ma(self.mask.shape, ijk, kern)
+            kernel_data *= mask_data
             img = nib.Nifti1Image(kernel_data, self.mask.affine)
             imgs.append(img)
         return imgs
@@ -93,7 +96,7 @@ class MKDAKernel(KernelEstimator):
         self.r = None
         self.value = None
 
-    def transform(self, ids, r=10, value=1):
+    def transform(self, ids, r=10, value=1, masked=False):
         """
         Generate MKDA modeled activation images for each Contrast in dataset.
         For each Contrast, a binary sphere of radius ``r`` is placed around
@@ -121,6 +124,10 @@ class MKDAKernel(KernelEstimator):
         r = float(r)
         dims = self.mask.shape
         vox_dims = self.mask.header.get_zooms()
+        if not masked:
+            mask_data = self.mask.get_data()
+        else:
+            mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
         for id_ in ids:
@@ -134,8 +141,16 @@ class MKDAKernel(KernelEstimator):
                 idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
                 sphere = sphere[idx, :].astype(int)
                 kernel_data[tuple(sphere.T)] = value
-            img = nib.Nifti1Image(kernel_data, self.mask.affine)
+
+            if not masked:
+                kernel_data *= mask_data
+                img = nib.Nifti1Image(kernel_data, self.mask.affine)
+            else:
+                img = kernel_data[mask_data]
             imgs.append(img)
+
+        if masked:
+            imgs = np.vstack(imgs)
         return imgs
 
 
@@ -177,6 +192,7 @@ class KDAKernel(KernelEstimator):
         r = float(r)
         dims = self.mask.shape
         vox_dims = self.mask.header.get_zooms()
+        mask_data = self.mask.get_data()
 
         imgs = []
         for id_ in ids:
@@ -190,6 +206,7 @@ class KDAKernel(KernelEstimator):
                 idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
                 sphere = sphere[idx, :].astype(int)
                 kernel_data[tuple(sphere.T)] += value
+            kernel_data *= mask_data
             img = nib.Nifti1Image(kernel_data, self.mask.affine)
             imgs.append(img)
         return imgs

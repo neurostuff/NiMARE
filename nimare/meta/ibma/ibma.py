@@ -8,7 +8,61 @@ from scipy import stats
 
 from .base import IBMAEstimator
 from ..base import MetaResult
-from ...due import due, Doi, BibTeX
+from ...due import due, BibTeX
+
+
+@due.dcite(BibTeX("""
+           @article{fisher1932statistical,
+              title={Statistical methods for research workers, Edinburgh: Oliver and Boyd, 1925},
+              author={Fisher, RA},
+              journal={Google Scholar},
+              year={1932}
+              }
+           """),
+           description='Fishers citation.')
+def fishers(z_maps, mask):
+    """
+    Run a Fisher's image-based meta-analysis on z-statistic maps.
+
+    Parameters
+    ----------
+    z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of z-statistic maps in the same space, after masking.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
+    k = z_maps.shape[0]
+    ffx_stat_map = -2 * np.sum(np.log10(stats.norm.cdf(-z_maps, loc=0, scale=1)),
+                               axis=0)
+    p_map = stats.chi2.sf(ffx_stat_map, 2*k)
+    log_p_map = -np.log10(p_map)
+    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
+    return result
+
+
+class Fishers(IBMAEstimator):
+    """
+    An image-based meta-analytic test using t- or z-statistic images.
+    Sum of -log P-values (from T/Zs converted to Ps)
+
+    Requirements:
+        - t OR z
+    """
+    def __init__(self, dataset, ids):
+        self.dataset = dataset
+        self.mask = self.dataset.mask
+        self.ids = ids
+
+    def fit(self):
+        z_maps = self.dataset.get(self.ids, 'z')
+        result = fishers(z_maps, self.mask)
+        return result
 
 
 @due.dcite(BibTeX("""
@@ -126,60 +180,6 @@ class Stouffers(IBMAEstimator):
         z_maps = self.dataset.get(self.ids, 'z')
         result = stouffers(z_maps, self.mask, inference=inference, null=null,
                            n_iters=n_iters)
-        return result
-
-
-@due.dcite(BibTeX("""
-           @article{fisher1932statistical,
-              title={Statistical methods for research workers, Edinburgh: Oliver and Boyd, 1925},
-              author={Fisher, RA},
-              journal={Google Scholar},
-              year={1932}
-              }
-           """),
-           description='Fishers citation.')
-def fishers(z_maps, mask):
-    """
-    Run a Fisher's image-based meta-analysis on z-statistic maps.
-
-    Parameters
-    ----------
-    z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
-
-    Returns
-    -------
-    result : :obj:`nimare.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
-        negative log(p) values.
-    """
-    k = z_maps.shape[0]
-    ffx_stat_map = -2 * np.sum(np.log10(stats.norm.cdf(-z_maps, loc=0, scale=1)),
-                               axis=0)
-    p_map = stats.chi2.sf(ffx_stat_map, 2*k)
-    log_p_map = -np.log10(p_map)
-    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_map, log_p=log_p_map)
-    return result
-
-
-class Fishers(IBMAEstimator):
-    """
-    An image-based meta-analytic test using t- or z-statistic images.
-    Sum of -log P-values (from T/Zs converted to Ps)
-
-    Requirements:
-        - t OR z
-    """
-    def __init__(self, dataset, ids):
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        self.ids = ids
-
-    def fit(self):
-        z_maps = self.dataset.get(self.ids, 'z')
-        result = fishers(z_maps, self.mask)
         return result
 
 
@@ -324,7 +324,7 @@ class RFX_GLM(IBMAEstimator):
 
 def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True):
     """
-    Run a Stouffer's image-based meta-analysis on z-statistic maps.
+    Run a fixed-effects GLM on contrast and standard error images.
 
     Parameters
     ----------
@@ -349,8 +349,8 @@ def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True):
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    assert con_maps.shape[1] == var_maps.shape[1]
-    assert con_maps.shape[0] == var_maps.shape[0] == sample_sizes.shape[0]
+    assert con_maps.shape == var_maps.shape
+    assert con_maps.shape[0] == sample_sizes.shape[0]
     if equal_var:
         weighted_con_maps = con_maps * sample_sizes[:, None]
         sum_weighted_con_map = np.sum(weighted_con_maps, axis=0)
@@ -400,6 +400,37 @@ class FFX_GLM(IBMAEstimator):
             sample_sizes = self.dataset.get(self.ids, 'n')
         result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask, equal_var=self.equal_var)
         return result
+
+
+def mfx_glm(con_maps, var_maps, sample_sizes, mask):
+    """
+    Run a mixed-effects GLM on contrast and standard error images.
+
+    Parameters
+    ----------
+    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast maps in the same space, after masking.
+    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast standard error maps in the same space, after
+        masking. Must match shape and order of ``con_maps``.
+    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+        A 1D array of sample sizes associated with contrasts in ``con_maps``
+        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
+        ``var_maps``.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+    equal_var : :obj:`bool`, optional
+        Whether equal variance is assumed across contrasts. Default is True.
+        False is not yet implemented.
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
+    assert con_maps.shape == var_maps.shape
+    assert con_maps.shape[0] == sample_sizes.shape[0]
 
 
 class MFX_GLM(IBMAEstimator):

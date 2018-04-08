@@ -65,14 +65,7 @@ def compute_ma(shape, ijk, kernel):
     return ma_values
 
 
-def _make_hist(oned_arr, hist_bins):
-    hist_ = np.histogram(a=oned_arr, bins=hist_bins,
-                         range=(np.min(hist_bins), np.max(hist_bins)),
-                         density=False)[0]
-    return hist_
-
-
-def get_fwhm(img, n):
+def get_fwhm(n):
     uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * \
                            np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
     # Assuming 11.6 mm ED between matching points
@@ -88,7 +81,7 @@ def get_ale_kernel(img, n=None, fwhm=None):
     elif n is None and fwhm is None:
         raise ValueError('Either n or fwhm must be provided')
     elif n is not None:
-        fwhm = get_fwhm(img, n)
+        fwhm = get_fwhm(n)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = fwhm_vox * np.sqrt(2.) / (np.sqrt(2. * np.log(2.)) * 2.)  # pylint: disable=no-member
