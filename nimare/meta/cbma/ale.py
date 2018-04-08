@@ -18,8 +18,7 @@ from .base import CBMAEstimator
 from .kernel import ALEKernel
 from ..base import MetaResult
 from ...due import due, Doi, BibTeX
-from ...utils import (save_nifti, read_nifti, round2, thresh_str,
-                      get_resource_path, cite_mni152)
+from ...utils import round2
 
 
 @due.dcite(BibTeX("""

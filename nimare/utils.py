@@ -43,18 +43,6 @@ def listify(obj):
     return obj if isinstance(obj, (list, tuple, type(None))) else [obj]
 
 
-def intersection(alpha, beta):
-    """Return subset of alpha and beta that are present in both.
-    """
-    raise Exception('Not implemented')
-
-
-def diff(alpha, beta):
-    """Return subset of alpha that is not present in beta.
-    """
-    raise Exception('Not implemented')
-
-
 def round2(ndarray):
     """
     Numpy rounds X.5 values to nearest even integer. We want to round to the
@@ -89,14 +77,6 @@ def mm2vox(xyz, affine):
     """
     ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz)
     return ijk
-
-
-def thresh_str(num):
-    """
-    Create string of decimal values from number.
-    """
-    str_ = str(num - int(num))[2:]
-    return str_
 
 
 @due.dcite(Doi('10.1002/hbm.20345'),
@@ -203,33 +183,6 @@ def mni2tal(coords):
     if use_dim == 1:
         out_coords = out_coords.transpose()
     return out_coords
-
-
-def read_nifti(file_):
-    """
-    Read nifti file and return both matrix and affine.
-    """
-    info = nib.load(file_)
-    affine = info.get_affine()
-    data = np.asarray(np.squeeze(info.get_data()))
-    return data, affine
-
-
-def save_nifti(matrix, filename, affine):
-    """
-    Save matrix to nifti file using affine matrix.
-    """
-    img = nib.Nifti1Image(matrix, affine)
-    img.to_filename(filename)
-
-
-@due.dcite(Doi('10.1016/j.neuroimage.2010.07.033'),
-           description='Introduces the MNI152 template.')
-def cite_mni152():
-    """
-    Dummy function to cite MNI152 paper with duecredit.
-    """
-    pass
 
 
 def get_resource_path():
