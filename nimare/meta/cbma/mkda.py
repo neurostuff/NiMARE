@@ -18,13 +18,13 @@ from ...stats import fdr
 from ...due import due, Doi
 
 
-@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces the MKDA algorithm.')
+@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
 class MKDADensity(CBMAEstimator):
     """
     Multilevel kernel density analysis- Density analysis
     """
     def __init__(self, dataset, ids, kernel_estimator=MKDAKernel, **kwargs):
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()\
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
@@ -105,7 +105,7 @@ class MKDADensity(CBMAEstimator):
                                  self.mask)
 
         ## Voxel-level FWE
-        # Determine ALE values in [1 - clust_thresh]th percentile (e.g. 95th)
+        # Determine OF values in [1 - clust_thresh]th percentile (e.g. 95th)
         vfwe_thresh = np.percentile(perm_max_values, percentile)
         vfwe_of_map = of_map.get_data().copy()
         vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
@@ -141,13 +141,13 @@ class MKDADensity(CBMAEstimator):
         return iter_max_value, iter_max_cluster
 
 
-@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces the MKDA algorithm.')
+@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
 class MKDAChi2(CBMAEstimator):
     """
     Multilevel kernel density analysis- Chi-square analysis
     """
     def __init__(self, dataset, ids, ids2=None, kernel_estimator=MKDAKernel, **kwargs):
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()\
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
@@ -172,7 +172,8 @@ class MKDAChi2(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.01, q=0.05, corr='FWE', n_iters=5000, prior=0.5, n_cores=4):
+    def fit(self, voxel_thresh=0.01, q=0.05, corr='FWE', n_iters=5000,
+            prior=0.5, n_cores=4):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
@@ -330,10 +331,10 @@ class MKDAChi2(CBMAEstimator):
     def _one_way(self, data, n):
         """ One-way chi-square test of independence.
         Takes a 1D array as input and compares activation at each voxel to
-        proportion expected under a uniform distribution throughout the array. Note
-        that if you're testing activation with this, make sure that only valid
-        voxels (e.g., in-mask gray matter voxels) are included in the array, or
-        results won't make any sense!
+        proportion expected under a uniform distribution throughout the array.
+        Note that if you're testing activation with this, make sure that only
+        valid voxels (e.g., in-mask gray matter voxels) are included in the
+        array, or results won't make any sense!
         """
         term = data.astype('float64')
         no_term = n - term
@@ -347,9 +348,9 @@ class MKDAChi2(CBMAEstimator):
 
     def _two_way(self, cells):
         """ Two-way chi-square test of independence.
-        Takes a 3D array as input: N(voxels) x 2 x 2, where the last two dimensions
-        are the contingency table for each of N voxels. Returns an array of
-        p-values.
+        Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
+        dimensions are the contingency table for each of N voxels. Returns an
+        array of p-values.
         """
         # Mute divide-by-zero warning for bad voxels since we account for that later
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -370,28 +371,64 @@ class MKDAChi2(CBMAEstimator):
 
 @due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
            description='Introduces the KDA algorithm.')
+@due.dcite(Doi('10.1016/j.neuroimage.2004.03.052'),
+           description='Also introduces the KDA algorithm.')
 class KDA(CBMAEstimator):
     """
     Kernel density analysis
     """
     def __init__(self, dataset, ids, ids2=None, kernel_estimator=KDAKernel, **kwargs):
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()\
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
-        self.dataset = dataset
-
-        k_est = kernel_estimator(self.coordinates, self.mask)
-        ma_maps1 = k_est.transform(ids, **kernel_args)
-        if ids2 is None:
-            ids2 = list(set(self.dataset.ids) - set(ids))
-        ma_maps2 = k_est.transform(ids2, **kernel_args)
-        self.ma_maps = [ma_maps1, ma_maps2]
-        self.ids = [ids, ids2]
-        self.voxel_thresh = None
-        self.corr = None
+        self.mask = dataset.mask
+        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        self.kernel_estimator = kernel_estimator
+        self.kernel_arguments = kernel_args
+        self.ids = ids
+        self.clust_thresh = None
         self.n_iters = None
         self.images = {}
 
-    def fit(self, sample, voxel_thresh=0.01, corr='FDR', n_iters=10000):
-        pass
+    def fit(self, q=0.05, n_iters=10000, n_cores=4):
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        self.clust_thresh = q
+        self.n_iters = n_iters
+
+        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        ma_maps = k_est.transform(self.ids, masked=True, **self.kernel_arguments)
+        of_map = np.sum(ma_maps, axis=0)
+
+        rand_idx = np.random.choice(null_ijk.shape[0],
+                                    size=(self.coordinates.shape[0], n_iters))
+        rand_ijk = null_ijk[rand_idx, :]
+        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+        iter_df = self.coordinates.copy()
+
+        # Define parameters
+        iter_dfs = [iter_df] * n_iters
+        params = zip(iter_ijks, iter_dfs)
+
+        pool = mp.Pool(n_cores)
+        perm_max_values = pool.map(self._perm, params)
+        pool.close()
+
+        percentile = 100 * (1 - q)
+
+        # Determine OF values in [1 - clust_thresh]th percentile (e.g. 95th)
+        vfwe_thresh = np.percentile(perm_max_values, percentile)
+        vfwe_of_map = of_map.copy()
+        vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
+        self.results = MetaResult(vfwe=vfwe_of_map, mask=self.mask)
+
+    def _perm(self, params):
+        iter_ijk, iter_df = params
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[['i', 'j', 'k']] = iter_ijk
+        k_est = self.kernel_estimator(iter_df, self.mask)
+        iter_ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
+        iter_of_map = np.sum(iter_ma_maps, axis=0)
+        iter_max_value = np.max(iter_of_map)
+        return iter_max_value

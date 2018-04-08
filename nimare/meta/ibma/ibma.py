@@ -8,12 +8,14 @@ from scipy import stats
 
 from .base import IBMAEstimator
 from ..base import MetaResult
+from ...utils import null_to_p
 from ...due import due, BibTeX
 
 
 @due.dcite(BibTeX("""
            @article{fisher1932statistical,
-              title={Statistical methods for research workers, Edinburgh: Oliver and Boyd, 1925},
+              title={Statistical methods for research workers, Edinburgh:
+                     Oliver and Boyd, 1925},
               author={Fisher, RA},
               journal={Google Scholar},
               year={1932}
@@ -122,11 +124,11 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None):
                 signs = np.random.choice(a=2, size=k, p=[1-posprop, posprop])
                 signs[signs == 0] = -1
                 iter_z_maps *= signs[:, None]
-                iter_t_maps[i, :], _ = stats.ttest_1samp(iter_z_maps, popmean=0, axis=0)
+                iter_t_maps[i, :], _ = stats.ttest_1samp(iter_z_maps, popmean=0,
+                                                         axis=0)
 
-            for voxel in range(iter_t_maps.shape[0]):
-                p_value = (50 - np.abs(stats.percentileofscore(iter_t_maps[:, voxel], t_map[voxel]) - 50.)) * 2. / 100.
-                p_map[voxel] = p_value
+            for voxel in range(iter_t_maps.shape[1]):
+                p_map[voxel] = null_to_p(t_map[voxel], iter_t_maps[:, voxel])
         else:
             raise ValueError('Input null must be "theoretical" or "empirical".')
 
@@ -290,9 +292,8 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None):
             iter_con_maps *= signs[:, None]
             iter_t_maps[i, :], _ = stats.ttest_1samp(iter_con_maps, popmean=0, axis=0)
 
-        for voxel in range(iter_t_maps.shape[0]):
-            p_value = (50 - np.abs(stats.percentileofscore(iter_t_maps[:, voxel], t_map[voxel]) - 50.)) * 2. / 100.
-            p_map[voxel] = p_value
+        for voxel in range(iter_t_maps.shape[1]):
+            p_map[voxel] = null_to_p(t_map[voxel], iter_t_maps[:, voxel])
     else:
         raise ValueError('Input null must be "theoretical" or "empirical".')
     log_p_map = -np.log10(p_map)

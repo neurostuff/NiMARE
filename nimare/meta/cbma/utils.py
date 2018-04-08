@@ -1,9 +1,7 @@
 """
 Utilities for coordinate-based meta-analysis estimators
 """
-import numba
 import numpy as np
-from scipy import signal
 from scipy import ndimage
 from scipy.stats import norm
 
@@ -65,23 +63,24 @@ def compute_ma(shape, ijk, kernel):
     return ma_values
 
 
-def get_fwhm(n):
-    uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * \
-                           np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
-    # Assuming 11.6 mm ED between matching points
-    uncertain_subjects = (11.6/(2*np.sqrt(2/np.pi)) * \
-                          np.sqrt(8*np.log(2))) / np.sqrt(n)  # pylint: disable=no-member
-    fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
-    return fwhm
-
-
+@due.dcite(Doi('10.1002/hbm.20718'),
+           description='Introduces sample size-dependent kernels to ALE.')
 def get_ale_kernel(img, n=None, fwhm=None):
+    """
+    Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given
+    sample size (n) or fwhm (in mm).
+    """
     if n is not None and fwhm is not None:
         raise ValueError('Only one of n and fwhm may be specified')
     elif n is None and fwhm is None:
         raise ValueError('Either n or fwhm must be provided')
     elif n is not None:
-        fwhm = get_fwhm(n)
+        uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * \
+                               np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
+        # Assuming 11.6 mm ED between matching points
+        uncertain_subjects = (11.6/(2*np.sqrt(2/np.pi)) * \
+                              np.sqrt(8*np.log(2))) / np.sqrt(n)  # pylint: disable=no-member
+        fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = fwhm_vox * np.sqrt(2.) / (np.sqrt(2. * np.log(2.)) * 2.)  # pylint: disable=no-member

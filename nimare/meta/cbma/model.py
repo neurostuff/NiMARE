@@ -23,8 +23,10 @@ class BHICP(CBMAEstimator):
 
 @due.dcite(BibTeX("""
            @article{kang2014bayesian,
-             title={A Bayesian hierarchical spatial point process model for multi-type neuroimaging meta-analysis},
-             author={Kang, Jian and Nichols, Thomas E and Wager, Tor D and Johnson, Timothy D},
+             title={A Bayesian hierarchical spatial point process model for
+                    multi-type neuroimaging meta-analysis},
+             author={Kang, Jian and Nichols, Thomas E and Wager, Tor D and
+                     Johnson, Timothy D},
              journal={The annals of applied statistics},
              volume={8},
              number={3},
@@ -94,6 +96,7 @@ class SBLFR(CBMAEstimator):
         # Observed matrix of basis functions
         for i in range(data.shape[0]):
             pass
+
 
 @due.dcite(Doi('10.1214/11-AOAS523'),
            description='Introduces the SBR model.')

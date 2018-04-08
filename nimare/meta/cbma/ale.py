@@ -17,13 +17,26 @@ from nilearn.masking import apply_mask, unmask
 from .base import CBMAEstimator
 from .kernel import ALEKernel
 from ..base import MetaResult
-from ...due import due, Doi
-from ...utils import (save_nifti, read_nifti, round2, thresh_str, get_resource_path,
-                      cite_mni152)
+from ...due import due, Doi, BibTeX
+from ...utils import (save_nifti, read_nifti, round2, thresh_str,
+                      get_resource_path, cite_mni152)
 
 
-@due.dcite(Doi('10.1002/hbm.20718'),
-           description='Introduces the ALE algorithm.')
+@due.dcite(BibTeX("""
+           @article{turkeltaub2002meta,
+             title={Meta-analysis of the functional neuroanatomy of single-word
+                    reading: method and validation},
+             author={Turkeltaub, Peter E and Eden, Guinevere F and Jones,
+                     Karen M and Zeffiro, Thomas A},
+             journal={Neuroimage},
+             volume={16},
+             number={3},
+             pages={765--780},
+             year={2002},
+             publisher={Elsevier}
+           }
+           """),
+           description='Introduces ALE.')
 @due.dcite(Doi('10.1002/hbm.21186'),
            description='Modifies ALE algorithm to eliminate within-experiment '
                        'effects and generate MA maps based on subject group '
@@ -37,7 +50,7 @@ class ALE(CBMAEstimator):
     Activation likelihood estimation
     """
     def __init__(self, dataset, ids, kernel_estimator=ALEKernel, **kwargs):
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()\
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
@@ -276,7 +289,7 @@ class SCALE(CBMAEstimator):
     Specific coactivation likelihood estimation
     """
     def __init__(self, dataset, ids, ijk=None, kernel_estimator=ALEKernel, **kwargs):
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()\
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 

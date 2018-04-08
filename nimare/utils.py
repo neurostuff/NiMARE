@@ -7,6 +7,7 @@ from os.path import abspath, join, dirname, sep
 
 import numpy as np
 import nibabel as nib
+from scipy import stats
 
 from .due import due, Doi
 
@@ -27,6 +28,13 @@ def get_mask(space='Mni305_1mm'):
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return mask_file
+
+
+def null_to_p(test_value, null_array):
+    """Return two-sided p-value for test value against null array.
+    """
+    p_value = (50 - np.abs(stats.percentileofscore(null_array, test_value) - 50.)) * 2. / 100.
+    return p_value
 
 
 def listify(obj):
