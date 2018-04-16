@@ -242,7 +242,7 @@ class MKDAChi2(CBMAEstimator):
             rand_ijk = null_ijk[rand_idx, :]
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
-            params = zip(iter_dfs, iter_ijks)
+            params = zip(iter_dfs, iter_ijks, range(n_iters))
             perm_results = pool.map(self._perm, params)
             pool.close()
             pAgF_perm_dist, pFgA_perm_dist = zip(*perm_results)
@@ -294,7 +294,9 @@ class MKDAChi2(CBMAEstimator):
         self.results = MetaResult(mask=self.mask, **images)
 
     def _perm(self, params):
-        iter_df, iter_ijk = params
+        iter_df, iter_ijk, iter_ = params
+        if iter_ % 500 == 0:
+            print('Now running iteration {0}'.format(iter_))
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
 

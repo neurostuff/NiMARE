@@ -1,8 +1,6 @@
 """
 Model-based coordinate-based meta-analysis estimators
 """
-from scipy.stats import truncnorm
-from pymc3.step_methods.hmc.hmc import HamiltonianMC
 
 from .base import CBMAEstimator
 from ...due import due, Doi, BibTeX
@@ -56,6 +54,8 @@ class SBLFR(CBMAEstimator):
     This uses the HamiltonianMC and the truncnorm.rvs method.
     """
     def __init__(self, dataset, ids):
+        from scipy.stats import truncnorm
+        from pymc3.step_methods.hmc.hmc import HamiltonianMC
         self.dataset = dataset
         self.ids = ids
 

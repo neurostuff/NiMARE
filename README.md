@@ -28,3 +28,26 @@ A Python library for coordinate- and image-based meta-analysis.
     - Neurosynth correlation-based decoding
     - Neurosynth MKDA-based decoding
     - BrainMap decoding
+
+## Installation
+
+### Local installation
+```
+python setup.py install
+```
+
+### Installation with Docker
+To build the Docker image:
+```
+docker build -t test/nimare .
+```
+
+To run the Docker container:
+```
+docker run -it -v `pwd`:/home/neuro/code/NiMARE -p8888:8888 test/nimare bash
+```
+
+Once inside the container, you can install NiMARE:
+```
+python /home/neuro/code/NiMARE/setup.py develop
+```
