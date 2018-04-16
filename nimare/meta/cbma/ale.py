@@ -121,7 +121,7 @@ class ALE(CBMAEstimator):
 
         percentile = 100 * (1 - self.clust_thresh)
 
-        ## Cluster-level FWE
+        # Cluster-level FWE
         # Determine size of clusters in [1 - clust_thresh]th percentile (e.g. 95th)
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
         labeled_matrix = ndimage.measurements.label(vthresh_z_map, conn)[0]
@@ -136,18 +136,24 @@ class ALE(CBMAEstimator):
         cfwe_map = apply_mask(nib.Nifti1Image(cfwe_map, self.mask.affine),
                               self.mask)
 
-        ## Voxel-level FWE
+        # Voxel-level FWE
         # Determine ALE values in [1 - clust_thresh]th percentile (e.g. 95th)
-        ale_value_thresh = np.percentile(perm_max_values, percentile)
-        sig_idx = ale_values >= ale_value_thresh
-        vfwe_map = z_values * sig_idx
+        p_fwe_values = np.zeros(ale_values.shape)
+        for voxel in range(ale_values.shape[0]):
+            p_fwe_values[voxel] = null_to_p(ale_values[voxel], perm_max_values,
+                                            tail='upper')
+
+        z_fwe_values = ndtri(1 - p_fwe_values)
+        z_fwe_values[p_fwe_values < eps] = ndtri(1 - eps) + (ale_values[p_fwe_values < eps] * 2)
+        z_fwe_values[z_fwe_values < 0] = 0
 
         # Write out unthresholded value images
         images = {'ale': ale_values,
                   'p': p_values,
                   'z': z_values,
                   'vthresh': vthresh_z_values,
-                  'vfwe': vfwe_map,
+                  'p_vfwe': p_fwe_values,
+                  'z_vfwe': z_fwe_values,
                   'cfwe': cfwe_map}
         self.results = MetaResult(mask=self.mask, **images)
 

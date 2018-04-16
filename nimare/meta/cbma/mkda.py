@@ -262,7 +262,7 @@ class MKDAChi2(CBMAEstimator):
                     pAgF_p_FWE[i] = 1.
             pAgF_z_FWE = pAgF_z.copy()
             pAgF_z_FWE[pAgF_p_FWE > q] = 0
-            images['pAgF_z_FWE_{0}'.format(str(q).split('.')[1])] = pAgF_z_FWE
+            images['consistency_z_FWE_{0}'.format(str(q).split('.')[1])] = pAgF_z_FWE
 
             # pFgA_FWE
             pFgA_perm_dist = np.vstack(pFgA_perm_dist)
@@ -279,17 +279,17 @@ class MKDAChi2(CBMAEstimator):
                     pFgA_p_FWE[i] = 1.
             pFgA_z_FWE = pFgA_z.copy()
             pFgA_z_FWE[pFgA_p_FWE > q] = 0
-            images['pFgA_z_FWE_{0}'.format(str(q).split('.')[1])] = pFgA_z_FWE
+            images['specificity_z_FWE_{0}'.format(str(q).split('.')[1])] = pFgA_z_FWE
         elif corr == 'FDR':
             pAgF_fdr_thresh = fdr(pAgF_p_vals, q)
             pAgF_z_FDR = pAgF_z.copy()
             pAgF_z_FDR[pAgF_p_vals > pAgF_fdr_thresh] = 0
-            images['pAgF_z_FDR_{0}'.format(str(q).split('.')[1])] = pAgF_z_FDR
+            images['consistency_z_FDR_{0}'.format(str(q).split('.')[1])] = pAgF_z_FDR
 
             pFgA_fdr_thresh = fdr(pFgA_p_vals, q)
             pFgA_z_FDR = pFgA_z.copy()
             pFgA_z_FDR[pFgA_p_vals > pFgA_fdr_thresh] = 0
-            images['pFgA_z_FDR_{0}'.format(str(q).split('.')[1])] = pFgA_z_FDR
+            images['specificity_z_FDR_{0}'.format(str(q).split('.')[1])] = pFgA_z_FDR
 
         self.results = MetaResult(mask=self.mask, **images)
 

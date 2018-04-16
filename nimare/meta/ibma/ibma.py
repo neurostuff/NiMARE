@@ -30,7 +30,7 @@ from ...due import due, BibTeX
               }
            """),
            description='Fishers citation.')
-def fishers(z_maps, mask, q=0.05, corr='FWE'):
+def fishers(z_maps, mask, corr='FWE'):
     """
     Run a Fisher's image-based meta-analysis on z-statistic maps.
 
@@ -40,8 +40,6 @@ def fishers(z_maps, mask, q=0.05, corr='FWE'):
         A 2D array of z-statistic maps in the same space, after masking.
     mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
@@ -71,7 +69,7 @@ def fishers(z_maps, mask, q=0.05, corr='FWE'):
 
     # Multiple comparisons correction
     if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=q, method=method,
+        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
                                             is_sorted=False, returnsorted=False)
     else:
         p_corr_map = p_map.copy()
@@ -97,9 +95,9 @@ class Fishers(IBMAEstimator):
         self.ids = ids
         self.results = None
 
-    def fit(self, q=0.05, corr='FWE'):
+    def fit(self, corr='FWE'):
         z_maps = self.dataset.get(self.ids, 'z')
-        result = fishers(z_maps, self.mask, q=q, corr=corr)
+        result = fishers(z_maps, self.mask, corr=corr)
         self.results = result
 
 
@@ -115,7 +113,7 @@ class Fishers(IBMAEstimator):
            """),
            description='Stouffers citation.')
 def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
-              q=0.05, corr='FWE'):
+              corr='FWE'):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
 
@@ -135,8 +133,6 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
     n_iters : :obj:`int` or :obj:`None`, optional
         The number of iterations to run in estimating the null distribution.
         Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
@@ -192,7 +188,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
 
         # Multiple comparisons correction
         if corr is not None:
-            _, p_corr_map, _, _ = multipletests(p_map, alpha=q, method=method,
+            _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
                                                 is_sorted=False, returnsorted=False)
         else:
             p_corr_map = p_map.copy()
@@ -210,7 +206,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
 
             # Multiple comparisons correction
             if corr is not None:
-                _, p_corr_map, _, _ = multipletests(p_map, alpha=q, method=method,
+                _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
                                                     is_sorted=False, returnsorted=False)
             else:
                 p_corr_map = p_map.copy()
@@ -255,14 +251,14 @@ class Stouffers(IBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, inference='ffx', null='theoretical', n_iters=None, q=0.05,
+    def fit(self, inference='ffx', null='theoretical', n_iters=None,
             corr='FWE'):
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
         z_maps = self.dataset.get(self.ids, 'z')
         result = stouffers(z_maps, self.mask, inference=inference, null=null,
-                           n_iters=n_iters, q=q, corr=corr)
+                           n_iters=n_iters, corr=corr)
         self.results = result
 
 
@@ -280,7 +276,7 @@ class Stouffers(IBMAEstimator):
              }
            """),
            description='Weighted Stouffers citation.')
-def weighted_stouffers(z_maps, sample_sizes, mask, q=0.05, corr='FWE'):
+def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE'):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
 
@@ -293,8 +289,6 @@ def weighted_stouffers(z_maps, sample_sizes, mask, q=0.05, corr='FWE'):
         Must be in same order as rows in ``z_maps``.
     mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
@@ -321,7 +315,7 @@ def weighted_stouffers(z_maps, sample_sizes, mask, q=0.05, corr='FWE'):
 
     # Multiple comparisons correction
     if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=q, method=method,
+        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
                                             is_sorted=False, returnsorted=False)
     else:
         p_corr_map = p_map.copy()
@@ -359,7 +353,7 @@ class WeightedStouffers(IBMAEstimator):
         self.results = result
 
 
-def rfx_glm(con_maps, mask, null='theoretical', n_iters=None, q=0.05,
+def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
             corr='FWE'):
     """
     Run a random-effects (RFX) GLM on contrast maps.
@@ -376,8 +370,6 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None, q=0.05,
     n_iters : :obj:`int` or :obj:`None`, optional
         The number of iterations to run in estimating the null distribution.
         Only used if ``null = 'empirical'``.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
@@ -430,7 +422,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None, q=0.05,
 
     # Multiple comparisons correction
     if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=q, method=method,
+        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
                                             is_sorted=False, returnsorted=False)
     else:
         p_corr_map = p_map.copy()
@@ -460,16 +452,16 @@ class RFX_GLM(IBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, null='theoretical', n_iters=None, q=0.05, corr='FWE'):
+    def fit(self, null='theoretical', n_iters=None, corr='FWE'):
         self.null = null
         self.n_iters = n_iters
         con_maps = self.dataset.get(self.ids, 'con')
         result = rfx_glm(con_maps, self.mask, null=self.null,
-                         n_iters=self.n_iters, q=q, corr=corr)
+                         n_iters=self.n_iters, corr=corr)
         self.results = result
 
 
-def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True, q=0.05,
+def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True,
             corr='FWE'):
     """
     Run a fixed-effects GLM on contrast and standard error images.
@@ -490,8 +482,6 @@ def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True, q=0.05,
     equal_var : :obj:`bool`, optional
         Whether equal variance is assumed across contrasts. Default is True.
         False is not yet implemented.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
@@ -529,7 +519,7 @@ def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True, q=0.05,
 
     # Multiple comparisons correction
     if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=q, method=method,
+        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
                                             is_sorted=False, returnsorted=False)
     else:
         p_corr_map = p_map.copy()
@@ -560,7 +550,7 @@ class FFX_GLM(IBMAEstimator):
         self.sample_sizes = None
         self.equal_var = None
 
-    def fit(self, sample_sizes=None, equal_var=True, q=0.05, corr='FWE'):
+    def fit(self, sample_sizes=None, equal_var=True, corr='FWE'):
         """
         Perform meta-analysis given parameters.
         """
@@ -574,11 +564,11 @@ class FFX_GLM(IBMAEstimator):
         else:
             sample_sizes = self.dataset.get(self.ids, 'n')
         result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, q=q, corr=corr)
+                         equal_var=self.equal_var, corr=corr)
         self.results = result
 
 
-def mfx_glm(con_maps, se_maps, sample_sizes, mask, q=0.05, cdt=0.01,
+def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
             work_dir='mfx_glm'):
     """
     Run a mixed-effects GLM on contrast and standard error images.
