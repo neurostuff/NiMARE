@@ -63,8 +63,8 @@ def fishers(z_maps, mask, corr='FWE'):
     sign[sign == 0] = 1
 
     k = z_maps.shape[0]
-    ffx_stat_map = -2 * np.sum(np.log10(stats.norm.cdf(-z_maps, loc=0,
-                                                       scale=1)), axis=0)
+    ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0,
+                                                     scale=1)), axis=0)
     p_map = stats.chi2.sf(ffx_stat_map, 2*k)
 
     # Multiple comparisons correction
@@ -506,11 +506,11 @@ def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True,
     if equal_var:
         weighted_con_maps = con_maps * sample_sizes[:, None]
         sum_weighted_con_map = np.sum(weighted_con_maps, axis=0)
-        adj_con_map = (1. / np.sqrt(np.sum(sample_sizes))) * sum_weighted_con_map
+        adj_con_map = 1. / np.sqrt(np.sum(sample_sizes)) * sum_weighted_con_map
         weighted_ss_maps = var_maps * (sample_sizes[:, None] - 1)
         sum_weighted_ss_map = np.sum(weighted_ss_maps, axis=0)
-        est_ss_map = (1. / np.sqrt(np.sum(sample_sizes - 1))) * sum_weighted_ss_map
-        ffx_stat_map = adj_con_map / np.sqrt(est_ss_map)
+        est_ss_map = np.sqrt(1. / (np.sum(sample_sizes - 1)) * sum_weighted_ss_map)
+        ffx_stat_map = adj_con_map / est_ss_map
         dof = np.sum(sample_sizes - 1)
     else:
         raise Exception('Unequal variances not available yet.')
