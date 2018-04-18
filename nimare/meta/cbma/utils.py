@@ -61,7 +61,7 @@ def compute_ma(shape, ijk, kernel):
         if all(np.array([xl, xh, yl, yh, zl, zh, xlk, xhk, ylk, yhk, zlk, zhk]) >= 0):
             ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(ma_values[xl:xh, yl:yh, zl:zh],
                                                         kernel[xlk:xhk, ylk:yhk, zlk:zhk])
-        return ma_values
+    return ma_values
 
 
 @due.dcite(Doi('10.1002/hbm.20718'),
