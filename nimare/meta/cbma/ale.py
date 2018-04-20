@@ -11,14 +11,13 @@ import multiprocessing as mp
 import numpy as np
 import nibabel as nib
 from scipy import ndimage
-from scipy.special import ndtri
 from nilearn.masking import apply_mask, unmask
 
 from .base import CBMAEstimator
 from .kernel import ALEKernel
 from ..base import MetaResult
 from ...due import due, Doi, BibTeX
-from ...utils import round2
+from ...utils import round2, null_to_p, p_to_z
 
 
 @due.dcite(BibTeX("""
@@ -65,7 +64,8 @@ class ALE(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000, n_cores=4):
+    def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
+            n_cores=4):
         """
         """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
@@ -84,13 +84,15 @@ class ALE(CBMAEstimator):
         max_poss_ale = 1 - max_poss_ale
         hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
 
-        ale_values, null_distribution = self._compute_ale(df=None, hist_bins=hist_bins,
+        ale_values, null_distribution = self._compute_ale(df=None,
+                                                          hist_bins=hist_bins,
                                                           ma_maps=ma_maps)
-        p_values, z_values = self._ale_to_p(ale_values, hist_bins, null_distribution)
+        p_values, z_values = self._ale_to_p(ale_values, hist_bins,
+                                            null_distribution)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        z_thresh = ndtri(1 - self.voxel_thresh)
+        z_thresh = p_to_z(self.voxel_thresh, tail='one')
         vthresh_z_values = z_values.copy()
         vthresh_z_values[vthresh_z_values < z_thresh] = 0
 
@@ -101,7 +103,7 @@ class ALE(CBMAEstimator):
         conn[:, 1, :] = 1
         conn[1, :, :] = 1
 
-        ## Multiple comparisons correction
+        # Multiple comparisons correction
         iter_df = self.coordinates.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], n_iters))
@@ -113,7 +115,8 @@ class ALE(CBMAEstimator):
         iter_dfs = [iter_df] * n_iters
         iter_null_dists = [null_distribution] * n_iters
         iter_hist_bins = [hist_bins] * n_iters
-        params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins, iter_conns)
+        params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
+                     iter_conns)
         pool = mp.Pool(n_cores)
         perm_results = pool.map(self._perm, params)
         pool.close()
@@ -143,9 +146,7 @@ class ALE(CBMAEstimator):
             p_fwe_values[voxel] = null_to_p(ale_values[voxel], perm_max_values,
                                             tail='upper')
 
-        z_fwe_values = ndtri(1 - p_fwe_values)
-        z_fwe_values[p_fwe_values < eps] = ndtri(1 - eps) + (ale_values[p_fwe_values < eps] * 2)
-        z_fwe_values[z_fwe_values < 0] = 0
+        z_fwe_values = p_to_z(p_fwe_values, tail='one')
 
         # Write out unthresholded value images
         images = {'ale': ale_values,
@@ -179,13 +180,14 @@ class ALE(CBMAEstimator):
         ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
-            # Remember that histogram uses bin edges (not centers), so it returns
-            # a 1xhist_bins-1 array
+            # Remember that histogram uses bin edges (not centers), so it
+            # returns a 1xhist_bins-1 array
             if hist_bins is not None:
                 n_zeros = len(np.where(ma_values[i, :] == 0)[0])
                 reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
                 ma_hists[i, 0] = n_zeros
-                ma_hists[i, 1:] = np.histogram(a=reduced_ma_values, bins=hist_bins,
+                ma_hists[i, 1:] = np.histogram(a=reduced_ma_values,
+                                               bins=hist_bins,
                                                density=False)[0]
             ale_values *= (1. - ma_values[i, :])
 
@@ -253,16 +255,13 @@ class ALE(CBMAEstimator):
         idx = np.where(ale_values > 0)[0]
         ale_bins = round2(ale_values[idx] * step)
         p_values[idx] = null_distribution[ale_bins]
-
-        z_values = ndtri(1 - p_values)
-        z_values[p_values < eps] = ndtri(1 - eps) + (ale_values[p_values < eps] * 2)
-        z_values[z_values < 0] = 0
+        z_values = p_to_z(p_values, tail='one')
         return p_values, z_values
 
     def _perm(self, params):
         """
-        Run a single random permutation of a dataset. Does the shared work between
-        vFWE and cFWE.
+        Run a single random permutation of a dataset. Does the shared work
+        between vFWE and cFWE.
         """
         iter_df, iter_ijk, null_dist, hist_bins, conn = params
         iter_ijk = np.squeeze(iter_ijk)
@@ -273,8 +272,7 @@ class ALE(CBMAEstimator):
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        z_thresh = ndtri(1 - self.voxel_thresh)
-
+        z_thresh = p_to_z(self.voxel_thresh, tail='one')
         iter_z_map = unmask(z_values, self.mask)
         vthresh_iter_z_map = iter_z_map.get_data()
         vthresh_iter_z_map[vthresh_iter_z_map < self.voxel_thresh] = 0
@@ -293,7 +291,8 @@ class SCALE(CBMAEstimator):
     """
     Specific coactivation likelihood estimation
     """
-    def __init__(self, dataset, ids, ijk=None, kernel_estimator=ALEKernel, **kwargs):
+    def __init__(self, dataset, ids, ijk=None, kernel_estimator=ALEKernel,
+                 **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
@@ -312,7 +311,8 @@ class SCALE(CBMAEstimator):
 
     def fit(self, voxel_thresh=0.001, n_iters=10000, n_cores=4):
         """
-        Perform specific coactivation likelihood estimation[1]_ meta-analysis on dataset.
+        Perform specific coactivation likelihood estimation[1]_ meta-analysis
+        on dataset.
 
         Parameters
         ----------
@@ -327,8 +327,8 @@ class SCALE(CBMAEstimator):
         prefix : str
             String prepended to default output filenames. May include path.
         database_file : str
-            Tab-delimited file of coordinates from database. Voxels are rows and
-            i, j, k (meaning matrix-space) values are the three columnns.
+            Tab-delimited file of coordinates from database. Voxels are rows
+            and i, j, k (meaning matrix-space) values are the three columnns.
 
         Examples
         --------
@@ -368,11 +368,12 @@ class SCALE(CBMAEstimator):
         pool.close()
         perm_scale_values = np.stack(perm_scale_values)
 
-        p_values, z_values = self._scale_to_p(ale_values, perm_scale_values, hist_bins)
+        p_values, z_values = self._scale_to_p(ale_values, perm_scale_values,
+                                              hist_bins)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        z_thresh = ndtri(1 - self.voxel_thresh)
+        z_thresh = p_to_z(self.voxel_thresh, tail='one')
         vthresh_z_values = z_values.copy()
         vthresh_z_values[vthresh_z_values < z_thresh] = 0
 
@@ -416,7 +417,8 @@ class SCALE(CBMAEstimator):
         scale_values[scale_values == 0] = np.nan
         scale_hists = np.zeros(((len(hist_bins),) + n_zeros.shape))
         scale_hists[0, :] = n_zeros
-        scale_hists[1:, :] = np.apply_along_axis(self._make_hist, 0, scale_values,
+        scale_hists[1:, :] = np.apply_along_axis(self._make_hist, 0,
+                                                 scale_values,
                                                  hist_bins=hist_bins)
 
         # Convert voxel-wise histograms to voxel-wise null distributions.
@@ -424,8 +426,8 @@ class SCALE(CBMAEstimator):
         null_distribution = np.cumsum(null_distribution[::-1, :], axis=0)[::-1, :]
         null_distribution /= np.max(null_distribution, axis=0)
 
-        # Get the hist_bins associated with each voxel's ale value, in order to get
-        # the p-value from the associated bin in the null distribution.
+        # Get the hist_bins associated with each voxel's ale value, in order to
+        # get the p-value from the associated bin in the null distribution.
         n_bins = len(hist_bins)
         ale_bins = round2(ale_values * step).astype(int)
         ale_bins[ale_bins > n_bins] = n_bins
@@ -436,9 +438,7 @@ class SCALE(CBMAEstimator):
         for i, (x, y) in enumerate(zip(null_distribution.transpose(), ale_bins)):
             p_values[i] = x[y]
 
-        z_values = ndtri(1 - p_values)
-        z_values[p_values < eps] = ndtri(1 - eps) + (ale_values[p_values < eps] * 2)
-        z_values[z_values < 0] = 0
+        z_values = p_to_z(p_values, tail='one')
         return p_values, z_values
 
     def _make_hist(self, oned_arr, hist_bins):

@@ -16,7 +16,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .base import IBMAEstimator
 from ..base import MetaResult
-from ...utils import null_to_p
+from ...utils import null_to_p, p_to_z
 from ...due import due, BibTeX
 
 
@@ -63,17 +63,22 @@ def fishers(z_maps, mask, corr='FWE'):
     sign[sign == 0] = 1
 
     k = z_maps.shape[0]
-    ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0,
-                                                     scale=1)), axis=0)
+    # one-tailed method
+    # ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0, scale=1)),
+    #                            axis=0)
+    # two-tailed method
+    ffx_stat_map = -2 * np.sum(np.log(stats.norm.sf(np.abs(z_maps), loc=0,
+                                                    scale=1)*2), axis=0)
     p_map = stats.chi2.sf(ffx_stat_map, 2*k)
 
     # Multiple comparisons correction
     if corr is not None:
         _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False, returnsorted=False)
+                                            is_sorted=False,
+                                            returnsorted=False)
     else:
         p_corr_map = p_map.copy()
-    z_corr_map = -1 * stats.norm.ppf(p_corr_map) * sign
+    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
 
     result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
@@ -157,6 +162,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
     if inference == 'rfx':
         t_map, p_map = stats.ttest_1samp(z_maps, popmean=0, axis=0)
         t_map[np.isnan(t_map)] = 0
+        p_map[np.isnan(p_map)] = 1
         if null == 'empirical':
             k = z_maps.shape[0]
             p_map = np.ones(t_map.shape)
@@ -188,13 +194,14 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
 
         # Multiple comparisons correction
         if corr is not None:
-            _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                                is_sorted=False, returnsorted=False)
+            _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05,
+                                                method=method, is_sorted=False,
+                                                returnsorted=False)
         else:
             p_corr_map = p_map.copy()
 
         # Convert p to z, preserving signs
-        z_corr_map = -1 * stats.norm.ppf(p_corr_map) * sign
+        z_corr_map = p_to_z(p_corr_map, tail='two') * sign
         log_p_map = -np.log10(p_corr_map)
         result = MetaResult(mask=mask, t=t_map, p=p_corr_map, z=z_corr_map,
                             log_p=log_p_map)
@@ -202,17 +209,24 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
         if null == 'theoretical':
             k = z_maps.shape[0]
             z_map = np.sum(z_maps, axis=0) / np.sqrt(k)
-            p_map = stats.norm.cdf(-z_map, loc=0, scale=1)
+            sign = np.sign(z_map)
+            sign[sign == 0] = 1
+            # one-tailed method
+            # p_map = stats.norm.cdf(-z_map, loc=0, scale=1)
+            # two-tailed method
+            p_map = stats.norm.sf(np.abs(z_map)) * 2
 
             # Multiple comparisons correction
             if corr is not None:
-                _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                                    is_sorted=False, returnsorted=False)
+                _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05,
+                                                    method=method,
+                                                    is_sorted=False,
+                                                    returnsorted=False)
             else:
                 p_corr_map = p_map.copy()
 
             # Convert p to z, preserving signs
-            z_corr_map = -1 * stats.norm.ppf(p_corr_map) * sign
+            z_corr_map = p_to_z(p_corr_map, tail='two') * sign
             log_p_map = -np.log10(p_corr_map)
             result = MetaResult(mask=mask, z=z_corr_map, p=p_corr_map,
                                 log_p=log_p_map)
@@ -311,19 +325,23 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE'):
     weighted_z_maps = z_maps * np.sqrt(sample_sizes)[:, None]
     ffx_stat_map = np.sum(weighted_z_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
 
-    p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
+    # one-tailed method
+    # p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
+    # two-tailed method
+    p_map = stats.norm.sf(np.abs(ffx_stat_map)) * 2
 
     # Multiple comparisons correction
     if corr is not None:
         _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False, returnsorted=False)
+                                            is_sorted=False,
+                                            returnsorted=False)
     else:
         p_corr_map = p_map.copy()
 
     # Convert p to z, preserving signs
     sign = np.sign(ffx_stat_map)
     sign[sign == 0] = 1
-    z_corr_map = -1 * stats.norm.ppf(p_corr_map) * sign
+    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
     result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
                         z=z_corr_map, log_p=log_p_map)
@@ -423,14 +441,15 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     # Multiple comparisons correction
     if corr is not None:
         _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False, returnsorted=False)
+                                            is_sorted=False,
+                                            returnsorted=False)
     else:
         p_corr_map = p_map.copy()
 
     # Convert p to z, preserving signs
     sign = np.sign(t_map)
     sign[sign == 0] = 1
-    z_corr_map = -1 * stats.norm.ppf(p_corr_map) * sign
+    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
     result = MetaResult(mask=mask, t=t_map, z=z_corr_map, p=p_corr_map,
                         log_p=log_p_map)
@@ -504,18 +523,20 @@ def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True,
         raise ValueError('{0} correction not supported.'.format(corr))
 
     if equal_var:
-        weighted_con_maps = con_maps * sample_sizes[:, None]
-        sum_weighted_con_map = np.sum(weighted_con_maps, axis=0)
-        adj_con_map = 1. / np.sqrt(np.sum(sample_sizes)) * sum_weighted_con_map
-        weighted_ss_maps = var_maps * (sample_sizes[:, None] - 1)
-        sum_weighted_ss_map = np.sum(weighted_ss_maps, axis=0)
-        est_ss_map = np.sqrt(1. / (np.sum(sample_sizes - 1)) * sum_weighted_ss_map)
-        ffx_stat_map = adj_con_map / est_ss_map
         dof = np.sum(sample_sizes - 1)
+        weighted_con_maps = con_maps * sample_sizes[:, None]
+        adj_con_map = np.sum(weighted_con_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
+        weighted_ss_maps = var_maps * (sample_sizes[:, None] - 1)
+        est_ss_map = np.sqrt(np.sum(weighted_ss_maps, axis=0) / dof)
+        ffx_stat_map = adj_con_map / est_ss_map
     else:
         raise Exception('Unequal variances not available yet.')
 
-    p_map = stats.t.cdf(-ffx_stat_map, df=dof, loc=0, scale=1)
+    # MATLAB one-tailed method
+    # p_map = stats.t.cdf(-ffx_stat_map, df=dof)
+    # two-tailed method
+    p_map = stats.t.sf(np.abs(ffx_stat_map), df=dof) * 2
+    p_map[np.isnan(p_map)] = 1  # reduces similarity to MATLAB but is necessary
 
     # Multiple comparisons correction
     if corr is not None:
@@ -527,8 +548,9 @@ def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True,
     # Convert p to z, preserving signs
     sign = np.sign(ffx_stat_map)
     sign[sign == 0] = 1
-    z_corr_map = -1 * stats.norm.ppf(p_corr_map) * sign
+
     log_p_map = -np.log10(p_corr_map)
+    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, z=z_corr_map,
                         p=p_corr_map, log_p=log_p_map)
     return result
@@ -617,7 +639,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     assert con_maps.shape[0] == sample_sizes.shape[0]
 
     if 0 < cdt < 1:
-        cdt_z = stats.norm.ppf(1-(cdt/2))
+        cdt_z = p_to_z(cdt, tail='two')
     else:
         cdt_z = cdt
 
@@ -690,6 +712,14 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     flameo.inputs.dof_var_cope_file = dof_file
     res = flameo.run()
 
+    temp_img = nib.load(res.outputs.zstats)
+    temp_img = nib.Nifti1Image(temp_img.get_data()*-1, temp_img.affine)
+    temp_img.to_filename(op.join(work_dir, 'temp_zstat2.nii.gz'))
+
+    temp_img2 = nib.load(res.outputs.copes)
+    temp_img2 = nib.Nifti1Image(temp_img2.get_data()*-1, temp_img2.affine)
+    temp_img2.to_filename(op.join(work_dir, 'temp_copes2.nii.gz'))
+
     # FWE correction
     # Estimate smoothness
     est = fsl.model.SmoothEstimate()
@@ -698,13 +728,14 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     est.inputs.residual_fit_file = res.outputs.res4d
     est_res = est.run()
 
-    # Cluster
+    # Positive clusters
     cl = fsl.model.Cluster()
     cl.inputs.threshold = cdt_z
     cl.inputs.pthreshold = q
     cl.inputs.in_file = res.outputs.zstats
     cl.inputs.cope_file = res.outputs.copes
     cl.inputs.use_mm = True
+    cl.inputs.find_min = False
     cl.inputs.dlh = est_res.outputs.dlh
     cl.inputs.volume = est_res.outputs.volume
     cl.inputs.out_threshold_file = op.join(work_dir, 'thresh_zstat1.nii.gz')
@@ -712,13 +743,30 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     cl.inputs.out_localmax_txt_file = op.join(work_dir, 'lmax_zstat1_tal.txt')
     cl_res = cl.run()
 
+    # Negative clusters
+    cl2 = fsl.model.Cluster()
+    cl2.inputs.threshold = cdt_z
+    cl2.inputs.pthreshold = q
+    cl2.inputs.in_file = op.join(work_dir, 'temp_zstat2.nii.gz')
+    cl2.inputs.cope_file = op.join(work_dir, 'temp_copes2.nii.gz')
+    cl2.inputs.use_mm = True
+    cl2.inputs.find_min = False
+    cl2.inputs.dlh = est_res.outputs.dlh
+    cl2.inputs.volume = est_res.outputs.volume
+    cl2.inputs.out_threshold_file = op.join(work_dir, 'thresh_zstat2.nii.gz')
+    cl2.inputs.connectivity = 26
+    cl2.inputs.out_localmax_txt_file = op.join(work_dir, 'lmax_zstat2_tal.txt')
+    cl2_res = cl2.run()
+
     out_cope_img = nib.load(res.outputs.copes)
     out_t_img = nib.load(res.outputs.tstats)
     out_z_img = nib.load(res.outputs.zstats)
     out_cope_map = apply_mask(out_cope_img, mask)
     out_t_map = apply_mask(out_t_img, mask)
     out_z_map = apply_mask(out_z_img, mask)
-    thresh_z_map = apply_mask(nib.load(cl_res.outputs.threshold_file), mask)
+    pos_z_map = apply_mask(nib.load(cl_res.outputs.threshold_file), mask)
+    neg_z_map = apply_mask(nib.load(cl2_res.outputs.threshold_file), mask)
+    thresh_z_map = pos_z_map - neg_z_map
 
     print('Cleaning up...')
     rmtree(work_dir)
@@ -735,8 +783,8 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
 
 class MFX_GLM(IBMAEstimator):
     """
-    The gold standard image-based meta-analytic test. Uses contrast and standard
-    error images.
+    The gold standard image-based meta-analytic test. Uses contrast and
+    standard error images.
 
     Requirements:
         - con

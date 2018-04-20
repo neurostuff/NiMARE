@@ -8,13 +8,12 @@ import numpy as np
 import nibabel as nib
 from scipy import ndimage, special
 from nilearn.masking import apply_mask, unmask
+from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .base import CBMAEstimator
 from .kernel import MKDAKernel, KDAKernel
-from .utils import p_to_z
 from ..base import MetaResult
-from ...utils import vox2mm
-from ...stats import fdr
+from ...utils import vox2mm, null_to_p, p_to_z
 from ...due import due, Doi
 
 
@@ -55,7 +54,8 @@ class MKDADensity(CBMAEstimator):
             weight_vec = np.sqrt(ids_n)[:, None] / np.sum(np.sqrt(ids_n))
         elif 'n' in ids_df.columns and 'inference' in ids_df.columns:
             ids_n = ids_df.loc[self.ids, 'n'].astype(float).values
-            ids_inf = ids_df.loc[self.ids, 'inference'].map({'ffx': 0.75, 'rfx': 1.}).values
+            ids_inf = ids_df.loc[self.ids, 'inference'].map({'ffx': 0.75,
+                                                             'rfx': 1.}).values
             weight_vec = (np.sqrt(ids_n)[:, None] * ids_inf[:, None]) / \
                          np.sum(np.sqrt(ids_n) * ids_inf)
         else:
@@ -90,8 +90,9 @@ class MKDADensity(CBMAEstimator):
 
         percentile = 100 * (1 - q)
 
-        ## Cluster-level FWE
-        # Determine size of clusters in [1 - clust_thresh]th percentile (e.g. 95th)
+        # Cluster-level FWE
+        # Determine size of clusters in [1 - clust_thresh]th percentile (e.g.
+        # 95th)
         clust_size_thresh = np.percentile(perm_clust_sizes, percentile)
 
         cfwe_of_map = np.zeros(of_map.shape)
@@ -104,7 +105,7 @@ class MKDADensity(CBMAEstimator):
         cfwe_of_map = apply_mask(nib.Nifti1Image(cfwe_of_map, of_map.affine),
                                  self.mask)
 
-        ## Voxel-level FWE
+        # Voxel-level FWE
         # Determine OF values in [1 - clust_thresh]th percentile (e.g. 95th)
         vfwe_thresh = np.percentile(perm_max_values, percentile)
         vfwe_of_map = of_map.get_data().copy()
@@ -112,7 +113,8 @@ class MKDADensity(CBMAEstimator):
         vfwe_of_map = apply_mask(nib.Nifti1Image(vfwe_of_map, of_map.affine),
                                  self.mask)
 
-        vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map, of_map.affine),
+        vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
+                                                    of_map.affine),
                                     self.mask)
         self.results = MetaResult(vthresh=vthresh_of_map, cfwe=cfwe_of_map,
                                   vfwe=vfwe_of_map, mask=self.mask)
@@ -146,7 +148,8 @@ class MKDAChi2(CBMAEstimator):
     """
     Multilevel kernel density analysis- Chi-square analysis
     """
-    def __init__(self, dataset, ids, ids2=None, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, dataset, ids, ids2=None, kernel_estimator=MKDAKernel,
+                 **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
@@ -179,10 +182,13 @@ class MKDAChi2(CBMAEstimator):
         self.n_iters = n_iters
 
         k_est = self.kernel_estimator(self.coordinates, self.mask)
-        ma_maps1 = k_est.transform(self.ids, masked=True, **self.kernel_arguments)
-        ma_maps2 = k_est.transform(self.ids2, masked=True, **self.kernel_arguments)
+        ma_maps1 = k_est.transform(self.ids, masked=True,
+                                   **self.kernel_arguments)
+        ma_maps2 = k_est.transform(self.ids2, masked=True,
+                                   **self.kernel_arguments)
 
         # Calculate different count variables
+        eps = np.spacing(1)
         n_selected = len(self.ids)
         n_unselected = len(self.ids2)
         n_mappables = n_selected + n_unselected
@@ -210,20 +216,22 @@ class MKDAChi2(CBMAEstimator):
         pFgA_prior = pAgF * prior / pAgF_prior
 
         # One-way chi-square test for consistency of activation
-        pAgF_p_vals = self._one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_p_vals[pAgF_p_vals < 1e-240] = 1e-240
-        z_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels)).ravel()
-        pAgF_z = p_to_z(pAgF_p_vals, z_sign)
+        pAgF_chi2_vals = self._one_way(np.squeeze(n_selected_active_voxels),
+                                       n_selected)
+        pAgF_p_vals = special.chdtrc(1, pAgF_chi2_vals)
+        pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
+        pAgF_z = p_to_z(pAgF_p_vals, tail='two') * pAgF_sign
 
         # Two-way chi-square for specificity of activation
         cells = np.squeeze(
             np.array([[n_selected_active_voxels, n_unselected_active_voxels],
                       [n_selected - n_selected_active_voxels,
                        n_unselected - n_unselected_active_voxels]]).T)
-        pFgA_p_vals = self._two_way(cells)
+        pFgA_chi2_vals = self._two_way(cells)
+        pFgA_p_vals = special.chdtrc(1, pFgA_chi2_vals)
         pFgA_p_vals[pFgA_p_vals < 1e-240] = 1e-240
-        z_sign = np.sign(pAgF - pAgU).ravel()
-        pFgA_z = p_to_z(pFgA_p_vals, z_sign)
+        pFgA_sign = np.sign(pAgF - pAgU).ravel()
+        pFgA_z = p_to_z(pFgA_p_vals, tail='two') * pFgA_sign
         images = {
             'pA': pA,
             'pAgF': pAgF,
@@ -231,65 +239,69 @@ class MKDAChi2(CBMAEstimator):
             ('pAgF_given_pF=%0.2f' % prior): pAgF_prior,
             ('pFgA_given_pF=%0.2f' % prior): pFgA_prior,
             'consistency_z': pAgF_z,
-            'specificity_z': pFgA_z}
+            'specificity_z': pFgA_z,
+            'consistency_chi2': pAgF_chi2_vals,
+            'specificity_chi2': pFgA_chi2_vals}
 
         if corr == 'FWE':
             pool = mp.Pool(n_cores)
             iter_dfs = [self.coordinates.copy()] * n_iters
             null_ijk = np.vstack(np.where(self.mask.get_data())).T
             rand_idx = np.random.choice(null_ijk.shape[0],
-                                        size=(self.coordinates.shape[0], n_iters))
+                                        size=(self.coordinates.shape[0],
+                                              n_iters))
             rand_ijk = null_ijk[rand_idx, :]
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
             params = zip(iter_dfs, iter_ijks, range(n_iters))
             perm_results = pool.map(self._perm, params)
             pool.close()
-            pAgF_perm_dist, pFgA_perm_dist = zip(*perm_results)
+            pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
             # pAgF_FWE
-            pAgF_perm_dist = np.vstack(pAgF_perm_dist)
-            _, bin_edges = np.apply_along_axis(np.histogram,
-                                               arr=np.abs(pAgF_perm_dist),
-                                               axis=0, bins=1000,
-                                               density=False)
-            bin_edges = np.vstack(bin_edges)
-            pAgF_p_FWE = np.empty_like(pAgF_z).astype(float)
-            for i, (be, tv) in enumerate(zip(bin_edges, pAgF_z)):
-                if any(np.abs(tv) > be):
-                    pAgF_p_FWE[i] = np.max(np.where(np.abs(tv) > be)[0]) / len(be)
-                else:
-                    pAgF_p_FWE[i] = 1.
-            pAgF_z_FWE = pAgF_z.copy()
-            pAgF_z_FWE[pAgF_p_FWE > q] = 0
-            images['consistency_z_FWE_{0}'.format(str(q).split('.')[1])] = pAgF_z_FWE
+            pAgF_null_chi2_dist = np.squeeze(pAgF_null_chi2_dist)
+            np.savetxt('null_dist.txt', pAgF_null_chi2_dist)
+            pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
+            for voxel in range(pFgA_chi2_vals.shape[0]):
+                pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel],
+                                              pAgF_null_chi2_dist,
+                                              tail='upper')
+            # Crop p-values of 0 or 1 to nearest values that won't evaluate to
+            # 0 or 1. Prevents inf z-values.
+            pAgF_p_FWE[pAgF_p_FWE < eps] = eps
+            pAgF_p_FWE[pAgF_p_FWE > (1. - eps)] = 1. - eps
+            pAgF_z_FWE = p_to_z(pAgF_p_FWE, tail='two') * pAgF_sign
+            images['consistency_p_FWE'] = pAgF_p_FWE
+            images['consistency_z_FWE'] = pAgF_z_FWE
 
             # pFgA_FWE
-            pFgA_perm_dist = np.vstack(pFgA_perm_dist)
-            _, bin_edges = np.apply_along_axis(np.histogram,
-                                               arr=np.abs(pFgA_perm_dist),
-                                               axis=0, bins=1000,
-                                               density=False)
-            bin_edges = np.vstack(bin_edges)
-            pFgA_p_FWE = np.empty_like(pFgA_z).astype(float)
-            for i, (be, tv) in enumerate(zip(bin_edges, pFgA_z)):
-                if any(np.abs(tv) > be):
-                    pFgA_p_FWE[i] = np.max(np.where(np.abs(tv) > be)[0]) / len(be)
-                else:
-                    pFgA_p_FWE[i] = 1.
-            pFgA_z_FWE = pFgA_z.copy()
-            pFgA_z_FWE[pFgA_p_FWE > q] = 0
-            images['specificity_z_FWE_{0}'.format(str(q).split('.')[1])] = pFgA_z_FWE
+            pFgA_null_chi2_dist = np.squeeze(pFgA_null_chi2_dist)
+            pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
+            for voxel in range(pFgA_chi2_vals.shape[0]):
+                pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel],
+                                              pFgA_null_chi2_dist,
+                                              tail='upper')
+            # Crop p-values of 0 or 1 to nearest values that won't evaluate to
+            # 0 or 1. Prevents inf z-values.
+            pFgA_p_FWE[pFgA_p_FWE < eps] = eps
+            pFgA_p_FWE[pFgA_p_FWE > (1. - eps)] = 1. - eps
+            pFgA_z_FWE = p_to_z(pFgA_p_FWE, tail='two') * pFgA_sign
+            images['specificity_p_FWE'] = pFgA_p_FWE
+            images['specificity_z_FWE'] = pFgA_z_FWE
         elif corr == 'FDR':
-            pAgF_fdr_thresh = fdr(pAgF_p_vals, q)
-            pAgF_z_FDR = pAgF_z.copy()
-            pAgF_z_FDR[pAgF_p_vals > pAgF_fdr_thresh] = 0
-            images['consistency_z_FDR_{0}'.format(str(q).split('.')[1])] = pAgF_z_FDR
+            _, pAgF_p_FDR, _, _ = multipletests(pAgF_p_vals, alpha=0.05,
+                                                method='fdr_bh',
+                                                is_sorted=False,
+                                                returnsorted=False)
+            pAgF_z_FDR = p_to_z(pAgF_p_FDR, tail='two') * pAgF_sign
+            images['consistency_z_FDR'] = pAgF_z_FDR
 
-            pFgA_fdr_thresh = fdr(pFgA_p_vals, q)
-            pFgA_z_FDR = pFgA_z.copy()
-            pFgA_z_FDR[pFgA_p_vals > pFgA_fdr_thresh] = 0
-            images['specificity_z_FDR_{0}'.format(str(q).split('.')[1])] = pFgA_z_FDR
+            _, pFgA_p_FDR, _, _ = multipletests(pFgA_p_vals, alpha=0.05,
+                                                method='fdr_bh',
+                                                is_sorted=False,
+                                                returnsorted=False)
+            pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail='two') * pFgA_sign
+            images['specificity_z_FDR'] = pFgA_z_FDR
 
         self.results = MetaResult(mask=self.mask, **images)
 
@@ -301,8 +313,10 @@ class MKDAChi2(CBMAEstimator):
         iter_df[['i', 'j', 'k']] = iter_ijk
 
         k_est = self.kernel_estimator(iter_df, self.mask)
-        temp_ma_maps = k_est.transform(self.ids, masked=True, **self.kernel_arguments)
-        temp_ma_maps2 = k_est.transform(self.ids2, masked=True, **self.kernel_arguments)
+        temp_ma_maps = k_est.transform(self.ids, masked=True,
+                                       **self.kernel_arguments)
+        temp_ma_maps2 = k_est.transform(self.ids2, masked=True,
+                                        **self.kernel_arguments)
 
         n_selected = temp_ma_maps.shape[0]
         n_unselected = temp_ma_maps2.shape[0]
@@ -314,21 +328,18 @@ class MKDAChi2(CBMAEstimator):
         pAgU = n_unselected_active_voxels * 1.0 / n_unselected
 
         # One-way chi-square test for consistency of activation
-        pAgF_p_vals = self._one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_p_vals[pAgF_p_vals < 1e-240] = 1e-240
-        z_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels)).ravel()
-        pAgF_z = p_to_z(pAgF_p_vals, z_sign)
+        pAgF_chi2_vals = self._one_way(np.squeeze(n_selected_active_voxels),
+                                       n_selected)
+        iter_pAgF_chi2 = np.max(pAgF_chi2_vals)
 
         # Two-way chi-square for specificity of activation
         cells = np.squeeze(
             np.array([[n_selected_active_voxels, n_unselected_active_voxels],
                       [n_selected - n_selected_active_voxels,
                        n_unselected - n_unselected_active_voxels]]).T)
-        pFgA_p_vals = self._two_way(cells)
-        pFgA_p_vals[pFgA_p_vals < 1e-240] = 1e-240
-        z_sign = np.sign(pAgF - pAgU).ravel()
-        pFgA_z = p_to_z(pFgA_p_vals, z_sign)
-        return pAgF_z, pFgA_z
+        pFgA_chi2_vals = self._two_way(cells)
+        iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
+        return iter_pAgF_chi2, iter_pFgA_chi2
 
     def _one_way(self, data, n):
         """ One-way chi-square test of independence.
@@ -346,7 +357,7 @@ class MKDAChi2(CBMAEstimator):
         t_mss = (term - t_exp) ** 2 / t_exp
         nt_mss = (no_term - nt_exp) ** 2 / nt_exp
         chi2 = t_mss + nt_mss
-        return special.chdtrc(1, chi2)
+        return chi2
 
     def _two_way(self, cells):
         """ Two-way chi-square test of independence.
@@ -354,7 +365,8 @@ class MKDAChi2(CBMAEstimator):
         dimensions are the contingency table for each of N voxels. Returns an
         array of p-values.
         """
-        # Mute divide-by-zero warning for bad voxels since we account for that later
+        # Mute divide-by-zero warning for bad voxels since we account for that
+        # later
         warnings.simplefilter("ignore", RuntimeWarning)
 
         cells = cells.astype('float64')  # Make sure we don't overflow
@@ -368,7 +380,7 @@ class MKDAChi2(CBMAEstimator):
                 chi_sq[:, i, j] = (cells[:, i, j] - exp) ** 2 / exp
                 chi_sq[bad_vox, i, j] = 1.0  # Set p-value for invalid voxels to 1
         chi_sq = np.apply_over_axes(np.sum, chi_sq, [1, 2]).ravel()
-        return special.chdtrc(1, chi_sq)
+        return chi_sq
 
 
 @due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
@@ -379,7 +391,8 @@ class KDA(CBMAEstimator):
     """
     Kernel density analysis
     """
-    def __init__(self, dataset, ids, ids2=None, kernel_estimator=KDAKernel, **kwargs):
+    def __init__(self, dataset, ids, ids2=None, kernel_estimator=KDAKernel,
+                 **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}

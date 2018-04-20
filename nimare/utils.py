@@ -8,6 +8,7 @@ from os.path import abspath, join, dirname, sep
 import numpy as np
 import nibabel as nib
 from scipy import stats
+from scipy.special import ndtri
 
 from .due import due, Doi, BibTeX
 
@@ -42,6 +43,27 @@ def null_to_p(test_value, null_array, tail='two'):
     else:
         raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
     return p_value
+
+
+def p_to_z(p, tail='two'):
+    """Convert p-values to z-values.
+    """
+    eps = np.spacing(1)
+    p = np.array(p)
+    p[p < eps] = eps
+    if tail == 'two':
+        z = ndtri(1 - (p / 2))
+        z = np.array(z)
+    elif tail == 'one':
+        z = ndtri(1 - p)
+        z = np.array(z)
+        z[z < 0] = 0
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    if z.shape == ():
+        z = z[()]
+    return z
 
 
 @due.dcite(BibTeX("""

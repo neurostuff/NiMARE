@@ -3,30 +3,18 @@ Utilities for coordinate-based meta-analysis estimators
 """
 import numpy as np
 from scipy import ndimage
-from scipy.stats import norm
 
-from ...due import due, Doi, BibTeX
-
-
-def p_to_z(p, sign):
-    """From Neurosynth.
-    """
-    p = p/2  # convert to two-tailed
-    # prevent underflow
-    p[p < 1e-240] = 1e-240
-    # Convert to z and assign tail
-    z = np.abs(norm.ppf(p)) * sign
-    # Set very large z's to max precision
-    z[np.isinf(z)] = norm.ppf(1e-240)*-1
-    return z
+from ...due import due, Doi
 
 
 def compute_ma(shape, ijk, kernel):
     """
     Generate modeled activation (MA) maps.
-    Replaces the values around each focus in ijk with the contrast-specific kernel.
-    Takes the element-wise maximum when looping through foci, which accounts for foci
-    which are near to one another and may have overlapping kernels.
+    Replaces the values around each focus in ijk with the contrast-specific
+    kernel. Takes the element-wise maximum when looping through foci, which
+    accounts for foci which are near to one another and may have overlapping
+    kernels.
+    
     Parameters
     ----------
     shape : tuple
