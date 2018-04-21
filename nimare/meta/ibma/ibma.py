@@ -19,6 +19,9 @@ from ..base import MetaResult
 from ...utils import null_to_p, p_to_z
 from ...due import due, BibTeX
 
+global matlab
+matlab = True
+
 
 @due.dcite(BibTeX("""
            @article{fisher1932statistical,
@@ -63,12 +66,13 @@ def fishers(z_maps, mask, corr='FWE'):
     sign[sign == 0] = 1
 
     k = z_maps.shape[0]
-    # one-tailed method
-    # ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0, scale=1)),
-    #                            axis=0)
     # two-tailed method
     ffx_stat_map = -2 * np.sum(np.log(stats.norm.sf(np.abs(z_maps), loc=0,
                                                     scale=1)*2), axis=0)
+    if matlab:
+        # one-tailed method
+        ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0, scale=1)),
+                                   axis=0)
     p_map = stats.chi2.sf(ffx_stat_map, 2*k)
 
     # Multiple comparisons correction
@@ -163,6 +167,11 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
         t_map, p_map = stats.ttest_1samp(z_maps, popmean=0, axis=0)
         t_map[np.isnan(t_map)] = 0
         p_map[np.isnan(p_map)] = 1
+
+        if matlab:
+            # MATLAB one-tailed method
+            p_map = stats.t.cdf(-t_map, df=z_maps.shape[0]-1)
+
         if null == 'empirical':
             k = z_maps.shape[0]
             p_map = np.ones(t_map.shape)
@@ -211,10 +220,11 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
             z_map = np.sum(z_maps, axis=0) / np.sqrt(k)
             sign = np.sign(z_map)
             sign[sign == 0] = 1
-            # one-tailed method
-            # p_map = stats.norm.cdf(-z_map, loc=0, scale=1)
             # two-tailed method
             p_map = stats.norm.sf(np.abs(z_map)) * 2
+            if matlab:
+                # one-tailed method
+                p_map = stats.norm.cdf(-z_map, loc=0, scale=1)
 
             # Multiple comparisons correction
             if corr is not None:
@@ -325,10 +335,11 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE'):
     weighted_z_maps = z_maps * np.sqrt(sample_sizes)[:, None]
     ffx_stat_map = np.sum(weighted_z_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
 
-    # one-tailed method
-    # p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
     # two-tailed method
     p_map = stats.norm.sf(np.abs(ffx_stat_map)) * 2
+    if matlab:
+        # one-tailed method
+        p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
 
     # Multiple comparisons correction
     if corr is not None:
@@ -410,6 +421,11 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     con_maps = con_maps / np.std(con_maps, axis=1)[:, None]
     t_map, p_map = stats.ttest_1samp(con_maps, popmean=0, axis=0)
     t_map[np.isnan(t_map)] = 0
+    p_map[np.isnan(p_map)] = 1
+
+    if matlab:
+        # MATLAB one-tailed method
+        p_map = stats.t.cdf(-t_map, df=con_maps.shape[0]-1)
 
     if null == 'empirical':
         k = con_maps.shape[0]
@@ -532,16 +548,18 @@ def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True,
     else:
         raise Exception('Unequal variances not available yet.')
 
-    # MATLAB one-tailed method
-    # p_map = stats.t.cdf(-ffx_stat_map, df=dof)
     # two-tailed method
     p_map = stats.t.sf(np.abs(ffx_stat_map), df=dof) * 2
     p_map[np.isnan(p_map)] = 1  # reduces similarity to MATLAB but is necessary
+    if matlab:
+        # MATLAB one-tailed method
+        p_map = stats.t.cdf(-ffx_stat_map, df=dof)
 
     # Multiple comparisons correction
     if corr is not None:
         _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False, returnsorted=False)
+                                            is_sorted=False,
+                                            returnsorted=False)
     else:
         p_corr_map = p_map.copy()
 
@@ -767,6 +785,8 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     pos_z_map = apply_mask(nib.load(cl_res.outputs.threshold_file), mask)
     neg_z_map = apply_mask(nib.load(cl2_res.outputs.threshold_file), mask)
     thresh_z_map = pos_z_map - neg_z_map
+    if matlab:
+        thresh_z_map = pos_z_map
 
     print('Cleaning up...')
     rmtree(work_dir)
@@ -776,8 +796,8 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     out_p_map = stats.norm.sf(abs(out_z_map)) * 2
     log_p_map = -np.log10(out_p_map)
     result = MetaResult(mask=mask, cope=out_cope_map, z=out_z_map,
-                        thresh_z=thresh_z_map,
-                        t=out_t_map, p=out_p_map, log_p=log_p_map)
+                        thresh_z=thresh_z_map, t=out_t_map, p=out_p_map,
+                        log_p=log_p_map)
     return result
 
 
