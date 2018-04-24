@@ -142,7 +142,7 @@ class MKDAKernel(KernelEstimator):
             data = self.coordinates.loc[self.coordinates['id'] == id_]
             kernel_data = np.zeros(dims)
             for ijk in data[['i', 'j', 'k']].values:
-                xx, yy, zz = [slice(-r / vox_dims[i], r / vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
+                xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
                 sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
                 sphere = np.round(sphere.T + ijk)
@@ -210,7 +210,7 @@ class KDAKernel(KernelEstimator):
             data = self.coordinates.loc[self.coordinates['id'] == id_]
             kernel_data = np.zeros(dims)
             for ijk in data[['i', 'j', 'k']].values:
-                xx, yy, zz = [slice(-r / vox_dims[i], r / vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
+                xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
                 sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
                 sphere = np.round(sphere.T + ijk)
