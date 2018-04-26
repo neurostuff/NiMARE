@@ -68,9 +68,8 @@ class ALEKernel(KernelEstimator):
 
             if fwhm is not None:
                 assert np.isfinite(fwhm), 'FWHM must be finite number'
-                _, kern = get_ale_kernel(self.mask, fwhm=fwhm)
                 if fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(self.mask, n=n_subjects)
+                    _, kern = get_ale_kernel(self.mask, fwhm=fwhm)
                     kernels[fwhm] = kern
                 else:
                     kern = kernels[fwhm]
