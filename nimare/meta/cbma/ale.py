@@ -129,11 +129,12 @@ class ALE(CBMAEstimator):
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
         labeled_matrix = ndimage.measurements.label(vthresh_z_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_sizes = clust_sizes[1:]  # first is zeros
+        clust_sizes = clust_sizes
         clust_size_thresh = np.percentile(perm_clust_sizes, percentile)
         z_map = unmask(z_values, self.mask).get_data()
         cfwe_map = np.zeros(self.mask.shape)
         for i, clust_size in enumerate(clust_sizes):
+            # Skip zeros
             if clust_size >= clust_size_thresh and i > 0:
                 clust_idx = np.where(labeled_matrix == i)
                 cfwe_map[clust_idx] = z_map[clust_idx]
