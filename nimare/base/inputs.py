@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft=python sts=4 ts=4 sw=4 et:
 """
 Input classes for nimare data.
 """
@@ -40,7 +37,7 @@ class Image(Mappable):
         pass
 
 
-class ActivationSet(Mappable):
+class CoordinateSet(Mappable):
     """Container for peak information, with optional additional metadata (e.g.,
     intensity values).
     """

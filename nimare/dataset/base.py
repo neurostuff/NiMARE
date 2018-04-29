@@ -1,10 +1,7 @@
-# -*- coding: utf-8 -*-
-# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft=python sts=4 ts=4 sw=4 et:
 """
 Base classes for datasets.
 """
-from ..base import ConnMatrix, Image, ActivationSet, Surface
+from ..base import ConnMatrix, Image, CoordinateSet, Surface
 from nimare.utils import listify
 
 
@@ -30,26 +27,26 @@ class Contrast(object):
     """Container for contrasts (aka experiments or comparisons) nested within
     studies.
     Should store an arbitrary number of ConnMatrices, Images, and Surfaces,
-    along with at most one ActivationSet.
+    along with at most one CoordinateSet.
     """
 
-    def __init__(self, images=None, conn_matrices=None, activations=None,
+    def __init__(self, images=None, conn_matrices=None, coordinates=None,
                  surfaces=None):
         # Add validation method instead of doing this here. That way it can be
         # applied to other objects. Should check things like name, min/max,
 
         self.images = []
-        self.activations = []
+        self.coordinates = []
         self.connectomes = []
         self.surfaces = []
 
         if images:
             self.add_images(images)
 
-        if not isinstance(activations, ActivationSet) and activations is not None:
-            raise ValueError('Input activations must be ActivationSet or None')
+        if not isinstance(coordinates, CoordinateSet) and coordinates is not None:
+            raise ValueError('Input coordinates must be CoordinateSet or None')
         else:
-            self.coordinates = activations
+            self.coordinates = coordinates
 
         if not isinstance(conn_matrices, list):
             conn_matrices = [conn_matrices]

@@ -1,128 +1,17 @@
-# -*- coding: utf-8 -*-
-# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft=python sts=4 ts=4 sw=4 et:
 """
 Classes for representing datasets of images and/or coordinates.
 """
 from __future__ import print_function
 import json
-import time
 import gzip
 import pickle
-from os import mkdir
-from os.path import join, isdir, isfile
+from os.path import join
+
+import numpy as np
 import pandas as pd
-from pyneurovault import api
-from ..utils import get_resource_path
-from .extract import (NeuroVaultDataSource, NeurosynthDataSource,
-                      BrainSpellDataSource)
+import nibabel as nib
 
-
-def to_chunks(l, n):
-    """Yield successive n-sized chunks from l."""
-    for i in xrange(0, len(l), n):
-        yield l[i:i + n]
-
-
-def download_combined_database(out_dir, overwrite=False):
-    """
-    Download coordinates/annotations from brainspell and images/annotations
-    from Neurovault.
-
-    Currently, the largest barrier is the lack of links between experiments
-    (tables) in brainspell/NeuroSynth and those in NeuroVault. The closest we
-    have is overall papers, via DOIs.
-
-    Additional problems:
-    -   Does NeuroVault have standard error maps?
-        -   If so, I doubt there's any way to associate a given SE map and beta
-            map within a collection.
-    -   How should space be handled?
-        -   Should everything be resliced and transformed to the same space at
-            this stage or later on?
-        -   How can we link a target template (for images) to a target space
-            (for coordinates)?
-        -   Should we even allow custom targets? Maybe we just limit it to 2mm
-            and 1mm MNI templates.
-
-    Parameters
-    ----------
-    out_dir : :obj:`str`
-        Folder in which to write out Dataset object and subfolders containing
-        images.
-    overwrite: :obj:`bool`, optional
-        Whether to overwrite existing database, if one exists in `out_dir`.
-        Defaults to False.
-    """
-    # Download collections metadata from Neurovault
-    collections_file = join(out_dir, 'neurovault_collections.csv')
-    if overwrite or not isfile(collections_file):
-        colls_df = api.get_collections()
-        colls_df.to_csv(collections_file, index=False, encoding='utf-8')
-    else:
-        colls_df = pd.read_csv(collections_file, encoding='utf-8')
-
-    # Only include collections from published papers (or preprints)
-    papers_file = join(out_dir, 'neurovault_papers.csv')
-    if overwrite or not isfile(papers_file):
-        paper_df = colls_df.dropna(subset=['DOI'])
-        paper_df.to_csv(papers_file, index=False, encoding='utf-8')
-    else:
-        paper_df = pd.read_csv(papers_file, encoding='utf-8')
-
-    # Get metadata for individual images from valid collections
-    papers_metadata_file = join(out_dir, 'neurovault_papers_metadata.csv')
-    if overwrite or not isfile(papers_metadata_file):
-        valid_collections = sorted(paper_df['collection_id'].tolist())
-
-        # Sleep between get_images calls to avoid spamming Neurovault
-        image_dfs = []
-        for chunk in to_chunks(valid_collections, 500):
-            image_dfs.append(api.get_images(collection_pks=chunk))
-            time.sleep(10)
-
-        image_df = pd.concat(image_dfs)
-        image_df.to_csv(papers_metadata_file, index=False, encoding='utf-8')
-    else:
-        image_df = pd.read_csv(papers_metadata_file, encoding='utf-8')
-
-    # Reduce images database according to additional criteria
-    # Only keep unthresholded, MNI, group level fMRI maps
-    red_df = image_df.loc[image_df['modality'] == 'fMRI-BOLD']
-    red_df = red_df.loc[red_df['image_type'] == 'statistic_map']
-    red_df = red_df.loc[red_df['analysis_level'] == 'group']
-    red_df = red_df.loc[red_df['is_thresholded'] is False]
-    red_df = red_df.loc[red_df['not_mni'] is False]
-
-    # Look for relevant metadata
-    red_df = red_df.dropna(subset=['cognitive_paradigm_cogatlas'])
-
-    ## MFX/FFX GLMs need contrast (beta) + standard error
-    mffx_df = red_df.loc[red_df['map_type'] == 'univariate-beta map']
-
-    ## RFX GLMs need contrast (beta)
-    rfx_df = red_df.loc[red_df['map_type'] == 'univariate-beta map']
-
-    ## Stouffer's, Stouffer's RFX, and Fisher's IBMAs can use Z maps.
-    # T and F maps can be transformed into Z maps, but T maps need sample size.
-    # Only keep test statistic maps
-    acc_map_types = ['Z map', 'T map', 'F map']
-    st_df = red_df.loc[red_df['map_type'].isin(acc_map_types)]
-    keep_idx = st_df['map_type'].isin(['Z map', 'F map'])
-    keep_idx2 = (st_df['map_type'] == 'T map') & ~pd.isnull(st_df['number_of_subjects'])
-    keep_idx = keep_idx | keep_idx2
-    st_df = st_df.loc[keep_idx]
-
-    ## Weighted Stouffer's IBMAs need Z + sample size.
-    st_df['id_str'] = st_df['image_id'].astype(str).str.zfill(6)
-
-    if not isdir(out_dir):
-        mkdir(out_dir)
-        api.download_images(out_dir, red_df, target=None, resample=False)
-    elif overwrite:
-        # clear out out_dir
-        raise Exception('Currently not prepared to overwrite database.')
-        api.download_images(out_dir, red_df, target=None, resample=False)
+from ..utils import tal2mni, mni2tal, mm2vox, get_mask
 
 
 class Database(object):
@@ -136,10 +25,15 @@ class Database(object):
         Json file containing dictionary with database information.
     """
     def __init__(self, database_file):
-        with open(database_file, 'r') as fo:
-            self.data = json.load(fo)
+        with open(database_file, 'r') as f_obj:
+            self.data = json.load(f_obj)
+        ids = []
+        for pid in self.data.keys():
+            for cid in self.data[pid]['contrasts'].keys():
+                ids.append('{0}-{1}'.format(pid, cid))
+        self.ids = ids
 
-    def get_dataset(self, search='', algorithm=None, target=None):
+    def get_dataset(self, ids=None, search='', algorithm=None, target='Mni152_2mm'):
         """
         Retrieve files and/or metadata from the current Dataset.
 
@@ -158,9 +52,10 @@ class Database(object):
             A Dataset object containing selection of database.
 
         """
-        if algorithm:
-            req_data = algorithm.req_data
-            temp = [stud for stud in self.data if stud.has_data(req_data)]
+        #if algorithm:
+        #    req_data = algorithm.req_data
+        #    temp = [stud for stud in self.data if stud.has_data(req_data)]
+        return Dataset(self, ids=ids, target=target)
 
 
 class Dataset(object):
@@ -170,16 +65,110 @@ class Dataset(object):
 
     Parameters
     ----------
-    dataset_file : :obj:`str`
-        Json file containing dictionary with database information.
+    database : :obj:`nimare.dataset.Database`
+        Database object to be transformed into a dataset.
+    ids : :obj:`list`
+        List of contrast IDs to be taken from the database and kept in the dataset.
+    target : :obj:`str`
+        Desired coordinate space for coordinates. Names follow NIDM convention.
     """
-    def __init__(self, dataset_file):
-        with open(dataset_file, 'r') as fo:
-            self.data = json.load(fo)
+    def __init__(self, database, ids=None, target='Mni152_2mm',
+                 mask_file=None):
+        if mask_file is None:
+            mask_file = get_mask(target)
+        self.mask = nib.load(mask_file)
+
+        if ids is None:
+            self.data = database.data
+            ids = database.ids
+        else:
+            data = {}
+            for id_ in ids:
+                pid, expid = id_.split('-')
+                if pid not in data.keys():
+                    data[pid] = database.data[pid]
+                    data[pid]['contrasts'] = {}
+                data[pid]['contrasts'][expid] = database.data[pid]['contrasts'][expid]
+            self.data = data
+        self.ids = ids
+        self.coordinates = None
+        self.space = target
+        self._load_coordinates()
+
+    def _load_coordinates(self):
+        """
+        """
+        # Required columns
+        columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'n', 'space']
+        core_columns = columns[:]  # Used in contrast for loop
+
+        all_dfs = []
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                if 'coords' not in self.data[pid]['contrasts'][expid].keys():
+                    continue
+
+                exp_columns = core_columns[:]
+                exp = self.data[pid]['contrasts'][expid]
+
+                # Required info (ids, x, y, z, space)
+                n_coords = len(exp['coords']['x'])
+                rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
+                sample_size = exp.get('sample_sizes', np.nan)
+                if not isinstance(sample_size, list):
+                    sample_size = [sample_size]
+                sample_size = np.array([n for n in sample_size if n != None])
+                sample_size = np.mean(sample_size)
+                sample_size = np.array([sample_size] * n_coords)
+                space = exp['coords'].get('space')
+                space = np.array([space] * n_coords)
+                temp_data = np.vstack((rep_id,
+                                       np.array(exp['coords']['x']),
+                                       np.array(exp['coords']['y']),
+                                       np.array(exp['coords']['z']),
+                                       sample_size,
+                                       space))
+
+                # Optional information
+                for k in list(set(exp['coords'].keys()) - set(columns)):
+                    k_data = exp['coords'][k]
+                    if not isinstance(k_data, list):
+                        k_data = np.array([k_data] * n_coords)
+                    exp_columns.append(k)
+
+                    if k not in columns:
+                        columns.append(k)
+                    temp_data = np.vstack((temp_data, k_data))
+
+                # Place data in list of dataframes to merge
+                con_df = pd.DataFrame(temp_data.T, columns=exp_columns)
+                all_dfs.append(con_df)
+        df = pd.concat(all_dfs, axis=0, join='outer')
+        df = df[columns].reset_index()
+        df = df.replace(to_replace='None', value=np.nan)
+        df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
+
+        # Now to apply transformations!
+        if 'mni' in self.space.lower():
+            transform = {'TAL': tal2mni,
+                         }
+        elif 'tal' in self.space.lower():
+            transform = {'MNI': mni2tal,
+                         }
+
+        for trans in transform.keys():
+            alg = transform[trans]
+            idx = df['space'] == trans
+            df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
+            df.loc[idx, 'space'] = self.space
+        xyz = df[['x', 'y', 'z']].values
+        ijk = pd.DataFrame(mm2vox(xyz, self.mask.affine), columns=['i', 'j', 'k'])
+        df = pd.concat([df, ijk], axis=1)
+        self.coordinates = df
 
     def has_data(self, dat_str):
         """
-        Check if an experiment has necessary data (e.g., sample size or some
+        Check if an contrast has necessary data (e.g., sample size or some
         image type).
         """
         dat_str = dat_str.split(' AND ')
@@ -223,13 +212,19 @@ class Dataset(object):
     def get_coordinates(self):
         pass
 
-    def save(self, filename):
+    def save(self, filename, compress=True):
         """
         Pickle the Dataset instance to the provided file.
-        If the filename ends with 'z', gzip will be used to write out a
-        compressed file. Otherwise, an uncompressed file will be created.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            File to which dataset will be saved.
+        compress : :obj:`bool`, optional
+            If True, the file will be compressed with gzip. Otherwise, the
+            uncompressed version will be saved. Default = True.
         """
-        if filename.endswith('z'):
+        if compress:
             with gzip.GzipFile(filename, 'wb') as file_object:
                 pickle.dump(self, file_object)
         else:
@@ -237,14 +232,25 @@ class Dataset(object):
                 pickle.dump(self, file_object)
 
     @classmethod
-    def load(cls, filename):
+    def load(cls, filename, compressed=True):
         """
         Load a pickled Dataset instance from file.
-        If the filename ends with 'z', it will be assumed that the file is
-        compressed, and gzip will be used to load it. Otherwise, it will
-        be assumed that the file is not compressed.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            Name of file containing dataset.
+        compressed : :obj:`bool`, optional
+            If True, the file is assumed to be compressed and gzip will be used
+            to load it. Otherwise, it will assume that the file is not
+            compressed. Default = True.
+
+        Returns
+        -------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Loaded dataset object.
         """
-        if filename.endswith('z'):
+        if compressed:
             try:
                 with gzip.GzipFile(filename, 'rb') as file_object:
                     dataset = pickle.load(file_object)
