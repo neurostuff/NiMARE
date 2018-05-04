@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft=python sts=4 ts=4 sw=4 et:
 """
 Utilities
 """
@@ -8,24 +5,122 @@ from __future__ import division
 
 from os.path import abspath, join, dirname, sep
 
-import nibabel as nib
-from scipy import signal
 import numpy as np
-import numpy.linalg as npl
+import nibabel as nib
+from scipy import stats
+from scipy.special import ndtri
 
 from .due import due, Doi, BibTeX
 
 
-def intersection(alpha, beta):
-    """Return subset of alpha and beta that are present in both.
-    """
-    return beta
+def get_template(space='Mni305_1mm'):
+    if space == 'Mni305_1mm':
+        template_file = join(get_resource_path(), 'templates/MNI305_1mm.nii.gz')
+    else:
+        raise ValueError('Space {0} not supported'.format(space))
+    return template_file
 
 
-def diff(alpha, beta):
-    """Return subset of alpha that is not present in beta.
+def get_mask(space='Mni305_1mm'):
+    if space == 'Mni305_1mm':
+        mask_file = join(get_resource_path(), 'templates/MNI305_1mm_mask.nii.gz')
+    elif space == 'Mni152_2mm':
+        mask_file = join(get_resource_path(), 'templates/MNI152_2mm_mask.nii.gz')
+    else:
+        raise ValueError('Space {0} not supported'.format(space))
+    return mask_file
+
+
+def null_to_p(test_value, null_array, tail='two'):
+    """Return two-sided p-value for test value against null array.
     """
-    return alpha
+    if tail == 'two':
+        p_value = (50 - np.abs(stats.percentileofscore(null_array, test_value) - 50.)) * 2. / 100.
+    elif tail == 'upper':
+        p_value = 1 - (stats.percentileofscore(null_array, test_value) / 100.)
+    elif tail == 'lower':
+        p_value = stats.percentileofscore(null_array, test_value) / 100.
+    else:
+        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
+    return p_value
+
+
+def p_to_z(p, tail='two'):
+    """Convert p-values to z-values.
+    """
+    eps = np.spacing(1)
+    p = np.array(p)
+    p[p < eps] = eps
+    if tail == 'two':
+        z = ndtri(1 - (p / 2))
+        z = np.array(z)
+    elif tail == 'one':
+        z = ndtri(1 - p)
+        z = np.array(z)
+        z[z < 0] = 0
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    if z.shape == ():
+        z = z[()]
+    return z
+
+
+@due.dcite(BibTeX("""
+           @article{hughett2007accurate,
+             title={Accurate Computation of the F-to-z and t-to-z Transforms
+                    for Large Arguments},
+             author={Hughett, Paul and others},
+             journal={Journal of Statistical Software},
+             volume={23},
+             number={1},
+             pages={1--5},
+             year={2007},
+             publisher={Foundation for Open Access Statistics}
+           }
+           """),
+           description='Introduces T-to-Z transform.')
+@due.dcite(Doi('10.5281/zenodo.32508'),
+           description='Python implementation of T-to-Z transform.')
+def t_to_z(t_values, dof):
+    """
+    From Vanessa Sochat's TtoZ package.
+    """
+    # Select just the nonzero voxels
+    nonzero = t_values[t_values != 0]
+
+    # We will store our results here
+    z_values = np.zeros(len(nonzero))
+
+    # Select values less than or == 0, and greater than zero
+    c = np.zeros(len(nonzero))
+    k1 = (nonzero <= c)
+    k2 = (nonzero > c)
+
+    # Subset the data into two sets
+    t1 = nonzero[k1]
+    t2 = nonzero[k2]
+
+    # Calculate p values for <=0
+    p_values_t1 = stats.t.cdf(t1, df=dof)
+    z_values_t1 = stats.norm.ppf(p_values_t1)
+
+    # Calculate p values for > 0
+    p_values_t2 = stats.t.cdf(-t2, df=dof)
+    z_values_t2 = -stats.norm.ppf(p_values_t2)
+    z_values[k1] = z_values_t1
+    z_values[k2] = z_values_t2
+
+    # Write new image to file
+    out = np.zeros(t_values.shape)
+    out[t_values != 0] = z_values
+    return out
+
+
+def listify(obj):
+    ''' Wraps all non-list or tuple objects in a list; provides a simple way
+    to accept flexible arguments. '''
+    return obj if isinstance(obj, (list, tuple, type(None))) else [obj]
 
 
 def round2(ndarray):
@@ -60,101 +155,8 @@ def mm2vox(xyz, affine):
     From here:
     http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
     """
-    ijk = nib.affines.apply_affine(npl.inv(affine), xyz)
+    ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz)
     return ijk
-
-
-def thresh_str(num):
-    """
-    Create string of decimal values from number.
-    """
-    str_ = str(num - int(num))[2:]
-    return str_
-
-
-@due.dcite(BibTeX("""
-    @book{penny2011statistical,
-    title={Statistical parametric mapping: the analysis of functional brain images},
-    author={Penny, William D and Friston, Karl J and Ashburner, John T and Kiebel, Stefan J and Nichols, Thomas E},
-    year={2011},
-    publisher={Academic press}
-    }
-    """), 'Smoothing function originally taken from SPM MATLAB code.')
-def mem_smooth_64bit(data, fwhm, V):
-    """
-    Originally an SPM function translated from MATLAB.
-    TODO: Add comments
-    """
-    eps = np.spacing(1)  # pylint: disable=no-member
-    vx = np.sqrt(np.sum(V.affine[:3, :3]**2, axis=1))
-    s = (fwhm / vx / np.sqrt(8 * np.log(2.)) + eps) ** 2  # pylint: disable=no-member
-
-    r = [{} for _ in range(3)]
-    for i in range(3):
-        r[i]['s'] = int(np.ceil(3.5 * np.sqrt(s[i])))
-        x = np.array(range(-int(r[i]['s']), int(r[i]['s'])+1))
-        r[i]['k'] = np.exp(-0.5 * (x ** 2) / s[i]) / np.sqrt(2 * np.pi * s[i])
-        r[i]['k'] = r[i]['k'] / np.sum(r[i]['k'])
-
-    buff = np.zeros((data.shape[0], data.shape[1], (r[2]['s']*2)+1))
-    sdata = np.zeros(data.shape)
-
-    k0 = r[0]['k'][None, :]
-    k1 = r[1]['k'][None, :]
-    k2 = r[2]['k'][None, :]
-
-    inter_shape = (data.shape[0] * data.shape[1], r[2]['s']*2+1)
-    final_shape = (data.shape[0], data.shape[1])
-
-    for i in range(data.shape[2]+int(r[2]['s'])):
-        slice_ = (i % (r[2]['s']*2+1))
-        thing = np.array(range(i, i+r[2]['s']*2+1))
-        thing = thing[:, None]
-        other_thing = r[2]['s']*2+1
-        slice2_ = np.squeeze(((thing+1) % other_thing).astype(int))
-
-        if i < data.shape[2]:
-            inter = signal.convolve2d(data[:, :, i], k0, 'same')
-            buff[:, :, slice_] = signal.convolve2d(inter, k1.transpose(),
-                                                   'same')
-        else:
-            buff[:, :, slice_] = 0
-
-        if i >= r[2]['s']:
-            kern = np.zeros(k2.shape).transpose()
-            kern[slice2_, :] = k2.transpose()
-
-            #kern = k2[:, slice2_].transpose()
-            buff2 = np.reshape(buff, inter_shape)
-            buff2 = np.dot(buff2, kern)
-            buff3 = np.reshape(buff2, final_shape)
-            sdata[:, :, i-r[2]['s']] = buff3
-    return sdata
-
-
-def get_kernel(n, template_header):
-    r"""
-    Get kernel using Python implementation of SPM's MemSmooth_64bit and
-    sample size.
-    ED between templates is assumed to be 5.7 mm
-    ..math::
-        Uncertainty_{Templates} = \frac{5.7}{2 *  \
-        \sqrt{\frac{2}{\pi} } } * \sqrt{8 * ln(2) }
-    ED between subjects is assumed to be 11.6m
-    ..math::
-        Uncertainty_{Subjects} = \frac{\frac{11.6}{2 *  \sqrt{\frac{2}{\pi} }\
-        } * \sqrt{8 * ln(2) } }{\sqrt{n} }
-    """
-    data = np.zeros((31, 31, 31))
-    data[15, 15, 15] = 1.
-    # Assuming 5.7 mm ED between templates
-    uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
-    # Assuming 11.6 mm ED between matching points
-    uncertain_subjects = (11.6/(2*np.sqrt(2/np.pi)) * \
-                          np.sqrt(8*np.log(2))) / np.sqrt(n)  # pylint: disable=no-member
-    fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
-    kernel = mem_smooth_64bit(data, fwhm, template_header)
-    return fwhm, kernel
 
 
 @due.dcite(Doi('10.1002/hbm.20345'),
@@ -263,38 +265,10 @@ def mni2tal(coords):
     return out_coords
 
 
-def read_nifti(file_):
-    """
-    Read nifti file and return both matrix and affine.
-    """
-    info = nib.load(file_)
-    affine = info.get_affine()
-    data = np.asarray(np.squeeze(info.get_data()))
-    return data, affine
-
-
-def save_nifti(matrix, filename, affine):
-    """
-    Save matrix to nifti file using affine matrix.
-    """
-    img = nib.Nifti1Image(matrix, affine)
-    img.to_filename(filename)
-
-
-@due.dcite(Doi('10.1016/j.neuroimage.2010.07.033'),
-           description='Introduces the MNI152 template.')
-def cite_mni152():
-    """
-    Dummy function to cite MNI152 paper with duecredit.
-    """
-    pass
-
-
 def get_resource_path():
     """
     Returns the path to general resources, terminated with separator. Resources
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    #return abspath(join(dirname(__file__), pardir, 'resources') + sep)
     return abspath(join(dirname(__file__), 'resources') + sep)

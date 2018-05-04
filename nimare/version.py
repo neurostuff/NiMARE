@@ -47,7 +47,7 @@ Copyright (c) 2018--, NiMARE developers
 """
 
 NAME = "NiMARE"
-MAINTAINER = "NiMARE Developers"
+MAINTAINER = "NiMARE developers"
 DESCRIPTION = description
 LONG_DESCRIPTION = long_description
 URL = "http://github.com/neurostuff/NiMARE"
@@ -60,4 +60,5 @@ MAJOR = _version_major
 MINOR = _version_minor
 MICRO = _version_micro
 VERSION = __version__
-REQUIRES = ["nibabel", "numpy", "scipy", "pandas"]
+REQUIRES = ["nibabel", "numpy", "scipy", "pandas", "statsmodels", "nipype",
+            "scikit-learn", "nilearn", "duecredit"]
