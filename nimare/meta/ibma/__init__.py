@@ -1,9 +1,6 @@
-# -*- coding: utf-8 -*-
-# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft=python sts=4 ts=4 sw=4 et:
 """
 Top-level namespace for meta-analyses.
 """
 
-from .ibma import (MFX_GLM, RFX_GLM, FFX_GLM, Stouffers, StouffersRFX,
-                   WeightedStouffers, Fishers)
+from .ibma import (Stouffers, WeightedStouffers, Fishers, RFX_GLM, FFX_GLM, MFX_GLM,
+                   stouffers, weighted_stouffers, fishers, rfx_glm, ffx_glm, mfx_glm)

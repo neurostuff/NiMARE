@@ -1,23 +1,24 @@
-# -*- coding: utf-8 -*-
-# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft=python sts=4 ts=4 sw=4 et:
 """Base classes for meta-analyses.
 """
 from os import makedirs
 from os.path import exists, join
 from collections import defaultdict
 
-import nibabel as nib
+from abc import ABCMeta, abstractmethod
+from six import with_metaclass
+
+from nilearn.masking import unmask
 
 
 class MetaResult(object):
     """Base class for meta-analytic results.
     Will contain slots for different kinds of results maps (e.g., z-map, p-map)
     """
-    def __init__(self, z=None, p=None, mask=None):
-        self.z = z
-        self.p = p
+    def __init__(self, mask=None, **kwargs):
         self.mask = mask
+        self.images = {}
+        for key, array in kwargs.items():
+            self.images[key] = unmask(array, self.mask)
 
     def save_results(self, output_dir='.', prefix='', prefix_sep='_'):
         """Save results to files.
@@ -28,21 +29,13 @@ class MetaResult(object):
         if not exists(output_dir):
             makedirs(output_dir)
 
-        image_list = self.images.keys()
-        for suffix, dat in self.images.items():
-            if suffix in image_list:
-                filename = prefix + prefix_sep + suffix + '.nii.gz'
-                outpath = join(output_dir, filename)
-                img = nib.Nifti1Image(dat, self.dataset.affine)
-                img.to_filename(outpath)
-
-    def get_images(self, unmask=True):
-        images = {'z': self.z,
-                  'p': self.p}
-        return images
+        for imgtype, img in self.images.items():
+            filename = prefix + prefix_sep + imgtype + '.nii.gz'
+            outpath = join(output_dir, filename)
+            img.to_filename(outpath)
 
 
-class MetaEstimator(object):
+class MetaEstimator(with_metaclass(ABCMeta)):
     """
     Base class for meta-analysis estimators.
 
@@ -54,6 +47,9 @@ class MetaEstimator(object):
       - set_params: overwrite parameters in model from dict
 
     """
+    def __init__(self):
+        pass
+
     @classmethod
     def _get_param_names(cls):
         """Get parameter names for the estimator"""
@@ -137,6 +133,7 @@ class MetaEstimator(object):
 
         return self
 
+    @abstractmethod
     def fit(self, sample):
         """Run meta-analysis on dataset.
         """
