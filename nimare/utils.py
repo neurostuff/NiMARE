@@ -7,28 +7,42 @@ from os.path import abspath, join, dirname, sep
 
 import numpy as np
 import nibabel as nib
+from nilearn import datasets
 from scipy import stats
 from scipy.special import ndtri
 
 from .due import due, Doi, BibTeX
 
 
-def get_template(space='Mni305_1mm'):
-    if space == 'Mni305_1mm':
-        template_file = join(get_resource_path(), 'templates/MNI305_1mm.nii.gz')
+def get_template(space='mni152_1mm', mask=None):
+    if space == 'mni152_1mm':
+        if mask is None:
+            img = nib.load(datasets.fetch_icbm152_2009()['t1'])
+        elif mask == 'brain':
+            img = nib.load(datasets.fetch_icbm152_2009()['mask'])
+        elif mask == 'gm':
+            img = datasets.fetch_icbm152_brain_gm_mask(threshold=0.2)
+        else:
+            raise ValueError('Mask {0} not supported'.format(mask))
+    elif space == 'mni152_2mm':
+        if mask is None:
+            img = datasets.load_mni152_template()
+        elif mask == 'brain':
+            img = datasets.load_mni152_brain_mask()
+        elif mask == 'gm':
+            # this approach seems to approximate the 0.2 thresholded
+            # GM mask pretty well
+            temp_img = datasets.load_mni152_template()
+            data = temp_img.get_data()
+            data = data * -1
+            data[data != 0] += np.abs(np.min(data))
+            data = data > 1200
+            img = nib.Nifti1Image(data, temp_img.affine)
+        else:
+            raise ValueError('Mask {0} not supported'.format(mask))
     else:
         raise ValueError('Space {0} not supported'.format(space))
-    return template_file
-
-
-def get_mask(space='Mni305_1mm'):
-    if space == 'Mni305_1mm':
-        mask_file = join(get_resource_path(), 'templates/MNI305_1mm_mask.nii.gz')
-    elif space == 'Mni152_2mm':
-        mask_file = join(get_resource_path(), 'templates/MNI152_2mm_mask.nii.gz')
-    else:
-        raise ValueError('Space {0} not supported'.format(space))
-    return mask_file
+    return img
 
 
 def null_to_p(test_value, null_array, tail='two'):
