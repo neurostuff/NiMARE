@@ -36,7 +36,7 @@ def get_template(space='mni152_1mm', mask=None):
             data = temp_img.get_data()
             data = data * -1
             data[data != 0] += np.abs(np.min(data))
-            data = data > 1200
+            data = (data > 1200).astype(int)
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
             raise ValueError('Mask {0} not supported'.format(mask))
