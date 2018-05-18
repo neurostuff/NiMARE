@@ -1,9 +1,10 @@
 """Various statistical helper functions"""
+import warnings
 
 import numpy as np
 
 
-def one_way(self, data, n):
+def one_way(data, n):
     """ One-way chi-square test of independence.
     Takes a 1D array as input and compares activation at each voxel to
     proportion expected under a uniform distribution throughout the array.
@@ -21,7 +22,7 @@ def one_way(self, data, n):
     chi2 = t_mss + nt_mss
     return chi2
 
-def two_way(self, cells):
+def two_way(cells):
     """ Two-way chi-square test of independence.
     Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
     dimensions are the contingency table for each of N voxels. Returns an

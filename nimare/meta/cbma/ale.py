@@ -47,34 +47,36 @@ class ALE(CBMAEstimator):
     """
     Activation likelihood estimation
     """
-    def __init__(self, dataset, ids, kernel_estimator=ALEKernel, **kwargs):
+    def __init__(self, dataset, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        self.coordinates = dataset.coordinates
 
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
+        self.ids = None
         self.voxel_thresh = None
         self.clust_thresh = None
         self.corr = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
+    def fit(self, ids, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
             n_cores=4):
         """
         """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.corr = corr
         self.n_iters = n_iters
 
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
 
         max_poss_ale = 1.
@@ -104,7 +106,7 @@ class ALE(CBMAEstimator):
         conn[1, :, :] = 1
 
         # Multiple comparisons correction
-        iter_df = self.coordinates.copy()
+        iter_df = red_coords.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
@@ -293,25 +295,25 @@ class SCALE(CBMAEstimator):
     """
     Specific coactivation likelihood estimation
     """
-    def __init__(self, dataset, ids, ijk=None, kernel_estimator=ALEKernel,
+    def __init__(self, dataset, ijk=None, kernel_estimator=ALEKernel,
                  **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        self.coordinates = dataset.coordinates
 
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
+        self.ids = None
         self.ijk = ijk
         self.n_iters = None
         self.voxel_thresh = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.001, n_iters=10000, n_cores=4):
+    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=4):
         """
         Perform specific coactivation likelihood estimation[1]_ meta-analysis
         on dataset.
@@ -342,9 +344,11 @@ class SCALE(CBMAEstimator):
                revisited: controlling for activation base rates.
                NeuroImage, 99, 559-570.
         """
+        self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.n_iters = n_iters
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
 
         max_poss_ale = 1.
@@ -356,7 +360,7 @@ class SCALE(CBMAEstimator):
 
         ale_values = self._compute_ale(df=None, ma_maps=ma_maps)
 
-        iter_df = self.coordinates.copy()
+        iter_df = red_coords.copy()
         rand_idx = np.random.choice(self.ijk.shape[0],
                                     size=(iter_df.shape[0], n_iters))
         rand_ijk = self.ijk[rand_idx, :]
