@@ -98,13 +98,14 @@ class Fishers(IBMAEstimator):
     Requirements:
         - t OR z
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.results = None
 
-    def fit(self, corr='FWE'):
+    def fit(self, ids, corr='FWE'):
+        self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         result = fishers(z_maps, self.mask, corr=corr)
         self.results = result
@@ -266,17 +267,18 @@ class Stouffers(IBMAEstimator):
     Requirements:
         - z
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.inference = None
         self.null = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, inference='ffx', null='theoretical', n_iters=None,
+    def fit(self, ids, inference='ffx', null='theoretical', n_iters=None,
             corr='FWE'):
+        self.ids = ids
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
@@ -369,13 +371,14 @@ class WeightedStouffers(IBMAEstimator):
         - z
         - n
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.results = None
 
-    def fit(self):
+    def fit(self, ids):
+        self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         sample_sizes = self.dataset.get(self.ids, 'n')
         result = weighted_stouffers(z_maps, sample_sizes, self.mask)
@@ -479,15 +482,16 @@ class RFX_GLM(IBMAEstimator):
     Requirements:
         - con
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.null = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, null='theoretical', n_iters=None, corr='FWE'):
+    def fit(self, ids, null='theoretical', n_iters=None, corr='FWE'):
+        self.ids = ids
         self.null = null
         self.n_iters = n_iters
         con_maps = self.dataset.get(self.ids, 'con')
@@ -583,17 +587,18 @@ class FFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.sample_sizes = None
         self.equal_var = None
 
-    def fit(self, sample_sizes=None, equal_var=True, corr='FWE'):
+    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE'):
         """
         Perform meta-analysis given parameters.
         """
+        self.ids = ids
         self.sample_sizes = sample_sizes
         self.equal_var = equal_var
         con_maps = self.dataset.get(self.ids, 'con')
@@ -810,11 +815,12 @@ class MFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
 
-    def fit(self):
+    def fit(self, ids):
+        self.ids = ids
         con_maps = self.dataset.get(self.ids, 'con')
         var_maps = self.dataset.get(self.ids, 'con_se')
