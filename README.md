@@ -23,6 +23,18 @@ A Python library for coordinate- and image-based meta-analysis.
     - Fisher's meta-analysis
 
 ## Additional functionality
+- Automated annotation (`nimare.annotate`)
+    - Tf-idf vectorization of text (`nimare.annotate.tfidf`)
+    - Ontology-based annotation (`nimare.annotate.ontology`)
+        - Cognitive Paradigm Ontology (`nimare.annotate.ontology.cogpo`)
+        - Cognitive Atlas (`nimare.annotate.ontology.cogat`)
+    - Topic model-based annotation (`nimare.annotate.topic`)
+        - Latent Dirichlet allocation (`nimare.annotate.topic.lda`)
+        - Generalized correspondence latent Dirichlet allocation
+          (`nimare.annotate.topic.gclda`)
+        - Global Vectors for Word Representation model
+          (`nimare.annotate.topic.glove`)
+        - Deep Boltzmann machines (`nimare.annotate.topic.boltzmann`)
 - Functional characterization analysis (`nimare.decode`)
     - Generalized correspondence latent Dirichlet allocation (GCLDA)
     - Neurosynth correlation-based decoding

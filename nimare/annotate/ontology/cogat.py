@@ -1,5 +1,5 @@
 """
-Automated annotation using existing ontologies.
+Automated annotation of Cognitive Atlas labels.
 """
 
 
@@ -10,8 +10,8 @@ def extract_cogat():
     pass
 
 
-def extract_cogpo():
+def expansion():
     """
-    Predict CogPO labels with ATHENA.
+    Perform hierarchical expansion of CogAt labels.
     """
     pass
