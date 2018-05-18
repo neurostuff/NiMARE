@@ -23,6 +23,11 @@ A Python library for coordinate- and image-based meta-analysis.
     - Fisher's meta-analysis
 
 ## Additional functionality
+- Database extraction (`nimare.dataset.extract`)
+    - NeuroVault
+    - Neurosynth
+    - Brainspell
+    - PubMed abstract extraction
 - Functional characterization analysis (`nimare.decode`)
     - BrainMap decoding
     - Neurosynth correlation-based decoding
