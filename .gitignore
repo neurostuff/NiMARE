@@ -1,4 +1,7 @@
 historical/
+doc/_build/
+doc/generated/
+
 #
 # Byte-compiled / optimized / DLL files
 __pycache__/
