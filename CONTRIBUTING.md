@@ -47,7 +47,7 @@ Make sure to [keep your fork up to date][link_updateupstreamwiki] with the maste
 
 Try to keep the changes focused. We've found that working on a [new branch][link_branches] makes it easier to keep your changes targeted.
 
-When you're creating your pull request, please do your best to follow NiMARE's preferred style conventions. Namely, documentation should follow the [numpydoc](https://numpydoc.readthedocs.io/en/latest/) convention and code should adhere to PEP8 as much as possible.
+When you're creating your pull request, please do your best to follow NiMARE's preferred style conventions. Namely, documentation should follow the [numpydoc](https://numpydoc.readthedocs.io/en/latest/) convention and code should adhere to [PEP8](https://www.python.org/dev/peps/pep-0008/) as much as possible.
 
 **4. Submit a [pull request][link_pullrequest].**
 

@@ -24,10 +24,10 @@ A Python library for coordinate- and image-based meta-analysis.
 
 ## Additional functionality
 - Functional characterization analysis (`nimare.decode`)
-    - Generalized correspondence latent Dirichlet allocation (GCLDA)
+    - BrainMap decoding
     - Neurosynth correlation-based decoding
     - Neurosynth MKDA-based decoding
-    - BrainMap decoding
+    - Generalized correspondence latent Dirichlet allocation (GCLDA)
 
 ## Installation
 
@@ -51,3 +51,8 @@ Once inside the container, you can install NiMARE:
 ```
 python /home/neuro/code/NiMARE/setup.py develop
 ```
+
+## Contributing
+
+Please see our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md) for more information on contributing
+to NiMARE.
