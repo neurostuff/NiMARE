@@ -13,6 +13,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from .base import CBMAEstimator
 from .kernel import MKDAKernel, KDAKernel
 from ..base import MetaResult
+from ...stats import one_way, two_way
 from ...utils import vox2mm, null_to_p, p_to_z
 from ...due import due, Doi
 
@@ -216,8 +217,8 @@ class MKDAChi2(CBMAEstimator):
         pFgA_prior = pAgF * prior / pAgF_prior
 
         # One-way chi-square test for consistency of activation
-        pAgF_chi2_vals = self._one_way(np.squeeze(n_selected_active_voxels),
-                                       n_selected)
+        pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels),
+                                 n_selected)
         pAgF_p_vals = special.chdtrc(1, pAgF_chi2_vals)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = p_to_z(pAgF_p_vals, tail='two') * pAgF_sign
@@ -328,8 +329,8 @@ class MKDAChi2(CBMAEstimator):
         pAgU = n_unselected_active_voxels * 1.0 / n_unselected
 
         # One-way chi-square test for consistency of activation
-        pAgF_chi2_vals = self._one_way(np.squeeze(n_selected_active_voxels),
-                                       n_selected)
+        pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels),
+                                 n_selected)
         iter_pAgF_chi2 = np.max(pAgF_chi2_vals)
 
         # Two-way chi-square for specificity of activation
@@ -340,47 +341,6 @@ class MKDAChi2(CBMAEstimator):
         pFgA_chi2_vals = self._two_way(cells)
         iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
         return iter_pAgF_chi2, iter_pFgA_chi2
-
-    def _one_way(self, data, n):
-        """ One-way chi-square test of independence.
-        Takes a 1D array as input and compares activation at each voxel to
-        proportion expected under a uniform distribution throughout the array.
-        Note that if you're testing activation with this, make sure that only
-        valid voxels (e.g., in-mask gray matter voxels) are included in the
-        array, or results won't make any sense!
-        """
-        term = data.astype('float64')
-        no_term = n - term
-        t_exp = np.mean(term, 0)
-        t_exp = np.array([t_exp, ] * data.shape[0])
-        nt_exp = n - t_exp
-        t_mss = (term - t_exp) ** 2 / t_exp
-        nt_mss = (no_term - nt_exp) ** 2 / nt_exp
-        chi2 = t_mss + nt_mss
-        return chi2
-
-    def _two_way(self, cells):
-        """ Two-way chi-square test of independence.
-        Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
-        dimensions are the contingency table for each of N voxels. Returns an
-        array of p-values.
-        """
-        # Mute divide-by-zero warning for bad voxels since we account for that
-        # later
-        warnings.simplefilter("ignore", RuntimeWarning)
-
-        cells = cells.astype('float64')  # Make sure we don't overflow
-        total = np.apply_over_axes(np.sum, cells, [1, 2]).ravel()
-        chi_sq = np.zeros(cells.shape, dtype='float64')
-        for i in range(2):
-            for j in range(2):
-                exp = np.sum(cells[:, i, :], 1).ravel() * \
-                    np.sum(cells[:, :, j], 1).ravel() / total
-                bad_vox = np.where(exp == 0)[0]
-                chi_sq[:, i, j] = (cells[:, i, j] - exp) ** 2 / exp
-                chi_sq[bad_vox, i, j] = 1.0  # Set p-value for invalid voxels to 1
-        chi_sq = np.apply_over_axes(np.sum, chi_sq, [1, 2]).ravel()
-        return chi_sq
 
 
 @due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
