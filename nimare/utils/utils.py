@@ -10,7 +10,7 @@ import nibabel as nib
 from scipy import stats
 from scipy.special import ndtri
 
-from .due import due, Doi, BibTeX
+from ..due import due, Doi, BibTeX
 
 
 def get_template(space='Mni305_1mm'):

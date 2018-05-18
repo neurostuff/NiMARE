@@ -6,11 +6,8 @@ NiMARE: Neuroimaging Meta-Analysis Research Environment
 
 NiMARE is a Python package for neuroimaging meta-analyses.
 
-.. image:: https://circleci.com/gh/ME-ICA/tedana.svg?style=svg
-    :target: https://circleci.com/gh/ME-ICA/tedana
-
-.. image:: http://img.shields.io/badge/License-LGPL%202.0-blue.svg
-   :target: https://opensource.org/licenses/LGPL-2.1
+.. image:: http://img.shields.io/badge/License-MIT-yellow.svg
+   :target: https://opensource.org/licenses/MIT
 
 
 .. toctree::

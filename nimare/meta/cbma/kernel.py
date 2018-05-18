@@ -1,7 +1,6 @@
 """
 Methods for estimating thresholded cluster maps from neuroimaging contrasts
-(Contrasts) from sets of foci and optional additional information (e.g., sample
-size and test statistic values).
+(Contrasts) from sets of foci and optional additional information.
 
 NOTE: Currently imagining output from "dataset.get_coordinates" as a DataFrame
 of peak coords and sample sizes/statistics (a la Neurosynth).

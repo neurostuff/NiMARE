@@ -1,6 +1,25 @@
 API
 ===
 
+:mod:`nimare.dataset`: Dataset IO
+--------------------------------------------------
+
+.. automodule:: nimare.dataset
+   :no-members:
+   :no-inherited-members:
+
+.. autosummary:: nimare.dataset
+   :toctree: generated/
+   :template: module.rst
+
+   nimare.dataset.dataset
+   nimare.dataset.extract
+
+ .. currentmodule:: nimare
+
+ .. _calibration_ref:
+
+
 :mod:`nimare.meta`: Meta-analytic algorithms
 --------------------------------------------------
 
@@ -12,8 +31,12 @@ API
    :toctree: generated/
    :template: module.rst
 
-   nimare.meta.cbma
-   nimare.meta.ibma
+   nimare.meta.ibma.ibma
+   nimare.meta.cbma.kernel
+   nimare.meta.cbma.ale
+   nimare.meta.cbma.mkda
+   nimare.meta.cbma.model
+   nimare.meta.cbma.utils
 
 .. currentmodule:: nimare
 
@@ -30,8 +53,6 @@ API
 .. autosummary:: nimare.decode
    :toctree: generated/
    :template: module.rst
-   :members:
-   :inherited-members:
 
    nimare.decode.discrete
    nimare.decode.continuous
@@ -53,7 +74,8 @@ API
    :toctree: generated/
    :template: module.rst
 
-   nimare.utils
+   nimare.utils.utils
+   nimare.utils.stats
 
 .. currentmodule:: nimare
 
