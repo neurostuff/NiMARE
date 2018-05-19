@@ -73,3 +73,65 @@ class CorrelationDecoder(Decoder):
             out_df.loc[feature, 'r'] = corr
 
         return out_df
+
+
+class CorrelationDistributionDecoder(Decoder):
+    """
+    """
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def fit(self, img, features=None, frequency_threshold=0.001,
+            target_image='z'):
+        """
+        Builds feature-specific distributions of correlations with input image
+        for image-based meta-analytic functional decoding.
+
+        Parameters
+        ----------
+        img : :obj:`nibabel.Nifti1.Nifti1Image`
+            Input image to decode. Must have same affine/dimensions as dataset
+            mask.
+        features : :obj:`list`, optional
+            List of features in dataset annotations to use for decoding.
+            Default is None, which uses all features available.
+        frequency_threshold : :obj:`float`, optional
+            Threshold to apply to dataset annotations. Values greater than or
+            equal to the threshold as assigned as label+, while values below
+            the threshold are considered label-. Default is 0.001.
+        target_image : {'z', 'con'}, optional
+            Image type from database to use for decoding.
+
+        Returns
+        -------
+        out_df : :obj:`pandas.DataFrame`
+            DataFrame with a row for each feature used for decoding and two
+            columns: mean and std. Values describe the distributions of
+            correlation coefficients (in terms of Fisher-transformed z-values).
+        """
+        # Check that input image is compatible with dataset
+        assert np.array_equal(img.affine, self.dataset.mask.affine)
+
+        # Load input data
+        input_data = apply_mask(img, self.dataset.mask)
+
+        if features is None:
+            features = self.dataset.annotations.columns.values
+
+        out_df = pd.DataFrame(index=features, columns=['mean', 'std'],
+                              data=np.zeros(len(features), 2))
+        out_df.index.name = 'feature'
+
+        for feature in features:
+            test_imgs = self.dataset.get_images(features=[feature],
+                                                frequency_threshold=frequency_threshold,
+                                                image_types=[target_image])
+            feature_z_dist = np.zeros(len(test_imgs))
+            for i, test_img in enumerate(test_imgs):
+                feature_data = apply_mask(test_img, self.dataset.mask)
+                corr = np.corrcoef(feature_data, input_data)[0, 1]
+                feature_z_dist[i] = np.arctanh(corr)  # transform to z for normality
+            out_df.loc[feature, 'mean'] = np.mean(feature_z_dist)
+            out_df.loc[feature, 'std'] = np.std(feature_z_dist)
+
+        return out_df
