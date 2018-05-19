@@ -19,9 +19,6 @@ from ..base import MetaResult
 from ...utils import null_to_p, p_to_z
 from ...due import due, BibTeX
 
-global matlab
-matlab = True
-
 
 @due.dcite(BibTeX("""
            @article{fisher1932statistical,
@@ -33,7 +30,7 @@ matlab = True
               }
            """),
            description='Fishers citation.')
-def fishers(z_maps, mask, corr='FWE'):
+def fishers(z_maps, mask, corr='FWE', two_sided=True):
     """
     Run a Fisher's image-based meta-analysis on z-statistic maps.
 
@@ -66,13 +63,15 @@ def fishers(z_maps, mask, corr='FWE'):
     sign[sign == 0] = 1
 
     k = z_maps.shape[0]
-    # two-tailed method
-    ffx_stat_map = -2 * np.sum(np.log(stats.norm.sf(np.abs(z_maps), loc=0,
-                                                    scale=1)*2), axis=0)
-    if matlab:
+
+    if two_sided:
+        # two-tailed method
+        ffx_stat_map = -2 * np.sum(np.log(stats.norm.sf(np.abs(z_maps), loc=0,
+                                                        scale=1)*2), axis=0)
+    else:
         # one-tailed method
-        ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0, scale=1)),
-                                   axis=0)
+        ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0,
+                                                         scale=1)), axis=0)
     p_map = stats.chi2.sf(ffx_stat_map, 2*k)
 
     # Multiple comparisons correction
@@ -104,10 +103,10 @@ class Fishers(IBMAEstimator):
         self.ids = None
         self.results = None
 
-    def fit(self, ids, corr='FWE'):
+    def fit(self, ids, corr='FWE', two_sided=True):
         self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
-        result = fishers(z_maps, self.mask, corr=corr)
+        result = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
         self.results = result
 
 
@@ -123,7 +122,7 @@ class Fishers(IBMAEstimator):
            """),
            description='Stouffers citation.')
 def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
-              corr='FWE'):
+              corr='FWE', two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
 
@@ -169,7 +168,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
         t_map[np.isnan(t_map)] = 0
         p_map[np.isnan(p_map)] = 1
 
-        if matlab:
+        if not two_sided:
             # MATLAB one-tailed method
             p_map = stats.t.cdf(-t_map, df=z_maps.shape[0]-1)
 
@@ -221,9 +220,10 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
             z_map = np.sum(z_maps, axis=0) / np.sqrt(k)
             sign = np.sign(z_map)
             sign[sign == 0] = 1
-            # two-tailed method
-            p_map = stats.norm.sf(np.abs(z_map)) * 2
-            if matlab:
+            if two_sided:
+                # two-tailed method
+                p_map = stats.norm.sf(np.abs(z_map)) * 2
+            else:
                 # one-tailed method
                 p_map = stats.norm.cdf(-z_map, loc=0, scale=1)
 
@@ -277,14 +277,14 @@ class Stouffers(IBMAEstimator):
         self.results = None
 
     def fit(self, ids, inference='ffx', null='theoretical', n_iters=None,
-            corr='FWE'):
+            corr='FWE', two_sided=True):
         self.ids = ids
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
         z_maps = self.dataset.get(self.ids, 'z')
         result = stouffers(z_maps, self.mask, inference=inference, null=null,
-                           n_iters=n_iters, corr=corr)
+                           n_iters=n_iters, corr=corr, two_sided=two_sided)
         self.results = result
 
 
@@ -302,7 +302,7 @@ class Stouffers(IBMAEstimator):
              }
            """),
            description='Weighted Stouffers citation.')
-def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE'):
+def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
 
@@ -337,9 +337,10 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE'):
     weighted_z_maps = z_maps * np.sqrt(sample_sizes)[:, None]
     ffx_stat_map = np.sum(weighted_z_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
 
-    # two-tailed method
-    p_map = stats.norm.sf(np.abs(ffx_stat_map)) * 2
-    if matlab:
+    if two_sided:
+        # two-tailed method
+        p_map = stats.norm.sf(np.abs(ffx_stat_map)) * 2
+    else:
         # one-tailed method
         p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
 
@@ -377,16 +378,17 @@ class WeightedStouffers(IBMAEstimator):
         self.ids = None
         self.results = None
 
-    def fit(self, ids):
+    def fit(self, ids, two_sided=True):
         self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         sample_sizes = self.dataset.get(self.ids, 'n')
-        result = weighted_stouffers(z_maps, sample_sizes, self.mask)
+        result = weighted_stouffers(z_maps, sample_sizes, self.mask,
+                                    two_sided=two_sided)
         self.results = result
 
 
 def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
-            corr='FWE'):
+            corr='FWE', two_sided=True):
     """
     Run a random-effects (RFX) GLM on contrast maps.
 
@@ -426,7 +428,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     t_map[np.isnan(t_map)] = 0
     p_map[np.isnan(p_map)] = 1
 
-    if matlab:
+    if not two_sided:
         # MATLAB one-tailed method
         p_map = stats.t.cdf(-t_map, df=con_maps.shape[0]-1)
 
@@ -490,176 +492,28 @@ class RFX_GLM(IBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, null='theoretical', n_iters=None, corr='FWE'):
+    def fit(self, ids, null='theoretical', n_iters=None, corr='FWE',
+            two_sided=True):
         self.ids = ids
         self.null = null
         self.n_iters = n_iters
         con_maps = self.dataset.get(self.ids, 'con')
         result = rfx_glm(con_maps, self.mask, null=self.null,
-                         n_iters=self.n_iters, corr=corr)
+                         n_iters=self.n_iters, corr=corr, two_sided=two_sided)
         self.results = result
 
 
-def ffx_glm(con_maps, var_maps, sample_sizes, mask, equal_var=True,
-            corr='FWE'):
-    """
-    Run a fixed-effects GLM on contrast and standard error images.
-
-    Parameters
-    ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``con_maps``.
-    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
-        ``var_maps``.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
-    equal_var : :obj:`bool`, optional
-        Whether equal variance is assumed across contrasts. Default is True.
-        False is not yet implemented.
-    corr : :obj:`str` or :obj:`None`, optional
-        Multiple comparisons correction method to employ. May be None.
-
-    Returns
-    -------
-    result : :obj:`nimare.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
-        negative log(p) values.
-    """
-    assert con_maps.shape == var_maps.shape
-    assert con_maps.shape[0] == sample_sizes.shape[0]
-
-    if corr == 'FDR':
-        method = 'fdr_bh'
-    elif corr == 'FWE':
-        method = 'bonferroni'
-    elif corr is None:
-        method = None
-    else:
-        raise ValueError('{0} correction not supported.'.format(corr))
-
-    if equal_var:
-        dof = np.sum(sample_sizes - 1)
-        weighted_con_maps = con_maps * sample_sizes[:, None]
-        adj_con_map = np.sum(weighted_con_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
-        weighted_ss_maps = var_maps * (sample_sizes[:, None] - 1)
-        est_ss_map = np.sqrt(np.sum(weighted_ss_maps, axis=0) / dof)
-        ffx_stat_map = adj_con_map / est_ss_map
-    else:
-        raise Exception('Unequal variances not available yet.')
-
-    # two-tailed method
-    p_map = stats.t.sf(np.abs(ffx_stat_map), df=dof) * 2
-    p_map[np.isnan(p_map)] = 1  # reduces similarity to MATLAB but is necessary
-    if matlab:
-        # MATLAB one-tailed method
-        p_map = stats.t.cdf(-ffx_stat_map, df=dof)
-
-    # Multiple comparisons correction
-    if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False,
-                                            returnsorted=False)
-    else:
-        p_corr_map = p_map.copy()
-
-    # Convert p to z, preserving signs
-    sign = np.sign(ffx_stat_map)
-    sign[sign == 0] = 1
-
-    log_p_map = -np.log10(p_corr_map)
-    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
-    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, z=z_corr_map,
-                        p=p_corr_map, log_p=log_p_map)
-    return result
-
-
-class FFX_GLM(IBMAEstimator):
-    """
-    An image-based meta-analytic test using contrast and standard error images.
-    Don't estimate variance, just take from first level
-
-    Requirements:
-        - con
-        - se
-    """
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        self.ids = None
-        self.sample_sizes = None
-        self.equal_var = None
-
-    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE'):
-        """
-        Perform meta-analysis given parameters.
-        """
-        self.ids = ids
-        self.sample_sizes = sample_sizes
-        self.equal_var = equal_var
-        con_maps = self.dataset.get(self.ids, 'con')
-        var_maps = self.dataset.get(self.ids, 'con_se')
-        k = con_maps.shape[0]
-        if self.sample_sizes is not None:
-            sample_sizes = np.repeat(self.sample_sizes, k)
-        else:
-            sample_sizes = self.dataset.get(self.ids, 'n')
-        result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, corr=corr)
-        self.results = result
-
-
-def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
-            work_dir='mfx_glm'):
-    """
-    Run a mixed-effects GLM on contrast and standard error images.
-
-    Parameters
-    ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``con_maps``.
-    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
-        ``var_maps``.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
-    equal_var : :obj:`bool`, optional
-        Whether equal variance is assumed across contrasts. Default is True.
-        False is not yet implemented.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
-    corr : :obj:`str` or :obj:`None`, optional
-        Multiple comparisons correction method to employ. May be None.
-
-    Returns
-    -------
-    result : :obj:`nimare.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
-        negative log(p) values.
-
-    TODO
-    ----
-    Step 1: Concatenate con_maps into 4D image and save to file in working
-            directory
-    Step 2: Repeat with var_maps
-    Step 3: Write out mask image to file in working directory
-    Step 4: Create design file
-    Step 5: Create t contrast file
-    Step 6: Create covariance split file
-    Step 7: Create DOF file for varcopes
-    Step 8: Run flameo with --runmode=flame1, setting --logdir to working
-            directory
-    """
+def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
+            work_dir='fsl_glm', two_sided=True):
     assert con_maps.shape == se_maps.shape
     assert con_maps.shape[0] == sample_sizes.shape[0]
+
+    if inference == 'mfx':
+        run_mode = 'flame1'
+    elif inference == 'ffx':
+        run_mode = 'fe'
+    else:
+        raise ValueError('Input "inference" must be "mfx" or "ffx".')
 
     if 0 < cdt < 1:
         cdt_z = p_to_z(cdt, tail='two')
@@ -685,6 +539,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     con_maps[np.isnan(con_maps)] = 0
     cope_4d_img = unmask(con_maps, mask)
     se_maps[np.isnan(se_maps)] = 0
+    se_maps = se_maps ** 2  # square SE to get var
     varcope_4d_img = unmask(se_maps, mask)
     dof_maps = np.ones(con_maps.shape)
     for i in range(len(dofs)):
@@ -731,7 +586,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     flameo.inputs.design_file = design_file
     flameo.inputs.t_con_file = tcon_file
     flameo.inputs.mask_file = mask_file
-    flameo.inputs.run_mode = 'flame1'
+    flameo.inputs.run_mode = run_mode
     flameo.inputs.dof_var_cope_file = dof_file
     res = flameo.run()
 
@@ -766,21 +621,6 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     cl.inputs.out_localmax_txt_file = op.join(work_dir, 'lmax_zstat1_tal.txt')
     cl_res = cl.run()
 
-    # Negative clusters
-    cl2 = fsl.model.Cluster()
-    cl2.inputs.threshold = cdt_z
-    cl2.inputs.pthreshold = q
-    cl2.inputs.in_file = op.join(work_dir, 'temp_zstat2.nii.gz')
-    cl2.inputs.cope_file = op.join(work_dir, 'temp_copes2.nii.gz')
-    cl2.inputs.use_mm = True
-    cl2.inputs.find_min = False
-    cl2.inputs.dlh = est_res.outputs.dlh
-    cl2.inputs.volume = est_res.outputs.volume
-    cl2.inputs.out_threshold_file = op.join(work_dir, 'thresh_zstat2.nii.gz')
-    cl2.inputs.connectivity = 26
-    cl2.inputs.out_localmax_txt_file = op.join(work_dir, 'lmax_zstat2_tal.txt')
-    cl2_res = cl2.run()
-
     out_cope_img = nib.load(res.outputs.copes)
     out_t_img = nib.load(res.outputs.tstats)
     out_z_img = nib.load(res.outputs.zstats)
@@ -788,9 +628,28 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     out_t_map = apply_mask(out_t_img, mask)
     out_z_map = apply_mask(out_z_img, mask)
     pos_z_map = apply_mask(nib.load(cl_res.outputs.threshold_file), mask)
-    neg_z_map = apply_mask(nib.load(cl2_res.outputs.threshold_file), mask)
-    thresh_z_map = pos_z_map - neg_z_map
-    if matlab:
+
+    if two_sided:
+        # Negative clusters
+        cl2 = fsl.model.Cluster()
+        cl2.inputs.threshold = cdt_z
+        cl2.inputs.pthreshold = q
+        cl2.inputs.in_file = op.join(work_dir, 'temp_zstat2.nii.gz')
+        cl2.inputs.cope_file = op.join(work_dir, 'temp_copes2.nii.gz')
+        cl2.inputs.use_mm = True
+        cl2.inputs.find_min = False
+        cl2.inputs.dlh = est_res.outputs.dlh
+        cl2.inputs.volume = est_res.outputs.volume
+        cl2.inputs.out_threshold_file = op.join(work_dir,
+                                                'thresh_zstat2.nii.gz')
+        cl2.inputs.connectivity = 26
+        cl2.inputs.out_localmax_txt_file = op.join(work_dir,
+                                                   'lmax_zstat2_tal.txt')
+        cl2_res = cl2.run()
+
+        neg_z_map = apply_mask(nib.load(cl2_res.outputs.threshold_file), mask)
+        thresh_z_map = pos_z_map - neg_z_map
+    else:
         thresh_z_map = pos_z_map
 
     print('Cleaning up...')
@@ -803,6 +662,118 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     result = MetaResult(mask=mask, cope=out_cope_map, z=out_z_map,
                         thresh_z=thresh_z_map, t=out_t_map, p=out_p_map,
                         log_p=log_p_map)
+    return result
+
+
+def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
+            work_dir='mfx_glm', two_sided=True):
+    """
+    Run a fixed-effects GLM on contrast and standard error images.
+
+    Parameters
+    ----------
+    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast maps in the same space, after masking.
+    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast standard error maps in the same space, after
+        masking. Must match shape and order of ``con_maps``.
+    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+        A 1D array of sample sizes associated with contrasts in ``con_maps``
+        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
+        ``var_maps``.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+    cdt : :obj:`float`, optional
+        Cluster-defining p-value threshold.
+    q : :obj:`float`, optional
+        Alpha for multiple comparisons correction.
+    work_dir : :obj:`str`, optional
+        Working directory for FSL flameo outputs.
+    two_sided : :obj:`bool`, optional
+        Whether analysis should be two-sided (True) or one-sided (False).
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
+    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
+                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+    return result
+
+
+class FFX_GLM(IBMAEstimator):
+    """
+    An image-based meta-analytic test using contrast and standard error images.
+    Don't estimate variance, just take from first level
+
+    Requirements:
+        - con
+        - se
+    """
+    def __init__(self, dataset):
+        self.dataset = dataset
+        self.mask = self.dataset.mask
+        self.ids = None
+        self.sample_sizes = None
+        self.equal_var = None
+
+    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
+            two_sided=True):
+        """
+        Perform meta-analysis given parameters.
+        """
+        self.ids = ids
+        self.sample_sizes = sample_sizes
+        self.equal_var = equal_var
+        con_maps = self.dataset.get(self.ids, 'con')
+        var_maps = self.dataset.get(self.ids, 'con_se')
+        if self.sample_sizes is not None:
+            sample_sizes = np.repeat(self.sample_sizes, k)
+        else:
+            sample_sizes = self.dataset.get(self.ids, 'n')
+        result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
+                         equal_var=self.equal_var, corr=corr,
+                         two_sided=two_sided)
+        self.results = result
+
+
+def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
+            work_dir='mfx_glm', two_sided=True):
+    """
+    Run a mixed-effects GLM on contrast and standard error images.
+
+    Parameters
+    ----------
+    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast maps in the same space, after masking.
+    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast standard error maps in the same space, after
+        masking. Must match shape and order of ``con_maps``.
+    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+        A 1D array of sample sizes associated with contrasts in ``con_maps``
+        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
+        ``var_maps``.
+    mask : :obj:`nibabel.Nifti1Image`
+        Mask image, used to unmask results maps in compiling output.
+    cdt : :obj:`float`, optional
+        Cluster-defining p-value threshold.
+    q : :obj:`float`, optional
+        Alpha for multiple comparisons correction.
+    work_dir : :obj:`str`, optional
+        Working directory for FSL flameo outputs.
+    two_sided : :obj:`bool`, optional
+        Whether analysis should be two-sided (True) or one-sided (False).
+
+    Returns
+    -------
+    result : :obj:`nimare.meta.MetaResult`
+        MetaResult object containing maps for test statistics, p-values, and
+        negative log(p) values.
+    """
+    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
+                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
     return result
 
 
@@ -820,7 +791,21 @@ class MFX_GLM(IBMAEstimator):
         self.mask = self.dataset.mask
         self.ids = None
 
-    def fit(self, ids):
+    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
+            two_sided=True):
+        """
+        Perform meta-analysis given parameters.
+        """
         self.ids = ids
+        self.sample_sizes = sample_sizes
+        self.equal_var = equal_var
         con_maps = self.dataset.get(self.ids, 'con')
         var_maps = self.dataset.get(self.ids, 'con_se')
+        if self.sample_sizes is not None:
+            sample_sizes = np.repeat(self.sample_sizes, k)
+        else:
+            sample_sizes = self.dataset.get(self.ids, 'n')
+        result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
+                         equal_var=self.equal_var, corr=corr,
+                         two_sided=two_sided)
+        self.results = result
