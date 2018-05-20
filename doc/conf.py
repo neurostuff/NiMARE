@@ -156,7 +156,7 @@ sphinx_gallery_conf = {
     # path to your examples scripts
     'examples_dirs'     : '../examples',
     # path where to save gallery generated examples
-    'gallery_dirs'      : '_build/examples',
+    'gallery_dirs'      : 'auto_examples',
     'backreferences_dir': '_build/backreferences',
     # Modules for which function level galleries are created.  In
     # this case sphinx_gallery and numpy in a tuple of strings.
@@ -177,10 +177,10 @@ texinfo_documents = [
 def generate_example_rst(app, what, name, obj, options, lines):
     # generate empty examples files, so that we don't get
     # inclusion errors if there are no examples for a class / module
-    folder = os.path.join(app.srcdir, '_build/auto_examples')
+    folder = os.path.join(app.srcdir, 'generated')
     if not os.path.isdir(folder):
         os.makedirs(folder)
-    examples_path = os.path.join(app.srcdir, "_build", "auto_examples",
+    examples_path = os.path.join(app.srcdir, "generated",
                                  "%s.examples" % name)
     if not os.path.exists(examples_path):
         # touch file
