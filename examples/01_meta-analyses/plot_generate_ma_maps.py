@@ -23,7 +23,7 @@ import nimare
 # --------------------------------
 database_file = op.join(nimare.utils.get_resource_path(),
                         'data/nidm_pain_dset_with_subpeaks.json')
-db = nimare.dataset.dataset.Database(database_file)
+db = nimare.dataset.Database(database_file)
 ds = db.get_dataset()
 
 ###############################################################################

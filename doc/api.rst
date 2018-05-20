@@ -1,5 +1,6 @@
-API
-===
+API Reference
+===============
+
 
 :mod:`nimare.dataset`: Dataset IO
 --------------------------------------------------
@@ -10,9 +11,14 @@ API
 
 .. autosummary:: nimare.dataset
    :toctree: generated/
+   :template: class.rst
+
+   nimare.dataset.Database
+   nimare.dataset.Dataset
+
+   :toctree: generated/
    :template: module.rst
 
-   nimare.dataset.dataset
    nimare.dataset.extract
 
  .. currentmodule:: nimare
@@ -36,7 +42,6 @@ API
    nimare.meta.cbma.ale
    nimare.meta.cbma.mkda
    nimare.meta.cbma.model
-   nimare.meta.cbma.utils
 
 .. currentmodule:: nimare
 
