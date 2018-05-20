@@ -1,0 +1,31 @@
+# Python CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-python/ for more details
+#
+version: 2
+jobs:
+  build:
+    docker:
+      - image: neurostuff/nimare-docker:0.0.1
+
+    working_directory: /home/neuro/code/
+
+    steps:
+      - checkout
+
+      - run:
+          name: Create test environment
+          command: |
+            conda create --name venv python=3.6
+            source activate venv
+            pip install pytest
+            pip install -r requirements.txt
+            python setup.py install
+
+      - run:
+          name: Run tests
+          command: |
+            source activate venv
+            py.test ./nimate/tests/
+          no_output_timeout: "40m"
+          post: bash <(curl -s https://codecov.io/bash)
