@@ -9,7 +9,7 @@ API
    :no-inherited-members:
 
 .. autosummary:: nimare.dataset
-   :toctree: generated/
+   :toctree: _build/rst/
    :template: module.rst
 
    nimare.dataset.dataset
@@ -28,7 +28,7 @@ API
    :no-inherited-members:
 
 .. autosummary:: nimare.meta
-   :toctree: generated/
+   :toctree: _build/rst/
    :template: module.rst
 
    nimare.meta.ibma.ibma
@@ -51,7 +51,7 @@ API
    :no-inherited-members:
 
 .. autosummary:: nimare.decode
-   :toctree: generated/
+   :toctree: _build/rst/
    :template: module.rst
 
    nimare.decode.discrete
@@ -71,7 +71,7 @@ API
    :no-inherited-members:
 
 .. autosummary:: nimare.utils
-   :toctree: generated/
+   :toctree: _build/rst/
    :template: module.rst
 
    nimare.utils.utils

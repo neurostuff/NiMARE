@@ -48,7 +48,8 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.todo',
               'numpydoc',
               'sphinx.ext.ifconfig',
-              'sphinx.ext.linkcode']
+              'sphinx.ext.linkcode',
+              'sphinx_gallery.gen_gallery',]
 
 import sphinx
 from distutils.version import LooseVersion
@@ -150,3 +151,53 @@ intersphinx_mapping = {
     'http://nipy.org/nibabel/': None,
     'http://pandas.pydata.org/pandas-docs/stable/': None,
 }
+
+sphinx_gallery_conf = {
+    # path to your examples scripts
+    'examples_dirs'     : '../examples',
+    # path where to save gallery generated examples
+    'gallery_dirs'      : '_build/examples',
+    'backreferences_dir': '_build/backreferences',
+    # Modules for which function level galleries are created.  In
+    # this case sphinx_gallery and numpy in a tuple of strings.
+    'doc_module'        : ('nimare'),
+    }
+
+# -- Options for Texinfo output -------------------------------------------
+
+# Grouping the document tree into Texinfo files. List of tuples
+# (source start file, target name, title, author,
+#  dir menu entry, description, category)
+texinfo_documents = [
+  ('index', 'project-template', u'project-template Documentation',
+   u'Vighnesh Birodkar', 'project-template', 'One line description of project.',
+   'Miscellaneous'),
+]
+
+def generate_example_rst(app, what, name, obj, options, lines):
+    # generate empty examples files, so that we don't get
+    # inclusion errors if there are no examples for a class / module
+    folder = os.path.join(app.srcdir, '_build/auto_examples')
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
+    examples_path = os.path.join(app.srcdir, "_build", "auto_examples",
+                                 "%s.examples" % name)
+    if not os.path.exists(examples_path):
+        # touch file
+        open(examples_path, 'w').close()
+
+
+def setup(app):
+    app.connect('autodoc-process-docstring', generate_example_rst)
+
+# Documents to append as an appendix to all manuals.
+#texinfo_appendices = []
+
+# If false, no module index is generated.
+#texinfo_domain_indices = True
+
+# How to display URL addresses: 'footnote', 'no', or 'inline'.
+#texinfo_show_urls = 'footnote'
+
+# If true, do not generate a @detailmenu in the "Top" node's menu.
+#texinfo_no_detailmenu = False
