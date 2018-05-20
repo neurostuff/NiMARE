@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-def generate(text_df):
+def generate_tfidf(text_df):
     """
     Generate tf-idf weights for unigrams/bigrams derived from textual data.
 
