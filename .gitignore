@@ -2,6 +2,7 @@ historical/
 doc/_build/
 doc/generated/
 doc/auto_examples/
+nimare/resources/data/neurovault-data/
 
 #
 # Byte-compiled / optimized / DLL files
