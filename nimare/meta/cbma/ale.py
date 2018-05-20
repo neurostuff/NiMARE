@@ -238,8 +238,7 @@ class ALE(CBMAEstimator):
         # Convert aleHist into null distribution. The value in each bin
         # represents the probability of finding an ALE value (stored in
         # histBins) of that value or lower.
-        last_used = np.where(ale_hist > 0)[0][-1]
-        null_distribution = ale_hist[:last_used+1] / np.sum(ale_hist)
+        null_distribution = ale_hist / np.sum(ale_hist)
         null_distribution = np.cumsum(null_distribution[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
         return null_distribution
