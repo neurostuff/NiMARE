@@ -1,7 +1,6 @@
 """
 Methods for estimating thresholded cluster maps from neuroimaging contrasts
-(Contrasts) from sets of foci and optional additional information (e.g., sample
-size and test statistic values).
+(Contrasts) from sets of foci and optional additional information.
 
 NOTE: Currently imagining output from "dataset.get_coordinates" as a DataFrame
 of peak coords and sample sizes/statistics (a la Neurosynth).
@@ -43,7 +42,7 @@ class ALEKernel(KernelEstimator):
 
         Returns
         -------
-        imgs : :obj:`list` of `nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.nifti1.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
@@ -122,7 +121,7 @@ class MKDAKernel(KernelEstimator):
 
         Returns
         -------
-        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.nifti1.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
@@ -190,7 +189,7 @@ class KDAKernel(KernelEstimator):
 
         Returns
         -------
-        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.nifti1.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """

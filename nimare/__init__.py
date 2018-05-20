@@ -1,8 +1,9 @@
 """
 NiMARE: Neuroimaging Meta-Analysis Research Environment
 """
-from .dataset import Dataset
+from .dataset import Dataset, Database
 from .meta import cbma
+from .decode import GCLDADiscreteDecoder
 from .version import __version__
 
-del cbma, Dataset
+del cbma, Dataset, Database, GCLDADiscreteDecoder
