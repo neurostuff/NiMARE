@@ -4,6 +4,10 @@ Test nimare.meta.ibma (image-based meta-analytic algorithms).
 from nimare.meta import ibma
 
 
+def test_z_perm():
+    pass
+
+
 def test_stouffers():
     pass
 
@@ -13,6 +17,10 @@ def test_weighted_stouffers():
 
 
 def test_fishers():
+    pass
+
+
+def test_con_perm():
     pass
 
 
