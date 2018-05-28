@@ -1,8 +1,17 @@
 """
-Tf-Idf vectorization of text.
+Text extraction tools.
 """
+import re
+import os.path as op
+
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+from ..utils import get_resource_path
+
+SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
+                       index_col='UK')
+SPELL_DICT = SPELL_DF['US'].to_dict()
 
 
 def generate_tfidf(text_df):
@@ -22,7 +31,7 @@ def generate_tfidf(text_df):
     """
     ids = text_df['id'].tolist()
     text = text_df['text'].tolist()
-    stoplist = '/data/neurosynth/scripts/feature_extraction/stoplist.txt'
+    stoplist = op.join(get_resource_path(), 'neurosynth_stoplist.txt')
     with open(stoplist, 'r') as fo:
         stop_words = fo.read().splitlines()
 
@@ -35,3 +44,14 @@ def generate_tfidf(text_df):
     weights_df = pd.DataFrame(weights, columns=names, index=ids)
     weights_df.index.name = 'id'
     return weights_df
+
+
+def uk_to_us(text):
+    """
+    english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
+    """
+    if isinstance(text, str):
+        # Convert British to American English
+        pattern = re.compile(r'\b(' + '|'.join(SPELL_DICT.keys()) + r')\b')
+        text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
+    return text

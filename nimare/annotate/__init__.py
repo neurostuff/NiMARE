@@ -1,7 +1,7 @@
 """
 Automated annotation tools.
 """
-from .tfidf import generate_tfidf
+from .text import generate_tfidf
 from .topic import BoltzmannModel
 from .ontology import extract_cogat
 
