@@ -1,6 +1,9 @@
 """
 Automated annotation of Cognitive Atlas labels.
 """
+import re
+import time
+
 import numpy as np
 import pandas as pd
 from fuzzywuzzy import fuzz
@@ -12,7 +15,7 @@ from ..text import uk_to_us
 from ...due import due, Doi
 
 
-def longify(df):
+def _longify(df):
     reduced = df[['id', 'name', 'alias']]
     rows = []
     for index, row in reduced.iterrows():
@@ -39,7 +42,7 @@ def _get_ratio(tup):
         return 100
 
 
-def gen_alt_forms(term):
+def _gen_alt_forms(term):
     """
     Generate a list of alternate forms for a given term.
     """
@@ -73,7 +76,7 @@ def gen_alt_forms(term):
     return alt_forms
 
 
-def get_concept_reltype(relationship, direction):
+def _get_concept_reltype(relationship, direction):
     """
     Convert two-part relationship info (relationship type and direction) to
     more parsimonious representation.
@@ -92,7 +95,7 @@ def get_concept_reltype(relationship, direction):
     return new_rel
 
 
-def expand_df(df):
+def _expand_df(df):
     """
     Add alternate forms to DataFrame, then sort DataFrame by alias length
     (for order of extraction from text) and similarity to original name (in
@@ -103,7 +106,7 @@ def expand_df(df):
     new_rows = []
     for index, row in df.iterrows():
         alias = row['alias']
-        alt_forms = gen_alt_forms(alias)
+        alt_forms = _gen_alt_forms(alias)
         for alt_form in alt_forms:
             temp_row = row.copy()
             temp_row['alias'] = alt_form
@@ -119,75 +122,96 @@ def expand_df(df):
     return df
 
 
-def pull_ontology():
-    concepts = get_concept(silent=True).pandas
-    tasks = get_task(silent=True).pandas
-    disorders = get_disorder(silent=True).pandas
+def pull_ontology(out_dir='auto', overwrite=False):
+    if out_dir == 'auto':
+        out_dir = op.join(get_resource_path(), 'ontology')
+    else:
+        out_dir = op.abspath(out_dir)
 
-    # Identifiers and aliases
-    long_concepts = longify(concepts)
-    long_tasks = longify(tasks)
+    ids_file = op.join(out_dir, 'cogat_ids.csv')
+    rels_file = op.join(out_dir, 'cogat_relationships.csv')
+    if overwrite or not all([op.isfile(f) for f in [ids_file, rels_file]]):
+        concepts = get_concept(silent=True).pandas
+        tasks = get_task(silent=True).pandas
+        disorders = get_disorder(silent=True).pandas
 
-    # Disorders currently lack aliases
-    disorders['name'] = disorders['name'].str.lower()
-    disorders = disorders.assign(alias=disorders['name'])
-    disorders = disorders[['id', 'name', 'alias']]
+        # Identifiers and aliases
+        long_concepts = _longify(concepts)
+        long_tasks = _longify(tasks)
 
-    # Combine into id_df
-    id_df = pd.concat((long_concepts, long_tasks, disorders), axis=0)
-    id_df = expand_df(id_df)
-    id_df = id_df.replace('', np.nan)
-    id_df = id_df.dropna(axis=0)
-    id_df = id_df.reset_index(drop=True)
+        # Disorders currently lack aliases
+        disorders['name'] = disorders['name'].str.lower()
+        disorders = disorders.assign(alias=disorders['name'])
+        disorders = disorders[['id', 'name', 'alias']]
 
-    # Relationships
-    relationships = []
-    for id_ in concepts['id'].unique():
-        row = [id_, id_, 'isSelf']
-        relationships.append(row)
-        concept = get_concept(id=id_, silent=True).json
-        for rel in concept['relationships']:
-            reltype = get_concept_reltype(rel['relationship'],
-                                          rel['direction'])
-            if reltype is not None:
-                row = [id_, rel['id'], reltype]
+        # Combine into id_df
+        id_df = pd.concat((long_concepts, long_tasks, disorders), axis=0)
+        id_df = _expand_df(id_df)
+        id_df = id_df.replace('', np.nan)
+        id_df = id_df.dropna(axis=0)
+        id_df = id_df.reset_index(drop=True)
+
+        # Relationships
+        relationships = []
+        for i, id_ in enumerate(concepts['id'].unique()):
+            if i % 100 == 0:
+                time.sleep(5)
+            row = [id_, id_, 'isSelf']
+            relationships.append(row)
+            concept = get_concept(id=id_, silent=True).json
+            for rel in concept['relationships']:
+                reltype = _get_concept_reltype(rel['relationship'],
+                                              rel['direction'])
+                if reltype is not None:
+                    row = [id_, rel['id'], reltype]
+                    relationships.append(row)
+
+        for i, id_ in enumerate(tasks['id'].unique()):
+            if i % 100 == 0:
+                time.sleep(5)
+            row = [id_, id_, 'isSelf']
+            relationships.append(row)
+            task = get_task(id=id_, silent=True).json
+            for rel in task['concepts']:
+                row = [id_, rel['concept_id'], 'measures']
+                relationships.append(row)
+                row = [rel['concept_id'], id_, 'measuredBy']
                 relationships.append(row)
 
-    for id_ in tasks['id'].unique():
-        row = [id_, id_, 'isSelf']
-        relationships.append(row)
-        task = get_task(id=id_, silent=True).json
-        for rel in task['concepts']:
-            row = [id_, rel['concept_id'], 'measures']
+        for i, id_ in enumerate(disorders['id'].unique()):
+            if i % 100 == 0:
+                time.sleep(5)
+            row = [id_, id_, 'isSelf']
             relationships.append(row)
-            row = [rel['concept_id'], id_, 'measuredBy']
-            relationships.append(row)
+            disorder = get_disorder(id=id_, silent=True).json
+            for rel in disorder['disorders']:
+                if rel['relationship'] == 'ISA':
+                    rel_type = 'isA'
+                else:
+                    rel_type = rel['relationship']
+                row = [id_, rel['id'], rel_type]
+                relationships.append(row)
 
-    for id_ in disorders['id'].unique():
-        row = [id_, id_, 'isSelf']
-        relationships.append(row)
-        disorder = get_disorder(id=id_, silent=True).json
-        for rel in disorder['disorders']:
-            if rel['relationship'] == 'ISA':
-                rel_type = 'isA'
-            else:
-                rel_type = rel['relationship']
-            row = [id_, rel['id'], rel_type]
-            relationships.append(row)
+        rel_df = pd.DataFrame(columns=['input', 'output', 'rel_type'],
+                              data=relationships)
+        ctp_df = concepts[['id', 'id_concept_class']]
+        ctp_df = ctp_df.assign(rel_type='inCategory')
+        ctp_df.columns = ['input', 'output', 'rel_type']
+        ctp_df['output'].replace('', np.nan, inplace=True)
+        ctp_df.dropna(axis=0, inplace=True)
+        rel_df = pd.concat((ctp_df, rel_df))
+        rel_df = rel_df.reset_index(drop=True)
+        id_df.to_csv(ids_file, index=False)
+        rel_df.to_csv(rels_file, index=False)
+    else:
+        id_df = pd.read_csv(ids_file)
+        rel_df = pd.read_csv(rels_file)
 
-    rel_df = pd.DataFrame(columns=['input', 'output', 'rel_type'],
-                          data=relationships)
-    ctp_df = concepts[['id', 'id_concept_class']]
-    ctp_df = ctp_df.assign(rel_type='inCategory')
-    ctp_df.columns = ['input', 'output', 'rel_type']
-    ctp_df['output'].replace('', np.nan, inplace=True)
-    ctp_df.dropna(axis=0, inplace=True)
-    rel_df = pd.concat((ctp_df, rel_df))
-    rel_df = rel_df.reset_index(drop=True)
     return id_df, rel_df
 
 
-def generate_weights(id_df, rel_df, weights):
+def _generate_weights(rel_df, weights):
+    # Hierarchical expansion
     def get_weight(rel_type):
         weight = weights.get(rel_type, 0)
         return weight
@@ -215,8 +239,8 @@ def generate_weights(id_df, rel_df, weights):
     weights_df = weights_df.loc[:, all_cols]
 
     # expanding the hierarchical expansion to all related terms
-    # this way, a single dot product will apply counts to all relationship layers
-    expanded = weights_df.copy()
+    # this way, a single dot product will apply counts to all layers
+    expanded_df = weights_df.copy()
     mat = weights_df.values
 
     for i, val in enumerate(weights_df.index):
@@ -232,20 +256,83 @@ def generate_weights(id_df, rel_df, weights):
             # Hopefully this won't mess with weights <1,
             # but will also prevent weights from adding to one another.
             res[res > 1] = 1
-        expanded.loc[val] = np.squeeze(res)
-    return weights_df, expanded
+        expanded_df.loc[val] = np.squeeze(res)
+    return expanded_df
 
 
 @due.dcite(Doi('10.3389/fninf.2011.00017'),
            description='Introduces the Cognitive Atlas.')
-def extract_cogat():
+def extract_cogat(text_df, id_df):
     """
     Extract CogAt terms and perform hierarchical expansion.
+
+    Parameters
+    ----------
+    text : :obj:`pandas.DataFrame`
+        Pandas dataframe with two columns: 'id' and 'text'.
     """
-    pass
+    gazetteer = sorted(id_df['id'].unique().tolist())
+    if 'id' in text_df.columns:
+        text_df.set_index('id', inplace=True)
+
+    # Create regex dictionary
+    regex_dict = {}
+    for term in id_df['alias'].values:
+        term_for_regex = term.replace('(', '\(').replace(')', '\)')
+        regex = '\\b'+term_for_regex+'\\b'
+        pattern = re.compile(regex, re.DOTALL | re.IGNORECASE)
+        regex_dict[term] = pattern
+
+    # Count
+    count_arr = np.zeros((text_df.shape[0], len(gazetteer)))
+    rep_text_df = text_df.copy()
+    c = 0
+    for i, row in text_df.iterrows():
+        text = row['text']
+        text = uk_to_us(text)
+        for term_idx in id_df.index:
+            term = id_df['alias'].loc[term_idx]
+            term_id = id_df['id'].loc[term_idx]
+
+            col_idx = gazetteer.index(term_id)
+
+            pattern = regex_dict[term]
+            count_arr[c, col_idx] += len(re.findall(pattern, text))
+            text = re.sub(pattern, term_id, text)
+            rep_text_df.loc[i, 'text'] = text
+        c += 1
+
+    counts_df = pd.DataFrame(columns=gazetteer, index=text_df.index,
+                             data=count_arr)
+    return counts_df, rep_text_df
 
 
-def expansion():
+def expand_counts(counts_df, rel_df, weights=None):
     """
     Perform hierarchical expansion of CogAt labels.
     """
+    weights_df = _generate_weights(rel_df, weights=weights)
+
+    # First reorg count_df so it has the same columns in the same order as
+    # weight_df
+    counts_columns = counts_df.columns.tolist()
+    weights_columns = weights_df.columns.tolist()
+    w_not_c = set(weights_columns) - set(counts_columns)
+    c_not_w = set(counts_columns) - set(weights_columns)
+    if c_not_w:
+        raise Exception('Columns found in counts but not weights: '
+                        '{0}'.format(', '.join(c_not_w)))
+
+    for col in w_not_c:
+        counts_df[col] = 0
+
+    counts_df = counts_df[weights_columns]
+
+    # Now matrix multiplication
+    counts = counts_df.values
+    weights = weights_df.values
+    weighted = np.dot(counts, weights)
+    weighted_df = pd.DataFrame(index=counts_df.index,
+                               columns=counts_df.columns,
+                               data=weighted)
+    return weighted_df
