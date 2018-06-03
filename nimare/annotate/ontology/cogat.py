@@ -161,7 +161,7 @@ def pull_ontology(out_dir='auto', overwrite=False):
             concept = get_concept(id=id_, silent=True).json
             for rel in concept['relationships']:
                 reltype = _get_concept_reltype(rel['relationship'],
-                                              rel['direction'])
+                                               rel['direction'])
                 if reltype is not None:
                     row = [id_, rel['id'], reltype]
                     relationships.append(row)
