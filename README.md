@@ -61,3 +61,5 @@ python /home/neuro/code/NiMARE/setup.py develop
 
 Please see our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md) for more information on contributing
 to NiMARE.
+
+We ask that all contributions to `NiMARE` respect our [code of conduct](https://github.com/neurostuff/NiMARE/blob/master/CODE_OF_CONDUCT.md).
