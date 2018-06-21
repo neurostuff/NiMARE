@@ -6,7 +6,24 @@ from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
 
 from .utils import weight_priors
-from ..due import due, Doi
+from ..due import due, Doi, BibTeX
+
+
+@due.dcite(BibTeX("""
+    @article{dockes2018text,
+    title={Text to brain: predicting the spatial distribution of neuroimaging
+           observations from text reports},
+    author={Dock{\`e}s, J{\'e}r{\^o}me and Wassermann, Demian and Poldrack,
+            Russell and Suchanek, Fabian and Thirion, Bertrand and
+            Varoquaux, Ga{\"e}l},
+    journal={arXiv preprint arXiv:1806.01139},
+    year={2018}
+    }"""))
+def text2brain():
+    """
+    Perform text-to-image encoding with the text2brain model.
+    """
+    pass
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),

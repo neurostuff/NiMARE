@@ -28,6 +28,7 @@ A Python library for coordinate- and image-based meta-analysis.
     - Neurosynth correlation-based decoding
     - Neurosynth MKDA-based decoding
     - BrainMap decoding
+    - Text2brain encoding
 
 ## Installation
 
