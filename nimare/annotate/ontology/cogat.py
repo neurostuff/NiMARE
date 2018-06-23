@@ -262,6 +262,77 @@ def _generate_weights(rel_df, weights):
 
 @due.dcite(Doi('10.3389/fninf.2011.00017'),
            description='Introduces the Cognitive Atlas.')
+class CogAtLemmatizer(object):
+    """
+    Replace synonyms and abbreviations with Cognitive Atlas identifiers in
+    text.
+
+    Parameters
+    ----------
+    ontology_df : :obj:`pandas.DataFrame`, optional
+        DataFrame with three columns (id, name, alias) and one row for each
+        alias (e.g., synonym or abbreviation) for each term in the Cognitive
+        Atlas. If None, loads ontology file from resources folder.
+
+    Attributes
+    ----------
+    ontology : :obj:`pandas.DataFrame`
+        Ontology in DataFrame form.
+    regex : :obj:`dict`
+        Dictionary linking aliases in ontology to regular expressions for
+        lemmatization.
+    """
+    def __init__(self, ontology_df=None):
+        if ontology_df is None:
+            ontology_file = op.join(get_resource_path(), 'ontology',
+                                    'cogat_ids.csv')
+            self.ontology = pd.read_csv(ontology_file)
+        else:
+            assert isinstance(ontology_df, pd.DataFrame)
+            self.ontology = ontology_df
+        assert 'id' in self.ontology.columns
+        assert 'name' in self.ontology.columns
+        assert 'alias' in self.ontology.columns
+
+        # Create regex dictionary
+        regex_dict = {}
+        for term in ontology_df['alias'].values:
+            term_for_regex = term.replace('(', '\(').replace(')', '\)')
+            regex = '\\b'+term_for_regex+'\\b'
+            pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
+            regex_dict[term] = pattern
+        self.regex = regex_dict
+
+    def lemmatize(self, text, convert_uk=True):
+        """
+        Replace terms in text with unique Cognitive Atlas identifiers.
+
+        Parameters
+        ----------
+        text : :obj:`str`
+            Text to convert.
+        convert_uk : :obj:`bool`, optional
+            Convert British English words in text to American English versions.
+            Default is True.
+
+        Returns
+        -------
+        text : :obj:`str`
+            Text with Cognitive Atlas terms replaced with unique Cognitive
+            Atlas identifiers.
+        """
+        if convert_uk:
+            text = uk_to_us(text)
+
+        for term_idx in self.ontology.index:
+            term = self.ontology['alias'].loc[term_idx]
+            term_id = self.ontology['id'].loc[term_idx]
+            text = re.sub(self.regex[term], term_id, text)
+        return text
+
+
+@due.dcite(Doi('10.3389/fninf.2011.00017'),
+           description='Introduces the Cognitive Atlas.')
 def extract_cogat(text_df, id_df):
     """
     Extract CogAt terms and perform hierarchical expansion.
@@ -280,7 +351,7 @@ def extract_cogat(text_df, id_df):
     for term in id_df['alias'].values:
         term_for_regex = term.replace('(', '\(').replace(')', '\)')
         regex = '\\b'+term_for_regex+'\\b'
-        pattern = re.compile(regex, re.DOTALL | re.IGNORECASE)
+        pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
         regex_dict[term] = pattern
 
     # Count

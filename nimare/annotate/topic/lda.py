@@ -9,7 +9,7 @@ import subprocess
 
 import pandas as pd
 
-from .base import TopicModel
+from ..base import AnnotationModel
 from ...utils import get_resource_path
 from ...due import due, BibTeX, Doi
 
@@ -35,7 +35,7 @@ LGR = logging.getLogger(__name__)
 @due.dcite(Doi('10.1371/journal.pcbi.1002707'),
            description='First use of LDA for automated annotation of '
            'neuroimaging literature.')
-class LDAModel(TopicModel):
+class LDAModel(AnnotationModel):
     """
     Perform topic modeling using Latent Dirichlet Allocation with the
     Java toolbox MALLET.

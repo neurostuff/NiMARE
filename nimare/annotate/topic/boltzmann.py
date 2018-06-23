@@ -1,7 +1,7 @@
 """
 Topic modeling with deep Boltzmann machines.
 """
-from .base import TopicModel
+from ..base import AnnotationModel
 from ...due import due, BibTeX
 
 
@@ -21,7 +21,7 @@ from ...due import due, BibTeX
       biburl    = {https://dblp.org/rec/bib/journals/corr/MontiLLAM16},
       bibsource = {dblp computer science bibliography, https://dblp.org}}
     """), description='Uses Deep Boltzmann Machines for annotation.')
-class BoltzmannModel(TopicModel):
+class BoltzmannModel(AnnotationModel):
     """
     Generate a deep Boltzmann machine topic model.
     """

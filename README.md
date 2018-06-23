@@ -32,9 +32,11 @@ A Python library for coordinate- and image-based meta-analysis.
         - Latent Dirichlet allocation (`nimare.annotate.topic.lda`)
         - Generalized correspondence latent Dirichlet allocation
           (`nimare.annotate.topic.gclda`)
-        - Global Vectors for Word Representation model
-          (`nimare.annotate.topic.glove`)
         - Deep Boltzmann machines (`nimare.annotate.topic.boltzmann`)
+    - Vector model-based annotation (`nimare.annotate.vector`)
+        - Global Vectors for Word Representation model
+          (`nimare.annotate.vector.word2brain`)
+        - Text2Brain model (`nimare.annotate.vector.text2brain`)
 - Functional characterization analysis (`nimare.decode`)
     - Generalized correspondence latent Dirichlet allocation (GCLDA)
     - Neurosynth correlation-based decoding

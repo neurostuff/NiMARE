@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from .base import TopicModel
+from ..base import AnnotationModel
 from ...due import due, Doi
 from ...utils import get_template
 
@@ -16,7 +16,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Introduces GC-LDA decoding.')
-class GCLDAModel(TopicModel):
+class GCLDAModel(AnnotationModel):
     """
     Generate a GCLDA topic model.
 

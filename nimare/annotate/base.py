@@ -5,16 +5,16 @@ import gzip
 import pickle
 
 
-class TopicModel(object):
+class AnnotationModel(object):
     """
-    Base class for topic models.
+    Base class for topic and vector models.
     """
     def __init__(self):
         pass
 
     def save(self, filename, compress=True):
         """
-        Pickle the TopicModel instance to the provided file.
+        Pickle the AnnotationModel instance to the provided file.
 
         Parameters
         ----------
@@ -34,7 +34,7 @@ class TopicModel(object):
     @classmethod
     def load(cls, filename, compressed=True):
         """
-        Load a pickled TopicModel instance from file.
+        Load a pickled AnnotationModel instance from file.
 
         Parameters
         ----------
@@ -47,7 +47,7 @@ class TopicModel(object):
 
         Returns
         -------
-        model : :obj:`nimare.annotate.topic.TopicModel`
+        model : :obj:`nimare.annotate.topic.AnnotationModel`
             Loaded model object.
         """
         if compressed:
@@ -67,9 +67,9 @@ class TopicModel(object):
                 with open(filename, 'rb') as file_object:
                     model = pickle.load(file_object, encoding='latin')
 
-        if not isinstance(model, TopicModel):
+        if not isinstance(model, AnnotationModel):
             raise IOError('Pickled object must be '
-                          '`nimare.annotate.topic.TopicModel`, '
+                          '`nimare.annotate.topic.AnnotationModel`, '
                           'not {0}'.format(type(model)))
 
         return model

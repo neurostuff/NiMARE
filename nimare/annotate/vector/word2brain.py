@@ -1,15 +1,15 @@
 """
 Topic modeling with a Global Vectors for Word Representation (GloVe) model.
 """
-from .base import TopicModel
+from ..base import AnnotationModel
 from ...due import due, Doi
 
 
 @due.dcite(Doi('10.1101/299024'),
            description='Introduces GloVe model-based annotation.')
-class GloveModel(TopicModel):
+class Word2BrainModel(AnnotationModel):
     """
-    Generate a GloVe topic model.
+    Generate a Word2Brain vector model.
     """
     def __init__(self, text_df, coordinates_df):
         pass
