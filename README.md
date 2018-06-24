@@ -23,7 +23,7 @@ A Python library for coordinate- and image-based meta-analysis.
     - Fisher's meta-analysis
 
 ## Additional functionality
-<<<<<<< HEAD
+
 - Automated annotation (`nimare.annotate`)
     - Tf-idf vectorization of text (`nimare.annotate.tfidf`)
     - Ontology-based annotation (`nimare.annotate.ontology`)
@@ -38,13 +38,11 @@ A Python library for coordinate- and image-based meta-analysis.
         - Global Vectors for Word Representation model
           (`nimare.annotate.vector.word2brain`)
         - Text2Brain model (`nimare.annotate.vector.text2brain`)
-=======
 - Database extraction (`nimare.dataset.extract`)
     - NeuroVault
     - Neurosynth
     - Brainspell
     - PubMed abstract extraction
->>>>>>> neurostuff/master
 - Functional characterization analysis (`nimare.decode`)
     - BrainMap decoding
     - Neurosynth correlation-based decoding
