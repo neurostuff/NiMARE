@@ -23,6 +23,7 @@ A Python library for coordinate- and image-based meta-analysis.
     - Fisher's meta-analysis
 
 ## Additional functionality
+<<<<<<< HEAD
 - Automated annotation (`nimare.annotate`)
     - Tf-idf vectorization of text (`nimare.annotate.tfidf`)
     - Ontology-based annotation (`nimare.annotate.ontology`)
@@ -37,11 +38,18 @@ A Python library for coordinate- and image-based meta-analysis.
         - Global Vectors for Word Representation model
           (`nimare.annotate.vector.word2brain`)
         - Text2Brain model (`nimare.annotate.vector.text2brain`)
+=======
+- Database extraction (`nimare.dataset.extract`)
+    - NeuroVault
+    - Neurosynth
+    - Brainspell
+    - PubMed abstract extraction
+>>>>>>> neurostuff/master
 - Functional characterization analysis (`nimare.decode`)
-    - Generalized correspondence latent Dirichlet allocation (GCLDA)
+    - BrainMap decoding
     - Neurosynth correlation-based decoding
     - Neurosynth MKDA-based decoding
-    - BrainMap decoding
+    - Generalized correspondence latent Dirichlet allocation (GCLDA)
 
 ## Installation
 
@@ -65,3 +73,10 @@ Once inside the container, you can install NiMARE:
 ```
 python /home/neuro/code/NiMARE/setup.py develop
 ```
+
+## Contributing
+
+Please see our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md) for more information on contributing
+to NiMARE.
+
+We ask that all contributions to `NiMARE` respect our [code of conduct](https://github.com/neurostuff/NiMARE/blob/master/CODE_OF_CONDUCT.md).
