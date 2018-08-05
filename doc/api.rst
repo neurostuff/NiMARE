@@ -48,6 +48,18 @@ API Reference
 .. _calibration_ref:
 
 
+:mod:`nimare.annotate`: Automated annotation
+--------------------------------------------------
+
+.. automodule:: nimare.annotate
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. _calibration_ref:
+
+
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
 
@@ -62,6 +74,30 @@ API Reference
    nimare.decode.discrete
    nimare.decode.continuous
    nimare.decode.encode
+
+.. currentmodule:: nimare
+
+.. _calibration_ref:
+
+
+:mod:`nimare.parcellate`: Meta-analytic parcellation
+----------------------------------------------------
+
+.. automodule:: nimare.parcellate
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. _calibration_ref:
+
+
+:mod:`nimare.workflows`: Common workflows
+--------------------------------------------------
+
+.. automodule:: nimare.workflows
+   :no-members:
+   :no-inherited-members:
 
 .. currentmodule:: nimare
 
