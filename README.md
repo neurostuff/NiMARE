@@ -49,8 +49,12 @@ A Python library for coordinate- and image-based meta-analysis.
     - Neurosynth MKDA-based decoding
     - Generalized correspondence latent Dirichlet allocation (GCLDA)
 - Meta-analytic parcellation (`nimare.parcellate`)
-    - MapBot
-    - Meta-analytic coactivation modeling
+    - Meta-analytic parcellation based on text (MAPBOT)
+    - Coactivation-base parcellation (CBP)
+- Common workflows (`nimare.workflows`)
+    - Meta-analytic coactivation modeling (MACM)
+    - Meta-analytic clustering analysis
+    - Meta-analytic independent components analysis (metaICA)
 
 ## Installation
 
