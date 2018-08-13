@@ -1,8 +1,11 @@
 """
 Coactivation-based parcellation
 """
+import numpy as np
+from nilearn.masking import apply_mask
+
 from .base import Parcellator
-from ..meta.cbma.kernel import ALEKernel
+from ..meta.cbma.kernel import MKDAKernel
 from ..due import due, Doi
 
 
@@ -12,20 +15,12 @@ class CoordCBP(Parcellator):
     """
     Coordinate-based coactivation-based parcellation
     """
-    def __init__(self, dataset, ids, kernel_estimator=ALEKernel, **kwargs):
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
-                       if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not
-                  k.startswith('kernel__')}
-
+    def __init__(self, dataset, ids):
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
-
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
         self.ids = ids
 
-    def fit(self, target_mask, n_parcels=2, n_iters=10000, n_cores=4):
+    def fit(self, target_mask, r=5, n_parcels=2, n_iters=10000, n_cores=4):
         """
         Parameters
         ----------
@@ -45,7 +40,16 @@ class CoordCBP(Parcellator):
         -------
         results
         """
-        pass
+        assert np.array_equal(self.mask.affine, target_mask.affine)
+        kernel_estimator = MKDAKernel(self.coordinates, self.mask)
+        ma_maps = kernel_estimator.transform(self.ids, r=r)
+        ma_data = apply_mask(ma_maps, self.mask)
+
+        target_data = apply_mask(target_mask, self.mask)
+        mask_idx = np.where(target_data)[0]
+        for i_voxel, idx in enumerate(mask_idx):
+            study_idx = np.where(ma_data[:, idx])[0]
+
 
 
 class ImCBP(Parcellator):

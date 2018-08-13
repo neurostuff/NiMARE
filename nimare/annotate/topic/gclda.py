@@ -274,12 +274,10 @@ class GCLDAModel(AnnotationModel):
         # variables tracking loglikely
         self.compute_log_likelihood()
 
-    # -------------------------------------------------------------------------------
-    # <<<<< Model Parameter Update Methods >>>> Update z, Update y/r, Update regions  |
-    # -------------------------------------------------------------------------------
-    def run_complete_iteration(self, loglikely_freq=1, verbose=2):
+    def update(self, loglikely_freq=1, verbose=2):
         """
         Run a complete update cycle (sample z, sample y&r, update regions).
+
         Parameters
         ----------
         loglikely_freq : :obj:`int`, optional
@@ -321,6 +319,7 @@ class GCLDAModel(AnnotationModel):
     def _update_word_topic_assignments(self, randseed):
         """
         Update wtoken_topic_idx (z) indicator variables assigning words->topics.
+
         Parameters
         ----------
         randseed : :obj:`int`
@@ -367,6 +366,7 @@ class GCLDAModel(AnnotationModel):
     def _update_peak_assignments(self, randseed):
         """
         Update y / r indicator variables assigning peaks->topics/subregions.
+
         Parameters
         ----------
         randseed : :obj:`int`
@@ -580,9 +580,6 @@ class GCLDAModel(AnnotationModel):
                 self.regions_sigma[i_topic][0][:] = sigma1
                 self.regions_sigma[i_topic][1][:] = sigma2
 
-    # --------------------------------------------------------------------------------
-    # <<<<< Utility Methods for GC-LDA >>>>> Log-Likelihood, Get Peak-Probs , mnpdf  |
-    # --------------------------------------------------------------------------------
     @due.dcite(Doi('10.1145/1577069.1755845'),
                description='Describes method for computing log-likelihood used in model.')
     def compute_log_likelihood(self, dataset=None, update_vectors=True):
@@ -592,6 +589,7 @@ class GCLDAModel(AnnotationModel):
         or test) given the posterior predictive distributions over peaks and
         word-types for the model. Note that this is not computing the joint
         log-likelihood of model parameters and data.
+
         Parameters
         ----------
         dataset : :obj:`gclda.Dataset`, optional
@@ -600,6 +598,7 @@ class GCLDAModel(AnnotationModel):
             dataset.
         update_vectors : :obj:`bool`, optional
             Whether to update model's log-likelihood vectors or not.
+
         Returns
         -------
         x_loglikely : :obj:`float`
@@ -718,6 +717,7 @@ class GCLDAModel(AnnotationModel):
         """
         Compute a matrix giving p(x|r,t), using all x values in a dataset
         object, and each topic's spatial parameters.
+
         Returns
         -------
         peak_probs : :obj:`numpy.ndarray` of :obj:`numpy.64`
@@ -740,12 +740,14 @@ class GCLDAModel(AnnotationModel):
         current y vector, for all proposed y_i values.
         Note that this only returns values proportional to the relative
         probabilities of all proposals for y_i.
+
         Parameters
         ----------
         z : :obj:`numpy.ndarray` of :obj:`numpy.int64`
             A 1-by-T vector of current z counts for document d.
         y : :obj:`numpy.ndarray` of :obj:`numpy.float64`
             A 1-by-T vector of current y counts (plus gamma) for document d.
+
         Returns
         -------
         p : :obj:`numpy.ndarray` of :obj:`numpy.float64`
@@ -762,6 +764,7 @@ class GCLDAModel(AnnotationModel):
         """
         Get conditional probability of selecting each voxel in the brain mask
         given each topic.
+
         Returns
         -------
         p_voxel_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
@@ -840,6 +843,7 @@ class GCLDAModel(AnnotationModel):
         """
         Run all export-methods: calls all save-methods to export parameters to
         files.
+
         Parameters
         ----------
         outputdir : :obj:`str`
@@ -869,6 +873,7 @@ class GCLDAModel(AnnotationModel):
         """
         Save Peak->Topic and Peak->Subregion assignments for all x-tokens in
         dataset to file.
+
         Parameters
         ----------
         outfilestr : :obj:`str`
@@ -891,6 +896,7 @@ class GCLDAModel(AnnotationModel):
     def _save_topic_word_counts(self, outfilestr):
         """
         Save Topic->Word counts for all topics and words to file.
+
         Parameters
         ----------
         outfilestr : :obj:`str`
@@ -918,6 +924,7 @@ class GCLDAModel(AnnotationModel):
     def _save_topic_word_probs(self, outfilestr, n_top_words=15):
         """
         Save Topic->Word probability distributions for top K words to file.
+
         Parameters
         ----------
         outfilestr : :obj:`str`
