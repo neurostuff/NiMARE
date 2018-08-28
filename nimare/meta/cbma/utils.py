@@ -14,7 +14,7 @@ def compute_ma(shape, ijk, kernel):
     kernel. Takes the element-wise maximum when looping through foci, which
     accounts for foci which are near to one another and may have overlapping
     kernels.
-
+    
     Parameters
     ----------
     shape : tuple

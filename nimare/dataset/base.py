@@ -1,11 +1,8 @@
 """
 Base classes for datasets.
 """
-from six import with_metaclass
-from abc import ABCMeta, abstractmethod
-
 from ..base import ConnMatrix, Image, CoordinateSet, Surface
-from ..utils import listify
+from nimare.utils import listify
 
 
 class Study(object):
@@ -81,12 +78,4 @@ class Contrast(object):
         ''' Harmonizes/merges Contrasts extracted from different sources, based
         on common indexes (e.g., DOIs / table numbers, etc.).
         '''
-        pass
-
-
-class DataSource(with_metaclass(ABCMeta)):
-    ''' Base class for DataSource hierarchy. '''
-
-    @abstractmethod
-    def get_data(self, level='contrast', tags=None, dois=None, **kwargs):
         pass
