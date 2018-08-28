@@ -20,14 +20,14 @@ def generate_tfidf(text_df):
 
     Parameters
     ----------
-    text_df : :obj:`pandas.DataFrame`
-        A DataFrame with two columns ('id' and 'text').
+    text_df : (D x 2) :obj:`pandas.DataFrame`
+        A DataFrame with two columns ('id' and 'text'). D = document.
 
     Returns
     -------
-    weights_df : :obj:`pandas.DataFrame`
+    weights_df : (D x T) :obj:`pandas.DataFrame`
         A DataFrame where the index is 'id' and the columns are the
-        unigrams/bigrams derived from the data.
+        unigrams/bigrams derived from the data. D = document. T = term.
     """
     ids = text_df['id'].tolist()
     text = text_df['text'].tolist()
@@ -48,7 +48,17 @@ def generate_tfidf(text_df):
 
 def uk_to_us(text):
     """
+    Convert UK spellings to US based on a converter.
+
     english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
+
+    Parameters
+    ----------
+    text : :obj:`str`
+
+    Returns
+    -------
+    text : :obj:`str`
     """
     if isinstance(text, str):
         # Convert British to American English

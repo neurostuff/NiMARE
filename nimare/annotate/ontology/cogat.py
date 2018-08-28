@@ -16,6 +16,9 @@ from ...due import due, Doi
 
 
 def _longify(df):
+    """
+    Expand comma-separated lists of aliases in DataFrame into separate rows.
+    """
     reduced = df[['id', 'name', 'alias']]
     rows = []
     for index, row in reduced.iterrows():
@@ -34,7 +37,7 @@ def _longify(df):
 
 def _get_ratio(tup):
     """
-    Get ratio.
+    Get fuzzy ratio.
     """
     if all(isinstance(t, str) for t in tup):
         return fuzz.ratio(tup[0], tup[1])
@@ -123,6 +126,10 @@ def _expand_df(df):
 
 
 def pull_ontology(out_dir='auto', overwrite=False):
+    """
+    Download Cognitive Atlas ontology and combine Concepts, Tasks, and
+    Disorders to create ID and relationship DataFrames.
+    """
     if out_dir == 'auto':
         out_dir = op.join(get_resource_path(), 'ontology')
     else:
@@ -211,6 +218,11 @@ def pull_ontology(out_dir='auto', overwrite=False):
 
 
 def _generate_weights(rel_df, weights):
+    """
+    Create an IDxID weighting DataFrame based on asserted relationships and
+    some weighting scheme that links a weight value to each relationship type
+    (e.g., partOf, kindOf).
+    """
     # Hierarchical expansion
     def get_weight(rel_type):
         weight = weights.get(rel_type, 0)
@@ -339,8 +351,20 @@ def extract_cogat(text_df, id_df):
 
     Parameters
     ----------
-    text : :obj:`pandas.DataFrame`
-        Pandas dataframe with two columns: 'id' and 'text'.
+    text_df : (D x 2) :obj:`pandas.DataFrame`
+        Pandas dataframe with two columns: 'id' and 'text'. D = document.
+    id_df : (T x 3) :obj:`pandas.DataFrame`
+        Cognitive Atlas ontology dataframe with three columns:
+        'id' (unique identifier for term), 'alias' (natural language expression
+        of term), and 'name' (preferred name of term; currently unused).
+        T = term.
+
+    Returns
+    -------
+    counts_df : (D x T) :obj:`pandas.DataFrame`
+        Term counts for documents in the corpus.
+    rep_text_df : (D x 2) :obj:`pandas.DataFrame`
+        Text DataFrame with terms replaced with their CogAt IDs.
     """
     gazetteer = sorted(id_df['id'].unique().tolist())
     if 'id' in text_df.columns:
@@ -381,6 +405,22 @@ def extract_cogat(text_df, id_df):
 def expand_counts(counts_df, rel_df, weights=None):
     """
     Perform hierarchical expansion of CogAt labels.
+
+    Parameters
+    ----------
+    counts_df : (D x T) :obj:`pandas.DataFrame`
+        Term counts for a corpus. T = term, D = document.
+    rel_df : :obj:`pandas.DataFrame`
+        Long-form DataFrame of term-term relationships with three columns:
+        'input', 'output', and 'rel_type'.
+    weights : :obj:`dict`
+        Dictionary of weights per relationship type. E.g., {'isKind': 1}.
+        Unspecified relationship types default to 0.
+
+    Returns
+    -------
+    weighted_df : (D x T) :obj:`pandas.DataFrame`
+        Term counts for a corpus after hierarchical expansion.
     """
     weights_df = _generate_weights(rel_df, weights=weights)
 
