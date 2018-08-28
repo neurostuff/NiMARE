@@ -121,3 +121,23 @@ API Reference
 .. currentmodule:: nimare
 
 .. _calibration_ref:
+
+
+:mod:`nimare.base`: Base classes
+--------------------------------------------------
+.. automodule:: nimare.base
+   :no-members:
+   :no-inherited-members:
+
+.. autosummary:: nimare.base
+   :toctree: generated/
+   :template: module.rst
+
+   nimare.base.data
+   nimare.base.decode
+   nimare.base.inputs
+   nimare.base.meta
+
+.. currentmodule:: nimare
+
+.. _calibration_ref:

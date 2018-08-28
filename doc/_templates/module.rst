@@ -3,38 +3,40 @@
 
 .. automodule:: {{ fullname }}
 
-   {% block classes %}
-   {% if classes %}
-   .. rubric:: Classes
+    {% block classes %}
+        {% if classes %}
+            .. rubric:: Classes
 
-   .. autosummary::
-      :toctree:
-   {% for item in classes %}
-      {{ item }}
-   {%- endfor %}
-   {% endif %}
-   {% endblock %}
+            .. autosummary::
+                :toctree:
+                :template: class.rst
+                {% for item in classes %}
+                    {{ item }}
+                {%- endfor %}
+        {% endif %}
+    {% endblock %}
 
-   {% block functions %}
-   {% if functions %}
-   .. rubric:: Functions
+    {% block functions %}
+        {% if functions %}
+            .. rubric:: Functions
 
-   .. autosummary::
-      :toctree:
-   {% for item in functions %}
-      {{ item }}
-   {%- endfor %}
-   {% endif %}
-   {% endblock %}
+            .. autosummary::
+              :toctree:
+              :template: function.rst
+              {% for item in functions %}
+                  {{ item }}
+              {%- endfor %}
+        {% endif %}
+    {% endblock %}
 
-   {% block exceptions %}
-   {% if exceptions %}
-   .. rubric:: Exceptions
+    {% block exceptions %}
+        {% if exceptions %}
+            .. rubric:: Exceptions
 
-   .. autosummary::
-      :toctree:
-   {% for item in exceptions %}
-      {{ item }}
-   {%- endfor %}
-   {% endif %}
-   {% endblock %}
+            .. autosummary::
+              :toctree:
+              {% for item in exceptions %}
+                  {{ item }}
+              {%- endfor %}
+        {% endif %}
+    {% endblock %}

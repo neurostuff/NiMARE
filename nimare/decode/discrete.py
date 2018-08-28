@@ -2,7 +2,7 @@
 Methods for decoding subsets of voxels (e.g., ROIs) or experiments (e.g., from
 meta-analytic clustering on a database) into text.
 """
-from .base import Decoder
+from ..base import Decoder
 from ..due import due, Doi
 
 

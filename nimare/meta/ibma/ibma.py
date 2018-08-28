@@ -14,8 +14,7 @@ from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .base import IBMAEstimator
-from ..base import MetaResult
+from ...base import MetaResult, IBMAEstimator
 from ...utils import null_to_p, p_to_z
 from ...due import due, BibTeX
 
@@ -45,7 +44,7 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
 
     Returns
     -------
-    result : :obj:`nimare.meta.base.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -146,7 +145,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
 
     Returns
     -------
-    result : :obj:`nimare.meta.base.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -318,7 +317,7 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
 
     Returns
     -------
-    result : :obj:`nimare.meta.base.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -406,7 +405,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
 
     Returns
     -------
-    result : :obj:`nimare.meta.base.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -690,7 +689,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
 
     Returns
     -------
-    result : :obj:`nimare.meta.base.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -763,7 +762,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
 
     Returns
     -------
-    result : :obj:`nimare.meta.base.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """

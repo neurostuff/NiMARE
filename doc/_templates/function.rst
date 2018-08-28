@@ -5,8 +5,8 @@
 
 .. autofunction:: {{ objname }}
 
-.. include:: {{module}}.{{objname}}.examples
+.. include:: {{fullname}}.{{item}}examples
 
 .. raw:: html
 
-    <div class="clearer"></div>
+    <div class='clearer'></div>

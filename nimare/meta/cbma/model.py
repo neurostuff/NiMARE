@@ -2,7 +2,7 @@
 Model-based coordinate-based meta-analysis estimators
 """
 
-from .base import CBMAEstimator
+from ...base import CBMAEstimator
 from ...due import due, Doi, BibTeX
 
 

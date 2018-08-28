@@ -13,9 +13,8 @@ import nibabel as nib
 from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
 
-from .base import CBMAEstimator
 from .kernel import ALEKernel
-from ..base import MetaResult
+from ...base import MetaResult, CBMAEstimator
 from ...due import due, Doi, BibTeX
 from ...utils import round2, null_to_p, p_to_z
 

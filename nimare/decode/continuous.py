@@ -1,7 +1,7 @@
 """
 Methods for decoding unthresholded brain maps into text.
 """
-from .base import Decoder
+from ..base import Decoder
 from ..due import due, Doi
 
 
