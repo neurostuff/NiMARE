@@ -4,6 +4,7 @@ doc/generated/
 doc/auto_examples/
 nimare/resources/data/neurovault-data/
 nimare/tests/data/downloaded/
+.pytest_cache
 
 #
 # Byte-compiled / optimized / DLL files

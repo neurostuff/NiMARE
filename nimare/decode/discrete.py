@@ -3,7 +3,7 @@ Methods for decoding subsets of voxels (e.g., ROIs) or experiments (e.g., from
 meta-analytic clustering on a database) into text.
 """
 from .base import Decoder
-from ...due import due, Doi
+from ..due import due, Doi
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
