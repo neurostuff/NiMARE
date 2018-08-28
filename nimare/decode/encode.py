@@ -1,7 +1,7 @@
 """
 Methods for encoding text into brain maps.
 """
-from ..due import due, Doi
+from ...due import due, Doi
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),

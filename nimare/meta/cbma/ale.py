@@ -46,18 +46,6 @@ from ...utils import round2, null_to_p, p_to_z
 class ALE(CBMAEstimator):
     """
     Activation likelihood estimation
-
-    Parameters
-    ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset object to analyze.
-    ids : array_like
-        List of IDs from dataset to analyze.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`
-        Kernel with which to convolve coordinates from dataset.
-    **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
-        here, with the prefix '\kernel__' in the variable name.
     """
     def __init__(self, dataset, ids, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -79,22 +67,6 @@ class ALE(CBMAEstimator):
     def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
             n_cores=4):
         """
-        Run an ALE meta-analysis.
-
-        Parameters
-        ----------
-        voxel_thresh : :obj:`float`, optional
-            Voxel-level p-value threshold. Default is 0.001.
-        q : :obj:`float`, optional
-            Desired alpha level for analysis. Default is 0.05.
-        corr : {'FWE',}, optional
-            Multiple comparisons correction method to be employed. Currently
-            unused, as FWE-correction is the only method implemented.
-        n_iters : :obj:`int`, optional
-            Number of iterations for FWE correction simulations.
-            Default is 10000.
-        n_cores : :obj:`int`, optional
-            Number of cores to use for analysis. Default is 4.
         """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.voxel_thresh = voxel_thresh
@@ -266,7 +238,8 @@ class ALE(CBMAEstimator):
         # Convert aleHist into null distribution. The value in each bin
         # represents the probability of finding an ALE value (stored in
         # histBins) of that value or lower.
-        null_distribution = ale_hist / np.sum(ale_hist)
+        last_used = np.where(ale_hist > 0)[0][-1]
+        null_distribution = ale_hist[:last_used+1] / np.sum(ale_hist)
         null_distribution = np.cumsum(null_distribution[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
         return null_distribution
@@ -319,21 +292,6 @@ class ALE(CBMAEstimator):
 class SCALE(CBMAEstimator):
     """
     Specific coactivation likelihood estimation
-
-    Parameters
-    ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset object to analyze.
-    ids : array_like
-        List of IDs from dataset to analyze.
-    ijk : array_like or None, optional
-        IJK (matrix-space) indices from database to use for coordinate
-        base-levels of activation. Default is None.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`
-        Kernel with which to convolve coordinates from dataset.
-    **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
-        here, with the prefix 'kernel__' in the variable name.
     """
     def __init__(self, dataset, ids, ijk=None, kernel_estimator=ALEKernel,
                  **kwargs):
@@ -360,12 +318,29 @@ class SCALE(CBMAEstimator):
 
         Parameters
         ----------
-        voxel_thresh : :obj:`float`, optional
-            Voxel-level p-value threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
+        dataset : ale.Dataset
+            Dataset to analyze.
+        voxel_thresh : float
+            Uncorrected voxel-level threshold.
+        n_iters : int
             Number of iterations for correction. Default 2500
-        n_cores : :obj:`int`, optional
-            Number of cores to use for analysis. Default is 4.
+        verbose : bool
+            If True, prints out status updates.
+        prefix : str
+            String prepended to default output filenames. May include path.
+        database_file : str
+            Tab-delimited file of coordinates from database. Voxels are rows
+            and i, j, k (meaning matrix-space) values are the three columnns.
+
+        Examples
+        --------
+
+        References
+        ----------
+        .. [1] Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., &
+               Eickhoff, S. B. (2014). Meta-analytic connectivity modeling
+               revisited: controlling for activation base rates.
+               NeuroImage, 99, 559-570.
         """
         self.voxel_thresh = voxel_thresh
         self.n_iters = n_iters

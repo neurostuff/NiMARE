@@ -1,20 +1,28 @@
 """
 Classes and functions for data retrieval.
 """
-
 import time
 from os import mkdir
 from os.path import join, isdir, isfile
 
+from abc import ABCMeta, abstractmethod
+from six import with_metaclass
 import pandas as pd
 from pyneurovault import api
 
-from .base import DataSource
 from ..utils import get_resource_path
 
 
 __all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource',
            'BrainSpellDataSource']
+
+
+class DataSource(with_metaclass(ABCMeta)):
+    ''' Base class for DataSource hierarchy. '''
+
+    @abstractmethod
+    def get_data(self, level='contrast', tags=None, dois=None, **kwargs):
+        pass
 
 
 class NeuroVaultDataSource(DataSource):

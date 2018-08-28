@@ -2,12 +2,12 @@
 Methods for decoding unthresholded brain maps into text.
 """
 from .base import Decoder
-from ..due import due, Doi
+from ...due import due, Doi
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Describes decoding methods using GC-LDA.')
-def gclda_decode_continuous(model, roi, topic_priors=None, prior_weight=1):
+def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1):
     pass
 
 
