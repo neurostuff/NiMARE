@@ -1,5 +1,5 @@
 """
-Generate a Text2Brain vector model.
+Topic modeling with a Global Vectors for Word Representation (GloVe) model.
 """
 from ..base import AnnotationModel
 from ...due import due, BibTeX

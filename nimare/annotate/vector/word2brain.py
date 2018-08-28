@@ -1,5 +1,5 @@
 """
-GloVe model-based annotation.
+Topic modeling with a Global Vectors for Word Representation (GloVe) model.
 """
 from ..base import AnnotationModel
 from ...due import due, Doi

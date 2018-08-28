@@ -57,8 +57,6 @@ class GCLDAModel(AnnotationModel):
         requires n_regions = 2. The default is False.
     seed_init : :obj:`int`, optional
         Initial value of random seed. The default is 1.
-    name : :obj:`str`, optional
-        Name of model.
     """
     def __init__(self, count_df, coordinates_df, mask='mni152_2mm',
                  n_topics=100, n_regions=2, symmetric=False, alpha=.1,
@@ -72,23 +70,23 @@ class GCLDAModel(AnnotationModel):
             raise ValueError('Cannot run a symmetric model unless #Subregions '
                              '(n_regions) == 2 !')
 
-        # Initialize sampling parameters
+        # --- Initialize sampling parameters
         self.iter = 0  # Tracks the global sampling iteration of the model
         self.seed_init = seed_init  # Random seed for initializing model
         self.seed = 0  # Tracks current random seed to use (gets incremented
                        # after initialization and each sampling update)
 
-        # Set up model hyperparameters
+        # --- Set up gcLDA model hyper-parameters from input
         # Pseudo-count hyperparams need to be floats so that when sampling
         # distributions are computed the count matrices/vectors are converted
         # to floats
         self.n_topics = n_topics  # Number of topics (T)
         self.n_regions = n_regions  # Number of subregions (R)
-        self.alpha = float(alpha)  # Prior count on topics for each doc
-        self.beta = float(beta)  # Prior count on word-types for each topic
+        self.alpha = float(alpha)  # Prior count on topics for each doc (\alpha)
+        self.beta = float(beta)  # Prior count on word-types for each topic (\beta)
         self.gamma = float(gamma)  # Prior count added to y-counts when sampling
-                                   # z assignments
-        self.delta = float(delta)  # Prior count on subregions for each topic
+                                   # z assignments (\gamma)
+        self.delta = float(delta)  # Prior count on subregions for each topic (\delta)
         self.roi_size = float(roi_size)  # Default ROI (default covariance spatial region
                                          # we regularize towards) (not in paper)
         self.dobs = int(dobs)  # Sample constant (# observations weighting
@@ -97,11 +95,17 @@ class GCLDAModel(AnnotationModel):
         self.symmetric = symmetric  # Use constrained symmetry on subregions?
                                     # (only for n_regions = 2)
         self.model_name = ('{0}_{1}T_{2}R_alpha{3:.3f}_beta{4:.3f}_'
-                           'gamma{5:.3f}_delta{6:.3f}_{7}dobs_{8:.1f}roi_{9}'
-                           'symmetric_{10}').format(
-            name, self.n_topics, self.n_regions, self.alpha, self.beta,
-            self.gamma, self.delta, self.dobs, self.roi_size, self.symmetric,
-            self.seed_init)
+                           'gamma{5:.3f}_delta{6:.3f}_{7}dobs_{8:.1f}roi_{9}symmetric_'
+                           '{10}').format(name, self.n_topics,
+                                          self.n_regions, self.alpha, self.beta,
+                                          self.gamma, self.delta, self.dobs,
+                                          self.roi_size, self.symmetric, self.seed_init)
+
+        # Get dimensionalities of vectors/matrices from dataset object
+        self.n_peak_tokens = len(self.ptoken_doc_idx)  # Number of peak-tokens
+        self.n_word_labels = len(self.word_labels)  # Number of word-types
+        self.n_docs = len(self.pmids)  # Number of documents
+        self.n_peak_dims = self.peak_vals.shape[1]  # Dimensionality of peak_locs data
 
         # Prepare data
         if mask is None:
@@ -112,8 +116,9 @@ class GCLDAModel(AnnotationModel):
             self.mask = nib.load(mask)
 
         # Import all word-labels into a list
-        # List of word-strings (wtoken_word_idx values are indices into this list)
-        self.vocabulary = count_df.columns.tolist()
+        self.vocabulary = count_df.columns.tolist()  # List of word-strings
+                                                     # (wtoken_word_idx values are
+                                                     # indices into this list)
 
         # Extract document and word indices from count_df
         count_df.index = count_df.index.astype(str)
@@ -144,40 +149,32 @@ class GCLDAModel(AnnotationModel):
         widx_df = widx_df.loc[np.repeat(widx_df.index.values, widx_df['count'])]
         widx_df = widx_df[['docidx', 'widx']].astype(int)
         widx_df.sort_values(by=['docidx', 'widx'], inplace=True)
-        # List of document-indices for word-tokens
-        self.wtoken_doc_idx = widx_df['docidx'].tolist()
-        # List of word-indices for word-tokens
-        self.wtoken_word_idx = widx_df['widx'].tolist()
+        self.wtoken_doc_idx = widx_df['docidx'].tolist()  # List of document-indices for word-tokens
+        self.wtoken_word_idx = widx_df['widx'].tolist()  # List of word-indices for word-tokens
 
         # Import all peak-indices into lists
         coordinates_df['docidx'] = coordinates_df['id'].astype(str).map(docidx_mapper)
         coordinates_df = coordinates_df.dropna(subset=['docidx'])
         coordinates_df = coordinates_df[['docidx', 'x', 'y', 'z']]
         coordinates_df['docidx'] = coordinates_df['docidx'].astype(int)
-        # List of document-indices for peak-tokens x
-        self.ptoken_doc_idx = coordinates_df['docidx'].tolist()
+        self.ptoken_doc_idx = coordinates_df['docidx'].tolist()  # List of document-indices for
+                                                                 # peak-tokens x
         self.peak_vals = coordinates_df[['x', 'y', 'z']].values
 
-        # Seed random number generator
+        # --- Seed random number generator
         np.random.seed(self.seed_init)  # pylint: disable=no-member
 
-        # Get dimensionalities of vectors/matrices from dataset
-        self.n_peak_tokens = len(self.ptoken_doc_idx)  # Number of peak-tokens
-        self.n_word_labels = len(self.word_labels)  # Number of word-types
-        self.n_docs = len(self.pmids)  # Number of documents
-        self.n_peak_dims = self.peak_vals.shape[1]  # Dimensionality of peak_locs data
-
-        #  Preallocate vectors of assignment indices
+        #  --- Preallocate vectors of assignment indices
         self.wtoken_topic_idx = np.zeros(len(self.wtoken_word_idx),
                                          dtype=int)  # word->topic assignments
 
-        # Randomly initialize peak->topic assignments (y) ~ unif(1...n_topics)
+        # --- Randomly initialize peak->topic assignments (y) ~ unif(1...n_topics)
         self.peak_topic_idx = np.random.randint(self.n_topics,  # pylint: disable=no-member
                                                 size=(self.n_peak_tokens))
 
         self.peak_region_idx = np.zeros(self.n_peak_tokens, dtype=int)  # peak->region assignments
 
-        #  Preallocate count matrices
+        #  --- Preallocate count matrices
         # Peaks: D x T: Number of peak-tokens assigned to each topic per document
         self.n_peak_tokens_doc_by_topic = np.zeros(shape=(self.n_docs,
                                                           self.n_topics), dtype=int)
@@ -197,7 +194,7 @@ class GCLDAModel(AnnotationModel):
         # Words: 1 x T: Total number of word-tokens assigned to each topic (across all docs)
         self.total_n_word_tokens_by_topic = np.zeros(shape=(1, self.n_topics), dtype=int)
 
-        # Preallocate Gaussians for all subregions
+        # --- Preallocate Gaussians for all subregions
         # Regions_Mu & Regions_Sigma: Gaussian mean and covariance for all
         # subregions of all topics
         # Formed using lists (over topics) of lists (over subregions) of numpy
@@ -222,7 +219,7 @@ class GCLDAModel(AnnotationModel):
         self.loglikely_w = []  # Tracks log-likelihood of word tokens
         self.loglikely_tot = []  # Tracks log-likelihood of peak + word tokens
 
-        # Initialize peak->subregion assignments (r)
+        # --- Initialize peak->subregion assignments (r)
         #   if asymmetric model, randomly sample r ~ unif(1...n_regions)
         #   if symmetric model use deterministic assignment :
         #       if peak_val[0] > 0, r = 1, else r = 0
@@ -344,7 +341,7 @@ class GCLDAModel(AnnotationModel):
             self.total_n_word_tokens_by_topic[0, topic] -= 1
             self.n_word_tokens_doc_by_topic[doc, topic] -= 1
 
-            # Get sampling distribution:
+            # Get Sampling distribution:
             #    p(z_i|z,d,w) ~ p(w|t) * p(t|d)
             #                 ~ p_w_t * p_topic_g_doc
             p_word_g_topic = (self.n_word_tokens_word_by_topic[word, :] + self.beta) /\
@@ -375,7 +372,7 @@ class GCLDAModel(AnnotationModel):
         randseed : :obj:`int`
             Random seed for this iteration.
         """
-        # Seed random number generator
+        # --- Seed random number generator
         np.random.seed(randseed)  # pylint: disable=no-member
 
         # Retrieve p(x|r,y) for all subregions
@@ -397,8 +394,8 @@ class GCLDAModel(AnnotationModel):
             # subregions: [R x T] array of probs
             p_x_subregions = (peak_probs[i_ptoken, :, :]).transpose()
 
-            # Compute the probabilities of all subregions given doc
-            #     p(r|d) ~ p(r|t) * p(t|d)
+            # --- Compute the probabilities of all subregions given doc:
+            # p(r|d) ~ p(r|t) * p(t|d) ---
             # Counts of subregions per topic + prior: p(r|t)
             p_region_g_topic = self.n_peak_tokens_region_by_topic + self.delta
 
@@ -416,19 +413,19 @@ class GCLDAModel(AnnotationModel):
             # [R x T] array of probs
             p_region_g_doc = p_topic_g_doc * p_region_g_topic
 
-            # Compute the multinomial probability: p(z|y)
+            # --- Compute the multinomial probability: p(z|y) ---
             # Need the current vector of all z and y assignments for current doc
             # The multinomial from which z is sampled is proportional to number
             # of y assigned to each topic, plus constant \gamma
             doc_y_counts = self.n_peak_tokens_doc_by_topic[doc, :] + self.gamma
             doc_z_counts = self.n_word_tokens_doc_by_topic[doc, :]
-            p_peak_g_topic = self._compute_prop_multinomial_from_zy_vectors(
-                doc_z_counts, doc_y_counts)
+            p_peak_g_topic = self._compute_prop_multinomial_from_zy_vectors(doc_z_counts,
+                                                                            doc_y_counts)
 
             # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
             p_peak_g_topic = np.array([p_peak_g_topic] * self.n_regions)
 
-            # Get the full sampling distribution:
+            ## Get the full sampling distribution:
             # [R x T] array containing the proportional probability of all y/r combinations
             probs_pdf = p_x_subregions * p_region_g_doc * p_peak_g_topic
 
@@ -470,15 +467,16 @@ class GCLDAModel(AnnotationModel):
         default_roi = self.roi_size * np.eye(self.n_peak_dims)
 
         if not self.symmetric:
+            # --- If model subregions not symmetric ---
             # For each region, compute a mean and a regularized covariance matrix
             for i_topic in range(self.n_topics):
                 for j_region in range(self.n_regions):
-                    # Get all peaks assigned to current topic & subregion
+                    # -- Get all peaks assigned to current topic & subregion --
                     idx = (self.peak_topic_idx == i_topic) & (self.peak_region_idx == j_region)
                     vals = self.peak_vals[idx]
                     n_obs = self.n_peak_tokens_region_by_topic[j_region, i_topic]
 
-                    # Estimate mean
+                    # -- Estimate Mean --
                     # If there are no observations, we set mean equal to zeros,
                     # otherwise take MLE
                     if n_obs == 0:
@@ -486,7 +484,7 @@ class GCLDAModel(AnnotationModel):
                     else:
                         mu = np.mean(vals, axis=0)
 
-                    # Estimate covariance
+                    # -- Estimate Covariance --
                     # if there are 1 or fewer observations, we set sigma_hat
                     # equal to default ROI, otherwise take MLE
                     if n_obs <= 1:
@@ -499,44 +497,47 @@ class GCLDAModel(AnnotationModel):
                     d_c = n_obs / (n_obs + self.dobs)
                     sigma = d_c * c_hat + (1-d_c) * default_roi
 
-                    # Store estimates in model object
+                    # --  Store estimates in model object --
                     self.regions_mu[i_topic][j_region][:] = mu
                     self.regions_sigma[i_topic][j_region][:] = sigma
         else:
+            # --- If model subregions are symmetric ---
             # With symmetric subregions, we jointly compute all estimates for
             # subregions 1 & 2, constraining the means to be symmetric w.r.t.
             # the origin along x-dimension
             for i_topic in range(self.n_topics):
-                # Get all peaks assigned to current topic & subregion 1
+                # -- Get all peaks assigned to current topic & subregion 1 --
                 idx1 = (self.peak_topic_idx == i_topic) & (self.peak_region_idx == 0)
                 vals1 = self.peak_vals[idx1]
                 n_obs1 = self.n_peak_tokens_region_by_topic[0, i_topic]
 
-                # Get all peaks assigned to current topic & subregion 2
+                # -- Get all peaks assigned to current topic & subregion 2 --
                 idx2 = (self.peak_topic_idx == i_topic) & (self.peak_region_idx == 1)
                 vals2 = self.peak_vals[idx2]
                 n_obs2 = self.n_peak_tokens_region_by_topic[1, i_topic]
 
-                # Get all peaks assigned to current topic & either subregion
+                # -- Get all peaks assigned to current topic & either subregion --
                 allvals = self.peak_vals[idx1 | idx2]
 
-                # Estimate means
-                # If there are no observations, we set mean equal to zeros,
-                # otherwise take MLE
+                # --------------------
+                # -- Estimate Means --
+                # --------------------
 
-                # Estimate independent mean for subregion 1
+                # -- Estimate Independent Mean For Subregion 1 --
+                # If there are no observations, we set mean equal to zeros, otherwise take MLE
                 if n_obs1 == 0:
                     m = np.zeros([self.n_peak_dims])
                 else:
                     m = np.mean(vals1, axis=0)
 
-                # Estimate independent mean for subregion 2
+                # -- Estimate Independent Mean For Subregion 2 --
+                # If there are no observations, we set mean equal to zeros, otherwise take MLE
                 if n_obs2 == 0:
                     n = np.zeros([self.n_peak_dims])
                 else:
                     n = np.mean(vals2, axis=0)
 
-                # Estimate the weighted means of all dims, where for dim1 we
+                # -- Estimate the weighted means of all dims, where for dim1 we
                 # compute the mean w.r.t. absolute distance from the origin
                 weighted_mean_dim1 = (-m[0]*n_obs1 + n[0]*n_obs2) / (n_obs1 + n_obs2)
                 weighted_mean_otherdims = np.mean(allvals[:, 1:], axis=0)
@@ -549,38 +550,38 @@ class GCLDAModel(AnnotationModel):
                 mu2[0, 0] = weighted_mean_dim1
                 mu2[0, 1:] = weighted_mean_otherdims
 
-                # Store estimates in model object
+                # --  Store estimates in model object --
                 self.regions_mu[i_topic][0][:] = mu1
                 self.regions_mu[i_topic][1][:] = mu2
 
-                # Estimate Covariances
+                # --------------------------
+                # -- Estimate Covariances --
+                # --------------------------
+
                 # Covariances are estimated independently
                 # Cov for subregion 1
                 if n_obs1 <= 1:
                     c_hat1 = default_roi
                 else:
                     c_hat1 = np.cov(np.transpose(vals1))
-
                 # Cov for subregion 2
                 if n_obs2 <= 1:
                     c_hat2 = default_roi
                 else:
                     c_hat2 = np.cov(np.transpose(vals2))
 
-                # Regularize the covariances, using the ratio of observations
-                # to sample_constant
+                # Regularize the covariances, using the ratio of observations to sample_constant
                 d_c_1 = (n_obs1) / (n_obs1 + self.dobs)
                 d_c_2 = (n_obs2) / (n_obs2 + self.dobs)
-                sigma1 = d_c_1 * c_hat1 + (1 - d_c_1) * default_roi
-                sigma2 = d_c_2 * c_hat2 + (1 - d_c_2) * default_roi
+                sigma1 = d_c_1 * c_hat1 + (1-d_c_1) * default_roi
+                sigma2 = d_c_2 * c_hat2 + (1-d_c_2) * default_roi
 
-                # Store estimates in model object
+                # --  Store estimates in model object --
                 self.regions_sigma[i_topic][0][:] = sigma1
                 self.regions_sigma[i_topic][1][:] = sigma2
 
     @due.dcite(Doi('10.1145/1577069.1755845'),
-               description='Describes method for computing log-likelihood '
-                           'used in model.')
+               description='Describes method for computing log-likelihood used in model.')
     def compute_log_likelihood(self, dataset=None, update_vectors=True):
         """
         Compute Log-likelihood of a dataset object given current model.
@@ -606,7 +607,6 @@ class GCLDAModel(AnnotationModel):
             Total log-likelihood of all word tokens.
         tot_loglikely : :obj:`float`
             Total log-likelihood of peak + word tokens.
-
         References
         ----------
         [1] Newman, D., Asuncion, A., Smyth, P., & Welling, M. (2009).
@@ -619,8 +619,9 @@ class GCLDAModel(AnnotationModel):
             LGR.info('External dataset detected: Disabling update_vectors')
             update_vectors = False
 
-        # Pre-compute all probabilities from count matrices that are needed
+        # --- Pre-compute all probabilities from count matrices that are needed
         # for loglikelihood computations
+
         # Compute docprobs for y = ND x NT: p( y_i=t | d )
         doccounts = self.n_peak_tokens_doc_by_topic + self.alpha
         doccounts_sum = np.sum(doccounts, axis=1)
@@ -641,16 +642,16 @@ class GCLDAModel(AnnotationModel):
         wordcounts_sum = np.sum(wordcounts, axis=0)
         wordprobs = wordcounts / wordcounts_sum
 
-        # Get the matrix giving p(x_i|r,t) for all x:
+        # --- Get the matrix giving p(x_i|r,t) for all x:
         #    NY x NT x NR matrix of probabilities of all peaks given all
         #    topic/subregion spatial distributions
         peak_probs = self._get_peak_probs(dataset)
 
-        # Compute observed peaks (x) Loglikelihood:
+        # -----------------------------------------------------------------------------
+        # --- Compute observed peaks (x) Loglikelihood:
         # p(x|model, doc) = p(topic|doc) * p(subregion|topic) * p(x|subregion)
-        #                 = p_topic_g_doc * p_region_g_topic * p_x_r
-        # Initialize variable tracking total loglikelihood of all x tokens
-        x_loglikely = 0
+        #                    = p_topic_g_doc * p_region_g_topic * p_x_r
+        x_loglikely = 0  # Initialize variable tracking total loglikelihood of all x tokens
 
         # Go over all observed peaks and add p(x|model) to running total
         for i_ptoken in range(len(dataset.ptoken_doc_idx)):
@@ -678,9 +679,10 @@ class GCLDAModel(AnnotationModel):
             # Add probability for current token to running total for all x tokens
             x_loglikely += np.log(p_x)  # pylint: disable=no-member
 
-        # Compute observed words (w) Loglikelihoods:
+        # -----------------------------------------------------------------------------
+        # --- Compute observed words (w) Loglikelihoods:
         # p(w|model, doc) = p(topic|doc) * p(word|topic)
-        #                 = p_topic_g_doc * p_w_t
+        #                    = p_topic_g_doc * p_w_t
         w_loglikely = 0  # Initialize variable tracking total loglikelihood of all w tokens
 
         # Compute a matrix of posterior predictives over words:
@@ -689,24 +691,25 @@ class GCLDAModel(AnnotationModel):
 
         # Go over all observed word tokens and add p(w|model) to running total
         for i_wtoken in range(len(dataset.wtoken_word_idx)):
-            # convert wtoken_word_idx from 1-idx to 0-idx
-            word_token = dataset.wtoken_word_idx[i_wtoken] - 1
-            # convert wtoken_doc_idx from 1-idx to 0-idx
-            doc = dataset.wtoken_doc_idx[i_wtoken] - 1
-            # Probability of sampling current w token from d
-            p_wtoken = p_wtoken_g_doc[doc, word_token]
+            word_token = dataset.wtoken_word_idx[i_wtoken] - 1  # convert wtoken_word_idx
+                                                                # from 1-idx to 0-idx
+            doc = dataset.wtoken_doc_idx[i_wtoken] - 1  # convert wtoken_doc_idx from
+                                                        # 1-idx to 0-idx
+            p_wtoken = p_wtoken_g_doc[doc, word_token]  # Probability of sampling current
+                                                        # w token from d
             # Add log-probability of current token to running total for all w tokens
             w_loglikely += np.log(p_wtoken)  # pylint: disable=no-member
         tot_loglikely = x_loglikely + w_loglikely
 
-        # Update model log-likelihood history vector (if update_vectors == True)
+        # -----------------------------------------------------------------------------
+        # --- Update model log-likelihood history vector (if update_vectors == True)
         if update_vectors:
             self.loglikely_iter.append(self.iter)
             self.loglikely_x.append(x_loglikely)
             self.loglikely_w.append(w_loglikely)
             self.loglikely_tot.append(tot_loglikely)
 
-        # Return loglikely values (used when computing log-likelihood for a
+        # --- Return loglikely values (used when computing log-likelihood for a
         # dataset-object containing hold-out data)
         return (x_loglikely, w_loglikely, tot_loglikely)
 
@@ -721,22 +724,20 @@ class GCLDAModel(AnnotationModel):
             nPeaks x nTopics x nRegions matrix of probabilities, giving
             probability of sampling each peak (x) from all subregions.
         """
-        peak_probs = np.zeros(shape=(len(dataset.ptoken_doc_idx),
-                                     self.n_topics, self.n_regions),
-                              dtype=float)
+        peak_probs = np.zeros(shape=(len(dataset.ptoken_doc_idx), self.n_topics,
+                                     self.n_regions), dtype=float)
         for i_topic in range(self.n_topics):
             for j_region in range(self.n_regions):
-                pdf = multivariate_normal.pdf(
-                    dataset.peak_vals,
-                    mean=self.regions_mu[i_topic][j_region][0],
-                    cov=self.regions_sigma[i_topic][j_region])
+                pdf = multivariate_normal.pdf(dataset.peak_vals,
+                                              mean=self.regions_mu[i_topic][j_region][0],
+                                              cov=self.regions_sigma[i_topic][j_region])
                 peak_probs[:, i_topic, j_region] = pdf
         return peak_probs
 
     def _compute_prop_multinomial_from_zy_vectors(self, z, y):
         """
-        Compute proportional multinomial probabilities of current x vector
-        given current y vector, for all proposed y_i values.
+        Compute proportional multinomial probabilities of current x vector given
+        current y vector, for all proposed y_i values.
         Note that this only returns values proportional to the relative
         probabilities of all proposals for y_i.
 
@@ -782,10 +783,9 @@ class GCLDAModel(AnnotationModel):
         spatial_dists = np.zeros((mask_xyz.shape[0], self.n_topics), float)
         for i_topic in range(self.n_topics):
             for j_region in range(self.n_regions):
-                pdf = multivariate_normal.pdf(
-                    mask_xyz,
-                    mean=self.regions_mu[i_topic][j_region][0],
-                    cov=self.regions_sigma[i_topic][j_region])
+                pdf = multivariate_normal.pdf(mask_xyz,
+                                              mean=self.regions_mu[i_topic][j_region][0],
+                                              cov=self.regions_sigma[i_topic][j_region])
                 spatial_dists[:, i_topic] += pdf
         p_topic_g_voxel = spatial_dists / np.sum(spatial_dists, axis=1)[:, None]
         p_topic_g_voxel = np.nan_to_num(p_topic_g_voxel, 0)  # might be unnecessary
@@ -795,67 +795,114 @@ class GCLDAModel(AnnotationModel):
 
         return p_topic_g_voxel, p_voxel_g_topic
 
-    def save_model_params(self, out_dir, n_top_words=15):
+    def save(self, filename):
+        """
+        Pickle the Model instance to the provided file.
+        If the filename ends with 'z', gzip will be used to write out a
+        compressed file. Otherwise, an uncompressed file will be created.
+        """
+        if filename.endswith('z'):
+            with gzip.GzipFile(filename, 'wb') as file_object:
+                pickle.dump(self, file_object)
+        else:
+            with open(filename, 'wb') as file_object:
+                pickle.dump(self, file_object)
+
+    @classmethod
+    def load(cls, filename):
+        """
+        Load a pickled Model instance from file.
+        If the filename ends with 'z', it will be assumed that the file is
+        compressed, and gzip will be used to load it. Otherwise, it will
+        be assumed that the file is not compressed.
+        """
+        if filename.endswith('z'):
+            try:
+                with gzip.GzipFile(filename, 'rb') as file_object:
+                    model = pickle.load(file_object)
+            except UnicodeDecodeError:
+                # Need to try this for python3
+                with gzip.GzipFile(filename, 'rb') as file_object:
+                    model = pickle.load(file_object, encoding='latin')
+        else:
+            try:
+                with open(filename, 'rb') as file_object:
+                    model = pickle.load(file_object)
+            except UnicodeDecodeError:
+                # Need to try this for python3
+                with open(filename, 'rb') as file_object:
+                    model = pickle.load(file_object, encoding='latin')
+
+        if not isinstance(model, Model):
+            raise IOError('Pickled object must be `gclda.model.Model`, '
+                          'not {0}'.format(type(model)))
+
+        return model
+
+    def save_model_params(self, outputdir, n_top_words=15):
         """
         Run all export-methods: calls all save-methods to export parameters to
         files.
 
         Parameters
         ----------
-        out_dir : :obj:`str`
+        outputdir : :obj:`str`
             The name of the output directory.
         n_top_words : :obj:`int`, optional
             The number of words associated with each topic to report in topic
             word probabilities file.
         """
         # If output directory doesn't exist, make it
-        if not isdir(out_dir):
-            mkdir(out_dir)
+        if not isdir(outputdir):
+            mkdir(outputdir)
 
         # print topic-word distributions for top-K words in easy-to-read format
-        out_file = join(out_dir, 'Topic_X_Word_Probs.csv')
-        self._save_topic_word_probs(out_file, n_top_words=n_top_words)
+        outfilestr = join(outputdir, 'Topic_X_Word_Probs.csv')
+        self._save_topic_word_probs(outfilestr, n_top_words=n_top_words)
 
         # print topic x word count matrix: m.n_word_tokens_word_by_topic
-        out_file = join(out_dir, 'Topic_X_Word_CountMatrix.csv')
-        self._save_topic_word_counts(out_file)
+        outfilestr = join(outputdir, 'Topic_X_Word_CountMatrix.csv')
+        self._save_topic_word_counts(outfilestr)
 
         # print activation-assignments to topics and subregions:
         # Peak_x, Peak_y, Peak_z, peak_topic_idx, peak_region_idx
-        out_file = join(out_dir, 'ActivationAssignments.csv')
-        self._save_activation_assignments(out_file)
+        outfilestr = join(outputdir, 'ActivationAssignments.csv')
+        self._save_activation_assignments(outfilestr)
 
-    def _save_activation_assignments(self, out_file):
+    def _save_activation_assignments(self, outfilestr):
         """
         Save Peak->Topic and Peak->Subregion assignments for all x-tokens in
         dataset to file.
 
         Parameters
         ----------
-        out_file : :obj:`str`
+        outfilestr : :obj:`str`
             The name of the output file.
         """
-        ptopic_idx = self.peak_topic_idx[i_ptoken]+1
-        pregion_idx = self.peak_region_idx[i_ptoken]+1
-        data = np.hstack((self.peak_vals[i_ptoken, :3],
-                          ptopic_idx[:, None],
-                          pregion_idx[:, None]))
+        with open(outfilestr, 'w+') as fid:
+            # Print the column-headers
+            fid.write('Peak_X,Peak_Y,Peak_Z,Topic_Assignment,Subregion_Assignment\n')
 
-        df = pd.DataFrame(data=data,
-                          columns=['Peak_X', 'Peak_Y', 'Peak_Z',
-                                   'Topic_Assignment', 'Subregion_Assignment'])
-        df.to_csv(out_file, index=False)
+            # For each peak-token, print out its coordinates and current topic/subregion assignment
+            for i_ptoken in range(self.n_peak_tokens):
+                # Note that we convert topic/subregion indices to 1-base idx
+                outstr = '{0},{1},{2},{3},{4}\n'.format(self.peak_vals[i_ptoken, 0],
+                                                        self.peak_vals[i_ptoken, 1],
+                                                        self.peak_vals[i_ptoken, 2],
+                                                        self.peak_topic_idx[i_ptoken]+1,
+                                                        self.peak_region_idx[i_ptoken]+1)
+                fid.write(outstr)
 
-    def _save_topic_word_counts(self, out_file):
+    def _save_topic_word_counts(self, outfilestr):
         """
         Save Topic->Word counts for all topics and words to file.
 
         Parameters
         ----------
-        out_file : :obj:`str`
+        outfilestr : :obj:`str`
             The name of the output file.
         """
-        with open(out_file, 'w+') as fid:
+        with open(outfilestr, 'w+') as fid:
             # Print the topic-headers
             fid.write('WordLabel,')
             for i_topic in range(self.n_topics):
@@ -874,18 +921,18 @@ class GCLDAModel(AnnotationModel):
                 # Newline for next wlabel row
                 fid.write('\n')
 
-    def _save_topic_word_probs(self, out_file, n_top_words=15):
+    def _save_topic_word_probs(self, outfilestr, n_top_words=15):
         """
         Save Topic->Word probability distributions for top K words to file.
 
         Parameters
         ----------
-        out_file : :obj:`str`
+        outfilestr : :obj:`str`
             The name of the output file.
         n_top_words : :obj:`int`, optional
             The number of top words to be written out for each topic.
         """
-        with open(out_file, 'w+') as fid:
+        with open(outfilestr, 'w+') as fid:
             # Compute topic->word probs and marginal topic-probs
             wprobs = self.n_word_tokens_word_by_topic + self.beta
 
