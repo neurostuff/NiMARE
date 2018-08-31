@@ -22,6 +22,8 @@ class CoordCBP(Parcellator):
 
     def fit(self, target_mask, r=5, n_parcels=2, n_iters=10000, n_cores=4):
         """
+        Run CBP parcellation.
+
         Parameters
         ----------
         target_mask : img_like

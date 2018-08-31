@@ -51,6 +51,7 @@ A Python library for coordinate- and image-based meta-analysis.
 - Meta-analytic parcellation (`nimare.parcellate`)
     - Meta-analytic parcellation based on text (MAPBOT)
     - Coactivation-base parcellation (CBP)
+    - Meta-analytic activation modeling-based parcellation (MAMP)
 - Common workflows (`nimare.workflows`)
     - Meta-analytic coactivation modeling (MACM)
     - Meta-analytic clustering analysis
