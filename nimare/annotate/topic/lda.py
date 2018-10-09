@@ -49,7 +49,7 @@ class LDAModel(AnnotationModel):
         Number of topics to generate. Default=50.
     n_words : :obj:`int`, optional
         Number of top words to return for each topic. Default=31, based on
-        Poldrack et al. (2012).
+        Poldrack et al. (2012). Not used.
     n_iters : :obj:`int`, optional
         Number of iterations to run in training topic model. Default=1000.
     alpha : :obj:`float`, optional
@@ -71,6 +71,13 @@ class LDAModel(AnnotationModel):
             alpha = 50. / n_topics
         elif not isinstance(alpha, float):
             raise ValueError('Argument alpha must be float or "auto"')
+
+        self.params = {
+            'n_topics': n_topics,
+            'n_iters': n_iters,
+            'alpha': alpha,
+            'beta': beta,
+            }
 
         # Check for presence of text files and convert if necessary
         if not op.isdir(text_dir):
@@ -103,14 +110,16 @@ class LDAModel(AnnotationModel):
                      '--random-seed 1 '
                      '--alpha {alpha} '
                      '--beta {beta}').format(mallet=mallet_bin, out=tempdir,
-                                             n_topics=n_topics, n_iters=n_iters,
-                                             alpha=alpha, beta=beta)
+                                             n_topics=self.params['n_topics'],
+                                             n_iters=self.params['n_iters'],
+                                             alpha=self.params['alpha'],
+                                             beta=self.params['beta'])
 
         subprocess.call(import_str, shell=True)
         subprocess.call(train_str, shell=True)
 
         # Read in and convert doc_topics and topic_keys.
-        topic_names = ['topic_{0:03d}'.format(i) for i in range(n_topics)]
+        topic_names = ['topic_{0:03d}'.format(i) for i in range(self.params['n_topics'])]
 
         # doc_topics: Topic weights for each paper.
         # The conversion here is pretty ugly at the moment.
@@ -120,7 +129,7 @@ class LDAModel(AnnotationModel):
         # After that, odd columns are topic numbers and even columns are the
         # weights for the topics in the preceding column. These columns are sorted
         # on an individual id basis by the weights.
-        n_cols = (2 * n_topics) + 1
+        n_cols = (2 * self.params['n_topics']) + 1
         dt_df = pd.read_csv(op.join(tempdir, 'doc_topics.txt'),
                             delimiter='\t', skiprows=1, header=None,
                             index_col=0)
@@ -132,11 +141,11 @@ class LDAModel(AnnotationModel):
         # Put weights (even cols) and topics (odd cols) into separate dfs.
         weights_df = dt_df[dt_df.columns[2::2]]
         weights_df.index = dt_df[1]
-        weights_df.columns = range(n_topics)
+        weights_df.columns = range(self.params['n_topics'])
 
         topics_df = dt_df[dt_df.columns[1::2]]
         topics_df.index = dt_df[1]
-        topics_df.columns = range(n_topics)
+        topics_df.columns = range(self.params['n_topics'])
 
         # Sort columns in weights_df separately for each row using topics_df.
         sorters_df = topics_df.apply(self._get_sort, axis=1)
