@@ -5,7 +5,7 @@ import re
 import os.path as op
 
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 
 from ..utils import get_resource_path
 
@@ -14,7 +14,7 @@ SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
 SPELL_DICT = SPELL_DF['US'].to_dict()
 
 
-def generate_tfidf(text_df):
+def generate_counts(text_df, tfidf=True):
     """
     Generate tf-idf weights for unigrams/bigrams derived from textual data.
 
@@ -35,10 +35,15 @@ def generate_tfidf(text_df):
     with open(stoplist, 'r') as fo:
         stop_words = fo.read().splitlines()
 
-    vectorizer = TfidfVectorizer(min_df=50, max_df=0.5,
-                                 ngram_range=(1, 2), vocabulary=None,
-                                 stop_words=stop_words)
-    weights = vectorizer.fit_transform(text)
+    if tfidf:
+        vectorizer = TfidfVectorizer(min_df=50, max_df=0.5,
+                                     ngram_range=(1, 2), vocabulary=None,
+                                     stop_words=stop_words)
+    else:
+        vectorizer = CountVectorizer(min_df=50, max_df=0.5,
+                                     ngram_range=(1, 2), vocabulary=None,
+                                     stop_words=stop_words)
+    weights = vectorizer.fit_transform(text).toarray()
     names = vectorizer.get_feature_names()
     names = [str(name) for name in names]
     weights_df = pd.DataFrame(weights, columns=names, index=ids)
