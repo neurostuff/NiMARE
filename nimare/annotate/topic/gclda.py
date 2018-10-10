@@ -176,30 +176,33 @@ class GCLDAModel(AnnotationModel):
                                          dtype=int)  # word->topic assignments
 
         # Randomly initialize peak->topic assignments (y) ~ unif(1...n_topics)
-        self.peak_topic_idx = np.random.randint(self.params['n_topics'],  # pylint: disable=no-member
-                                                size=(len(self.ptoken_doc_idx)))
+        self.peak_topic_idx = np.random.randint(
+            self.params['n_topics'],  # pylint: disable=no-member
+            size=(len(self.ptoken_doc_idx)))
 
-        self.peak_region_idx = np.zeros(len(self.ptoken_doc_idx), dtype=int)  # peak->region assignments
+        self.peak_region_idx = np.zeros(
+            len(self.ptoken_doc_idx), dtype=int)  # peak->region assignments
 
         #  Preallocate count matrices
         # Peaks: D x T: Number of peak-tokens assigned to each topic per document
-        self.n_peak_tokens_doc_by_topic = np.zeros(shape=(len(self.ids),
-                                                          self.params['n_topics']), dtype=int)
+        self.n_peak_tokens_doc_by_topic = np.zeros(
+            (len(self.ids), self.params['n_topics']), dtype=int)
 
         # Peaks: R x T: Number of peak-tokens assigned to each subregion per topic
-        self.n_peak_tokens_region_by_topic = np.zeros(shape=(self.params['n_regions'],
-                                                             self.params['n_topics']), dtype=int)
+        self.n_peak_tokens_region_by_topic = np.zeros(
+            (self.params['n_regions'], self.params['n_topics']), dtype=int)
 
         # Words: W x T: Number of word-tokens assigned to each topic per word-type
-        self.n_word_tokens_word_by_topic = np.zeros(shape=(len(self.word_labels),
-                                                           self.params['n_topics']), dtype=int)
+        self.n_word_tokens_word_by_topic = np.zeros(
+            (len(self.word_labels), self.params['n_topics']), dtype=int)
 
         # Words: D x T: Number of word-tokens assigned to each topic per document
-        self.n_word_tokens_doc_by_topic = np.zeros(shape=(len(self.ids),
-                                                          self.params['n_topics']), dtype=int)
+        self.n_word_tokens_doc_by_topic = np.zeros(
+            (len(self.ids), self.params['n_topics']), dtype=int)
 
         # Words: 1 x T: Total number of word-tokens assigned to each topic (across all docs)
-        self.total_n_word_tokens_by_topic = np.zeros(shape=(1, self.params['n_topics']), dtype=int)
+        self.total_n_word_tokens_by_topic = np.zeros(
+            (1, self.params['n_topics']), dtype=int)
 
         # Preallocate Gaussians for all subregions
         # Regions_Mu & Regions_Sigma: Gaussian mean and covariance for all
@@ -214,8 +217,9 @@ class GCLDAModel(AnnotationModel):
             topic_mu = []
             topic_sigma = []
             for j_region in range(self.params['n_regions']):
-                topic_mu.append(np.zeros(shape=(1, self.peak_vals.shape[1])))
-                topic_sigma.append(np.zeros(shape=(self.peak_vals.shape[1], self.peak_vals.shape[1])))
+                topic_mu.append(np.zeros((1, self.peak_vals.shape[1])))
+                topic_sigma.append(np.zeros(
+                    (self.peak_vals.shape[1], self.peak_vals.shape[1])))
             self.regions_mu.append(topic_mu)  # (\mu^{(t)}_r)
             self.regions_sigma.append(topic_sigma)  # (\sigma^{(t)}_r)
 
@@ -231,8 +235,9 @@ class GCLDAModel(AnnotationModel):
         #   if symmetric model use deterministic assignment :
         #       if peak_val[0] > 0, r = 1, else r = 0
         if not self.params['symmetric']:
-            self.peak_region_idx[:] = np.random.randint(self.params['n_regions'],  # pylint: disable=no-member
-                                                        size=(len(self.ptoken_doc_idx)))
+            self.peak_region_idx[:] = np.random.randint(
+                self.params['n_regions'],  # pylint: disable=no-member
+                size=(len(self.ptoken_doc_idx)))
         else:
             self.peak_region_idx[:] = (self.peak_vals[:, 0] > 0).astype(int)
 
@@ -732,9 +737,9 @@ class GCLDAModel(AnnotationModel):
             nPeaks x nTopics x nRegions matrix of probabilities, giving
             probability of sampling each peak (x) from all subregions.
         """
-        peak_probs = np.zeros(shape=(len(model.ptoken_doc_idx),
-                                     self.params['n_topics'], self.params['n_regions']),
-                              dtype=float)
+        peak_probs = np.zeros(
+            (len(model.ptoken_doc_idx), self.params['n_topics'],
+             self.params['n_regions']), dtype=float)
         for i_topic in range(self.params['n_topics']):
             for j_region in range(self.params['n_regions']):
                 pdf = multivariate_normal.pdf(
