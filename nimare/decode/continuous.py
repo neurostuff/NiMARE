@@ -74,7 +74,7 @@ def gclda_decode_map(model, roi, topic_priors=None, prior_weight=1):
                       '(nibabel.Nifti1Image) or a path to one.')
 
     # Load image file and get voxel values
-    input_values = apply_mask(image, model.dataset.mask_img)
+    input_values = apply_mask(image, model.mask)
     topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel.T,
                                       input_values[:, None]))
     if topic_priors is not None:
@@ -87,7 +87,7 @@ def gclda_decode_map(model, roi, topic_priors=None, prior_weight=1):
     #p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
     word_weights = np.dot(model.p_word_g_topic, topic_weights)
 
-    decoded_df = pd.DataFrame(index=model.dataset.word_labels,
+    decoded_df = pd.DataFrame(index=model.word_labels,
                               columns=['Weight'], data=word_weights)
     decoded_df.index.name = 'Term'
     return decoded_df, topic_weights

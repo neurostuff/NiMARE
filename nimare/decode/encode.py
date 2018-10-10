@@ -94,9 +94,9 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
 
     # Assume that words in word_labels are underscore-separated.
     # Convert to space-separation for vectorization of input string.
-    vocabulary = [term.replace('_', ' ') for term in model.dataset.word_labels]
+    vocabulary = [term.replace('_', ' ') for term in model.word_labels]
     max_len = max([len(term.split(' ')) for term in vocabulary])
-    vectorizer = CountVectorizer(vocabulary=model.dataset.word_labels,
+    vectorizer = CountVectorizer(vocabulary=model.word_labels,
                                  ngram_range=(1, max_len))
     word_counts = np.squeeze(vectorizer.fit_transform([text]).toarray())
     keep_idx = np.where(word_counts > 0)[0]
@@ -113,7 +113,7 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
         topic_weights *= weighted_priors
 
     voxel_weights = np.dot(model.p_voxel_g_topic, topic_weights)
-    img = unmask(voxel_weights, model.dataset.mask_img)
+    img = unmask(voxel_weights, model.mask)
 
     if out_file is not None:
         img.to_filename(out_file)

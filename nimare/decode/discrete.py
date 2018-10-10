@@ -73,14 +73,14 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
         raise IOError('Input roi must be either a nifti image '
                       '(nibabel.Nifti1Image) or a path to one.')
 
-    dset_aff = model.dataset.mask_img.affine
+    dset_aff = model.mask.affine
     if not np.array_equal(roi.affine, dset_aff):
         raise ValueError('Input roi must have same affine as mask img:'
                          '\n{0}\n{1}'.format(np.array2string(roi.affine),
                                              np.array2string(dset_aff)))
 
     # Load ROI file and get ROI voxels overlapping with brain mask
-    mask_vec = model.dataset.mask_img.get_data().ravel().astype(bool)
+    mask_vec = model.mask.get_data().ravel().astype(bool)
     roi_vec = roi.get_data().astype(bool).ravel()
     roi_vec = roi_vec[mask_vec]
     roi_idx = np.where(roi_vec)[0]
@@ -96,7 +96,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     #p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
     word_weights = np.dot(model.p_word_g_topic, topic_weights)
 
-    decoded_df = pd.DataFrame(index=model.dataset.word_labels,
+    decoded_df = pd.DataFrame(index=model.word_labels,
                               columns=['Weight'], data=word_weights)
     decoded_df.index.name = 'Term'
     return decoded_df, topic_weights
