@@ -4,6 +4,8 @@ Text extraction tools.
 import re
 import os.path as op
 
+import nltk
+import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 
@@ -49,6 +51,44 @@ def generate_counts(text_df, tfidf=True):
     weights_df = pd.DataFrame(weights, columns=names, index=ids)
     weights_df.index.name = 'id'
     return weights_df
+
+
+def generate_cooccurrence(text_df, vocabulary=None, window=5, directed=False):
+    """
+    Build co-occurrence matrix from documents.
+    """
+    ids = text_df['id'].tolist()
+    text = text_df['text'].tolist()
+    text = [nltk.word_tokenize(doc) for doc in text]
+    text = [[word.lower() for word in doc if word.isalpha()] for doc in text]
+
+    if vocabulary is None:
+        all_words = [word for doc in text for word in doc]
+        vocabulary = sorted(list(set(all_words)))
+
+    cooc_arr = np.zeros((len(text), len(vocabulary), len(vocabulary)))
+    for i, doc in enumerate(text):
+        for j, word1 in enumerate(vocabulary):
+            if word1 in doc:
+                idx1 = [jj for jj, x in enumerate(doc) if x == word1]
+                for k, word2 in enumerate(vocabulary):
+                    if word2 in doc and k != j:
+                        idx2 = [kk for kk, x in enumerate(doc) if x == word2]
+                        distances = np.zeros((len(idx1), len(idx2)))
+                        for m, idx1_ in enumerate(idx1):
+                            for n, idx2_ in enumerate(idx2):
+                                distances[m, n] = idx2_ - idx1_
+
+                        if directed:
+                            distances[distances < 0] = window+1
+                        else:
+                            distances = np.abs(distances)
+                        cooc = np.sum(distances <= window)
+                        cooc_arr[i, j, k] = cooc
+
+    df = pd.Panel(items=ids, major_axis=vocabulary, minor_axis=vocabulary,
+                  data=cooc_arr)
+    return df
 
 
 def uk_to_us(text):
