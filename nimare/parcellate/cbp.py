@@ -2,10 +2,11 @@
 Coactivation-based parcellation
 """
 import numpy as np
-from nilearn.masking import apply_mask
+from nilearn.masking import apply_mask, unmask
+from scipy.spatial.distance import cdist
 
 from .base import Parcellator
-from ..meta.cbma.kernel import MKDAKernel
+from ..meta.cbma.ale import SCALE
 from ..due import due, Doi
 
 
@@ -16,11 +17,13 @@ class CoordCBP(Parcellator):
     Coordinate-based coactivation-based parcellation
     """
     def __init__(self, dataset, ids):
+        self.dataset = dataset
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
         self.ids = ids
 
-    def fit(self, target_mask, r=5, n_parcels=2, n_iters=10000, n_cores=4):
+    def fit(self, target_mask, method='min_distance', r=5, n_exps=50,
+            n_parcels=2, n_iters=10000, meta_estimator=SCALE, **kwargs):
         """
         Run CBP parcellation.
 
@@ -43,15 +46,44 @@ class CoordCBP(Parcellator):
         results
         """
         assert np.array_equal(self.mask.affine, target_mask.affine)
-        kernel_estimator = MKDAKernel(self.coordinates, self.mask)
-        ma_maps = kernel_estimator.transform(self.ids, r=r)
-        ma_data = apply_mask(ma_maps, self.mask)
+        kernel_args = {k: v for k, v in kwargs.items() if
+                       k.startswith('kernel__')}
+        meta_args = {k.split('meta__')[1]: v for k, v in kwargs.items() if
+                     k.startswith('meta__')}
 
+        # Step 1: Build correlation matrix
         target_data = apply_mask(target_mask, self.mask)
-        mask_idx = np.where(target_data)[0]
-        for i_voxel, idx in enumerate(mask_idx):
-            study_idx = np.where(ma_data[:, idx])[0]
+        target_map = unmask(target_data, self.mask)
+        target_data = target_map.get_data()
+        mask_idx = np.vstack(np.where(target_data))
+        voxel_arr = np.zeros((mask_idx.shape[1], np.sum(self.mask)))
 
+        ijk = self.coordinates[['i', 'j', 'k']].values
+        temp_df = self.coordinates.copy()
+        for i_voxel in range(mask_idx.shape[1]):
+            voxel = mask_idx[:, i_voxel]
+            temp_df['distance'] = cdist(ijk, voxel)
+
+            if method == 'min_studies':
+                # number of studies
+                temp_df2 = temp_df.groupby('id')[['distance']].min()
+                temp_df2 = temp_df2.sort_values(by='distance')
+                sel_ids = temp_df2.iloc[:n_exps].index.values
+            elif method == 'min_distance':
+                # minimum distance
+                temp_df2 = temp_df.groupby('id')[['distance']].min()
+                sel_ids = temp_df2.loc[temp_df2['distance'] < r].index.values
+
+            voxel_meta = meta_estimator(self.dataset, ids=sel_ids,
+                                        **kernel_args)
+            voxel_meta.fit(**meta_args)
+            voxel_arr[i_voxel, :] = apply_mask(voxel_meta.results['ale'],
+                                               self.mask)
+        voxel_corr = np.corrcoef(voxel_arr)
+
+        # Step 2: Clustering
+        for i_parc in n_parcels:
+            data = voxel_corr
 
 
 class ImCBP(Parcellator):

@@ -53,9 +53,25 @@ def generate_counts(text_df, tfidf=True):
     return weights_df
 
 
-def generate_cooccurrence(text_df, vocabulary=None, window=5, directed=False):
+def generate_cooccurrence(text_df, vocabulary=None, window=5):
     """
     Build co-occurrence matrix from documents.
+    Not the same approach as used by the GloVe model.
+
+    Parameters
+    ----------
+    text_df : (D x 2) :obj:`pandas.DataFrame`
+        A DataFrame with two columns ('id' and 'text'). D = document.
+    vocabulary : :obj:`list`, optional
+        List of words in vocabulary to extract from text.
+    window : :obj:`int`, optional
+        Window size for cooccurrence. Words which appear within window words
+        of one another co-occur.
+
+    Returns
+    -------
+    df : (V, V, D) :obj:`pandas.Panel`
+        One cooccurrence matrix per document in text_df.
     """
     ids = text_df['id'].tolist()
     text = text_df['text'].tolist()
@@ -79,11 +95,7 @@ def generate_cooccurrence(text_df, vocabulary=None, window=5, directed=False):
                             for n, idx2_ in enumerate(idx2):
                                 distances[m, n] = idx2_ - idx1_
 
-                        if directed:
-                            distances[distances < 0] = window+1
-                        else:
-                            distances = np.abs(distances)
-                        cooc = np.sum(distances <= window)
+                        cooc = np.sum(np.abs(distances) <= window)
                         cooc_arr[i, j, k] = cooc
 
     df = pd.Panel(items=ids, major_axis=vocabulary, minor_axis=vocabulary,
