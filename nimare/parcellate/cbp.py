@@ -2,8 +2,11 @@
 Coactivation-based parcellation
 """
 import numpy as np
-from nilearn.masking import apply_mask, unmask
+import pandas as pd
+from sklearn.cluster import k_means
 from scipy.spatial.distance import cdist
+import scipy.ndimage.measurements as meas
+from nilearn.masking import apply_mask, unmask
 
 from .base import Parcellator
 from ..meta.cbma.ale import SCALE
@@ -21,6 +24,8 @@ class CoordCBP(Parcellator):
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
         self.ids = ids
+        self.solutions = None
+        self.metrics = None
 
     def fit(self, target_mask, method='min_distance', r=5, n_exps=50,
             n_parcels=2, n_iters=10000, meta_estimator=SCALE, **kwargs):
@@ -56,11 +61,12 @@ class CoordCBP(Parcellator):
         target_map = unmask(target_data, self.mask)
         target_data = target_map.get_data()
         mask_idx = np.vstack(np.where(target_data))
-        voxel_arr = np.zeros((mask_idx.shape[1], np.sum(self.mask)))
+        n_voxels = mask_idx.shape[1]
+        voxel_arr = np.zeros((n_voxels, np.sum(self.mask)))
 
         ijk = self.coordinates[['i', 'j', 'k']].values
         temp_df = self.coordinates.copy()
-        for i_voxel in range(mask_idx.shape[1]):
+        for i_voxel in range(n_voxels):
             voxel = mask_idx[:, i_voxel]
             temp_df['distance'] = cdist(ijk, voxel)
 
@@ -74,16 +80,44 @@ class CoordCBP(Parcellator):
                 temp_df2 = temp_df.groupby('id')[['distance']].min()
                 sel_ids = temp_df2.loc[temp_df2['distance'] < r].index.values
 
+            # Run MACM
             voxel_meta = meta_estimator(self.dataset, ids=sel_ids,
                                         **kernel_args)
             voxel_meta.fit(**meta_args)
             voxel_arr[i_voxel, :] = apply_mask(voxel_meta.results['ale'],
                                                self.mask)
+
+        # Correlate voxel-specific MACMs across voxels in ROI
         voxel_corr = np.corrcoef(voxel_arr)
+        corr_dist = 1 - voxel_corr
 
         # Step 2: Clustering
-        for i_parc in n_parcels:
-            data = voxel_corr
+        labels = np.zeros((n_voxels, len(n_parcels)))
+        metric_types = ['contiguous']
+        metrics = pd.DataFrame(index=n_parcels, columns=metric_types,
+                               data=np.zeros((len(n_parcels),
+                                              len(metric_types))))
+        for i_parc, n_clusters in enumerate(n_parcels):
+            # K-Means clustering
+            _, labeled, _ = k_means(
+                corr_dist, n_clusters, init='k-means++',
+                precompute_distances='auto', n_init=1000, max_iter=1023,
+                verbose=False, tol=0.0001, random_state=1, copy_x=True,
+                n_jobs=1, algorithm='auto', return_n_iter=False)
+            labels[:, i_parc] = labeled
+
+            # Check contiguity of clusters
+            # Can nilearn do this?
+            temp_mask = np.zeros(target_data.shape)
+            for j_voxel in range(n_voxels):
+                i, j, k = mask_idx[:, j_voxel]
+                temp_mask[i, j, k] = labeled[j_voxel]
+            labeled = meas.label(temp_mask, np.ones((3, 3, 3)))[0]
+            n_contig = len(np.unique(labeled))
+            metrics.loc[n_clusters, 'contiguous'] = int(n_contig > (n_clusters + 1))
+
+        self.solutions = labels
+        self.metrics = metrics
 
 
 class ImCBP(Parcellator):
