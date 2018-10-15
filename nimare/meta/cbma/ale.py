@@ -52,13 +52,18 @@ class ALE(CBMAEstimator):
         Dataset object to analyze.
     ids : array_like
         List of IDs from dataset to analyze.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`
-        Kernel with which to convolve coordinates from dataset.
+    ids2 : array_like or None, optional
+        If not None, ids2 is used to identify a second sample for a subtraction
+        analysis. Default is None.
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
     """
-    def __init__(self, dataset, ids, kernel_estimator=ALEKernel, **kwargs):
+    def __init__(self, dataset, ids, ids2=None, kernel_estimator=ALEKernel,
+                 **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
@@ -69,6 +74,7 @@ class ALE(CBMAEstimator):
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
         self.ids = ids
+        self.ids2 = ids2
         self.voxel_thresh = None
         self.clust_thresh = None
         self.corr = None
@@ -102,8 +108,126 @@ class ALE(CBMAEstimator):
         self.n_iters = n_iters
 
         k_est = self.kernel_estimator(self.coordinates, self.mask)
-        ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
 
+        if ids2 is not None:
+            all_ids = np.hstack(np.array(ids), np.array(ids2))
+            ma_maps = k_est.transform(all_ids, **self.kernel_arguments)
+            images1 = self._run_thing(ma_maps[:len(ids)], prefix='group1_')
+            images2 = self._run_thing(ma_maps[len(ids):], prefix='group2_')
+            sub_images = self.subtraction_analysis(
+                ids, ids2, images1['group1_cfwe'], images2['group2_cfwe'],
+                ma_maps)
+            images = {**images1, **images2, **sub_images}
+        else:
+            ma_maps = k_est.transform(ids, **self.kernel_arguments)
+            images = self._run_thing(ma_maps, prefix='')
+
+        self.results = MetaResult(mask=self.mask, **images)
+
+    def subtraction_analysis(ids, ids2, image1, image2, ma_maps):
+        grp1_voxel = image1 > 0
+        grp2_voxel = image2 > 0
+        n_grp1 = len(ids)
+        img1 = unmask(image1, self.mask)
+
+        all_ids = np.hstack(np.array(ids), np.array(ids2))
+        id_idx = np.arange(len(all_ids))
+
+        # Get MA values for both samples.
+        ma_arr = apply_mask(ma_maps, self.mask)
+
+        # Get ALE values for first group.
+        grp1_ma_arr = ma_arr[:n_grp1, :]
+        grp1_ale_values = np.ones(ma_arr.shape[1])
+        for i_exp in range(grp1_ma_arr.shape[0]):
+            grp1_ale_values *= (1. - grp1_ma_arr[i_exp, :])
+        grp1_ale_values = 1 - grp1_ale_values
+
+        # Get ALE values for first group.
+        grp2_ma_arr = ma_arr[n_grp1:, :]
+        grp2_ale_values = np.ones(ma_arr.shape[1])
+        for i_exp in range(grp2_ma_arr.shape[0]):
+            grp2_ale_values *= (1. - grp2_ma_arr[i_exp, :])
+        grp2_ale_values = 1 - grp2_ale_values
+
+        # A > B contrast
+        grp1_p_arr = np.ones(np.sum(grp1_voxel))
+        if np.sum(grp1_voxel) > 0:
+            diff_ale_values = grp1_ale_values - grp2_ale_values
+            diff_ale_values = diff_ale_values[grp1_voxel]
+
+            red_ma_arr = ma_arr[:, grp1_voxel]
+            iter_diff_ale_arr = np.zeros((n_iters, np.sum(grp1_voxel)))
+
+            for i_iter in range(n_iters):
+                np.random.shuffle(id_idx)
+                iter_grp1_ale_values = np.ones(np.sum(grp1_voxel))
+                for j_exp in id_idx[:n_grp1]:
+                    iter_grp1_ale_values *= (1. - red_ma_arr[j_exp, :])
+                iter_grp1_ale_values = 1 - iter_grp1_ale_values
+
+                iter_grp2_ale_values = np.ones(np.sum(grp1_voxel))
+                for j_exp in id_idx[n_grp1:]:
+                    iter_grp2_ale_values *= (1. - red_ma_arr[j_exp, :])
+                iter_grp2_ale_values = 1 - iter_grp2_ale_values
+
+                iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+
+            for voxel in range(np.sum(grp1_voxel)):
+                # TODO: Check that upper is appropriate
+                grp1_p_arr[voxel] = null_to_p(diff_ale_values[voxel],
+                                              iter_diff_values[:, voxel],
+                                              tail='upper')
+            grp1_z_arr = p_to_z(grp1_p_arr, tail='one')
+            # Unmask
+            grp1_z_map = np.zeros(grp1_voxel.shape[0])
+            grp1_z_map[:] = np.nan
+            grp1_z_map[grp1_voxel] = grp1_z_arr
+
+        if np.sum(grp2_voxel) > 0:
+            # Get MA values for second sample only for voxels significant in
+            # second sample's meta-analysis.
+            diff_ale_values = grp2_ale_values - grp1_ale_values
+            diff_ale_values = diff_ale_values[grp2_voxel]
+
+            red_ma_arr = ma_arr[:, grp2_voxel]
+            iter_diff_ale_arr = np.zeros((n_iters, np.sum(grp2_voxel)))
+
+            for i_iter in range(n_iters):
+                np.random.shuffle(id_idx)
+                iter_grp1_ale_values = np.ones(np.sum(grp2_voxel))
+                for j_exp in id_idx[:n_grp1]:
+                    iter_grp1_ale_values *= (1. - red_ma_arr[j_exp, :])
+                iter_grp1_ale_values = 1 - iter_grp1_ale_values
+
+                iter_grp2_ale_values = np.ones(np.sum(grp2_voxel))
+                for j_exp in id_idx[n_grp1:]:
+                    iter_grp2_ale_values *= (1. - red_ma_arr[j_exp, :])
+                iter_grp2_ale_values = 1 - iter_grp2_ale_values
+
+                iter_diff_values[i_iter, :] = iter_grp2_ale_values - iter_grp1_ale_values
+
+            for voxel in range(np.sum(grp2_voxel)):
+                # TODO: Check that upper is appropriate
+                grp2_p_arr[voxel] = null_to_p(diff_ale_values[voxel],
+                                              iter_diff_values[:, voxel],
+                                              tail='upper')
+            grp2_z_arr = p_to_z(grp2_p_arr, tail='one')
+            # Unmask
+            grp2_z_map = np.zeros(grp2_voxel.shape[0])
+            grp2_z_map[:] = np.nan
+            grp2_z_map[grp2_voxel] = grp2_z_arr
+
+        # Fill in output map
+        diff_z_map = np.zeros(grp1_voxel.shape[0])
+        diff_z_map[grp2_voxel] = -1 * grp2_z_map[grp2_voxel]
+        # could overwrite some values. not a problem.
+        diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
+
+        images = {'grp1-grp2_z': diff_z_map}
+        return images
+
+    def _run_ale(ma_maps, prefix=''):
         max_poss_ale = 1.
         for ma_map in ma_maps:
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
@@ -178,14 +302,14 @@ class ALE(CBMAEstimator):
         z_fwe_values = p_to_z(p_fwe_values, tail='one')
 
         # Write out unthresholded value images
-        images = {'ale': ale_values,
-                  'p': p_values,
-                  'z': z_values,
-                  'vthresh': vthresh_z_values,
-                  'p_vfwe': p_fwe_values,
-                  'z_vfwe': z_fwe_values,
-                  'cfwe': cfwe_map}
-        self.results = MetaResult(mask=self.mask, **images)
+        images = {prefix+'ale': ale_values,
+                  prefix+'p': p_values,
+                  prefix+'z': z_values,
+                  prefix+'vthresh': vthresh_z_values,
+                  prefix+'p_vfwe': p_fwe_values,
+                  prefix+'z_vfwe': z_fwe_values,
+                  prefix+'cfwe': cfwe_map}
+        return images
 
     def _compute_ale(self, df=None, hist_bins=None, ma_maps=None):
         """
