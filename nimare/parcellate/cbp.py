@@ -28,7 +28,7 @@ class CoordCBP(Parcellator):
         self.metrics = None
 
     def fit(self, target_mask, method='min_distance', r=5, n_exps=50,
-            n_parcels=2, n_iters=10000, meta_estimator=SCALE, **kwargs):
+            n_parcels=2, meta_estimator=SCALE, **kwargs):
         """
         Run CBP parcellation.
 
