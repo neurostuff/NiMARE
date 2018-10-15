@@ -56,6 +56,9 @@ class CoordCBP(Parcellator):
         meta_args = {k.split('meta__')[1]: v for k, v in kwargs.items() if
                      k.startswith('meta__')}
 
+        if not isinstance(n_parcels):
+            n_parcels = [n_parcels]
+
         # Step 1: Build correlation matrix
         target_data = apply_mask(target_mask, self.mask)
         target_map = unmask(target_data, self.mask)

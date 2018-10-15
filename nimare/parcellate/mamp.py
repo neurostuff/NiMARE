@@ -45,4 +45,47 @@ class MAMP(Parcellator):
         -------
         results
         """
-        pass
+        assert np.array_equal(self.mask.affine, target_mask.affine)
+        kernel_args = {k: v for k, v in kwargs.items() if
+                       k.startswith('kernel__')}
+        meta_args = {k.split('meta__')[1]: v for k, v in kwargs.items() if
+                     k.startswith('meta__')}
+
+        if not isinstance(n_parcels):
+            n_parcels = [n_parcels]
+
+         k_est = self.kernel_estimator(self.coordinates, self.mask)
+         ma_maps = k_est.transform(self.ids, **kernel_args)
+
+         # Step 1: Build correlation matrix
+         target_data = apply_mask(target_mask, self.mask)
+         target_map = unmask(target_data, self.mask)
+         mask_idx = np.vstack(np.where(target_data))
+         n_voxels = mask_idx.shape[1]
+         mask_ma_vals = apply_mask(ma_maps, target_map)
+         voxel_corr = np.corrcoef(mask_ma_vals)
+         corr_dist = 1 - voxel_corr
+
+         # Step 2: Clustering
+         labels = np.zeros((n_voxels, len(n_parcels)))
+         metric_types = ['contiguous']
+         metrics = pd.DataFrame(index=n_parcels, columns=metric_types,
+                                data=np.zeros((len(n_parcels),
+                                               len(metric_types))))
+         for i_parc, n_clusters in enumerate(n_parcels):
+             # K-Means clustering
+             _, labeled, _ = k_means(
+                 corr_dist, n_clusters, init='k-means++',
+                 precompute_distances='auto', n_init=1000, max_iter=1023,
+                 verbose=False, tol=0.0001, random_state=1, copy_x=True,
+                 n_jobs=1, algorithm='auto', return_n_iter=False)
+             labels[:, i_parc] = labeled
+
+             # Check contiguity of clusters
+             temp_mask = unmask(labels[:, i_parc], target_map).get_data()
+             labeled = meas.label(temp_mask, np.ones((3, 3, 3)))[0]
+             n_contig = len(np.unique(labeled))
+             metrics.loc[n_clusters, 'contiguous'] = int(n_contig > (n_clusters + 1))
+
+         self.solutions = labels
+         self.metrics = metrics
