@@ -74,6 +74,12 @@ class SBLFR(CBMAEstimator):
             study_types = []
             n_study_types = 0
 
+        ijk_id = self.dataset.coordinates[['i', 'j', 'k', 'id']].values
+        n_dims = 3  # to remove
+        n_studies = len(np.unique(ijk_id[:, -1]))
+        n_foci = ijk_id.shape[0]
+        n_foci_per_study = self.dataset.coordinates.groupby('id').count()
+
         # Get voxel volume
         voxel_vol = np.prod(self.dataset.mask.header.get_zooms())
 
@@ -84,18 +90,37 @@ class SBLFR(CBMAEstimator):
         temp = [np.ravel(o) for o in np.meshgrid(yy, xx, zz)]
         knots = np.vstack((temp[1], temp[0], temp[2])).T
 
-        # At every odd numbered axial slice, shift the x coordinate to re-create
-        # a chess-like kernel grid
+        # At every odd numbered axial slice, shift the x coordinate to
+        # re-create a chess-like kernel grid
         for n in range(int(np.floor(len(zz) / 2))):
             knots[knots[:, -1] == zz[n*2], 0] += 10
-
+        # Remove knots whose x-coordinate is above 145 mm (falling outside of
+        # the mask)
         knots = knots[knots[:, 0] <= 145, :]
 
-        bf_bandwidth = 1 / (2 * 256)
+        bf_bandwidth = 1. / (2 * 256)
 
         # Observed matrix of basis functions
-        for i in range(data.shape[0]):
-            pass
+        B = np.zeros((ijk_id.shape[0], knots.shape[0]))
+        for i in range(ijk_id.shape[0]):
+            obs_knot = repmat(ijk_id[i, :-1], (knots.shape[0], 1)) - knots
+            for j in range(knots.shape[0]):
+                B[i, j] = np.exp(-bf_bandwidth *
+                                 np.sqrt(np.sum(obs_knot[j, :])) ** 2)
+
+        B = np.hstack((np.ones(B.shape[0]), B))
+        n_basis = B.shape[1]
+
+        # Insert into HMC function the sum of bases
+        sum_B = np.zeros((n_studies, B.shape[1]))
+        for h in range(n_studies):
+            if B[ids == h, :].shape[0] * B[ids == h, :].shape[1] == n_basis:
+                sum_B[h, :] = B[ID == h, :]
+            else:
+                sum_B[h, :] = np.sum(B[ids == h, :])
+
+        # Down to line 99
+        return None
 
 
 @due.dcite(Doi('10.1214/11-AOAS523'),
