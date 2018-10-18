@@ -59,7 +59,7 @@ class MAMP(Parcellator):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items() if
                        k.startswith('kernel__')}
 
-        if not isinstance(n_parcels):
+        if not isinstance(n_parcels, list):
             n_parcels = [n_parcels]
 
         k_est = kernel_estimator(self.coordinates, self.mask)

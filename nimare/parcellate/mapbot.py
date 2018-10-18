@@ -1,6 +1,13 @@
 """
 Meta-analytic parcellation based on text (MAPBOT).
 """
+import numpy as np
+import pandas as pd
+from sklearn.decomposition import NMF
+from scipy.spatial.distance import cdist
+import scipy.ndimage.measurements as meas
+from nilearn.masking import apply_mask, unmask
+
 from .base import Parcellator
 from ..due import due, Doi
 
@@ -13,16 +20,25 @@ class MAPBOT(Parcellator):
 
     Parameters
     ----------
-    text : :obj:`list` of :obj:`str`
-        List of texts to use for parcellation.
+    tfidf_df : :obj:`pandas.DataFrame`
+        A DataFrame with feature counts for the model. The index is 'id',
+        used for identifying studies. Other columns are features (e.g.,
+        unigrams and bigrams from Neurosynth), where each value is the number
+        of times the feature is found in a given article.
+    coordinates_df : :obj:`pandas.DataFrame`
+        A DataFrame with a list of foci in the dataset. The index is 'id',
+        used for identifying studies. Additional columns include 'i', 'j' and
+        'k' (the matrix indices of the foci in standard space).
     mask : :obj:`str` or :obj:`nibabel.Nifti1.Nifti1Image`
         Mask file or image.
     """
-    def __init__(self, text, mask):
+    def __init__(self, tfidf_df, coordinates_df, mask):
         self.mask = mask
-        self.text = text
+        self.tfidf_df = tfidf_df
+        self.coordinates = coordinates_df
 
-    def fit(self, region_name, n_parcels=2):
+    def fit(self, target_mask, method='min_distance', r=5, n_exps=50,
+            n_parcels=2):
         """
         Run MAPBOT parcellation.
 
@@ -33,4 +49,42 @@ class MAPBOT(Parcellator):
             number will be evaluated and results for all will be returned.
             Default is 2.
         """
-        pass
+        if not isinstance(n_parcels):
+            n_parcels = [n_parcels]
+
+        # Step 1: Build correlation matrix
+        target_data = apply_mask(target_mask, self.mask)
+        target_map = unmask(target_data, self.mask)
+        target_data = target_map.get_data()
+        mask_idx = np.vstack(np.where(target_data))
+        n_voxels = mask_idx.shape[1]
+        voxel_arr = np.zeros((n_voxels, np.sum(self.mask)))
+
+        ijk = self.coordinates[['i', 'j', 'k']].values
+        temp_df = self.coordinates.copy()
+        term_df = pd.DataFrame(columns=self.tfidf_df.columns,
+                               index=range(n_voxels))
+        for i_voxel in range(n_voxels):
+            voxel = mask_idx[:, i_voxel]
+            temp_df['distance'] = cdist(ijk, voxel)
+
+            if method == 'min_studies':
+                # number of studies
+                temp_df2 = temp_df.groupby('id')[['distance']].min()
+                temp_df2 = temp_df2.sort_values(by='distance')
+                sel_ids = temp_df2.iloc[:n_exps].index.values
+            elif method == 'min_distance':
+                # minimum distance
+                temp_df2 = temp_df.groupby('id')[['distance']].min()
+                sel_ids = temp_df2.loc[temp_df2['distance'] < r].index.values
+
+            # Build DT matrix
+            voxel_df = self.tfidf_df.loc[self.tfidf_df.index.isin(sel_ids)]
+            term_df.loc[i_voxel] = voxel_df.mean(axis=0)
+        values = term_df.values
+        d = np.dot(np.dot(values.T, value), np.ones((values.shape[0], 1)))
+        values_prime = np.dot(values, d**-.5)
+        for i_parc in n_parcels:
+            model = NMF(n_components=i_parc, init='nndsvd', random_state=0)
+            W = model.fit_transform(values_prime)
+            H = model.components_
