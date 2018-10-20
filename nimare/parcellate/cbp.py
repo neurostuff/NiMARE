@@ -18,6 +18,22 @@ from ..due import due, Doi
 class CoordCBP(Parcellator):
     """
     Coordinate-based coactivation-based parcellation
+
+    Notes
+    -----
+    Here are the steps:
+        1.  For each voxel in the mask, identify studies in dataset
+            corresponding to that voxel. Selection criteria can be either
+            based on a distance threshold (e.g., all studies with foci
+            within 5mm of voxel) or based on a minimum number of studies
+            (e.g., the 50 studies reporting foci closest to the voxel).
+        2.  For each voxel, perform MACM (meta-analysis) using the
+            identified studies.
+        3.  Correlate statistical maps between voxel MACMs to generate
+            n_voxels X n_voxels correlation matrix.
+        4.  Convert correlation coefficients to correlation distance (1 -r)
+            values.
+        5.  Perform clustering on correlation distance matrix.
     """
     def __init__(self, dataset, ids):
         self.dataset = dataset

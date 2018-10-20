@@ -31,6 +31,24 @@ class MAPBOT(Parcellator):
         'k' (the matrix indices of the foci in standard space).
     mask : :obj:`str` or :obj:`nibabel.Nifti1.Nifti1Image`
         Mask file or image.
+
+    Notes
+    -----
+    MAPBOT uses both the reported foci for studies, as well as associated term
+    weights.
+    Here are the steps:
+        1.  For each voxel in the mask, identify studies in dataset
+            corresponding to that voxel. Selection criteria can be either
+            based on a distance threshold (e.g., all studies with foci
+            within 5mm of voxel) or based on a minimum number of studies
+            (e.g., the 50 studies reporting foci closest to the voxel).
+        2.  For each voxel, compute average frequency of each term across
+            selected studies. This results in an n_voxels X n_terms frequency
+            matrix F.
+        3.  Compute n_voxels X n_voxels value matrix V:
+            - D = (F.T * F) * ones(F)
+            - V = F * D^-.5
+        4.  Perform non-negative matrix factorization on value matrix.
     """
     def __init__(self, tfidf_df, coordinates_df, mask):
         self.mask = mask
@@ -82,7 +100,7 @@ class MAPBOT(Parcellator):
             voxel_df = self.tfidf_df.loc[self.tfidf_df.index.isin(sel_ids)]
             term_df.loc[i_voxel] = voxel_df.mean(axis=0)
         values = term_df.values
-        d = np.dot(np.dot(values.T, value), np.ones((values.shape[0], 1)))
+        d = np.dot(np.dot(values.T, values), np.ones((values.shape[0], 1)))
         values_prime = np.dot(values, d**-.5)
         for i_parc in n_parcels:
             model = NMF(n_components=i_parc, init='nndsvd', random_state=0)
