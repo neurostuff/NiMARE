@@ -67,10 +67,10 @@ class SBLFR(CBMAEstimator):
         """
         """
         q = theta
-        N, nbasis = theta.shape
+        n_studies, n_basis = theta.shape
 
         # Independent standard normal variates
-        kinetic = stats.norm.rvs(0, 1, size=(N, nbasis))
+        kinetic = stats.norm.rvs(0, 1, size=(n_studies, n_basis))
         current_kinetic = kinetic
 
         # Pre-compute matrices to speed up computation
@@ -116,7 +116,7 @@ class SBLFR(CBMAEstimator):
         # Accept or reject the state at end of trajectory, returning either the position
         # at the end of the trajectory or the initial position
         pratio = current_U - proposed_U + current_K - proposed_K  # Log acceptance ratio
-        u = np.log(np.random.random([N, 1]))
+        u = np.log(np.random.random([n_studies, 1]))
         acc = (u < pratio).astype(int)
         ind = np.where(acc == 1)[0]
         theta_hmc = theta
@@ -139,7 +139,7 @@ class SBLFR(CBMAEstimator):
         """
         if isinstance(covariates, list):
             n_cov = len(covariates)  # int
-            covariate_data = df[covariates]  # (n_foci, n_covariates)
+            covariate_data = df.groupby('id').mean()[covariates]  # (n_studies, n_covariates)
         else:
             n_cov = 0
             covariate_data = None
@@ -227,7 +227,7 @@ class SBLFR(CBMAEstimator):
             arr = mask_full[:, :, slice_idx]
             msk = np.ravel(arr)  # NOTE: are we sure this matches up?
             n_voxels_in_mask = mesh_grid[msk, :].shape[0]  # was sg
-            # Get X, Y (from mesh_grid), and Z (from Iz) coords for mask voxels
+            # Get X, study_types (from mesh_grid), and Z (from Iz) coords for mask voxels
             temp = np.hstack((mesh_grid[msk, :],
                               np.tile(Iz[slice_idx], (n_voxels_in_mask, 1))))
 
@@ -321,8 +321,8 @@ class SBLFR(CBMAEstimator):
         # Hyperparameters for normal prior on alpha
         mu_alpha = np.zeros((n_study_types, 1))
         sigma_alpha = np.eye(n_study_types)
-        alpha = stats.multivariate_normal.rvs(mu_alpha, sigma_alpha)  # Type-specific random intercept
-        post_var_alpha = np.diag(np.tile(1 / (n_studies+1), (n_study_types, 1)))  # Post cov matrix for update of alpha
+        alpha = np.random.multivariate_normal(np.squeeze(mu_alpha), sigma_alpha)  # Type-specific random intercept
+        post_var_alpha = np.diag(np.tile(1 / (n_studies+1), (n_study_types)))  # Post cov matrix for update of alpha
 
         gamma = np.ones((k, n_study_types))  # Gamma coefficients for DO probit model
         # Hyperparameters for normal prior on gamma
@@ -335,140 +335,159 @@ class SBLFR(CBMAEstimator):
         # %	Setting train & test sets  % %
         # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         # Test set (20% of data points)
-        test = sorted(np.random.choice(n_studies, int(np.ceil(n_studies / 5))))
-        train = setdiff(np.arange(n_studies), test)  # Test set
-        ltrain = len(train)  # Length of train set
+        test = sorted(np.random.choice(ids, int(np.ceil(n_studies / 5)),
+                                       replace=False))
+        train = np.setdiff1d(ids, test)  # Train set
         np.savetxt('train.txt', train)
-        # Looks good up to here! Though all of the random arrays make it hard
-        # to tell for sure...
 
         # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         # %	     Define output files      % %
         # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         maxk = 50  # Max expected number of factors
-        Acc = np.zeros((N, nrun))  # Acceptance probabilities
+        Acc = np.zeros((n_studies, nrun))  # Acceptance probabilities
 
         # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         # %	  Start Gibbs sampling 	  % %
         # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        """
         for i in range(nrun):
             # -- Update Lambda -- %
-            Lambda = np.zeros((nbasis, k))
-            for j in range(nbasis):
+            Lambda = np.zeros((n_basis, k))
+            for j in range(n_basis):
                 Vlam1 = np.diag(Plam[j, :]) + sig[j] * np.dot(eta, eta.T)
-                T = cholcov(Vlam1)
-                Q, R = qr[T]
-                S = np.inv(R)
+                T = np.linalg.cholesky(Vlam1).T
+                Q, R = np.linalg.qr(T)
+                S = np.linalg.inv(R)
                 Vlam = np.dot(S, S.T)
-                Elam = Vlam * sig[j] * eta * theta[:, j]
-                Lambda[j, :] = (Elam + S * stats.norm.rvs(np.zeros((k, 1)), 1)).T
+                Elam = np.dot(np.dot(Vlam * sig[j], eta), theta[:, j][:, None])
+                Lambda[j, :] = (Elam + np.dot(S, stats.norm.rvs(np.zeros((k, 1)), 1))).T
             k = Lambda.shape[1]
 
             # -- Update phi_{ih}'s -- %
             phiih = stats.gamma.rvs(
-                df_/2 + 0.5, scale=1./(df_/2 + bsxfun(@times, Lambda**2, tauh.T)))
+                df_ / 2. + 0.5, scale=1. / ((df_ / 2) + (Lambda**2 * tauh)))
 
             # -- Update delta -- %
-            ad = ad1 + nbasis * k / 2
+            ad = ad1 + n_basis * k / 2
             bd = bd1 + 0.5 * (1 / delta[1]) * np.sum(tauh.T * np.sum(phiih * Lambda ** 2))
-            delta[1] = stats.gamma.rvs(ad, 1/bd)
+            delta[0] = stats.gamma.rvs(ad, 1/bd)
 
             tauh = np.cumprod(delta)
-            for h in range(2, k):
-                ad = ad2 + nbasis * (k - h + 1) / 2
-                temp1 = tauh.T * np.sum(phiih * Lambda ** 2)
-                bd = bd2 + 0.5 * (1/delta[h])*sum(temp1[h:k])
+            for h in range(1, k):
+                ad = ad2 + n_basis * (k - h) / 2.
+                temp1 = tauh.T * np.sum(phiih * Lambda ** 2, axis=0)
+                bd = bd2 + 0.5 * (1. / delta[h]) * np.sum(temp1[h:k])
                 delta[h] = stats.gamma.rvs(ad, scale=1/bd)
                 tauh = np.cumprod(delta)
 
             # -- Update precision parameters -- %
-            Plam = bsxfun(@times, phiih, tauh.T)
+            Plam = phiih * tauh
 
             # -- Update Sigma precisions -- %
             thetatil = theta.T - np.dot(Lambda, eta)
-            sig = stats.gamma.rvs(as_ + N/2, scale=1/(bs + 0.5 * np.sum(thetatil**2, axis=1)))
+            sig = stats.gamma.rvs(
+                as_ + n_studies/2.,
+                scale=1/(bs + 0.5 * np.sum(thetatil**2, axis=1)))
 
             # -- Update linear model on latent factors -- %
-            for l in range(1, k):
-                Omega[:, l] = stats.gamma.rvs(1, scale=1./(0.5 * (1 + iota[:, l]**2)))
-                Veta1 = np.dot(cova.T, cova) + np.diag(Omega[:,l])
-                T = cholcov(Veta1)
-                [Q, R] = qr(T)
-                S = inv(R)
+            for l in range(k):
+                Omega[:, l] = stats.gamma.rvs(
+                    1, scale=1 / (0.5 * (1 + iota[:, l]**2)))
+                Veta1 = np.dot(covariate_data.T, covariate_data) + np.diag(Omega[:, l])
+                T = np.linalg.cholesky(Veta1).T
+                Q, R = np.linalg.qr(T)
+                S = np.linalg.inv(R)
                 Vlam = np.dot(S, S.T)
-                Meta = Vlam * np.dot(eta[l, :], cova).T
-                iota[:, l] = Meta + np.dot(S, stats.norm.rvs(0, 1, size=(n_cov, 1)))
+                Meta = np.dot(Vlam, np.dot(eta[l, :], covariate_data).T)
+                iota[:, l] = Meta + np.dot(S, stats.norm.rvs(0, 1, size=(n_cov)))
 
             # -- Update of eta (probit model extension with covariates) -- %
-            Lmsg = Lambda.T * np.diag(sig)
-            Veta1 = Lmsg * Lambda + eye(k) + np.dot(gamma, gamma.T)
-            T = cholcov(Veta1)
-            Q, R = qr[T]
-            S = np.inv(R)
+            Lmsg = np.dot(Lambda.T, np.diag(sig))
+            Veta1 = np.dot(Lmsg, Lambda) + np.eye(k) + np.dot(gamma, gamma.T)
+            T = np.linalg.cholesky(Veta1).T
+            Q, R = np.linalg.qr(T)
+            S = np.linalg.inv(R)
             Vlam = np.dot(S, S.T)
-            Meta = Vlam * (Lmsg * theta.T + gamma * (latent - np.tile(alpha, [N, 1])).T + (cova * iota).T);
-            eta = Meta + np.dot(S, stats.norm.rvs(0, 1, size=(k, N)))
+            temp0 = np.dot(Lmsg, theta.T)
+            temp1 = np.dot(covariate_data, iota).T
+            temp2 = (latent - np.tile(alpha, (n_studies, 1))).T
+            temp3 = np.dot(gamma, temp2)
+            temp4 = temp0 + temp3 + temp1
+            Meta = np.dot(Vlam, temp4)
+            eta = Meta + np.dot(S, stats.norm.rvs(0, 1, size=(k, n_studies)))
 
             # -- Update alpha intercept -- %
-            post_mean_alpha = sigma_alpha * mu_alpha + sum(latent - eta.T*gamma).T
-            alpha = mvnrnd(post_var_alpha * post_mean_alpha, post_var_alpha)
+            post_mean_alpha = (np.dot(sigma_alpha, mu_alpha) +
+                               np.sum(latent - np.dot(eta.T, gamma), axis=0, keepdims=True).T)
+            alpha = np.random.multivariate_normal(
+                np.squeeze(np.dot(post_var_alpha, post_mean_alpha)), post_var_alpha)
 
             # -- Update gamma coefficients -- %
             Veta1 = inv_sigma_gamma + np.dot(eta, eta.T)
-            T = cholcov(Veta1)
-            [Q, R] = qr(T)
-            S = inv(R)
+            T = np.linalg.cholesky(Veta1).T
+            Q, R = np.linalg.qr(T)
+            S = np.linalg.inv(R)
             Vlam = np.dot(S, S.T)
-            Meta = Vlam * (np.tile(inv_sigma_gamma * mu_gamma, [1, n_study_types]) + eta * (latent - np.tile(alpha, [N, 1])))
-            gamma = Meta + S * stats.norm.rvs(np.zeros((k, n_study_types)), 1)
+            temp0 = np.tile(np.dot(inv_sigma_gamma, mu_gamma), (1, n_study_types))
+            temp1 = np.tile(alpha, (n_studies, 1))
+            temp2 = temp0 + np.dot(eta, (latent - temp1))
+            Meta = np.dot(Vlam, temp2)
+            gamma = Meta + np.dot(
+                S, stats.norm.rvs(np.zeros((k, n_study_types)), 1))
 
             # -- Update latent indicators -- %
-            mean_latent = repmat(alpha, [N, 1]) + np.dot(eta.T, gamma)
-            latent = np.zeros((N, n_study_types))
+            # make sure to use transpose of cholesky or else scale will be weird
+            mean_latent = np.tile(alpha, (n_studies, 1)) + np.dot(eta.T, gamma)
+            latent = np.zeros((n_studies, n_study_types))
 
             # % % % % % % % % % % % % % % % % % % % % % % %
             # Take care of studies in the train set first %
             # % % % % % % % % % % % % % % % % % % % % % % %
-            for j in range(ltrain):
-                quale = train[j]
-                ind = Y[quale]
-                latent[quale, ind] = randraw('normaltrunc', [0, Inf, mean_latent(quale, ind), 1], 1)
-                diffind = np.setdiff1d(np.arange(n_study_types), ind)
+            for j in range(len(train)):
+                j_id = train[j]
+                id_idx = np.where(ids == j_id)[0][0]
+                print(id_idx)
+                st_idx = int(study_types[id_idx]) - 1
+                latent[id_idx, st_idx] = stats.truncnorm.rvs(
+                    0, np.Inf, loc=mean_latent[id_idx, st_idx], scale=1, size=1)[0]
+                diffind = np.setdiff1d(np.arange(n_study_types), st_idx)
                 for l in range(len(diffind)):
                     m = diffind[l]
-                    latent[quale, m] = randraw('normaltrunc', [-Inf, 0, mean_latent(quale, m), 1], 1);
+                    latent[id_idx, m] = stats.truncnorm.rvs(
+                        -np.Inf, 0, loc=mean_latent[id_idx, m], scale=1, size=1)[0]
 
             # % % % % % % % % % % % % % % % % % % % %
             # Test set via predictive probabilities % --> DO mult probit model
             # % % % % % % % % % % % % % % % % % % % %
-            m1 = 1 - normcdf(-mean_latent[test, :], 0, 1)  # [1 - F(-wj)]
-            m2 = normcdf(-mean_latent[test, :], 0, 1)  # F(-wk)
+            test_idx = np.where(np.isin(ids, test))[0]
+            m1 = 1 - stats.norm.cdf(-mean_latent[test_idx, :], 0, 1)  # [1 - F(-wj)]
+            m2 = stats.norm.cdf(-mean_latent[test_idx, :], 0, 1)  # F(-wk)
             # NOTE: change lines 337-348 to adapt to the correct number of study-types one is working with
             # E.G.: with 3 study-types, delete lines 342-345 and remove p4 and p5
             # E.G.: with 7 study-types, add computation of p6 and p7 and modify lines 347 & 348
             # Predictive probability for anger
-            m3 = np.cumprod([m1[:, 1], m2[:, 2:5]], 2)
-            p1 = m3[:, n_study_types]
+            m3 = np.cumprod(np.hstack((m1[:, 0:1], m2[:, 1:5])), 1)
+            p1 = m3[:, -1]
             # Predictive probability for disgust
-            m3 = np.cumprod([m1[:, 2], m2[:, 1], m2[:, 3:5]], 2)
-            p2 = m3[:, n_study_types]
+            m3 = np.cumprod(np.hstack((m1[:, 1:2], m2[:, 0:1], m2[:, 2:5])), 1)
+            p2 = m3[:, -1]
             # Predictive probability for fear
-            m3 = np.cumprod([m1[:, 3], m2[:, 1:2], m2[:, 4:5]], 2)
-            p3 = m3[:, n_study_types]
+            m3 = np.cumprod(np.hstack((m1[:, 2:3], m2[:, 0:2], m2[:, 3:5])), 1)
+            p3 = m3[:, -1]
             # Predictive probability for happy
-            m3 = np.cumprod([m1[:, 4], m2[:, 1:3], m2[:, 5]], 2)
-            p4 = m3[:, n_study_types]
+            m3 = np.cumprod(np.hstack((m1[:, 3:4], m2[:, 0:3], m2[:, 4:5])), 1)
+            p4 = m3[:, -1]
             # Predictive probability for sad
-            m3 = np.cumprod([m1[:, 5], m2[:, 1:4]], 2)
-            p5 = m3[:, n_study_types]
+            m3 = np.cumprod(np.hstack((m1[:, 4:5], m2[:, 0:4])), 1)
+            p5 = m3[:, -1]
 
             ptot = p1 + p2 + p3 + p4 + p5
-            pred_prob = [p1./ptot, p2./ptot, p3./ptot, p4./ptot, p5./ptot]
-            cdf = np.cumsum(pred_prob, 2)
-            u = stats.uniform.rvs(0, 1, [length(test), 1])
-            pred_cat = sum(bsxfun(@gt, u, cdf),2)+1
+            pred_prob = np.stack((p1/ptot, p2/ptot, p3/ptot, p4/ptot, p5/ptot)).T
+            cdf = np.cumsum(pred_prob, axis=1)
+            u = stats.uniform.rvs(0, 1, (len(test_idx), 1))
+            pred_cat = np.sum(u > cdf, axis=1)
+            # Looks good up to here!
 
+            """
             for j in range(len(test)):
                 quale = test(j)
                 ind = pred_cat(j)
@@ -512,17 +531,17 @@ class SBLFR(CBMAEstimator):
             # -- Adapt number of latent factors -- %
         	prob = 1/exp(b0 + b1*i)  # Probability of adapting
         	uu = rand
-        	lind = sum(abs(Lambda) < epsilon)/nbasis  # Proportion of elements in each column less than eps in magnitude
+        	lind = sum(abs(Lambda) < epsilon)/n_basis  # Proportion of elements in each column less than eps in magnitude
         	vec = lind >= prop; num = sum(vec)  # number of redundant columns
 
             if uu < prob:
                 if i > 20 && num == 0 && all(lind < 0.995):
                     k = k + 1
-                    Lambda(:,k) = zeros(nbasis,1)
-                    eta(k, :) = normrnd(0,1,[1, N])
+                    Lambda(:,k) = zeros(n_basis,1)
+                    eta(k, :) = normrnd(0,1,[1, n_studies])
                     Omega(:, k) = gamrnd(.5, 2, [n_cov,1])
-                    iota(:, k) = mvnrnd(zeros(1,n_cov), diag(1./(Omega(:,k)))).T
-                    phiih(:,k) = gamrnd(df_/2, 2/df_,[nbasis,1])
+                    iota(:, k) = np.random.multivariate_normal(zeros(1,n_cov), diag(1./(Omega(:,k)))).T
+                    phiih(:,k) = gamrnd(df_/2, 2/df_,[n_basis,1])
                     delta(k) = gamrnd(ad2, 1/bd2)
                     tauh = cumprod(delta)
         			Plam = bsxfun(@times, phiih, tauh.T)
@@ -545,87 +564,88 @@ class SBLFR(CBMAEstimator):
                     Omega = Omega(:, nonred)
 
             # -- Save sampled values (after thinning) -- %
-            if mod(i,every) == 0 and i <= burn:
+            if mod(i, every) == 0 and i <= burn:
                 dlmwrite('sigma.txt', sig.T, 'delimiter', ' ', '-append')
                 dlmwrite('alpha.txt', alpha, 'delimiter', ' ', '-append')
                 dlmwrite('Factor.txt', k, 'delimiter', ' ', '-append')
 
-                Etaout_PreBIN = zeros(N*maxk, 1)
+                Etaout_PreBIN = zeros(n_studies*maxk, 1)
                 teta = eta.T
-                Etaout_PreBIN(1:(N*k), 1) = teta(:)
-                clear teta
+                Etaout_PreBIN(1:(n_studies*k), 1) = teta(:)
+                del teta
                 dlmwrite('Eta_PreBIN.txt', Etaout_PreBIN.T, 'delimiter', ' ', '-append')
-                clear Etaout_PreBIN
+                del Etaout_PreBIN
 
                 Gammaout_PreBIN = zeros(n_study_types*maxk, 1)
                 tgamma = gamma.T
                 Gammaout_PreBIN(1:(n_study_types*k), 1) = tgamma(:)
-                clear tgamma
+                del tgamma
                 dlmwrite('Gamma_PreBIN.txt', Gammaout_PreBIN.T, 'delimiter', ' ', '-append')
-                clear Gammaout_PreBIN
+                del Gammaout_PreBIN
 
                 Iotaout_PreBIN = zeros(n_cov*maxk, 1)
                 Iotaout_PreBIN(1:(n_cov*k), 1) = iota(:)
                 dlmwrite('Iota_PreBIN.txt', Iotaout_PreBIN.T, 'delimiter', ' ', '-append')
-                clear Iotaout_PreBIN
+                del Iotaout_PreBIN
 
                 Omegaout_PreBIN = zeros(n_cov*maxk, 1)
                 Omegaout_PreBIN(1:(n_cov*k), 1) = Omega(:)
-         	    dlmwrite('Omega_PreBIN.txt', Omegaout_PreBIN.T, 'delimiter', ' ', '-append'); clear Omegaout_PreBIN;
+         	    dlmwrite('Omega_PreBIN.txt', Omegaout_PreBIN.T, 'delimiter', ' ', '-append');
+                del Omegaout_PreBIN;
                 # dlmwrite('mgpshyper.txt', [ad1, bd1, ad2, bd2, df_], 'delimiter', ' ', '-append');
-                phiihout = zeros(nbasis * maxk, 1)
-                phiihout(1:(nbasis * k), 1) = phiih(:)
+                phiihout = zeros(n_basis * maxk, 1)
+                phiihout(1:(n_basis * k), 1) = phiih(:)
                 dlmwrite('Phiih.txt', phiihout.T, 'delimiter', ' ', '-append')
-                clear phiihout
+                del phiihout
                 deltaout = zeros(maxk, 1)
                 deltaout(1:k, 1) = delta
                 dlmwrite('Delta.txt', deltaout.T, 'delimiter', ' ', '-append')
-                clear deltaout
+                del deltaout
             elif mod(i, thin) == 0 and i > burn:
-                Lambdaout = zeros(nbasis*maxk, 1)
-                Lambdaout(1:(nbasis*k), 1) = Lambda(:).T
+                Lambdaout = zeros(n_basis*maxk, 1)
+                Lambdaout(1:(n_basis*k), 1) = Lambda(:).T
                 dlmwrite('Lambda.txt', Lambdaout.T, 'delimiter', ' ', '-append')
-                clear Lambdaout
+                del Lambdaout
 
-                Etaout = zeros(N*maxk, 1)
+                Etaout = zeros(n_studies*maxk, 1)
                 teta = eta.T
-                Etaout(1:(N*k), 1) = eta(:)
-                clear teta
+                Etaout(1:(n_studies*k), 1) = eta(:)
+                del teta
                 dlmwrite('Eta_PBIN.txt', Etaout.T, 'delimiter', ' ', '-append')
-                clear Etaout
+                del Etaout
 
                 dlmwrite('HMC_Energy.txt', pot_energy.T, 'delimiter', ' ', '-append')
 
                 Gammaout = zeros(n_study_types*maxk, 1)
                 tgamma = gamma.T
                 Gammaout(1:(n_study_types*k), 1) = tgamma(:)
-                clear tgamma
-         	    dlmwrite('Gamma_PBIN.txt', Gammaout.T, 'delimiter', ' ', '-append')
-                clear Gammaout
+                del tgamma
+                dlmwrite('Gamma_PBIN.txt', Gammaout.T, 'delimiter', ' ', '-append')
+                del Gammaout
 
                 Iotaout = zeros(n_cov*maxk, 1)
                 Iotaout(1:(n_cov*k), 1) = iota(:)
                 dlmwrite('Iota_PBIN.txt', Iotaout.T, 'delimiter', ' ', '-append')
-                clear Iotaout
+                del Iotaout
 
                 Omegaout_PBIN = zeros(n_cov*maxk, 1)
                 Omegaout_PBIN(1:(n_cov*k), 1) = Omega(:)
                 dlmwrite('Omega.txt', Omegaout_PBIN.T, 'delimiter', ' ')
-                clear Omegaout_PBIN
+                del Omegaout_PBIN
 
                 dlmwrite('sigma.txt', sig.T, 'delimiter', ' ', '-append')
                 dlmwrite('alpha.txt', alpha, 'delimiter', ' ', '-append')
                 dlmwrite('Factor.txt', k, 'delimiter', ' ', '-append')
                 dlmwrite('latent.txt', latent(:).T, 'delimiter', ' ', '-append')
                 % dlmwrite('mgpshyper.txt', [ad1, bd1, ad2, bd2, df_], 'delimiter', ' ', '-append')
-                phiihout = zeros(nbasis * maxk, 1)
-                phiihout(1:(nbasis * k), 1) = phiih(:)
+                phiihout = zeros(n_basis * maxk, 1)
+                phiihout(1:(n_basis * k), 1) = phiih(:)
                 dlmwrite('Phiih.txt', phiihout.T, 'delimiter', ' ', '-append')
-                clear phiihout
+                del phiihout
                 deltaout = zeros(maxk, 1)
                 deltaout(1:k, 1) = delta
                 dlmwrite('Delta.txt', deltaout.T, 'delimiter', ' ', '-append')
-                clear deltaout
+                del deltaout
         np.savetxt('HMC_Acc.txt', Acc.T)
         """
 
