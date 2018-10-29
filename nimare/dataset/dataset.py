@@ -75,8 +75,10 @@ class Dataset(object):
     def __init__(self, database, ids=None, target='mni152_2mm',
                  mask_file=None):
         if mask_file is None:
-            mask_file = get_template(target, mask='brain')
-        self.mask = nib.load(mask_file)
+            mask_img = get_template(target, mask='brain')
+        else:
+            mask_img = nib.load(mask_file)
+        self.mask = mask_img
 
         if ids is None:
             self.data = database.data
