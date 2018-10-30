@@ -8,7 +8,7 @@ import pandas as pd
 import nibabel as nib
 from scipy import stats
 
-from ...base import CBMAEstimator
+from .base import CBMAEstimator
 from ...due import due, Doi, BibTeX
 
 
@@ -205,7 +205,6 @@ class SBLFR(CBMAEstimator):
         epsilon_hmc = 0.0001
         # Leapfrog trajectory length
         L_hmc_def = 30.
-
 
         ijk_id = df[['i', 'j', 'k', 'id']].values  # (n_foci, 4)
         ids = np.unique(ijk_id[:, -1])  # (n_studies,)
