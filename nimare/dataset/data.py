@@ -33,8 +33,7 @@ class Database(object):
                 ids.append('{0}-{1}'.format(pid, cid))
         self.ids = ids
 
-    def get_dataset(self, ids=None, search='', algorithm=None,
-                    target='mni152_2mm'):
+    def get_dataset(self, ids=None, search='', algorithm=None, target='mni152_2mm'):
         """
         Retrieve files and/or metadata from the current Dataset.
 
@@ -77,9 +76,10 @@ class Dataset(object):
     def __init__(self, database, ids=None, target='mni152_2mm',
                  mask_file=None):
         if mask_file is None:
-            self.mask = get_template(target, mask='brain')
+            mask_img = get_template(target, mask='brain')
         else:
-            self.mask = nib.load(mask_file)
+            mask_img = nib.load(mask_file)
+        self.mask = mask_img
 
         if ids is None:
             self.data = database.data
