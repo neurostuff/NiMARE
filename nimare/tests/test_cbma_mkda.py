@@ -47,7 +47,7 @@ def test_mkda_density(testdata1):
     """
     mkda_meta = mkda.MKDADensity(testdata1, ids=testdata1.ids)
     mkda_meta.fit(n_iters=5)
-    assert isinstance(mkda_meta.results, nimare.meta.base.MetaResult)
+    assert isinstance(mkda_meta.results, nimare.base.meta.MetaResult)
 
 
 def test_mkda_chi2_fdr(testdata1):
@@ -56,7 +56,7 @@ def test_mkda_chi2_fdr(testdata1):
     """
     mkda_meta = mkda.MKDAChi2(testdata1, ids=testdata1.ids, ids2=testdata1.ids)
     mkda_meta.fit(corr='fdr')
-    assert isinstance(mkda_meta.results, nimare.meta.base.MetaResult)
+    assert isinstance(mkda_meta.results, nimare.base.meta.MetaResult)
 
 
 def test_mkda_chi2_fwe(testdata1):
@@ -65,7 +65,7 @@ def test_mkda_chi2_fwe(testdata1):
     """
     mkda_meta = mkda.MKDAChi2(testdata1, ids=testdata1.ids, ids2=testdata1.ids)
     mkda_meta.fit(n_iters=5, corr='fwe')
-    assert isinstance(mkda_meta.results, nimare.meta.base.MetaResult)
+    assert isinstance(mkda_meta.results, nimare.base.meta.MetaResult)
 
 
 def test_kda_density(testdata1):
@@ -74,4 +74,4 @@ def test_kda_density(testdata1):
     """
     kda_meta = mkda.KDA(testdata1, ids=testdata1.ids)
     kda_meta.fit(n_iters=5)
-    assert isinstance(kda_meta.results, nimare.meta.base.MetaResult)
+    assert isinstance(kda_meta.results, nimare.base.meta.MetaResult)

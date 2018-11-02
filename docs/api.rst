@@ -1,5 +1,5 @@
-API Reference
-===============
+API
+===
 
 
 :mod:`nimare.dataset`: Dataset IO

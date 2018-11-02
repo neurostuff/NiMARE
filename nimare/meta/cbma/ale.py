@@ -69,7 +69,12 @@ class ALE(CBMAEstimator):
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        if ids2 is not None:
+            all_ids = np.hstack((np.array(ids), np.array(ids2)))
+        else:
+            all_ids = ids
+        self.coordinates = dataset.coordinates.loc[
+            dataset.coordinates['id'].isin(all_ids)]
 
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
@@ -101,7 +106,6 @@ class ALE(CBMAEstimator):
         n_cores : :obj:`int`, optional
             Number of cores to use for analysis. Default is 4.
         """
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.corr = corr
@@ -109,28 +113,31 @@ class ALE(CBMAEstimator):
 
         k_est = self.kernel_estimator(self.coordinates, self.mask)
 
-        if ids2 is not None:
-            all_ids = np.hstack(np.array(ids), np.array(ids2))
+        if self.ids2 is not None:
+            all_ids = np.hstack((np.array(self.ids), np.array(self.ids2)))
             ma_maps = k_est.transform(all_ids, **self.kernel_arguments)
-            images1 = self._run_thing(ma_maps[:len(ids)], prefix='group1_')
-            images2 = self._run_thing(ma_maps[len(ids):], prefix='group2_')
+            images1 = self._run_ale(ma_maps[:len(self.ids)], prefix='group1_',
+                                    n_cores=n_cores)
+            images2 = self._run_ale(ma_maps[len(self.ids):], prefix='group2_',
+                                    n_cores=n_cores)
             sub_images = self.subtraction_analysis(
-                ids, ids2, images1['group1_cfwe'], images2['group2_cfwe'],
+                self.ids, self.ids2,
+                images1['group1_cfwe'], images2['group2_cfwe'],
                 ma_maps)
             images = {**images1, **images2, **sub_images}
         else:
-            ma_maps = k_est.transform(ids, **self.kernel_arguments)
-            images = self._run_thing(ma_maps, prefix='')
+            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            images = self._run_ale(ma_maps, prefix='')
 
         self.results = MetaResult(mask=self.mask, **images)
 
-    def subtraction_analysis(ids, ids2, image1, image2, ma_maps):
+    def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
         n_grp1 = len(ids)
         img1 = unmask(image1, self.mask)
 
-        all_ids = np.hstack(np.array(ids), np.array(ids2))
+        all_ids = np.hstack((np.array(ids), np.array(ids2)))
         id_idx = np.arange(len(all_ids))
 
         # Get MA values for both samples.
@@ -157,9 +164,9 @@ class ALE(CBMAEstimator):
             diff_ale_values = diff_ale_values[grp1_voxel]
 
             red_ma_arr = ma_arr[:, grp1_voxel]
-            iter_diff_ale_arr = np.zeros((n_iters, np.sum(grp1_voxel)))
+            iter_diff_values = np.zeros((self.n_iters, np.sum(grp1_voxel)))
 
-            for i_iter in range(n_iters):
+            for i_iter in range(self.n_iters):
                 np.random.shuffle(id_idx)
                 iter_grp1_ale_values = np.ones(np.sum(grp1_voxel))
                 for j_exp in id_idx[:n_grp1]:
@@ -184,6 +191,8 @@ class ALE(CBMAEstimator):
             grp1_z_map[:] = np.nan
             grp1_z_map[grp1_voxel] = grp1_z_arr
 
+        # B > A contrast
+        grp2_p_arr = np.ones(np.sum(grp2_voxel))
         if np.sum(grp2_voxel) > 0:
             # Get MA values for second sample only for voxels significant in
             # second sample's meta-analysis.
@@ -191,9 +200,9 @@ class ALE(CBMAEstimator):
             diff_ale_values = diff_ale_values[grp2_voxel]
 
             red_ma_arr = ma_arr[:, grp2_voxel]
-            iter_diff_ale_arr = np.zeros((n_iters, np.sum(grp2_voxel)))
+            iter_diff_values = np.zeros((self.n_iters, np.sum(grp2_voxel)))
 
-            for i_iter in range(n_iters):
+            for i_iter in range(self.n_iters):
                 np.random.shuffle(id_idx)
                 iter_grp1_ale_values = np.ones(np.sum(grp2_voxel))
                 for j_exp in id_idx[:n_grp1]:
@@ -227,7 +236,9 @@ class ALE(CBMAEstimator):
         images = {'grp1-grp2_z': diff_z_map}
         return images
 
-    def _run_ale(ma_maps, prefix=''):
+    def _run_ale(self, ma_maps, prefix='', n_cores=4):
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+
         max_poss_ale = 1.
         for ma_map in ma_maps:
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
@@ -257,15 +268,15 @@ class ALE(CBMAEstimator):
         # Multiple comparisons correction
         iter_df = self.coordinates.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(iter_df.shape[0], n_iters))
+                                    size=(iter_df.shape[0], self.n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
         # Define parameters
-        iter_conns = [conn] * n_iters
-        iter_dfs = [iter_df] * n_iters
-        iter_null_dists = [null_distribution] * n_iters
-        iter_hist_bins = [hist_bins] * n_iters
+        iter_conns = [conn] * self.n_iters
+        iter_dfs = [iter_df] * self.n_iters
+        iter_null_dists = [null_distribution] * self.n_iters
+        iter_hist_bins = [hist_bins] * self.n_iters
         params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
                      iter_conns)
         pool = mp.Pool(n_cores)
@@ -473,7 +484,6 @@ class SCALE(CBMAEstimator):
         self.ijk = ijk
         self.n_iters = None
         self.voxel_thresh = None
-        self.n_iters = None
         self.results = None
 
     def fit(self, voxel_thresh=0.001, n_iters=10000, n_cores=4):
@@ -506,12 +516,12 @@ class SCALE(CBMAEstimator):
 
         iter_df = self.coordinates.copy()
         rand_idx = np.random.choice(self.ijk.shape[0],
-                                    size=(iter_df.shape[0], n_iters))
+                                    size=(iter_df.shape[0], self.n_iters))
         rand_ijk = self.ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
         # Define parameters
-        iter_dfs = [iter_df] * n_iters
+        iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
         pool = mp.Pool(n_cores)
         perm_scale_values = pool.map(self._perm, params)
