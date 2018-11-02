@@ -1,7 +1,7 @@
 historical/
-doc/_build/
-doc/generated/
-doc/auto_examples/
+docs/_build/
+docs/generated/
+docs/auto_examples/
 nimare/resources/data/neurovault-data/
 nimare/tests/data/downloaded/
 .pytest_cache

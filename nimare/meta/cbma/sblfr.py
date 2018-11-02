@@ -1,5 +1,5 @@
 """
-Model-based coordinate-based meta-analysis estimators
+Spatial Bayesian latent factor regression model
 """
 import os.path as op
 
@@ -9,46 +9,7 @@ import nibabel as nib
 from scipy import stats
 
 from .base import CBMAEstimator
-from ...due import due, Doi, BibTeX
-
-
-@due.dcite(Doi('10.1198/jasa.2011.ap09735'),
-           description='Introduces the BHICP model.')
-class BHICP(CBMAEstimator):
-    """
-    Bayesian hierarchical cluster process model
-    """
-    def __init__(self, dataset):
-        self.dataset = dataset
-
-    def fit(self, sample):
-        pass
-
-
-@due.dcite(BibTeX("""
-           @article{kang2014bayesian,
-             title={A Bayesian hierarchical spatial point process model for
-                    multi-type neuroimaging meta-analysis},
-             author={Kang, Jian and Nichols, Thomas E and Wager, Tor D and
-                     Johnson, Timothy D},
-             journal={The annals of applied statistics},
-             volume={8},
-             number={3},
-             pages={1800},
-             year={2014},
-             publisher={NIH Public Access}
-             }
-           """),
-           description='Introduces the HPGRF model.')
-class HPGRF(CBMAEstimator):
-    """
-    Hierarchical Poisson/Gamma random field model
-    """
-    def __init__(self, dataset):
-        self.dataset = dataset
-
-    def fit(self, sample):
-        pass
+from ...due import due, Doi
 
 
 @due.dcite(Doi('10.1111/biom.12713'),
@@ -179,7 +140,8 @@ class SBLFR(CBMAEstimator):
         start = 250  # Starting iteration to update the stepsize
         sp = (nrun - burn) / thin  # Number of posterior samples
         epsilon = 1e-4  # Threshold limit (update of Lambda)
-        prop = 1.00  # Proportion of redundant elements within columns
+        prop = 1.  # Proportion of redundant elements within columns
+        slices = [8, 9]
 
         # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         # %	 Define hyperparameter values    % %
@@ -277,7 +239,7 @@ class SBLFR(CBMAEstimator):
         mesh_grid = np.vstack((temp[1], temp[0])).T  # (2430, 2)
         # Axial slices to use (9:24 restricts computation to the amygdalae;
         # for a full 3D use 1:91)
-        for i_slice, slice_idx in enumerate(range(8, 10)):
+        for i_slice, slice_idx in enumerate(slices):
             arr = mask_full[:, :, slice_idx]
             msk = np.ravel(arr)  # NOTE: are we sure this matches up?
             n_voxels_in_mask = mesh_grid[msk, :].shape[0]  # was sg
@@ -734,16 +696,3 @@ class SBLFR(CBMAEstimator):
                     np.savetxt(fo, deltaout[None, :], delimiter='\t')
                 del deltaout
         np.savetxt(op.join(out_dir, 'HMC_Acc.txt'), Acc.T)
-
-
-@due.dcite(Doi('10.1214/11-AOAS523'),
-           description='Introduces the SBR model.')
-class SBR(CBMAEstimator):
-    """
-    Spatial binary regression model
-    """
-    def __init__(self, dataset):
-        self.dataset = dataset
-
-    def fit(self, sample):
-        pass
