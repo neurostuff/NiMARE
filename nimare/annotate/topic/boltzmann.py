@@ -27,3 +27,6 @@ class BoltzmannModel(AnnotationModel):
     """
     def __init__(self, text_df, coordinates_df):
         pass
+
+    def fit(self):
+        pass

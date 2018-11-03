@@ -171,9 +171,9 @@ class GCLDAModel(AnnotationModel):
         # Seed random number generator
         np.random.seed(self.params['seed_init'])  # pylint: disable=no-member
 
-        #  Preallocate vectors of assignment indices
-        self.wtoken_topic_idx = np.zeros(len(self.wtoken_word_idx),
-                                         dtype=int)  # word->topic assignments
+        # Preallocate vectors of assignment indices
+        self.wtoken_topic_idx = np.zeros(
+            len(self.wtoken_word_idx), dtype=int)  # word->topic assignments
 
         # Randomly initialize peak->topic assignments (y) ~ unif(1...n_topics)
         self.peak_topic_idx = np.random.randint(
@@ -183,7 +183,7 @@ class GCLDAModel(AnnotationModel):
         self.peak_region_idx = np.zeros(
             len(self.ptoken_doc_idx), dtype=int)  # peak->region assignments
 
-        #  Preallocate count matrices
+        # Preallocate count matrices
         # Peaks: D x T: Number of peak-tokens assigned to each topic per document
         self.n_peak_tokens_doc_by_topic = np.zeros(
             (len(self.ids), self.params['n_topics']), dtype=int)
@@ -224,21 +224,20 @@ class GCLDAModel(AnnotationModel):
             self.regions_sigma.append(topic_sigma)  # (\sigma^{(t)}_r)
 
         # Initialize lists for tracking log-likelihood of data over sampling iterations
-        self.loglikely_iter = []  # Tracks iteration we compute each
-                                  # loglikelihood at
+        self.loglikely_iter = []  # Tracks iteration we compute each loglikelihood at
         self.loglikely_x = []  # Tracks log-likelihood of peak tokens
         self.loglikely_w = []  # Tracks log-likelihood of word tokens
         self.loglikely_tot = []  # Tracks log-likelihood of peak + word tokens
 
         # Initialize peak->subregion assignments (r)
-        #   if asymmetric model, randomly sample r ~ unif(1...n_regions)
-        #   if symmetric model use deterministic assignment :
-        #       if peak_val[0] > 0, r = 1, else r = 0
         if not self.params['symmetric']:
+            # if symmetric model use deterministic assignment :
+            #     if peak_val[0] > 0, r = 1, else r = 0
             self.peak_region_idx[:] = np.random.randint(
                 self.params['n_regions'],  # pylint: disable=no-member
                 size=(len(self.ptoken_doc_idx)))
         else:
+            # if asymmetric model, randomly sample r ~ unif(1...n_regions)
             self.peak_region_idx[:] = (self.peak_vals[:, 0] > 0).astype(int)
 
         # Update model vectors and count matrices to reflect y and r assignments
@@ -247,8 +246,7 @@ class GCLDAModel(AnnotationModel):
             doc = self.ptoken_doc_idx[i_ptoken]
             topic = self.peak_topic_idx[i_ptoken]  # peak-token -> topic assignment (y_i)
             region = self.peak_region_idx[i_ptoken]  # peak-token -> subregion assignment (c_i)
-            self.n_peak_tokens_doc_by_topic[doc, topic] += 1  # Increment document-by-topic
-                                                              # counts
+            self.n_peak_tokens_doc_by_topic[doc, topic] += 1  # Increment document-by-topic counts
             self.n_peak_tokens_region_by_topic[region, topic] += 1  # Increment region-by-topic
 
         # Randomly Initialize Word->Topic Assignments (z) for each word
@@ -364,7 +362,7 @@ class GCLDAModel(AnnotationModel):
             #    p(z_i|z,d,w) ~ p(w|t) * p(t|d)
             #                 ~ p_w_t * p_topic_g_doc
             p_word_g_topic = (self.n_word_tokens_word_by_topic[word, :] + self.params['beta']) /\
-                             (self.total_n_word_tokens_by_topic + \
+                             (self.total_n_word_tokens_by_topic +
                               self.params['beta'] * len(self.word_labels))
             p_topic_g_doc = self.n_peak_tokens_doc_by_topic[doc, :] + self.params['gamma']
             probs = p_word_g_topic * p_topic_g_doc  # The unnormalized sampling distribution
