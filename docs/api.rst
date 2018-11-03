@@ -55,6 +55,19 @@ API
    :no-members:
    :no-inherited-members:
 
+.. autosummary:: nimare.annotate
+   :toctree: generated/
+   :template: module.rst
+
+   nimare.annotate.ontology.cogat
+   nimare.annotate.ontology.cogpo
+   nimare.annotate.topic.boltzmann
+   nimare.annotate.topic.gclda
+   nimare.annotate.topic.lda
+   nimare.annotate.vector.text2brain
+   nimare.annotate.vector.word2brain
+   nimare.annotate.text
+
 .. currentmodule:: nimare
 
 .. _calibration_ref:
@@ -86,6 +99,14 @@ API
 .. automodule:: nimare.parcellate
    :no-members:
    :no-inherited-members:
+
+.. autosummary:: nimare.parcellate
+   :toctree: generated/
+   :template: module.rst
+
+   nimare.parcellate.cbp
+   nimare.parcellate.mamp
+   nimare.parcellate.mapbot
 
 .. currentmodule:: nimare
 
