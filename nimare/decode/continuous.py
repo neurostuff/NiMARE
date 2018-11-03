@@ -82,9 +82,9 @@ def gclda_decode_map(model, roi, topic_priors=None, prior_weight=1):
         topic_weights *= weighted_priors
 
     # Multiply topic_weights by topic-by-word matrix (p_word_g_topic).
-    #n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
-    #p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
-    #p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
+    # n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
+    # p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
+    # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
     word_weights = np.dot(model.p_word_g_topic, topic_weights)
 
     decoded_df = pd.DataFrame(index=model.word_labels,
