@@ -37,6 +37,8 @@ A Python library for coordinate- and image-based meta-analysis.
     - BrainMap decoding
     - Neurosynth correlation-based decoding
     - Neurosynth MKDA-based decoding
+    - BrainMap decoding
+    - Text2brain encoding
     - Generalized correspondence latent Dirichlet allocation (GCLDA)
 
 ## Installation
