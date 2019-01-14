@@ -86,25 +86,9 @@ class ALE(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
+    def fit(self, ids, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
             n_cores=4):
         """
-        Run an ALE meta-analysis.
-
-        Parameters
-        ----------
-        voxel_thresh : :obj:`float`, optional
-            Voxel-level p-value threshold. Default is 0.001.
-        q : :obj:`float`, optional
-            Desired alpha level for analysis. Default is 0.05.
-        corr : {'FWE',}, optional
-            Multiple comparisons correction method to be employed. Currently
-            unused, as FWE-correction is the only method implemented.
-        n_iters : :obj:`int`, optional
-            Number of iterations for FWE correction simulations.
-            Default is 10000.
-        n_cores : :obj:`int`, optional
-            Number of cores to use for analysis. Default is 4.
         """
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
@@ -266,7 +250,7 @@ class ALE(CBMAEstimator):
         conn[1, :, :] = 1
 
         # Multiple comparisons correction
-        iter_df = self.coordinates.copy()
+        iter_df = red_coords.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = null_ijk[rand_idx, :]
@@ -400,7 +384,8 @@ class ALE(CBMAEstimator):
         # Convert aleHist into null distribution. The value in each bin
         # represents the probability of finding an ALE value (stored in
         # histBins) of that value or lower.
-        null_distribution = ale_hist / np.sum(ale_hist)
+        last_used = np.where(ale_hist > 0)[0][-1]
+        null_distribution = ale_hist[:last_used+1] / np.sum(ale_hist)
         null_distribution = np.cumsum(null_distribution[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
         return null_distribution
@@ -453,56 +438,60 @@ class ALE(CBMAEstimator):
 class SCALE(CBMAEstimator):
     """
     Specific coactivation likelihood estimation
-
-    Parameters
-    ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset object to analyze.
-    ids : array_like
-        List of IDs from dataset to analyze.
-    ijk : array_like or None, optional
-        IJK (matrix-space) indices from database to use for coordinate
-        base-levels of activation. Default is None.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`
-        Kernel with which to convolve coordinates from dataset.
-    **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
-        here, with the prefix 'kernel__' in the variable name.
     """
-    def __init__(self, dataset, ids, ijk=None, kernel_estimator=ALEKernel,
+    def __init__(self, dataset, ijk=None, kernel_estimator=ALEKernel,
                  **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        self.coordinates = dataset.coordinates
 
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
+        self.ids = None
         self.ijk = ijk
         self.n_iters = None
         self.voxel_thresh = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.001, n_iters=10000, n_cores=4):
+    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=4):
         """
         Perform specific coactivation likelihood estimation[1]_ meta-analysis
         on dataset.
 
         Parameters
         ----------
-        voxel_thresh : :obj:`float`, optional
-            Voxel-level p-value threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
+        dataset : ale.Dataset
+            Dataset to analyze.
+        voxel_thresh : float
+            Uncorrected voxel-level threshold.
+        n_iters : int
             Number of iterations for correction. Default 2500
-        n_cores : :obj:`int`, optional
-            Number of cores to use for analysis. Default is 4.
+        verbose : bool
+            If True, prints out status updates.
+        prefix : str
+            String prepended to default output filenames. May include path.
+        database_file : str
+            Tab-delimited file of coordinates from database. Voxels are rows
+            and i, j, k (meaning matrix-space) values are the three columnns.
+
+        Examples
+        --------
+
+        References
+        ----------
+        .. [1] Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., &
+               Eickhoff, S. B. (2014). Meta-analytic connectivity modeling
+               revisited: controlling for activation base rates.
+               NeuroImage, 99, 559-570.
         """
+        self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.n_iters = n_iters
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
 
         max_poss_ale = 1.
@@ -514,7 +503,7 @@ class SCALE(CBMAEstimator):
 
         ale_values = self._compute_ale(df=None, ma_maps=ma_maps)
 
-        iter_df = self.coordinates.copy()
+        iter_df = red_coords.copy()
         rand_idx = np.random.choice(self.ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = self.ijk[rand_idx, :]

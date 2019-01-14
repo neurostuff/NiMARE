@@ -1,13 +1,18 @@
 """
 Methods for decoding unthresholded brain maps into text.
 """
-from ..base import Decoder
+import numpy as np
+import pandas as pd
+from nilearn.masking import apply_mask
+
+from .base import Decoder
+from ..meta.cbma import MKDAChi2, MKDAKernel
 from ..due import due, Doi
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Describes decoding methods using GC-LDA.')
-def gclda_decode_continuous(model, roi, topic_priors=None, prior_weight=1):
+def gclda_decode_map(model, roi, topic_priors=None, prior_weight=1):
     """
     Perform image-to-text decoding for continuous inputs (e.g.,
     unthresholded statistical maps).
@@ -62,7 +67,30 @@ def gclda_decode_continuous(model, roi, topic_priors=None, prior_weight=1):
     5.  The resulting vector (``word_weights``) reflects arbitrarily scaled
         term weights for the input image.
     """
-    pass
+    if isinstance(image, str):
+        image = nib.load(image)
+    elif not isinstance(image, nib.Nifti1Image):
+        raise IOError('Input image must be either a nifti image '
+                      '(nibabel.Nifti1Image) or a path to one.')
+
+    # Load image file and get voxel values
+    input_values = apply_mask(image, model.mask)
+    topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel.T,
+                                      input_values[:, None]))
+    if topic_priors is not None:
+        weighted_priors = weight_priors(topic_priors, prior_weight)
+        topic_weights *= weighted_priors
+
+    # Multiply topic_weights by topic-by-word matrix (p_word_g_topic).
+    # n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
+    # p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
+    # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
+    word_weights = np.dot(model.p_word_g_topic, topic_weights)
+
+    decoded_df = pd.DataFrame(index=model.word_labels,
+                              columns=['Weight'], data=word_weights)
+    decoded_df.index.name = 'Term'
+    return decoded_df, topic_weights
 
 
 @due.dcite(Doi('10.1038/nmeth.1635'),
@@ -90,7 +118,34 @@ def corr_decode(img, dataset, features=None, frequency_threshold=0.001,
         Image from ``meta_estimator``'s results to use for decoding.
         Dependent on estimator.
     """
-    pass
+    # Check that input image is compatible with dataset
+    assert np.array_equal(img.affine, dataset.mask.affine)
+
+    # Load input data
+    input_data = apply_mask(img, dataset.mask)
+
+    if meta_estimator is None:
+        meta_estimator = MKDAChi2(dataset)
+
+    if features is None:
+        features = dataset.annotations.columns.values
+
+    out_df = pd.DataFrame(index=features, columns=['r'],
+                          data=np.zeros(len(features)))
+    out_df.index.name = 'feature'
+
+    for feature in features:
+        # TODO: Search for !feature to get ids2, if possible. Will compare
+        # between label+ and label- without analyzing unlabeled studies.
+        ids = dataset.get(features=[feature],
+                          frequency_threshold=frequency_threshold)
+        meta_estimator.fit(ids, corr='FDR')
+        feature_data = apply_mask(meta_estimator.results[target_image],
+                                  dataset.mask)
+        corr = np.corrcoef(feature_data, input_data)[0, 1]
+        out_df.loc[feature, 'r'] = corr
+
+    return out_df
 
 
 def corr_dist_decode(img, dataset, features=None, frequency_threshold=0.001,
@@ -123,4 +178,29 @@ def corr_dist_decode(img, dataset, features=None, frequency_threshold=0.001,
         columns: mean and std. Values describe the distributions of
         correlation coefficients (in terms of Fisher-transformed z-values).
     """
-    pass
+    # Check that input image is compatible with dataset
+    assert np.array_equal(img.affine, dataset.mask.affine)
+
+    # Load input data
+    input_data = apply_mask(img, dataset.mask)
+
+    if features is None:
+        features = dataset.annotations.columns.values
+
+    out_df = pd.DataFrame(index=features, columns=['mean', 'std'],
+                          data=np.zeros(len(features), 2))
+    out_df.index.name = 'feature'
+
+    for feature in features:
+        test_imgs = dataset.get_images(features=[feature],
+                                       frequency_threshold=frequency_threshold,
+                                       image_types=[target_image])
+        feature_z_dist = np.zeros(len(test_imgs))
+        for i, test_img in enumerate(test_imgs):
+            feature_data = apply_mask(test_img, dataset.mask)
+            corr = np.corrcoef(feature_data, input_data)[0, 1]
+            feature_z_dist[i] = np.arctanh(corr)  # transform to z for normality
+        out_df.loc[feature, 'mean'] = np.mean(feature_z_dist)
+        out_df.loc[feature, 'std'] = np.std(feature_z_dist)
+
+    return out_df
