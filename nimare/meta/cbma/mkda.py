@@ -13,6 +13,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from .kernel import MKDAKernel, KDAKernel
 from ...base import MetaResult, CBMAEstimator
 from ...utils import vox2mm, null_to_p, p_to_z
+from ...stats import one_way, two_way
 from ...due import due, Doi
 
 

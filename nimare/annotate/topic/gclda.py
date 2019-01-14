@@ -11,7 +11,7 @@ from scipy.stats import multivariate_normal
 
 from ...base import AnnotationModel
 from ...due import due, Doi
-from ...utils import get_mask
+from ...utils import get_template
 
 LGR = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class GCLDAModel(AnnotationModel):
 
         # Prepare data
         if isinstance(mask, str) and not op.isfile(mask):
-            self.mask = get_mask(mask)
+            self.mask = get_template(mask, mask='brain')
         elif isinstance(mask, str) and op.isfile(mask):
             self.mask = nib.load(mask)
         elif isinstance(mask, nib.Nifti1Image):

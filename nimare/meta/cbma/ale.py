@@ -50,11 +50,6 @@ class ALE(CBMAEstimator):
     ----------
     dataset : :obj:`nimare.dataset.Dataset`
         Dataset object to analyze.
-    ids : array_like
-        List of IDs from dataset to analyze.
-    ids2 : array_like or None, optional
-        If not None, ids2 is used to identify a second sample for a subtraction
-        analysis. Default is None.
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
@@ -62,34 +57,38 @@ class ALE(CBMAEstimator):
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
     """
-    def __init__(self, dataset, ids, ids2=None, kernel_estimator=ALEKernel,
-                 **kwargs):
+    def __init__(self, dataset, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         self.mask = dataset.mask
-        if ids2 is not None:
-            all_ids = np.hstack((np.array(ids), np.array(ids2)))
-        else:
-            all_ids = ids
-        self.coordinates = dataset.coordinates.loc[
-            dataset.coordinates['id'].isin(all_ids)]
+        self.coordinates = dataset.coordinates
 
+        self.ids = None
+        self.ids2 = None
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
-        self.ids2 = ids2
         self.voxel_thresh = None
         self.clust_thresh = None
         self.corr = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
-            n_cores=4):
+    def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
+            n_iters=10000, n_cores=4):
         """
+
+        Parameters
+        ----------
+        ids : array_like
+            List of IDs from dataset to analyze.
+        ids2 : array_like or None, optional
+            If not None, ids2 is used to identify a second sample for a subtraction
+            analysis. Default is None.
         """
+        self.ids = ids
+        self.ids2 = ids2
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.corr = corr
@@ -250,6 +249,11 @@ class ALE(CBMAEstimator):
         conn[1, :, :] = 1
 
         # Multiple comparisons correction
+        if self.ids2 is not None:
+            all_ids = np.hstack((np.array(self.ids), np.array(self.ids2)))
+        else:
+            all_ids = self.ids
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
         iter_df = red_coords.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
@@ -384,8 +388,7 @@ class ALE(CBMAEstimator):
         # Convert aleHist into null distribution. The value in each bin
         # represents the probability of finding an ALE value (stored in
         # histBins) of that value or lower.
-        last_used = np.where(ale_hist > 0)[0][-1]
-        null_distribution = ale_hist[:last_used+1] / np.sum(ale_hist)
+        null_distribution = ale_hist / np.sum(ale_hist)
         null_distribution = np.cumsum(null_distribution[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
         return null_distribution

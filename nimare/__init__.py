@@ -8,4 +8,4 @@ from .decode import gclda_decode_roi
 from .parcellate import CoordCBP
 from .version import __version__
 
-del cbma, Dataset, Database, gclda_decode_roi, CoordCBP
+del cbma, Dataset, text, gclda_decode_roi, CoordCBP
