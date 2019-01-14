@@ -10,10 +10,8 @@ from scipy import ndimage, special
 from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .base import CBMAEstimator
 from .kernel import MKDAKernel, KDAKernel
-from ..base import MetaResult
-from ...stats import one_way, two_way
+from ...base import MetaResult, CBMAEstimator
 from ...utils import vox2mm, null_to_p, p_to_z
 from ...due import due, Doi
 

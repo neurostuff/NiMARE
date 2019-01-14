@@ -107,7 +107,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
 def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
                     frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
     """
-
+    Perform image-to-text decoding for discrete image inputs (e.g., regions
+    of interest, significant clusters) according to the BrainMap method.
     """
     dataset_ids = sorted(list(set(coordinates['ids'].values)))
     if ids2 is None:
@@ -205,7 +206,7 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
                       frequency_threshold=0.001, prior=0.5, u=0.05,
                       correction='fdr_bh'):
     """
-    Performs discrete functional decoding according to Neurosynth's
+    Perform discrete functional decoding according to Neurosynth's
     meta-analytic method. This does not employ correlations between
     unthresholded maps, which are the method of choice for decoding within
     Neurosynth and Neurovault.
