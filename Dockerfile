@@ -84,57 +84,22 @@ RUN conda create -y -q --name nimare python=3.6 \
     && sync \
     && sed -i '$isource activate nimare' $ND_ENTRYPOINT
 
+# Install Java for MALLET toolbox
+RUN add-apt-repository -y ppa:openjdk-r/ppa
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-8-jdk \
+    openjdk-8-jre
+
+RUN update-alternatives --config java
+RUN update-alternatives --config javac
+
+# install MALLET with curl
+RUN curl -o mallet-2.0.7.tar.gz http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz
+RUN tar xzf mallet-2.0.7.tar.gz
+RUN rm mallet-2.0.7.tar.gz
+RUN mv mallet-2.0.7 /home/neuro/resources/mallet
+
 # User-defined instruction
 RUN mkdir -p ~/.jupyter && echo c.NotebookApp.ip = \"0.0.0.0\" > ~/.jupyter/jupyter_notebook_config.py
 
 WORKDIR /home/neuro
-
-#--------------------------------------
-# Save container specifications to JSON
-#--------------------------------------
-RUN echo '{ \
-    \n  "pkg_manager": "apt", \
-    \n  "check_urls": false, \
-    \n  "instructions": [ \
-    \n    [ \
-    \n      "base", \
-    \n      "neurodebian:stretch-non-free" \
-    \n    ], \
-    \n    [ \
-    \n      "install", \
-    \n      [ \
-    \n        "fsl" \
-    \n      ] \
-    \n    ], \
-    \n    [ \
-    \n      "user", \
-    \n      "neuro" \
-    \n    ], \
-    \n    [ \
-    \n      "add_to_entrypoint", \
-    \n      [ \
-    \n        "source /etc/fsl/fsl.sh" \
-    \n      ] \
-    \n    ], \
-    \n    [ \
-    \n      "miniconda", \
-    \n      { \
-    \n        "env_name": "nimare", \
-    \n        "miniconda_version": "4.3.31", \
-    \n        "conda_install": "python=3.6 jupyter jupyterlab jupyter_contrib_nbextensions matplotlib scikit-learn seaborn numpy scipy pandas statsmodels nibabel nipype", \
-    \n        "pip_install": "nilearn pybids duecredit pymc3", \
-    \n        "activate": true \
-    \n      } \
-    \n    ], \
-    \n    [ \
-    \n      "run", \
-    \n      "mkdir -p ~/.jupyter && echo c.NotebookApp.ip = \\\"0.0.0.0\\\" > ~/.jupyter/jupyter_notebook_config.py" \
-    \n    ], \
-    \n    [ \
-    \n      "workdir", \
-    \n      "/home/neuro" \
-    \n    ] \
-    \n  ], \
-    \n  "generation_timestamp": "2018-04-12 16:33:32", \
-    \n  "neurodocker_version": "0.3.2" \
-    \n}' > /neurodocker/neurodocker_specs.json

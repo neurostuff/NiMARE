@@ -2,6 +2,6 @@
 Base classes for decoding/encoding.
 """
 
-class Decoder(object):
+class Parcellator(object):
     def __init__(self, dataset):
         pass
