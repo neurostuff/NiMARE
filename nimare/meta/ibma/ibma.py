@@ -37,7 +37,7 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
@@ -129,7 +129,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     inference : {'ffx', 'rfx'}, optional
         Whether to use fixed-effects inference (default) or random-effects
@@ -312,7 +312,7 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
         A 1D array of sample sizes associated with contrasts in ``z_maps``.
         Must be in same order as rows in ``z_maps``.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
@@ -395,7 +395,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     ----------
     con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     null : {'theoretical', 'empirical'}, optional
         Whether to use a theoretical null T distribution or an empirically-
@@ -502,8 +502,8 @@ class RFX_GLM(IBMAEstimator):
         self.results = result
 
 
-def _fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01,
-             q=0.05, work_dir='fsl_glm', two_sided=True):
+def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
+            work_dir='fsl_glm', two_sided=True):
     assert con_maps.shape == se_maps.shape
     assert con_maps.shape[0] == sample_sizes.shape[0]
 
@@ -680,7 +680,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         A 1D array of sample sizes associated with contrasts in ``con_maps``
         and ``var_maps``. Must be in same order as rows in ``con_maps`` and
         ``var_maps``.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     cdt : :obj:`float`, optional
         Cluster-defining p-value threshold.
@@ -697,8 +697,8 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = _fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
-                      cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
+                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
     return result
 
 
@@ -754,7 +754,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         A 1D array of sample sizes associated with contrasts in ``con_maps``
         and ``var_maps``. Must be in same order as rows in ``con_maps`` and
         ``var_maps``.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     cdt : :obj:`float`, optional
         Cluster-defining p-value threshold.
@@ -771,8 +771,8 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = _fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
-                      cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
+                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
     return result
 
 
