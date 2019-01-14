@@ -10,7 +10,7 @@ from __future__ import division
 import numpy as np
 import nibabel as nib
 
-from .base import KernelEstimator
+from ...base import KernelEstimator
 from .utils import compute_ma, get_ale_kernel
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel']

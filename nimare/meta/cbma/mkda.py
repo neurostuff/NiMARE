@@ -10,10 +10,10 @@ from scipy import ndimage, special
 from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .base import CBMAEstimator
 from .kernel import MKDAKernel, KDAKernel
-from ..base import MetaResult
+from ...base import MetaResult, CBMAEstimator
 from ...utils import vox2mm, null_to_p, p_to_z
+from ...stats import one_way, two_way
 from ...due import due, Doi
 
 
@@ -22,33 +22,35 @@ class MKDADensity(CBMAEstimator):
     """
     Multilevel kernel density analysis- Density analysis
     """
-    def __init__(self, dataset, ids, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, dataset, kernel_estimator=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        self.coordinates = dataset.coordinates
 
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
+        self.ids = None
         self.voxel_thresh = None
         self.clust_thresh = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=4):
+    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=4):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.n_iters = n_iters
 
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
 
         # Weight each SCM by square root of sample size
-        ids_df = self.coordinates.groupby('id').first()
+        ids_df = red_coords.groupby('id').first()
         if 'n' in ids_df.columns and 'inference' not in ids_df.columns:
             ids_n = ids_df.loc[self.ids, 'n'].astype(float).values
             weight_vec = np.sqrt(ids_n)[:, None] / np.sum(np.sqrt(ids_n))
@@ -56,8 +58,8 @@ class MKDADensity(CBMAEstimator):
             ids_n = ids_df.loc[self.ids, 'n'].astype(float).values
             ids_inf = ids_df.loc[self.ids, 'inference'].map({'ffx': 0.75,
                                                              'rfx': 1.}).values
-            weight_vec = (np.sqrt(ids_n)[:, None] * ids_inf[:, None]) / \
-                         np.sum(np.sqrt(ids_n) * ids_inf)
+            weight_vec = ((np.sqrt(ids_n)[:, None] * ids_inf[:, None]) /
+                          np.sum(np.sqrt(ids_n) * ids_inf))
         else:
             weight_vec = np.ones((len(ma_maps), 1))
 
@@ -70,10 +72,10 @@ class MKDADensity(CBMAEstimator):
         vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
 
         rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(self.coordinates.shape[0], n_iters))
+                                    size=(red_coords.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = self.coordinates.copy()
+        iter_df = red_coords.copy()
 
         conn = np.ones((3, 3, 3))
 
@@ -148,11 +150,12 @@ class MKDAChi2(CBMAEstimator):
     """
     Multilevel kernel density analysis- Chi-square analysis
     """
-    def __init__(self, dataset, ids, ids2=None, kernel_estimator=MKDAKernel,
+    def __init__(self, dataset, kernel_estimator=MKDAKernel,
                  **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        kwargs = {k: v for k, v in kwargs.items() if not
+                  k.startswith('kernel__')}
 
         self.mask = dataset.mask
 
@@ -163,25 +166,29 @@ class MKDAChi2(CBMAEstimator):
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
 
-        if ids2 is None:
-            ids2 = list(set(dataset.coordinates['id'].values) - set(ids))
-        all_ids = ids + ids2
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(all_ids)]
+        self.coordinates = dataset.coordinates
 
-        self.ids = ids
-        self.ids2 = ids2
+        self.ids = None
+        self.ids2 = None
         self.voxel_thresh = None
         self.corr = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.01, q=0.05, corr='FWE', n_iters=5000,
-            prior=0.5, n_cores=4):
+    def fit(self, ids, ids2=None, voxel_thresh=0.01, q=0.05, corr='FWE',
+            n_iters=5000, prior=0.5, n_cores=4):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
 
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        if ids2 is None:
+            ids2 = list(set(dataset.coordinates['id'].values) - set(ids))
+        all_ids = ids + ids2
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
+        self.ids = ids
+        self.ids2 = ids2
+
+        k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps1 = k_est.transform(self.ids, masked=True,
                                    **self.kernel_arguments)
         ma_maps2 = k_est.transform(self.ids2, masked=True,
@@ -216,10 +223,11 @@ class MKDAChi2(CBMAEstimator):
         pFgA_prior = pAgF * prior / pAgF_prior
 
         # One-way chi-square test for consistency of activation
-        pAgF_chi2_vals = self._one_way(np.squeeze(n_selected_active_voxels),
-                                       n_selected)
+        pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels),
+                                 n_selected)
         pAgF_p_vals = special.chdtrc(1, pAgF_chi2_vals)
-        pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
+        pAgF_sign = np.sign(n_selected_active_voxels -
+                            np.mean(n_selected_active_voxels))
         pAgF_z = p_to_z(pAgF_p_vals, tail='two') * pAgF_sign
 
         # Two-way chi-square for specificity of activation
@@ -227,7 +235,7 @@ class MKDAChi2(CBMAEstimator):
             np.array([[n_selected_active_voxels, n_unselected_active_voxels],
                       [n_selected - n_selected_active_voxels,
                        n_unselected - n_unselected_active_voxels]]).T)
-        pFgA_chi2_vals = self._two_way(cells)
+        pFgA_chi2_vals = two_way(cells)
         pFgA_p_vals = special.chdtrc(1, pFgA_chi2_vals)
         pFgA_p_vals[pFgA_p_vals < 1e-240] = 1e-240
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
@@ -245,11 +253,10 @@ class MKDAChi2(CBMAEstimator):
 
         if corr == 'FWE':
             pool = mp.Pool(n_cores)
-            iter_dfs = [self.coordinates.copy()] * n_iters
+            iter_dfs = [red_coords.copy()] * n_iters
             null_ijk = np.vstack(np.where(self.mask.get_data())).T
             rand_idx = np.random.choice(null_ijk.shape[0],
-                                        size=(self.coordinates.shape[0],
-                                              n_iters))
+                                        size=(red_coords.shape[0], n_iters))
             rand_ijk = null_ijk[rand_idx, :]
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
@@ -328,8 +335,8 @@ class MKDAChi2(CBMAEstimator):
         pAgU = n_unselected_active_voxels * 1.0 / n_unselected
 
         # One-way chi-square test for consistency of activation
-        pAgF_chi2_vals = self._one_way(np.squeeze(n_selected_active_voxels),
-                                       n_selected)
+        pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels),
+                                 n_selected)
         iter_pAgF_chi2 = np.max(pAgF_chi2_vals)
 
         # Two-way chi-square for specificity of activation
@@ -337,50 +344,9 @@ class MKDAChi2(CBMAEstimator):
             np.array([[n_selected_active_voxels, n_unselected_active_voxels],
                       [n_selected - n_selected_active_voxels,
                        n_unselected - n_unselected_active_voxels]]).T)
-        pFgA_chi2_vals = self._two_way(cells)
+        pFgA_chi2_vals = two_way(cells)
         iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
         return iter_pAgF_chi2, iter_pFgA_chi2
-
-    def _one_way(self, data, n):
-        """ One-way chi-square test of independence.
-        Takes a 1D array as input and compares activation at each voxel to
-        proportion expected under a uniform distribution throughout the array.
-        Note that if you're testing activation with this, make sure that only
-        valid voxels (e.g., in-mask gray matter voxels) are included in the
-        array, or results won't make any sense!
-        """
-        term = data.astype('float64')
-        no_term = n - term
-        t_exp = np.mean(term, 0)
-        t_exp = np.array([t_exp, ] * data.shape[0])
-        nt_exp = n - t_exp
-        t_mss = (term - t_exp) ** 2 / t_exp
-        nt_mss = (no_term - nt_exp) ** 2 / nt_exp
-        chi2 = t_mss + nt_mss
-        return chi2
-
-    def _two_way(self, cells):
-        """ Two-way chi-square test of independence.
-        Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
-        dimensions are the contingency table for each of N voxels. Returns an
-        array of p-values.
-        """
-        # Mute divide-by-zero warning for bad voxels since we account for that
-        # later
-        warnings.simplefilter("ignore", RuntimeWarning)
-
-        cells = cells.astype('float64')  # Make sure we don't overflow
-        total = np.apply_over_axes(np.sum, cells, [1, 2]).ravel()
-        chi_sq = np.zeros(cells.shape, dtype='float64')
-        for i in range(2):
-            for j in range(2):
-                exp = np.sum(cells[:, i, :], 1).ravel() * \
-                    np.sum(cells[:, :, j], 1).ravel() / total
-                bad_vox = np.where(exp == 0)[0]
-                chi_sq[:, i, j] = (cells[:, i, j] - exp) ** 2 / exp
-                chi_sq[bad_vox, i, j] = 1.0  # Set p-value for invalid voxels to 1
-        chi_sq = np.apply_over_axes(np.sum, chi_sq, [1, 2]).ravel()
-        return chi_sq
 
 
 @due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
@@ -391,35 +357,37 @@ class KDA(CBMAEstimator):
     """
     Kernel density analysis
     """
-    def __init__(self, dataset, ids, ids2=None, kernel_estimator=KDAKernel,
-                 **kwargs):
+    def __init__(self, dataset, kernel_estimator=KDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        self.coordinates = dataset.coordinates
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
+        self.ids = None
+        self.ids2 = None
         self.clust_thresh = None
         self.n_iters = None
         self.images = {}
 
-    def fit(self, q=0.05, n_iters=10000, n_cores=4):
+    def fit(self, ids, q=0.05, n_iters=10000, n_cores=4):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        self.ids = ids
         self.clust_thresh = q
         self.n_iters = n_iters
 
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps = k_est.transform(self.ids, masked=True, **self.kernel_arguments)
         of_map = np.sum(ma_maps, axis=0)
 
         rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(self.coordinates.shape[0], n_iters))
+                                    size=(red_coords.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = self.coordinates.copy()
+        iter_df = red_coords.copy()
 
         # Define parameters
         iter_dfs = [iter_df] * n_iters

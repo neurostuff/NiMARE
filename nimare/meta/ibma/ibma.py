@@ -14,8 +14,7 @@ from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .base import IBMAEstimator
-from ..base import MetaResult
+from ...base import MetaResult, IBMAEstimator
 from ...utils import null_to_p, p_to_z
 from ...due import due, BibTeX
 
@@ -45,7 +44,7 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
 
     Returns
     -------
-    result : :obj:`nimare.meta.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -97,13 +96,14 @@ class Fishers(IBMAEstimator):
     Requirements:
         - t OR z
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.results = None
 
-    def fit(self, corr='FWE', two_sided=True):
+    def fit(self, ids, corr='FWE', two_sided=True):
+        self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         result = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
         self.results = result
@@ -146,7 +146,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
 
     Returns
     -------
-    result : :obj:`nimare.meta.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -266,17 +266,18 @@ class Stouffers(IBMAEstimator):
     Requirements:
         - z
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.inference = None
         self.null = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, inference='ffx', null='theoretical', n_iters=None,
+    def fit(self, ids, inference='ffx', null='theoretical', n_iters=None,
             corr='FWE', two_sided=True):
+        self.ids = ids
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
@@ -318,7 +319,7 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
 
     Returns
     -------
-    result : :obj:`nimare.meta.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -370,13 +371,14 @@ class WeightedStouffers(IBMAEstimator):
         - z
         - n
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.results = None
 
-    def fit(self, two_sided=True):
+    def fit(self, ids, two_sided=True):
+        self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         sample_sizes = self.dataset.get(self.ids, 'n')
         result = weighted_stouffers(z_maps, sample_sizes, self.mask,
@@ -406,7 +408,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
 
     Returns
     -------
-    result : :obj:`nimare.meta.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -481,16 +483,17 @@ class RFX_GLM(IBMAEstimator):
     Requirements:
         - con
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.null = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, null='theoretical', n_iters=None, corr='FWE',
+    def fit(self, ids, null='theoretical', n_iters=None, corr='FWE',
             two_sided=True):
+        self.ids = ids
         self.null = null
         self.n_iters = n_iters
         con_maps = self.dataset.get(self.ids, 'con')
@@ -690,7 +693,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
 
     Returns
     -------
-    result : :obj:`nimare.meta.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -708,18 +711,19 @@ class FFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.sample_sizes = None
         self.equal_var = None
 
-    def fit(self, sample_sizes=None, equal_var=True, corr='FWE',
+    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
             two_sided=True):
         """
         Perform meta-analysis given parameters.
         """
+        self.ids = ids
         self.sample_sizes = sample_sizes
         self.equal_var = equal_var
         con_maps = self.dataset.get(self.ids, 'con')
@@ -763,7 +767,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
 
     Returns
     -------
-    result : :obj:`nimare.meta.MetaResult`
+    result : :obj:`nimare.base.meta.MetaResult`
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
@@ -781,16 +785,17 @@ class MFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
 
-    def fit(self, sample_sizes=None, equal_var=True, corr='FWE',
+    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
             two_sided=True):
         """
         Perform meta-analysis given parameters.
         """
+        self.ids = ids
         self.sample_sizes = sample_sizes
         self.equal_var = equal_var
         con_maps = self.dataset.get(self.ids, 'con')
