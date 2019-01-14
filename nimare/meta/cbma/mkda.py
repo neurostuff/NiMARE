@@ -180,13 +180,12 @@ class MKDAChi2(CBMAEstimator):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
-
-        if ids2 is None:
-            ids2 = list(set(dataset.coordinates['id'].values) - set(ids))
-        all_ids = ids + ids2
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
         self.ids = ids
+        if ids2 is None:
+            ids2 = list(set(self.coordinates['id'].values) - set(self.ids))
         self.ids2 = ids2
+        all_ids = self.ids + self.ids2
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
 
         k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps1 = k_est.transform(self.ids, masked=True,
