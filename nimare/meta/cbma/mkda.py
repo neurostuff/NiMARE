@@ -183,7 +183,7 @@ class MKDAChi2(CBMAEstimator):
         self.ids = ids
         if ids2 is None:
             ids2 = list(set(self.coordinates['id'].values) - set(self.ids))
-            self.ids2 = ids2
+        self.ids2 = ids2
         all_ids = self.ids + self.ids2
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
 
