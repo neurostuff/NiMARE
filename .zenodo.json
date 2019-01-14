@@ -1,0 +1,29 @@
+{
+  "creators": [
+    {
+      "name": "Salo, Taylor",
+      "affiliation": "Florida International University",
+      "orcid": "0000-0001-9813-3167"
+    },
+    {
+      "affiliation": "University of Texas at Austin",
+      "name": "Yarkoni, Tal",
+      "orcid": "0000-0002-6558-5113"
+    },
+    {
+      "name": "Kent, James D.",
+      "affiliation": "Neuroscience Program, University of Iowa",
+      "orcid": "0000-0002-4892-2659"
+    },
+    {
+      "name": "Glerean, Enrico"
+    }
+  ],
+  "keywords": [
+    "neuroimaging",
+    "fMRI",
+    "meta-analysis"
+  ],
+  "license": "mit",
+  "upload_type": "software"
+}
