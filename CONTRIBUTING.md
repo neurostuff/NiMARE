@@ -55,8 +55,7 @@ A member of the development team will review your changes to confirm that they c
 
 ## Recognizing contributions
 
-We welcome and recognize all contributions from documentation to testing to code development.
-You can see a list of current contributors in the [contributors tab][link_contributors].
+We welcome and recognize all contributions from documentation to testing to code development. You can see a list of current contributors in our [zenodo][link_zenodo] file. If you are new to the project, don't forget to add your name and affiliation there!
 
 ## Thank you!
 
@@ -85,4 +84,4 @@ You're awesome. :wave::smiley:
 [link_branches]: https://help.github.com/articles/creating-and-deleting-branches-within-your-repository/
 [link_updateupstreamwiki]: https://help.github.com/articles/syncing-a-fork/
 [link_stemmrolemodels]: https://github.com/KirstieJane/STEMMRoleModels
-[link_contributors]: https://github.com/neurostuff/NiMARE/graphs/contributors
+[link_zenodo]: https://github.com/neurostuff/NiMARE/blob/master/.zenodo.json
