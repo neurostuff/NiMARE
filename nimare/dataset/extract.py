@@ -7,25 +7,16 @@ import json
 from os import mkdir
 import os.path as op
 
-from abc import ABCMeta, abstractmethod
-from six import with_metaclass
 import pandas as pd
 import numpy as np
 from pyneurovault import api
 
+from ..base import DataSource
 from ..utils import get_resource_path, tal2mni
 
 
 __all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource',
            'BrainSpellDataSource', 'convert_sleuth']
-
-
-class DataSource(with_metaclass(ABCMeta)):
-    ''' Base class for DataSource hierarchy. '''
-
-    @abstractmethod
-    def get_data(self, level='contrast', tags=None, dois=None, **kwargs):
-        pass
 
 
 class NeuroVaultDataSource(DataSource):

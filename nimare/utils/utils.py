@@ -11,7 +11,7 @@ from nilearn import datasets
 from scipy import stats
 from scipy.special import ndtri
 
-from .due import due, Doi, BibTeX
+from ..due import due, Doi, BibTeX
 
 
 def get_template(space='mni152_1mm', mask=None):
@@ -285,4 +285,4 @@ def get_resource_path():
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    return abspath(join(dirname(__file__), 'resources') + sep)
+    return abspath(join(dirname(__file__), '../resources') + sep)

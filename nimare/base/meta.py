@@ -79,11 +79,13 @@ class MetaEstimator(with_metaclass(ABCMeta)):
 
     def get_params(self, deep=True):
         """Get parameters for this estimator.
+
         Parameters
         ----------
         deep : boolean, optional
             If True, will return the parameters for this estimator and
             contained subobjects that are estimators.
+
         Returns
         -------
         params : mapping of string to any
@@ -100,10 +102,12 @@ class MetaEstimator(with_metaclass(ABCMeta)):
 
     def set_params(self, **params):
         """Set the parameters of this estimator.
+
         The method works on simple estimators as well as on nested objects
         (such as pipelines). The latter have parameters of the form
         ``<component>__<parameter>`` so that it's possible to update each
         component of a nested object.
+
         Returns
         -------
         self
@@ -138,3 +142,33 @@ class MetaEstimator(with_metaclass(ABCMeta)):
         """Run meta-analysis on dataset.
         """
         pass
+
+
+class CBMAEstimator(MetaEstimator):
+    """Base class for coordinate-based meta-analysis methods.
+    """
+    pass
+
+
+class KernelEstimator(with_metaclass(ABCMeta)):
+    """Base class for modeled activation-generating methods.
+
+    Coordinate-based meta-analyses leverage coordinates reported in
+    neuroimaging papers to simulate the thresholded statistical maps from the
+    original analyses. This generally involves convolving each coordinate with
+    a kernel (typically a Gaussian or binary sphere) that may be weighted based
+    on some additional measure, such as statistic value or sample size.
+    """
+    @abstractmethod
+    def transform(self):
+        """
+        Generate a modeled activation map for each of the contrasts in a
+        dataset.
+        """
+        pass
+
+
+class IBMAEstimator(MetaEstimator):
+    """Base class for image-based meta-analysis methods.
+    """
+    pass
