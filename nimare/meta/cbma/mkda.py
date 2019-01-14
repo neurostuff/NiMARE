@@ -175,14 +175,15 @@ class MKDAChi2(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.01, q=0.05, corr='FWE',
+    def fit(self, ids, ids2=None, voxel_thresh=0.01, q=0.05, corr='FWE',
             n_iters=5000, prior=0.5, n_cores=4):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
-
-        if self.ids2 is None:
-            self.ids2 = list(set(self.coordinates['id'].values) - set(ids))
+        self.ids = ids
+        if ids2 is None:
+            ids2 = list(set(self.coordinates['id'].values) - set(self.ids))
+            self.ids2 = ids2
         all_ids = self.ids + self.ids2
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
 
