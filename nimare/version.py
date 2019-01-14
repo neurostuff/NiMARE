@@ -61,3 +61,8 @@ MICRO = _version_micro
 VERSION = __version__
 REQUIRES = ["nibabel", "numpy", "scipy", "pandas", "statsmodels", "nipype",
             "scikit-learn", "nilearn", "duecredit"]
+
+EXTRAS_REQUIRES = {
+    "tf": ["tensorflow>=1.0.0", "tdqm"],
+    "tf_gpu": ["tensorflow-gpu>=1.0.0", "tdqm"],
+}
