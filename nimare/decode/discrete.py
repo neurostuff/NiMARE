@@ -2,33 +2,211 @@
 Methods for decoding subsets of voxels (e.g., ROIs) or experiments (e.g., from
 meta-analytic clustering on a database) into text.
 """
-from .base import Decoder
-from ...due import due, Doi
+import numpy as np
+import pandas as pd
+from scipy.stats import binom
+from statsmodels.sandbox.stats.multicomp import multipletests
+
+from ..base import Decoder
+from ..utils import p_to_z
+from ..stats import one_way, two_way
+from ..due import due, Doi
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Citation for GCLDA decoding.')
-class GCLDADiscreteDecoder(Decoder):
-    def __init__(self, model, roi_img, topic_priors, prior_weight):
-        pass
+def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
+    """
+    Perform image-to-text decoding for discrete image inputs (e.g., regions
+    of interest, significant clusters).
+
+    Parameters
+    ----------
+    model : :obj:`gclda.model.Model`
+        Model object needed for decoding.
+    roi : :obj:`nibabel.nifti.Nifti1Image` or :obj:`str`
+        Binary image to decode into text. If string, path to a file with
+        the binary image.
+    topic_priors : :obj:`numpy.ndarray` of :obj:`float`, optional
+        A 1d array of size (n_topics) with values for topic weighting.
+        If None, no weighting is done. Default is None.
+    prior_weight : :obj:`float`, optional
+        The weight by which the prior will affect the decoding.
+        Default is 1.
+
+    Returns
+    -------
+    decoded_df : :obj:`pandas.DataFrame`
+        A DataFrame with the word-tokens and their associated weights.
+    topic_weights : :obj:`numpy.ndarray` of :obj:`float`
+        The weights of the topics used in decoding.
+
+    Notes
+    -----
+    ======================    ==============================================================
+    Notation                  Meaning
+    ======================    ==============================================================
+    :math:`v`                 Voxel
+    :math:`t`                 Topic
+    :math:`w`                 Word type
+    :math:`r`                 Region of interest (ROI)
+    :math:`p(v|t)`            Probability of topic given voxel (``p_topic_g_voxel``)
+    :math:`\\tau_{t}`          Topic weight vector (``topic_weights``)
+    :math:`p(w|t)`            Probability of word type given topic (``p_word_g_topic``)
+    ======================    ==============================================================
+
+    1.  Compute
+        :math:`p(v|t)`.
+            - From :obj:`gclda.model.Model.get_spatial_probs()`
+    2.  Compute topic weight vector (:math:`\\tau_{t}`) by adding across voxels
+        within ROI.
+            - :math:`\\tau_{t} = \sum_{i} {p(t|v_{i})}`
+    3.  Multiply :math:`\\tau_{t}` by
+        :math:`p(w|t)`.
+            - :math:`p(w|r) \propto \\tau_{t} \cdot p(w|t)`
+    4.  The resulting vector (``word_weights``) reflects arbitrarily scaled
+        term weights for the ROI.
+    """
+    if isinstance(roi, str):
+        roi = nib.load(roi)
+    elif not isinstance(roi, nib.Nifti1Image):
+        raise IOError('Input roi must be either a nifti image '
+                      '(nibabel.Nifti1Image) or a path to one.')
+
+    dset_aff = model.mask.affine
+    if not np.array_equal(roi.affine, dset_aff):
+        raise ValueError('Input roi must have same affine as mask img:'
+                         '\n{0}\n{1}'.format(np.array2string(roi.affine),
+                                             np.array2string(dset_aff)))
+
+    # Load ROI file and get ROI voxels overlapping with brain mask
+    mask_vec = model.mask.get_data().ravel().astype(bool)
+    roi_vec = roi.get_data().astype(bool).ravel()
+    roi_vec = roi_vec[mask_vec]
+    roi_idx = np.where(roi_vec)[0]
+    p_topic_g_roi = model.p_topic_g_voxel[roi_idx, :]  # p(T|V) for voxels in ROI only
+    topic_weights = np.sum(p_topic_g_roi, axis=0)  # Sum across words
+    if topic_priors is not None:
+        weighted_priors = weight_priors(topic_priors, prior_weight)
+        topic_weights *= weighted_priors
+
+    # Multiply topic_weights by topic-by-word matrix (p_word_g_topic).
+    #n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
+    #p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
+    #p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
+    word_weights = np.dot(model.p_word_g_topic, topic_weights)
+
+    decoded_df = pd.DataFrame(index=model.word_labels,
+                              columns=['Weight'], data=word_weights)
+    decoded_df.index.name = 'Term'
+    return decoded_df, topic_weights
 
 
 @due.dcite(Doi('10.1007/s00429-013-0698-0'),
            description='Citation for BrainMap-style decoding.')
-class BrainMapDecoder(Decoder):
+def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
+                    frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
     """
-
+    Perform image-to-text decoding for discrete image inputs (e.g., regions
+    of interest, significant clusters) according to the BrainMap method.
     """
-    def __init__(self, dataset, ids, frequency_threshold=0.001, u=0.05,
-                 correction='fdr_bh'):
-        pass
+    dataset_ids = sorted(list(set(coordinates['ids'].values)))
+    if ids2 is None:
+        unselected = sorted(list(set(dataset_ids) - set(ids)))
+    else:
+        unselected = ids2[:]
+
+    if features is None:
+        features = annotations.columns.values
+
+    # Binarize with frequency threshold
+    features_df = annotations[features].ge(frequency_threshold)
+
+    terms = annotations.columns.values
+    sel_array = annotations.loc[ids].values
+    unsel_array = annotations.loc[unselected].values
+
+    n_selected = len(ids)
+    n_unselected = len(unselected)
+
+    # the number of times any term is used (e.g., if one experiment uses
+    # two terms, that counts twice). Why though?
+    n_exps_across_terms = np.sum(np.sum(annotations))
+
+    n_selected_term = np.sum(sel_array, axis=0)
+    n_unselected_term = np.sum(unsel_array, axis=0)
+
+    n_selected_noterm = n_selected - n_selected_term
+    n_unselected_noterm = n_unselected - n_unselected_term
+
+    n_term = n_selected_term + n_unselected_term
+    p_term = n_term / n_exps_across_terms
+
+    n_foci_in_database = coordinates.shape[0]
+    p_selected = n_selected / n_foci_in_database
+
+    # I hope there's a way to do this without the for loop
+    n_term_foci = np.zeros(len(terms))
+    n_noterm_foci = np.zeros(len(terms))
+    for i, term in enumerate(terms):
+        term_ids = annotations.loc[annotations[term] == 1].index.values
+        noterm_ids = annotations.loc[annotations[term] == 0].index.values
+        n_term_foci[i] = coordinates['id'].isin(term_ids).sum()
+        n_noterm_foci[i] = coordinates['id'].isin(noterm_ids).sum()
+
+    p_selected_g_term = n_selected_term / n_term_foci  # probForward
+    l_selected_g_term = p_selected_g_term / p_selected  # likelihoodForward
+    p_selected_g_noterm = n_selected_noterm / n_noterm_foci
+
+    p_term_g_selected = p_selected_g_term * p_term / p_selected  # probReverse
+    p_term_g_selected = p_term_g_selected / np.sum(p_term_g_selected)  # Normalize
+
+    # Significance testing
+    # Forward inference significance is determined with a binomial distribution
+    p_fi = 1 - binom.cdf(k=n_selected_term, n=n_term_foci, p=p_selected)
+    sign_fi = np.sign(n_selected_term - np.mean(n_selected_term)).ravel()  # pylint: disable=no-member
+
+    # Two-way chi-square test for specificity of activation
+    cells = np.array([[n_selected_term, n_selected_noterm],  # pylint: disable=no-member
+                      [n_unselected_term, n_unselected_noterm]]).T
+    p_ri = two_way(cells)
+    sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
+
+    # Ignore rare terms
+    p_fi[n_selected_term < 5] = 1.
+    p_ri[n_selected_term < 5] = 1.
+
+    # Multiple comparisons correction across terms. Separately done for FI and RI.
+    if correction is not None:
+        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction,
+                                           returnsorted=False)
+        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction,
+                                           returnsorted=False)
+    else:
+        p_corr_fi = p_fi
+        p_corr_ri = p_ri
+
+    # Compute z-values
+    z_corr_fi = p_to_z(p_corr_fi, sign_fi)
+    z_corr_ri = p_to_z(p_corr_ri, sign_ri)
+
+    # Effect size
+    arr = np.array([p_corr_fi, z_corr_fi, l_selected_g_term,  # pylint: disable=no-member
+                    p_corr_ri, z_corr_ri, p_term_g_selected]).T
+
+    out_df = pd.DataFrame(data=arr, index=terms,
+                          columns=['pForward', 'zForward', 'likelihoodForward',
+                                   'pReverse', 'zReverse', 'probReverse'])
+    out_df.index.name = 'Term'
+    return out_df
 
 
-@due.dcite(Doi('10.1038/nmeth.1635'),
-           description='Introduces Neurosynth.')
-class NeurosynthDecoder(Decoder):
+@due.dcite(Doi('10.1038/nmeth.1635'), description='Introduces Neurosynth.')
+def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
+                      frequency_threshold=0.001, prior=0.5, u=0.05,
+                      correction='fdr_bh'):
     """
-    Performs discrete functional decoding according to Neurosynth's
+    Perform discrete functional decoding according to Neurosynth's
     meta-analytic method. This does not employ correlations between
     unthresholded maps, which are the method of choice for decoding within
     Neurosynth and Neurovault.
@@ -36,6 +214,81 @@ class NeurosynthDecoder(Decoder):
     (`ids`) are compared to the unselected studies remaining in the database
     (`dataset`).
     """
-    def __init__(self, dataset, ids, frequency_threshold=0.001, prior=0.5,
-                 u=0.05, correction='fdr_bh'):
-        pass
+    dataset_ids = sorted(list(set(coordinates['ids'].values)))
+    if ids2 is None:
+        unselected = sorted(list(set(dataset_ids) - set(ids)))
+    else:
+        unselected = ids2[:]
+
+    if features is None:
+        features = annotations.columns.values
+
+    # Binarize with frequency threshold
+    features_df = annotations[features].ge(frequency_threshold)
+
+    terms = features_df.columns.values
+    sel_array = features_df.loc[ids].values
+    unsel_array = features_df.loc[unselected].values
+
+    n_selected = len(ids)
+    n_unselected = len(unselected)
+
+    n_selected_term = np.sum(sel_array, axis=0)
+    n_unselected_term = np.sum(unsel_array, axis=0)
+
+    n_selected_noterm = n_selected - n_selected_term
+    n_unselected_noterm = n_unselected - n_unselected_term
+
+    n_term = n_selected_term + n_unselected_term
+    n_noterm = n_selected_noterm + n_unselected_noterm
+
+    p_term = n_term / (n_term + n_noterm)
+
+    p_selected_g_term = n_selected_term / n_term
+    p_selected_g_noterm = n_selected_noterm / n_noterm
+
+    # Recompute conditions with empirically derived prior (or inputted one)
+    if prior is None:
+        # if this is used, p_term_g_selected_prior = p_selected (regardless of term)
+        prior = p_term
+
+    # Significance testing
+    # One-way chi-square test for consistency of term frequency across terms
+    p_fi = stats.one_way(n_selected_term, n_term)
+    sign_fi = np.sign(n_selected_term - np.mean(n_selected_term)).ravel()  # pylint: disable=no-member
+
+    # Two-way chi-square test for specificity of activation
+    cells = np.array([[n_selected_term, n_selected_noterm],  # pylint: disable=no-member
+                      [n_unselected_term, n_unselected_noterm]]).T
+    p_ri = stats.two_way(cells)
+    sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
+
+    # Multiple comparisons correction across terms. Separately done for FI and RI.
+    if correction is not None:
+        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction,
+                                           returnsorted=False)
+        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction,
+                                           returnsorted=False)
+    else:
+        p_corr_fi = p_fi
+        p_corr_ri = p_ri
+
+    # Compute z-values
+    z_corr_fi = p_to_z(p_corr_fi, sign_fi)
+    z_corr_ri = p_to_z(p_corr_ri, sign_ri)
+
+    # Effect size
+    # est. prob. of brain state described by term finding activation in ROI
+    p_selected_g_term_g_prior = prior * p_selected_g_term + (1 - prior) * p_selected_g_noterm
+
+    # est. prob. of activation in ROI reflecting brain state described by term
+    p_term_g_selected_g_prior = p_selected_g_term * prior / p_selected_g_term_g_prior
+
+    arr = np.array([p_corr_fi, z_corr_fi, p_selected_g_term_g_prior,  # pylint: disable=no-member
+                    p_corr_ri, z_corr_ri, p_term_g_selected_g_prior]).T
+
+    out_df = pd.DataFrame(data=arr, index=terms,
+                          columns=['pForward', 'zForward', 'probForward',
+                                   'pReverse', 'zReverse', 'probReverse'])
+    out_df.index.name = 'Term'
+    return out_df
