@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from nilearn.masking import apply_mask
 
-from .base import Decoder
+from ..base import Decoder
 from ..meta.cbma import MKDAChi2, MKDAKernel
 from ..due import due, Doi
 
