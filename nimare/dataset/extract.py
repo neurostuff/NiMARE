@@ -10,6 +10,7 @@ from six import with_metaclass
 import pandas as pd
 from pyneurovault import api
 
+from ..base import DataSource
 from ..utils import get_resource_path
 
 

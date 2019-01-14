@@ -1,7 +1,7 @@
 """
 Generate a Text2Brain vector model.
 """
-from ..base import AnnotationModel
+from ...base import AnnotationModel
 from ...due import due, BibTeX
 
 

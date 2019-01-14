@@ -9,7 +9,7 @@ import subprocess
 
 import pandas as pd
 
-from ..base import AnnotationModel
+from ...base import AnnotationModel
 from ...utils import get_resource_path
 from ...due import due, BibTeX, Doi
 
