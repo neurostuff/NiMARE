@@ -1,7 +1,29 @@
 """
 Methods for encoding text into brain maps.
 """
-from ...due import due, Doi
+import numpy as np
+from nilearn.masking import unmask
+from sklearn.feature_extraction.text import CountVectorizer
+
+from .utils import weight_priors
+from ..due import due, Doi, BibTeX
+
+
+@due.dcite(BibTeX("""
+    @article{dockes2018text,
+    title={Text to brain: predicting the spatial distribution of neuroimaging
+           observations from text reports},
+    author={Dock{\`e}s, J{\'e}r{\^o}me and Wassermann, Demian and Poldrack,
+            Russell and Suchanek, Fabian and Thirion, Bertrand and
+            Varoquaux, Ga{\"e}l},
+    journal={arXiv preprint arXiv:1806.01139},
+    year={2018}
+    }"""))
+def text2brain():
+    """
+    Perform text-to-image encoding with the text2brain model.
+    """
+    pass
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
@@ -67,4 +89,32 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
         voxel weights for the input text.
     9.  Unmask and reshape ``voxel_weights`` into brain image.
     """
-    pass
+    if isinstance(text, list):
+        text = ' '.join(text)
+
+    # Assume that words in word_labels are underscore-separated.
+    # Convert to space-separation for vectorization of input string.
+    vocabulary = [term.replace('_', ' ') for term in model.word_labels]
+    max_len = max([len(term.split(' ')) for term in vocabulary])
+    vectorizer = CountVectorizer(vocabulary=model.word_labels,
+                                 ngram_range=(1, max_len))
+    word_counts = np.squeeze(vectorizer.fit_transform([text]).toarray())
+    keep_idx = np.where(word_counts > 0)[0]
+    text_counts = word_counts[keep_idx]
+
+    # n_topics_per_word_token = np.sum(model.n_word_tokens_word_by_topic, axis=1)
+    # p_topic_g_word = model.n_word_tokens_word_by_topic / n_topics_per_word_token[:, None]
+    # p_topic_g_word = np.nan_to_num(p_topic_g_word, 0)
+    p_topic_g_text = model.p_topic_g_word[keep_idx]  # p(T|W) for words in text only
+    prod = p_topic_g_text * text_counts[:, None]  # Multiply p(T|W) by words in text
+    topic_weights = np.sum(prod, axis=0)  # Sum across words
+    if topic_priors is not None:
+        weighted_priors = weight_priors(topic_priors, prior_weight)
+        topic_weights *= weighted_priors
+
+    voxel_weights = np.dot(model.p_voxel_g_topic, topic_weights)
+    img = unmask(voxel_weights, model.mask)
+
+    if out_file is not None:
+        img.to_filename(out_file)
+    return img, topic_weights
