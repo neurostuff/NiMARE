@@ -1,75 +1,75 @@
 {
-  "studies": [
+  "Studies": [
     {
-      "@context": {
-        "groups": [
-          {
-            "@id": "gg_id1",
-            "name": "group1",
-            "n": 12
-          }
-        ],
-        "conditions": [
-          {
-            "@id": "cc_id1",
-            "name": "household items"
-          },
-          {
-            "@id": "cc_id2",
-            "name": "animals"
-          }
-        ]
-      },
-      "@id": 9593960,
-      "metadata": {
-        "authors": "Spitzer M, Kischka U, Guckel F, Bellemann ME, Kammer T, Seyyedi S, Weisbrod M, Schwartz A, Brix G",
-        "journal": "Brain research. Cognitive brain research",
-        "title": "Functional magnetic resonance imaging of category-specific cortical activation: evidence for semantic maps.",
-        "year": 1998
-      },
-      "analysis": {
-        "images": [
-          {
-            "path": "orig/9593960_1_beta.nii.gz",
-            "space": "MNI_2mm",
-            "value": "beta"
-          },
-          {
-            "path": "orig/9593960_1_se.nii.gz",
-            "space": "MNI_2mm",
-            "value": "standarderror"
-          },
-          {
-            "path": "orig/9593960_1_z.nii.gz",
-            "space": "MNI_2mm",
-            "value": "z"
-          }
-        ],
-        "coordinates": {
-          "coordinates": [[ 63.0, 65.0, 1.0]],
-          "space": "MNI"
+      "Groups": [
+        {
+          "@id": "gg_id1",
+          "Name": "group1",
+          "N": 12
+        }
+      ],
+      "Conditions": [
+        {
+          "@id": "cc_id1",
+          "Name": "household items"
         },
-        "surfaces": [
-          {
-            "path": "orig/9593960_1_beta.gii.gz",
-            "space": "MNI_2mm",
-            "value": "beta"
+        {
+          "@id": "cc_id2",
+          "Name": "animals"
+        }
+      ],
+      "@id": 9593960,
+      "Analyses": [
+        {
+          "Images": {
+            "Elements": [
+              {
+                "Path": "orig/9593960_1_beta.nii.gz",
+                "Value": "Beta"
+              },
+              {
+                "Path": "orig/9593960_1_se.nii.gz",
+                "Value": "StandardError"
+              },
+              {
+                "Path": "orig/9593960_1_z.nii.gz",
+                "Value": "ZStatistic"
+              }
+            ],
+            "Space": "MNI_2mm"
           },
-          {
-            "path": "orig/9593960_1_se.gii.gz",
-            "space": "MNI_2mm",
-            "value": "standarderror"
+          "Points": {
+            "Elements": [
+              {
+                "@id": "pp_id1",
+                "XYZ":[ 63.0, 65.0, 1.0],
+                "Clusterid": 1
+              }
+            ],
+            "Space": "MNI"
           },
-          {
-            "path": "orig/9593960_1_z.gii.gz",
-            "space": "MNI_2mm",
-            "value": "z"
-          }
-        ],
-        "groups": ["gg_id1"],
-        "conditions": ["cc_id1","cc_id2"],
-        "weights": [1, -1]
-      }
+          "Surfaces": {
+            "Elements": [
+              {
+                "Path": "orig/9593960_1_beta.gii.gz",
+                "Value": "Beta"
+              },
+              {
+                "Path": "orig/9593960_1_se.gii.gz",
+                "Value": "StandardError"
+              },
+              {
+                "Path": "orig/9593960_1_z.gii.gz",
+                "Value": "ZStatistic"
+              }
+            ],
+            "Space": "MNI_2mm"
+          },
+          "Groups": ["gg_id1"],
+          "Gonditions": ["cc_id1","cc_id2"],
+          "Weights": [1, -1]
+        }
+      ]
     }
   ]
 }
