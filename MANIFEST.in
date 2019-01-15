@@ -1,1 +1,1 @@
-include nimare/resources/english_spellings.csv
+include nimare/resources/*
