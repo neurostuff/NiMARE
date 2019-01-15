@@ -61,4 +61,5 @@ MICRO = _version_micro
 VERSION = __version__
 REQUIRES = ["nibabel", "numpy", "scipy", "pandas", "statsmodels", "nipype",
             "scikit-learn", "nilearn", "duecredit", "pyneurovault", "six",
-            "matplotlib", "nltk", "fuzzywuzzy", "cognitiveatlas"],
+            "matplotlib", "nltk", "fuzzywuzzy", "cognitiveatlas", "click"],
+ENTRY_POINTS = {'console_scripts':['nimare=nimare.cli:cli']}

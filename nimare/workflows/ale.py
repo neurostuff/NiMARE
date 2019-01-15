@@ -1,9 +1,14 @@
 import os
 import pathlib
+import click
 from ..dataset.extract import convert_sleuth_to_database
 from ..meta.cbma import ALE
 
 
+@click.command(name='ale')
+@click.argument('sleuth_file')
+@click.option('--output_dir')
+@click.option('--n_iters')
 def ale_sleuth_inference(sleuth_file, output_dir=None, output_prefix=None, n_iters=10000):
     dset = convert_sleuth_to_database(sleuth_file).get_dataset()
     ale = ALE(dset, ids=dset.ids)
