@@ -7,6 +7,7 @@ import copy
 import warnings
 from time import time
 import multiprocessing as mp
+from tqdm.auto import tqdm
 
 import numpy as np
 import nibabel as nib
@@ -267,9 +268,10 @@ class ALE(CBMAEstimator):
         iter_hist_bins = [hist_bins] * self.n_iters
         params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
                      iter_conns)
-        pool = mp.Pool(n_cores)
-        perm_results = pool.map(self._perm, params)
-        pool.close()
+
+        with mp.Pool(n_cores) as p:
+            perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
         percentile = 100 * (1 - self.clust_thresh)
@@ -515,9 +517,10 @@ class SCALE(CBMAEstimator):
         # Define parameters
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
-        pool = mp.Pool(n_cores)
-        perm_scale_values = pool.map(self._perm, params)
-        pool.close()
+
+        with mp.Pool(n_cores) as p:
+            perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+
         perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(ale_values, perm_scale_values,
