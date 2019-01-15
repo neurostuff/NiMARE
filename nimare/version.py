@@ -64,6 +64,6 @@ REQUIRES = ["nibabel", "numpy", "scipy", "pandas", "statsmodels", "nipype",
             "matplotlib", "nltk", "fuzzywuzzy", "cognitiveatlas", "tqdm"]
 
 EXTRAS_REQUIRES = {
-    "tf": ["tensorflow>=1.0.0"],
-    "tf_gpu": ["tensorflow-gpu>=1.0.0"],
+    "peaks2maps-cpu": ["tensorflow>=1.0.0"],
+    "peaks2maps-gpu": ["tensorflow-gpu>=1.0.0"],
 }
