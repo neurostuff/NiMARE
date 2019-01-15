@@ -16,213 +16,65 @@ jobs:
           root: /tmp
           paths:
               - src/NiMARE/
-
-  get_data:
-    machine:
-      # Ubuntu 14.04 with Docker 17.10.0-ce
-      image: circleci/classic:201711-01
-    steps:
-      - restore_cache:
-          keys:
-              - data-v1-{{ .Branch }}
-              - data-v1-
-      - run:
-          name: Download test three-echo data
-          command: |
-            if [[ -e /tmp/data/three-echo ]]; then
-              echo "Restoring three-echo data from cache"
-            else
-                mkdir -p /tmp/data
-                curl -L --create-dirs -o \
-                  /tmp/data/three-echo/three_echo_Cornell_zcat.nii.gz https://osf.io/e3hsn/download
-            fi
-      - run:
-          name: Download test five-echo data
-          command: |
-            if [[ -e /tmp/data/five-echo ]]; then
-              echo "Restoring five-echo data from cache"
-            else
-                mkdir /tmp/data/five-echo
-                curl -L -o five_echo_NIH.tar.xz https://osf.io/ea5v3/download
-                tar xf five_echo_NIH.tar.xz -C /tmp/data/five-echo
-            fi
-      - persist_to_workspace:
-          root: /tmp
-          paths:
-              - data/three-echo/
-              - data/five-echo/
-      - save_cache:
-          key: data-v1-{{ .Branch }}
-          paths:
-              - /tmp/data
-
-  get_regression_data:
-    machine:
-      # Ubuntu 14.04 with Docker 17.10.0-ce
-      image: circleci/classic:201711-01
-    steps:
-      - restore_cache:
-          keys:
-              - test-v1-{{ .Branch }}
-              - test-v1-
-      - run:
-          name: Download expected output for three-echo data
-          command: |
-            if [[ -e /tmp/test/three-echo ]]; then
-              echo "Restoring three-echo regression data from cache"
-            else
-                mkdir -p /tmp/test/three-echo/
-                curl -L -o TED.Cornell_processed_three_echo_dataset.tar.xz https://osf.io/u65sq/download
-                tar xf TED.Cornell_processed_three_echo_dataset.tar.xz --no-same-owner -C /tmp/test/three-echo/
-            fi
-      - run:
-          name: Download expected output for five-echo data
-          command: |
-            if [[ -e /tmp/test/five-echo ]]; then
-              echo "Restoring five-echo regression data from cache"
-            else
-                mkdir -p /tmp/test/five-echo/
-                curl -L -o TED.p06.tar.xz https://osf.io/fr6mx/download
-                tar xf TED.p06.tar.xz --no-same-owner -C /tmp/test/five-echo/
-            fi
-      - persist_to_workspace:
-          root: /tmp
-          paths:
-              - test/three-echo/
-              - test/five-echo/
-      - save_cache:
-          key: test-v1-{{ .Branch }}
-          paths:
-              - /tmp/test
-
-  three_echo_rest:
+  testing:
     docker:
       - image: circleci/python:3.6
     working_directory: /tmp/src/NiMARE
-    environment:
-        DISTRIB: "conda"
-        PYTHON_VERSION: "3.6"
-        NUMPY_VERSION: "*"
-        SCIPY_VERSION: "*"
-        SCIKIT_LEARN_VERSION: "*"
-        MATPLOTLIB_VERSION: "*"
     steps:
       - attach_workspace:
           at: /tmp
-        # Get rid of existing virtualenvs on circle ci as they conflict with conda.
-        # Trick found here:
-        # https://discuss.circleci.com/t/disable-autodetection-of-project-or-application-of-python-venv/235/10
-      - run: cd && rm -rf ~/.pyenv && rm -rf ~/virtualenvs
-        # We need to remove conflicting texlive packages.
-      - run: sudo -E apt-get -yq remove texlive-binaries --purge
-        # Installing required packages for `make -C doc check command` to work.
-      - run: sudo -E apt-get -yq update
-      - run: sudo -E apt-get -yq --no-install-suggests --no-install-recommends --force-yes install dvipng texlive-latex-base texlive-latex-extra
-      - run: wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
-      - run: chmod +x ~/miniconda.sh && ~/miniconda.sh -b
-      - run: echo 'export PATH="$HOME/miniconda3/bin:$PATH"'  >> $BASH_ENV
       - run:
-          name: Create conda env
+          name: Install Testing Software
           command: |
-            conda create -n venv python=3.6 numpy scipy scikit-learn matplotlib pandas \
-            flake8 lxml nose cython mkl sphinx coverage patsy boto3 pillow pandas -yq
-            conda install -n venv nibabel nilearn nose-timer -c conda-forge -yq
+            pip install flake8 coverage coveralls codecov pytest pytest-cov
       - run:
-          name: Create test environment
+          name: Run flake8
           command: |
-            source activate venv
-            pip install pytest
-            pip install -r requirements.txt
-            python setup.py install
+            flake8 nimare
       - run:
-          name: Run three-echo dataset
-          no_output_timeout: 40m
-          command: |
-            source activate venv
-            cd /tmp/data/three-echo/
-            NiMARE -d three_echo_Cornell_zcat.nii.gz -e 14.5 38.5 62.5 \
-                --out-dir /tmp/data/three-echo/TED.three-echo/
+        name: Install NiMARE
+        command: |
+          python setup.py install
       - run:
-          name: Checking outputs
+          name: Run pytest
           command: |
-            find /tmp/data/three-echo/TED.three-echo/* \
-                -exec basename {} \; | sort > /tmp/data/three-echo/TED.three-echo/outputs.out
-            diff /tmp/src/NiMARE/.circleci/NiMARE_outputs.txt /tmp/data/three-echo/TED.three-echo/outputs.out
+            py.test --cov-report term-missing --cov=nimare nimare
 
-      - store_artifacts:
-          path: /tmp/data/three-echo
-
-  five_echo_task:
-    docker:
-      - image: circleci/python:3.6
+  deploy_pypi:
+    machine:
+      image: circleci/classic:201711-01
     working_directory: /tmp/src/NiMARE
-    environment:
-        DISTRIB: "conda"
-        PYTHON_VERSION: "3.6"
-        NUMPY_VERSION: "*"
-        SCIPY_VERSION: "*"
-        SCIKIT_LEARN_VERSION: "*"
-        MATPLOTLIB_VERSION: "*"
     steps:
       - attach_workspace:
           at: /tmp
-        # Get rid of existing virtualenvs on circle ci as they conflict with conda.
-        # Trick found here:
-        # https://discuss.circleci.com/t/disable-autodetection-of-project-or-application-of-python-venv/235/10
-      - run: cd && rm -rf ~/.pyenv && rm -rf ~/virtualenvs
-        # We need to remove conflicting texlive packages.
-      - run: sudo -E apt-get -yq remove texlive-binaries --purge
-        # Installing required packages for `make -C doc check command` to work.
-      - run: sudo -E apt-get -yq update
-      - run: sudo -E apt-get -yq --no-install-suggests --no-install-recommends --force-yes install dvipng texlive-latex-base texlive-latex-extra
-      - run: wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
-      - run: chmod +x ~/miniconda.sh && ~/miniconda.sh -b
-      - run: echo 'export PATH="$HOME/miniconda3/bin:$PATH"'  >> $BASH_ENV
       - run:
-          name: Create conda env
+          name: Deploy to PyPi
           command: |
-            conda create -n venv python=3.6 numpy scipy scikit-learn matplotlib pandas \
-            flake8 lxml nose cython mkl sphinx coverage patsy boto3 pillow pandas -yq
-            conda install -n venv nibabel nilearn nose-timer -c conda-forge -yq
-      - run:
-          name: Create test environment
-          command: |
-            source activate venv
-            pip install pytest
-            pip install -r requirements.txt
-            python setup.py install
-      - run:
-          name: Run five-echo dataset
-          no_output_timeout: 40m
-          command: |
-            source activate venv
-            cd /tmp/data/five-echo/
-            NiMARE -d p06.SBJ01_S09_Task11_e[1,2,3,4,5].sm.nii.gz \
-                -e 15.4 29.7 44.0 58.3 72.6 --verbose \
-                --out-dir /tmp/data/five-echo/TED.five-echo/
-      - run:
-          name: Checking outputs
-          command: |
-            find /tmp/data/five-echo/TED.five-echo/* \
-                -exec basename {} \; | sort > /tmp/data/five-echo/TED.five-echo/outputs.out
-            diff /tmp/src/NiMARE/.circleci/NiMARE_outputs_verbose.txt /tmp/data/five-echo/TED.five-echo/outputs.out
-      - store_artifacts:
-          path: /tmp/data/five-echo
+            pyenv global 3.5.2
+            virtualenv venv
+            pip install "setuptools>=27.0" cython numpy twine docutils
+            # echo "${CIRCLE_TAG}" > fmriprep/VERSION
+            # echo "include fmriprep/VERSION" >> MANIFEST.in
+            python setup.py check -r -s
+            python setup.py sdist
+            twine upload dist/*
+            cd wrapper && python setup.py sdist
+            twine upload dist/*
 
 workflows:
   version: 2
   build_test:
     jobs:
       - build
-      - get_data
-      - get_regression_data
-      - three_echo_rest:
+      - testing:
           requires:
             - build
-            - get_data
-            - get_regression_data
-      - five_echo_task:
+      - deploy_pypi:
           requires:
             - build
-            - get_data
-            - get_regression_data
+            - testing
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /.*/
