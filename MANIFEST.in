@@ -1,1 +1,1 @@
-include nimare/resources/*
+recursive-include nimare/resources *
