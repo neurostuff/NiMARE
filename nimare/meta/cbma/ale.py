@@ -113,7 +113,7 @@ class ALE(CBMAEstimator):
             ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
             images = self._run_ale(ma_maps, prefix='')
 
-        self.results = MetaResult(mask=self.mask, **images)
+        self.results = MetaResult(self, mask=self.mask, **images)
 
     def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
         grp1_voxel = image1 > 0
@@ -537,7 +537,7 @@ class SCALE(CBMAEstimator):
                   'p': p_values,
                   'z': z_values,
                   'vthresh': vthresh_z_values}
-        self.results = MetaResult(mask=self.mask, **images)
+        self.results = MetaResult(self, mask=self.mask, **images)
 
     def _compute_ale(self, df=None, ma_maps=None):
         """
