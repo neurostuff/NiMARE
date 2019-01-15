@@ -62,7 +62,7 @@ VERSION = __version__
 REQUIRES = ["nibabel", "numpy", "scipy", "pandas", "statsmodels", "nipype",
             "scikit-learn", "nilearn", "duecredit", "pyneurovault", "six",
             "matplotlib", "nltk", "fuzzywuzzy", "cognitiveatlas", "click",
-            "tdqm"],
+            "tqdm"],
 ENTRY_POINTS = {'console_scripts': ['nimare=nimare.cli:cli']}
 
 EXTRAS_REQUIRES = {
