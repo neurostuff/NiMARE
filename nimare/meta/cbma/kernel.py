@@ -13,7 +13,7 @@ import nibabel as nib
 from nimare.utils import vox2mm
 from nilearn.image import resample_to_img, math_img
 from ...base import KernelEstimator
-from .utils import compute_ma, get_ale_kernel, peaks2maps
+from .utils import compute_ma, get_ale_kernel
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
 
@@ -235,6 +235,7 @@ class Peaks2MapsKernel(KernelEstimator):
     Generate peaks2maps modeled activation images from coordinates.
     """
     def __init__(self, coordinates, mask):
+        from .utils import peaks2maps
         self.mask = mask
         self.coordinates = coordinates
 
