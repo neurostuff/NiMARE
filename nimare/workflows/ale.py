@@ -4,12 +4,17 @@ import click
 from ..dataset.extract import convert_sleuth_to_database
 from ..meta.cbma import ALE
 
+n_iters_default = 10000
+
 
 @click.command(name='ale')
 @click.argument('sleuth_file')
-@click.option('--output_dir')
-@click.option('--n_iters')
-def ale_sleuth_inference(sleuth_file, output_dir=None, output_prefix=None, n_iters=10000):
+@click.option('--output_dir', help="where to put the output maps")
+@click.option('--output_prefix', help="common prefix for output maps")
+@click.option('--n_iters', default=n_iters_default, show_default=True,
+              help="number of iterations for permutation testing")
+def ale_sleuth_inference(sleuth_file, output_dir=None, output_prefix=None,
+                         n_iters=n_iters_default):
     dset = convert_sleuth_to_database(sleuth_file).get_dataset()
     ale = ALE(dset, ids=dset.ids)
     ale.fit(n_iters=n_iters, ids=dset.ids)
