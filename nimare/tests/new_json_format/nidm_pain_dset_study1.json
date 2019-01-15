@@ -1,21 +1,19 @@
 {
   "Studies": [
     {
-      "@context": {
-        "Groups": [
-          {
-            "@id": "gg_id1",
-            "Name": "group1",
-            "N": 25
-          }
-        ],
-        "Conditions": [
-          {
-            "@id": "cc_id1",
-            "Name": "con1"
-          }
-        ]
-      },
+      "Groups": [
+        {
+          "@id": "gg_id1",
+          "Name": "group1",
+          "N": 25
+        }
+      ],
+      "Conditions": [
+        {
+          "@id": "cc_id1",
+          "Name": "con1"
+        }
+      ],
       "Analyses": [
         {
           "Images": {
