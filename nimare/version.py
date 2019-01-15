@@ -66,6 +66,6 @@ REQUIRES = ["nibabel", "numpy", "scipy", "pandas", "statsmodels", "nipype",
 ENTRY_POINTS = {'console_scripts': ['nimare=nimare.cli:cli']}
 
 EXTRAS_REQUIRES = {
-    "peaks2maps-cpu": ["tensorflow>=1.0.0"],
-    "peaks2maps-gpu": ["tensorflow-gpu>=1.0.0"],
+    "peaks2maps-cpu": ["tensorflow>=1.0.0", "appdirs"],
+    "peaks2maps-gpu": ["tensorflow-gpu>=1.0.0", "appdirs"],
 }
