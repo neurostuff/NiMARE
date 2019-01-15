@@ -8,4 +8,4 @@ from .sblfr import SBLFR
 from .bhicp import BHICP
 from .hpgrf import HPGRF
 from .sbr import SBR
-from .kernel import ALEKernel, MKDAKernel, KDAKernel
+from .kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
