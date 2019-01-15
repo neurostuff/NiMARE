@@ -1,14 +1,10 @@
-import nimare.dataset as ds
-from nimare.meta.cbma import kernel
-import numpy as np
-import nibabel as nib
-from nilearn.input_data import NiftiMasker
-from scipy.io import savemat, loadmat
-from os.path import join
+from nimare.dataset.extract import convert_sleuth_to_database
+from nimare.meta.cbma.ale import ALE
+from nimare.due import due, Doi
 
-from ..dataset.extract import convert_sleuth_to_database
-from ..meta.cbma.ale import ALE
-from ..due import due, Doi
+#from ..dataset.extract import convert_sleuth_to_database
+#from ..meta.cbma.ale import ALE
+#from ..due import due, Doi
 import click
 
 @click.command()
@@ -23,7 +19,8 @@ import click
 @due.dcite(Doi('10.1016/j.neuroimage.2016.04.072'),
            description='Update the recommendations for thresholding in activation likelihood estimation (ALE) meta-analsis.')
 
-def sleuth_ale_workflow(text_file, kernel=ALEKernel, output_dir):
+def sleuth_ale_workflow(text_file, output_dir, basename):
+
     db = convert_sleuth_to_database(text_file)
     dset = db.get_dataset(target='mni152_2mm')
     ale_obj = ALE(dset, kernel_estimator=kernel)
