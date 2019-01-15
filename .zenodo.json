@@ -6,8 +6,8 @@
       "orcid": "0000-0001-9813-3167"
     },
     {
-      "affiliation": "University of Texas at Austin",
       "name": "Yarkoni, Tal",
+      "affiliation": "University of Texas at Austin",
       "orcid": "0000-0002-6558-5113"
     },
     {
@@ -17,6 +17,11 @@
     },
     {
       "name": "Glerean, Enrico"
+    },
+    {
+      "name": "Laird, Angela R.",
+      "affiliation": "Florida International University",
+      "orcid": "0000-0003-3379-8744"
     }
   ],
   "keywords": [
