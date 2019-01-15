@@ -42,7 +42,7 @@
             "Elements": [
               {
                 "@id": "pp_id1",
-                "XYZ":[ 63.0, 65.0, 1.0],
+                "Coordinate":[ 63.0, 65.0, 1.0],
                 "Clusterid": 1
               }
             ],
