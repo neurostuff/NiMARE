@@ -13,11 +13,12 @@ import pandas as pd
 import numpy as np
 from pyneurovault import api
 
+from nimare.dataset import Database
 from ..utils import get_resource_path, tal2mni
 
 
-__all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource',
-           'BrainSpellDataSource', 'convert_sleuth']
+__all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource', 'BrainSpellDataSource',
+           'convert_sleuth', 'convert_sleuth_to_database', 'convert_sleuth_to_dict']
 
 
 class DataSource(with_metaclass(ABCMeta)):
@@ -164,31 +165,25 @@ def download_combined_database(out_dir, overwrite=False):
         api.download_images(out_dir, red_df, target=None, resample=False)
 
 
-def convert_sleuth(text_file, out_file):
-    """
-    Convert Sleuth output text file into json.
-    """
+def convert_sleuth_to_dict(text_file):
     filename = op.basename(text_file)
     study_name, _ = op.splitext(filename)
     with open(text_file, 'r') as file_object:
         data = file_object.read()
     data = [line.rstrip() for line in re.split('\n\r|\r\n|\n|\r', data)]
     data = [line for line in data if line]
-
     # First line indicates stereotactic space. The rest are studies, ns, and coords.
     space = data[0].replace(' ', '').replace('//Reference=', '')
     if space not in ['MNI', 'TAL']:
         raise Exception('Space {0} unknown. Options supported: '
                         'MNI or TAL.'.format(space))
-
     # Split into experiments
     data = data[1:]
     metadata_idx = [i for i, line in enumerate(data) if line.startswith('//')]
-    exp_idx = np.split(metadata_idx, np.where(np.diff(metadata_idx) != 1)[0]+1)
+    exp_idx = np.split(metadata_idx, np.where(np.diff(metadata_idx) != 1)[0] + 1)
     start_idx = [tup[0] for tup in exp_idx]
-    end_idx = start_idx[1:] + [len(data)+1]
+    end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
-
     dict_ = {}
     for i_exp, exp_idx in enumerate(split_idx):
         exp_data = data[exp_idx[0]:exp_idx[1]]
@@ -201,7 +196,8 @@ def convert_sleuth(text_file, out_file):
             xyz = [row.split('\t') for row in xyz]
             correct_shape = np.all([len(coord) == 3 for coord in xyz])
             if not correct_shape:
-                all_shapes = np.unique([len(coord) for coord in xyz]).astype(str)  # pylint: disable=no-member
+                all_shapes = np.unique([len(coord) for coord in xyz]).astype(
+                    str)  # pylint: disable=no-member
                 raise Exception('Coordinates for study "{0}" are not all correct length. '
                                 'Lengths detected: {1}.'.format(study_info,
                                                                 ', '.join(all_shapes)))
@@ -224,12 +220,25 @@ def convert_sleuth(text_file, out_file):
             dict_[study_name]['contrasts'][contrast_name] = {
                 'coords': {},
                 'sample_sizes': [],
-                }
+            }
             dict_[study_name]['contrasts'][contrast_name]['coords']['space'] = space
             dict_[study_name]['contrasts'][contrast_name]['coords']['x'] = x
             dict_[study_name]['contrasts'][contrast_name]['coords']['y'] = y
             dict_[study_name]['contrasts'][contrast_name]['coords']['z'] = z
             dict_[study_name]['contrasts'][contrast_name]['sample_sizes'] = [sample_size]
+    return dict_
+
+
+def convert_sleuth(text_file, out_file):
+    """
+    Convert Sleuth output text file into json.
+    """
+    dict_ = convert_sleuth_to_dict(text_file)
 
     with open(out_file, 'w') as fo:
         json.dump(dict_, fo, indent=4, sort_keys=True)
+
+
+def convert_sleuth_to_database(text_file):
+    dict_ = convert_sleuth_to_dict(text_file)
+    return Database(dict_)
