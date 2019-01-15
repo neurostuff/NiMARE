@@ -25,15 +25,15 @@
             "Elements": [
               {
                 "Path": "orig/9593960_1_beta.nii.gz",
-                "Value": "Beta"
+                "ValueType": "Beta"
               },
               {
                 "Path": "orig/9593960_1_se.nii.gz",
-                "Value": "StandardError"
+                "ValueType": "StandardError"
               },
               {
                 "Path": "orig/9593960_1_z.nii.gz",
-                "Value": "ZStatistic"
+                "ValueType": "ZStatistic"
               }
             ],
             "Space": "MNI_2mm"
@@ -52,15 +52,15 @@
             "Elements": [
               {
                 "Path": "orig/9593960_1_beta.gii.gz",
-                "Value": "Beta"
+                "ValueType": "Beta"
               },
               {
                 "Path": "orig/9593960_1_se.gii.gz",
-                "Value": "StandardError"
+                "ValueType": "StandardError"
               },
               {
                 "Path": "orig/9593960_1_z.gii.gz",
-                "Value": "ZStatistic"
+                "ValueType": "ZStatistic"
               }
             ],
             "Space": "MNI_2mm"
