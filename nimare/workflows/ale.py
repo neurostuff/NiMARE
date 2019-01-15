@@ -1,31 +1,33 @@
-from nimare.dataset.extract import convert_sleuth_to_database
-from nimare.meta.cbma.ale import ALE
-from nimare.due import due, Doi
-
-#from ..dataset.extract import convert_sleuth_to_database
-#from ..meta.cbma.ale import ALE
-#from ..due import due, Doi
+import os
+import pathlib
 import click
+from ..dataset.extract import convert_sleuth_to_database
+from ..meta.cbma import ALE
 
-@click.command()
-@click.argument('textfile', type=click.Path(exists=True, readable=True), help='Tab-delimited Sleuth text file to be ALE meta-analyzed.')
-@click.argument('output_dir', type=click.Path(), help='Directory into which ALE results will be written.')
-@click.argument('basename', type=click.Path(), help='Basename for written out ALE results.')
+n_iters_default = 10000
 
-@due.dcite(Doi('10.1006/nimg.2002.1131'),
-           description='Introduces activation likelihood estimation (ALE) for coordinate-based neuroimaging meta-analysis.')
-@due.dcite(Doi('10.1002/hbm.20136'),
-           description='Controlling the false discovery rate in activation likelihood estimation (ALE) meta-analysis.')
-@due.dcite(Doi('10.1016/j.neuroimage.2016.04.072'),
-           description='Update the recommendations for thresholding in activation likelihood estimation (ALE) meta-analsis.')
 
-def sleuth_ale_workflow(text_file, output_dir, basename):
+@click.command(name='ale')
+@click.argument('sleuth_file')
+@click.option('--output_dir', help="where to put the output maps")
+@click.option('--output_prefix', help="common prefix for output maps")
+@click.option('--n_iters', default=n_iters_default, show_default=True,
+              help="number of iterations for permutation testing")
+def ale_sleuth_inference(sleuth_file, output_dir=None, output_prefix=None,
+                         n_iters=n_iters_default):
+    dset = convert_sleuth_to_database(sleuth_file).get_dataset()
+    ale = ALE(dset, ids=dset.ids)
+    ale.fit(n_iters=n_iters, ids=dset.ids)
 
-    db = convert_sleuth_to_database(text_file)
-    dset = db.get_dataset(target='mni152_2mm')
-    ale_obj = ALE(dset, kernel_estimator=kernel)
-    ale_obj.fit(dset.ids, )
-    ale_obj.results.save_results(output_dir=output_dir, prefix=basename)
+    if output_dir is None:
+        output_dir = os.path.dirname(sleuth_file)
+    else:
+        pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-if __name__ == '__main__':
-    sleuth_ale_workflow()
+    if output_prefix is None:
+        base = os.path.basename(sleuth_file)
+        output_prefix, _ = os.path.splitext(base)
+        output_prefix += '_'
+
+    for name, img in ale.results.images.items():
+        img.to_filename(os.path.join(output_dir, output_prefix + name + ".nii.gz"))
