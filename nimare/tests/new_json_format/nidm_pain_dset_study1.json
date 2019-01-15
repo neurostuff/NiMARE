@@ -1,54 +1,101 @@
 {
-  "studies": [
+  "Studies": [
     {
       "@context": {
-        "groups": [
+        "Groups": [
           {
             "@id": "gg_id1",
-            "name": "group1",
-            "n": 25
+            "Name": "group1",
+            "N": 25
           }
         ],
-        "conditions": [
+        "Conditions": [
           {
             "@id": "cc_id1",
-            "name": "con1"
+            "Name": "con1"
           }
         ]
       },
-      "analysis": {
-        "images": [
+      "Analysis": {
+        "Images": [
           {
             "@id": "ii1",
-            "path": "downloaded/nidm-pain/pain_01.nidm/Contrast.nii.gz",
-            "space": "MNI_2mm",
-            "value": "beta"
+            "Path": "downloaded/nidm-pain/pain_01.nidm/Contrast.nii.gz",
+            "Space": "MNI_2mm",
+            "Value": "beta"
           },
           {
             "@id": "ii2",
-            "path": "downloaded/nidm-pain/pain_01.nidm/ContrastStandardError.nii.gz",
-            "space": "MNI_2mm",
-            "value": "standarderror"
+            "Path": "downloaded/nidm-pain/pain_01.nidm/ContrastStandardError.nii.gz",
+            "Space": "MNI_2mm",
+            "Value": "standarderror"
           },
           {
             "@id": "ii3",
-            "path": "downloaded/nidm-pain/pain_01.nidm/TStatistic.nii.gz",
-            "space": "MNI_2mm",
-            "value": "tstatistic"
+            "Path": "downloaded/nidm-pain/pain_01.nidm/TStatistic.nii.gz",
+            "Space": "MNI_2mm",
+            "Value": "tstatistic"
           }
         ],
-        "coordinates": {
-            "coordinates": [
-                [48.0, -38.0, -24.0],
-                [38.0, 46.0, -6.0],
-                [-36.0, -68.0, -40.0],
-                [-60.0, -52.0, -10.0]
+        "Points": {
+            "Elements": [
+              {
+                "@id": "ee_id1",
+                "Name": "0001",
+                "XYZ": [38.0, 46.0, 6.0],
+                "Values": [
+                  {
+                    "Value": 6.27066790287,
+                    "ValueType": "ZStatistic"
+                  },
+                  {
+                    "Value": 1.79751324936e-10 ,
+                    "ValueType": "PvalueUncorrected"
+                  }
+                ],
+                "ClusterName": "0001",
+                "ClusterID": "cl_id1"
+              },
+              {
+                "@id": "ee_id2",
+                "Name": "0002",
+                "XYZ": [44, -6, 4],
+                "Values": [
+                  {
+                    "Value": 6.11809078559,
+                    "ValueType": "ZStatistic"
+                  },
+                  {
+                    "Value": 4.73515560095e-10,
+                    "ValueType": "PvalueUncorrected"
+                  }
+                ],
+                "ClusterName": "0002",
+                "ClusterID": "cl_id2"
+              },
+              {
+                "@id": "ee_id3",
+                "Name": "0003",
+                "XYZ": [52, -4, 6],
+                "Values": [
+                  {
+                    "Value": 5.86012384053,
+                    "ValueType": "ZStatistic"
+                  },
+                  {
+                    "Value":  2.31261054751e-09,
+                    "ValueType": "PvalueUncorrected"
+                  }
+                ],
+                "ClusterName": "0003",
+                "ClusterID": "cl_id3"
+              }
             ],
-            "space": "MNI"
+            "Space": "MNI"
         },
-        "groups": ["gg_id1"],
-        "conditions": ["cc_id1"],
-        "weights": [1]
+        "Groups": ["gg_id1"],
+        "Conditions": ["cc_id1"],
+        "Weights": [1]
       }
     }
   ]
