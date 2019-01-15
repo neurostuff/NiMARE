@@ -66,7 +66,7 @@
             "Space": "MNI_2mm"
           },
           "Groups": ["gg_id1"],
-          "Gonditions": ["cc_id1","cc_id2"],
+          "Conditions": ["cc_id1","cc_id2"],
           "Weights": [1, -1]
         }
       ]
