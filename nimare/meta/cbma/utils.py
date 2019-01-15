@@ -75,7 +75,9 @@ def _get_checkpoint_dir():
         tarfile.extractall(dirs.user_data_dir)
     return checkpoint_dir
 
-
+@due.dcite(Doi('10.7490/f1000research.1116395.1'),
+           description='Transforms coordinates of peaks to unthresholded maps using a deep '
+                       'convolutional neural net.')
 def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
                tf_verbosity_level=tf.logging.FATAL):
     """
