@@ -9,4 +9,4 @@ from .meta import (MetaResult, MetaEstimator, CBMAEstimator, KernelEstimator,
                    IBMAEstimator)
 from .annotate import (AnnotationModel)
 from .misc import (Parcellator)
-from .data import Study, Contrast, DataSource
+from .data import Study, Contrast
