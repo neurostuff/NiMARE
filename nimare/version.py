@@ -61,5 +61,11 @@ MICRO = _version_micro
 VERSION = __version__
 REQUIRES = ["nibabel", "numpy", "scipy", "pandas", "statsmodels", "nipype",
             "scikit-learn", "nilearn", "duecredit", "pyneurovault", "six",
-            "matplotlib", "nltk", "fuzzywuzzy", "cognitiveatlas", "click"],
-ENTRY_POINTS = {'console_scripts':['nimare=nimare.cli:cli']}
+            "matplotlib", "nltk", "fuzzywuzzy", "cognitiveatlas", "click",
+            "tdqm"],
+ENTRY_POINTS = {'console_scripts': ['nimare=nimare.cli:cli']}
+
+EXTRAS_REQUIRES = {
+    "peaks2maps-cpu": ["tensorflow>=1.0.0"],
+    "peaks2maps-gpu": ["tensorflow-gpu>=1.0.0"],
+}

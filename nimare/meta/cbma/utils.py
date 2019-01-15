@@ -1,10 +1,136 @@
 """
 Utilities for coordinate-based meta-analysis estimators
 """
-import numpy as np
 from scipy import ndimage
-
 from ...due import due, Doi
+from .peaks2maps import model_fn
+import numpy.linalg as npl
+import nibabel as nb
+import numpy as np
+from tarfile import TarFile
+from lzma import LZMAFile
+import requests
+from io import BytesIO
+from appdirs import AppDirs
+import os, math
+from tqdm.auto import tqdm
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+
+def _get_resize_arg(target_shape):
+    mni_shape_mm = np.array([148.0, 184.0, 156.0])
+    target_resolution_mm = np.ceil(
+        mni_shape_mm / np.array(target_shape)).astype(
+        np.int32)
+    target_affine = np.array([[4., 0., 0., -75.],
+                              [0., 4., 0., -105.],
+                              [0., 0., 4., -70.],
+                              [0., 0., 0., 1.]])
+    target_affine[0, 0] = target_resolution_mm[0]
+    target_affine[1, 1] = target_resolution_mm[1]
+    target_affine[2, 2] = target_resolution_mm[2]
+    return target_affine, list(target_shape)
+
+
+def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_bounds=False):
+    def generator():
+        for contrast in contrasts_coordinates:
+            encoded_coords = np.zeros(list(target_shape))
+            for real_pt in contrast:
+                vox_pt = np.rint(nb.affines.apply_affine(npl.inv(affine), real_pt)).astype(int)
+                if skip_out_of_bounds and (vox_pt[0] >= 32 or vox_pt[1] >= 32 or vox_pt[2] >= 32):
+                    continue
+                encoded_coords[vox_pt[0], vox_pt[1], vox_pt[2]] = 1
+            yield (encoded_coords, encoded_coords)
+
+    return generator
+
+
+def _get_checkpoint_dir():
+    dirs = AppDirs(appname="nimare", appauthor="neurostuff", version="1.0")
+    checkpoint_dir = os.path.join(dirs.user_data_dir, "ohbm2018_model")
+    if not os.path.exists(checkpoint_dir):
+        print("Downloading the model (this is a one-off operation)... ")
+        url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
+        # Streaming, so we can iterate over the response.
+        r = requests.get(url, stream=True)
+        f = BytesIO()
+
+        # Total size in bytes.
+        total_size = int(r.headers.get('content-length', 0));
+        block_size = 1024*1024
+        wrote = 0
+        for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size),
+                         unit='MB', unit_scale=True):
+            wrote = wrote + len(data)
+            f.write(data)
+        if total_size != 0 and wrote != total_size:
+            raise Exception("Download interrupted")
+
+        f.seek(0)
+        print("Uncompressing the model to %s..."%checkpoint_dir)
+        tarfile = TarFile(fileobj=LZMAFile(f), mode="r")
+        tarfile.extractall(dirs.user_data_dir)
+    return checkpoint_dir
+
+
+@due.dcite(Doi('10.7490/f1000research.1116395.1'),
+           description='Transforms coordinates of peaks to unthresholded maps using a deep '
+                       'convolutional neural net.')
+def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
+               tf_verbosity_level=None):
+    """
+    Generate modeled activation (MA) maps using depp ConvNet model peaks2maps
+
+    Parameters
+    ----------
+    contrasts_coordinates : list of lists that are len == 3
+        List of contrasts and their coordinates
+    skip_out_of_bounds : aboolean, optional
+        Remove coordinates outside of the bounding box of the peaks2maps model
+    tf_verbosity_level : int
+        Tensorflow verbosity logging level
+
+    Returns
+    -------
+    ma_values : array-like
+        1d array of modeled activation values.
+    """
+    try:
+        import tensorflow as tf
+    except ModuleNotFoundError as e:
+        if "No module named 'tensorflow'" in str(e):
+            raise Exception("tensorflow not installed - see https://www.tensorflow.org/install/ "
+                            "for instructions")
+        else:
+            raise
+
+    if tf_verbosity_level is None:
+        tf_verbosity_level = tf.logging.FATAL
+    target_shape = (32, 32, 32)
+    affine, _ = _get_resize_arg(target_shape)
+    tf.logging.set_verbosity(tf_verbosity_level)
+
+    def generate_input_fn():
+        dataset = tf.data.Dataset.from_generator(_get_generator(contrasts_coordinates,
+                                                                target_shape, affine,
+                                                                skip_out_of_bounds=skip_out_of_bounds),
+                                                 (tf.float32, tf.float32),
+                                                 (tf.TensorShape(target_shape), tf.TensorShape(target_shape)))
+        dataset = dataset.batch(1)
+        iterator = dataset.make_one_shot_iterator()
+        return iterator.get_next()
+
+    model_dir = _get_checkpoint_dir()
+    print("begin inference")
+    model = tf.estimator.Estimator(model_fn, model_dir=model_dir)
+
+    results = model.predict(generate_input_fn)
+    results = [result for result in results]
+    assert len(results) == len(contrasts_coordinates), "returned %d" % len(results)
+
+    niis = [nb.Nifti1Image(np.squeeze(result), affine) for result in results]
+    return niis
 
 
 def compute_ma(shape, ijk, kernel):
