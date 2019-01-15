@@ -13,7 +13,6 @@ import pandas as pd
 import numpy as np
 from pyneurovault import api
 
-from ..base import DataSource
 from ..utils import get_resource_path, tal2mni
 
 
