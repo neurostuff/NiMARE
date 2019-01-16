@@ -1,1 +1,1 @@
-sphinxarg-argparse
+sphinx-click
