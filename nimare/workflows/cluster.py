@@ -1,24 +1,25 @@
 import click
 import pandas as pd
+import nibabel as nib
 from sklearn import cluster
 
-from ..due import due, Doi
-from ..meta.cbma import kernel
-from ..dataset.extract import convert_sleuth_to_database
+#from ..due import due, Doi
+#from ..meta.cbma import kernel
+#from ..dataset.extract import convert_sleuth_to_database
 
 from nimare.dataset.extract import convert_sleuth_to_database
-from nimare.meta.cbma import kernel
+from nimare.meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKerneltransform
 from nimare.due import due, Doi
 
 
 @click.command(name='metacluster')
-@click.argument('database', required=True, type=click.Path(exists=True, readable=True), help='NiMARE database or Sleuth text file containing meta-analytic data to be clustered')
-@click.argument('output_dir', required=True, type=click.Path(), help='Directory into which clustering results will be written.')
-@click.argument('output_prefix', default='metacluster', type=string, help='Common prefix for output clustering results.')
-@click.argument('kernel', default='ALEKernel' type=click.Choice(['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']), help='Kernel estimator, for coordinate-based metaclustering.')
-@click.option('--img/--coord', '-i/-c', required=True, default=False, help='Is input data image- or coordinate-based?')
+@click.argument('database', required=True, type=click.Path(exists=True, readable=True))
+@click.option('--output_dir', required=True, type=click.Path(), help='Directory into which clustering results will be written.')
+@click.option('--output_prefix', default='metacluster', type=str, help='Common prefix for output clustering results.')
+@click.option('--kernel', default='ALEKernel', type=click.Choice(['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']), help='Kernel estimator, for coordinate-based metaclustering.')
+@click.option('--coord/--img', required=True, default=False, help='Is input data image- or coordinate-based?')
 @click.option('--algorithm', '-a', default='kmeans', type=click.Choice(['kmeans', 'dbscan', 'spectral']), help='Clustering algorithm to be used, from sklearn.cluster.')
-@click.option('--clust_range', n_args=2, type=float, help='Select a range for k over which clustering solutions will be evaluated (e.g., 2 10 will evaluate solutions with k = 2 clusters to k = 10 clusters).')
+@click.option('--clust_range', nargs=2, type=float, help='Select a range for k over which clustering solutions will be evaluated (e.g., 2 10 will evaluate solutions with k = 2 clusters to k = 10 clusters).')
 
 
 @due.dcite(Doi('10.1016/j.neuroimage.2015.06.044'),
@@ -26,7 +27,7 @@ from nimare.due import due, Doi
 @due.dcite(Doi('10.1162/netn_a_00050'),
            description='Performs the specific meta-analytic clustering approach included here.')
 
-def meta_cluster_workflow(database, output_dir, output_prefix, kernel, img, algorithm, clust_range):
+def meta_cluster_workflow(database, output_dir, output_prefix, kernel, coord, algorithm, clust_range):
     def VI(X, Y):
         from math import log
         #from https://gist.github.com/jwcarr/626cbc80e0006b526688
@@ -40,30 +41,31 @@ def meta_cluster_workflow(database, output_dir, output_prefix, kernel, img, algo
                 if r > 0.0:
                     sigma += r * (log(r / p, 2) + log(r / q, 2))
         return abs(sigma)
+    template_file = '/Users/Katie/Dropbox/Data/scripts/pyale/pyale/resources/Grey10.nii.gz'
+    template_img = nib.load(template_file)
     if database.endswith('.json'):
         db = x ##how do I read in a generic database file? do I need options for source type?
         dset = db.get_dataset(ids, target='mni152_2mm')
     elif database.endswith('.txt'):
         db = convert_sleuth_to_database(database)
         dset = db.get_dataset(target='mni152_2mm')
-    elif:
+    else:
         raise click.BadParameter('You\'ve provided a database that metacluster can\'t read. :(', param_hint='database')
-    if img:
-        imgs = dset.images
+    #imgs = dset.images
     if coord:
         if kernel == 'ALEKernel':
-            kern = kernel.ALEKernel(dset.coordinates, template_img)
+            kern = ALEKernel(dset.coordinates, template_img).transform(dsets.ids)
         elif kernel == 'MKDAKernel':
-            kern = kernel.MKDAKernel(dset.coordinates, r=6, value=1, template_img)
+            kern = MKDAKernel(dset.coordinates, template_img).transform(dsets.ids, r=6, value=1)
         elif kernel == 'KDAKernel':
-            kern = kernel.KDAKernel(dset.coordinates, r=6, value=1, template_img)
+            kern = KDAKernel(dset.coordinates, template_img).transform(dsets.ids, r=6, value=1)
         elif kernel == 'Peaks2MapsKernel':
-            kern = kernel.Peaks2MapsKerneltransform(dset.coordinates, template_img)
+            kern = Peaks2MapsKerneltransform(dset.coordinates, template_img).transform()
         imgs = kern.transform(dset.ids)
     for i in np.arange(0,len(imgs)):
         imgs_arr.append(np.ravel(imgs[i].get_data(), order='C'))
     labels = pd.DataFrame(index=dset.ids)
-    k = np.arange(n_clusters[0], (n_clusters[1] + 1)
+    k = np.arange(n_clusters[0], (n_clusters[1] + 1))
     for i in k:
         if algorithm == 'kmeans':
             clustering = KMeans(i, sample_weight=None, init='k-means++', precompute_distances='auto', n_init=300, max_iter=1000, verbose=False, tol=0.0001, random_state=None, copy_x=True, n_jobs=2, algorithm='auto', return_n_iter=False)
