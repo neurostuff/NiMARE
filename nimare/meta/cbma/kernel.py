@@ -42,7 +42,8 @@ class ALEKernel(KernelEstimator):
             formulae from Eickhoff et al. (2012). This sample size overwrites
             the Contrast-specific sample sizes in the dataset, in order to hold
             kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-
+        masked: :bool:, optional
+            Return an array instead of a niimg.
         Returns
         -------
         imgs : :obj:`list` of `nibabel.Nifti1Image`
