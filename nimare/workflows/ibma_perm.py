@@ -24,8 +24,10 @@ def con_perm(contrast_images, output_dir=None, output_prefix=output_prefix_defau
              n_iters=n_iters_default):
     target = 'mni152_2mm'
     mask_img = get_template(target, mask='brain')
+    click.echo("Loading contrast maps...")
     z_data = apply_mask(contrast_images, mask_img)
 
+    click.echo("Estimating the null distribution...")
     res = rfx_glm(z_data, mask_img, null='empirical', n_iters=n_iters)
 
     if output_dir is None:
@@ -33,5 +35,5 @@ def con_perm(contrast_images, output_dir=None, output_prefix=output_prefix_defau
     else:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    for name, img in res.images.items():
-        img.to_filename(os.path.join(output_dir, output_prefix + name + ".nii.gz"))
+    click.echo("Saving output maps...")
+    res.save_results(output_dir=output_dir, prefix=output_prefix)
