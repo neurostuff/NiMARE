@@ -132,7 +132,6 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
     niis = [nb.Nifti1Image(np.squeeze(result), affine) for result in results]
     return niis
 
-
 def compute_ma(shape, ijk, kernel):
     """
     Generate modeled activation (MA) maps.
@@ -158,25 +157,37 @@ def compute_ma(shape, ijk, kernel):
     """
     ma_values = np.zeros(shape)
     mid = int(np.floor(kernel.shape[0] / 2.))
+    mid1 = mid+1
     for j_peak in range(ijk.shape[0]):
         i, j, k = ijk[j_peak, :]
         xl = max(i-mid, 0)
-        xh = min(i+mid+1, ma_values.shape[0])
+        xh = min(i+mid1, ma_values.shape[0])
         yl = max(j-mid, 0)
-        yh = min(j+mid+1, ma_values.shape[1])
+        yh = min(j+mid1, ma_values.shape[1])
         zl = max(k-mid, 0)
-        zh = min(k+mid+1, ma_values.shape[2])
+        zh = min(k+mid1, ma_values.shape[2])
         xlk = mid - (i - xl)
         xhk = mid - (i - xh)
         ylk = mid - (j - yl)
         yhk = mid - (j - yh)
         zlk = mid - (k - zl)
         zhk = mid - (k - zh)
-        if all(np.array([xl, xh, yl, yh, zl, zh, xlk, xhk, ylk, yhk, zlk, zhk]) >= 0):
+
+        if ((xl >=0)
+            & (xh >=0)
+            & (yl >=0)
+            & (yh >=0)
+            & (zl >=0)
+            & (zh >=0)
+            & (xlk >=0)
+            & (xhk >=0)
+            & (ylk >=0)
+            & (yhk >=0)
+            & (zlk >=0)
+            & (zhk >=0)):
             ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(ma_values[xl:xh, yl:yh, zl:zh],
                                                         kernel[xlk:xhk, ylk:yhk, zlk:zhk])
     return ma_values
-
 
 @due.dcite(Doi('10.1002/hbm.20718'),
            description='Introduces sample size-dependent kernels to ALE.')
