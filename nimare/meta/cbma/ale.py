@@ -523,8 +523,13 @@ class SCALE(CBMAEstimator):
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
 
-        with mp.Pool(n_cores) as p:
-            perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+        if n_cores == 1:
+            perm_scale_values = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_scale_values.append(self._perm(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         perm_scale_values = np.stack(perm_scale_values)
 
