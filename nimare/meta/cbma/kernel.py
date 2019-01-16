@@ -240,7 +240,7 @@ class Peaks2MapsKernel(KernelEstimator):
         self.mask = mask
         self.coordinates = coordinates
 
-    def transform(self, ids, masked=False):
+    def transform(self, ids, masked=False, resample_to_mask=True):
         """
         Generate peaks2maps modeled activation images for each Contrast in dataset.
 
@@ -268,14 +268,20 @@ class Peaks2MapsKernel(KernelEstimator):
 
         imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
 
-        resampled_imgs = []
-        for img in imgs:
-            resampled_imgs.append(resample_to_img(img, self.mask))
+        if resample_to_mask:
+            resampled_imgs = []
+            for img in imgs:
+                resampled_imgs.append(resample_to_img(img, self.mask))
+            imgs = resampled_imgs
 
         if masked:
             masked_images = []
-            for img in resampled_imgs:
-                masked_images.append(math_img('map*mask', map=img, mask=self.mask))
-            return masked_images
+            for img in imgs:
+                if not resample_to_mask:
+                    mask = resample_to_img(self.mask, imgs[0], interpolation='nearest')
+                else:
+                    mask = self.mask
+                masked_images.append(math_img('map*mask', map=img, mask=mask))
+            imgs = masked_images
 
-        return resampled_imgs
+        return imgs
