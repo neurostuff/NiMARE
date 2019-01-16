@@ -7,13 +7,14 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans, SpectralClustering, DBSCAN
 from sklearn.metrics import silhouette_score
 
-#from ..due import due, Doi
-#from ..meta.cbma import kernel
-#from ..dataset.extract import convert_sleuth_to_database
+from ..due import due, Doi
+from ..meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
+from ..dataset.extract import convert_sleuth_to_database
+from ..utils import get_template
 
-from nimare.dataset.extract import convert_sleuth_to_database
-from nimare.meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
-from nimare.due import due, Doi
+#from nimare.dataset.extract import convert_sleuth_to_database
+#from nimare.meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
+#from nimare.due import due, Doi
 
 
 @click.command(name='metacluster')
@@ -42,8 +43,7 @@ def meta_cluster_workflow(database, output_dir=None, output_prefix=None, kernel=
                 if r > 0.0:
                     sigma += r * (log(r / p, 2) + log(r / q, 2))
         return abs(sigma)
-    template_file = '/Users/Katie/Dropbox/Data/scripts/pyale/pyale/resources/Grey10.nii.gz'
-    template_img = nib.load(template_file)
+    template_file = get_template(space='mni152_1mm', mask=None)
     if database.endswith('.json'):
         db = x ##how do I read in a generic database file? do I need options for source type?
         dset = db.get_dataset(ids, target='mni152_2mm')
