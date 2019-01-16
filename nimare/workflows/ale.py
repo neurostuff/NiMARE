@@ -22,9 +22,9 @@ cluster_size_threshold_q_default = 0.05
 @click.option('--output_prefix', help="Common prefix for output maps.")
 @click.option('--n_iters', default=n_iters_default, show_default=True,
               help="Number of iterations for permutation testing.")
-@click.option('--cluster_forming_threshold_p', default=cluster_forming_threshold_p_default,
+@click.option('--v_thr', default=cluster_forming_threshold_p_default,
               show_default=True, help="Voxel p-value threshold used to create clusters.")
-@click.option('--cluster_size_threshold_q', default=cluster_size_threshold_q_default,
+@click.option('--c_thr', default=cluster_size_threshold_q_default,
               show_default=True, help="Cluster size corrected p-value threshold.")
 def ale_sleuth_inference(sleuth_file, output_dir=None, output_prefix=None,
                          n_iters=n_iters_default,
