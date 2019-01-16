@@ -44,16 +44,8 @@
               "@id": "ee_id1",
               "Name": "0001",
               "Coordinate": [38.0, 46.0, 6.0],
-              "Values": [
-                {
-                  "Value": 6.27066790287,
-                  "ValueType": "ZStatistic"
-                },
-                {
-                  "Value": 1.79751324936e-10 ,
-                  "ValueType": "PvalueUncorrected"
-                }
-              ],
+              "ZStatistic": 6.27066790287,
+              "PvalueUncorrected": 1.79751324936e-10 ,
               "ClusterName": "0001",
               "ClusterID": "cl_id1",
               "Space": "MNI"
@@ -62,16 +54,8 @@
               "@id": "ee_id2",
               "Name": "0002",
               "Coordinate": [44, -6, 4],
-              "Values": [
-                {
-                  "Value": 6.11809078559,
-                  "ValueType": "ZStatistic"
-                },
-                {
-                  "Value": 4.73515560095e-10,
-                  "ValueType": "PvalueUncorrected"
-                }
-              ],
+              "ZStatistic": 6.11809078559,
+              "PvalueUncorrected": 4.73515560095e-10,
               "ClusterName": "0002",
               "ClusterID": "cl_id2",
               "Space": "MNI"
@@ -80,16 +64,8 @@
               "@id": "ee_id3",
               "Name": "0003",
               "Coordinate": [52, -4, 6],
-              "Values": [
-                {
-                  "Value": 5.86012384053,
-                  "ValueType": "ZStatistic"
-                },
-                {
-                  "Value":  2.31261054751e-09,
-                  "ValueType": "PvalueUncorrected"
-                }
-              ],
+              "ZStatistic": 5.86012384053,
+              "PvalueUncorrected":  2.31261054751e-09,
               "ClusterName": "0003",
               "ClusterID": "cl_id3",
               "Space": "MNI"
