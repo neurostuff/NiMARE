@@ -24,17 +24,17 @@
               {
                 "@id": "ii1",
                 "Path": "downloaded/nidm-pain/pain_01.nidm/Contrast.nii.gz",
-                "Value": "beta"
+                "Value": "Beta"
               },
               {
                 "@id": "ii2",
                 "Path": "downloaded/nidm-pain/pain_01.nidm/ContrastStandardError.nii.gz",
-                "Value": "standarderror"
+                "Value": "BetaStandardError"
               },
               {
                 "@id": "ii3",
                 "Path": "downloaded/nidm-pain/pain_01.nidm/TStatistic.nii.gz",
-                "Value": "tstatistic"
+                "Value": "BetaTStatistic"
               }
             ],
             "Space": "MNI_2mm"

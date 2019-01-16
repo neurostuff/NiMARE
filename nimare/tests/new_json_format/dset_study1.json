@@ -31,11 +31,11 @@
               },
               {
                 "Path": "orig/9593960_1_se.nii.gz",
-                "ValueType": "StandardError"
+                "ValueType": "BetaStandardError"
               },
               {
                 "Path": "orig/9593960_1_z.nii.gz",
-                "ValueType": "ZStatistic"
+                "ValueType": "BetaZStatistic"
               }
             ],
             "Space": "MNI_2mm"
@@ -58,11 +58,11 @@
               },
               {
                 "Path": "orig/9593960_1_se.gii.gz",
-                "ValueType": "StandardError"
+                "ValueType": "BetaStandardError"
               },
               {
                 "Path": "orig/9593960_1_z.gii.gz",
-                "ValueType": "ZStatistic"
+                "ValueType": "BetaZStatistic"
               }
             ],
             "Space": "MNI_2mm"
