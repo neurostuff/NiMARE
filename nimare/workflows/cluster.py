@@ -14,7 +14,7 @@ import click
 @click.command(name=metacluster)
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True), help='NiMARE database or Sleuth text file containing meta-analytic data to be clustered')
 @click.argument('output_dir', required=True, type=click.Path(), help='Directory into which clustering results will be written.')
-@click.argument('basename', default='metacluster', type=string, help='Basename for written out clustering results.')
+@click.argument('output_prefix', default='metacluster', type=string, help='Basename for written out clustering results.')
 @click.argument('kernel', default='ALEKernel' type=click.Choice(['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']), help='Kernel estimator, for coordinate-based metaclustering.')
 @click.option('--img/--coord', '-i/-c', required=True, default=False, help='Is input data image- or coordinate-based?')
 @click.option('--algorithm', '-a', default='kmeans', type=click.Choice(['kmeans', 'dbscan', 'spectral']), help='Clustering algorithm to be used, from sklearn.cluster.')
@@ -26,7 +26,7 @@ import click
 @due.dcite(Doi('10.1162/netn_a_00050'),
            description='Performs the specific meta-analytic clustering approach included here.')
 
-def meta_cluster_workflow(database, output_dir, basename, kernel, img, algorithm, clust_range):
+def meta_cluster_workflow(database, output_dir, output_prefix, kernel, img, algorithm, clust_range):
     def VI(X, Y):
         from math import log
         #from https://gist.github.com/jwcarr/626cbc80e0006b526688
@@ -73,7 +73,7 @@ def meta_cluster_workflow(database, output_dir, basename, kernel, img, algorithm
             min = len(dset.ids)/(i-1)
             clustering = DBSCAN(eps=0.1, min_samples=min, metric='euclidean', metric_params=None, algorithm='auto', leaf_size=30, p=None, n_jobs=None)
         labels[i] = clustering.fit_predict(imgs_arr)
-    labels.to_csv('{0}/{1}_labels.csv'.format(output_dir, basename))
+    labels.to_csv('{0}/{1}_labels.csv'.format(output_dir, output_prefix))
 
     silhouette_scores = {}
     for i in k:
@@ -81,7 +81,6 @@ def meta_cluster_workflow(database, output_dir, basename, kernel, img, algorithm
         silhouette = silhouette_score(imgs_arr, labels[i].values, metric='correlation', random_state=None)
         silhouette_scores[i] = silhouette
     silhouettes = pd.Series(silhouette_scores, name='Average Silhouette Scores')
-    #silhouettes.to_csv('{0}/{1}_silhouettes.csv'.format(output_dir, basename))
 
     clusters_idx = {}
     for i in k:
@@ -100,13 +99,14 @@ def meta_cluster_workflow(database, output_dir, basename, kernel, img, algorithm
     vi = pd.Series(vi_k, name='Variation of Information')
 
     metrics = pd.concat([kmeans_vi, silhouettes], axis=1)
+    metrics.to_csv('{0}/{1}_metrics.csv'.format(output_dir, output_prefix))
 
     fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,5))
     g = sns.lineplot(metrics.index, metrics['Silhouette Scores'], ax=ax[0])
     g.set_title('Silhouette Scores')
     g = sns.lineplot(metrics.index, metrics['Variation of Information'], ax=ax[1])
     g.set_title('Variation of Information')
-    fig.savefig('{0}/{1}_metrics.png'.format(output_dir, basename), dpi=300)
+    fig.savefig('{0}/{1}_metrics.png'.format(output_dir, output_prefix), dpi=300)
 
 if __name__ == '__main__':
     meta_cluster_workflow()
