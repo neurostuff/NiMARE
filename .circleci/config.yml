@@ -39,13 +39,13 @@ jobs:
           no_output_timeout: 60m
           command: |
             # Get version, update files.
-            THISVERSION=$( python3 get_version.py )
-            if [[ ${THISVERSION:0:1} == "0" ]] ; then
-              echo "WARNING: latest git tag could not be found"
-              echo "Please, make sure you fetch all tags from upstream with"
-              echo "the command ``git fetch --tags --verbose`` and push"
-              echo "them to your fork with ``git push origin --tags``"
-            fi
+            # THISVERSION=$( python3 get_version.py )
+            #if [[ ${THISVERSION:0:1} == "0" ]] ; then
+            #  echo "WARNING: latest git tag could not be found"
+            #  echo "Please, make sure you fetch all tags from upstream with"
+            #  echo "the command ``git fetch --tags --verbose`` and push"
+            #  echo "them to your fork with ``git push origin --tags``"
+            #fi
             # Build docker image
             e=1 && for i in {1..5}; do
               docker build \
@@ -62,7 +62,7 @@ jobs:
           no_output_timeout: 40m
           command: |
             mkdir -p /tmp/cache
-            docker save ubuntu:xenial-20161213 neurostuff/nimare:latest \
+            docker save neurostuff/nimare:latest \
             | pigz -8 -p 3 > /tmp/cache/docker.tar.gz
       - persist_to_workspace:
           root: /tmp
@@ -149,7 +149,7 @@ jobs:
               if [[ ! -d "/tmp/data/21 pain studies (NIDM-Results)" ]]; then
                 wget --retry-connrefused --waitretry=5 --read-timeout=20 --timeout=15 -t 0 -q \
                   -O collection_1425.zip "https://neurovault.org/collections/1425/download"
-                unzip xvzf collection_1425.zip -d /tmp/data/ &&\
+                unzip collection_1425.zip -d /tmp/data/ &&\
                 rm collection_1425.zip
               else
                 echo "Dataset 1425 was cached"
