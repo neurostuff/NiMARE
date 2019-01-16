@@ -336,11 +336,13 @@ class ALE(CBMAEstimator):
 
         if df is not None:
             k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            ma_maps = k_est.transform(self.ids, masked=True,
+                                      **self.kernel_arguments)
+            ma_values = ma_maps
         else:
             assert ma_maps is not None
+            ma_values = apply_mask(ma_maps, self.mask)
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
             # Remember that histogram uses bin edges (not centers), so it
@@ -566,11 +568,13 @@ class SCALE(CBMAEstimator):
         """
         if df is not None:
             k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            ma_maps = k_est.transform(self.ids, masked=True,
+                                      **self.kernel_arguments)
+            ma_values = ma_maps
         else:
             assert ma_maps is not None
+            ma_values = apply_mask(ma_maps, self.mask)
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
             ale_values *= (1. - ma_values[i, :])
