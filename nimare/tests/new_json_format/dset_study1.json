@@ -21,6 +21,8 @@
       "@id": 9593960,
       "Analyses": [
         {
+          "Name": "Animal vs Furniture",
+          "Description": "Covert naming task with animals and furniture. Contrast between naming animals and naming furnture via Wilcoxon Rank Test for different median values.",
           "Images": {
             "Elements": [
               {
