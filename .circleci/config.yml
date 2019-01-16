@@ -85,7 +85,7 @@ jobs:
 
   test_python:
     docker:
-      - image: circleci/python:3.6
+      - image: neurostuff/nimare
     working_directory: /tmp/src/NiMARE
     steps:
       - checkout:
@@ -115,14 +115,6 @@ jobs:
               numpy \
               twine \
               docutils
-      - run:
-          name: Run flake8
-          command: |
-            flake8 nimare
-      - run:
-        name: Install NiMARE
-        command: |
-          python setup.py install
       - run:
           name: Run pytest
           command: |
@@ -183,7 +175,7 @@ jobs:
       - restore_cache:
           keys:
             - data-v1-{{ epoch }}
-            - data-v1
+            - data-v1-
       - run:
           name: Load Docker image layer cache
           no_output_timeout: 30m
