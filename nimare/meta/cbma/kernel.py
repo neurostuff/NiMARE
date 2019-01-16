@@ -60,8 +60,7 @@ class ALEKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
         imgs = []
         kernels = {}
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in self.coordinates.groupby('id'):
             ijk = data[['i', 'j', 'k']].values.astype(int)
             if n is not None:
                 n_subjects = n
@@ -140,8 +139,7 @@ class MKDAKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in self.coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
             for ijk in data[['i', 'j', 'k']].values:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
@@ -208,8 +206,7 @@ class KDAKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in self.coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
             for ijk in data[['i', 'j', 'k']].values:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
