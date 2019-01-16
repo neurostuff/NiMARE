@@ -1,7 +1,6 @@
 API
 ===
 
-
 :mod:`nimare.dataset`: Dataset IO
 --------------------------------------------------
 
@@ -162,3 +161,10 @@ API
 .. currentmodule:: nimare
 
 .. _calibration_ref:
+
+Indices and tables
+================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
