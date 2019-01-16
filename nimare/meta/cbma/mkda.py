@@ -28,6 +28,10 @@ class MKDADensity(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
+
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
 
@@ -119,8 +123,9 @@ class MKDADensity(CBMAEstimator):
         vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
                                                     of_map.affine),
                                     self.mask)
-        self.results = MetaResult(vthresh=vthresh_of_map, cfwe=cfwe_of_map,
-                                  vfwe=vfwe_of_map, mask=self.mask)
+        self.results = MetaResult(self, vthresh=vthresh_of_map,
+                                  cfwe=cfwe_of_map, vfwe=vfwe_of_map,
+                                  mask=self.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df, weight_vec, conn = params
@@ -157,6 +162,10 @@ class MKDAChi2(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not
                   k.startswith('kernel__')}
+
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
 
         self.mask = dataset.mask
 
@@ -310,7 +319,7 @@ class MKDAChi2(CBMAEstimator):
             pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail='two') * pFgA_sign
             images['specificity_z_FDR'] = pFgA_z_FDR
 
-        self.results = MetaResult(mask=self.mask, **images)
+        self.results = MetaResult(self, mask=self.mask, **images)
 
     def _perm(self, params):
         iter_df, iter_ijk, iter_ = params
@@ -362,6 +371,10 @@ class KDA(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
+
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
         self.kernel_estimator = kernel_estimator
@@ -402,7 +415,7 @@ class KDA(CBMAEstimator):
         vfwe_thresh = np.percentile(perm_max_values, percentile)
         vfwe_of_map = of_map.copy()
         vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
-        self.results = MetaResult(vfwe=vfwe_of_map, mask=self.mask)
+        self.results = MetaResult(self, vfwe=vfwe_of_map, mask=self.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df = params

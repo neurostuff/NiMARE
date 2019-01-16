@@ -19,3 +19,20 @@ You can then install ``nimare`` with:
 .. code-block:: bash
 
   pip install nimare
+
+What Next?
+`````````
+
+For an overview of what you can do with NiMARE see `NiMARE Documentation`_.
+
+.. _NiMARE Documentation: documentation.html
+
+If you have questions, or need help with using NiMARE check out `Neuro Stars`_.
+
+.. _Neuro Stars: https://neurostars.org/latest
+
+.. tip::
+
+	`Anaconda`_ is an excellent Python environment manager.
+
+.. _Anaconda: https://www.anaconda.com/download/#macos

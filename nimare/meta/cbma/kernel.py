@@ -90,6 +90,7 @@ class ALEKernel(KernelEstimator):
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
+
         if masked:
             imgs = np.vstack(imgs)
 
