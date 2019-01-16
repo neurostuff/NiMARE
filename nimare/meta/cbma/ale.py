@@ -111,7 +111,7 @@ class ALE(CBMAEstimator):
             images = {**images1, **images2, **sub_images}
         else:
             ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
-            images = self._run_ale(ma_maps, prefix='')
+            images = self._run_ale(ma_maps, prefix='', n_cores=n_cores)
 
         self.results = MetaResult(self, mask=self.mask, **images)
 
@@ -269,8 +269,13 @@ class ALE(CBMAEstimator):
         params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
                      iter_conns)
 
-        with mp.Pool(n_cores) as p:
-            perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+        if n_cores == 1:
+            perm_results = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_results.append(self._perm(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
