@@ -137,29 +137,30 @@ jobs:
     machine:
       # Ubuntu 14.04 with Docker 17.10.0-ce
       image: circleci/classic:201711-01
-    - restore_cache:
-          keys:
-            - data-v1-{{ epoch }}
-            - data-v1-
-    - run:
-          name: Get Neurovault Data from Collection 1425
-          command: |
-            mkdir -p /tmp/data
-            if [[ ! -d "/tmp/data/21 pain studies (NIDM-Results)" ]]; then
-              wget --retry-connrefused --waitretry=5 --read-timeout=20 --timeout=15 -t 0 -q \
-                -O collection_1425.zip "https://neurovault.org/collections/1425/download"
-              unzip xvzf collection_1425.zip -d /tmp/data/ &&\
-              rm collection_1425.zip
-            else
-              echo "Dataset 1425 was cached"
-            fi
+    steps:
+      - restore_cache:
+            keys:
+              - data-v1-{{ epoch }}
+              - data-v1-
+      - run:
+            name: Get Neurovault Data from Collection 1425
+            command: |
+              mkdir -p /tmp/data
+              if [[ ! -d "/tmp/data/21 pain studies (NIDM-Results)" ]]; then
+                wget --retry-connrefused --waitretry=5 --read-timeout=20 --timeout=15 -t 0 -q \
+                  -O collection_1425.zip "https://neurovault.org/collections/1425/download"
+                unzip xvzf collection_1425.zip -d /tmp/data/ &&\
+                rm collection_1425.zip
+              else
+                echo "Dataset 1425 was cached"
+              fi
       - persist_to_workspace:
           root: /tmp
           paths:
             - data
       - save_cache:
-         key: data-v1-{{ epoch }}
-         paths:
+          key: data-v1-{{ epoch }}
+          paths:
             - /tmp/data
 
   test_data:

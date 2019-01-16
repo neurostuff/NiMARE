@@ -28,6 +28,10 @@ class MKDADensity(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
+
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
 
@@ -158,6 +162,10 @@ class MKDAChi2(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not
                   k.startswith('kernel__')}
+
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
 
         self.mask = dataset.mask
 
@@ -362,6 +370,10 @@ class KDA(CBMAEstimator):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
 
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
