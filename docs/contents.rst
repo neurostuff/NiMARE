@@ -5,5 +5,6 @@ Site Map
 
    installation
    documentation
+   cli
    contributing
    api
