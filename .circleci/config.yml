@@ -6,49 +6,99 @@ version: 2
 jobs:
 
   build:
-    machine:
-    # Ubuntu 14.04 with Docker 17.10.0-ce
-      image: circleci/classic:201711-01
+    docker:
+      - image: docker:18.01.0-ce-git
     working_directory: /tmp/src/NiMARE
     steps:
+      - run:
+          name: Install parallel gzip and python3
+          command: |
+            apk add --no-cache pigz python3
+      - restore_cache:
+          keys:
+            - docker-v1-{{ .Branch }}-{{ epoch }}
+            - docker-v1-{{ .Branch }}-
+            - docker-v1-master-
+            - docker-v1-
+          paths:
+            - /tmp/cache/docker.tar.gz
+            - /tmp/cache/ubuntu.tar.gz
       - checkout
+      - setup_remote_docker
+      - run:
+          name: Load Docker image layer cache
+          no_output_timeout: 30m
+          command: |
+            docker info
+            set +o pipefail
+            if [ -f /tmp/cache/docker.tar.gz ]; then
+              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
+              docker images
+            fi
+      - run:
+          name: Build Docker image
+          no_output_timeout: 60m
+          command: |
+            # Get version, update files.
+            THISVERSION=$( python3 get_version.py )
+            if [[ ${THISVERSION:0:1} == "0" ]] ; then
+              echo "WARNING: latest git tag could not be found"
+              echo "Please, make sure you fetch all tags from upstream with"
+              echo "the command ``git fetch --tags --verbose`` and push"
+              echo "them to your fork with ``git push origin --tags``"
+            fi
+            # Build docker image
+            e=1 && for i in {1..5}; do
+              docker build \
+                --cache-from=neurostuff/nimare \
+                --rm=false \
+                -t neurostuff/nimare:latest \
+                --build-arg BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"` \
+                --build-arg VCS_REF=`git rev-parse --short HEAD` \
+                --build-arg VERSION="${CIRCLE_TAG:-$THISVERSION}" . \
+              && e=0 && break || sleep 15
+            done && [ "$e" -eq "0" ]
+      - run:
+          name: Docker save
+          no_output_timeout: 40m
+          command: |
+            mkdir -p /tmp/cache
+            docker save ubuntu:xenial-20161213 neurostuff/nimare:latest \
+            | pigz -8 -p 3 > /tmp/cache/docker.tar.gz
       - persist_to_workspace:
           root: /tmp
           paths:
-              - src/NiMARE/
-  get_data:
+            - cache/docker.tar.gz
+            - src/NiMARE
+
+  update_cache:
     machine:
       # Ubuntu 14.04 with Docker 17.10.0-ce
       image: circleci/classic:201711-01
-    - restore_cache:
-          keys:
-            - data-v1-{{ epoch }}
-            - data-v1-
-    - run:
-          name: Get Neurovault Data from Collection 1425
-          command: |
-            mkdir -p /tmp/data
-            if [[ ! -d "/tmp/data/21 pain studies (NIDM-Results)" ]]; then
-              wget --retry-connrefused --waitretry=5 --read-timeout=20 --timeout=15 -t 0 -q \
-                -O collection_1425.zip "https://neurovault.org/collections/1425/download"
-              unzip xvzf collection_1425.zip -d /tmp/data/ &&\
-              rm collection_1425.zip
-            else
-              echo "Dataset 1425 was cached"
-            fi
-      - persist_to_workspace:
-          root: /tmp
-          paths:
-            - data
+    working_directory: /tmp/src/NiMARE
+    steps:
+      - attach_workspace:
+          at: /tmp
       - save_cache:
-         key: data-v1-{{ epoch }}
+         key: docker-v1-{{ .Branch }}-{{ epoch }}
          paths:
-            - /tmp/data
-  testing:
+            - /tmp/cache/docker.tar.gz
+
+  test_python:
     docker:
       - image: circleci/python:3.6
     working_directory: /tmp/src/NiMARE
     steps:
+      - checkout:
+          path: /home/circleci/src/NiMARE
+      - run:
+          name: Check whether build should be skipped
+          command: |
+            cd /home/circleci/src/NiMARE
+            if [[ "$( git log --format=oneline -n 1 $CIRCLE_SHA1 | grep -i -E '\[skip[ _]?test[s]?\]' )" != "" ]]; then
+              echo "Skipping python tests"
+              circleci step halt
+            fi
       - attach_workspace:
           at: /tmp
       - run:
@@ -84,6 +134,72 @@ jobs:
              python setup.py check -r -s
              python setup.py sdist
 
+  get_data:
+    machine:
+      # Ubuntu 14.04 with Docker 17.10.0-ce
+      image: circleci/classic:201711-01
+    - restore_cache:
+          keys:
+            - data-v1-{{ epoch }}
+            - data-v1-
+    - run:
+          name: Get Neurovault Data from Collection 1425
+          command: |
+            mkdir -p /tmp/data
+            if [[ ! -d "/tmp/data/21 pain studies (NIDM-Results)" ]]; then
+              wget --retry-connrefused --waitretry=5 --read-timeout=20 --timeout=15 -t 0 -q \
+                -O collection_1425.zip "https://neurovault.org/collections/1425/download"
+              unzip xvzf collection_1425.zip -d /tmp/data/ &&\
+              rm collection_1425.zip
+            else
+              echo "Dataset 1425 was cached"
+            fi
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+            - data
+      - save_cache:
+         key: data-v1-{{ epoch }}
+         paths:
+            - /tmp/data
+
+  test_data:
+    machine:
+      image: circleci/classic:201711-01
+    working_directory: /tmp/data
+    steps:
+      - checkout:
+          path: /home/circleci/src/NiMARE
+      - run:
+          name: Check whether build should be skipped
+          command: |
+            cd /home/circleci/src/NiMARE
+            if [[ "$( git log --format=oneline -n 1 $CIRCLE_SHA1 | grep -i -E '\[skip[ _]?data\]' )" != "" ]]; then
+              echo "Skipping data tests"
+              circleci step halt
+            fi
+      - attach_workspace:
+          at: /tmp
+      - restore_cache:
+          keys:
+            - data-v1-{{ epoch }}
+            - data-v1
+      - run:
+          name: Load Docker image layer cache
+          no_output_timeout: 30m
+          command: |
+            docker info
+            set +o pipefail
+            if [ -f /tmp/cache/docker.tar.gz ]; then
+              sudo apt update && sudo apt -y install pigz
+              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
+              docker images
+            fi
+      - run:
+          name: Run Analysis on Collection 1425 (Dummy)
+          command: |
+            docker run --rm neurostuff/nimare:latest
+
   deploy_pypi:
     machine:
       image: circleci/classic:201711-01
@@ -97,28 +213,104 @@ jobs:
             pyenv global 3.5.2
             virtualenv venv
             pip install "setuptools>=27.0" cython numpy twine docutils
-            # echo "${CIRCLE_TAG}" > fmriprep/VERSION
-            # echo "include fmriprep/VERSION" >> MANIFEST.in
+            # echo "${CIRCLE_TAG}" > NiMARE/VERSION
+            # echo "include NiMARE/VERSION" >> MANIFEST.in
             python setup.py check -r -s
             python setup.py sdist
             twine upload dist/*
             cd wrapper && python setup.py sdist
             twine upload dist/*
 
+  deploy_docker:
+    machine:
+      image: circleci/classic:201711-01
+    working_directory: /tmp/src/NiMARE
+    steps:
+
+      - attach_workspace:
+          at: /tmp
+      - run:
+          name: Load Docker image layer cache
+          no_output_timeout: 30m
+          command: |
+            docker info
+            set +o pipefail
+            if [ -f /tmp/cache/docker.tar.gz ]; then
+              sudo apt update && sudo apt -y install pigz
+              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
+              docker images
+            fi
+      - run:
+          name: Deploy to Docker Hub
+          no_output_timeout: 40m
+          command: |
+            if [[ -n "$DOCKER_PASS" ]]; then
+              docker login -u $DOCKER_USER -p $DOCKER_PASS
+              docker tag neurostuff/nimare neurostuff/nimare:unstable
+              docker push neurostuff/nimare:unstable
+              if [[ -n "$CIRCLE_TAG" ]]; then
+                docker push neurostuff/nimare:latest
+                docker tag neurostuff/nimare neurostuff/nimare:$CIRCLE_TAG
+                docker push neurostuff/nimare:$CIRCLE_TAG
+              fi
+            fi
+
 workflows:
   version: 2
   build_test:
     jobs:
-      - build
-      - testing:
+      - build:
+          filters:
+            tags:
+              only: /.*/
+
+      - update_cache:
           requires:
             - build
+
+      - test_python:
+          requires:
+            - build
+      
+      - get_data:
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /tests?\/.*/
+            tags:
+              only: /.*/
+
+      - test_data:
+          requires:
+            - build
+            - get_data
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /tests?\/.*/
+            tags:
+              only: /.*/
+
       - deploy_pypi:
           requires:
             - build
-            - testing
+            - test_python
+            - test_data
           filters:
             branches:
               ignore: /.*/
+            tags:
+              only: /.*/
+      
+      - deploy_docker:
+          requires:
+            - build
+            - test_python
+            - test_data
+          filters:
+            branches:
+              only: master
             tags:
               only: /.*/
