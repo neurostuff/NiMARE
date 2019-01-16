@@ -1,16 +1,21 @@
+from abc import abstractmethod, ABCMeta
 
 
-class Corrector(object):
+class Corrector(metaclass=ABCMeta):
     ''' Base class for multiple comparison correction. '''
     _correction_method = None
     
     def transform(self, result, **kwargs):
         est = result.estimator
         method = self._correction_method
-        if (self._correction_method is not None and hasattr(est, meth)):
+        if (self._correction_method is not None and hasattr(est, method)):
             getattr(est, method)(result, **kwargs)
         else:
-            self._transform(result, **kwargss)
+            self._transform(result, **kwargs)
+
+    @abstractmethod
+    def _transform(self, result, **kwargs):
+        pass
 
 
 class FDRCorrector(Corrector):
