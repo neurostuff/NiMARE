@@ -85,7 +85,7 @@ jobs:
 
   test_python:
     docker:
-      - image: circleci/python:3.6
+      - image: neurostuff/nimare:latest
     working_directory: /tmp/src/NiMARE
     steps:
       - checkout:
