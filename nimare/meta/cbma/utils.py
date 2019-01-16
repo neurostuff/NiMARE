@@ -122,7 +122,6 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
         return iterator.get_next()
 
     model_dir = _get_checkpoint_dir()
-    print("begin inference")
     model = tf.estimator.Estimator(model_fn, model_dir=model_dir)
 
     results = model.predict(generate_input_fn)
