@@ -49,7 +49,8 @@ extensions = ['sphinx.ext.autodoc',
               'numpydoc',
               'sphinx.ext.ifconfig',
               'sphinx.ext.linkcode',
-              'sphinx_gallery.gen_gallery',]
+              'sphinx_gallery.gen_gallery',
+              'sphinx_click.ext']
 
 import sphinx
 from distutils.version import LooseVersion

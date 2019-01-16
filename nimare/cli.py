@@ -10,6 +10,7 @@ from nimare.workflows.ibma_perm import con_perm
 def cli():
     pass
 
+
 cli.add_command(ale_sleuth_inference)
 cli.add_command(meta_cluster_workflow)
 cli.add_command(scale_workflow)

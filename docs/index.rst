@@ -7,4 +7,8 @@ NiMARE is a Python package for neuroimaging meta-analyses. It makes conducting s
 
 To install NiMARE check out our `installation guide`_.
 
+
 .. _installation guide: installation.html
+
+.. image:: _static/nimare_overview.png
+         :width: 100 %
