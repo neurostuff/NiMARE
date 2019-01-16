@@ -11,7 +11,6 @@ from tarfile import TarFile
 from lzma import LZMAFile
 import requests
 from io import BytesIO
-from appdirs import AppDirs
 import os, math
 from tqdm.auto import tqdm
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -47,6 +46,7 @@ def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_boun
 
 
 def _get_checkpoint_dir():
+    from appdirs import AppDirs
     dirs = AppDirs(appname="nimare", appauthor="neurostuff", version="1.0")
     checkpoint_dir = os.path.join(dirs.user_data_dir, "ohbm2018_model")
     if not os.path.exists(checkpoint_dir):

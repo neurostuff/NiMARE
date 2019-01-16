@@ -4,6 +4,7 @@ Coordinate-based meta-analysis estimators
 import warnings
 import multiprocessing as mp
 
+from tqdm.auto import tqdm
 import numpy as np
 import nibabel as nib
 from scipy import ndimage, special
@@ -89,9 +90,9 @@ class MKDADensity(CBMAEstimator):
         iter_dfs = [iter_df] * n_iters
         params = zip(iter_ijks, iter_dfs, iter_wv, iter_conn)
 
-        pool = mp.Pool(n_cores)
-        perm_results = pool.map(self._perm, params)
-        pool.close()
+        with mp.Pool(n_cores) as p:
+            perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
         percentile = 100 * (1 - q)
@@ -122,8 +123,9 @@ class MKDADensity(CBMAEstimator):
         vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
                                                     of_map.affine),
                                     self.mask)
-        self.results = MetaResult(vthresh=vthresh_of_map, cfwe=cfwe_of_map,
-                                  vfwe=vfwe_of_map, mask=self.mask)
+        self.results = MetaResult(self, vthresh=vthresh_of_map,
+                                  cfwe=cfwe_of_map, vfwe=vfwe_of_map,
+                                  mask=self.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df, weight_vec, conn = params
@@ -259,7 +261,6 @@ class MKDAChi2(CBMAEstimator):
             'specificity_chi2': pFgA_chi2_vals}
 
         if corr == 'FWE':
-            pool = mp.Pool(n_cores)
             iter_dfs = [red_coords.copy()] * n_iters
             null_ijk = np.vstack(np.where(self.mask.get_data())).T
             rand_idx = np.random.choice(null_ijk.shape[0],
@@ -268,8 +269,9 @@ class MKDAChi2(CBMAEstimator):
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
             params = zip(iter_dfs, iter_ijks, range(n_iters))
-            perm_results = pool.map(self._perm, params)
-            pool.close()
+
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
             pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
             # pAgF_FWE
@@ -317,7 +319,7 @@ class MKDAChi2(CBMAEstimator):
             pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail='two') * pFgA_sign
             images['specificity_z_FDR'] = pFgA_z_FDR
 
-        self.results = MetaResult(mask=self.mask, **images)
+        self.results = MetaResult(self, mask=self.mask, **images)
 
     def _perm(self, params):
         iter_df, iter_ijk, iter_ = params
@@ -404,9 +406,8 @@ class KDA(CBMAEstimator):
         iter_dfs = [iter_df] * n_iters
         params = zip(iter_ijks, iter_dfs)
 
-        pool = mp.Pool(n_cores)
-        perm_max_values = pool.map(self._perm, params)
-        pool.close()
+        with mp.Pool(n_cores) as p:
+            perm_max_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         percentile = 100 * (1 - q)
 
@@ -414,7 +415,7 @@ class KDA(CBMAEstimator):
         vfwe_thresh = np.percentile(perm_max_values, percentile)
         vfwe_of_map = of_map.copy()
         vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
-        self.results = MetaResult(vfwe=vfwe_of_map, mask=self.mask)
+        self.results = MetaResult(self, vfwe=vfwe_of_map, mask=self.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df = params
