@@ -11,10 +11,10 @@ import pandas as pd
 #from ..due import due, Doi
 import click
 
-@click.command(name=metacluster)
+@click.command(name='metacluster')
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True), help='NiMARE database or Sleuth text file containing meta-analytic data to be clustered')
 @click.argument('output_dir', required=True, type=click.Path(), help='Directory into which clustering results will be written.')
-@click.argument('output_prefix', default='metacluster', type=string, help='Basename for written out clustering results.')
+@click.argument('output_prefix', default='metacluster', type=string, help='Common prefix for output clustering results.')
 @click.argument('kernel', default='ALEKernel' type=click.Choice(['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']), help='Kernel estimator, for coordinate-based metaclustering.')
 @click.option('--img/--coord', '-i/-c', required=True, default=False, help='Is input data image- or coordinate-based?')
 @click.option('--algorithm', '-a', default='kmeans', type=click.Choice(['kmeans', 'dbscan', 'spectral']), help='Clustering algorithm to be used, from sklearn.cluster.')
