@@ -34,5 +34,4 @@ def con_perm(contrast_images, output_dir=None, output_prefix=output_prefix_defau
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     for name, img in res.images.items():
-        print(output_dir, output_prefix, name)
         img.to_filename(os.path.join(output_dir, output_prefix + name + ".nii.gz"))
