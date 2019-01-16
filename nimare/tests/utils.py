@@ -37,7 +37,7 @@ def download_nidm_pain():
     Download NIDM Results for 21 pain studies from NeuroVault for tests.
     """
     url = 'https://neurovault.org/collections/1425/download'
-    out_dir = op.join(get_test_data_path(), 'downloaded/nidm-pain')
+    out_dir = op.join(os.getcwd(), 'downloaded/nidm-pain')
     os.makedirs(out_dir, exist_ok=True)
 
     # Download
