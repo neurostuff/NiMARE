@@ -84,8 +84,8 @@ jobs:
             - /tmp/cache/docker.tar.gz
 
   test_python:
-    docker:
-      - image: neurostuff/nimare:latest
+    machine:
+      image: circleci/classic:201711-01
     working_directory: /tmp/src/NiMARE
     steps:
       - checkout:
@@ -100,6 +100,17 @@ jobs:
             fi
       - attach_workspace:
           at: /tmp
+      - run:
+          name: Load Docker image layer cache
+          no_output_timeout: 30m
+          command: |
+            docker info
+            set +o pipefail
+            if [ -f /tmp/cache/docker.tar.gz ]; then
+              sudo apt update && sudo apt -y install pigz
+              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
+              docker images
+            fi
       - run:
           name: Run pytest
           command: |
