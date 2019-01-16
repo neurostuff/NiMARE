@@ -14,7 +14,8 @@ class MetaResult(object):
     """Base class for meta-analytic results.
     Will contain slots for different kinds of results maps (e.g., z-map, p-map)
     """
-    def __init__(self, mask=None, **kwargs):
+    def __init__(self, estimator, mask=None, **kwargs):
+        self.estimator = estimator
         self.mask = mask
         self.images = {}
         for key, array in kwargs.items():
