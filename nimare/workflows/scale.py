@@ -37,6 +37,3 @@ def scale_workflow(database, output_dir, output_prefix, kernel_estimator, n_iter
     estimator.fit(dset.ids, voxel_thresh=0.001, n_iters=10000, n_cores=4)
     estimator.save_results(output_dir=output_dir, prefix=output_prefix, prefix_sep='_')
     print('Done! :)')
-
-if __name__ == '__main__':
-    scale_workflow()

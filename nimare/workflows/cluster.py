@@ -1,33 +1,34 @@
 import click
+import numpy as np
 import pandas as pd
+import seaborn as sns
 import nibabel as nib
-from sklearn import cluster
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans, SpectralClustering, DBSCAN
+from sklearn.metrics import silhouette_score
 
 #from ..due import due, Doi
 #from ..meta.cbma import kernel
 #from ..dataset.extract import convert_sleuth_to_database
 
 from nimare.dataset.extract import convert_sleuth_to_database
-from nimare.meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKerneltransform
+from nimare.meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
 from nimare.due import due, Doi
 
 
 @click.command(name='metacluster')
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True))
-@click.option('--output_dir', required=True, type=click.Path(), help='Directory into which clustering results will be written.')
+@click.option('--output_dir', required=True, type=click.Path(exists=True), help='Directory into which clustering results will be written.')
 @click.option('--output_prefix', default='metacluster', type=str, help='Common prefix for output clustering results.')
 @click.option('--kernel', default='ALEKernel', type=click.Choice(['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']), help='Kernel estimator, for coordinate-based metaclustering.')
 @click.option('--coord/--img', required=True, default=False, help='Is input data image- or coordinate-based?')
 @click.option('--algorithm', '-a', default='kmeans', type=click.Choice(['kmeans', 'dbscan', 'spectral']), help='Clustering algorithm to be used, from sklearn.cluster.')
-@click.option('--clust_range', nargs=2, type=float, help='Select a range for k over which clustering solutions will be evaluated (e.g., 2 10 will evaluate solutions with k = 2 clusters to k = 10 clusters).')
-
-
+@click.option('--clust_range', nargs=2, type=int, help='Select a range for k over which clustering solutions will be evaluated (e.g., 2 10 will evaluate solutions with k = 2 clusters to k = 10 clusters).')
 @due.dcite(Doi('10.1016/j.neuroimage.2015.06.044'),
            description='Introduces meta-analytic clustering analysis; hierarchically clusering face paradigms.')
 @due.dcite(Doi('10.1162/netn_a_00050'),
            description='Performs the specific meta-analytic clustering approach included here.')
-
-def meta_cluster_workflow(database, output_dir, output_prefix, kernel, coord, algorithm, clust_range):
+def meta_cluster_workflow(database, output_dir=None, output_prefix=None, kernel='ALEKernel', coord=True, algorithm='kmeans', clust_range=(2,10)):
     def VI(X, Y):
         from math import log
         #from https://gist.github.com/jwcarr/626cbc80e0006b526688
@@ -54,33 +55,34 @@ def meta_cluster_workflow(database, output_dir, output_prefix, kernel, coord, al
     #imgs = dset.images
     if coord:
         if kernel == 'ALEKernel':
-            kern = ALEKernel(dset.coordinates, template_img).transform(dsets.ids)
+            kern = ALEKernel(dset.coordinates, template_img)
         elif kernel == 'MKDAKernel':
-            kern = MKDAKernel(dset.coordinates, template_img).transform(dsets.ids, r=6, value=1)
+            kern = MKDAKernel(dset.coordinates, template_img)
         elif kernel == 'KDAKernel':
-            kern = KDAKernel(dset.coordinates, template_img).transform(dsets.ids, r=6, value=1)
+            kern = KDAKernel(dset.coordinates, template_img)
         elif kernel == 'Peaks2MapsKernel':
-            kern = Peaks2MapsKerneltransform(dset.coordinates, template_img).transform()
+            kern = Peaks2MapsKernel(dset.coordinates, template_img)
         imgs = kern.transform(dset.ids)
+    imgs_arr = []
     for i in np.arange(0,len(imgs)):
         imgs_arr.append(np.ravel(imgs[i].get_data(), order='C'))
     labels = pd.DataFrame(index=dset.ids)
-    k = np.arange(n_clusters[0], (n_clusters[1] + 1))
+    k = np.arange(clust_range[0], (clust_range[1] + 1))
     for i in k:
         if algorithm == 'kmeans':
-            clustering = KMeans(i, sample_weight=None, init='k-means++', precompute_distances='auto', n_init=300, max_iter=1000, verbose=False, tol=0.0001, random_state=None, copy_x=True, n_jobs=2, algorithm='auto', return_n_iter=False)
+            clustering = KMeans(i, init='k-means++', precompute_distances='auto')
         if algorithm == 'spectral':
-            clustering = SpectralClustering(n_clusters=i, eigen_solver=None, random_state=None, n_init=300, gamma=1.0, affinity='rbf', n_neighbors=10, eigen_tol=0.0, assign_labels='discretize', degree=3, coef0=1, kernel_params=None, n_jobs=2)
+            clustering = SpectralClustering(n_clusters=i, eigen_solver=None, random_state=None, n_init=300, gamma=1.0, affinity='rbf', n_neighbors=10, eigen_tol=0.0, assign_labels='discretize', degree=3, coef0=1, kernel_params=None)
         if algorithm == 'dbscan':
             min = len(dset.ids)/(i-1)
-            clustering = DBSCAN(eps=0.1, min_samples=min, metric='euclidean', metric_params=None, algorithm='auto', leaf_size=30, p=None, n_jobs=None)
+            clustering = DBSCAN(eps=0.1, min_samples=min, metric='euclidean', metric_params=None, algorithm='auto', leaf_size=30, p=None)
         labels[i] = clustering.fit_predict(imgs_arr)
     labels.to_csv('{0}/{1}_labels.csv'.format(output_dir, output_prefix))
 
     silhouette_scores = {}
     for i in k:
         j = i-2
-        silhouette = silhouette_score(imgs_arr, labels[i].values, metric='correlation', random_state=None)
+        silhouette = silhouette_score(imgs_arr, labels[i], metric='correlation', random_state=None)
         silhouette_scores[i] = silhouette
     silhouettes = pd.Series(silhouette_scores, name='Average Silhouette Scores')
 
@@ -98,17 +100,14 @@ def meta_cluster_workflow(database, output_dir, output_prefix, kernel, coord, al
         var_info = VI(j, z)
         variation_of_infofmation[i+1] = var_info
 
-    vi = pd.Series(vi_k, name='Variation of Information')
+    vi = pd.Series(variation_of_infofmation, name='Variation of Information')
 
-    metrics = pd.concat([kmeans_vi, silhouettes], axis=1)
+    metrics = pd.concat([vi, silhouettes], axis=1)
     metrics.to_csv('{0}/{1}_metrics.csv'.format(output_dir, output_prefix))
 
     fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,5))
-    g = sns.lineplot(metrics.index, metrics['Silhouette Scores'], ax=ax[0])
+    g = sns.lineplot(metrics.index, metrics['Average Silhouette Scores'], ax=ax[0])
     g.set_title('Silhouette Scores')
     g = sns.lineplot(metrics.index, metrics['Variation of Information'], ax=ax[1])
     g.set_title('Variation of Information')
     fig.savefig('{0}/{1}_metrics.png'.format(output_dir, output_prefix), dpi=300)
-
-if __name__ == '__main__':
-    meta_cluster_workflow()
