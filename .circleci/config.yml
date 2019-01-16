@@ -149,7 +149,7 @@ jobs:
               if [[ ! -d "/tmp/data/21 pain studies (NIDM-Results)" ]]; then
                 wget --retry-connrefused --waitretry=5 --read-timeout=20 --timeout=15 -t 0 -q \
                   -O collection_1425.zip "https://neurovault.org/collections/1425/download"
-                unzip xvzf collection_1425.zip -d /tmp/data/ &&\
+                unzip collection_1425.zip -d /tmp/data/ &&\
                 rm collection_1425.zip
               else
                 echo "Dataset 1425 was cached"
