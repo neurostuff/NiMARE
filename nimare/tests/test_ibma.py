@@ -14,13 +14,13 @@ from nimare.meta import ibma
 from nimare.tests.utils import get_test_data_path, download_nidm_pain
 
 
-@pytest.fixture(scope='session', autouse=True)
-def download_data():
+@pytest.fixture(autouse=True)
+def download_data(tmpdir):
     """
     Download 21 pain studies from NeuroVault to test IBMA functions.
     """
-    if not op.isdir(op.join(get_test_data_path(), 'downloaded/nidm-pain')):
-        download_nidm_pain()
+    tmpdir.chdir()
+    download_nidm_pain()
 
 
 def _get_file(cdict, t, data_dir):
@@ -50,10 +50,9 @@ def _get_file(cdict, t, data_dir):
             temp = np.mean(temp)
     else:
         raise Exception('Input type "{0}" not recognized.'.format(t))
-
+    
     if isinstance(temp, str):
         temp = op.join(data_dir, temp)
-
     return temp
 
 
