@@ -1,15 +1,15 @@
-from ..meta.cbma import kernel
+import click
+import numpy as np
+
+from ..dataset import Database
 from ..due import due, Doi
+from ..dataset.extract import convert_sleuth_to_database
+from ..meta.cbma.ale import SCALE
 
 from nimare.dataset.extract import convert_sleuth_to_database
-from nimare.meta.cbma.ale import ALE
+from nimare.meta.cbma.ale import SCALE
+from nimare.dataset import Database
 from nimare.due import due, Doi
-from sklearn import cluster
-import pandas as pd
-#from ..dataset.extract import convert_sleuth_to_database
-#from ..meta.cbma.ale import ALE
-#from ..due import due, Doi
-import click
 
 n_iters_default = 10000
 
@@ -28,7 +28,7 @@ def scale_workflow(database, output_dir, output_prefix, kernel_estimator, n_iter
     #dset = db.get_dataset()
     #dataset from sleuth for now
     if database.endswith('.json'):
-        db = database
+        db = Database(database)
     if database.endswith('.txt'):
         db = convert_sleuth_to_database(database)
     dset = db.get_dataset()

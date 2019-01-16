@@ -1,15 +1,15 @@
-from ..meta.cbma import kernel
+import click
+import pandas as pd
+from sklearn import cluster
+
 from ..due import due, Doi
+from ..meta.cbma import kernel
+from ..dataset.extract import convert_sleuth_to_database
 
 from nimare.dataset.extract import convert_sleuth_to_database
-from nimare.meta.cbma.ale import ALE
+from nimare.meta.cbma import kernel
 from nimare.due import due, Doi
-from sklearn import cluster
-import pandas as pd
-#from ..dataset.extract import convert_sleuth_to_database
-#from ..meta.cbma.ale import ALE
-#from ..due import due, Doi
-import click
+
 
 @click.command(name='metacluster')
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True), help='NiMARE database or Sleuth text file containing meta-analytic data to be clustered')
