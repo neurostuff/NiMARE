@@ -21,12 +21,17 @@ class Database(object):
 
     Parameters
     ----------
-    dataset_file : :obj:`str`
-        Json file containing dictionary with database information.
+    source : :obj:`str`
+        JSON file containing dictionary with database information or the dict() object
     """
-    def __init__(self, database_file):
-        with open(database_file, 'r') as f_obj:
-            self.data = json.load(f_obj)
+    def __init__(self, source):
+        if isinstance(source, str):
+            with open(source, 'r') as f_obj:
+                self.data = json.load(f_obj)
+        elif isinstance(source, dict):
+            self.data = source
+        else:
+            raise Exception("`source` needs to be a file path or a dictionary")
         ids = []
         for pid in self.data.keys():
             for cid in self.data[pid]['contrasts'].keys():

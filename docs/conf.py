@@ -65,7 +65,7 @@ templates_path = ['_templates']
 source_suffix = '.rst'
 
 # The master toctree document.
-master_doc = 'index'
+master_doc = 'contents'
 
 # General information about the project.
 project = 'NiMARE'
@@ -107,8 +107,10 @@ todo_include_todos = False
 # a list of builtin themes.
 #
 # installing theme package
-import sphinx_rtd_theme
-html_theme = 'sphinx_rtd_theme'
+
+#import sphinx_rtd_theme
+
+html_theme = 'sphinxdoc'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -116,20 +118,20 @@ html_theme = 'sphinx_rtd_theme'
 #
 # html_theme_options = {}
 
+html_style = 'nimare.css'
+html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'searchbox.html', 'indexsidebar.html'] }
+
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
 
 # https://github.com/rtfd/sphinx_rtd_theme/issues/117
 def setup(app):
     app.add_stylesheet('theme_overrides.css')
     app.connect('autodoc-process-docstring', generate_example_rst)
 
-
 html_favicon = '_static/nimare_favicon.png'
-
 
 # -- Options for HTMLHelp output ------------------------------------------
 
@@ -153,17 +155,17 @@ intersphinx_mapping = {
     'http://pandas.pydata.org/pandas-docs/stable/': None,
 }
 
-sphinx_gallery_conf = {
+# sphinx_gallery_conf = {
     # path to your examples scripts
-    'examples_dirs'     : '../examples',
+    ##'examples_dirs'     : '../examples',
     # path where to save gallery generated examples
-    'gallery_dirs'      : 'auto_examples',
-    'backreferences_dir': '_build/backreferences',
+    ##'gallery_dirs'      : 'auto_examples',
+    ##'backreferences_dir': '_build/backreferences',
     # Modules for which function level galleries are created.  In
     # this case sphinx_gallery and numpy in a tuple of strings.
-    'doc_module'        : ('nimare'),
-    'ignore_patterns'   : ['utils/'],
-    }
+    ##'doc_module'        : ('nimare'),
+    ##'ignore_patterns'   : ['utils/'],
+#    }
 
 # -- Options for Texinfo output -------------------------------------------
 

@@ -2,7 +2,6 @@
 Utilities for coordinate-based meta-analysis estimators
 """
 from scipy import ndimage
-
 from ...due import due, Doi
 from .peaks2maps import model_fn
 import numpy.linalg as npl
@@ -12,11 +11,9 @@ from tarfile import TarFile
 from lzma import LZMAFile
 import requests
 from io import BytesIO
-from appdirs import AppDirs
 import os, math
 from tqdm.auto import tqdm
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import tensorflow as tf
 
 
 def _get_resize_arg(target_shape):
@@ -49,6 +46,7 @@ def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_boun
 
 
 def _get_checkpoint_dir():
+    from appdirs import AppDirs
     dirs = AppDirs(appname="nimare", appauthor="neurostuff", version="1.0")
     checkpoint_dir = os.path.join(dirs.user_data_dir, "ohbm2018_model")
     if not os.path.exists(checkpoint_dir):
@@ -75,11 +73,12 @@ def _get_checkpoint_dir():
         tarfile.extractall(dirs.user_data_dir)
     return checkpoint_dir
 
+
 @due.dcite(Doi('10.7490/f1000research.1116395.1'),
            description='Transforms coordinates of peaks to unthresholded maps using a deep '
                        'convolutional neural net.')
 def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
-               tf_verbosity_level=tf.logging.FATAL):
+               tf_verbosity_level=None):
     """
     Generate modeled activation (MA) maps using depp ConvNet model peaks2maps
 
@@ -97,6 +96,17 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
     ma_values : array-like
         1d array of modeled activation values.
     """
+    try:
+        import tensorflow as tf
+    except ModuleNotFoundError as e:
+        if "No module named 'tensorflow'" in str(e):
+            raise Exception("tensorflow not installed - see https://www.tensorflow.org/install/ "
+                            "for instructions")
+        else:
+            raise
+
+    if tf_verbosity_level is None:
+        tf_verbosity_level = tf.logging.FATAL
     target_shape = (32, 32, 32)
     affine, _ = _get_resize_arg(target_shape)
     tf.logging.set_verbosity(tf_verbosity_level)
