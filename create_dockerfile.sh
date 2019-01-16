@@ -2,10 +2,11 @@ docker run --rm kaczmarj/neurodocker:0.4.3 generate docker -b neurodebian:stretc
     --install fsl gcc g++ software-properties-common \
     --user=neuro \
     --add-to-entrypoint "source /etc/fsl/fsl.sh" \
+    --copy . /src/NiMARE/ \
     --miniconda create_env=nimare \
     miniconda_version=4.3.31 \
     conda_install="python=3.6 jupyter jupyterlab jupyter_contrib_nbextensions seaborn" \
-    pip_install="https://github.com/neurostuff/NiMARE/tarball/master" \
+    pip_install="/src/NiMARE/" \
     activate=true \
     --run 'mkdir -p ~/.jupyter && echo c.NotebookApp.ip = \"0.0.0.0\" > ~/.jupyter/jupyter_notebook_config.py' \
     --user=root \
