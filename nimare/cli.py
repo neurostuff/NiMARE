@@ -6,6 +6,7 @@ from nimare.workflows.scale import scale_workflow
 from nimare.workflows.peaks2maps import peaks2maps
 from nimare.workflows.ibma_perm import con_perm
 
+@click.group()
 def cli():
     pass
 
