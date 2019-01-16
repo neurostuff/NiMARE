@@ -115,7 +115,7 @@ class ALE(CBMAEstimator):
             images = {**images1, **images2, **sub_images}
         else:
             ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
-            images = self._run_ale(ma_maps, prefix='')
+            images = self._run_ale(ma_maps, prefix='', n_cores=n_cores)
 
         self.results = MetaResult(self, mask=self.mask, **images)
 
@@ -273,8 +273,13 @@ class ALE(CBMAEstimator):
         params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
                      iter_conns)
 
-        with mp.Pool(n_cores) as p:
-            perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+        if n_cores == 1:
+            perm_results = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_results.append(self._perm(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
@@ -331,11 +336,13 @@ class ALE(CBMAEstimator):
 
         if df is not None:
             k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            ma_maps = k_est.transform(self.ids, masked=True,
+                                      **self.kernel_arguments)
+            ma_values = ma_maps
         else:
             assert ma_maps is not None
+            ma_values = apply_mask(ma_maps, self.mask)
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
             # Remember that histogram uses bin edges (not centers), so it
@@ -526,8 +533,13 @@ class SCALE(CBMAEstimator):
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
 
-        with mp.Pool(n_cores) as p:
-            perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+        if n_cores == 1:
+            perm_scale_values = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_scale_values.append(self._perm(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         perm_scale_values = np.stack(perm_scale_values)
 
@@ -556,11 +568,13 @@ class SCALE(CBMAEstimator):
         """
         if df is not None:
             k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            ma_maps = k_est.transform(self.ids, masked=True,
+                                      **self.kernel_arguments)
+            ma_values = ma_maps
         else:
             assert ma_maps is not None
+            ma_values = apply_mask(ma_maps, self.mask)
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
             ale_values *= (1. - ma_values[i, :])
