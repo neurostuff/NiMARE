@@ -23,50 +23,48 @@
         {
           "Name": "Animal vs Furniture",
           "Description": "Covert naming task with animals and furniture. Contrast between naming animals and naming furnture via Wilcoxon Rank Test for different median values.",
-          "Images": {
-            "Elements": [
-              {
-                "Path": "orig/9593960_1_beta.nii.gz",
-                "ValueType": "Beta"
-              },
-              {
-                "Path": "orig/9593960_1_se.nii.gz",
-                "ValueType": "BetaStandardError"
-              },
-              {
-                "Path": "orig/9593960_1_z.nii.gz",
-                "ValueType": "BetaZStatistic"
-              }
-            ],
-            "Space": "MNI_2mm"
-          },
-          "Points": {
-            "Elements": [
-              {
-                "@id": "pp_id1",
-                "Coordinate":[ 63.0, 65.0, 1.0],
-                "Clusterid": 1
-              }
-            ],
-            "Space": "MNI"
-          },
-          "Surfaces": {
-            "Elements": [
-              {
-                "Path": "orig/9593960_1_beta.gii.gz",
-                "ValueType": "Beta"
-              },
-              {
-                "Path": "orig/9593960_1_se.gii.gz",
-                "ValueType": "BetaStandardError"
-              },
-              {
-                "Path": "orig/9593960_1_z.gii.gz",
-                "ValueType": "BetaZStatistic"
-              }
-            ],
-            "Space": "MNI_2mm"
-          },
+          "Images": [
+            {
+              "Path": "orig/9593960_1_beta.nii.gz",
+              "ValueType": "Beta",
+              "Space": "MNI_2mm"
+            },
+            {
+              "Path": "orig/9593960_1_se.nii.gz",
+              "ValueType": "BetaStandardError",
+              "Space": "MNI_2mm"
+            },
+            {
+              "Path": "orig/9593960_1_z.nii.gz",
+              "ValueType": "BetaZStatistic",
+              "Space": "MNI_2mm"
+            }
+          ],
+          "Points": [
+            {
+              "@id": "pp_id1",
+              "Coordinate":[ 63.0, 65.0, 1.0],
+              "Clusterid": 1,
+              "Space": "MNI"
+            }
+          ],
+          "Surfaces": [
+            {
+              "Path": "orig/9593960_1_beta.gii.gz",
+              "ValueType": "Beta",
+              "Space": "MNI_2mm"
+            },
+            {
+              "Path": "orig/9593960_1_se.gii.gz",
+              "ValueType": "BetaStandardError",
+              "Space": "MNI_2mm"
+            },
+            {
+              "Path": "orig/9593960_1_z.gii.gz",
+              "ValueType": "BetaZStatistic",
+              "Space": "MNI_2mm"
+            }
+          ],
           "Groups": ["gg_id1"],
           "Conditions": ["cc_id1","cc_id2"],
           "Weights": [1, -1]
