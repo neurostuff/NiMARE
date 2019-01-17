@@ -3,6 +3,9 @@ Automated annotation tools.
 """
 import warnings
 
+from . import topic
+from . import vector
+from . import ontology
 from .text import generate_counts
 
 __all__ = ['generate_counts']
