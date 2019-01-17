@@ -51,4 +51,3 @@ def scale_workflow(database, base_img, output_dir=None, output_prefix=None,
     estimator = SCALE(dset, ijk=ijk, kernel_estimator=ALEKernel, n_iters=n_iters)
     estimator.fit(dset.ids, voxel_thresh=v_thr, n_iters=n_iters, n_cores=2)
     estimator.results.save_results(output_dir=output_dir, prefix=output_prefix, prefix_sep='_')
-    #print('Done! :)')
