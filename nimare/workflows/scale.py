@@ -24,7 +24,7 @@ cluster_forming_threshold_p_default = 0.001
                     'coactivation, using a permutation based approach.')
 
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True))
-@click.option('--base_img', type=click.Path(exists=True, readable=True), help='Voxelwise baseline activation rates.')
+@click.option('--baseline', type=click.Path(exists=True, readable=True), help='Voxelwise baseline activation rates.')
 @click.option('--output_dir', required=True, type=click.Path(), help='Directory into which clustering results will be written.')
 @click.option('--output_prefix', type=str, help='Common prefix for output SCALE results.')
 @click.option('--n_iters', default=n_iters_default, show_default=True, type=int, help='Number of iterations for permutation testing.')
