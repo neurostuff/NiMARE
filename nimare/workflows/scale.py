@@ -35,7 +35,7 @@ cluster_forming_threshold_p_default = 0.001
 @due.dcite(Doi('10.1016/j.neuroimage.2014.06.007'),
            description='Introduces Specific CoActivation Likelihood Estimation (SCALE) for meta-analytic coactivation modeling.')
 
-def scale_workflow(database, base_img, output_dir=None, output_prefix=None,
+def scale_workflow(database, baseline, output_dir=None, output_prefix=None,
                          n_iters=n_iters_default,
                          v_thr=cluster_forming_threshold_p_default):
     #db = Database(database)
