@@ -9,4 +9,8 @@ with warnings.catch_warnings(record=True) as w:
     from .meta import cbma
     from .version import __version__
 
-    del cbma, Dataset
+
+
+__all__ = [
+    "Dataset"
+]
