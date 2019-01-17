@@ -10,6 +10,7 @@ from .mamp import MAMP
 warnings.simplefilter('default')
 
 warnings.warn(
-    '{} is untested. Please do not use it.'.format(__name__),
+    "{} is an experimental module under active development; use it at your "
+    "own risk.".format(__name__),
     ImportWarning
 )
