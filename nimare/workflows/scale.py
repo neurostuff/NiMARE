@@ -21,8 +21,7 @@ cluster_forming_threshold_p_default = 0.001
                help='Method for performing Specific CoActivation Likelihood Estimation (SCALE),'
                     'a modified meta-analytic coactivation modeling (MACM) that takes activation'
                     'frequency bias into account, for delineating distinct core networks of '
-                    'coactivation, using a permutation based approach with Family Wise Error '
-                    'multiple comparison correction.')
+                    'coactivation, using a permutation based approach.')
 
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True))
 @click.option('--base_img', type=click.Path(exists=True, readable=True), help='Voxelwise baseline activation rates.')
