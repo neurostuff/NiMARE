@@ -5,10 +5,8 @@ import warnings
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("ignore")
-    from .dataset import Dataset
-    from .meta import cbma
     from .version import __version__
-
+    from .dataset import Dataset
 
 
 __all__ = [
