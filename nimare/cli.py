@@ -6,7 +6,10 @@ from nimare.workflows.scale import scale_workflow
 from nimare.workflows.peaks2maps import peaks2maps
 from nimare.workflows.ibma_perm import con_perm
 
-@click.group()
+CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+
+
+@click.group(context_settings=CONTEXT_SETTINGS)
 def cli():
     pass
 
