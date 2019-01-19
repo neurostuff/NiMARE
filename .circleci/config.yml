@@ -125,73 +125,6 @@ jobs:
           command: |
             docker run --rm neurostuff/nimare pytest -vs /src/NiMARE/ 
 
-  get_data:
-    machine:
-      # Ubuntu 14.04 with Docker 17.10.0-ce
-      image: circleci/classic:201711-01
-    steps:
-      - restore_cache:
-            keys:
-              - data-v1-{{ epoch }}
-              - data-v1-
-      - run:
-            name: Get Neurovault Data from Collection 1425
-            command: |
-              mkdir -p /tmp/data
-              if [[ ! -d "/tmp/data/21 pain studies (NIDM-Results)" ]]; then
-                wget --retry-connrefused --waitretry=5 --read-timeout=20 --timeout=15 -t 0 -q \
-                  -O collection_1425.zip "https://neurovault.org/collections/1425/download"
-                unzip collection_1425.zip -d /tmp/data/ &&\
-                rm collection_1425.zip
-              else
-                echo "Dataset 1425 was cached"
-              fi
-      - persist_to_workspace:
-          root: /tmp
-          paths:
-            - data
-      - save_cache:
-          key: data-v1-{{ epoch }}
-          paths:
-            - /tmp/data
-
-  test_data:
-    machine:
-      image: circleci/classic:201711-01
-    working_directory: /tmp/data
-    steps:
-      - checkout:
-          path: /home/circleci/src/NiMARE
-      - run:
-          name: Check whether build should be skipped
-          command: |
-            cd /home/circleci/src/NiMARE
-            if [[ "$( git log --format=oneline -n 1 $CIRCLE_SHA1 | grep -i -E '\[skip[ _]?data\]' )" != "" ]]; then
-              echo "Skipping data tests"
-              circleci step halt
-            fi
-      - attach_workspace:
-          at: /tmp
-      - restore_cache:
-          keys:
-            - data-v1-{{ epoch }}
-            - data-v1-
-      - run:
-          name: Load Docker image layer cache
-          no_output_timeout: 30m
-          command: |
-            docker info
-            set +o pipefail
-            if [ -f /tmp/cache/docker.tar.gz ]; then
-              sudo apt update && sudo apt -y install pigz
-              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
-              docker images
-            fi
-      - run:
-          name: Run Analysis on Collection 1425 (Dummy)
-          command: |
-            docker run --rm neurostuff/nimare:latest
-
   deploy_pypi:
     machine:
       image: circleci/classic:201711-01
@@ -263,33 +196,11 @@ workflows:
       - test_python:
           requires:
             - build
-      
-      - get_data:
-          filters:
-            branches:
-              ignore:
-                - /docs?\/.*/
-                - /tests?\/.*/
-            tags:
-              only: /.*/
-
-      - test_data:
-          requires:
-            - build
-            - get_data
-          filters:
-            branches:
-              ignore:
-                - /docs?\/.*/
-                - /tests?\/.*/
-            tags:
-              only: /.*/
 
       - deploy_pypi:
           requires:
             - build
             - test_python
-            - test_data
           filters:
             branches:
               ignore: /.*/
@@ -300,7 +211,6 @@ workflows:
           requires:
             - build
             - test_python
-            - test_data
           filters:
             branches:
               only: master
