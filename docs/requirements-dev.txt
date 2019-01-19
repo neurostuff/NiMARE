@@ -1,3 +1,4 @@
 sphinx-click
 sphinx-argparse
 numpydoc
+sphinx_gallery
