@@ -61,9 +61,13 @@ A Python library for coordinate- and image-based meta-analysis.
 
 ## Installation
 
-### Local installation
+### Local installation (development version)
 ```
-python setup.py install
+pip install git+https://github.com/neurostuff/NiMARE.git#egg=nimare[peaks2maps-cpu]
+```
+If you have [TensorFlow configured to take advantage of your local GPU](https://www.tensorflow.org/install/) use
+```
+pip install git+https://github.com/neurostuff/NiMARE.git#egg=nimare[peaks2maps-gpu]
 ```
 
 ### Installation with Docker
