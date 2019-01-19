@@ -17,7 +17,12 @@ from ..utils import get_template
 #from nimare.due import due, Doi
 
 
-@click.command(name='metacluster')
+@click.command(name='metacluster', short_help='clusters experiments based on similarity'
+                                        'of activation patterns, to investigate '
+                                        'heterogeneity across a meta-analytic dataset',
+               help='Method for investigating recurrent patterns of activation accross a '
+                    'meta-analytic dataset, thus identifying trends across a collection of '
+                    'experiments.')
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True))
 @click.option('--output_dir', required=True, type=click.Path(exists=True), help='Directory into which clustering results will be written.')
 @click.option('--output_prefix', default='metacluster', type=str, help='Common prefix for output clustering results.')
