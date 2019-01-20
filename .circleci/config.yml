@@ -101,6 +101,13 @@ jobs:
       - attach_workspace:
           at: /tmp
       - run:
+          name: Check code style
+          command: |
+            pyenv global 3.5.2
+            virtualenv venv
+            pip install flake8
+            flake8
+      - run:
           name: Check PyPi preconditions
           command: |
             pyenv global 3.5.2
@@ -108,7 +115,6 @@ jobs:
             pip install "setuptools>=27.0" cython numpy twine docutils
             python setup.py check -r -s
             python setup.py sdist
-
       - run:
           name: Load Docker image layer cache
           no_output_timeout: 30m
@@ -123,7 +129,14 @@ jobs:
       - run:
           name: Run pytest
           command: |
-            docker run --rm neurostuff/nimare pytest -vs /src/NiMARE/ 
+            docker run --rm neurostuff/nimare pytest -vs /src/NiMARE/
+      - run:
+          name: Get code coverage
+          command: |
+            pyenv global 3.5.2
+            virtualenv venv
+            pip install codecov
+            codecov
 
   deploy_pypi:
     machine:
