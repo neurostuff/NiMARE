@@ -112,12 +112,21 @@ API
 .. _calibration_ref:
 
 
-:mod:`nimare.workflows`: Common workflows
+:mod:`nimare.stats`: Statistical functions
 --------------------------------------------------
 
-.. automodule:: nimare.workflows
+.. automodule:: nimare.stats
    :no-members:
    :no-inherited-members:
+
+.. autosummary:: nimare.stats
+   :toctree: generated/
+   :template: function.rst
+
+   nimare.stats.one_way
+   nimare.stats.two_way
+   nimare.stats.pearson
+   nimare.stats.fdr
 
 .. currentmodule:: nimare
 
@@ -133,10 +142,19 @@ API
 
 .. autosummary:: nimare.utils
    :toctree: generated/
-   :template: module.rst
+   :template: function.rst
 
-   nimare.utils.utils
-   nimare.utils.stats
+   nimare.utils.get_template
+   nimare.utils.null_to_p
+   nimare.utils.p_to_z
+   nimare.utils.t_to_z
+   nimare.utils.listify
+   nimare.utils.round2
+   nimare.utils.vox2mm
+   nimare.utils.mm2vox
+   nimare.utils.tal2mni
+   nimare.utils.mni2tal
+   nimare.utils.get_resource_path
 
 .. currentmodule:: nimare
 
