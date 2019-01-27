@@ -202,6 +202,8 @@ workflows:
             - build
             - test_python
           filters:
+            branches:
+              ignore: /.*/
             tags:
               only: /.*/
 
@@ -210,5 +212,7 @@ workflows:
             - build
             - test_python
           filters:
+            branches:
+              only: master
             tags:
               only: /.*/
