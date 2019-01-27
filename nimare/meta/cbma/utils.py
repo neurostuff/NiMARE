@@ -1,19 +1,25 @@
 """
 Utilities for coordinate-based meta-analysis estimators
 """
-from scipy import ndimage
-from ...due import due, Doi
-from .peaks2maps import model_fn
-import numpy.linalg as npl
-import nibabel as nb
-import numpy as np
-from tarfile import TarFile
-from lzma import LZMAFile
+import os
+import math
+import logging
 import requests
 from io import BytesIO
-import os, math
+from tarfile import TarFile
+
+import numpy as np
+import numpy.linalg as npl
+import nibabel as nb
+from scipy import ndimage
+from lzma import LZMAFile
 from tqdm.auto import tqdm
+
+from .peaks2maps import model_fn
+from ...due import due, Doi
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+LGR = logging.getLogger(__name__)
 
 
 def _get_resize_arg(target_shape):
@@ -50,7 +56,7 @@ def _get_checkpoint_dir():
     dirs = AppDirs(appname="nimare", appauthor="neurostuff", version="1.0")
     checkpoint_dir = os.path.join(dirs.user_data_dir, "ohbm2018_model")
     if not os.path.exists(checkpoint_dir):
-        print("Downloading the model (this is a one-off operation)... ")
+        LGR.info('Downloading the model (this is a one-off operation)...')
         url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
         # Streaming, so we can iterate over the response.
         r = requests.get(url, stream=True)
@@ -68,7 +74,7 @@ def _get_checkpoint_dir():
             raise Exception("Download interrupted")
 
         f.seek(0)
-        print("Uncompressing the model to %s..."%checkpoint_dir)
+        LGR.info('Uncompressing the model to %s...'.format(checkpoint_dir))
         tarfile = TarFile(fileobj=LZMAFile(f), mode="r")
         tarfile.extractall(dirs.user_data_dir)
     return checkpoint_dir
