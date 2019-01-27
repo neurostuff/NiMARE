@@ -40,6 +40,14 @@ def get_template(space='mni152_1mm', mask=None):
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
             raise ValueError('Mask {0} not supported'.format(mask))
+    elif space == 'colin_2mm':
+        if mask is None:
+            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
+        else:
+            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
+            data = img.get_data()
+            data = (data > 0).astype(int)
+            img = nib.Nifti1Image(data, img.affine)
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img

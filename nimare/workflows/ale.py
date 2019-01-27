@@ -35,19 +35,58 @@ CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
               help="Cluster size corrected p-value threshold.")
 def ale_sleuth_inference(sleuth_file, output_dir=None, prefix=None,
                          n_iters=N_ITERS_DEFAULT,
-                         cluster_forming_threshold_p=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-                         cluster_size_threshold_q=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT):
+                         v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
+                         c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """
     click.echo("Loading coordinates...")
-    dset = convert_sleuth_to_database(sleuth_file).get_dataset()
+    dset = convert_sleuth_to_database(sleuth_file).get_dataset(target='colin_2mm')
+
+    boilerplate = """
+An activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro, 2002;
+Eickhoff, Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012)
+meta-analysis was performed using NiMARE. The input dataset included {n}
+studies/experiments.
+
+-> If the cluster-level FWE-corrected results were used, include the following:
+A cluster-forming threshold of p < {unc} was used, along with a cluster-extent
+threshold of {fwe}. {n_iters} iterations were performed to estimate a null
+distribution of cluster sizes, in which the locations of coordinates were
+randomly drawn from a gray matter template and the maximum cluster size was
+recorded after applying an uncorrected cluster-forming threshold of p < {unc}.
+
+-> If voxel-level FWE-corrected results were used, include the following:
+Voxel-level FWE-correction was performed and results were thresholded at
+p < {fwe}. {n_iters} iterations were performed to estimate a null
+distribution of ALE values, in which the locations of coordinates were randomly
+drawn from a gray matter template and the maximum ALE value was recorded.
+
+References
+----------
+- Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
+Meta-analysis of the functional neuroanatomy of single-word reading: method
+and validation. NeuroImage, 16(3 Pt 1), 765–780.
+- Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
+Activation likelihood estimation meta-analysis revisited. NeuroImage,
+59(3), 2349–2361.
+- Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
+& Fox, P. (2012). Minimizing within-experiment and within-group effects in
+Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
+33(1), 1–13.
+    """
+    boilerplate = boilerplate.format(
+        n=len(dset.ids),
+        unc=v_thr,
+        fwe=c_thr,
+        n_iters=n_iters)
+
     ale = ALE(dset, ids=dset.ids)
 
     click.echo("Estimating the null distribution...")
     ale.fit(n_iters=n_iters, ids=dset.ids,
-            voxel_thresh=cluster_forming_threshold_p,
-            q=cluster_size_threshold_q, corr='FWE')
+            voxel_thresh=v_thr,
+            q=c_thr, corr='FWE')
 
     if output_dir is None:
         output_dir = os.path.dirname(sleuth_file)
@@ -62,3 +101,6 @@ def ale_sleuth_inference(sleuth_file, output_dir=None, prefix=None,
     click.echo("Saving output maps...")
     ale.results.save_results(output_dir=output_dir, prefix=prefix)
     copyfile(sleuth_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
+
+    click.echo("Workflow completed.")
+    click.echo(boilerplate)
