@@ -2,7 +2,11 @@
 #
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
-version: 2
+version: 2.1
+
+orbs:
+  codecov: codecov/codecov@1.0.1
+
 jobs:
 
   build:
@@ -108,7 +112,6 @@ jobs:
             pip install "setuptools>=27.0" cython numpy twine docutils
             python setup.py check -r -s
             python setup.py sdist
-
       - run:
           name: Load Docker image layer cache
           no_output_timeout: 30m
@@ -123,7 +126,9 @@ jobs:
       - run:
           name: Run pytest
           command: |
-            docker run --rm neurostuff/nimare pytest -vs /src/NiMARE/ 
+            docker run --rm neurostuff/nimare pytest -vs /src/NiMARE/
+      - codecov/upload:
+          file: {{ coverage_report_filepath }}
 
   deploy_pypi:
     machine:
@@ -206,7 +211,7 @@ workflows:
               ignore: /.*/
             tags:
               only: /.*/
-      
+
       - deploy_docker:
           requires:
             - build
