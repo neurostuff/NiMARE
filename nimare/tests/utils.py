@@ -32,13 +32,17 @@ def _download_file(url):
     return local_filename
 
 
-def download_nidm_pain():
+def download_nidm_pain(out_dir=None):
     """
     Download NIDM Results for 21 pain studies from NeuroVault for tests.
     """
     url = 'https://neurovault.org/collections/1425/download'
-    out_dir = op.join(get_test_data_path(), 'downloaded/nidm-pain')
-    os.makedirs(out_dir, exist_ok=True)
+    if out_dir is None:
+        out_dir = op.join(os.getcwd(), 'resources', 'data', 'neurovault-data', 
+                        'collection-1425')
+        os.makedirs(out_dir, exist_ok=True)
+    else:
+        os.makedirs(out_dir, exist_ok=True)
 
     # Download
     fname = _download_file(url)

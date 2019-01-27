@@ -12,7 +12,7 @@ from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
-from ...base import MetaResult, CBMAEstimator
+from ...base import MetaResult, CBMAEstimator, KernelEstimator
 from ...utils import vox2mm, null_to_p, p_to_z
 from ...stats import one_way, two_way
 from ...due import due, Doi
@@ -43,12 +43,20 @@ class MKDADensity(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=4):
+    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.n_iters = n_iters
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
 
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         k_est = self.kernel_estimator(red_coords, self.mask)
@@ -186,7 +194,7 @@ class MKDAChi2(CBMAEstimator):
         self.results = None
 
     def fit(self, ids, ids2=None, voxel_thresh=0.01, q=0.05, corr='FWE',
-            n_iters=5000, prior=0.5, n_cores=4):
+            n_iters=5000, prior=0.5, n_cores=-1):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
@@ -194,6 +202,15 @@ class MKDAChi2(CBMAEstimator):
         if ids2 is None:
             ids2 = list(set(self.coordinates['id'].values) - set(self.ids))
         self.ids2 = ids2
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
+
         all_ids = self.ids + self.ids2
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
 
@@ -385,11 +402,19 @@ class KDA(CBMAEstimator):
         self.n_iters = None
         self.images = {}
 
-    def fit(self, ids, q=0.05, n_iters=10000, n_cores=4):
+    def fit(self, ids, q=0.05, n_iters=10000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.clust_thresh = q
         self.n_iters = n_iters
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
 
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         k_est = self.kernel_estimator(red_coords, self.mask)
