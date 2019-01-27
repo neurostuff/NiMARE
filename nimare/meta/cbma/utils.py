@@ -2,7 +2,6 @@
 Utilities for coordinate-based meta-analysis estimators
 """
 from scipy import ndimage
-
 from ...due import due, Doi
 from .peaks2maps import model_fn
 import numpy.linalg as npl
@@ -12,11 +11,9 @@ from tarfile import TarFile
 from lzma import LZMAFile
 import requests
 from io import BytesIO
-from appdirs import AppDirs
 import os, math
 from tqdm.auto import tqdm
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import tensorflow as tf
 
 
 def _get_resize_arg(target_shape):
@@ -49,6 +46,7 @@ def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_boun
 
 
 def _get_checkpoint_dir():
+    from appdirs import AppDirs
     dirs = AppDirs(appname="nimare", appauthor="neurostuff", version="1.0")
     checkpoint_dir = os.path.join(dirs.user_data_dir, "ohbm2018_model")
     if not os.path.exists(checkpoint_dir):
@@ -75,11 +73,12 @@ def _get_checkpoint_dir():
         tarfile.extractall(dirs.user_data_dir)
     return checkpoint_dir
 
+
 @due.dcite(Doi('10.7490/f1000research.1116395.1'),
            description='Transforms coordinates of peaks to unthresholded maps using a deep '
                        'convolutional neural net.')
 def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
-               tf_verbosity_level=tf.logging.FATAL):
+               tf_verbosity_level=None):
     """
     Generate modeled activation (MA) maps using depp ConvNet model peaks2maps
 
@@ -97,6 +96,17 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
     ma_values : array-like
         1d array of modeled activation values.
     """
+    try:
+        import tensorflow as tf
+    except ModuleNotFoundError as e:
+        if "No module named 'tensorflow'" in str(e):
+            raise Exception("tensorflow not installed - see https://www.tensorflow.org/install/ "
+                            "for instructions")
+        else:
+            raise
+
+    if tf_verbosity_level is None:
+        tf_verbosity_level = tf.logging.FATAL
     target_shape = (32, 32, 32)
     affine, _ = _get_resize_arg(target_shape)
     tf.logging.set_verbosity(tf_verbosity_level)
@@ -112,7 +122,6 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
         return iterator.get_next()
 
     model_dir = _get_checkpoint_dir()
-    print("begin inference")
     model = tf.estimator.Estimator(model_fn, model_dir=model_dir)
 
     results = model.predict(generate_input_fn)
@@ -122,7 +131,6 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
     niis = [nb.Nifti1Image(np.squeeze(result), affine) for result in results]
     return niis
 
-
 def compute_ma(shape, ijk, kernel):
     """
     Generate modeled activation (MA) maps.
@@ -130,7 +138,7 @@ def compute_ma(shape, ijk, kernel):
     kernel. Takes the element-wise maximum when looping through foci, which
     accounts for foci which are near to one another and may have overlapping
     kernels.
-    
+
     Parameters
     ----------
     shape : tuple
@@ -148,25 +156,37 @@ def compute_ma(shape, ijk, kernel):
     """
     ma_values = np.zeros(shape)
     mid = int(np.floor(kernel.shape[0] / 2.))
+    mid1 = mid+1
     for j_peak in range(ijk.shape[0]):
         i, j, k = ijk[j_peak, :]
         xl = max(i-mid, 0)
-        xh = min(i+mid+1, ma_values.shape[0])
+        xh = min(i+mid1, ma_values.shape[0])
         yl = max(j-mid, 0)
-        yh = min(j+mid+1, ma_values.shape[1])
+        yh = min(j+mid1, ma_values.shape[1])
         zl = max(k-mid, 0)
-        zh = min(k+mid+1, ma_values.shape[2])
+        zh = min(k+mid1, ma_values.shape[2])
         xlk = mid - (i - xl)
         xhk = mid - (i - xh)
         ylk = mid - (j - yl)
         yhk = mid - (j - yh)
         zlk = mid - (k - zl)
         zhk = mid - (k - zh)
-        if all(np.array([xl, xh, yl, yh, zl, zh, xlk, xhk, ylk, yhk, zlk, zhk]) >= 0):
+
+        if ((xl >=0)
+            & (xh >=0)
+            & (yl >=0)
+            & (yh >=0)
+            & (zl >=0)
+            & (zh >=0)
+            & (xlk >=0)
+            & (xhk >=0)
+            & (ylk >=0)
+            & (yhk >=0)
+            & (zlk >=0)
+            & (zhk >=0)):
             ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(ma_values[xl:xh, yl:yh, zl:zh],
                                                         kernel[xlk:xhk, ylk:yhk, zlk:zhk])
     return ma_values
-
 
 @due.dcite(Doi('10.1002/hbm.20718'),
            description='Introduces sample size-dependent kernels to ALE.')

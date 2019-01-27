@@ -1,14 +1,7 @@
-import tensorflow as tf
-from tensorflow.python.estimator.export.export_output import PredictOutput
-
 
 def model_fn(features, labels, mode, params):
-    """Build the MNIST model up to where it may be used for inference.
-    Args:
-
-    Returns:
-
-    """
+    import tensorflow as tf
+    from tensorflow.python.estimator.export.export_output import PredictOutput
     ngf = 64
     layers = []
 

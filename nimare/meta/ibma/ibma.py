@@ -83,7 +83,7 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
 
-    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
+    result = MetaResult('fishers', mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
                         z=z_corr_map, log_p=log_p_map)
     return result
 
@@ -211,7 +211,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
         # Convert p to z, preserving signs
         z_corr_map = p_to_z(p_corr_map, tail='two') * sign
         log_p_map = -np.log10(p_corr_map)
-        result = MetaResult(mask=mask, t=t_map, p=p_corr_map, z=z_corr_map,
+        result = MetaResult('stouffers', mask=mask, t=t_map, p=p_corr_map, z=z_corr_map,
                             log_p=log_p_map)
     elif inference == 'ffx':
         if null == 'theoretical':
@@ -238,7 +238,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
             # Convert p to z, preserving signs
             z_corr_map = p_to_z(p_corr_map, tail='two') * sign
             log_p_map = -np.log10(p_corr_map)
-            result = MetaResult(mask=mask, z=z_corr_map, p=p_corr_map,
+            result = MetaResult('stouffers', mask=mask, z=z_corr_map, p=p_corr_map,
                                 log_p=log_p_map)
         else:
             raise ValueError('Only theoretical null distribution may be used '
@@ -356,7 +356,7 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
     sign[sign == 0] = 1
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
-    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
+    result = MetaResult('weighted_stouffers', mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
                         z=z_corr_map, log_p=log_p_map)
     return result
 
@@ -471,7 +471,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     sign[sign == 0] = 1
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
-    result = MetaResult(mask=mask, t=t_map, z=z_corr_map, p=p_corr_map,
+    result = MetaResult('rfx_glm', mask=mask, t=t_map, z=z_corr_map, p=p_corr_map,
                         log_p=log_p_map)
     return result
 
@@ -658,7 +658,7 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     # Compile outputs
     out_p_map = stats.norm.sf(abs(out_z_map)) * 2
     log_p_map = -np.log10(out_p_map)
-    result = MetaResult(mask=mask, cope=out_cope_map, z=out_z_map,
+    result = MetaResult('fsl_glm', mask=mask, cope=out_cope_map, z=out_z_map,
                         thresh_z=thresh_z_map, t=out_t_map, p=out_p_map,
                         log_p=log_p_map)
     return result

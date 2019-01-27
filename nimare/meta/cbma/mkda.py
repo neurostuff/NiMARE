@@ -4,6 +4,7 @@ Coordinate-based meta-analysis estimators
 import warnings
 import multiprocessing as mp
 
+from tqdm.auto import tqdm
 import numpy as np
 import nibabel as nib
 from scipy import ndimage, special
@@ -11,7 +12,7 @@ from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
-from ...base import MetaResult, CBMAEstimator
+from ...base import MetaResult, CBMAEstimator, KernelEstimator
 from ...utils import vox2mm, null_to_p, p_to_z
 from ...stats import one_way, two_way
 from ...due import due, Doi
@@ -27,6 +28,10 @@ class MKDADensity(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
+
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
 
@@ -38,12 +43,20 @@ class MKDADensity(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=4):
+    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.n_iters = n_iters
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
 
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         k_est = self.kernel_estimator(red_coords, self.mask)
@@ -85,9 +98,9 @@ class MKDADensity(CBMAEstimator):
         iter_dfs = [iter_df] * n_iters
         params = zip(iter_ijks, iter_dfs, iter_wv, iter_conn)
 
-        pool = mp.Pool(n_cores)
-        perm_results = pool.map(self._perm, params)
-        pool.close()
+        with mp.Pool(n_cores) as p:
+            perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
         percentile = 100 * (1 - q)
@@ -118,8 +131,9 @@ class MKDADensity(CBMAEstimator):
         vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
                                                     of_map.affine),
                                     self.mask)
-        self.results = MetaResult(vthresh=vthresh_of_map, cfwe=cfwe_of_map,
-                                  vfwe=vfwe_of_map, mask=self.mask)
+        self.results = MetaResult(self, vthresh=vthresh_of_map,
+                                  cfwe=cfwe_of_map, vfwe=vfwe_of_map,
+                                  mask=self.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df, weight_vec, conn = params
@@ -157,6 +171,10 @@ class MKDAChi2(CBMAEstimator):
         kwargs = {k: v for k, v in kwargs.items() if not
                   k.startswith('kernel__')}
 
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
+
         self.mask = dataset.mask
 
         # Check kernel estimator (must be MKDA)
@@ -176,7 +194,7 @@ class MKDAChi2(CBMAEstimator):
         self.results = None
 
     def fit(self, ids, ids2=None, voxel_thresh=0.01, q=0.05, corr='FWE',
-            n_iters=5000, prior=0.5, n_cores=4):
+            n_iters=5000, prior=0.5, n_cores=-1):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
@@ -184,6 +202,15 @@ class MKDAChi2(CBMAEstimator):
         if ids2 is None:
             ids2 = list(set(self.coordinates['id'].values) - set(self.ids))
         self.ids2 = ids2
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
+
         all_ids = self.ids + self.ids2
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
 
@@ -251,7 +278,6 @@ class MKDAChi2(CBMAEstimator):
             'specificity_chi2': pFgA_chi2_vals}
 
         if corr == 'FWE':
-            pool = mp.Pool(n_cores)
             iter_dfs = [red_coords.copy()] * n_iters
             null_ijk = np.vstack(np.where(self.mask.get_data())).T
             rand_idx = np.random.choice(null_ijk.shape[0],
@@ -260,8 +286,9 @@ class MKDAChi2(CBMAEstimator):
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
             params = zip(iter_dfs, iter_ijks, range(n_iters))
-            perm_results = pool.map(self._perm, params)
-            pool.close()
+
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
             pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
             # pAgF_FWE
@@ -309,7 +336,7 @@ class MKDAChi2(CBMAEstimator):
             pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail='two') * pFgA_sign
             images['specificity_z_FDR'] = pFgA_z_FDR
 
-        self.results = MetaResult(mask=self.mask, **images)
+        self.results = MetaResult(self, mask=self.mask, **images)
 
     def _perm(self, params):
         iter_df, iter_ijk, iter_ = params
@@ -361,6 +388,10 @@ class KDA(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
+
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
         self.kernel_estimator = kernel_estimator
@@ -371,11 +402,19 @@ class KDA(CBMAEstimator):
         self.n_iters = None
         self.images = {}
 
-    def fit(self, ids, q=0.05, n_iters=10000, n_cores=4):
+    def fit(self, ids, q=0.05, n_iters=10000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.clust_thresh = q
         self.n_iters = n_iters
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
 
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         k_est = self.kernel_estimator(red_coords, self.mask)
@@ -392,9 +431,8 @@ class KDA(CBMAEstimator):
         iter_dfs = [iter_df] * n_iters
         params = zip(iter_ijks, iter_dfs)
 
-        pool = mp.Pool(n_cores)
-        perm_max_values = pool.map(self._perm, params)
-        pool.close()
+        with mp.Pool(n_cores) as p:
+            perm_max_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         percentile = 100 * (1 - q)
 
@@ -402,7 +440,7 @@ class KDA(CBMAEstimator):
         vfwe_thresh = np.percentile(perm_max_values, percentile)
         vfwe_of_map = of_map.copy()
         vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
-        self.results = MetaResult(vfwe=vfwe_of_map, mask=self.mask)
+        self.results = MetaResult(self, vfwe=vfwe_of_map, mask=self.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df = params

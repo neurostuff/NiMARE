@@ -15,12 +15,18 @@ from nimare.tests.utils import get_test_data_path, download_nidm_pain
 
 
 @pytest.fixture(scope='session', autouse=True)
-def download_data():
+def download_data(tmpdir_factory):
     """
     Download 21 pain studies from NeuroVault to test IBMA functions.
     """
-    if not op.isdir(op.join(get_test_data_path(), 'downloaded/nidm-pain')):
-        download_nidm_pain()
+    tst_dir = tmpdir_factory.mktemp('tests')
+    out_dir = tst_dir.ensure('resources',
+                             'data',
+                             'neurovault-data', 
+                             'collection-1425',
+                             dir=True)
+    download_nidm_pain(out_dir)
+    return tst_dir
 
 
 def _get_file(cdict, t, data_dir):
@@ -50,10 +56,9 @@ def _get_file(cdict, t, data_dir):
             temp = np.mean(temp)
     else:
         raise Exception('Input type "{0}" not recognized.'.format(t))
-
+    
     if isinstance(temp, str):
         temp = op.join(data_dir, temp)
-
     return temp
 
 
@@ -83,7 +88,7 @@ def get_files(ddict, types, data_dir=None):
 
 
 @pytest.fixture(scope='session', autouse=True)
-def get_data():
+def get_data(download_data):
     """
     Load data from dataset into global variables.
     """
@@ -97,13 +102,13 @@ def get_data():
     pytest.mask_img = dset.mask
 
     # Regular z maps
-    z_files, ns = get_files(pytest.dset_dict, ['z', 'n'])
-    z_imgs = [nib.load(f) for f in z_files]
+    z_files, ns = get_files(pytest.dset_dict, ['z', 'n'], download_data)
+    z_imgs = [nib.load(op.join(download_data, f)) for f in z_files]
     z_data = apply_mask(z_imgs, pytest.mask_img)
 
     # T maps to be converted to z
-    t_files, t_ns = get_files(pytest.dset_dict, ['t!z', 'n'])
-    t_imgs = [nib.load(f) for f in t_files]
+    t_files, t_ns = get_files(pytest.dset_dict, ['t!z', 'n'], download_data)
+    t_imgs = [nib.load(op.join(download_data, f)) for f in t_files]
     t_data_list = [apply_mask(t_img, pytest.mask_img) for t_img in t_imgs]
     tz_data_list = [nimare.utils.t_to_z(t_data, t_ns[i]-1) for i, t_data
                     in enumerate(t_data_list)]
@@ -116,9 +121,9 @@ def get_data():
     pytest.z_data = z_data
     pytest.sample_sizes_z = sample_sizes
 
-    con_files, se_files, ns = get_files(dset_dict, ['con', 'se', 'n'])
-    con_imgs = [nib.load(f) for f in con_files]
-    se_imgs = [nib.load(f) for f in se_files]
+    con_files, se_files, ns = get_files(dset_dict, ['con', 'se', 'n'], download_data)
+    con_imgs = [nib.load(op.join(download_data, f)) for f in con_files]
+    se_imgs = [nib.load(op.join(download_data, f)) for f in se_files]
     con_data = apply_mask(con_imgs, pytest.mask_img)
     se_data = apply_mask(se_imgs, pytest.mask_img)
     sample_sizes = np.array(ns)

@@ -78,7 +78,7 @@ This decision has two key benefits:
 2. The work required of the ``NiMARE``  developers to maintain the project is more focused
    and somewhat restricted.
 
-It is important to note that ``NiMARE``  is shipped under `an LGPL2 license`_ which means that
+It is important to note that ``NiMARE``  is shipped under `an MIT license`_ which means that
 the code can---at all times---be cloned and re-used by anyone for any purpose.
 
 "Power users" will always be able to access and extend all of the options available.
@@ -91,7 +91,7 @@ options within the existing framework, but we have chosen to focus on `the 80 pe
 You can provide feedback on this philosophy through any of the channels
 listed on the ``NiMARE`` :doc:`support` page.
 
-.. _an LGPL2 license: https://github.com/ME-ICA/NiMARE/blob/master/LICENSE
+.. _an MIT license: https://github.com/neurostuff/NiMARE/blob/master/LICENSE
 .. _the 80 percent use cases: https://en.wikipedia.org/wiki/Pareto_principle#In_software
 
 
@@ -111,8 +111,8 @@ Feedback can be provided through any of the channels listed on our :doc:`support
 In order to more directly map between our :doc:`roadmap` and ongoing `project issues`_,
 we have also created `milestones in our github repository`_.
 
-.. _project issues: https://github.com/ME-ICA/NiMARE/issues
-.. _milestones in our github repository: https://github.com/me-ica/NiMARE/milestones
+.. _project issues: https://github.com/neurostuff/NiMARE/issues
+.. _milestones in our github repository: https://github.com/neurostuff/NiMARE/milestones
 
 This allows us to:
 
@@ -200,3 +200,14 @@ Release Process
 .. _`guide for creating a release on GitHub`: https://help.github.com/articles/creating-releases/
 .. _`Release-drafter`: https://github.com/apps/release-drafter
 .. _here: https://guides.github.com/activities/citable-code/
+=======
+Getting Involved
+================
+
+If you find a bug or would like to add or improve features of NiMARE check out our `GitHub repository`_.
+
+.. _GitHub repository: https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md
+
+If you have questions, or need help with using NiMARE check out `Neuro Stars`_.
+
+.. _Neuro Stars: https://neurostars.org/latest

@@ -1,14 +1,14 @@
 """
-Automated annotation tools.
+Multiple comparisons correction
 """
 import warnings
 
-from . import topic
-from . import vector
-from . import ontology
-from .text import generate_counts
+from .base import FDRCorrector
 
-__all__ = ['generate_counts']
+
+__all__ = [
+    'FDRCorrector'
+]
 
 warnings.simplefilter('default')
 

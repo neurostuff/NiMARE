@@ -42,7 +42,8 @@ class ALEKernel(KernelEstimator):
             formulae from Eickhoff et al. (2012). This sample size overwrites
             the Contrast-specific sample sizes in the dataset, in order to hold
             kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-
+        masked: :bool:, optional
+            Return an array instead of a niimg.
         Returns
         -------
         imgs : :obj:`list` of `nibabel.Nifti1Image`
@@ -60,13 +61,13 @@ class ALEKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
         imgs = []
         kernels = {}
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
-            ijk = data[['i', 'j', 'k']].values.astype(int)
+        for id_, data in self.coordinates.groupby('id'):
+            #ijk = data[['i', 'j', 'k']].values.astype(int)
+            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if n is not None:
                 n_subjects = n
             elif fwhm is None:
-                n_subjects = data['n'].astype(float).values[0]
+                n_subjects = data.n.astype(float).values[0]
 
             if fwhm is not None:
                 assert np.isfinite(fwhm), 'FWHM must be finite number'
@@ -89,6 +90,7 @@ class ALEKernel(KernelEstimator):
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
+
         if masked:
             imgs = np.vstack(imgs)
 
@@ -139,10 +141,9 @@ class MKDAKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in self.coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
-            for ijk in data[['i', 'j', 'k']].values:
+            for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
                 sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
@@ -207,10 +208,9 @@ class KDAKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in self.coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
-            for ijk in data[['i', 'j', 'k']].values:
+            for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
                 sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
@@ -238,7 +238,7 @@ class Peaks2MapsKernel(KernelEstimator):
         self.mask = mask
         self.coordinates = coordinates
 
-    def transform(self, ids, masked=False):
+    def transform(self, ids, masked=False, resample_to_mask=True):
         """
         Generate peaks2maps modeled activation images for each Contrast in dataset.
 
@@ -260,20 +260,26 @@ class Peaks2MapsKernel(KernelEstimator):
         for id_ in ids:
             data = self.coordinates.loc[self.coordinates['id'] == id_]
             mm_coords = []
-            for coord in data[['i', 'j', 'k']].values:
+            for coord in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 mm_coords.append(vox2mm(coord, self.mask.affine))
             coordinates_list.append(mm_coords)
 
         imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
 
-        resampled_imgs = []
-        for img in imgs:
-            resampled_imgs.append(resample_to_img(img, self.mask))
+        if resample_to_mask:
+            resampled_imgs = []
+            for img in imgs:
+                resampled_imgs.append(resample_to_img(img, self.mask))
+            imgs = resampled_imgs
 
         if masked:
             masked_images = []
-            for img in resampled_imgs:
-                masked_images.append(math_img('map*mask', map=img, mask=self.mask))
-            return masked_images
+            for img in imgs:
+                if not resample_to_mask:
+                    mask = resample_to_img(self.mask, imgs[0], interpolation='nearest')
+                else:
+                    mask = self.mask
+                masked_images.append(math_img('map*mask', map=img, mask=mask))
+            imgs = masked_images
 
-        return resampled_imgs
+        return imgs
