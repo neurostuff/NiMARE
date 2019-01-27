@@ -87,6 +87,26 @@ jobs:
          paths:
             - /tmp/cache/docker.tar.gz
 
+  lint:
+    machine:
+      image: circleci/classic:201711-01
+    working_directory: /tmp/src/NiMARE
+    steps:
+      - checkout:
+          path: /home/circleci/src/NiMARE
+      - run:
+          name: Check PyPi preconditions
+          command: |
+            pyenv global 3.5.2
+            virtualenv venv
+            pip install flake8
+      - run:
+          name: Linting
+          command: flake8 nimare --output-file test-reports
+      - store_artifacts:
+          path: test-reports
+          destination: test-reports
+
   test_python:
     machine:
       image: circleci/classic:201711-01
@@ -109,7 +129,7 @@ jobs:
           command: |
             pyenv global 3.5.2
             virtualenv venv
-            pip install "setuptools>=27.0" cython numpy twine docutils flake8
+            pip install "setuptools>=27.0" cython numpy twine docutils coverage codecov pytest-cov
             python setup.py check -r -s
             python setup.py sdist
 
@@ -131,9 +151,6 @@ jobs:
       - run:
           name: Coverage
           command: codecov
-      - run:
-          name: Linting
-          command: flake8 nimare
 
   deploy_pypi:
     machine:
