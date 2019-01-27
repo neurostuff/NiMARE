@@ -81,7 +81,7 @@ class ALE(CBMAEstimator):
         self.results = None
 
     def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
-            n_iters=10000, n_cores=4):
+            n_iters=10000, n_cores=-1):
         """
 
         Parameters
@@ -91,6 +91,9 @@ class ALE(CBMAEstimator):
         ids2 : array_like or None, optional
             If not None, ids2 is used to identify a second sample for a subtraction
             analysis. Default is None.
+        n_cores : int
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
         """
         self.ids = ids
         self.ids2 = ids2
@@ -98,6 +101,14 @@ class ALE(CBMAEstimator):
         self.clust_thresh = q
         self.corr = corr
         self.n_iters = n_iters
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
 
         k_est = self.kernel_estimator(self.coordinates, self.mask)
 
@@ -224,7 +235,7 @@ class ALE(CBMAEstimator):
         images = {'grp1-grp2_z': diff_z_map}
         return images
 
-    def _run_ale(self, ma_maps, prefix='', n_cores=4):
+    def _run_ale(self, ma_maps, prefix='', n_cores=1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
         max_poss_ale = 1.
@@ -476,7 +487,7 @@ class SCALE(CBMAEstimator):
         self.voxel_thresh = None
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=4):
+    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """
         Perform specific coactivation likelihood estimation[1]_ meta-analysis
         on dataset.
@@ -496,6 +507,9 @@ class SCALE(CBMAEstimator):
         database_file : str
             Tab-delimited file of coordinates from database. Voxels are rows
             and i, j, k (meaning matrix-space) values are the three columnns.
+        n_cores : int
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
 
         Examples
         --------
@@ -510,6 +524,15 @@ class SCALE(CBMAEstimator):
         self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.n_iters = n_iters
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
+
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
         k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
