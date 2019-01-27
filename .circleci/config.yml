@@ -127,8 +127,6 @@ jobs:
           name: Run pytest
           command: |
             docker run --rm neurostuff/nimare pytest -vs /src/NiMARE/
-      - codecov/upload:
-          file: {{ coverage_report_filepath }}
 
   deploy_pypi:
     machine:
