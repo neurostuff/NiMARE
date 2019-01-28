@@ -104,7 +104,7 @@ jobs:
           name: Linting
           command: |
             flake8 /src/NiMARE/nimare --output-file test-reports
-            ls /src/NiMARE/nimare > test-reports
+            ls /tmp/src/NiMARE > test-reports
       - store_artifacts:
           path: test-reports
           destination: test-reports
