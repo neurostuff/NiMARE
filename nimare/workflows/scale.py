@@ -43,7 +43,7 @@ def scale_workflow(database, baseline, output_dir=None, prefix=None,
         db = Database(database)
     if database.endswith('.txt'):
         db = convert_sleuth_to_database(database)
-    dset = db.get_dataset()
+    dset = db.get_dataset(target='mni152_2mm')
 
     boilerplate = """
 A specific coactivation likelihood estimation (SCALE; Langner et al., 2014)
@@ -88,3 +88,6 @@ rates. NeuroImage, 99, 559-570.
 
     estimator.results.save_results(output_dir=output_dir, prefix=prefix)
     copyfile(database, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
+
+    click.echo("Workflow completed.")
+    click.echo(boilerplate)
