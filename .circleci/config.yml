@@ -102,7 +102,9 @@ jobs:
             pip install flake8
       - run:
           name: Linting
-          command: flake8 /src/NiMARE/nimare --output-file test-reports
+          command: |
+            flake8 /src/NiMARE/nimare --output-file test-reports
+            ls /src/NiMARE/nimare > test-reports
       - store_artifacts:
           path: test-reports
           destination: test-reports
