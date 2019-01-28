@@ -220,6 +220,8 @@ workflows:
           requires:
             - build
 
+      - lint:
+
       - test_python:
           requires:
             - build
