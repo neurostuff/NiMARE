@@ -222,10 +222,6 @@ workflows:
           requires:
             - build
 
-      - submit_coverage:
-          requires:
-            - test_python
-
       - deploy_pypi:
           requires:
             - build
