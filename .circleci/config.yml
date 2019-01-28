@@ -103,10 +103,7 @@ jobs:
       - run:
           name: Linting
           command: |
-            flake8 /home/circleci/src/NiMARE --output-file test-reports
-      - store_artifacts:
-          path: test-reports
-          destination: test-reports
+            flake8 /home/circleci/src/NiMARE
 
   test_python:
     machine:
