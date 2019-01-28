@@ -220,8 +220,6 @@ workflows:
           requires:
             - build
 
-      - lint:
-
       - test_python:
           requires:
             - build
@@ -243,5 +241,11 @@ workflows:
           filters:
             branches:
               only: master
+            tags:
+              only: /.*/
+  run_lint:
+    jobs:
+      - lint:
+          filters:
             tags:
               only: /.*/
