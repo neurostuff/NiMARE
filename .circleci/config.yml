@@ -129,7 +129,7 @@ jobs:
           command: |
             pyenv global 3.5.2
             virtualenv venv
-            pip install "setuptools>=27.0" cython numpy twine docutils coveralls coverage codecov pytest-cov
+            pip install "setuptools>=27.0" cython numpy twine docutils
             python setup.py check -r -s
             python setup.py sdist
 
@@ -155,16 +155,8 @@ jobs:
     working_directory: /tmp/src/NiMARE
     steps:
       - run:
-          name: Check PyPi preconditions
-          command: |
-            pyenv global 3.5.2
-            virtualenv venv
-            pip install coveralls coverage codecov pytest-cov
-            python setup.py check -r -s
-            python setup.py sdist
-      - run:
           name: Submit coverage results
-          command: codecov
+          command: docker run --rm neurostuff/nimare codecov
 
   deploy_pypi:
     machine:
