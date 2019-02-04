@@ -7,6 +7,7 @@ import copy
 import warnings
 from time import time
 import multiprocessing as mp
+from tqdm.auto import tqdm
 
 import numpy as np
 import nibabel as nib
@@ -14,7 +15,7 @@ from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel
-from ...base import MetaResult, CBMAEstimator
+from ...base import MetaResult, CBMAEstimator, KernelEstimator
 from ...due import due, Doi, BibTeX
 from ...utils import round2, null_to_p, p_to_z
 
@@ -50,11 +51,6 @@ class ALE(CBMAEstimator):
     ----------
     dataset : :obj:`nimare.dataset.Dataset`
         Dataset object to analyze.
-    ids : array_like
-        List of IDs from dataset to analyze.
-    ids2 : array_like or None, optional
-        If not None, ids2 is used to identify a second sample for a subtraction
-        analysis. Default is None.
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
@@ -62,54 +58,57 @@ class ALE(CBMAEstimator):
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
     """
-    def __init__(self, dataset, ids, ids2=None, kernel_estimator=ALEKernel,
-                 **kwargs):
+    def __init__(self, dataset, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
-        self.mask = dataset.mask
-        if ids2 is not None:
-            all_ids = np.hstack((np.array(ids), np.array(ids2)))
-        else:
-            all_ids = ids
-        self.coordinates = dataset.coordinates.loc[
-            dataset.coordinates['id'].isin(all_ids)]
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
 
+        self.mask = dataset.mask
+        self.coordinates = dataset.coordinates
+
+        self.ids = None
+        self.ids2 = None
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
-        self.ids2 = ids2
         self.voxel_thresh = None
         self.clust_thresh = None
         self.corr = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
-            n_cores=4):
+    def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
+            n_iters=10000, n_cores=-1):
         """
-        Run an ALE meta-analysis.
 
         Parameters
         ----------
-        voxel_thresh : :obj:`float`, optional
-            Voxel-level p-value threshold. Default is 0.001.
-        q : :obj:`float`, optional
-            Desired alpha level for analysis. Default is 0.05.
-        corr : {'FWE',}, optional
-            Multiple comparisons correction method to be employed. Currently
-            unused, as FWE-correction is the only method implemented.
-        n_iters : :obj:`int`, optional
-            Number of iterations for FWE correction simulations.
-            Default is 10000.
-        n_cores : :obj:`int`, optional
-            Number of cores to use for analysis. Default is 4.
+        ids : array_like
+            List of IDs from dataset to analyze.
+        ids2 : array_like or None, optional
+            If not None, ids2 is used to identify a second sample for a subtraction
+            analysis. Default is None.
+        n_cores : int
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
         """
+        self.ids = ids
+        self.ids2 = ids2
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.corr = corr
         self.n_iters = n_iters
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
 
         k_est = self.kernel_estimator(self.coordinates, self.mask)
 
@@ -127,9 +126,9 @@ class ALE(CBMAEstimator):
             images = {**images1, **images2, **sub_images}
         else:
             ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
-            images = self._run_ale(ma_maps, prefix='')
+            images = self._run_ale(ma_maps, prefix='', n_cores=n_cores)
 
-        self.results = MetaResult(mask=self.mask, **images)
+        self.results = MetaResult(self, mask=self.mask, **images)
 
     def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
         grp1_voxel = image1 > 0
@@ -236,7 +235,7 @@ class ALE(CBMAEstimator):
         images = {'grp1-grp2_z': diff_z_map}
         return images
 
-    def _run_ale(self, ma_maps, prefix='', n_cores=4):
+    def _run_ale(self, ma_maps, prefix='', n_cores=1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
         max_poss_ale = 1.
@@ -266,7 +265,12 @@ class ALE(CBMAEstimator):
         conn[1, :, :] = 1
 
         # Multiple comparisons correction
-        iter_df = self.coordinates.copy()
+        if self.ids2 is not None:
+            all_ids = np.hstack((np.array(self.ids), np.array(self.ids2)))
+        else:
+            all_ids = self.ids
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
+        iter_df = red_coords.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = null_ijk[rand_idx, :]
@@ -279,9 +283,15 @@ class ALE(CBMAEstimator):
         iter_hist_bins = [hist_bins] * self.n_iters
         params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
                      iter_conns)
-        pool = mp.Pool(n_cores)
-        perm_results = pool.map(self._perm, params)
-        pool.close()
+
+        if n_cores == 1:
+            perm_results = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_results.append(self._perm(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
         percentile = 100 * (1 - self.clust_thresh)
@@ -337,11 +347,13 @@ class ALE(CBMAEstimator):
 
         if df is not None:
             k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            ma_maps = k_est.transform(self.ids, masked=True,
+                                      **self.kernel_arguments)
+            ma_values = ma_maps
         else:
             assert ma_maps is not None
+            ma_values = apply_mask(ma_maps, self.mask)
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
             # Remember that histogram uses bin edges (not centers), so it
@@ -453,56 +465,76 @@ class ALE(CBMAEstimator):
 class SCALE(CBMAEstimator):
     """
     Specific coactivation likelihood estimation
-
-    Parameters
-    ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset object to analyze.
-    ids : array_like
-        List of IDs from dataset to analyze.
-    ijk : array_like or None, optional
-        IJK (matrix-space) indices from database to use for coordinate
-        base-levels of activation. Default is None.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`
-        Kernel with which to convolve coordinates from dataset.
-    **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
-        here, with the prefix 'kernel__' in the variable name.
     """
-    def __init__(self, dataset, ids, ijk=None, kernel_estimator=ALEKernel,
+    def __init__(self, dataset, ijk=None, kernel_estimator=ALEKernel,
                  **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
+        if not issubclass(kernel_estimator, KernelEstimator):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelEstimator')
+
         self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
+        self.coordinates = dataset.coordinates
 
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
-        self.ids = ids
+        self.ids = None
         self.ijk = ijk
         self.n_iters = None
         self.voxel_thresh = None
         self.results = None
 
-    def fit(self, voxel_thresh=0.001, n_iters=10000, n_cores=4):
+    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """
         Perform specific coactivation likelihood estimation[1]_ meta-analysis
         on dataset.
 
         Parameters
         ----------
-        voxel_thresh : :obj:`float`, optional
-            Voxel-level p-value threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
+        dataset : ale.Dataset
+            Dataset to analyze.
+        voxel_thresh : float
+            Uncorrected voxel-level threshold.
+        n_iters : int
             Number of iterations for correction. Default 2500
-        n_cores : :obj:`int`, optional
-            Number of cores to use for analysis. Default is 4.
+        verbose : bool
+            If True, prints out status updates.
+        prefix : str
+            String prepended to default output filenames. May include path.
+        database_file : str
+            Tab-delimited file of coordinates from database. Voxels are rows
+            and i, j, k (meaning matrix-space) values are the three columnns.
+        n_cores : int
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
+
+        Examples
+        --------
+
+        References
+        ----------
+        .. [1] Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., &
+               Eickhoff, S. B. (2014). Meta-analytic connectivity modeling
+               revisited: controlling for activation base rates.
+               NeuroImage, 99, 559-570.
         """
+        self.ids = ids
         self.voxel_thresh = voxel_thresh
         self.n_iters = n_iters
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            print('Desired number of cores ({0}) greater than number '
+                  'available ({1}). Setting to {1}.'.format(n_cores,
+                                                            mp.cpu_count()))
+            n_cores = mp.cpu_count()
+
+        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        k_est = self.kernel_estimator(red_coords, self.mask)
         ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
 
         max_poss_ale = 1.
@@ -514,7 +546,7 @@ class SCALE(CBMAEstimator):
 
         ale_values = self._compute_ale(df=None, ma_maps=ma_maps)
 
-        iter_df = self.coordinates.copy()
+        iter_df = red_coords.copy()
         rand_idx = np.random.choice(self.ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = self.ijk[rand_idx, :]
@@ -523,9 +555,15 @@ class SCALE(CBMAEstimator):
         # Define parameters
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
-        pool = mp.Pool(n_cores)
-        perm_scale_values = pool.map(self._perm, params)
-        pool.close()
+
+        if n_cores == 1:
+            perm_scale_values = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_scale_values.append(self._perm(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+
         perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(ale_values, perm_scale_values,
@@ -542,7 +580,7 @@ class SCALE(CBMAEstimator):
                   'p': p_values,
                   'z': z_values,
                   'vthresh': vthresh_z_values}
-        self.results = MetaResult(mask=self.mask, **images)
+        self.results = MetaResult(self, mask=self.mask, **images)
 
     def _compute_ale(self, df=None, ma_maps=None):
         """
@@ -553,11 +591,13 @@ class SCALE(CBMAEstimator):
         """
         if df is not None:
             k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            ma_maps = k_est.transform(self.ids, masked=True,
+                                      **self.kernel_arguments)
+            ma_values = ma_maps
         else:
             assert ma_maps is not None
+            ma_values = apply_mask(ma_maps, self.mask)
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
             ale_values *= (1. - ma_values[i, :])

@@ -1,6 +1,7 @@
 """
 Methods for estimating thresholded cluster maps from neuroimaging contrasts
-(Contrasts) from sets of foci and optional additional information.
+(Contrasts) from sets of foci and optional additional information (e.g., sample
+size and test statistic values).
 
 NOTE: Currently imagining output from "dataset.get_coordinates" as a DataFrame
 of peak coords and sample sizes/statistics (a la Neurosynth).
@@ -9,10 +10,12 @@ from __future__ import division
 import numpy as np
 import nibabel as nib
 
+from nimare.utils import vox2mm
+from nilearn.image import resample_to_img, math_img
 from ...base import KernelEstimator
-from .utils import compute_ma, get_ale_kernel
+from .utils import compute_ma, get_ale_kernel, peaks2maps
 
-__all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel']
+__all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
 
 
 class ALEKernel(KernelEstimator):
@@ -39,10 +42,11 @@ class ALEKernel(KernelEstimator):
             formulae from Eickhoff et al. (2012). This sample size overwrites
             the Contrast-specific sample sizes in the dataset, in order to hold
             kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-
+        masked: :bool:, optional
+            Return an array instead of a niimg.
         Returns
         -------
-        imgs : :obj:`list` of :obj:`nibabel.nifti1.Nifti1Image`
+        imgs : :obj:`list` of `nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
@@ -57,13 +61,13 @@ class ALEKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
         imgs = []
         kernels = {}
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
-            ijk = data[['i', 'j', 'k']].values.astype(int)
+        for id_, data in self.coordinates.groupby('id'):
+            #ijk = data[['i', 'j', 'k']].values.astype(int)
+            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if n is not None:
                 n_subjects = n
             elif fwhm is None:
-                n_subjects = data['n'].astype(float).values[0]
+                n_subjects = data.n.astype(float).values[0]
 
             if fwhm is not None:
                 assert np.isfinite(fwhm), 'FWHM must be finite number'
@@ -86,6 +90,7 @@ class ALEKernel(KernelEstimator):
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
+
         if masked:
             imgs = np.vstack(imgs)
 
@@ -121,7 +126,7 @@ class MKDAKernel(KernelEstimator):
 
         Returns
         -------
-        imgs : :obj:`list` of :obj:`nibabel.nifti1.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
@@ -136,10 +141,9 @@ class MKDAKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in self.coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
-            for ijk in data[['i', 'j', 'k']].values:
+            for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
                 sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
@@ -189,7 +193,7 @@ class KDAKernel(KernelEstimator):
 
         Returns
         -------
-        imgs : :obj:`list` of :obj:`nibabel.nifti1.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
@@ -204,10 +208,9 @@ class KDAKernel(KernelEstimator):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in self.coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
-            for ijk in data[['i', 'j', 'k']].values:
+            for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
                 sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
@@ -224,4 +227,59 @@ class KDAKernel(KernelEstimator):
             imgs.append(img)
         if masked:
             imgs = np.vstack(imgs)
+        return imgs
+
+
+class Peaks2MapsKernel(KernelEstimator):
+    """
+    Generate peaks2maps modeled activation images from coordinates.
+    """
+    def __init__(self, coordinates, mask):
+        self.mask = mask
+        self.coordinates = coordinates
+
+    def transform(self, ids, masked=False, resample_to_mask=True):
+        """
+        Generate peaks2maps modeled activation images for each Contrast in dataset.
+
+        Parameters
+        ----------
+        ids : :obj:`list`
+            A list of Contrast IDs for which to generate modeled activation
+            images.
+        masked : :obj:`boolean`
+            Whether to mask the maps generated by peaks2maps
+
+        Returns
+        -------
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
+            A list of modeled activation images (one for each of the Contrasts
+            in the input dataset).
+        """
+        coordinates_list = []
+        for id_ in ids:
+            data = self.coordinates.loc[self.coordinates['id'] == id_]
+            mm_coords = []
+            for coord in np.vstack((data.i.values, data.j.values, data.k.values)).T:
+                mm_coords.append(vox2mm(coord, self.mask.affine))
+            coordinates_list.append(mm_coords)
+
+        imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
+
+        if resample_to_mask:
+            resampled_imgs = []
+            for img in imgs:
+                resampled_imgs.append(resample_to_img(img, self.mask))
+            imgs = resampled_imgs
+
+        if masked:
+            masked_images = []
+            for img in imgs:
+                if not resample_to_mask:
+                    mask = resample_to_img(self.mask, imgs[0], interpolation='nearest')
+                else:
+                    mask = self.mask
+                masked_images.append(math_img('map*mask', map=img, mask=mask))
+            imgs = masked_images
+
         return imgs

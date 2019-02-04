@@ -1,8 +1,9 @@
 """
 Base classes for datasets.
 """
-from six import with_metaclass
 from abc import ABCMeta, abstractmethod
+
+from six import with_metaclass
 
 from ..base import ConnMatrix, Image, CoordinateSet, Surface
 from ..utils import listify
@@ -73,8 +74,6 @@ class Contrast(object):
                 raise ValueError('All images inputs must be nimare Images.')
             elif image.type in self.images.keys():
                 self.images[image.type] = image
-
-
 
     @classmethod
     def merge(cls, contrasts):

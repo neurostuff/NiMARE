@@ -1,4 +1,1 @@
-.. _examples-index:
-
-Examples
-===================
+README

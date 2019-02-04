@@ -37,7 +37,7 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
@@ -83,7 +83,7 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
 
-    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
+    result = MetaResult('fishers', mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
                         z=z_corr_map, log_p=log_p_map)
     return result
 
@@ -96,13 +96,14 @@ class Fishers(IBMAEstimator):
     Requirements:
         - t OR z
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.results = None
 
-    def fit(self, corr='FWE', two_sided=True):
+    def fit(self, ids, corr='FWE', two_sided=True):
+        self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         result = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
         self.results = result
@@ -128,7 +129,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     inference : {'ffx', 'rfx'}, optional
         Whether to use fixed-effects inference (default) or random-effects
@@ -210,7 +211,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
         # Convert p to z, preserving signs
         z_corr_map = p_to_z(p_corr_map, tail='two') * sign
         log_p_map = -np.log10(p_corr_map)
-        result = MetaResult(mask=mask, t=t_map, p=p_corr_map, z=z_corr_map,
+        result = MetaResult('stouffers', mask=mask, t=t_map, p=p_corr_map, z=z_corr_map,
                             log_p=log_p_map)
     elif inference == 'ffx':
         if null == 'theoretical':
@@ -237,7 +238,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
             # Convert p to z, preserving signs
             z_corr_map = p_to_z(p_corr_map, tail='two') * sign
             log_p_map = -np.log10(p_corr_map)
-            result = MetaResult(mask=mask, z=z_corr_map, p=p_corr_map,
+            result = MetaResult('stouffers', mask=mask, z=z_corr_map, p=p_corr_map,
                                 log_p=log_p_map)
         else:
             raise ValueError('Only theoretical null distribution may be used '
@@ -265,17 +266,18 @@ class Stouffers(IBMAEstimator):
     Requirements:
         - z
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.inference = None
         self.null = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, inference='ffx', null='theoretical', n_iters=None,
+    def fit(self, ids, inference='ffx', null='theoretical', n_iters=None,
             corr='FWE', two_sided=True):
+        self.ids = ids
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
@@ -310,7 +312,7 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
         A 1D array of sample sizes associated with contrasts in ``z_maps``.
         Must be in same order as rows in ``z_maps``.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
@@ -354,7 +356,7 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
     sign[sign == 0] = 1
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
-    result = MetaResult(mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
+    result = MetaResult('weighted_stouffers', mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
                         z=z_corr_map, log_p=log_p_map)
     return result
 
@@ -369,13 +371,14 @@ class WeightedStouffers(IBMAEstimator):
         - z
         - n
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.results = None
 
-    def fit(self, two_sided=True):
+    def fit(self, ids, two_sided=True):
+        self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         sample_sizes = self.dataset.get(self.ids, 'n')
         result = weighted_stouffers(z_maps, sample_sizes, self.mask,
@@ -392,7 +395,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     ----------
     con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     null : {'theoretical', 'empirical'}, optional
         Whether to use a theoretical null T distribution or an empirically-
@@ -468,7 +471,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     sign[sign == 0] = 1
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
-    result = MetaResult(mask=mask, t=t_map, z=z_corr_map, p=p_corr_map,
+    result = MetaResult('rfx_glm', mask=mask, t=t_map, z=z_corr_map, p=p_corr_map,
                         log_p=log_p_map)
     return result
 
@@ -480,16 +483,17 @@ class RFX_GLM(IBMAEstimator):
     Requirements:
         - con
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.null = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, null='theoretical', n_iters=None, corr='FWE',
+    def fit(self, ids, null='theoretical', n_iters=None, corr='FWE',
             two_sided=True):
+        self.ids = ids
         self.null = null
         self.n_iters = n_iters
         con_maps = self.dataset.get(self.ids, 'con')
@@ -498,8 +502,8 @@ class RFX_GLM(IBMAEstimator):
         self.results = result
 
 
-def _fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01,
-             q=0.05, work_dir='fsl_glm', two_sided=True):
+def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
+            work_dir='fsl_glm', two_sided=True):
     assert con_maps.shape == se_maps.shape
     assert con_maps.shape[0] == sample_sizes.shape[0]
 
@@ -654,7 +658,7 @@ def _fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01,
     # Compile outputs
     out_p_map = stats.norm.sf(abs(out_z_map)) * 2
     log_p_map = -np.log10(out_p_map)
-    result = MetaResult(mask=mask, cope=out_cope_map, z=out_z_map,
+    result = MetaResult('fsl_glm', mask=mask, cope=out_cope_map, z=out_z_map,
                         thresh_z=thresh_z_map, t=out_t_map, p=out_p_map,
                         log_p=log_p_map)
     return result
@@ -676,7 +680,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         A 1D array of sample sizes associated with contrasts in ``con_maps``
         and ``var_maps``. Must be in same order as rows in ``con_maps`` and
         ``var_maps``.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     cdt : :obj:`float`, optional
         Cluster-defining p-value threshold.
@@ -693,8 +697,8 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = _fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
-                      cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
+                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
     return result
 
 
@@ -707,18 +711,19 @@ class FFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
         self.sample_sizes = None
         self.equal_var = None
 
-    def fit(self, sample_sizes=None, equal_var=True, corr='FWE',
+    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
             two_sided=True):
         """
         Perform meta-analysis given parameters.
         """
+        self.ids = ids
         self.sample_sizes = sample_sizes
         self.equal_var = equal_var
         con_maps = self.dataset.get(self.ids, 'con')
@@ -749,7 +754,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         A 1D array of sample sizes associated with contrasts in ``con_maps``
         and ``var_maps``. Must be in same order as rows in ``con_maps`` and
         ``var_maps``.
-    mask : :obj:`nibabel.nifti1.Nifti1Image`
+    mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     cdt : :obj:`float`, optional
         Cluster-defining p-value threshold.
@@ -766,8 +771,8 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         MetaResult object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = _fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
-                      cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
+                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
     return result
 
 
@@ -780,16 +785,17 @@ class MFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset, ids):
+    def __init__(self, dataset):
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = ids
+        self.ids = None
 
-    def fit(self, sample_sizes=None, equal_var=True, corr='FWE',
+    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
             two_sided=True):
         """
         Perform meta-analysis given parameters.
         """
+        self.ids = ids
         self.sample_sizes = sample_sizes
         self.equal_var = equal_var
         con_maps = self.dataset.get(self.ids, 'con')
