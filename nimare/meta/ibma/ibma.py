@@ -3,6 +3,7 @@ Image-based meta-analysis estimators
 """
 from __future__ import division
 
+import logging
 from os import mkdir
 import os.path as op
 from shutil import rmtree
@@ -17,6 +18,8 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from ...base import MetaResult, IBMAEstimator
 from ...utils import null_to_p, p_to_z
 from ...due import due, BibTeX
+
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(BibTeX("""
@@ -651,7 +654,7 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     else:
         thresh_z_map = pos_z_map
 
-    print('Cleaning up...')
+    LGR.info('Cleaning up...')
     rmtree(work_dir)
     rmtree(res.outputs.stats_dir)
 

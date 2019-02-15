@@ -3,6 +3,7 @@ Utilities
 """
 from __future__ import division
 
+import logging
 from os.path import abspath, join, dirname, sep
 
 import numpy as np
@@ -12,6 +13,8 @@ from scipy import stats
 from scipy.special import ndtri
 
 from .due import due, Doi, BibTeX
+
+LGR = logging.getLogger(__name__)
 
 
 def get_template(space='mni152_1mm', mask=None):
@@ -197,7 +200,8 @@ def tal2mni(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        print('Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).')
+        LGR.info('Input is an ambiguous 3x3 matrix.\nAssuming coords are row '
+                 'vectors (Nx3).')
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError('Input must be an Nx3 or 3xN matrix.')
@@ -251,7 +255,8 @@ def mni2tal(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        print('Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).')
+        LGR.info('Input is an ambiguous 3x3 matrix.\nAssuming coords are row '
+                 'vectors (Nx3).')
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError('Input must be an Nx3 or 3xN matrix.')
