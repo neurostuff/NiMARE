@@ -3,8 +3,7 @@ Coordinate-based meta-analysis estimators
 """
 import os
 import copy
-import warnings
-from time import time
+import logging
 import multiprocessing as mp
 from tqdm.auto import tqdm
 
@@ -17,6 +16,8 @@ from .kernel import ALEKernel
 from ...base import MetaResult, CBMAEstimator, KernelEstimator
 from ...due import due, Doi, BibTeX
 from ...utils import round2, null_to_p, p_to_z
+
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(BibTeX("""
@@ -105,9 +106,10 @@ class ALE(CBMAEstimator):
         if n_cores == -1:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
-            print('Desired number of cores ({0}) greater than number '
-                  'available ({1}). Setting to {1}.'.format(n_cores,
-                                                            mp.cpu_count()))
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
             n_cores = mp.cpu_count()
 
         k_est = self.kernel_estimator(self.coordinates, self.mask)
@@ -527,9 +529,10 @@ class SCALE(CBMAEstimator):
         if n_cores == -1:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
-            print('Desired number of cores ({0}) greater than number '
-                  'available ({1}). Setting to {1}.'.format(n_cores,
-                                                            mp.cpu_count()))
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
             n_cores = mp.cpu_count()
 
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
