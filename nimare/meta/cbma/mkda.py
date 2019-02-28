@@ -1,21 +1,23 @@
 """
 Coordinate-based meta-analysis estimators
 """
-import warnings
+import logging
 import multiprocessing as mp
 
-from tqdm.auto import tqdm
 import numpy as np
 import nibabel as nib
+from tqdm.auto import tqdm
 from scipy import ndimage, special
 from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
 from ...base import MetaResult, CBMAEstimator, KernelEstimator
-from ...utils import vox2mm, null_to_p, p_to_z
+from ...utils import null_to_p, p_to_z
 from ...stats import one_way, two_way
 from ...due import due, Doi
+
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
@@ -53,9 +55,10 @@ class MKDADensity(CBMAEstimator):
         if n_cores == -1:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
-            print('Desired number of cores ({0}) greater than number '
-                  'available ({1}). Setting to {1}.'.format(n_cores,
-                                                            mp.cpu_count()))
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
             n_cores = mp.cpu_count()
 
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
@@ -206,9 +209,10 @@ class MKDAChi2(CBMAEstimator):
         if n_cores == -1:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
-            print('Desired number of cores ({0}) greater than number '
-                  'available ({1}). Setting to {1}.'.format(n_cores,
-                                                            mp.cpu_count()))
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
             n_cores = mp.cpu_count()
 
         all_ids = self.ids + self.ids2
@@ -285,10 +289,11 @@ class MKDAChi2(CBMAEstimator):
             rand_ijk = null_ijk[rand_idx, :]
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
-            params = zip(iter_dfs, iter_ijks, range(n_iters))
+            params = zip(iter_dfs, iter_ijks)
 
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+                perm_results = list(tqdm(p.imap(self._perm, params),
+                                         total=self.n_iters))
             pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
             # pAgF_FWE
@@ -339,9 +344,7 @@ class MKDAChi2(CBMAEstimator):
         self.results = MetaResult(self, mask=self.mask, **images)
 
     def _perm(self, params):
-        iter_df, iter_ijk, iter_ = params
-        if iter_ % 500 == 0:
-            print('Now running iteration {0}'.format(iter_))
+        iter_df, iter_ijk = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
 
@@ -411,9 +414,10 @@ class KDA(CBMAEstimator):
         if n_cores == -1:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
-            print('Desired number of cores ({0}) greater than number '
-                  'available ({1}). Setting to {1}.'.format(n_cores,
-                                                            mp.cpu_count()))
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
             n_cores = mp.cpu_count()
 
         red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
@@ -432,7 +436,8 @@ class KDA(CBMAEstimator):
         params = zip(iter_ijks, iter_dfs)
 
         with mp.Pool(n_cores) as p:
-            perm_max_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+            perm_max_values = list(tqdm(p.imap(self._perm, params),
+                                        total=self.n_iters))
 
         percentile = 100 * (1 - q)
 

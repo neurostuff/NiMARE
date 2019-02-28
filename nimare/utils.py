@@ -3,7 +3,8 @@ Utilities
 """
 from __future__ import division
 
-from os.path import abspath, join, dirname, sep
+import os.path as op
+import logging
 
 import numpy as np
 import nibabel as nib
@@ -12,6 +13,8 @@ from scipy import stats
 from scipy.special import ndtri
 
 from .due import due, Doi, BibTeX
+
+LGR = logging.getLogger(__name__)
 
 
 def get_template(space='mni152_1mm', mask=None):
@@ -40,6 +43,14 @@ def get_template(space='mni152_1mm', mask=None):
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
             raise ValueError('Mask {0} not supported'.format(mask))
+    elif space == 'colin_2mm':
+        if mask is None:
+            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
+        else:
+            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
+            data = img.get_data()
+            data = (data > 0).astype(int)
+            img = nib.Nifti1Image(data, img.affine)
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img
@@ -197,7 +208,8 @@ def tal2mni(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        print('Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).')
+        LGR.info('Input is an ambiguous 3x3 matrix.\nAssuming coords are row '
+                 'vectors (Nx3).')
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError('Input must be an Nx3 or 3xN matrix.')
@@ -251,7 +263,8 @@ def mni2tal(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        print('Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).')
+        LGR.info('Input is an ambiguous 3x3 matrix.\nAssuming coords are row '
+                 'vectors (Nx3).')
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError('Input must be an Nx3 or 3xN matrix.')
@@ -285,4 +298,4 @@ def get_resource_path():
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    return abspath(join(dirname(__file__), 'resources') + sep)
+    return op.abspath(op.join(op.dirname(__file__), 'resources') + op.sep)
