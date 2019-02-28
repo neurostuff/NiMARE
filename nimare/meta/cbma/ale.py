@@ -101,6 +101,7 @@ class ALE(CBMAEstimator):
         self.clust_thresh = q
         self.corr = corr
         self.n_iters = n_iters
+        self.null = {}
 
         if n_cores == -1:
             n_cores = mp.cpu_count()
@@ -293,7 +294,7 @@ class ALE(CBMAEstimator):
             with mp.Pool(n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
-        perm_max_values, perm_clust_sizes = zip(*perm_results)
+        self.null[prefix+'vfwe'], self.null[prefix+'cfwe'] = zip(*perm_results)
 
         percentile = 100 * (1 - self.clust_thresh)
 
@@ -302,8 +303,7 @@ class ALE(CBMAEstimator):
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
         labeled_matrix = ndimage.measurements.label(vthresh_z_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_sizes = clust_sizes
-        clust_size_thresh = np.percentile(perm_clust_sizes, percentile)
+        clust_size_thresh = np.percentile(self.null[prefix+'cfwe'], percentile)
         z_map = unmask(z_values, self.mask).get_data()
         cfwe_map = np.zeros(self.mask.shape)
         for i, clust_size in enumerate(clust_sizes):
@@ -318,8 +318,8 @@ class ALE(CBMAEstimator):
         # Determine ALE values in [1 - clust_thresh]th percentile (e.g. 95th)
         p_fwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
-            p_fwe_values[voxel] = null_to_p(ale_values[voxel], perm_max_values,
-                                            tail='upper')
+            p_fwe_values[voxel] = null_to_p(
+                ale_values[voxel], self.null[prefix+'vfwe'], tail='upper')
 
         z_fwe_values = p_to_z(p_fwe_values, tail='one')
 

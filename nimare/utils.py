@@ -3,8 +3,8 @@ Utilities
 """
 from __future__ import division
 
+import os.path as op
 import logging
-from os.path import abspath, join, dirname, sep
 
 import numpy as np
 import nibabel as nib
@@ -43,6 +43,14 @@ def get_template(space='mni152_1mm', mask=None):
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
             raise ValueError('Mask {0} not supported'.format(mask))
+    elif space == 'colin_2mm':
+        if mask is None:
+            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
+        else:
+            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
+            data = img.get_data()
+            data = (data > 0).astype(int)
+            img = nib.Nifti1Image(data, img.affine)
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img
@@ -290,4 +298,4 @@ def get_resource_path():
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    return abspath(join(dirname(__file__), 'resources') + sep)
+    return op.abspath(op.join(op.dirname(__file__), 'resources') + op.sep)
