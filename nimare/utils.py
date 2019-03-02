@@ -47,10 +47,7 @@ def get_template(space='mni152_1mm', mask=None):
         if mask is None:
             img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
         else:
-            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
-            data = img.get_data()
-            data = (data > 0).astype(int)
-            img = nib.Nifti1Image(data, img.affine)
+            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2_brainmask.nii.gz'))
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img

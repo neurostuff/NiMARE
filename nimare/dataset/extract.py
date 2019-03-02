@@ -166,6 +166,20 @@ def download_combined_database(out_dir, overwrite=False):
 
 
 def convert_sleuth_to_dict(text_file):
+    """
+    Convert Sleuth text file to a dictionary.
+
+    Parameters
+    ----------
+    text_file : :obj:`str`
+        Path to Sleuth-format text file.
+
+    Outputs
+    -------
+    dict_ : :obj:`dict`
+        NiMARE-organized dictionary containing experiment information from text
+        file.
+    """
     filename = op.basename(text_file)
     study_name, _ = op.splitext(filename)
     with open(text_file, 'r') as file_object:
@@ -232,6 +246,13 @@ def convert_sleuth_to_dict(text_file):
 def convert_sleuth(text_file, out_file):
     """
     Convert Sleuth output text file into json.
+
+    Parameters
+    ----------
+    text_file : :obj:`str`
+        Path to Sleuth-format text file.
+    out_file : :obj:`str`
+        Path to output json file.
     """
     dict_ = convert_sleuth_to_dict(text_file)
 
@@ -240,5 +261,19 @@ def convert_sleuth(text_file, out_file):
 
 
 def convert_sleuth_to_database(text_file):
+    """
+    Convert Sleuth output text file into dictionary and create NiMARE Database
+    with dictionary.
+
+    Parameters
+    ----------
+    text_file : :obj:`str`
+        Path to Sleuth-format text file.
+
+    Outputs
+    -------
+    :obj:`nimare.dataset.Database`
+        Database object containing experiment information from text_file.
+    """
     dict_ = convert_sleuth_to_dict(text_file)
     return Database(dict_)
