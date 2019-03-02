@@ -135,10 +135,6 @@ class ALE(CBMAEstimator):
     def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
-        print(image1.shape)
-        print(image2.shape)
-        print(np.sum(grp1_voxel))
-        print(np.sum(grp2_voxel))
         n_grp1 = len(ids)
         img1 = unmask(image1, self.mask)
 
