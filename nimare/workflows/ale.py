@@ -35,10 +35,15 @@ CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 @click.option('--c_thr', default=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
               show_default=True,
               help="Cluster size corrected p-value threshold.")
+@click.option('--n_cores', default=-1,
+              show_default=True,
+              help="Number of processes to use for meta-analysis. If -1, use "
+                   "all available cores.")
 def ale_sleuth_inference(sleuth_file, output_dir=None, prefix=None,
                          n_iters=N_ITERS_DEFAULT,
                          v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-                         c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT):
+                         c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
+                         n_cores=-1):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """
@@ -92,12 +97,12 @@ version of the realistic digital brain phantom. NeuroImage, 32(1), 138–45.
 http://www.ncbi.nlm.nih.gov/pubmed/16750398
     """
 
-    ale = ALE(dset, ids=dset.ids)
+    ale = ALE(dset)
 
     click.echo("Estimating the null distribution...")
     ale.fit(n_iters=n_iters, ids=dset.ids,
-            voxel_thresh=v_thr,
-            q=c_thr, corr='FWE')
+            voxel_thresh=v_thr, q=c_thr, corr='FWE',
+            n_cores=n_cores)
 
     min_clust = np.percentile(ale.null['cfwe'], 100 * (1 - c_thr))
     min_clust *= np.prod(dset.mask.header.get_zooms())
