@@ -43,14 +43,13 @@ def get_template(space='mni152_1mm', mask=None):
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
             raise ValueError('Mask {0} not supported'.format(mask))
-    elif space == 'colin_2mm':
+    elif space == 'ale_2mm':
         if mask is None:
-            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
+            img = datasets.load_mni152_template()
         else:
-            img = nib.load(op.join(get_resource_path(), 'templates/Colin27_T1_seg_MNI_2x2x2.nii.gz'))
-            data = img.get_data()
-            data = (data > 0).astype(int)
-            img = nib.Nifti1Image(data, img.affine)
+            # Not the same as the nilearn brain mask, but should correspond to
+            # the default "more conservative" MNI152 mask in GingerALE.
+            img = nib.load(op.join(get_resource_path(), 'templates/MNI152_2x2x2_brainmask.nii.gz'))
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img

@@ -35,15 +35,20 @@ CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 @click.option('--c_thr', default=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
               show_default=True,
               help="Cluster size corrected p-value threshold.")
+@click.option('--n_cores', default=-1,
+              show_default=True,
+              help="Number of processes to use for meta-analysis. If -1, use "
+                   "all available cores.")
 def ale_sleuth_inference(sleuth_file, output_dir=None, prefix=None,
                          n_iters=N_ITERS_DEFAULT,
                          v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-                         c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT):
+                         c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
+                         n_cores=-1):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """
     click.echo("Loading coordinates...")
-    dset = convert_sleuth_to_database(sleuth_file).get_dataset(target='colin_2mm')
+    dset = convert_sleuth_to_database(sleuth_file).get_dataset(target='ale_2mm')
 
     n_subs = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
 
@@ -54,8 +59,8 @@ meta-analysis was performed using NiMARE. The input dataset included {n_foci}
 foci from {n_subs} participants across {n_exps} studies/experiments.
 
 Foci were convolved with Gaussian kernels determined by sample size,
-implemented on the Colin27 MNI template (Holmes et al., 1998; Aubert-Broche,
-Evans, & Collins, 2006) at 2x2x2mm resolution.
+implemented on the MNI 152 template (Fonov et al., 2009; Fonov et al., 2011)
+at 2x2x2mm resolution.
 
 -> If the cluster-level FWE-corrected results were used, include the following:
 A cluster-forming threshold of p < {unc} was used, along with a cluster-extent
@@ -83,21 +88,21 @@ Activation likelihood estimation meta-analysis revisited. NeuroImage,
 & Fox, P. (2012). Minimizing within-experiment and within-group effects in
 Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
-- Holmes, C. J., Hoge, R., Collins, D. L., Woods, R., Toga, A. W., & Evans, A.
-C. (1998). Enhancement of MR images using registration for signal averaging.
-J Comput Assist Tomogr, 22(2), 324–33.
-http://dx.doi.org/10.1097/00004728-199803000-00032
-- Aubert-Broche, B., Evans, A. C., & Collins, D. L. (2006). A new improved
-version of the realistic digital brain phantom. NeuroImage, 32(1), 138–45.
-http://www.ncbi.nlm.nih.gov/pubmed/16750398
+- Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
+Collins, D. L., & Brain Development Cooperative Group. (2011).
+Unbiased average age-appropriate atlases for pediatric studies.
+Neuroimage, 54(1), 313-327.
+- Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
+(2009). Unbiased nonlinear average age-appropriate brain templates from birth
+to adulthood. NeuroImage, (47), S102.
     """
 
-    ale = ALE(dset, ids=dset.ids)
+    ale = ALE(dset)
 
     click.echo("Estimating the null distribution...")
     ale.fit(n_iters=n_iters, ids=dset.ids,
-            voxel_thresh=v_thr,
-            q=c_thr, corr='FWE')
+            voxel_thresh=v_thr, q=c_thr, corr='FWE',
+            n_cores=n_cores)
 
     min_clust = np.percentile(ale.null['cfwe'], 100 * (1 - c_thr))
     min_clust *= np.prod(dset.mask.header.get_zooms())

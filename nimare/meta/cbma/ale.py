@@ -160,6 +160,8 @@ class ALE(CBMAEstimator):
 
         # A > B contrast
         grp1_p_arr = np.ones(np.sum(grp1_voxel))
+        grp1_z_map = np.zeros(image1.shape[0])
+        grp1_z_map[:] = np.nan
         if np.sum(grp1_voxel) > 0:
             diff_ale_values = grp1_ale_values - grp2_ale_values
             diff_ale_values = diff_ale_values[grp1_voxel]
@@ -188,12 +190,14 @@ class ALE(CBMAEstimator):
                                               tail='upper')
             grp1_z_arr = p_to_z(grp1_p_arr, tail='one')
             # Unmask
-            grp1_z_map = np.zeros(grp1_voxel.shape[0])
+            grp1_z_map = np.zeros(image1.shape[0])
             grp1_z_map[:] = np.nan
             grp1_z_map[grp1_voxel] = grp1_z_arr
 
         # B > A contrast
         grp2_p_arr = np.ones(np.sum(grp2_voxel))
+        grp2_z_map = np.zeros(image2.shape[0])
+        grp2_z_map[:] = np.nan
         if np.sum(grp2_voxel) > 0:
             # Get MA values for second sample only for voxels significant in
             # second sample's meta-analysis.
@@ -229,7 +233,7 @@ class ALE(CBMAEstimator):
             grp2_z_map[grp2_voxel] = grp2_z_arr
 
         # Fill in output map
-        diff_z_map = np.zeros(grp1_voxel.shape[0])
+        diff_z_map = np.zeros(image1.shape[0])
         diff_z_map[grp2_voxel] = -1 * grp2_z_map[grp2_voxel]
         # could overwrite some values. not a problem.
         diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
