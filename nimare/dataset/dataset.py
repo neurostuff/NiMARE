@@ -156,7 +156,7 @@ class Dataset(object):
         df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
 
         # Now to apply transformations!
-        if 'mni' in self.space.lower() or 'colin' in self.space.lower():
+        if 'mni' in self.space.lower() or 'ale' in self.space.lower():
             transform = {'TAL': tal2mni,
                          }
         elif 'tal' in self.space.lower():
