@@ -22,6 +22,7 @@ def one_way(data, n):
     chi2 = t_mss + nt_mss
     return chi2
 
+
 def two_way(cells):
     """ Two-way chi-square test of independence.
     Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
