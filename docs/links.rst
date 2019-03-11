@@ -4,7 +4,7 @@
 
 .. _Nilearn: https://nilearn.github.io/
 
-.. _Neuro Stars: https://neurostars.org/latest
+.. _NeuroStars: https://neurostars.org/latest
 
 .. _NeuroSynth: http://neurosynth.org/
 
@@ -12,7 +12,7 @@
 
 .. _OpenNeuro: https://openneuro.org
 
-.. _Brain Spell: http://brainspell.org/
+.. _BrainSpell: http://brainspell.org/
 
 .. _Cognitive Atlas: http://www.cognitiveatlas.org/
 
@@ -25,3 +25,5 @@
 .. _command line interface: cli.html
 
 .. _Cognitive Paradigm Ontology: http://www.cogpo.org/
+
+.. _Sleuth: http://www.brainmap.org/software.html#Sleuth
