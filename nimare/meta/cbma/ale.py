@@ -83,15 +83,26 @@ class ALE(CBMAEstimator):
     def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
             n_iters=10000, n_cores=-1):
         """
+        Run an ALE meta-analysis on a subset of the dataset.
 
         Parameters
         ----------
         ids : array_like
             List of IDs from dataset to analyze.
         ids2 : array_like or None, optional
-            If not None, ids2 is used to identify a second sample for a subtraction
-            analysis. Default is None.
-        n_cores : int
+            If not None, ids2 is used to identify a second sample for a
+            subtraction analysis. Default is None.
+        voxel_thresh : float, optional
+            Uncorrected voxel-level threshold. Default: 0.001
+        q : float, optional
+            Cluster-level threshold.
+        corr : {'FWE'}, optional
+            Type of multiple comparisons correction to employ. Only currently
+            supported option is FWE, which derives both cluster- and voxel-
+            level corrected results.
+        n_iters : int, optional
+            Number of iterations for correction. Default: 10000
+        n_cores : int, optional
             Number of processes to use for meta-analysis. If -1, use all
             available cores. Default: -1
         """
@@ -133,6 +144,26 @@ class ALE(CBMAEstimator):
         self.results = MetaResult(self, mask=self.mask, **images)
 
     def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
+        """
+        Run a subtraction analysis comparing two groups of experiments within
+        the dataset.
+
+        Parameters
+        ----------
+        ids : array_like
+            List of IDs from dataset to analyze as group 1.
+        ids2 : array_like or None, optional
+            List of IDs from dataset to analyze as group 2.
+        image1 : array_like
+            Cluster-level FWE-corrected z-statistic map for group 1, masked to
+            1D array.
+        image2 : array_like
+            Cluster-level FWE-corrected z-statistic map for group 2, masked to
+            1D array.
+        ma_maps : (E x V) array_like
+            Experiments (ids + ids2) by voxels array of modeled activation
+            values.
+        """
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
         n_grp1 = len(ids)
@@ -470,6 +501,21 @@ class ALE(CBMAEstimator):
 class SCALE(CBMAEstimator):
     """
     Specific coactivation likelihood estimation
+
+    Parameters
+    ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        Dataset to analyze.
+    ijk : :obj:`str` or (N x 3) array_like
+        Tab-delimited file of coordinates from database or numpy array with ijk
+        coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
+        are the three columnns.
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        here, with the prefix '\kernel__' in the variable name.
     """
     def __init__(self, dataset, ijk=None, kernel_estimator=ALEKernel,
                  **kwargs):
@@ -499,25 +545,15 @@ class SCALE(CBMAEstimator):
 
         Parameters
         ----------
-        dataset : ale.Dataset
-            Dataset to analyze.
-        voxel_thresh : float
-            Uncorrected voxel-level threshold.
-        n_iters : int
-            Number of iterations for correction. Default 2500
-        verbose : bool
-            If True, prints out status updates.
-        prefix : str
-            String prepended to default output filenames. May include path.
-        database_file : str
-            Tab-delimited file of coordinates from database. Voxels are rows
-            and i, j, k (meaning matrix-space) values are the three columnns.
-        n_cores : int
+        ids : array_like
+            List of IDs from dataset to analyze.
+        voxel_thresh : float, optional
+            Uncorrected voxel-level threshold. Default: 0.001
+        n_iters : int, optional
+            Number of iterations for correction. Default: 10000
+        n_cores : int, optional
             Number of processes to use for meta-analysis. If -1, use all
             available cores. Default: -1
-
-        Examples
-        --------
 
         References
         ----------

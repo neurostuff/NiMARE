@@ -254,7 +254,17 @@ def convert_sleuth(text_file, out_file):
     out_file : :obj:`str`
         Path to output json file.
     """
-    dict_ = convert_sleuth_to_dict(text_file)
+    if isinstance(text_file, str):
+        text_files = [text_file]
+    elif isinstance(text_file, list):
+        text_files = text_file
+    else:
+        raise ValueError('Unsupported type for parameter "text_file": '
+                         '{0}'.format(type(text_file)))
+    dict_ = {}
+    for text_file in text_files:
+        temp_dict = convert_sleuth_to_dict(text_file)
+        dict_ = {**dict_, **temp_dict}
 
     with open(out_file, 'w') as fo:
         json.dump(dict_, fo, indent=4, sort_keys=True)
@@ -275,5 +285,15 @@ def convert_sleuth_to_database(text_file):
     :obj:`nimare.dataset.Database`
         Database object containing experiment information from text_file.
     """
-    dict_ = convert_sleuth_to_dict(text_file)
+    if isinstance(text_file, str):
+        text_files = [text_file]
+    elif isinstance(text_file, list):
+        text_files = text_file
+    else:
+        raise ValueError('Unsupported type for parameter "text_file": '
+                         '{0}'.format(type(text_file)))
+    dict_ = {}
+    for text_file in text_files:
+        temp_dict = convert_sleuth_to_dict(text_file)
+        dict_ = {**dict_, **temp_dict}
     return Database(dict_)
