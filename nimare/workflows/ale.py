@@ -154,8 +154,8 @@ distribution of ALE values, in which the locations of coordinates were randomly
 drawn from a gray matter template and the maximum ALE value was recorded.
 
 Following dataset-specific ALE meta-analyses, a subtraction analysis was
-performed to compare the two datasets according to the procedure from Eickhoff
-et al. (2011). {n_iters} iterations were performed.
+performed to compare the two datasets according to the procedure from Laird
+et al. (2005). {n_iters} iterations were performed.
 
 References
 ----------
@@ -176,9 +176,10 @@ Neuroimage, 54(1), 313-327.
 - Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
 (2009). Unbiased nonlinear average age-appropriate brain templates from birth
 to adulthood. NeuroImage, (47), S102.
-- Eickhoff, S. B., Bzdok, D., Laird, A. R., Roski, C., Caspers, S., Zilles, K.,
-& Fox, P. T. (2011). Co-activation patterns distinguish cortical modules, their
-connectivity and functional differentiation. Neuroimage, 57(3), 938-949.
+- Laird, A. R., Fox, P. M., Price, C. J., Glahn, D. C., Uecker, A. M.,
+Lancaster, J. L., ... & Fox, P. T. (2005). ALE meta‐analysis: Controlling the
+false discovery rate and performing statistical contrasts. Human brain mapping,
+25(1), 155-164.
         """
 
         ale = ALE(dset_combined)
@@ -207,7 +208,7 @@ connectivity and functional differentiation. Neuroimage, 57(3), 938-949.
             min_clust2=min_clust2)
 
     if output_dir is None:
-        output_dir = os.path.dirname(sleuth_file)
+        output_dir = os.path.abspath(os.path.dirname(sleuth_file))
     else:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
