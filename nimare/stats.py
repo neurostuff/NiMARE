@@ -5,7 +5,7 @@ import numpy as np
 from scipy import stats
 from scipy.special import ndtri
 
-from ..due import due, BibTeX, Doi
+from .due import due, BibTeX, Doi
 
 
 def one_way(data, n):

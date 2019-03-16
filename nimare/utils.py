@@ -10,7 +10,7 @@ import numpy as np
 import nibabel as nib
 from nilearn import datasets
 
-from ..due import due, Doi, BibTeX
+from .due import due, Doi, BibTeX
 
 LGR = logging.getLogger(__name__)
 
@@ -209,4 +209,4 @@ def get_resource_path():
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    return op.abspath(op.join(op.dirname(op.dirname(__file__)), 'resources') + op.sep)
+    return op.abspath(op.join(op.dirname(__file__), 'resources') + op.sep)

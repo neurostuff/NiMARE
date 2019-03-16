@@ -10,7 +10,7 @@ import subprocess
 import pandas as pd
 
 from ...base import AnnotationModel
-from ...utils.utils import get_resource_path
+from ...utils import get_resource_path
 from ...due import due, BibTeX, Doi
 
 LGR = logging.getLogger(__name__)

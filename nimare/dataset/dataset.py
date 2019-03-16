@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from ..utils.utils import tal2mni, mni2tal, mm2vox, get_template
+from ..utils import tal2mni, mni2tal, mm2vox, get_template
 
 
 class Database(object):

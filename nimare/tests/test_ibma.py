@@ -11,6 +11,7 @@ from nilearn.masking import apply_mask
 
 import nimare
 from nimare.meta import ibma
+from nimare.stats import t_to_z
 from nimare.tests.utils import get_test_data_path, download_nidm_pain
 
 
@@ -110,7 +111,7 @@ def get_data(download_data):
     t_files, t_ns = get_files(pytest.dset_dict, ['t!z', 'n'], download_data)
     t_imgs = [nib.load(op.join(download_data, f)) for f in t_files]
     t_data_list = [apply_mask(t_img, pytest.mask_img) for t_img in t_imgs]
-    tz_data_list = [nimare.utils.stats.t_to_z(t_data, t_ns[i]-1) for i, t_data
+    tz_data_list = [t_to_z(t_data, t_ns[i]-1) for i, t_data
                     in enumerate(t_data_list)]
     tz_data = np.vstack(tz_data_list)
 

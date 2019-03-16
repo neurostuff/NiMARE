@@ -13,7 +13,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
 from ...base import MetaResult, CBMAEstimator, KernelTransformer
-from ...utils.stats import null_to_p, p_to_z, one_way, two_way
+from ...stats import null_to_p, p_to_z, one_way, two_way
 from ...due import due, Doi
 
 LGR = logging.getLogger(__name__)

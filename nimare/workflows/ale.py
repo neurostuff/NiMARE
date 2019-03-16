@@ -8,7 +8,7 @@ from shutil import copyfile
 import click
 import numpy as np
 
-from ..utils.io import convert_sleuth_to_database
+from ..io import convert_sleuth_to_database
 from ..meta.cbma import ALE
 
 N_ITERS_DEFAULT = 10000

@@ -9,7 +9,7 @@ from glob import glob
 
 import requests
 
-from nimare.utils.utils import get_resource_path
+from nimare.utils import get_resource_path
 
 
 def get_test_data_path():

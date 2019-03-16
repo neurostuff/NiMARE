@@ -13,7 +13,7 @@ import nibabel as nib
 from nilearn.image import resample_to_img, math_img
 from .utils import compute_ma, get_ale_kernel, peaks2maps
 from ...base.meta import KernelTransformer
-from ...utils.utils import vox2mm
+from ...utils import vox2mm
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
 

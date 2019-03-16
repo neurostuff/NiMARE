@@ -9,7 +9,7 @@ import click
 import numpy as np
 
 from ..dataset import Database
-from ..utils.io import convert_sleuth_to_database
+from ..io import convert_sleuth_to_database
 from ..meta.cbma.ale import SCALE
 
 

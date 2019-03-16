@@ -7,7 +7,7 @@ import pandas as pd
 
 import nimare
 from nimare.meta.cbma import ale
-from nimare.utils.utils import get_template, mm2vox
+from nimare.utils import get_template, mm2vox
 
 
 # Fixtures used in the rest of the tests

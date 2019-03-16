@@ -3,7 +3,7 @@ import pathlib
 import click
 from nilearn.masking import apply_mask
 
-from ..utils.utils import get_template
+from ..utils import get_template
 from ..meta.ibma import rfx_glm
 
 N_ITERS_DEFAULT = 10000

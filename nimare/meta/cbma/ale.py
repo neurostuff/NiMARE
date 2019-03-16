@@ -15,8 +15,8 @@ from nilearn.masking import apply_mask, unmask
 from .kernel import ALEKernel
 from ...base import MetaResult, CBMAEstimator, KernelTransformer
 from ...due import due, Doi, BibTeX
-from ...utils.stats import null_to_p, p_to_z
-from ...utils.utils import round2
+from ...stats import null_to_p, p_to_z
+from ...utils import round2
 
 LGR = logging.getLogger(__name__)
 

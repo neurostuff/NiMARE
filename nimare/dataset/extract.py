@@ -14,7 +14,7 @@ import numpy as np
 from pyneurovault import api
 
 from nimare.dataset import Database
-from ..utils.utils import get_resource_path, tal2mni
+from ..utils import get_resource_path, tal2mni
 
 
 __all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource',

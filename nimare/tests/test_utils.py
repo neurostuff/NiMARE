@@ -7,7 +7,7 @@ import math
 import numpy as np
 import nibabel as nib
 
-from nimare.utils import stats, utils
+from nimare import stats, utils
 
 
 def test_null_to_p():
