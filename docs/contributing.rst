@@ -1,3 +1,5 @@
+.. include:: links.rst
+
 Contributing to NiMARE
 ======================
 
@@ -200,14 +202,12 @@ Release Process
 .. _`guide for creating a release on GitHub`: https://help.github.com/articles/creating-releases/
 .. _`Release-drafter`: https://github.com/apps/release-drafter
 .. _here: https://guides.github.com/activities/citable-code/
-=======
+
 Getting Involved
-================
+----------------
 
 If you find a bug or would like to add or improve features of NiMARE check out our `GitHub repository`_.
 
 .. _GitHub repository: https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md
 
-If you have questions, or need help with using NiMARE check out `Neuro Stars`_.
-
-.. _Neuro Stars: https://neurostars.org/latest
+If you have questions, or need help with using NiMARE check out `NeuroStars`_.
