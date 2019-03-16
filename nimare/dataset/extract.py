@@ -14,11 +14,11 @@ import numpy as np
 from pyneurovault import api
 
 from nimare.dataset import Database
-from ..utils import get_resource_path, tal2mni
+from ..utils.utils import get_resource_path, tal2mni
 
 
-__all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource', 'BrainSpellDataSource',
-           'convert_sleuth', 'convert_sleuth_to_database', 'convert_sleuth_to_dict']
+__all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource',
+           'BrainSpellDataSource']
 
 
 class DataSource(with_metaclass(ABCMeta)):

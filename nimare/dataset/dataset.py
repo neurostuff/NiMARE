@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from ..utils import tal2mni, mni2tal, mm2vox, get_template
+from ..utils.utils import tal2mni, mni2tal, mm2vox, get_template
 
 
 class Database(object):
@@ -22,7 +22,8 @@ class Database(object):
     Parameters
     ----------
     source : :obj:`str`
-        JSON file containing dictionary with database information or the dict() object
+        JSON file containing dictionary with database information or the dict()
+        object
     """
     def __init__(self, source):
         if isinstance(source, str):

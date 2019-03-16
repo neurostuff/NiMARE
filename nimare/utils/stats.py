@@ -3,6 +3,8 @@ import warnings
 
 import numpy as np
 
+from ..due import due, BibTeX, Doi
+
 
 def one_way(data, n):
     """ One-way chi-square test of independence.
@@ -63,6 +65,92 @@ def pearson(x, y):
     temp = np.dot(datam[1:], datam[0].T)
     rs = temp / (datass[1:] * datass[0])
     return rs
+
+
+def null_to_p(test_value, null_array, tail='two'):
+    """Return two-sided p-value for test value against null array.
+    """
+    if tail == 'two':
+        p_value = (50 - np.abs(stats.percentileofscore(null_array, test_value) - 50.)) * 2. / 100.
+    elif tail == 'upper':
+        p_value = 1 - (stats.percentileofscore(null_array, test_value) / 100.)
+    elif tail == 'lower':
+        p_value = stats.percentileofscore(null_array, test_value) / 100.
+    else:
+        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
+    return p_value
+
+
+def p_to_z(p, tail='two'):
+    """Convert p-values to z-values.
+    """
+    eps = np.spacing(1)
+    p = np.array(p)
+    p[p < eps] = eps
+    if tail == 'two':
+        z = ndtri(1 - (p / 2))
+        z = np.array(z)
+    elif tail == 'one':
+        z = ndtri(1 - p)
+        z = np.array(z)
+        z[z < 0] = 0
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    if z.shape == ():
+        z = z[()]
+    return z
+
+
+@due.dcite(BibTeX("""
+           @article{hughett2007accurate,
+             title={Accurate Computation of the F-to-z and t-to-z Transforms
+                    for Large Arguments},
+             author={Hughett, Paul and others},
+             journal={Journal of Statistical Software},
+             volume={23},
+             number={1},
+             pages={1--5},
+             year={2007},
+             publisher={Foundation for Open Access Statistics}
+           }
+           """),
+           description='Introduces T-to-Z transform.')
+@due.dcite(Doi('10.5281/zenodo.32508'),
+           description='Python implementation of T-to-Z transform.')
+def t_to_z(t_values, dof):
+    """
+    From Vanessa Sochat's TtoZ package.
+    """
+    # Select just the nonzero voxels
+    nonzero = t_values[t_values != 0]
+
+    # We will store our results here
+    z_values = np.zeros(len(nonzero))
+
+    # Select values less than or == 0, and greater than zero
+    c = np.zeros(len(nonzero))
+    k1 = (nonzero <= c)
+    k2 = (nonzero > c)
+
+    # Subset the data into two sets
+    t1 = nonzero[k1]
+    t2 = nonzero[k2]
+
+    # Calculate p values for <=0
+    p_values_t1 = stats.t.cdf(t1, df=dof)
+    z_values_t1 = stats.norm.ppf(p_values_t1)
+
+    # Calculate p values for > 0
+    p_values_t2 = stats.t.cdf(-t2, df=dof)
+    z_values_t2 = -stats.norm.ppf(p_values_t2)
+    z_values[k1] = z_values_t1
+    z_values[k2] = z_values_t2
+
+    # Write new image to file
+    out = np.zeros(t_values.shape)
+    out[t_values != 0] = z_values
+    return out
 
 
 def fdr(p, q=.05):

@@ -5,8 +5,8 @@ from abc import ABCMeta, abstractmethod
 
 from six import with_metaclass
 
-from ..base import ConnMatrix, Image, CoordinateSet, Surface
-from ..utils import listify
+from .inputs import ConnMatrix, Image, CoordinateSet, Surface
+from ..utils.utils import listify
 
 
 class Study(object):

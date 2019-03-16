@@ -6,7 +6,7 @@ from nilearn.masking import apply_mask
 
 from ..meta.ibma import rfx_glm
 from ..meta.cbma import Peaks2MapsKernel
-from ..dataset.extract import convert_sleuth_to_database
+from ..utils.io import convert_sleuth_to_database
 
 n_iters_default = 10000
 

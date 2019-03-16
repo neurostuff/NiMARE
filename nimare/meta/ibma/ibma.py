@@ -16,7 +16,7 @@ from nilearn.masking import unmask, apply_mask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from ...base import MetaResult, IBMAEstimator
-from ...utils import null_to_p, p_to_z
+from ...utils.stats import null_to_p, p_to_z
 from ...due import due, BibTeX
 
 LGR = logging.getLogger(__name__)

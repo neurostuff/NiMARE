@@ -9,12 +9,8 @@ from sklearn.metrics import silhouette_score
 
 from ..due import due, Doi
 from ..meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
-from ..dataset.extract import convert_sleuth_to_database
-from ..utils import get_template
-
-#from nimare.dataset.extract import convert_sleuth_to_database
-#from nimare.meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
-#from nimare.due import due, Doi
+from ..utils.io import convert_sleuth_to_database
+from ..utils.utils import get_template
 
 
 @click.command(name='metacluster', short_help='clusters experiments based on similarity'

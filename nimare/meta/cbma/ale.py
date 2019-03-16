@@ -13,9 +13,10 @@ from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel
-from ...base import MetaResult, CBMAEstimator, KernelEstimator
+from ...base import MetaResult, CBMAEstimator, KernelTransformer
 from ...due import due, Doi, BibTeX
-from ...utils import round2, null_to_p, p_to_z
+from ...utils.stats import null_to_p, p_to_z
+from ...utils.utils import round2
 
 LGR = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class ALE(CBMAEstimator):
     ----------
     dataset : :obj:`nimare.dataset.Dataset`
         Dataset object to analyze.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`, optional
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs
@@ -63,9 +64,9 @@ class ALE(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelEstimator):
+        if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
-                             'KernelEstimator')
+                             'KernelTransformer')
 
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
@@ -510,7 +511,7 @@ class SCALE(CBMAEstimator):
         Tab-delimited file of coordinates from database or numpy array with ijk
         coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
         are the three columnns.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`, optional
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs
@@ -523,9 +524,9 @@ class SCALE(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelEstimator):
+        if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
-                             'KernelEstimator')
+                             'KernelTransformer')
 
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
