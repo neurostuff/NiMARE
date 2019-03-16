@@ -48,7 +48,14 @@ def two_way(cells):
 
 
 def pearson(x, y):
-    """ Correlates row vector x with each row vector in 2D array y. """
+    """
+    Correlates row vector x with each row vector in 2D array y.
+
+    Parameters
+    ----------
+    x : (1, N) array_like
+    y : (M, N) array_like
+    """
     data = np.vstack((x, y))
     ms = data.mean(axis=1)[(slice(None, None, None), None)]
     datam = data - ms
