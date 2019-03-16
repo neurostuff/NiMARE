@@ -1,13 +1,13 @@
 """
-Multiple comparisons correction
+Meta-analysis diagnostics
 """
 import warnings
 
-from .fdr import FDRCorrector
+from .base import Diagnostic
 
 
 __all__ = [
-    'FDRCorrector'
+    'Diagnostic'
 ]
 
 warnings.simplefilter('default')
