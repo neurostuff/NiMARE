@@ -21,7 +21,7 @@ class BHICP(CBMAEstimator):
     def __init__(self, dataset):
         self.dataset = dataset
 
-    def fit(self, sample):
+    def predict(self, sample):
         pass
 
 
@@ -47,7 +47,7 @@ class HPGRF(CBMAEstimator):
     def __init__(self, dataset):
         self.dataset = dataset
 
-    def fit(self, sample):
+    def predict(self, sample):
         pass
 
 
@@ -61,7 +61,7 @@ class SBLFR(CBMAEstimator):
         self.dataset = dataset
         self.ids = ids
 
-    def fit(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
+    def predict(self, voxel_thresh=0.001, q=0.05, corr='FWE', n_iters=10000,
             n_cores=4):
         """
         """
@@ -77,5 +77,5 @@ class SBR(CBMAEstimator):
     def __init__(self, dataset):
         self.dataset = dataset
 
-    def fit(self, sample):
+    def predict(self, sample):
         pass

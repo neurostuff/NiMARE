@@ -46,8 +46,8 @@ class MAMP(Parcellator):
         self.solutions = None
         self.metrics = None
 
-    def fit(self, target_mask, n_parcels=2, kernel_estimator=ALEKernel,
-            **kwargs):
+    def predict(self, target_mask, n_parcels=2, kernel_estimator=ALEKernel,
+                **kwargs):
         """
         Run MAMP parcellation.
 

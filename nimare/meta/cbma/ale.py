@@ -81,8 +81,8 @@ class ALE(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
-            n_iters=10000, n_cores=-1):
+    def predict(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
+                n_iters=10000, n_cores=-1):
         """
         Run an ALE meta-analysis on a subset of the dataset.
 
@@ -539,7 +539,7 @@ class SCALE(CBMAEstimator):
         self.voxel_thresh = None
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
+    def predict(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """
         Perform specific coactivation likelihood estimation[1]_ meta-analysis
         on dataset.

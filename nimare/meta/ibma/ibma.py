@@ -105,7 +105,7 @@ class Fishers(IBMAEstimator):
         self.ids = None
         self.results = None
 
-    def fit(self, ids, corr='FWE', two_sided=True):
+    def predict(self, ids, corr='FWE', two_sided=True):
         self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         result = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
@@ -278,8 +278,8 @@ class Stouffers(IBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, inference='ffx', null='theoretical', n_iters=None,
-            corr='FWE', two_sided=True):
+    def predict(self, ids, inference='ffx', null='theoretical', n_iters=None,
+                corr='FWE', two_sided=True):
         self.ids = ids
         self.inference = inference
         self.null = null
@@ -380,7 +380,7 @@ class WeightedStouffers(IBMAEstimator):
         self.ids = None
         self.results = None
 
-    def fit(self, ids, two_sided=True):
+    def predict(self, ids, two_sided=True):
         self.ids = ids
         z_maps = self.dataset.get(self.ids, 'z')
         sample_sizes = self.dataset.get(self.ids, 'n')
@@ -494,8 +494,8 @@ class RFX_GLM(IBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, null='theoretical', n_iters=None, corr='FWE',
-            two_sided=True):
+    def predict(self, ids, null='theoretical', n_iters=None, corr='FWE',
+                two_sided=True):
         self.ids = ids
         self.null = null
         self.n_iters = n_iters
@@ -721,8 +721,8 @@ class FFX_GLM(IBMAEstimator):
         self.sample_sizes = None
         self.equal_var = None
 
-    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
-            two_sided=True):
+    def predict(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
+                two_sided=True):
         """
         Perform meta-analysis given parameters.
         """
@@ -793,8 +793,8 @@ class MFX_GLM(IBMAEstimator):
         self.mask = self.dataset.mask
         self.ids = None
 
-    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
-            two_sided=True):
+    def predict(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
+                two_sided=True):
         """
         Perform meta-analysis given parameters.
         """
