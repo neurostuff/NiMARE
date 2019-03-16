@@ -8,8 +8,7 @@ from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from ..base import Decoder
-from ..utils import p_to_z
-from ..stats import one_way, two_way
+from ..utils.stats import p_to_z, one_way, two_way
 from ..due import due, Doi
 
 

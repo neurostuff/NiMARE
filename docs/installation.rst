@@ -23,7 +23,7 @@ You can then install ``nimare`` with:
   python setup.py develop
 
 What Next?
-`````````
+``````````
 
 For an overview of what you can do with NiMARE see `NiMARE Documentation`_.
 

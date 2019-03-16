@@ -30,7 +30,7 @@ def convert_sleuth_to_dict(text_file):
     text_file : :obj:`str`
         Path to Sleuth-format text file.
 
-    Outputs
+    Returns
     -------
     dict_ : :obj:`dict`
         NiMARE-organized dictionary containing experiment information from text
@@ -136,7 +136,7 @@ def convert_sleuth_to_database(text_file):
     text_file : :obj:`str`
         Path to Sleuth-format text file.
 
-    Outputs
+    Returns
     -------
     :obj:`nimare.dataset.Database`
         Database object containing experiment information from text_file.
