@@ -50,14 +50,6 @@ See `dataset extraction API`_ for usage.
 
 .. _dataset extraction API: generated/nimare.dataset.extract.html#module-nimare.dataset.extract
 
-Automated annotation
-````````````````````````
-
-A necessary step of meta-analysis is annotating data. This can be done manually. NiMARE
-also offers a number of automated annotation options, some of which rely on community driven
-annotation efforts such as `Cognitive Paradigm Ontology`_ and the `Cognitive Atlas`_. It also
-implements several topic models and vector-based annotation models.
-
 Coordinate-based meta-analysis
 ````````````````````````````````````
 
@@ -138,15 +130,3 @@ Weighted Stouffer's meta-analysis
 
 Fisher's meta-analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Functional characterization analysis
-````````````````````````````````````
-
-Decoding of continuous inputs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Decoding of discrete inputs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Encoding
-~~~~~~~~~~~

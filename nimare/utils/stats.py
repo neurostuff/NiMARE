@@ -2,6 +2,8 @@
 import warnings
 
 import numpy as np
+from scipy import stats
+from scipy.special import ndtri
 
 from ..due import due, BibTeX, Doi
 

@@ -22,7 +22,7 @@ def download_data(tmpdir_factory):
     tst_dir = tmpdir_factory.mktemp('tests')
     out_dir = tst_dir.ensure('resources',
                              'data',
-                             'neurovault-data', 
+                             'neurovault-data',
                              'collection-1425',
                              dir=True)
     download_nidm_pain(out_dir)
@@ -56,7 +56,7 @@ def _get_file(cdict, t, data_dir):
             temp = np.mean(temp)
     else:
         raise Exception('Input type "{0}" not recognized.'.format(t))
-    
+
     if isinstance(temp, str):
         temp = op.join(data_dir, temp)
     return temp
@@ -110,7 +110,7 @@ def get_data(download_data):
     t_files, t_ns = get_files(pytest.dset_dict, ['t!z', 'n'], download_data)
     t_imgs = [nib.load(op.join(download_data, f)) for f in t_files]
     t_data_list = [apply_mask(t_img, pytest.mask_img) for t_img in t_imgs]
-    tz_data_list = [nimare.utils.t_to_z(t_data, t_ns[i]-1) for i, t_data
+    tz_data_list = [nimare.utils.stats.t_to_z(t_data, t_ns[i]-1) for i, t_data
                     in enumerate(t_data_list)]
     tz_data = np.vstack(tz_data_list)
 

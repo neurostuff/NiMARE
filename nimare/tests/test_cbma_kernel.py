@@ -7,7 +7,7 @@ import pandas as pd
 from scipy.ndimage.measurements import center_of_mass
 
 from nimare.meta.cbma import kernel
-from nimare.utils import get_template, mm2vox
+from nimare.utils.utils import get_template, mm2vox
 
 
 # Fixtures used in the rest of the tests
