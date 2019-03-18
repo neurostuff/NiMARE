@@ -44,7 +44,7 @@ class MKDADensity(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def predict(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=-1):
+    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.voxel_thresh = voxel_thresh
@@ -195,8 +195,8 @@ class MKDAChi2(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def predict(self, ids, ids2=None, voxel_thresh=0.01, q=0.05, corr='FWE',
-                n_iters=5000, prior=0.5, n_cores=-1):
+    def fit(self, ids, ids2=None, voxel_thresh=0.01, q=0.05, corr='FWE',
+            n_iters=5000, prior=0.5, n_cores=-1):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
@@ -404,7 +404,7 @@ class KDA(CBMAEstimator):
         self.n_iters = None
         self.images = {}
 
-    def predict(self, ids, q=0.05, n_iters=10000, n_cores=-1):
+    def fit(self, ids, q=0.05, n_iters=10000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.clust_thresh = q

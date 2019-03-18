@@ -55,8 +55,8 @@ class MAPBOT(Parcellator):
         self.tfidf_df = tfidf_df
         self.coordinates = coordinates_df
 
-    def predict(self, target_mask, method='min_distance', r=5, n_exps=50,
-                n_parcels=2):
+    def fit(self, target_mask, method='min_distance', r=5, n_exps=50,
+            n_parcels=2):
         """
         Run MAPBOT parcellation.
 

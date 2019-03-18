@@ -46,7 +46,7 @@ def test_ale(testdata1):
     Smoke test for ALE
     """
     ale_meta = ale.ALE(testdata1)
-    ale_meta.predict(n_iters=5, ids=testdata1.ids)
+    ale_meta.fit(n_iters=5, ids=testdata1.ids)
     assert isinstance(ale_meta.results, nimare.base.meta.MetaResult)
 
 
@@ -55,7 +55,7 @@ def test_ale_subtraction(testdata1):
     Smoke test for ALE
     """
     ale_meta = ale.ALE(testdata1)
-    ale_meta.predict(n_iters=5, ids=testdata1.ids[:5], ids2=testdata1.ids[5:])
+    ale_meta.fit(n_iters=5, ids=testdata1.ids[:5], ids2=testdata1.ids[5:])
     assert isinstance(ale_meta.results, nimare.base.meta.MetaResult)
 
 
@@ -65,5 +65,5 @@ def test_scale(testdata1):
     """
     ijk = np.vstack(np.where(testdata1.mask.get_data())).T
     scale_meta = ale.SCALE(testdata1, ijk=ijk)
-    scale_meta.predict(n_iters=5, ids=testdata1.ids)
+    scale_meta.fit(n_iters=5, ids=testdata1.ids)
     assert isinstance(scale_meta.results, nimare.base.meta.MetaResult)

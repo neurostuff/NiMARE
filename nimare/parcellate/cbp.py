@@ -43,8 +43,8 @@ class CoordCBP(Parcellator):
         self.solutions = None
         self.metrics = None
 
-    def predict(self, target_mask, method='min_distance', r=5, n_exps=50,
-                n_parcels=2, meta_estimator=SCALE, **kwargs):
+    def fit(self, target_mask, method='min_distance', r=5, n_exps=50,
+            n_parcels=2, meta_estimator=SCALE, **kwargs):
         """
         Run CBP parcellation.
 
@@ -102,7 +102,7 @@ class CoordCBP(Parcellator):
             # Run MACM
             voxel_meta = meta_estimator(self.dataset, ids=sel_ids,
                                         **kernel_args)
-            voxel_meta.predict(**meta_args)
+            voxel_meta.fit(**meta_args)
             voxel_arr[i_voxel, :] = apply_mask(voxel_meta.results['ale'],
                                                self.mask)
 
@@ -147,7 +147,7 @@ class ImCBP(Parcellator):
         self.mask = dataset.mask
         self.ids = ids
 
-    def predict(self, target_mask, n_parcels=2):
+    def fit(self, target_mask, n_parcels=2):
         """
         Parameters
         ----------

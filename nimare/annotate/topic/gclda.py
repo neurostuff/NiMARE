@@ -284,7 +284,7 @@ class GCLDAModel(AnnotationModel):
         # variables tracking loglikely
         self.compute_log_likelihood()
 
-    def predict(n_iters=10000, loglikely_freq=10, verbose=1):
+    def fit(n_iters=10000, loglikely_freq=10, verbose=1):
         """
         Run multiple iterations.
 
