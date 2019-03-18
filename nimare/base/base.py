@@ -146,7 +146,7 @@ class Estimator(NiMAREBase):
         pass
 
     @abstractmethod
-    def predict(self, dataset):
+    def fit(self, dataset):
         """Apply estimation to dataset and output results.
         """
         if not isinstance(dataset, Dataset):
