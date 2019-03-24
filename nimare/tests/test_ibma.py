@@ -97,8 +97,7 @@ def get_data(download_data):
     dset_file = op.join(get_test_data_path(), 'nidm_pain_dset.json')
     with open(dset_file, 'r') as fo:
         dset_dict = json.load(fo)
-    db = nimare.dataset.Database(dset_file)
-    dset = db.get_dataset()
+    dset = nimare.dataset.Dataset(dset_file)
     pytest.dset_dict = dset_dict
     pytest.mask_img = dset.mask
 

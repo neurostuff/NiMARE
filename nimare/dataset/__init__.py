@@ -1,7 +1,7 @@
 """
 Top-level namespace for datasets.
 """
-from .dataset import Database, Dataset
+from .dataset import Dataset
 from .extract import DataSource
 
-__all__ = ['Database', 'Dataset', 'DataSource']
+__all__ = ['Dataset', 'DataSource']

@@ -8,8 +8,8 @@ from shutil import copyfile
 import click
 import numpy as np
 
-from ..dataset import Database
-from ..io import convert_sleuth_to_database
+from ..dataset import Dataset
+from ..io import convert_sleuth_to_dataset
 from ..meta.cbma.ale import SCALE
 
 
@@ -40,10 +40,9 @@ def scale_workflow(database, baseline, output_dir=None, prefix=None,
     Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
     """
     if database.endswith('.json'):
-        db = Database(database)
+        dset = Dataset(database, target='mni152_2mm')
     if database.endswith('.txt'):
-        db = convert_sleuth_to_database(database)
-    dset = db.get_dataset(target='mni152_2mm')
+        dset = convert_sleuth_to_dataset(database, target='mni152_2mm')
 
     boilerplate = """
 A specific coactivation likelihood estimation (SCALE; Langner et al., 2014)

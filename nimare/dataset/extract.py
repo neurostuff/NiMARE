@@ -9,11 +9,10 @@ import os.path as op
 
 from abc import ABCMeta, abstractmethod
 from six import with_metaclass
-import pandas as pd
 import numpy as np
+import pandas as pd
 from pyneurovault import api
 
-from nimare.dataset import Database
 from ..utils import get_resource_path, tal2mni
 
 

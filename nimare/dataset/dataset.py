@@ -14,7 +14,7 @@ import nibabel as nib
 from ..utils import tal2mni, mni2tal, mm2vox, get_template
 
 
-class Database(object):
+class Dataset(object):
     """
     Storage container for a coordinate- and/or image-based meta-analytic
     dataset/database.
@@ -24,8 +24,13 @@ class Database(object):
     source : :obj:`str`
         JSON file containing dictionary with database information or the dict()
         object
+    ids : :obj:`list`
+        List of contrast IDs to be taken from the database and kept in the dataset.
+    target : :obj:`str`
+        Desired coordinate space for coordinates. Names follow NIDM convention.
     """
-    def __init__(self, source):
+    def __init__(self, source, ids=None, target='mni152_2mm',
+                 mask_file=None):
         if isinstance(source, str):
             with open(source, 'r') as f_obj:
                 self.data = json.load(f_obj)
@@ -39,65 +44,22 @@ class Database(object):
                 ids.append('{0}-{1}'.format(pid, cid))
         self.ids = ids
 
-    def get_dataset(self, ids=None, search='', algorithm=None, target='mni152_2mm'):
-        """
-        Retrieve files and/or metadata from the current Dataset.
-
-        Should this work like a grabbit Layout's get method?
-
-        Parameters
-        ----------
-        search : :obj:`str`
-            Search term for selecting contrasts within database.
-        target : :obj:`str`
-            Target space for outputted images and coordinates.
-
-        Returns
-        -------
-        dset : :obj:`nimare.dataset.Dataset`
-            A Dataset object containing selection of database.
-
-        """
-        #if algorithm:
-        #    req_data = algorithm.req_data
-        #    temp = [stud for stud in self.data if stud.has_data(req_data)]
-        return Dataset(self, ids=ids, target=target)
-
-
-class Dataset(object):
-    """
-    Storage container for a coordinate- and/or image-based meta-analytic
-    dataset/database.
-
-    Parameters
-    ----------
-    database : :obj:`nimare.dataset.Database`
-        Database object to be transformed into a dataset.
-    ids : :obj:`list`
-        List of contrast IDs to be taken from the database and kept in the dataset.
-    target : :obj:`str`
-        Desired coordinate space for coordinates. Names follow NIDM convention.
-    """
-    def __init__(self, database, ids=None, target='mni152_2mm',
-                 mask_file=None):
         if mask_file is None:
             mask_img = get_template(target, mask='brain')
         else:
             mask_img = nib.load(mask_file)
         self.mask = mask_img
 
-        if ids is None:
-            self.data = database.data
-            ids = database.ids
-        else:
-            data = {}
+        # Reduce dataset to include only requested IDs
+        if ids is not None:
+            temp_data = {}
             for id_ in ids:
                 pid, expid = id_.split('-')
-                if pid not in data.keys():
-                    data[pid] = database.data[pid]
-                    data[pid]['contrasts'] = {}
-                data[pid]['contrasts'][expid] = database.data[pid]['contrasts'][expid]
-            self.data = data
+                if pid not in temp_data.keys():
+                    temp_data[pid] = self.data[pid].copy()  # make sure to copy
+                    temp_data[pid]['contrasts'] = {}
+                temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
+            self.data = temp_data
         self.ids = ids
         self.coordinates = None
         self.space = target

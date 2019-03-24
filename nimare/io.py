@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 from pyneurovault import api
 
-from .dataset import Database
+from .dataset import Dataset
 from .utils import get_resource_path, tal2mni
 
 
@@ -122,9 +122,9 @@ def convert_sleuth(text_file, out_file):
         json.dump(dict_, fo, indent=4, sort_keys=True)
 
 
-def convert_sleuth_to_database(text_file):
+def convert_sleuth_to_dataset(text_file):
     """
-    Convert Sleuth output text file into dictionary and create NiMARE Database
+    Convert Sleuth output text file into dictionary and create NiMARE Dataset
     with dictionary.
 
     Parameters
@@ -134,8 +134,8 @@ def convert_sleuth_to_database(text_file):
 
     Returns
     -------
-    :obj:`nimare.dataset.Database`
-        Database object containing experiment information from text_file.
+    :obj:`nimare.dataset.Dataset`
+        Dataset object containing experiment information from text_file.
     """
     if isinstance(text_file, str):
         text_files = [text_file]
@@ -148,4 +148,4 @@ def convert_sleuth_to_database(text_file):
     for text_file in text_files:
         temp_dict = convert_sleuth_to_dict(text_file)
         dict_ = {**dict_, **temp_dict}
-    return Database(dict_)
+    return Dataset(dict_)

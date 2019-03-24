@@ -8,7 +8,7 @@ from shutil import copyfile
 import click
 import numpy as np
 
-from ..io import convert_sleuth_to_database
+from ..io import convert_sleuth_to_dataset
 from ..meta.cbma import ALE
 
 N_ITERS_DEFAULT = 10000
@@ -52,7 +52,7 @@ def ale_sleuth_inference(sleuth_file, sleuth_file2=None, output_dir=None,
     """
     click.echo("Loading coordinates...")
     if not sleuth_file2:
-        dset = convert_sleuth_to_database(sleuth_file).get_dataset(target='ale_2mm')
+        dset = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
         n_subs = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
 
         boilerplate = """
@@ -119,10 +119,10 @@ to adulthood. NeuroImage, (47), S102.
             n_iters=n_iters,
             min_clust=min_clust)
     else:
-        dset1 = convert_sleuth_to_database(sleuth_file).get_dataset(target='ale_2mm')
-        dset2 = convert_sleuth_to_database(sleuth_file2).get_dataset(target='ale_2mm')
-        dset_combined = convert_sleuth_to_database(
-            [sleuth_file, sleuth_file2]).get_dataset(target='ale_2mm')
+        dset1 = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
+        dset2 = convert_sleuth_to_dataset(sleuth_file2, target='ale_2mm')
+        dset_combined = convert_sleuth_to_dataset(
+            [sleuth_file, sleuth_file2], target='ale_2mm')
         n_subs1 = dset1.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
         n_subs2 = dset2.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
 
