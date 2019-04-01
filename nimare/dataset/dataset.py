@@ -38,11 +38,14 @@ class Dataset(object):
             self.data = source
         else:
             raise Exception("`source` needs to be a file path or a dictionary")
-        ids = []
+
+        # Datasets are organized by study, then experiment
+        # To generate unique IDs, we combine study ID with experiment ID
+        raw_ids = []
         for pid in self.data.keys():
             for cid in self.data[pid]['contrasts'].keys():
-                ids.append('{0}-{1}'.format(pid, cid))
-        self.ids = ids
+                raw_ids.append('{0}-{1}'.format(pid, cid))
+        self.ids = raw_ids
 
         if mask_file is None:
             mask_img = get_template(target, mask='brain')
@@ -60,10 +63,36 @@ class Dataset(object):
                     temp_data[pid]['contrasts'] = {}
                 temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
             self.data = temp_data
-        self.ids = ids
+            self.ids = ids
         self.coordinates = None
         self.space = target
         self._load_coordinates()
+        self._load_annotations()
+
+    def _load_annotations(self):
+        """
+        """
+        # Required columns
+        columns = ['id', 'study_id', 'contrast_id']
+        core_columns = columns[:]  # Used in contrast for loop
+
+        df = pd.DataFrame(columns=columns)
+        df = df.set_index('id', drop=False)
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                if 'labels' not in self.data[pid]['contrasts'][expid].keys():
+                    continue
+
+                exp = self.data[pid]['contrasts'][expid]
+                id_ = '{0}-{1}'.format(pid, expid)
+                df.loc[id_, columns] = [id_, pid, expid]
+
+                for label in exp['labels'].keys():
+                    df.loc[id_, label] = exp['labels'][label]
+
+        df = df.reset_index(drop=True)
+        df = df.replace(to_replace='None', value=np.nan)
+        self.annotations = df
 
     def _load_coordinates(self):
         """
@@ -84,12 +113,18 @@ class Dataset(object):
                 # Required info (ids, x, y, z, space)
                 n_coords = len(exp['coords']['x'])
                 rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
+
+                # collect sample size if available
                 sample_size = exp.get('sample_sizes', np.nan)
                 if not isinstance(sample_size, list):
                     sample_size = [sample_size]
-                sample_size = np.array([n for n in sample_size if n != None])
-                sample_size = np.mean(sample_size)
-                sample_size = np.array([sample_size] * n_coords)
+                sample_size = np.array([n for n in sample_size if n])
+                if len(sample_size):
+                    sample_size = np.mean(sample_size)
+                    sample_size = np.array([sample_size] * n_coords)
+                else:
+                    sample_size = np.array([np.nan] * n_coords)
+
                 space = exp['coords'].get('space')
                 space = np.array([space] * n_coords)
                 temp_data = np.vstack((rep_id,
@@ -113,8 +148,9 @@ class Dataset(object):
                 # Place data in list of dataframes to merge
                 con_df = pd.DataFrame(temp_data.T, columns=exp_columns)
                 all_dfs.append(con_df)
-        df = pd.concat(all_dfs, axis=0, join='outer')
-        df = df[columns].reset_index()
+
+        df = pd.concat(all_dfs, axis=0, join='outer', sort=False)
+        df = df[columns].reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)
         df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
 
@@ -170,16 +206,73 @@ class Dataset(object):
             req_data = algorithm.req_data
             temp = [stud for stud in self.data if stud.has_data(req_data)]
 
-    def get_studies(self):
-        pass
+    def get_studies(self, labels=None, label_threshold=0.5):
+        """
+        Extract list of studies matching criteria from Dataset.
+
+        Parameters
+        ----------
+        labels : list, optional
+            List of labels to use to search Dataset. If a contrast has all of
+            the labels above the threshold, it will be returned.
+            Default is None.
+        label_threshold : float, optional
+            Default is 0.5.
+
+        Returns
+        -------
+        found_ids : list
+            A list of IDs from the Dataset found by the search criteria.
+        """
+        if isinstance(labels, str):
+            labels = [labels]
+        elif labels is None:
+            # For now, labels are all we can search by.
+            return self.ids
+        elif not isinstance(labels, list):
+            raise ValueError('Argument "labels" cannot be {0}'.format(type(labels)))
+
+        id_cols = ['id', 'study_id', 'contrast_id']
+        found_labels = [l for l in labels if l in self.annotations.columns]
+        temp_annotations = self.annotations[id_cols + found_labels]
+        found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
+        if any(found_rows):
+            found_ids = temp_annotations.loc[found_rows, 'id'].tolist()
+        else:
+            found_ids = []
+        return found_ids
+
+    def get_labels(self, ids=None):
+        """
+        Extract list of labels for which studies in Dataset have annotations.
+
+        Parameters
+        ----------
+        ids : list, optional
+            A list of IDs in the Dataset for which to find labels. Default is
+            None, in which case all labels are returned.
+
+        Returns
+        -------
+        labels : list
+            List of labels for which there are annotations in the Dataset.
+        """
+        id_cols = ['id', 'study_id', 'contrast_id']
+        labels = [c for c in self.annotations.columns if c not in id_cols]
+        if ids is not None:
+            temp_annotations = self.annotations.loc[self.annotations['id'].isin(ids)]
+            res = temp_annotations[labels].any(axis=0)
+            labels = res.loc[res].index.tolist()
+
+        return labels
 
     def get_metadata(self):
         pass
 
-    def get_images(self):
+    def get_images(self, dtype):
         pass
 
-    def get_coordinates(self):
+    def get_coordinates(self, coords, r=6):
         pass
 
     def save(self, filename, compress=True):
