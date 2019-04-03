@@ -2,7 +2,11 @@
 #
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
-version: 2
+version: 2.1
+
+orbs:
+  codecov: codecov/codecov@1.0.1
+
 jobs:
 
   build:
@@ -83,6 +87,24 @@ jobs:
          paths:
             - /tmp/cache/docker.tar.gz
 
+  lint:
+    machine:
+      image: circleci/classic:201711-01
+    working_directory: /tmp/src/NiMARE
+    steps:
+      - checkout:
+          path: /home/circleci/src/NiMARE
+      - run:
+          name: Check PyPi preconditions
+          command: |
+            pyenv global 3.5.2
+            virtualenv venv
+            pip install flake8
+      - run:
+          name: Linting
+          command: |
+            flake8 /home/circleci/src/NiMARE
+
   test_python:
     machine:
       image: circleci/classic:201711-01
@@ -105,7 +127,7 @@ jobs:
           command: |
             pyenv global 3.5.2
             virtualenv venv
-            pip install "setuptools>=27.0" cython numpy twine docutils
+            pip install "setuptools>=27.0" cython numpy twine docutils pytest
             python setup.py check -r -s
             python setup.py sdist
 
@@ -123,7 +145,8 @@ jobs:
       - run:
           name: Run pytest
           command: |
-            docker run --rm neurostuff/nimare pytest -vs /src/NiMARE/ 
+            docker run --rm neurostuff/nimare pytest --cov-report term-missing --cov=nimare -vs /src/NiMARE/
+            docker run --rm neurostuff/nimare codecov
 
   deploy_pypi:
     machine:
@@ -206,7 +229,7 @@ workflows:
               ignore: /.*/
             tags:
               only: /.*/
-      
+
       - deploy_docker:
           requires:
             - build
@@ -214,5 +237,11 @@ workflows:
           filters:
             branches:
               only: master
+            tags:
+              only: /.*/
+  run_lint:
+    jobs:
+      - lint:
+          filters:
             tags:
               only: /.*/
