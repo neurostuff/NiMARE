@@ -127,7 +127,7 @@ jobs:
           command: |
             pyenv global 3.5.2
             virtualenv venv
-            pip install "setuptools>=27.0" cython numpy twine docutils
+            pip install "setuptools>=27.0" cython numpy twine docutils pytest
             python setup.py check -r -s
             python setup.py sdist
 
