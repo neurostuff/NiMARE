@@ -184,7 +184,7 @@ class Dataset(object):
             except:
                 raise Exception('Nope')
 
-    def get(self, search='', algorithm=None):
+    def get(self):
         """
         Retrieve files and/or metadata from the current Dataset.
 
@@ -202,13 +202,35 @@ class Dataset(object):
         dset : :obj:`nimare.dataset.Dataset`
             A Dataset object containing selection of dataset.
         """
-        if algorithm:
-            req_data = algorithm.req_data
-            temp = [stud for stud in self.data if stud.has_data(req_data)]
+        pass
 
-    def get_studies(self, labels=None, label_threshold=0.5):
+    def get_labels(self, ids=None):
         """
-        Extract list of studies matching criteria from Dataset.
+        Extract list of labels for which studies in Dataset have annotations.
+
+        Parameters
+        ----------
+        ids : list, optional
+            A list of IDs in the Dataset for which to find labels. Default is
+            None, in which case all labels are returned.
+
+        Returns
+        -------
+        labels : list
+            List of labels for which there are annotations in the Dataset.
+        """
+        id_cols = ['id', 'study_id', 'contrast_id']
+        labels = [c for c in self.annotations.columns if c not in id_cols]
+        if ids is not None:
+            temp_annotations = self.annotations.loc[self.annotations['id'].isin(ids)]
+            res = temp_annotations[labels].any(axis=0)
+            labels = res.loc[res].index.tolist()
+
+        return labels
+
+    def get_studies_by_label(self, labels=None, label_threshold=0.5):
+        """
+        Extract list of studies with a given label.
 
         Parameters
         ----------
@@ -242,37 +264,58 @@ class Dataset(object):
             found_ids = []
         return found_ids
 
-    def get_labels(self, ids=None):
+    def get_studies_by_mask(self, mask):
         """
-        Extract list of labels for which studies in Dataset have annotations.
+        Extract list of studies with at least one coordinate in mask.
 
         Parameters
         ----------
-        ids : list, optional
-            A list of IDs in the Dataset for which to find labels. Default is
-            None, in which case all labels are returned.
+        mask : img_like
+            Mask across which to search for coordinates.
 
         Returns
         -------
-        labels : list
-            List of labels for which there are annotations in the Dataset.
+        found_ids : list
+            A list of IDs from the Dataset with at least one focus in the mask.
         """
-        id_cols = ['id', 'study_id', 'contrast_id']
-        labels = [c for c in self.annotations.columns if c not in id_cols]
-        if ids is not None:
-            temp_annotations = self.annotations.loc[self.annotations['id'].isin(ids)]
-            res = temp_annotations[labels].any(axis=0)
-            labels = res.loc[res].index.tolist()
+        if not np.array_equal(self.mask.affine, mask.affine):
+            from nilearn.image import resample_to_img
+            mask = resample_to_img(mask, self.mask)
+        mask_ijk = np.vstack(np.where(mask.get_data())).T
+        distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
+        distances = np.any(distances == 0, axis=0)
+        found_ids = self.coordinates.loc[distances, 'id'].unique()
+        return found_ids
 
-        return labels
+    def get_studies_by_coordinate(self, xyz, r=20):
+        """
+        Extract list of studies with at least one focus within radius r of
+        requested coordinates.
+
+        Parameters
+        ----------
+        xyz : (X x 3) array_like
+            List of coordinates against which to find studies.
+        r : float, optional
+            Radius (in mm) within which to find studies. Default is 20mm.
+
+        Returns
+        -------
+        found_ids : list
+            A list of IDs from the Dataset with at least one focus within
+            radius r of requested coordinates.
+        """
+        from scipy.spatial.distance import cdist
+        assert xyz.shape[1] == 3 and xyz.ndim == 2
+        distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
+        distances = np.any(distances <= r, axis=0)
+        found_ids = self.coordinates.loc[distances, 'id'].unique()
+        return found_ids
 
     def get_metadata(self):
         pass
 
     def get_images(self, dtype):
-        pass
-
-    def get_coordinates(self, coords, r=6):
         pass
 
     def save(self, filename, compress=True):
