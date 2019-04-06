@@ -5,13 +5,16 @@ from __future__ import print_function
 import json
 import gzip
 import pickle
-from os.path import join
+import logging
+import os.path as op
 
 import numpy as np
 import pandas as pd
 import nibabel as nib
 
 from ..utils import tal2mni, mni2tal, mm2vox, get_template
+
+LGR = logging.getLogger(__name__)
 
 
 class Dataset(object):
@@ -68,24 +71,25 @@ class Dataset(object):
         self.space = target
         self._load_coordinates()
         self._load_annotations()
+        self._load_images()
 
     def _load_annotations(self):
         """
+        Load labels in Dataset into DataFrame.
         """
         # Required columns
         columns = ['id', 'study_id', 'contrast_id']
-        core_columns = columns[:]  # Used in contrast for loop
 
         df = pd.DataFrame(columns=columns)
         df = df.set_index('id', drop=False)
         for pid in self.data.keys():
             for expid in self.data[pid]['contrasts'].keys():
-                if 'labels' not in self.data[pid]['contrasts'][expid].keys():
-                    continue
-
                 exp = self.data[pid]['contrasts'][expid]
                 id_ = '{0}-{1}'.format(pid, expid)
                 df.loc[id_, columns] = [id_, pid, expid]
+
+                if 'labels' not in self.data[pid]['contrasts'][expid].keys():
+                    continue
 
                 for label in exp['labels'].keys():
                     df.loc[id_, label] = exp['labels'][label]
@@ -94,8 +98,37 @@ class Dataset(object):
         df = df.replace(to_replace='None', value=np.nan)
         self.annotations = df
 
+    def _load_images(self):
+        """
+        Load images in Dataset into a DataFrame.
+        """
+        columns = ['id', 'study_id', 'contrast_id', 'space']
+        df = pd.DataFrame(columns=columns)
+        df = df.set_index('id', drop=False)
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                exp = self.data[pid]['contrasts'][expid]
+                id_ = '{0}-{1}'.format(pid, expid)
+                space = exp.get('images', {}).get('space', None)
+                df.loc[id_, columns] = [id_, pid, expid, space]
+
+                if 'images' not in self.data[pid]['contrasts'][expid].keys():
+                    continue
+
+                for imtype in exp['images'].keys():
+                    if imtype != 'space':
+                        img = exp['images'][imtype]
+                        if img is not None and not op.isfile(img):
+                            LGR.warning('Image {0} DNE'.format(img))
+                        df.loc[df.id == id_, imtype] = img
+
+        df = df.reset_index(drop=True)
+        df = df.replace(to_replace='None', value=np.nan)
+        self.images = df
+
     def _load_coordinates(self):
         """
+        Load coordinates in Dataset into DataFrame.
         """
         # Required columns
         columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'n', 'space']
@@ -171,18 +204,6 @@ class Dataset(object):
         ijk = pd.DataFrame(mm2vox(xyz, self.mask.affine), columns=['i', 'j', 'k'])
         df = pd.concat([df, ijk], axis=1)
         self.coordinates = df
-
-    def has_data(self, dat_str):
-        """
-        Check if an contrast has necessary data (e.g., sample size or some
-        image type).
-        """
-        dat_str = dat_str.split(' AND ')
-        for ds in dat_str:
-            try:
-                self.data.get(ds, None)
-            except:
-                raise Exception('Nope')
 
     def get(self):
         """
@@ -315,7 +336,10 @@ class Dataset(object):
     def get_metadata(self):
         pass
 
-    def get_images(self, dtype):
+    def get_images(self, ids, imtype):
+        """
+        Get images of a certain type for a subset of studies in the dataset.
+        """
         pass
 
     def save(self, filename, compress=True):
