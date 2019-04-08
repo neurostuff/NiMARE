@@ -6,8 +6,47 @@ import json
 import os.path as op
 
 import numpy as np
+import pandas as pd
 
 from .dataset import Dataset
+
+
+def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
+    """
+    Convert Neurosynth dataset text file to a NiMARE json file.
+    """
+    dset_df = pd.read_csv(text_file, sep='\t')
+    if annotations_file is not None:
+        label_df = pd.read_csv(annotations_file, sep='\t', index_col='pmid')
+        label_df.index = label_df.index.astype(str)
+    else:
+        label_df = None
+
+    dset_df['id'] = dset_df['id'].astype(str)
+
+    ids = dset_df['id'].unique()
+    dict_ = {}
+    for sid in ids:
+        study_df = dset_df.loc[dset_df['id'] == sid]
+        study_dict = {}
+        study_dict['metadata'] = {}
+        study_dict['metadata']['authors'] = study_df['authors'].tolist()[0]
+        study_dict['metadata']['journal'] = study_df['journal'].tolist()[0]
+        study_dict['metadata']['year'] = study_df['year'].tolist()[0]
+        study_dict['metadata']['title'] = study_df['title'].tolist()[0]
+        study_dict['contrasts'] = {}
+        study_dict['contrasts']['1'] = {}
+        study_dict['contrasts']['1']['coords'] = {}
+        study_dict['contrasts']['1']['coords']['space'] = study_df['space'].tolist()[0]
+        study_dict['contrasts']['1']['coords']['x'] = study_df['x'].tolist()
+        study_dict['contrasts']['1']['coords']['y'] = study_df['y'].tolist()
+        study_dict['contrasts']['1']['coords']['z'] = study_df['z'].tolist()
+        if label_df is not None:
+            study_dict['contrasts']['1']['labels'] = label_df.loc[sid].to_dict()
+        dict_[sid] = study_dict
+
+    with open(out_file, 'w') as fo:
+        json.dump(dict_, fo, indent=4, sort_keys=True)
 
 
 def convert_sleuth_to_dict(text_file):
@@ -94,7 +133,7 @@ def convert_sleuth_to_dict(text_file):
     return dict_
 
 
-def convert_sleuth(text_file, out_file):
+def convert_sleuth_to_json(text_file, out_file):
     """
     Convert Sleuth output text file into json.
 

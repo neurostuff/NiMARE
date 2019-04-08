@@ -2,6 +2,9 @@
 NiMARE: Neuroimaging Meta-Analysis Research Environment
 """
 import warnings
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("ignore")
