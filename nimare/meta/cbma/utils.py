@@ -107,7 +107,7 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
     """
     try:
         import tensorflow as tf
-    except ModuleNotFoundError as e:
+    except ImportError as e:
         if "No module named 'tensorflow'" in str(e):
             raise Exception("tensorflow not installed - see https://www.tensorflow.org/install/ "
                             "for instructions")
