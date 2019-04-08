@@ -43,7 +43,7 @@ LGR = logging.getLogger(__name__)
                        'more quickly and accurately generate the null '
                        'distribution for significance testing.')
 class ALE(CBMAEstimator):
-    """
+    r"""
     Activation likelihood estimation
 
     Parameters
@@ -497,7 +497,7 @@ class ALE(CBMAEstimator):
            description='Introduces the specific co-activation likelihood '
                        'estimation (SCALE) algorithm.')
 class SCALE(CBMAEstimator):
-    """
+    r"""
     Specific coactivation likelihood estimation
 
     Parameters

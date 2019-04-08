@@ -14,7 +14,7 @@ from ..due import due, Doi
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Describes decoding methods using GC-LDA.')
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
-    """
+    r"""
     Perform image-to-text decoding for continuous inputs (e.g.,
     unthresholded statistical maps).
 

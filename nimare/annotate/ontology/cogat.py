@@ -311,7 +311,7 @@ class CogAtLemmatizer(object):
         # Create regex dictionary
         regex_dict = {}
         for term in ontology_df['alias'].values:
-            term_for_regex = term.replace('(', '\(').replace(')', '\)')
+            term_for_regex = term.replace('(', r'\(').replace(')', r'\)')
             regex = '\\b' + term_for_regex + '\\b'
             pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
             regex_dict[term] = pattern
@@ -375,7 +375,7 @@ def extract_cogat(text_df, id_df):
     # Create regex dictionary
     regex_dict = {}
     for term in id_df['alias'].values:
-        term_for_regex = term.replace('(', '\(').replace(')', '\)')
+        term_for_regex = term.replace('(', r'\(').replace(')', r'\)')
         regex = '\\b' + term_for_regex + '\\b'
         pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
         regex_dict[term] = pattern

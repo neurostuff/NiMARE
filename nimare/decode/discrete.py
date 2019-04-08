@@ -16,7 +16,7 @@ from ..due import due, Doi
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Citation for GCLDA decoding.')
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
-    """
+    r"""
     Perform image-to-text decoding for discrete image inputs (e.g., regions
     of interest, significant clusters).
 
