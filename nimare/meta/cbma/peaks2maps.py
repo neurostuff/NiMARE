@@ -48,7 +48,7 @@ def model_fn(features, labels, mode, params):
         (ngf * 2, 0.2),
         # encoder_3: [batch, 64, 64, ngf * 2] => [batch, 32, 32, ngf * 4]
         (ngf * 4, 0.2),
-        #encoder_4: [batch, 32, 32, ngf * 4] => [batch, 16, 16, ngf * 8]
+        # encoder_4: [batch, 32, 32, ngf * 4] => [batch, 16, 16, ngf * 8]
         (ngf * 8, 0.2),
         # encoder_5: [batch, 16, 16, ngf * 8] => [batch, 8, 8, ngf * 8]
         # ngf * 8,

@@ -1,19 +1,14 @@
 """
 Classes and functions for data retrieval.
 """
-import re
 import time
-import json
 from os import mkdir
 import os.path as op
 
 from abc import ABCMeta, abstractmethod
 from six import with_metaclass
-import numpy as np
 import pandas as pd
 from pyneurovault import api
-
-from ..utils import get_resource_path, tal2mni
 
 
 __all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource',
@@ -59,7 +54,7 @@ class BrainSpellDataSource(DataSource):
 
 def _to_chunks(l, n):
     """Yield successive n-sized chunks from l."""
-    for i in xrange(0, len(l), n):
+    for i in range(0, len(l), n):
         yield l[i:i + n]
 
 
@@ -136,13 +131,15 @@ def download_combined_database(out_dir, overwrite=False):
     # Look for relevant metadata
     red_df = red_df.dropna(subset=['cognitive_paradigm_cogatlas'])
 
-    ## MFX/FFX GLMs need contrast (beta) + standard error
+    # MFX/FFX GLMs need contrast (beta) + standard error
     mffx_df = red_df.loc[red_df['map_type'] == 'univariate-beta map']
+    del mffx_df
 
-    ## RFX GLMs need contrast (beta)
+    # RFX GLMs need contrast (beta)
     rfx_df = red_df.loc[red_df['map_type'] == 'univariate-beta map']
+    del rfx_df
 
-    ## Stouffer's, Stouffer's RFX, and Fisher's IBMAs can use Z maps.
+    # Stouffer's, Stouffer's RFX, and Fisher's IBMAs can use Z maps.
     # T and F maps can be transformed into Z maps, but T maps need sample size.
     # Only keep test statistic maps
     acc_map_types = ['Z map', 'T map', 'F map']
@@ -152,7 +149,7 @@ def download_combined_database(out_dir, overwrite=False):
     keep_idx = keep_idx | keep_idx2
     st_df = st_df.loc[keep_idx]
 
-    ## Weighted Stouffer's IBMAs need Z + sample size.
+    # Weighted Stouffer's IBMAs need Z + sample size.
     st_df['id_str'] = st_df['image_id'].astype(str).str.zfill(6)
 
     if not op.isdir(out_dir):

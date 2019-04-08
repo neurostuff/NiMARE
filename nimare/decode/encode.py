@@ -9,7 +9,7 @@ from .utils import weight_priors
 from ..due import due, Doi, BibTeX
 
 
-@due.dcite(BibTeX("""
+@due.dcite(BibTeX(r"""
     @article{dockes2018text,
     title={Text to brain: predicting the spatial distribution of neuroimaging
            observations from text reports},
@@ -30,7 +30,7 @@ def text2brain():
            description='Citation for GCLDA encoding.')
 def encode_gclda(model, text, out_file=None, topic_priors=None,
                  prior_weight=1.):
-    """
+    r"""
     Perform text-to-image encoding.
 
     Parameters

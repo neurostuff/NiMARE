@@ -12,3 +12,6 @@ with warnings.catch_warnings(record=True) as w:
     from . import stats
     from . import utils
     from .version import __version__
+
+    __all__ = ['dataset', 'meta', 'resources', 'io', 'stats', 'utils',
+               '__version__']

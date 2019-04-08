@@ -1,13 +1,6 @@
 """
 Model-based coordinate-based meta-analysis estimators
 """
-import os.path as op
-
-import numpy as np
-import pandas as pd
-import nibabel as nib
-from scipy import stats
-
 from ...base import CBMAEstimator
 from ...due import due, Doi, BibTeX
 

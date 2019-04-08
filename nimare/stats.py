@@ -73,13 +73,15 @@ def null_to_p(test_value, null_array, tail='two'):
     """Return two-sided p-value for test value against null array.
     """
     if tail == 'two':
-        p_value = (50 - np.abs(stats.percentileofscore(null_array, test_value) - 50.)) * 2. / 100.
+        p_value = (50 - np.abs(stats.percentileofscore(
+            null_array, test_value) - 50.)) * 2. / 100.
     elif tail == 'upper':
         p_value = 1 - (stats.percentileofscore(null_array, test_value) / 100.)
     elif tail == 'lower':
         p_value = stats.percentileofscore(null_array, test_value) / 100.
     else:
-        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
+        raise ValueError('Argument "tail" must be one of ["two", "upper", '
+                         '"lower"]')
     return p_value
 
 

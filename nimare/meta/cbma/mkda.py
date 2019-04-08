@@ -359,8 +359,8 @@ class MKDAChi2(CBMAEstimator):
         n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
 
         # Conditional probabilities
-        pAgF = n_selected_active_voxels * 1.0 / n_selected
-        pAgU = n_unselected_active_voxels * 1.0 / n_unselected
+        # pAgF = n_selected_active_voxels * 1.0 / n_selected
+        # pAgU = n_unselected_active_voxels * 1.0 / n_unselected
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels),

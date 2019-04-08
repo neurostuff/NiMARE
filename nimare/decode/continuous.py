@@ -3,17 +3,18 @@ Methods for decoding unthresholded brain maps into text.
 """
 import numpy as np
 import pandas as pd
+import nibabel as nib
 from nilearn.masking import apply_mask
 
-from ..base import Decoder
-from ..meta.cbma import MKDAChi2, MKDAKernel
+from .utils import weight_priors
+from ..meta.cbma import MKDAChi2
 from ..due import due, Doi
 
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Describes decoding methods using GC-LDA.')
-def gclda_decode_map(model, roi, topic_priors=None, prior_weight=1):
-    """
+def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
+    r"""
     Perform image-to-text decoding for continuous inputs (e.g.,
     unthresholded statistical maps).
 

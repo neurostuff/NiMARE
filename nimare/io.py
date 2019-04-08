@@ -2,19 +2,12 @@
 Input/Output operations.
 """
 import re
-import time
 import json
-from os import mkdir
 import os.path as op
 
-from abc import ABCMeta, abstractmethod
-from six import with_metaclass
-import pandas as pd
 import numpy as np
-from pyneurovault import api
 
 from .dataset import Dataset
-from .utils import get_resource_path, tal2mni
 
 
 def convert_sleuth_to_dict(text_file):
@@ -38,7 +31,7 @@ def convert_sleuth_to_dict(text_file):
         data = file_object.read()
     data = [line.rstrip() for line in re.split('\n\r|\r\n|\n|\r', data)]
     data = [line for line in data if line]
-    # First line indicates stereotactic space. The rest are studies, ns, and coords.
+    # First line indicates space. The rest are studies, ns, and coords
     space = data[0].replace(' ', '').replace('//Reference=', '')
     if space not in ['MNI', 'TAL']:
         raise Exception('Space {0} unknown. Options supported: '
@@ -46,7 +39,8 @@ def convert_sleuth_to_dict(text_file):
     # Split into experiments
     data = data[1:]
     metadata_idx = [i for i, line in enumerate(data) if line.startswith('//')]
-    exp_idx = np.split(metadata_idx, np.where(np.diff(metadata_idx) != 1)[0] + 1)
+    exp_idx = np.split(metadata_idx,
+                       np.where(np.diff(metadata_idx) != 1)[0] + 1)
     start_idx = [tup[0] for tup in exp_idx]
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
@@ -57,16 +51,18 @@ def convert_sleuth_to_dict(text_file):
             study_info = exp_data[0].replace('//', '').strip()
             study_name = study_info.split(':')[0]
             contrast_name = ':'.join(study_info.split(':')[1:]).strip()
-            sample_size = int(exp_data[1].replace(' ', '').replace('//Subjects=', ''))
-            xyz = exp_data[2:]  # Coords are everything after study info and sample size
+            sample_size = int(exp_data[1].replace(
+                ' ', '').replace('//Subjects=', ''))
+            xyz = exp_data[2:]  # Coords are everything after study info and n
             xyz = [row.split('\t') for row in xyz]
             correct_shape = np.all([len(coord) == 3 for coord in xyz])
             if not correct_shape:
                 all_shapes = np.unique([len(coord) for coord in xyz]).astype(
                     str)  # pylint: disable=no-member
-                raise Exception('Coordinates for study "{0}" are not all correct length. '
-                                'Lengths detected: {1}.'.format(study_info,
-                                                                ', '.join(all_shapes)))
+                raise Exception('Coordinates for study "{0}" are not all '
+                                'correct length. Lengths detected: '
+                                '{1}.'.format(study_info,
+                                              ', '.join(all_shapes)))
 
             try:
                 xyz = np.array(xyz, dtype=float)
@@ -76,8 +72,9 @@ def convert_sleuth_to_dict(text_file):
                 lens = [max(map(len, col)) for col in zip(*strs)]
                 fmt = '\t'.join('{{:{}}}'.format(x) for x in lens)
                 table = '\n'.join([fmt.format(*row) for row in strs])
-                raise Exception('Conversion to numpy array failed for study "{0}". '
-                                'Coords:\n{1}'.format(study_info, table))
+                raise Exception('Conversion to numpy array failed for study '
+                                '"{0}". Coords:\n{1}'.format(study_info,
+                                                             table))
 
             x, y, z = list(xyz[:, 0]), list(xyz[:, 1]), list(xyz[:, 2])
 
@@ -87,11 +84,13 @@ def convert_sleuth_to_dict(text_file):
                 'coords': {},
                 'sample_sizes': [],
             }
-            dict_[study_name]['contrasts'][contrast_name]['coords']['space'] = space
+            dict_[study_name]['contrasts'][contrast_name]['coords'][
+                'space'] = space
             dict_[study_name]['contrasts'][contrast_name]['coords']['x'] = x
             dict_[study_name]['contrasts'][contrast_name]['coords']['y'] = y
             dict_[study_name]['contrasts'][contrast_name]['coords']['z'] = z
-            dict_[study_name]['contrasts'][contrast_name]['sample_sizes'] = [sample_size]
+            dict_[study_name]['contrasts'][contrast_name][
+                'sample_sizes'] = [sample_size]
     return dict_
 
 

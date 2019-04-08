@@ -16,6 +16,7 @@ from ..meta.cbma.ale import SCALE
 N_ITERS_DEFAULT = 2500
 CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
 
+
 @click.command(name='scale', short_help='permutation-based, modified MACM approach '
                                         'that takes activation frequency bias into '
                                         'account',
@@ -70,7 +71,7 @@ rates. NeuroImage, 99, 559-570.
     if not baseline:
         ijk = np.vstack(np.where(dset.mask.get_data())).T
     else:
-        ijk = np.loadtxt(base_img)
+        ijk = np.loadtxt(baseline)
 
     estimator = SCALE(dset, ijk=ijk, n_iters=n_iters)
     estimator.fit(dset.ids, voxel_thresh=v_thr, n_iters=n_iters, n_cores=2)
