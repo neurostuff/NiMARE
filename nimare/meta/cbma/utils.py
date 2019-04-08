@@ -37,13 +37,16 @@ def _get_resize_arg(target_shape):
     return target_affine, list(target_shape)
 
 
-def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_bounds=False):
+def _get_generator(contrasts_coordinates, target_shape, affine,
+                   skip_out_of_bounds=False):
     def generator():
         for contrast in contrasts_coordinates:
             encoded_coords = np.zeros(list(target_shape))
             for real_pt in contrast:
-                vox_pt = np.rint(nb.affines.apply_affine(npl.inv(affine), real_pt)).astype(int)
-                if skip_out_of_bounds and (vox_pt[0] >= 32 or vox_pt[1] >= 32 or vox_pt[2] >= 32):
+                vox_pt = np.rint(nb.affines.apply_affine(
+                    npl.inv(affine), real_pt)).astype(int)
+                if skip_out_of_bounds and (vox_pt[0] >= 32 or
+                                           vox_pt[1] >= 32 or vox_pt[2] >= 32):
                     continue
                 encoded_coords[vox_pt[0], vox_pt[1], vox_pt[2]] = 1
             yield (encoded_coords, encoded_coords)
@@ -63,8 +66,8 @@ def _get_checkpoint_dir():
         f = BytesIO()
 
         # Total size in bytes.
-        total_size = int(r.headers.get('content-length', 0));
-        block_size = 1024*1024
+        total_size = int(r.headers.get('content-length', 0))
+        block_size = 1024 * 1024
         wrote = 0
         for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size),
                          unit='MB', unit_scale=True):
@@ -137,6 +140,7 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
     niis = [nb.Nifti1Image(np.squeeze(result), affine) for result in results]
     return niis
 
+
 def compute_ma(shape, ijk, kernel):
     """
     Generate modeled activation (MA) maps.
@@ -162,15 +166,15 @@ def compute_ma(shape, ijk, kernel):
     """
     ma_values = np.zeros(shape)
     mid = int(np.floor(kernel.shape[0] / 2.))
-    mid1 = mid+1
+    mid1 = mid + 1
     for j_peak in range(ijk.shape[0]):
         i, j, k = ijk[j_peak, :]
-        xl = max(i-mid, 0)
-        xh = min(i+mid1, ma_values.shape[0])
-        yl = max(j-mid, 0)
-        yh = min(j+mid1, ma_values.shape[1])
-        zl = max(k-mid, 0)
-        zh = min(k+mid1, ma_values.shape[2])
+        xl = max(i - mid, 0)
+        xh = min(i + mid1, ma_values.shape[0])
+        yl = max(j - mid, 0)
+        yh = min(j + mid1, ma_values.shape[1])
+        zl = max(k - mid, 0)
+        zh = min(k + mid1, ma_values.shape[2])
         xlk = mid - (i - xl)
         xhk = mid - (i - xh)
         ylk = mid - (j - yl)
@@ -178,21 +182,14 @@ def compute_ma(shape, ijk, kernel):
         zlk = mid - (k - zl)
         zhk = mid - (k - zh)
 
-        if ((xl >=0)
-            & (xh >=0)
-            & (yl >=0)
-            & (yh >=0)
-            & (zl >=0)
-            & (zh >=0)
-            & (xlk >=0)
-            & (xhk >=0)
-            & (ylk >=0)
-            & (yhk >=0)
-            & (zlk >=0)
-            & (zhk >=0)):
-            ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(ma_values[xl:xh, yl:yh, zl:zh],
-                                                        kernel[xlk:xhk, ylk:yhk, zlk:zhk])
+        if ((xl >= 0) & (xh >= 0) & (yl >= 0) & (yh >= 0) & (zl >= 0) &
+                (zh >= 0) & (xlk >= 0) & (xhk >= 0) & (ylk >= 0) & (yhk >= 0) &
+                (zlk >= 0) & (zhk >= 0)):
+            ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
+                ma_values[xl:xh, yl:yh, zl:zh],
+                kernel[xlk:xhk, ylk:yhk, zlk:zhk])
     return ma_values
+
 
 @due.dcite(Doi('10.1002/hbm.20718'),
            description='Introduces sample size-dependent kernels to ALE.')
@@ -206,12 +203,12 @@ def get_ale_kernel(img, n=None, fwhm=None):
     elif n is None and fwhm is None:
         raise ValueError('Either n or fwhm must be provided')
     elif n is not None:
-        uncertain_templates = (5.7/(2.*np.sqrt(2./np.pi)) * \
-                               np.sqrt(8.*np.log(2.)))  # pylint: disable=no-member
+        uncertain_templates = (5.7 / (2. * np.sqrt(2. / np.pi)) *
+                               np.sqrt(8. * np.log(2.)))  # pylint: disable=no-member
         # Assuming 11.6 mm ED between matching points
-        uncertain_subjects = (11.6/(2*np.sqrt(2/np.pi)) * \
-                              np.sqrt(8*np.log(2))) / np.sqrt(n)  # pylint: disable=no-member
-        fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
+        uncertain_subjects = (11.6 / (2 * np.sqrt(2 / np.pi)) *
+                              np.sqrt(8 * np.log(2))) / np.sqrt(n)  # pylint: disable=no-member
+        fwhm = np.sqrt(uncertain_subjects ** 2 + uncertain_templates ** 2)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = fwhm_vox * np.sqrt(2.) / (np.sqrt(2. * np.log(2.)) * 2.)  # pylint: disable=no-member
@@ -224,6 +221,6 @@ def get_ale_kernel(img, n=None, fwhm=None):
     # Crop kernel to drop surrounding zeros
     mn = np.min(np.where(kernel > np.spacing(1))[0])
     mx = np.max(np.where(kernel > np.spacing(1))[0])
-    kernel = kernel[mn:mx+1, mn:mx+1, mn:mx+1]
+    kernel = kernel[mn:mx + 1, mn:mx + 1, mn:mx + 1]
     mid = int(np.floor(data.shape[0] / 2.))
     return sigma_vox, kernel

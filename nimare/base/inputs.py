@@ -1,7 +1,6 @@
 """
 Input classes for nimare data.
 """
-import json
 
 
 class Analyzable(object):

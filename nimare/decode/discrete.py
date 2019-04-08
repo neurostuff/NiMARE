@@ -4,10 +4,11 @@ meta-analytic clustering on a database) into text.
 """
 import numpy as np
 import pandas as pd
+import nibabel as nib
 from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from ..base import Decoder
+from .utils import weight_priors
 from ..stats import p_to_z, one_way, two_way
 from ..due import due, Doi
 
@@ -90,9 +91,9 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
         topic_weights *= weighted_priors
 
     # Multiply topic_weights by topic-by-word matrix (p_word_g_topic).
-    #n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
-    #p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
-    #p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
+    # n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
+    # p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
+    # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
     word_weights = np.dot(model.p_word_g_topic, topic_weights)
 
     decoded_df = pd.DataFrame(index=model.word_labels,
@@ -121,16 +122,15 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     # Binarize with frequency threshold
     features_df = annotations[features].ge(frequency_threshold)
 
-    terms = annotations.columns.values
-    sel_array = annotations.loc[ids].values
-    unsel_array = annotations.loc[unselected].values
+    sel_array = features_df.loc[ids].values
+    unsel_array = features_df.loc[unselected].values
 
     n_selected = len(ids)
     n_unselected = len(unselected)
 
     # the number of times any term is used (e.g., if one experiment uses
     # two terms, that counts twice). Why though?
-    n_exps_across_terms = np.sum(np.sum(annotations))
+    n_exps_across_terms = np.sum(np.sum(features_df))
 
     n_selected_term = np.sum(sel_array, axis=0)
     n_unselected_term = np.sum(unsel_array, axis=0)
@@ -145,11 +145,11 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     p_selected = n_selected / n_foci_in_database
 
     # I hope there's a way to do this without the for loop
-    n_term_foci = np.zeros(len(terms))
-    n_noterm_foci = np.zeros(len(terms))
-    for i, term in enumerate(terms):
-        term_ids = annotations.loc[annotations[term] == 1].index.values
-        noterm_ids = annotations.loc[annotations[term] == 0].index.values
+    n_term_foci = np.zeros(len(features))
+    n_noterm_foci = np.zeros(len(features))
+    for i, term in enumerate(features):
+        term_ids = features_df.loc[features_df[term] == 1].index.values
+        noterm_ids = features_df.loc[features_df[term] == 0].index.values
         n_term_foci[i] = coordinates['id'].isin(term_ids).sum()
         n_noterm_foci[i] = coordinates['id'].isin(noterm_ids).sum()
 
@@ -171,11 +171,11 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     p_ri = two_way(cells)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
-    # Ignore rare terms
+    # Ignore rare features
     p_fi[n_selected_term < 5] = 1.
     p_ri[n_selected_term < 5] = 1.
 
-    # Multiple comparisons correction across terms. Separately done for FI and RI.
+    # Multiple comparisons correction across features. Separately done for FI and RI.
     if correction is not None:
         _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction,
                                            returnsorted=False)
@@ -193,7 +193,7 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     arr = np.array([p_corr_fi, z_corr_fi, l_selected_g_term,  # pylint: disable=no-member
                     p_corr_ri, z_corr_ri, p_term_g_selected]).T
 
-    out_df = pd.DataFrame(data=arr, index=terms,
+    out_df = pd.DataFrame(data=arr, index=features,
                           columns=['pForward', 'zForward', 'likelihoodForward',
                                    'pReverse', 'zReverse', 'probReverse'])
     out_df.index.name = 'Term'
@@ -225,7 +225,6 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
     # Binarize with frequency threshold
     features_df = annotations[features].ge(frequency_threshold)
 
-    terms = features_df.columns.values
     sel_array = features_df.loc[ids].values
     unsel_array = features_df.loc[unselected].values
 
@@ -253,13 +252,13 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
 
     # Significance testing
     # One-way chi-square test for consistency of term frequency across terms
-    p_fi = stats.one_way(n_selected_term, n_term)
+    p_fi = one_way(n_selected_term, n_term)
     sign_fi = np.sign(n_selected_term - np.mean(n_selected_term)).ravel()  # pylint: disable=no-member
 
     # Two-way chi-square test for specificity of activation
     cells = np.array([[n_selected_term, n_selected_noterm],  # pylint: disable=no-member
                       [n_unselected_term, n_unselected_noterm]]).T
-    p_ri = stats.two_way(cells)
+    p_ri = two_way(cells)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.
@@ -286,7 +285,7 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
     arr = np.array([p_corr_fi, z_corr_fi, p_selected_g_term_g_prior,  # pylint: disable=no-member
                     p_corr_ri, z_corr_ri, p_term_g_selected_g_prior]).T
 
-    out_df = pd.DataFrame(data=arr, index=terms,
+    out_df = pd.DataFrame(data=arr, index=features,
                           columns=['pForward', 'zForward', 'probForward',
                                    'pReverse', 'zReverse', 'probReverse'])
     out_df.index.name = 'Term'

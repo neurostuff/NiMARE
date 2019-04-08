@@ -1,8 +1,6 @@
 """
 Coordinate-based meta-analysis estimators
 """
-import os
-import copy
 import logging
 import multiprocessing as mp
 from tqdm.auto import tqdm
@@ -168,7 +166,7 @@ class ALE(CBMAEstimator):
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
         n_grp1 = len(ids)
-        img1 = unmask(image1, self.mask)
+        # img1 = unmask(image1, self.mask)
 
         all_ids = np.hstack((np.array(ids), np.array(ids2)))
         id_idx = np.arange(len(all_ids))
@@ -281,7 +279,7 @@ class ALE(CBMAEstimator):
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
 
         max_poss_ale = 1 - max_poss_ale
-        hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
+        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
 
         ale_values, null_distribution = self._compute_ale(df=None,
                                                           hist_bins=hist_bins,
@@ -330,7 +328,7 @@ class ALE(CBMAEstimator):
             with mp.Pool(n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
-        self.null[prefix+'vfwe'], self.null[prefix+'cfwe'] = zip(*perm_results)
+        self.null[prefix + 'vfwe'], self.null[prefix + 'cfwe'] = zip(*perm_results)
 
         percentile = 100 * (1 - self.clust_thresh)
 
@@ -339,7 +337,7 @@ class ALE(CBMAEstimator):
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
         labeled_matrix = ndimage.measurements.label(vthresh_z_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_size_thresh = np.percentile(self.null[prefix+'cfwe'], percentile)
+        clust_size_thresh = np.percentile(self.null[prefix + 'cfwe'], percentile)
         z_map = unmask(z_values, self.mask).get_data()
         cfwe_map = np.zeros(self.mask.shape)
         for i, clust_size in enumerate(clust_sizes):
@@ -355,18 +353,18 @@ class ALE(CBMAEstimator):
         p_fwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
             p_fwe_values[voxel] = null_to_p(
-                ale_values[voxel], self.null[prefix+'vfwe'], tail='upper')
+                ale_values[voxel], self.null[prefix + 'vfwe'], tail='upper')
 
         z_fwe_values = p_to_z(p_fwe_values, tail='one')
 
         # Write out unthresholded value images
-        images = {prefix+'ale': ale_values,
-                  prefix+'p': p_values,
-                  prefix+'z': z_values,
-                  prefix+'vthresh': vthresh_z_values,
-                  prefix+'p_vfwe': p_fwe_values,
-                  prefix+'z_vfwe': z_fwe_values,
-                  prefix+'cfwe': cfwe_map}
+        images = {prefix + 'ale': ale_values,
+                  prefix + 'p': p_values,
+                  prefix + 'z': z_values,
+                  prefix + 'vthresh': vthresh_z_values,
+                  prefix + 'p_vfwe': p_fwe_values,
+                  prefix + 'z_vfwe': z_fwe_values,
+                  prefix + 'cfwe': cfwe_map}
         return images
 
     def _compute_ale(self, df=None, hist_bins=None, ma_maps=None):
@@ -458,7 +456,6 @@ class ALE(CBMAEstimator):
         """
         Compute p- and z-values.
         """
-        eps = np.spacing(1)  # pylint: disable=no-member
         step = 1 / np.mean(np.diff(hist_bins))
 
         # Determine p- and z-values from ALE values and null distribution.
@@ -585,7 +582,7 @@ class SCALE(CBMAEstimator):
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
 
         max_poss_ale = 1 - max_poss_ale
-        hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
+        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
 
         ale_values = self._compute_ale(df=None, ma_maps=ma_maps)
 
@@ -652,7 +649,6 @@ class SCALE(CBMAEstimator):
         """
         Compute p- and z-values.
         """
-        eps = np.spacing(1)  # pylint: disable=no-member
         step = 1 / np.mean(np.diff(hist_bins))
 
         scale_zeros = scale_values == 0

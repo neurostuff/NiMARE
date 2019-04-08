@@ -3,6 +3,7 @@ Automated annotation of Cognitive Atlas labels.
 """
 import re
 import time
+import os.path as op
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,7 @@ from cognitiveatlas.api import get_disorder
 
 from ..text import uk_to_us
 from ...due import due, Doi
+from ...utils import get_resource_path
 
 
 def _longify(df):
@@ -55,7 +57,7 @@ def _gen_alt_forms(term):
     alt_forms = []
     # For one alternate form, put contents of parentheses at beginning of term
     if '(' in term:
-        prefix = term[term.find('(')+1:term.find(')')]
+        prefix = term[term.find('(') + 1:term.find(')')]
         temp_term = term.replace('({0})'.format(prefix), '').replace('  ', ' ')
         alt_forms.append(temp_term)
         alt_forms.append('{0} {1}'.format(prefix, temp_term))
@@ -310,7 +312,7 @@ class CogAtLemmatizer(object):
         regex_dict = {}
         for term in ontology_df['alias'].values:
             term_for_regex = term.replace('(', '\(').replace(')', '\)')
-            regex = '\\b'+term_for_regex+'\\b'
+            regex = '\\b' + term_for_regex + '\\b'
             pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
             regex_dict[term] = pattern
         self.regex = regex_dict
@@ -374,7 +376,7 @@ def extract_cogat(text_df, id_df):
     regex_dict = {}
     for term in id_df['alias'].values:
         term_for_regex = term.replace('(', '\(').replace(')', '\)')
-        regex = '\\b'+term_for_regex+'\\b'
+        regex = '\\b' + term_for_regex + '\\b'
         pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
         regex_dict[term] = pattern
 

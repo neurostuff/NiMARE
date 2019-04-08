@@ -10,7 +10,7 @@ import numpy as np
 import nibabel as nib
 from nilearn import datasets
 
-from .due import due, Doi, BibTeX
+from .due import due, Doi
 
 LGR = logging.getLogger(__name__)
 
@@ -47,7 +47,8 @@ def get_template(space='mni152_1mm', mask=None):
         else:
             # Not the same as the nilearn brain mask, but should correspond to
             # the default "more conservative" MNI152 mask in GingerALE.
-            img = nib.load(op.join(get_resource_path(), 'templates/MNI152_2x2x2_brainmask.nii.gz'))
+            img = nib.load(op.join(get_resource_path(),
+                           'templates/MNI152_2x2x2_brainmask.nii.gz'))
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img
@@ -66,7 +67,7 @@ def round2(ndarray):
     """
     onedarray = ndarray.flatten()
     signs = np.sign(onedarray)  # pylint: disable=no-member
-    idx = np.where(np.abs(onedarray-np.round(onedarray)) == 0.5)[0]
+    idx = np.where(np.abs(onedarray - np.round(onedarray)) == 0.5)[0]
     x = np.abs(onedarray)
     y = np.round(x)
     y[idx] = np.ceil(x[idx])
@@ -132,10 +133,10 @@ def tal2mni(coords):
         coords = coords.transpose()
 
     # Transformation matrices, different for each software package
-    icbm_other = np.array([[ 0.9357,     0.0029,    -0.0072,    -1.0423],
-                           [-0.0065,     0.9396,    -0.0726,    -1.3940],
-                           [ 0.0103,     0.0752,     0.8967,     3.6475],
-                           [ 0.0000,     0.0000,     0.0000,     1.0000]])
+    icbm_other = np.array([[0.9357, 0.0029, -0.0072, -1.0423],
+                           [-0.0065, 0.9396, -0.0726, -1.3940],
+                           [0.0103, 0.0752, 0.8967, 3.6475],
+                           [0.0000, 0.0000, 0.0000, 1.0000]])
 
     # Invert the transformation matrix
     icbm_other = np.linalg.inv(icbm_other)
@@ -187,10 +188,10 @@ def mni2tal(coords):
         coords = coords.transpose()
 
     # Transformation matrices, different for each software package
-    icbm_other = np.array([[ 0.9357,     0.0029,    -0.0072,    -1.0423],
-                           [-0.0065,     0.9396,    -0.0726,    -1.3940],
-                           [ 0.0103,     0.0752,     0.8967,     3.6475],
-                           [ 0.0000,     0.0000,     0.0000,     1.0000]])
+    icbm_other = np.array([[0.9357, 0.0029, -0.0072, -1.0423],
+                           [-0.0065, 0.9396, -0.0726, -1.3940],
+                           [0.0103, 0.0752, 0.8967, 3.6475],
+                           [0.0000, 0.0000, 0.0000, 1.0000]])
 
     # Apply the transformation matrix
     coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))

@@ -2,10 +2,6 @@
 """
 from os import makedirs
 from os.path import exists, join
-from collections import defaultdict
-
-from abc import ABCMeta, abstractmethod
-from six import with_metaclass
 
 from nilearn.masking import unmask
 

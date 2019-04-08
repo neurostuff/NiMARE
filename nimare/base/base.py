@@ -3,9 +3,11 @@ Base classes for datasets.
 """
 import logging
 import multiprocessing as mp
+from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
 from six import with_metaclass
+from sklearn.utils.fixes import signature
 
 from ..dataset.dataset import Dataset
 

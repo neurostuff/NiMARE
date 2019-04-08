@@ -77,7 +77,7 @@ class LDAModel(AnnotationModel):
             'n_iters': n_iters,
             'alpha': alpha,
             'beta': beta,
-            }
+        }
 
         # Check for presence of text files and convert if necessary
         if not op.isdir(text_dir):

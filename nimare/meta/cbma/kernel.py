@@ -62,7 +62,7 @@ class ALEKernel(KernelTransformer):
         imgs = []
         kernels = {}
         for id_, data in self.coordinates.groupby('id'):
-            #ijk = data[['i', 'j', 'k']].values.astype(int)
+            # ijk = data[['i', 'j', 'k']].values.astype(int)
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if n is not None:
                 n_subjects = n

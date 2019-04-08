@@ -8,3 +8,5 @@ def macm_workflow(dataset, target_mask, kernel_estimator=ALEKernel, **kwargs):
     kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                    if k.startswith('kernel__')}
     kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+    del kernel_args
+    del kwargs

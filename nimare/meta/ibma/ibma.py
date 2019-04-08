@@ -69,12 +69,12 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     if two_sided:
         # two-tailed method
         ffx_stat_map = -2 * np.sum(np.log(stats.norm.sf(np.abs(z_maps), loc=0,
-                                                        scale=1)*2), axis=0)
+                                                        scale=1) * 2), axis=0)
     else:
         # one-tailed method
         ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0,
                                                          scale=1)), axis=0)
-    p_map = stats.chi2.sf(ffx_stat_map, 2*k)
+    p_map = stats.chi2.sf(ffx_stat_map, 2 * k)
 
     # Multiple comparisons correction
     if corr is not None:
@@ -172,7 +172,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
 
         if not two_sided:
             # MATLAB one-tailed method
-            p_map = stats.t.cdf(-t_map, df=z_maps.shape[0]-1)
+            p_map = stats.t.cdf(-t_map, df=z_maps.shape[0] - 1)
 
         if null == 'empirical':
             k = z_maps.shape[0]
@@ -186,7 +186,7 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
                 # Randomly flip signs of z-maps based on proportion of z-value
                 # signs across all maps.
                 iter_z_maps = np.copy(z_maps)
-                signs = np.random.choice(a=2, size=k, p=[1-posprop, posprop])
+                signs = np.random.choice(a=2, size=k, p=[1 - posprop, posprop])
                 signs[signs == 0] = -1
                 iter_z_maps *= signs[:, None]
                 iter_t_maps[i, :], _ = stats.ttest_1samp(iter_z_maps,
@@ -432,7 +432,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
 
     if not two_sided:
         # MATLAB one-tailed method
-        p_map = stats.t.cdf(-t_map, df=con_maps.shape[0]-1)
+        p_map = stats.t.cdf(-t_map, df=con_maps.shape[0] - 1)
 
     if null == 'empirical':
         k = con_maps.shape[0]
@@ -444,7 +444,7 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
         posprop = np.mean(data_signs)
         for i in range(n_iters):
             iter_con_maps = np.copy(con_maps)
-            signs = np.random.choice(a=2, size=k, p=[1-posprop, posprop])
+            signs = np.random.choice(a=2, size=k, p=[1 - posprop, posprop])
             signs[signs == 0] = -1
             iter_con_maps *= signs[:, None]
             iter_t_maps[i, :], _ = stats.ttest_1samp(iter_con_maps, popmean=0,
@@ -593,11 +593,11 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     res = flameo.run()
 
     temp_img = nib.load(res.outputs.zstats)
-    temp_img = nib.Nifti1Image(temp_img.get_data()*-1, temp_img.affine)
+    temp_img = nib.Nifti1Image(temp_img.get_data() * -1, temp_img.affine)
     temp_img.to_filename(op.join(work_dir, 'temp_zstat2.nii.gz'))
 
     temp_img2 = nib.load(res.outputs.copes)
-    temp_img2 = nib.Nifti1Image(temp_img2.get_data()*-1, temp_img2.affine)
+    temp_img2 = nib.Nifti1Image(temp_img2.get_data() * -1, temp_img2.affine)
     temp_img2.to_filename(op.join(work_dir, 'temp_copes2.nii.gz'))
 
     # FWE correction
@@ -732,7 +732,7 @@ class FFX_GLM(IBMAEstimator):
         con_maps = self.dataset.get(self.ids, 'con')
         var_maps = self.dataset.get(self.ids, 'con_se')
         if self.sample_sizes is not None:
-            sample_sizes = np.repeat(self.sample_sizes, k)
+            sample_sizes = np.repeat(self.sample_sizes, len(ids))
         else:
             sample_sizes = self.dataset.get(self.ids, 'n')
         result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
@@ -804,7 +804,7 @@ class MFX_GLM(IBMAEstimator):
         con_maps = self.dataset.get(self.ids, 'con')
         var_maps = self.dataset.get(self.ids, 'con_se')
         if self.sample_sizes is not None:
-            sample_sizes = np.repeat(self.sample_sizes, k)
+            sample_sizes = np.repeat(self.sample_sizes, len(ids))
         else:
             sample_sizes = self.dataset.get(self.ids, 'n')
         result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,

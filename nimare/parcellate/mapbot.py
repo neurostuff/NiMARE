@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import NMF
 from scipy.spatial.distance import cdist
-import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
 from ..base import Parcellator
@@ -77,6 +76,7 @@ class MAPBOT(Parcellator):
         mask_idx = np.vstack(np.where(target_data))
         n_voxels = mask_idx.shape[1]
         voxel_arr = np.zeros((n_voxels, np.sum(self.mask)))
+        del voxel_arr  # currently unused
 
         ijk = self.coordinates[['i', 'j', 'k']].values
         temp_df = self.coordinates.copy()
@@ -106,3 +106,4 @@ class MAPBOT(Parcellator):
             model = NMF(n_components=i_parc, init='nndsvd', random_state=0)
             W = model.fit_transform(values_prime)
             H = model.components_
+            del W, H  # not sure what's next

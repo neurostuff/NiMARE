@@ -98,7 +98,7 @@ class GCLDAModel(AnnotationModel):
             'symmetric': symmetric,  # Use constrained symmetry on subregions?
                                      # (only for n_regions = 2)
             'seed_init': seed_init,  # Random seed for initializing model
-            }
+        }
         self.model_name = ('{0}_{1}T_{2}R_alpha{3:.3f}_beta{4:.3f}_'
                            'gamma{5:.3f}_delta{6:.3f}_{7}dobs_{8:.1f}roi_{9}'
                            'symmetric_{10}').format(
@@ -284,7 +284,7 @@ class GCLDAModel(AnnotationModel):
         # variables tracking loglikely
         self.compute_log_likelihood()
 
-    def fit(n_iters=10000, loglikely_freq=10, verbose=1):
+    def fit(self, n_iters=10000, loglikely_freq=10, verbose=1):
         """
         Run multiple iterations.
 
@@ -299,8 +299,8 @@ class GCLDAModel(AnnotationModel):
             Determines how much info is printed to console. 0 = none,
             1 = a little, 2 = a lot. Default value is 2.
         """
-        for i in range(model.iter, n_iters):
-            model.update(loglikely_freq=loglikely_freq, verbose=verbose)
+        for i in range(self.iter, n_iters):
+            self.update(loglikely_freq=loglikely_freq, verbose=verbose)
 
     def update(self, loglikely_freq=1, verbose=2):
         """
@@ -522,7 +522,7 @@ class GCLDAModel(AnnotationModel):
                     # Regularize the covariance, using the ratio of observations
                     # to dobs (default constant # observations)
                     d_c = n_obs / (n_obs + self.params['dobs'])
-                    sigma = d_c * c_hat + (1-d_c) * default_roi
+                    sigma = d_c * c_hat + (1 - d_c) * default_roi
 
                     # Store estimates in model object
                     self.regions_mu[i_topic][j_region][:] = mu
@@ -563,7 +563,7 @@ class GCLDAModel(AnnotationModel):
 
                 # Estimate the weighted means of all dims, where for dim1 we
                 # compute the mean w.r.t. absolute distance from the origin
-                weighted_mean_dim1 = (-m[0]*n_obs1 + n[0]*n_obs2) / (n_obs1 + n_obs2)
+                weighted_mean_dim1 = (-m[0] * n_obs1 + n[0] * n_obs2) / (n_obs1 + n_obs2)
                 weighted_mean_otherdims = np.mean(allvals[:, 1:], axis=0)
 
                 # Store weighted mean estimates
@@ -779,7 +779,7 @@ class GCLDAModel(AnnotationModel):
             that topic t was incremented.
         """
         # Compute the proportional probabilities in log-space
-        logp = z * np.log((y+1) / y)  # pylint: disable=no-member
+        logp = z * np.log((y + 1) / y)  # pylint: disable=no-member
         p = np.exp(logp - np.max(logp))  # Add a constant before exponentiating
                                          # to avoid any underflow issues
         return p
@@ -834,20 +834,20 @@ class GCLDAModel(AnnotationModel):
             word probabilities file.
         """
         # If output directory doesn't exist, make it
-        if not isdir(out_dir):
-            mkdir(out_dir)
+        if not op.isdir(out_dir):
+            op.mkdir(out_dir)
 
         # print topic-word distributions for top-K words in easy-to-read format
-        out_file = join(out_dir, 'Topic_X_Word_Probs.csv')
+        out_file = op.join(out_dir, 'Topic_X_Word_Probs.csv')
         self._save_topic_word_probs(out_file, n_top_words=n_top_words)
 
         # print topic x word count matrix: m.n_word_tokens_word_by_topic
-        out_file = join(out_dir, 'Topic_X_Word_CountMatrix.csv')
+        out_file = op.join(out_dir, 'Topic_X_Word_CountMatrix.csv')
         self._save_topic_word_counts(out_file)
 
         # print activation-assignments to topics and subregions:
         # Peak_x, Peak_y, Peak_z, peak_topic_idx, peak_region_idx
-        out_file = join(out_dir, 'ActivationAssignments.csv')
+        out_file = op.join(out_dir, 'ActivationAssignments.csv')
         self._save_activation_assignments(out_file)
 
     def _save_activation_assignments(self, out_file):
@@ -860,13 +860,18 @@ class GCLDAModel(AnnotationModel):
         out_file : :obj:`str`
             The name of the output file.
         """
-        ptopic_idx = self.peak_topic_idx[i_ptoken]+1
-        pregion_idx = self.peak_region_idx[i_ptoken]+1
-        data = np.hstack((self.peak_vals[i_ptoken, :3],
-                          ptopic_idx[:, None],
-                          pregion_idx[:, None]))
+        for i_ptoken in range(self.n_peak_tokens):
+            ptopic_idx = self.peak_topic_idx[i_ptoken] + 1
+            pregion_idx = self.peak_region_idx[i_ptoken] + 1
+            data = np.hstack((self.peak_vals[i_ptoken, :3],
+                              ptopic_idx[:, None],
+                              pregion_idx[:, None]))
+            if i_ptoken == 0:
+                data2 = data
+            else:
+                data2 = np.vstack(data2, data)
 
-        df = pd.DataFrame(data=data,
+        df = pd.DataFrame(data=data2,
                           columns=['Peak_X', 'Peak_Y', 'Peak_Z',
                                    'Topic_Assignment', 'Subregion_Assignment'])
         df.to_csv(out_file, index=False)
@@ -884,7 +889,7 @@ class GCLDAModel(AnnotationModel):
             # Print the topic-headers
             fid.write('WordLabel,')
             for i_topic in range(self.params['n_topics']):
-                fid.write('Topic_{0:02d},'.format(i_topic+1))
+                fid.write('Topic_{0:02d},'.format(i_topic + 1))
             fid.write('\n')
 
             # For each row / wlabel: wlabel-string and its count under each
@@ -927,7 +932,7 @@ class GCLDAModel(AnnotationModel):
             # Print the topic-headers
             for i_topic in range(self.params['n_topics']):
                 # Print each topic and its marginal probability to columns
-                fid.write('Topic_{0:02d},{1:.4f},'.format(i_topic+1,
+                fid.write('Topic_{0:02d},{1:.4f},'.format(i_topic + 1,
                                                           topic_probs[i_topic]))
             fid.write('\n')
 
