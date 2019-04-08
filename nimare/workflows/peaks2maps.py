@@ -6,18 +6,20 @@ from nilearn.masking import apply_mask
 
 from ..meta.ibma import rfx_glm
 from ..meta.cbma import Peaks2MapsKernel
-from ..dataset.extract import convert_sleuth_to_database
+from ..io import convert_sleuth_to_dataset
 
 n_iters_default = 10000
 
 
-@click.command(name='peaks2maps', short_help='permutation based metaanalysis of coordinates '
-                                             'that uses deep learning to reconstruct the original '
-                                             'maps',
-               help='Method for performing coordinate based meta analysis that uses a pretrained'
-                    'deep neural network to reconstruct unthresholded maps from peak coordinates.'
-                    'The reconstructed maps are evaluated for statistical significance using a'
-                    'permutation based approach with Family Wise Error multiple '
+@click.command(name='peaks2maps',
+               short_help='Permutation-based meta-analysis of coordinates '
+                          'that uses deep learning to reconstruct the original '
+                          'maps.',
+               help='Method for performing coordinate-based meta-analysis that '
+                    'uses a pretrained deep neural network to reconstruct '
+                    'unthresholded maps from peak coordinates. The reconstructed '
+                    'maps are evaluated for statistical significance using a '
+                    'permutation-based approach with Family Wise Error multiple '
                     'comparison correction.')
 @click.argument('sleuth_file', type=click.Path(exists=True))
 @click.option('--output_dir', help="Where to put the output maps.")
@@ -26,7 +28,7 @@ n_iters_default = 10000
               help="Number of iterations for permutation testing.")
 def peaks2maps(sleuth_file, output_dir=None, output_prefix=None, n_iters=n_iters_default):
     click.echo("Loading coordinates...")
-    dset = convert_sleuth_to_database(sleuth_file).get_dataset()
+    dset = convert_sleuth_to_dataset(sleuth_file)
 
     click.echo("Reconstructing unthresholded maps...")
     k = Peaks2MapsKernel(dset.coordinates, mask=dset.mask)

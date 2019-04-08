@@ -3,9 +3,11 @@ Functional decoding tools.
 """
 import warnings
 
-from .continuous import corr_decode, corr_dist_decode, gclda_decode_map
-from .discrete import gclda_decode_roi, brainmap_decode, neurosynth_decode
-from .encode import encode_gclda
+from . import continuous
+from . import discrete
+from . import encode
+
+__all__ = ['continuous', 'discrete', 'encode']
 
 warnings.simplefilter('default')
 

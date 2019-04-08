@@ -3,9 +3,11 @@ Meta-analytic parcellation tools.
 """
 import warnings
 
-from .cbp import CoordCBP, ImCBP
-from .mapbot import MAPBOT
-from .mamp import MAMP
+from . import cbp
+from . import mapbot
+from . import mamp
+
+__all__ = ['cbp', 'mapbot', 'mamp']
 
 warnings.simplefilter('default')
 

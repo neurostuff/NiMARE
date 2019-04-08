@@ -12,9 +12,8 @@ from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
-from ...base import MetaResult, CBMAEstimator, KernelEstimator
-from ...utils import null_to_p, p_to_z
-from ...stats import one_way, two_way
+from ...base import MetaResult, CBMAEstimator, KernelTransformer
+from ...stats import null_to_p, p_to_z, one_way, two_way
 from ...due import due, Doi
 
 LGR = logging.getLogger(__name__)
@@ -30,9 +29,9 @@ class MKDADensity(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelEstimator):
+        if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
-                             'KernelEstimator')
+                             'KernelTransformer')
 
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
@@ -174,9 +173,9 @@ class MKDAChi2(CBMAEstimator):
         kwargs = {k: v for k, v in kwargs.items() if not
                   k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelEstimator):
+        if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
-                             'KernelEstimator')
+                             'KernelTransformer')
 
         self.mask = dataset.mask
 
@@ -391,9 +390,9 @@ class KDA(CBMAEstimator):
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelEstimator):
+        if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
-                             'KernelEstimator')
+                             'KernelTransformer')
 
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates

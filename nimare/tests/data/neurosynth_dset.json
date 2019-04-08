@@ -27,7 +27,10 @@
                     "space": "MNI_2mm",
                     "z": "orig/9593960_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {
+                    "cogpo_emotion": 0.5,
+                    "cogat_cognitive_control": 1
+                },
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9593960_1_beta.gii.gz",
@@ -553,7 +556,10 @@
                     "space": "TAL_2mm",
                     "z": "orig/9620697_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {
+                    "cogpo_cognitive_control": 1,
+                    "cogat_cognitive_control": 1
+                },
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9620697_1_beta.gii.gz",
@@ -667,7 +673,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9620698_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9620698_1_beta.gii.gz",
@@ -753,7 +759,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9620699_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9620699_1_beta.gii.gz",
@@ -1051,7 +1057,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9636217_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9636217_1_beta.gii.gz",
@@ -1161,7 +1167,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9636217_2_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9636217_2_beta.gii.gz",
@@ -1483,7 +1489,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9714705_3_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9714705_3_beta.gii.gz",
@@ -1597,7 +1603,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9714705_5_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9714705_5_beta.gii.gz",
@@ -1659,7 +1665,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9728909_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9728909_1_beta.gii.gz",
@@ -1785,7 +1791,7 @@
                     "space": "TAL_2mm",
                     "z": "orig/9770542_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9770542_1_beta.gii.gz",
@@ -1802,7 +1808,7 @@
     "9787003": {
         "authors": "Portas CM, Rees G, Howseman AM, Josephs O, Turner R, Frith CD",
         "contrasts": {
-            "1.": {
+            "1": {
                 "connmats": {
                     "aal": "orig/9787003_1._z.txt"
                 },
@@ -2183,7 +2189,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9787003_1._z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9787003_1._beta.gii.gz",
@@ -2192,7 +2198,7 @@
                     "z": "orig/9787003_1._z.gii.gz"
                 }
             },
-            "2.": {
+            "2": {
                 "connmats": {
                     "aal": "orig/9787003_2._z.txt"
                 },
@@ -2269,7 +2275,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9787003_2._z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9787003_2._beta.gii.gz",
@@ -2278,7 +2284,7 @@
                     "z": "orig/9787003_2._z.gii.gz"
                 }
             },
-            "3.": {
+            "3": {
                 "connmats": {
                     "aal": "orig/9787003_3._z.txt"
                 },
@@ -2331,7 +2337,7 @@
                     "space": "MNI_2mm",
                     "z": "orig/9787003_3._z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9787003_3._beta.gii.gz",
@@ -2817,7 +2823,7 @@
                     "space": "TAL_2mm",
                     "z": "orig/9808463_1_z.nii.gz"
                 },
-                "labels": [],
+                "labels": {},
                 "sample_sizes": null,
                 "surfaces": {
                     "beta": "orig/9808463_1_beta.gii.gz",

@@ -9,12 +9,8 @@ from sklearn.metrics import silhouette_score
 
 from ..due import due, Doi
 from ..meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
-from ..dataset.extract import convert_sleuth_to_database
+from ..io import convert_sleuth_to_dataset
 from ..utils import get_template
-
-#from nimare.dataset.extract import convert_sleuth_to_database
-#from nimare.meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
-#from nimare.due import due, Doi
 
 
 @click.command(name='metacluster', short_help='clusters experiments based on similarity'
@@ -53,7 +49,7 @@ def meta_cluster_workflow(database, output_dir=None, output_prefix=None, kernel=
         db = x ##how do I read in a generic database file? do I need options for source type?
         dset = db.get_dataset(ids, target='mni152_2mm')
     elif database.endswith('.txt'):
-        db = convert_sleuth_to_database(database)
+        db = convert_sleuth_to_dataset(database)
         dset = db.get_dataset(target='mni152_2mm')
     else:
         raise click.BadParameter('You\'ve provided a database that metacluster can\'t read. :(', param_hint='database')

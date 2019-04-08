@@ -284,6 +284,24 @@ class GCLDAModel(AnnotationModel):
         # variables tracking loglikely
         self.compute_log_likelihood()
 
+    def fit(n_iters=10000, loglikely_freq=10, verbose=1):
+        """
+        Run multiple iterations.
+
+        Parameters
+        ----------
+        n_iters : :obj:`int`, optional
+            Number of iterations to run. Default is 10000.
+        loglikely_freq : :obj:`int`, optional
+            The frequency with which log-likelihood is updated. Default value
+            is 1 (log-likelihood is updated every iteration).
+        verbose : {0, 1, 2}, optional
+            Determines how much info is printed to console. 0 = none,
+            1 = a little, 2 = a lot. Default value is 2.
+        """
+        for i in range(model.iter, n_iters):
+            model.update(loglikely_freq=loglikely_freq, verbose=verbose)
+
     def update(self, loglikely_freq=1, verbose=2):
         """
         Run a complete update cycle (sample z, sample y&r, update regions).
@@ -325,13 +343,6 @@ class GCLDAModel(AnnotationModel):
                          'tot = {3:10.1f}'.format(self.iter, self.loglikely_x[-1],
                                                   self.loglikely_w[-1],
                                                   self.loglikely_tot[-1]))
-
-    def run(n_iters=10, loglikely_freq=10, verbose=1):
-        """
-        Run multiple iterations.
-        """
-        for i in range(model.iter, n_iters):
-            model.update(loglikely_freq=loglikely_freq, verbose=verbose)
 
     def _update_word_topic_assignments(self, randseed):
         """

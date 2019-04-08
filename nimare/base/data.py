@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod
 
 from six import with_metaclass
 
-from ..base import ConnMatrix, Image, CoordinateSet, Surface
+from .inputs import ConnMatrix, Image, CoordinateSet, Surface
 from ..utils import listify
 
 

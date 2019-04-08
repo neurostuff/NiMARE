@@ -6,9 +6,9 @@ import warnings
 from . import topic
 from . import vector
 from . import ontology
-from .text import generate_counts
+from . import text
 
-__all__ = ['generate_counts']
+__all__ = ['text', 'topic', 'vector', 'ontology']
 
 warnings.simplefilter('default')
 

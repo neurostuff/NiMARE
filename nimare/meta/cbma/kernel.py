@@ -10,15 +10,15 @@ from __future__ import division
 import numpy as np
 import nibabel as nib
 
-from nimare.utils import vox2mm
 from nilearn.image import resample_to_img, math_img
-from ...base import KernelEstimator
 from .utils import compute_ma, get_ale_kernel, peaks2maps
+from ...base.meta import KernelTransformer
+from ...utils import vox2mm
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
 
 
-class ALEKernel(KernelEstimator):
+class ALEKernel(KernelTransformer):
     """
     Generate ALE modeled activation images from coordinates and sample size.
     """
@@ -97,7 +97,7 @@ class ALEKernel(KernelEstimator):
         return imgs
 
 
-class MKDAKernel(KernelEstimator):
+class MKDAKernel(KernelTransformer):
     """
     Generate MKDA modeled activation images from coordinates.
     """
@@ -164,7 +164,7 @@ class MKDAKernel(KernelEstimator):
         return imgs
 
 
-class KDAKernel(KernelEstimator):
+class KDAKernel(KernelTransformer):
     """
     Generate KDA modeled activation images from coordinates.
     """
@@ -230,7 +230,7 @@ class KDAKernel(KernelEstimator):
         return imgs
 
 
-class Peaks2MapsKernel(KernelEstimator):
+class Peaks2MapsKernel(KernelTransformer):
     """
     Generate peaks2maps modeled activation images from coordinates.
     """

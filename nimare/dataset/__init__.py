@@ -1,6 +1,7 @@
 """
 Top-level namespace for datasets.
 """
-from ..base import Contrast
-from .dataset import Database, Dataset
-from .extract import convert_sleuth, DataSource
+from .dataset import Dataset
+from .extract import DataSource
+
+__all__ = ['Dataset', 'DataSource']
