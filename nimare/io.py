@@ -14,6 +14,16 @@ from .dataset import Dataset
 def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
     """
     Convert Neurosynth dataset text file to a NiMARE json file.
+
+    Parameters
+    ----------
+    text_file : :obj:`str`
+        Text file with Neurosynth's coordinates. Normally named "database.txt".
+    out_file : :obj:`str`
+        Output NiMARE-format json file.
+    annotations_file : :obj:`str` or None, optional
+        Optional file with Neurosynth's annotations. Normally named
+        "features.txt". Default is None.
     """
     dset_df = pd.read_csv(text_file, sep='\t')
     if annotations_file is not None:
@@ -160,7 +170,7 @@ def convert_sleuth_to_json(text_file, out_file):
         json.dump(dict_, fo, indent=4, sort_keys=True)
 
 
-def convert_sleuth_to_dataset(text_file):
+def convert_sleuth_to_dataset(text_file, target='ale_2mm'):
     """
     Convert Sleuth output text file into dictionary and create NiMARE Dataset
     with dictionary.
@@ -169,6 +179,9 @@ def convert_sleuth_to_dataset(text_file):
     ----------
     text_file : :obj:`str`
         Path to Sleuth-format text file.
+    target : {'ale_2mm', 'mni152_2mm'}, optional
+        Target template space for coordinates. Default is 'ale_2mm'
+        (ALE-specific brainmask in MNI152 2mm space).
 
     Returns
     -------
@@ -186,4 +199,4 @@ def convert_sleuth_to_dataset(text_file):
     for text_file in text_files:
         temp_dict = convert_sleuth_to_dict(text_file)
         dict_ = {**dict_, **temp_dict}
-    return Dataset(dict_)
+    return Dataset(dict_, target=target)

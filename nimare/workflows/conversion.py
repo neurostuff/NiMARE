@@ -25,5 +25,5 @@ def sleuth2nimare(sleuth_file, out_file):
 @click.argument('neurosynth_file', type=click.Path(exists=True))
 @click.argument('out_file', type=click.Path(exists=False))
 @click.option('--annotations_file', type=click.Path(exists=True))
-def neurosynth2nimare(ns_dset_file, out_file, ns_annotations_file=None):
-    convert_neurosynth_to_json(ns_dset_file, out_file, ns_annotations_file)
+def neurosynth2nimare(neurosynth_file, out_file, annotations_file=None):
+    convert_neurosynth_to_json(neurosynth_file, out_file, annotations_file)

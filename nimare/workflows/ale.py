@@ -81,16 +81,9 @@ drawn from a gray matter template and the maximum ALE value was recorded.
 
 References
 ----------
-- Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
-Meta-analysis of the functional neuroanatomy of single-word reading: method
-and validation. NeuroImage, 16(3 Pt 1), 765–780.
 - Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
 Activation likelihood estimation meta-analysis revisited. NeuroImage,
 59(3), 2349–2361.
-- Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
-& Fox, P. (2012). Minimizing within-experiment and within-group effects in
-Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-33(1), 1–13.
 - Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
 Collins, D. L., & Brain Development Cooperative Group. (2011).
 Unbiased average age-appropriate atlases for pediatric studies.
@@ -98,11 +91,18 @@ Neuroimage, 54(1), 313-327.
 - Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
 (2009). Unbiased nonlinear average age-appropriate brain templates from birth
 to adulthood. NeuroImage, (47), S102.
+- Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
+Meta-analysis of the functional neuroanatomy of single-word reading: method
+and validation. NeuroImage, 16(3 Pt 1), 765–780.
+- Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
+& Fox, P. (2012). Minimizing within-experiment and within-group effects in
+Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
+33(1), 1–13.
         """
 
         ale = ALE(dset)
 
-        click.echo("Estimating the null distribution...")
+        click.echo("Performing meta-analysis...")
         ale.fit(n_iters=n_iters, ids=dset.ids,
                 voxel_thresh=v_thr, q=c_thr, corr='FWE',
                 n_cores=n_cores)
@@ -184,7 +184,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
 
         ale = ALE(dset_combined)
 
-        click.echo("Estimating the null distribution...")
+        click.echo("Performing meta-analysis...")
         ale.fit(n_iters=n_iters, ids=dset1.ids, ids2=dset2.ids,
                 voxel_thresh=v_thr, q=c_thr, corr='FWE',
                 n_cores=n_cores)
