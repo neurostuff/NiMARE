@@ -61,9 +61,16 @@ An activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
 meta-analysis was performed using NiMARE. The input dataset included {n_foci}
 foci from {n_subs} participants across {n_exps} studies/experiments.
 
-Foci were convolved with Gaussian kernels determined by sample size,
-implemented on the MNI 152 template (Fonov et al., 2009; Fonov et al., 2011)
-at 2x2x2mm resolution.
+Modeled activation maps were generated for each study/experiment by convolving
+each focus with a Gaussian kernel determined by the study/experiment's sample
+size. For voxels with overlapping kernels, the maximum value was retained.
+The modeled activation maps were rendered in MNI 152 space (Fonov et al., 2009;
+Fonov et al., 2011) at 2x2x2mm resolution. A map of ALE values was then
+computed for the sample as the union of modeled activation values across
+studies/experiments. Voxelwise statistical significance was determined based on
+an analytically derived null distribution using the method described in
+Eickhoff, Bzdok, Laird, Kurth, & Fox (2012), prior to multiple comparisons
+correction.
 
 -> If the cluster-level FWE-corrected results were used, include the following:
 A cluster-forming threshold of p < {unc} was used, along with a cluster-extent
