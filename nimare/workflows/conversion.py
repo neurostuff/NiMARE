@@ -1,12 +1,7 @@
 """
 Workflow for running an ALE meta-analysis from a Sleuth text file.
 """
-import os
-import pathlib
-from shutil import copyfile
-
 import click
-import numpy as np
 
 from ..io import convert_sleuth_to_json, convert_neurosynth_to_json
 
