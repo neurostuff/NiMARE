@@ -12,7 +12,6 @@ API
    :toctree: generated/
    :template: class.rst
 
-   nimare.dataset.Database
    nimare.dataset.Dataset
 
    :toctree: generated/
@@ -108,6 +107,51 @@ API
 .. _calibration_ref:
 
 
+:mod:`nimare.io`: Input/Output
+-----------------------------------------------------
+
+.. automodule:: nimare.io
+   :no-members:
+   :no-inherited-members:
+
+.. autosummary:: nimare.io
+   :toctree: generated/
+   :template: module.rst
+
+   nimare.io.convert_neurosynth_to_json
+   nimare.io.convert_sleuth_to_dict
+   nimare.io.convert_sleuth_to_json
+   nimare.io.convert_sleuth_to_dataset
+
+.. currentmodule:: nimare
+
+.. _calibration_ref:
+
+
+:mod:`nimare.stats`: Statistical functions
+-----------------------------------------------------
+
+.. automodule:: nimare.stats
+   :no-members:
+   :no-inherited-members:
+
+.. autosummary:: nimare.stats
+   :toctree: generated/
+   :template: module.rst
+
+   nimare.stats.one_way
+   nimare.stats.two_way
+   nimare.stats.pearson
+   nimare.stats.null_to_p
+   nimare.stats.p_to_z
+   nimare.stats.t_to_z
+   nimare.stats.fdr
+
+.. currentmodule:: nimare
+
+.. _calibration_ref:
+
+
 :mod:`nimare.utils`: Utility functions and submodules
 -----------------------------------------------------
 
@@ -119,9 +163,14 @@ API
    :toctree: generated/
    :template: module.rst
 
-   nimare.utils.io
-   nimare.utils.stats
-   nimare.utils.utils
+   nimare.utils.get_template
+   nimare.utils.listify
+   nimare.utils.round2
+   nimare.utils.vox2mm
+   nimare.utils.mm2vox
+   nimare.utils.tal2mni
+   nimare.utils.mni2tal
+   nimare.utils.get_resource_path
 
 .. currentmodule:: nimare
 

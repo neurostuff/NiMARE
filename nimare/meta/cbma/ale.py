@@ -488,8 +488,11 @@ class ALE(CBMAEstimator):
 
         labeled_matrix = ndimage.measurements.label(vthresh_iter_z_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        iter_max_cluster = np.max(clust_sizes)
+        if len(clust_sizes) == 1:
+            iter_max_cluster = 0
+        else:
+            clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+            iter_max_cluster = np.max(clust_sizes)
         return iter_max_value, iter_max_cluster
 
 

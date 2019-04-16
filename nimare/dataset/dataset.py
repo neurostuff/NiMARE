@@ -300,6 +300,9 @@ class Dataset(object):
             A list of IDs from the Dataset with at least one focus in the mask.
         """
         from scipy.spatial.distance import cdist
+        if isinstance(mask, str):
+            mask = nib.load(mask)
+
         if not np.array_equal(self.mask.affine, mask.affine):
             from nilearn.image import resample_to_img
             mask = resample_to_img(mask, self.mask)
