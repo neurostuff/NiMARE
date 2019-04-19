@@ -41,12 +41,12 @@ CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
               show_default=True,
               help="Number of processes to use for meta-analysis. If -1, use "
                    "all available cores.")
-def ale_sleuth_inference(sleuth_file, sleuth_file2=None, output_dir=None,
-                         prefix=None,
-                         n_iters=N_ITERS_DEFAULT,
-                         v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-                         c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
-                         n_cores=-1):
+def ale_sleuth_workflow(sleuth_file, sleuth_file2=None, output_dir=None,
+                        prefix=None,
+                        n_iters=N_ITERS_DEFAULT,
+                        v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
+                        c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
+                        n_cores=-1):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """

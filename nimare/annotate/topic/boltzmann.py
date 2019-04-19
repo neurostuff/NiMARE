@@ -24,6 +24,10 @@ from ...due import due, BibTeX
 class BoltzmannModel(AnnotationModel):
     """
     Generate a deep Boltzmann machine topic model.
+
+    Warnings
+    --------
+    This method is not yet implemented.
     """
     def __init__(self, text_df, coordinates_df):
         pass

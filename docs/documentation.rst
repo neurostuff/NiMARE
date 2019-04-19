@@ -3,7 +3,8 @@
 Documentation
 =============
 
-NiMARE is a Python package for performing meta-analyses of the neuroimaging literature.
+NiMARE is a Python package for performing meta-analyses, and derivative analyses
+using meta-analytic data, of the neuroimaging literature.
 While meta-analytic packages exist which implement one or two algorithms each, NiMARE
 provides a standard syntax for performing a wide range of analyses and for interacting
 with databases of coordinates and images from fMRI studies (e.g., brainspell, Neurosynth,
@@ -19,20 +20,26 @@ the NiMARE environment.
 Overview
 ````````````
 
-If you have questions, or need help with using NiMARE check out `NeuroStars`_.
+If you have questions, or need help with using NiMARE, check out `NeuroStars`_.
 
-There are two broadly defined types of neuroimaging meta-analyses: coordinate-based
-meta-analyses and image-based meta-analyses.
+There are two broadly defined types of neuroimaging meta-analysis: coordinate-based
+and image-based meta-analyses.
 
 A coordinate-based meta-analysis uses a set of coordinates indicating measured BOLD
-activation as its input. `NeuroSynth`_, for example, performs coordinate based meta-analyses
+activation as its input.
+`NeuroSynth`_ and `BrainMap`_, for example, perform coordinate-based meta-analyses
 on peak activation coordinates.
 
 Image-based meta-analyses, on the other hand, use full statistical maps as their input.
 You could use a data repository like `NeuroVault`_ to perform an image based meta-analysis.
 
-NiMARE implements tools for doing both types of meta-analyses. It also has the capacity
-to pull data from databases.
+NiMARE implements tools for doing both types of meta-analyses.
+It also has the capacity to pull data from databases.
+
+In addition to meta-analyses, NiMARE plans to support a range of related methods
+that use meta-analytic fMRI data, including automated annotation, functional decoding,
+meta-analytic parcellation, meta-analytic clustering, and meta-analytic
+coactivation modeling.
 
 Databases
 ````````````
@@ -40,93 +47,14 @@ Databases
 To conduct a meta-analysis you'll need a collection of neuroimaging data. NiMARE has the
 ability to pull data from the following databases:
 
-`NeuroVault`_ collects unthresholded statistical maps.
+- `NeuroVault`_, which collects unthresholded statistical maps.
 
-`NeuroSynth`_ collects peak activation coordinates.
+- `BrainMap`_, which collects peak activation coordinates through manual annotation.
 
-Also it can access `BrainSpell`_ and pull abstracts from PubMed.
+- `NeuroSynth`_, which automatically extracts peak activation coordinates from neuroimaging articles online.
+
+- `BrainSpell`_, which allows researchers to manually correct or add data taken from `NeuroSynth`_.
 
 See `dataset extraction API`_ for usage.
 
 .. _dataset extraction API: generated/nimare.dataset.extract.html#module-nimare.dataset.extract
-
-Coordinate-based meta-analysis
-````````````````````````````````````
-
-Activation Likelihood Estimate (ALE)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The ALE methods for meta-analysis takes in activation coordinates, then models them as probability
-distributions in order to account for spatial uncertainties due to the between-subject and
-between-template variability of neuroimaging data. To use NiMARE to run an ALE analysis you will
-require a `Sleuth`_ file describing the dataset you want to analyze with ALE.
-
-See `Activation Likelihood Estimation meta-analysis revisited`_.
-
-.. _Activation Likelihood Estimation meta-analysis revisited: https://www.doi.org/10.1016/j.neuroimage.2011.09.017
-
-.. click:: cli:ale_sleuth_inference
-	:prog: nimare ale
-
-Specific Coactivation Likelihood Estimate (SCALE)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Peaks2Maps
-~~~~~~~~~~~
-
-`peaks2maps`_ is a method for performing coordinate based meta analysis that uses a pretrained deep
-neural network to reconstruct unthresholded maps from peak coordinates. The reconstructed maps are
-evaluated for statistical significance using a permutation based approach with Family Wise Error
-multiple comparison correction.
-
-.. click:: cli:peaks2maps
-	:prog: nimare peaks2maps
-
-Multilevel kernel density analysis (MKDA)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Kernel density analysis (KDA)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Bayesian hierarchical cluster process model (BHICP)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Hierarchical Poisson/Gamma random field model (HPGRF)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Spatial Bayesian latent factor regression (SBLFR)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Spatial binary regression (SBR)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Image-based meta-analysis
-````````````````````````````````````
-
-Mixed effects general linear model (MFX-GLM)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Random effects general linear model (RFX-GLM)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Conperm** performs a meta-analysis of contrast maps using random effects and two-sided inference
-with empirical (permutation based) null distribution and Family Wise Error multiple comparison
-correction.
-
-.. click:: cli:con_perm
-	:prog: nimare conperm
-
-Fixed effects general linear model (FFX-GLM)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Stouffer's meta-analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Random effects Stouffer's meta-analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Weighted Stouffer's meta-analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Fisher's meta-analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

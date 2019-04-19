@@ -6,6 +6,8 @@
 
 .. _NeuroStars: https://neurostars.org/latest
 
+.. _BrainMap: http://www.brainmap.org
+
 .. _NeuroSynth: http://neurosynth.org/
 
 .. _NeuroVault: https://neurovault.org/

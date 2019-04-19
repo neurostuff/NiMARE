@@ -32,6 +32,13 @@ from ..io import convert_sleuth_to_dataset
 def meta_cluster_workflow(database, output_dir=None, output_prefix=None,
                           kernel='ALEKernel', coord=True, algorithm='kmeans',
                           clust_range=(2, 10)):
+    """
+    Perform a meta-analytic clustering analysis on a database file.
+
+    Warnings
+    --------
+    This method is not yet implemented.
+    """
     def VI(X, Y):
         from math import log
         # from https://gist.github.com/jwcarr/626cbc80e0006b526688

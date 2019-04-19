@@ -38,6 +38,10 @@ class MAMP(Parcellator):
         5.  Convert correlation coefficients to correlation distance (1 -r)
             values.
         6.  Perform clustering on correlation distance matrix.
+
+    Warnings
+    --------
+    This method is not yet implemented.
     """
     def __init__(self, dataset, ids):
         self.mask = dataset.mask

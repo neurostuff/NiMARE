@@ -22,6 +22,10 @@ from ..due import due, Doi, BibTeX
 def text2brain():
     """
     Perform text-to-image encoding with the text2brain model.
+
+    Warnings
+    --------
+    This method is not yet implemented.
     """
     pass
 
