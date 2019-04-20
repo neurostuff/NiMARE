@@ -37,7 +37,7 @@ class CoordCBP(Parcellator):
 
     Warnings
     --------
-    This method is not yet currently untested.
+    This method is currently untested.
     """
     def __init__(self, dataset, ids):
         self.dataset = dataset
