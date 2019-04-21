@@ -145,7 +145,7 @@ jobs:
       - run:
           name: Run pytest
           command: |
-            docker run --rm neurostuff/nimare cd /src/NiMARE; pytest --cov-report term-missing --cov=nimare -vs /src/NiMARE/
+            docker run --rm neurostuff/nimare "cd /src/NiMARE | pytest --cov-report term-missing --cov=nimare -vs /src/NiMARE/""
             docker run --rm neurostuff/nimare codecov
 
   deploy_pypi:
