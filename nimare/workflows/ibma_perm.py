@@ -22,8 +22,8 @@ PREFIX_DEFAULT = ''
               default=PREFIX_DEFAULT, show_default=True)
 @click.option('--n_iters', default=N_ITERS_DEFAULT, show_default=True,
               help="Number of iterations for permutation testing.")
-def con_perm(contrast_images, output_dir=None, prefix=PREFIX_DEFAULT,
-             n_iters=N_ITERS_DEFAULT):
+def con_perm_workflow(contrast_images, output_dir=None, prefix=PREFIX_DEFAULT,
+                      n_iters=N_ITERS_DEFAULT):
     target = 'mni152_2mm'
     mask_img = get_template(target, mask='brain')
     n_studies = len(contrast_images)

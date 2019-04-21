@@ -116,7 +116,7 @@ API
 
 .. autosummary:: nimare.io
    :toctree: generated/
-   :template: module.rst
+   :template: function.rst
 
    nimare.io.convert_neurosynth_to_json
    nimare.io.convert_sleuth_to_dict
@@ -137,7 +137,7 @@ API
 
 .. autosummary:: nimare.stats
    :toctree: generated/
-   :template: module.rst
+   :template: function.rst
 
    nimare.stats.one_way
    nimare.stats.two_way
@@ -161,7 +161,7 @@ API
 
 .. autosummary:: nimare.utils
    :toctree: generated/
-   :template: module.rst
+   :template: function.rst
 
    nimare.utils.get_template
    nimare.utils.listify

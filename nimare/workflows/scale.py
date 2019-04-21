@@ -39,6 +39,10 @@ def scale_workflow(database, baseline, output_dir=None, prefix=None,
                    v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT):
     """
     Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
+
+    Warnings
+    --------
+    This method is not yet implemented.
     """
     if database.endswith('.json'):
         dset = Dataset(database, target='mni152_2mm')

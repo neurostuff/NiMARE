@@ -26,7 +26,8 @@ n_iters_default = 10000
 @click.option('--output_prefix', help="Common prefix for output maps.")
 @click.option('--n_iters', default=n_iters_default, show_default=True,
               help="Number of iterations for permutation testing.")
-def peaks2maps(sleuth_file, output_dir=None, output_prefix=None, n_iters=n_iters_default):
+def peaks2maps_workflow(sleuth_file, output_dir=None, output_prefix=None,
+                        n_iters=n_iters_default):
     click.echo("Loading coordinates...")
     dset = convert_sleuth_to_dataset(sleuth_file)
 

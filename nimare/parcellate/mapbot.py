@@ -48,6 +48,10 @@ class MAPBOT(Parcellator):
             - D = (F.T * F) * ones(F)
             - V = F * D^-.5
         4.  Perform non-negative matrix factorization on value matrix.
+
+    Warnings
+    --------
+    This method is not yet implemented.
     """
     def __init__(self, tfidf_df, coordinates_df, mask):
         self.mask = mask

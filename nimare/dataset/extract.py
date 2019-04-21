@@ -16,7 +16,13 @@ __all__ = ['NeuroVaultDataSource', 'NeurosynthDataSource',
 
 
 class DataSource(with_metaclass(ABCMeta)):
-    ''' Base class for DataSource hierarchy. '''
+    """
+    Base class for DataSource hierarchy.
+
+    Warnings
+    --------
+    This method is not yet implemented.
+    """
 
     @abstractmethod
     def get_data(self, level='contrast', tags=None, dois=None, **kwargs):
@@ -24,7 +30,13 @@ class DataSource(with_metaclass(ABCMeta)):
 
 
 class NeuroVaultDataSource(DataSource):
-    ''' Interface with NeuroVault data. '''
+    """
+    Interface with NeuroVault data.
+
+    Warnings
+    --------
+    This method is not yet implemented.
+    """
 
     def get_data(self, **kwargs):
         pass
@@ -37,7 +49,13 @@ class NeuroVaultDataSource(DataSource):
 
 
 class NeurosynthDataSource(DataSource):
-    ''' Interface with Neurosynth data. '''
+    """
+    Interface with Neurosynth data.
+
+    Warnings
+    --------
+    This method is not yet implemented.
+    """
     pass
 
     def get_data(self, **kwargs):
@@ -45,7 +63,13 @@ class NeurosynthDataSource(DataSource):
 
 
 class BrainSpellDataSource(DataSource):
-    ''' Interface with BrainSpell data. '''
+    """
+    Interface with BrainSpell data.
+
+    Warnings
+    --------
+    This method is not yet implemented.
+    """
     pass
 
     def get_data(self, **kwargs):
@@ -87,6 +111,10 @@ def download_combined_database(out_dir, overwrite=False):
     overwrite: :obj:`bool`, optional
         Whether to overwrite existing database, if one exists in `out_dir`.
         Defaults to False.
+
+    Warnings
+    --------
+    This method is not yet implemented.
     """
     # Download collections metadata from Neurovault
     collections_file = op.join(out_dir, 'neurovault_collections.csv')

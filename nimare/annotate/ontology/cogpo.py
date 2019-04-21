@@ -9,5 +9,9 @@ from ...due import due, Doi
 def extract_cogpo():
     """
     Predict CogPO labels with ATHENA.
+
+    Warnings
+    --------
+    This function is not yet implemented.
     """
     pass

@@ -222,6 +222,10 @@ class Dataset(object):
         -------
         dset : :obj:`nimare.dataset.Dataset`
             A Dataset object containing selection of dataset.
+
+        Warnings
+        --------
+        This method is not yet implemented.
         """
         pass
 
@@ -338,11 +342,22 @@ class Dataset(object):
         return found_ids
 
     def get_metadata(self):
+        """
+        Get metadata from Dataset.
+
+        Warnings
+        --------
+        This method is not yet implemented.
+        """
         pass
 
     def get_images(self, ids, imtype):
         """
         Get images of a certain type for a subset of studies in the dataset.
+
+        Warnings
+        --------
+        This method is not yet implemented.
         """
         pass
 

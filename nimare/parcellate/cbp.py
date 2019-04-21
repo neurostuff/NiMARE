@@ -34,6 +34,10 @@ class CoordCBP(Parcellator):
         4.  Convert correlation coefficients to correlation distance (1 -r)
             values.
         5.  Perform clustering on correlation distance matrix.
+
+    Warnings
+    --------
+    This method is currently untested.
     """
     def __init__(self, dataset, ids):
         self.dataset = dataset
@@ -142,6 +146,10 @@ class CoordCBP(Parcellator):
 class ImCBP(Parcellator):
     """
     Image-based coactivation-based parcellation
+
+    Warnings
+    --------
+    This method is not yet implemented.
     """
     def __init__(self, dataset, ids):
         self.mask = dataset.mask
