@@ -27,13 +27,13 @@ class Dataset(object):
     source : :obj:`str`
         JSON file containing dictionary with database information or the dict()
         object
-    ids : :obj:`list`
-        List of contrast IDs to be taken from the database and kept in the dataset.
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
+        Defaults to MNI152 2mm.
+    mask_file : :obj:`str`
+        Image to use as mask.
     """
-    def __init__(self, source, ids=None, target='mni152_2mm',
-                 mask_file=None):
+    def __init__(self, source, target='mni152_2mm', mask_file=None):
         if isinstance(source, str):
             with open(source, 'r') as f_obj:
                 self.data = json.load(f_obj)
@@ -42,36 +42,20 @@ class Dataset(object):
         else:
             raise Exception("`source` needs to be a file path or a dictionary")
 
-        # Datasets are organized by study, then experiment
-        # To generate unique IDs, we combine study ID with experiment ID
-        raw_ids = []
-        for pid in self.data.keys():
-            for cid in self.data[pid]['contrasts'].keys():
-                raw_ids.append('{0}-{1}'.format(pid, cid))
-        self.ids = raw_ids
-
         if mask_file is None:
             mask_img = get_template(target, mask='brain')
         else:
             mask_img = nib.load(mask_file)
         self.mask = mask_img
 
-        # Reduce dataset to include only requested IDs
-        if ids is not None:
-            temp_data = {}
-            for id_ in ids:
-                pid, expid = id_.split('-')
-                if pid not in temp_data.keys():
-                    temp_data[pid] = self.data[pid].copy()  # make sure to copy
-                    temp_data[pid]['contrasts'] = {}
-                temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
-            self.data = temp_data
-            self.ids = ids
         self.coordinates = None
         self.space = target
         self._load_coordinates()
         self._load_annotations()
         self._load_images()
+
+    def get_coordinates(self):
+        pass
 
     def _load_annotations(self):
         """

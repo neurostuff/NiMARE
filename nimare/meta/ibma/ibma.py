@@ -19,6 +19,7 @@ from ...base import MetaResult, IBMAEstimator
 from ...stats import null_to_p, p_to_z
 from ...due import due, BibTeX
 
+
 LGR = logging.getLogger(__name__)
 
 
@@ -32,24 +33,22 @@ LGR = logging.getLogger(__name__)
               }
            """),
            description='Fishers citation.')
-def fishers(z_maps, mask, corr='FWE', two_sided=True):
+def fishers(z_maps, corr='FWE', two_sided=True):
     """
     Run a Fisher's image-based meta-analysis on z-statistic maps.
 
     Parameters
     ----------
-    z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
+    z_maps : (n_contrasts, n_obs) :obj:`numpy.ndarray`
+        A 2D array of z-statistics.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
     Returns
     -------
-    result : :obj:`nimare.base.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
-        negative log(p) values.
+    result : :obj:`dict`
+        Dictionary containing maps for test statistics, p-values, and negative
+        log(p) values.
     """
     if corr == 'FDR':
         method = 'fdr_bh'
@@ -86,9 +85,8 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
 
-    result = MetaResult('fishers', mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
-                        z=z_corr_map, log_p=log_p_map)
-    return result
+    return dict(ffx_stat=ffx_stat_map, p=p_corr_map, z=z_corr_map,
+                log_p=log_p_map)
 
 
 class Fishers(IBMAEstimator):
@@ -99,18 +97,17 @@ class Fishers(IBMAEstimator):
     Requirements:
         - t OR z
     """
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        self.ids = None
-        self.results = None
+    _inputs = {
+        'z_maps': ('images', {'type': 'z'})
+    }
 
-    def fit(self, ids, corr='FWE', two_sided=True):
-        self.ids = ids
-        z_maps = self.dataset.get(self.ids, 'z')
-        result = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
-        self.results = result
+    def __init__(self, corr='FWE', two_sided=True):
+        self.corr = corr
+        self.two_sided = two_sided
+        self.__init__()
 
+    def _fit(self):
+        return fishers(self._z_maps, corr=self.corr, two_sided=self.two_sided)
 
 @due.dcite(BibTeX("""
            @article{stouffer1949american,

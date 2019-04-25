@@ -144,18 +144,72 @@ class Transformer(NiMAREBase):
 class Estimator(NiMAREBase):
     """Estimators take in Datasets and return MetaResults
     """
-    def __init__(self):
-        pass
 
-    @abstractmethod
-    def fit(self, dataset):
-        """Apply estimation to dataset and output results.
-        """
+    # Inputs that must be available in input Dataset. Keys are names of
+    # attributes to set; values are strings indicating location in Dataset.
+    _inputs = {}
+
+    def _validate_input(self, dataset):
         if not isinstance(dataset, Dataset):
             raise ValueError('Argument "dataset" must be a valid Dataset '
                              'object, not a {0}'.format(type(dataset)))
+        for k, v in self._inputs.items():
+            data = dataset.get(v[0], **v[1])
+            if not data:
+                raise ValueError("Estimator {0} requires input dataset to "
+                                 "contain {1} with filters {2}, but none "
+                                 "were found.".format(self.__class__.__name__,
+                                                      v[0], v[1]))
+            setattr(self, k, data)
 
+    def fit(self, dataset):
+        self._validate_input(dataset)
+        maps = self._fit(dataset)
+        self.results = MetaResult(self, dataset, maps)
 
-class Result(with_metaclass(ABCMeta)):
-    def __init__(self):
+    @abstractmethod
+    def _fit(self, dataset):
+        """Apply estimation to dataset and output results. Must return a
+        dictionary of results, where keys are names of images and values are
+        ndarrays.
+        """
         pass
+
+
+class MetaResult(object):
+    """
+    Base class for meta-analytic results.
+    """
+    def __init__(self, estimator, dataset, maps=None):
+        self.estimator = estimator
+        self.dataset = dataset
+        self.mask = dataset.mask
+        self.maps = maps or {}
+        # for key, array in kwargs.items():
+        #     self.images[key] = unmask(array, self.mask)
+
+    def save(self, output_dir='.', prefix='', prefix_sep='_'):
+        """
+        Save results to files.
+
+        Parameters
+        ----------
+        output_dir : :obj:`str`, optional
+            Output directory in which to save results. If the directory doesn't
+            exist, it will be created. Default is current directory.
+        prefix : :obj:`str`, optional
+            Prefix to prepent to output file names. Default is none.
+        prefix_sep : :obj:`str`, optional
+            Separator to add between prefix and default file names. Default is
+            _.
+        """
+        if prefix == '':
+            prefix_sep = ''
+
+        if not exists(output_dir):
+            makedirs(output_dir)
+
+        for imgtype, img in self.images.items():
+            filename = prefix + prefix_sep + imgtype + '.nii.gz'
+            outpath = join(output_dir, filename)
+            img.to_filename(outpath)

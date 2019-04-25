@@ -12,7 +12,7 @@ class FDRCorrector(Corrector):
     This method is not yet implemented.
     """
 
-    # The name of the method that must be implemented in a MetaEstimator class
+    # The name of the method that must be implemented in an Estimator class
     # in order to override the default correction method.
     _correction_method = '_fdr_correct'
 
