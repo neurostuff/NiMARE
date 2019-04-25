@@ -87,7 +87,7 @@ class Fishers(IBMAEstimator):
         self.two_sided = two_sided
         self.__init__()
 
-    def _fit(self):
+    def _fit(self, dataset):
         return fishers(self._z_maps, two_sided=self.two_sided)
 
 @due.dcite(BibTeX("""
