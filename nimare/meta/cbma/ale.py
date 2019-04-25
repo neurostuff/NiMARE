@@ -11,7 +11,7 @@ from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel
-from ...base import MetaResult, CBMAEstimator, KernelTransformer
+from ...base import CBMAEstimator, KernelTransformer
 from ...due import due, Doi, BibTeX
 from ...stats import null_to_p, p_to_z
 from ...utils import round2
@@ -140,7 +140,8 @@ class ALE(CBMAEstimator):
             ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
             images = self._run_ale(ma_maps, prefix='', n_cores=n_cores)
 
-        self.results = MetaResult(self, mask=self.mask, **images)
+        from ...base import MetaResult
+        self.results = MetaResult(self, mask=self.mask, maps=images)
 
     def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
         """
@@ -623,7 +624,9 @@ class SCALE(CBMAEstimator):
                   'p': p_values,
                   'z': z_values,
                   'vthresh': vthresh_z_values}
-        self.results = MetaResult(self, mask=self.mask, **images)
+
+        from ...base import MetaResult
+        self.results = MetaResult(self, mask=self.mask, maps=images)
 
     def _compute_ale(self, df=None, ma_maps=None):
         """

@@ -5,9 +5,11 @@ import logging
 import multiprocessing as mp
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
+import os
 
 from six import with_metaclass
 from sklearn.utils.fixes import signature
+import nilearn as nl
 
 from ..dataset.dataset import Dataset
 
@@ -185,10 +187,15 @@ class MetaResult(object):
         self.dataset = dataset
         self.mask = dataset.mask
         self.maps = maps or {}
-        # for key, array in kwargs.items():
-        #     self.images[key] = unmask(array, self.mask)
 
-    def save(self, output_dir='.', prefix='', prefix_sep='_'):
+    def get_map(self, name, return_type='image'):
+        m = self.maps.get(name)
+        if not m:
+            raise ValueError("No map with name '{}' found.".format(name))
+        return nl.masking.unmask(m, self.mask) if return_type=='image' else m
+
+    def save_maps(self, output_dir='.', prefix='', prefix_sep='_',
+                  names=None):
         """
         Save results to files.
 
@@ -206,10 +213,13 @@ class MetaResult(object):
         if prefix == '':
             prefix_sep = ''
 
-        if not exists(output_dir):
-            makedirs(output_dir)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
-        for imgtype, img in self.images.items():
+        names = names or list(self.maps.keys())
+        maps = {k: self.get_map(k) for k in names}
+
+        for imgtype, img in maps.items():
             filename = prefix + prefix_sep + imgtype + '.nii.gz'
-            outpath = join(output_dir, filename)
+            outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)

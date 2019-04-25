@@ -52,7 +52,6 @@ def fishers(z_maps, two_sided=True):
     """
     # Get test-value signs for p-to-z conversion
     sign = np.sign(np.mean(z_maps, axis=0))
-    sign[sign == 0] = 1
 
     k = z_maps.shape[0]
 
@@ -81,11 +80,10 @@ class Fishers(IBMAEstimator):
         - t OR z
     """
     _inputs = {
-        'z_maps': ('images', {'type': 'z'})
+        'z_maps': ('maps', {'type': 'z'})
     }
 
-    def __init__(self, corr='FWE', two_sided=True):
-        self.corr = corr
+    def __init__(self, two_sided=True):
         self.two_sided = two_sided
         self.__init__()
 
