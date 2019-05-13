@@ -6,8 +6,8 @@ import multiprocessing as mp
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
+import inspect
 from six import with_metaclass
-from sklearn.utils.fixes import signature
 
 from ..dataset.dataset import Dataset
 
@@ -18,7 +18,7 @@ class NiMAREBase(with_metaclass(ABCMeta)):
     def __init__(self):
         """
         TODO: Actually write/refactor class methods. They mostly come directly from sklearn
-        https://github.com/scikit-learn/scikit-learn/blob/afe540c7f2cbad259dd333e6744b088213180bee/sklearn/base.py#L176
+        https://github.com/scikit-learn/scikit-learn/blob/2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
         """
         pass
 
@@ -48,7 +48,7 @@ class NiMAREBase(with_metaclass(ABCMeta)):
 
         # introspect the constructor arguments to find the model parameters
         # to represent
-        init_signature = signature(init)
+        init_signature = inspect.signature(init)
         # Consider the constructor parameters excluding 'self'
         parameters = [p for p in init_signature.parameters.values()
                       if p.name != 'self' and p.kind != p.VAR_KEYWORD]
