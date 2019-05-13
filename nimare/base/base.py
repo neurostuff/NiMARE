@@ -18,7 +18,7 @@ class NiMAREBase(with_metaclass(ABCMeta)):
     def __init__(self):
         """
         TODO: Actually write/refactor class methods. They mostly come directly from sklearn
-        https://github.com/scikit-learn/scikit-learn/blob/afe540c7f2cbad259dd333e6744b088213180bee/sklearn/base.py#L176
+        https://github.com/scikit-learn/scikit-learn/blob/2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
         """
         pass
 
