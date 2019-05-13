@@ -6,8 +6,8 @@ import multiprocessing as mp
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
+import inspect
 from six import with_metaclass
-from sklearn.utils.fixes import signature
 
 from ..dataset.dataset import Dataset
 
@@ -48,7 +48,7 @@ class NiMAREBase(with_metaclass(ABCMeta)):
 
         # introspect the constructor arguments to find the model parameters
         # to represent
-        init_signature = signature(init)
+        init_signature = inspect.signature(init)
         # Consider the constructor parameters excluding 'self'
         parameters = [p for p in init_signature.parameters.values()
                       if p.name != 'self' and p.kind != p.VAR_KEYWORD]
