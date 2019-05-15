@@ -31,7 +31,7 @@ class CoordCBP(Parcellator):
             identified studies.
         3.  Correlate statistical maps between voxel MACMs to generate
             n_voxels X n_voxels correlation matrix.
-        4.  Convert correlation coefficients to correlation distance (1 -r)
+        4.  Convert correlation coefficients to correlation distance (1 - r)
             values.
         5.  Perform clustering on correlation distance matrix.
 
