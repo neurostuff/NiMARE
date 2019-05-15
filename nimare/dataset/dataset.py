@@ -6,7 +6,6 @@ import json
 import gzip
 import pickle
 import logging
-import os.path as op
 
 import numpy as np
 import pandas as pd
