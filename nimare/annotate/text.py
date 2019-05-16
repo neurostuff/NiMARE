@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 
+from ..dataset import Dataset
 from ..utils import get_resource_path
 
 SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
@@ -41,7 +42,7 @@ def download_abstracts(dataset, email, out_file):
     Entrez.email = email
 
     if isinstance(dataset, Dataset):
-        pmids = dataset.coordinates.ids.astype(str).tolist()
+        pmids = dataset.coordinates['id'].astype(str).tolist()
         pmids = [pmid.split('-')[0] for pmid in pmids]
     elif isinstance(dataset, list):
         pmids = [str(pmid) for pmid in dataset]
