@@ -4,6 +4,7 @@ Classes for representing datasets of images and/or coordinates.
 from __future__ import print_function
 import json
 import gzip
+import copy
 import pickle
 import logging
 
@@ -26,13 +27,10 @@ class Dataset(object):
     source : :obj:`str`
         JSON file containing dictionary with database information or the dict()
         object
-    ids : :obj:`list`
-        List of contrast IDs to be taken from the database and kept in the dataset.
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
     """
-    def __init__(self, source, ids=None, target='mni152_2mm',
-                 mask_file=None):
+    def __init__(self, source, target='mni152_2mm', mask_file=None):
         if isinstance(source, str):
             with open(source, 'r') as f_obj:
                 self.data = json.load(f_obj)
@@ -54,23 +52,29 @@ class Dataset(object):
         else:
             mask_img = nib.load(mask_file)
         self.mask = mask_img
-
-        # Reduce dataset to include only requested IDs
-        if ids is not None:
-            temp_data = {}
-            for id_ in ids:
-                pid, expid = id_.split('-')
-                if pid not in temp_data.keys():
-                    temp_data[pid] = self.data[pid].copy()  # make sure to copy
-                    temp_data[pid]['contrasts'] = {}
-                temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
-            self.data = temp_data
-            self.ids = ids
-        self.coordinates = None
         self.space = target
         self._load_coordinates()
         self._load_annotations()
         self._load_images()
+
+    def slice(self, ids):
+        """
+        Return a reduced dataset with only requested IDs.
+        """
+        new_dset = copy.deepcopy(self)
+        new_dset.ids = ids
+        new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates['id'].isin(ids)]
+        new_dset.images = new_dset.images.loc[new_dset.images['id'].isin(ids)]
+        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
+        temp_data = {}
+        for id_ in ids:
+            pid, expid = id_.split('-')
+            if pid not in temp_data.keys():
+                temp_data[pid] = self.data[pid].copy()  # make sure to copy
+                temp_data[pid]['contrasts'] = {}
+            temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
+        new_dset.data = temp_data
+        return new_dset
 
     def _load_annotations(self):
         """
