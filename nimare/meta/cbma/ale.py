@@ -48,38 +48,29 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        Dataset object to analyze.
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Default: 0.001
-    q : float, optional
-        Cluster-level threshold.
-    corr : {'FWE'}, optional
-        Type of multiple comparisons correction to employ. Only currently
-        supported option is FWE, which derives both cluster- and voxel-
-        level corrected results.
-    n_iters : int, optional
-        Number of iterations for correction. Default: 10000
-    n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
     """
-    def __init__(self, kernel_estimator=ALEKernel, voxel_thresh=0.001, q=0.05,
-                 corr='FWE', n_iters=10000, n_cores=-1, **kwargs):
+    def __init__(self, dataset, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
-        for kwarg in kwargs.keys():
-            print('Keyword argument "{0}" not recognized.'.format(kwarg))
 
         if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
                              'KernelTransformer')
 
+        self.mask = dataset.mask
+        self.coordinates = dataset.coordinates
+
+        self.ids = None
+        self.ids2 = None
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
         self.voxel_thresh = None
@@ -88,20 +79,34 @@ class ALE(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, dataset, dataset2=None):
+    def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
+            n_iters=10000, n_cores=-1):
         """
-        Run an ALE meta-analysis on a dataset.
+        Run an ALE meta-analysis on a subset of the dataset.
 
         Parameters
         ----------
-        dataset : array_like
+        ids : array_like
             List of IDs from dataset to analyze.
         ids2 : array_like or None, optional
             If not None, ids2 is used to identify a second sample for a
             subtraction analysis. Default is None.
+        voxel_thresh : float, optional
+            Uncorrected voxel-level threshold. Default: 0.001
+        q : float, optional
+            Cluster-level threshold.
+        corr : {'FWE'}, optional
+            Type of multiple comparisons correction to employ. Only currently
+            supported option is FWE, which derives both cluster- and voxel-
+            level corrected results.
+        n_iters : int, optional
+            Number of iterations for correction. Default: 10000
+        n_cores : int, optional
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
         """
-        self.dataset = dataset
-        self.dataset2 = dataset2
+        self.ids = ids
+        self.ids2 = ids2
         self.voxel_thresh = voxel_thresh
         self.clust_thresh = q
         self.corr = corr
@@ -117,16 +122,15 @@ class ALE(CBMAEstimator):
                                                           mp.cpu_count()))
             n_cores = mp.cpu_count()
 
-        k_est = self.kernel_estimator(self.mask, **self.kernel_arguments)
+        k_est = self.kernel_estimator(self.coordinates, self.mask)
 
         if self.ids2 is not None:
             all_ids = np.hstack((np.array(self.ids), np.array(self.ids2)))
-            ma_maps = k_est.transform(self.dataset)
-            ma_maps2 = k_est.transform(self.dataset2)
-            images1 = self._run_ale(ma_maps, prefix='group1_',
-                                    n_cores=self.n_cores)
-            images2 = self._run_ale(ma_maps2, prefix='group2_',
-                                    n_cores=self.n_cores)
+            ma_maps = k_est.transform(all_ids, **self.kernel_arguments)
+            images1 = self._run_ale(ma_maps[:len(self.ids)], prefix='group1_',
+                                    n_cores=n_cores)
+            images2 = self._run_ale(ma_maps[len(self.ids):], prefix='group2_',
+                                    n_cores=n_cores)
             sub_images = self.subtraction_analysis(
                 self.ids, self.ids2,
                 images1['group1_cfwe'], images2['group2_cfwe'],
@@ -283,15 +287,7 @@ class ALE(CBMAEstimator):
                                                           ma_maps=ma_maps)
         p_values, z_values = self._ale_to_p(ale_values, hist_bins,
                                             null_distribution)
-        # Write out unthresholded value images
-        images = {prefix + 'ale': ale_values,
-                  prefix + 'p': p_values,
-                  prefix + 'z': z_values}
 
-    def fwe_correction(self, result):
-        """
-        Multiple comparisons correction
-        """
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
         z_thresh = p_to_z(self.voxel_thresh, tail='one')
@@ -305,6 +301,7 @@ class ALE(CBMAEstimator):
         conn[:, 1, :] = 1
         conn[1, :, :] = 1
 
+        # Multiple comparisons correction
         if self.ids2 is not None:
             all_ids = np.hstack((np.array(self.ids), np.array(self.ids2)))
         else:

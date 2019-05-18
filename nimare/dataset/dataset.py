@@ -4,9 +4,9 @@ Classes for representing datasets of images and/or coordinates.
 from __future__ import print_function
 import json
 import gzip
-import copy
 import pickle
 import logging
+import os.path as op
 
 import numpy as np
 import pandas as pd
@@ -47,29 +47,15 @@ class Dataset(object):
         else:
             mask_img = nib.load(mask_file)
         self.mask = mask_img
+
+        self.coordinates = None
         self.space = target
         self._load_coordinates()
         self._load_annotations()
         self._load_images()
 
-    def slice(self, ids):
-        """
-        Return a reduced dataset with only requested IDs.
-        """
-        new_dset = copy.deepcopy(self)
-        new_dset.ids = ids
-        new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates['id'].isin(ids)]
-        new_dset.images = new_dset.images.loc[new_dset.images['id'].isin(ids)]
-        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
-        temp_data = {}
-        for id_ in ids:
-            pid, expid = id_.split('-')
-            if pid not in temp_data.keys():
-                temp_data[pid] = self.data[pid].copy()  # make sure to copy
-                temp_data[pid]['contrasts'] = {}
-            temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
-        new_dset.data = temp_data
-        return new_dset
+    def get_coordinates(self):
+        pass
 
     def _load_annotations(self):
         """
@@ -78,30 +64,19 @@ class Dataset(object):
         # Required columns
         columns = ['id', 'study_id', 'contrast_id']
 
-        # build list of ids
-        all_ids = []
+        df = pd.DataFrame(columns=columns)
+        df = df.set_index('id', drop=False)
         for pid in self.data.keys():
             for expid in self.data[pid]['contrasts'].keys():
                 exp = self.data[pid]['contrasts'][expid]
                 id_ = '{0}-{1}'.format(pid, expid)
-                all_ids.append([id_, pid, expid])
-
-        id_df = pd.DataFrame(columns=columns, data=all_ids)
-        id_df = id_df.set_index('id', drop=False)
-
-        label_dict = {}
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
+                df.loc[id_, columns] = [id_, pid, expid]
 
                 if 'labels' not in self.data[pid]['contrasts'][expid].keys():
                     continue
 
-                label_dict[id_] = exp['labels']
-
-        label_df = pd.DataFrame.from_dict(label_dict, orient='index')
-        df = pd.merge(id_df, label_df, left_index=True, right_index=True, how='outer')
+                for label in exp['labels'].keys():
+                    df.loc[id_, label] = exp['labels'][label]
 
         df = df.reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)
@@ -111,32 +86,25 @@ class Dataset(object):
         """
         Load images in Dataset into a DataFrame.
         """
-        columns = ['id', 'study_id', 'contrast_id']
-
-        # build list of ids
-        all_ids = []
+        columns = ['id', 'study_id', 'contrast_id', 'space']
+        df = pd.DataFrame(columns=columns)
+        df = df.set_index('id', drop=False)
         for pid in self.data.keys():
             for expid in self.data[pid]['contrasts'].keys():
                 exp = self.data[pid]['contrasts'][expid]
                 id_ = '{0}-{1}'.format(pid, expid)
-                all_ids.append([id_, pid, expid])
-
-        id_df = pd.DataFrame(columns=columns, data=all_ids)
-        id_df = id_df.set_index('id', drop=False)
-
-        image_dict = {}
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
+                space = exp.get('images', {}).get('space', None)
+                df.loc[id_, columns] = [id_, pid, expid, space]
 
                 if 'images' not in self.data[pid]['contrasts'][expid].keys():
                     continue
 
-                image_dict[id_] = exp['images']
-
-        image_df = pd.DataFrame.from_dict(image_dict, orient='index')
-        df = pd.merge(id_df, image_df, left_index=True, right_index=True, how='outer')
+                for imtype in exp['images'].keys():
+                    if imtype != 'space':
+                        img = exp['images'][imtype]
+                        if img is not None and not op.isfile(img):
+                            LGR.warning('Image {0} DNE'.format(img))
+                        df.loc[df.id == id_, imtype] = img
 
         df = df.reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)

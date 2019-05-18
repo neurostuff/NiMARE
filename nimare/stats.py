@@ -15,10 +15,6 @@ def one_way(data, n):
     Note that if you're testing activation with this, make sure that only
     valid voxels (e.g., in-mask gray matter voxels) are included in the
     array, or results won't make any sense!
-
-    Returns
-    -------
-    Chi2 values
     """
     term = data.astype('float64')
     no_term = n - term
@@ -35,7 +31,7 @@ def two_way(cells):
     """ Two-way chi-square test of independence.
     Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
     dimensions are the contingency table for each of N voxels. Returns an
-    array of chi2 values.
+    array of p-values.
     """
     # Mute divide-by-zero warning for bad voxels since we account for that
     # later

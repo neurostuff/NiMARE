@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 from scipy.stats import binom
-from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .utils import weight_priors
@@ -111,8 +110,7 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     Perform image-to-text decoding for discrete image inputs (e.g., regions
     of interest, significant clusters) according to the BrainMap method.
     """
-    id_cols = ['id', 'study_id', 'contrast_id']
-    dataset_ids = sorted(list(set(coordinates['id'].values)))
+    dataset_ids = sorted(list(set(coordinates['ids'].values)))
     if ids2 is None:
         unselected = sorted(list(set(dataset_ids) - set(ids)))
     else:
@@ -120,11 +118,9 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
 
     if features is None:
         features = annotations.columns.values
-        features = [f for f in features if f not in id_cols]
 
     # Binarize with frequency threshold
-    features_df = annotations.set_index('id', drop=True)
-    features_df = features_df[features].ge(frequency_threshold)
+    features_df = annotations[features].ge(frequency_threshold)
 
     sel_array = features_df.loc[ids].values
     unsel_array = features_df.loc[unselected].values
@@ -172,8 +168,7 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     # Two-way chi-square test for specificity of activation
     cells = np.array([[n_selected_term, n_selected_noterm],  # pylint: disable=no-member
                       [n_unselected_term, n_unselected_noterm]]).T
-    chi2_ri = two_way(cells)
-    p_ri = special.chdtrc(1, chi2_ri)
+    p_ri = two_way(cells)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Ignore rare features
@@ -191,8 +186,8 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
         p_corr_ri = p_ri
 
     # Compute z-values
-    z_corr_fi = p_to_z(p_corr_fi, 'two') * sign_fi
-    z_corr_ri = p_to_z(p_corr_ri, 'two') * sign_ri
+    z_corr_fi = p_to_z(p_corr_fi, sign_fi)
+    z_corr_ri = p_to_z(p_corr_ri, sign_ri)
 
     # Effect size
     arr = np.array([p_corr_fi, z_corr_fi, l_selected_g_term,  # pylint: disable=no-member
@@ -218,8 +213,7 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
     (`ids`) are compared to the unselected studies remaining in the database
     (`dataset`).
     """
-    id_cols = ['id', 'study_id', 'contrast_id']
-    dataset_ids = sorted(list(set(coordinates['id'].values)))
+    dataset_ids = sorted(list(set(coordinates['ids'].values)))
     if ids2 is None:
         unselected = sorted(list(set(dataset_ids) - set(ids)))
     else:
@@ -227,11 +221,9 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
 
     if features is None:
         features = annotations.columns.values
-        features = [f for f in features if f not in id_cols]
 
     # Binarize with frequency threshold
-    features_df = annotations.set_index('id', drop=True)
-    features_df = features_df[features].ge(frequency_threshold)
+    features_df = annotations[features].ge(frequency_threshold)
 
     sel_array = features_df.loc[ids].values
     unsel_array = features_df.loc[unselected].values
@@ -260,15 +252,13 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
 
     # Significance testing
     # One-way chi-square test for consistency of term frequency across terms
-    chi2_fi = one_way(n_selected_term, n_term)
-    p_fi = special.chdtrc(1, chi2_fi)
+    p_fi = one_way(n_selected_term, n_term)
     sign_fi = np.sign(n_selected_term - np.mean(n_selected_term)).ravel()  # pylint: disable=no-member
 
     # Two-way chi-square test for specificity of activation
     cells = np.array([[n_selected_term, n_selected_noterm],  # pylint: disable=no-member
                       [n_unselected_term, n_unselected_noterm]]).T
-    chi2_ri = two_way(cells)
-    p_ri = special.chdtrc(1, chi2_ri)
+    p_ri = two_way(cells)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.
@@ -282,8 +272,8 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
         p_corr_ri = p_ri
 
     # Compute z-values
-    z_corr_fi = p_to_z(p_corr_fi, 'two') * sign_fi
-    z_corr_ri = p_to_z(p_corr_ri, 'two') * sign_ri
+    z_corr_fi = p_to_z(p_corr_fi, sign_fi)
+    z_corr_ri = p_to_z(p_corr_ri, sign_ri)
 
     # Effect size
     # est. prob. of brain state described by term finding activation in ROI
