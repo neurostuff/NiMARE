@@ -90,6 +90,37 @@ class Corrector(metaclass=ABCMeta):
         pass
 
 
+class FWECorrector(Corrector):
+    """
+    Perform family-wise error rate correction on a meta-analysis.
+
+    Parameters
+    ----------
+    q : `obj`:float
+        The FDR correction rate to use.
+    method : `obj`:str
+        The FWE correction to use. Options: 'perm'
+    """
+
+    _correction_method = '_fwe_correct'
+
+    def __init__(self, q=0.05, method='fwe_perm'):
+        self. q = q
+        self.method = method
+
+    @property
+    def _name_suffix(self):
+        return '_corr-FDR_q-{}_method-{}'.format(self.q, self.method)
+
+    def _transform(self, result):
+        p = result.maps['p']
+        _, p_corr = mc.fdrcorrection(p, alpha=self.q, method=self.method,
+                                     is_sorted=False)
+        corr_maps[name] = {'p': p_corr}
+        self._generate_secondary_maps(result, corr_maps)
+        return corr_maps
+
+
 class FDRCorrector(Corrector):
     """
     Perform false discovery rate correction on a meta-analysis.

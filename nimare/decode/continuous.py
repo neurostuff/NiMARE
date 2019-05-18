@@ -118,6 +118,12 @@ def corr_decode(img, dataset, features=None, frequency_threshold=0.001,
     target_image : :obj:`str`, optional
         Image from ``meta_estimator``'s results to use for decoding.
         Dependent on estimator.
+
+    Returns
+    -------
+    out_df : :obj:`pandas.DataFrame`
+        A DataFrame with two columns: 'feature' (label) and 'r' (correlation
+        coefficient). There will be one row for each feature.
     """
     # Check that input image is compatible with dataset
     assert np.array_equal(img.affine, dataset.mask.affine)

@@ -19,6 +19,20 @@ class CoordCBP(Parcellator):
     """
     Coordinate-based coactivation-based parcellation
 
+    Parameters
+    ----------
+    target_mask : img_like
+        Image with binary mask for region of interest to be parcellated.
+    n_parcels : :obj:`int` or array_like of :obj:`int`, optional
+        Number of parcels to generate for ROI. If array_like, each parcel
+        number will be evaluated and results for all will be returned.
+        Default is 2.
+    n_iters : :obj:`int`, optional
+        Number of iterations to run for each parcel number.
+        Default is 10000.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for model fitting.
+
     Notes
     -----
     Here are the steps:
@@ -31,7 +45,7 @@ class CoordCBP(Parcellator):
             identified studies.
         3.  Correlate statistical maps between voxel MACMs to generate
             n_voxels X n_voxels correlation matrix.
-        4.  Convert correlation coefficients to correlation distance (1 -r)
+        4.  Convert correlation coefficients to correlation distance (1 - r)
             values.
         5.  Perform clustering on correlation distance matrix.
 
@@ -39,38 +53,8 @@ class CoordCBP(Parcellator):
     --------
     This method is currently untested.
     """
-    def __init__(self, dataset, ids):
-        self.dataset = dataset
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates.loc[dataset.coordinates['id'].isin(ids)]
-        self.ids = ids
-        self.solutions = None
-        self.metrics = None
-
-    def fit(self, target_mask, method='min_distance', r=5, n_exps=50,
-            n_parcels=2, meta_estimator=SCALE, **kwargs):
-        """
-        Run CBP parcellation.
-
-        Parameters
-        ----------
-        target_mask : img_like
-            Image with binary mask for region of interest to be parcellated.
-        n_parcels : :obj:`int` or array_like of :obj:`int`, optional
-            Number of parcels to generate for ROI. If array_like, each parcel
-            number will be evaluated and results for all will be returned.
-            Default is 2.
-        n_iters : :obj:`int`, optional
-            Number of iterations to run for each parcel number.
-            Default is 10000.
-        n_cores : :obj:`int`, optional
-            Number of cores to use for model fitting.
-
-        Returns
-        -------
-        results
-        """
-        assert np.array_equal(self.mask.affine, target_mask.affine)
+    def __init__(self, target_mask, method='min_distance', r=5, n_exps=50,
+                 n_parcels=2, meta_estimator=SCALE, **kwargs):
         kernel_args = {k: v for k, v in kwargs.items() if
                        k.startswith('kernel__')}
         meta_args = {k.split('meta__')[1]: v for k, v in kwargs.items() if
@@ -79,8 +63,35 @@ class CoordCBP(Parcellator):
         if not isinstance(n_parcels, list):
             n_parcels = [n_parcels]
 
+        self.dataset = None
+        self.mask = None
+        self.target = target_mask
+        self.method = method
+        self.r = r
+        self.n_exps = n_exps
+        self.n_parcels = n_parcels
+        self.solutions = None
+        self.metrics = None
+        self.meta_estimator = meta_estimator(**meta_args, **kernel_args)
+
+    def fit(self, dataset):
+        """
+        Run CBP parcellation.
+
+        Parameters
+        ----------
+        dataset
+
+        Returns
+        -------
+        results
+        """
+        self.dataset = dataset
+        self.mask = dataset.mask
+        assert np.array_equal(self.mask.affine, self.target.affine)
+
         # Step 1: Build correlation matrix
-        target_data = apply_mask(target_mask, self.mask)
+        target_data = apply_mask(self.target, self.mask)
         target_map = unmask(target_data, self.mask)
         target_data = target_map.get_data()
         mask_idx = np.vstack(np.where(target_data))
@@ -103,11 +114,11 @@ class CoordCBP(Parcellator):
                 temp_df2 = temp_df.groupby('id')[['distance']].min()
                 sel_ids = temp_df2.loc[temp_df2['distance'] < r].index.values
 
+            voxel_dset = self.dataset.slice(sel_ids)
+
             # Run MACM
-            voxel_meta = meta_estimator(self.dataset, ids=sel_ids,
-                                        **kernel_args)
-            voxel_meta.fit(**meta_args)
-            voxel_arr[i_voxel, :] = apply_mask(voxel_meta.results['ale'],
+            voxel_results = self.meta_estimator.fit(voxel_dset)
+            voxel_arr[i_voxel, :] = apply_mask(voxel_results['ale'],
                                                self.mask)
 
         # Correlate voxel-specific MACMs across voxels in ROI

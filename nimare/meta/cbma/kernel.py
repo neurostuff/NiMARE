@@ -44,6 +44,7 @@ class ALEKernel(KernelTransformer):
             kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
         masked: :bool:, optional
             Return an array instead of a niimg.
+
         Returns
         -------
         imgs : :obj:`list` of `nibabel.Nifti1Image`
@@ -61,7 +62,8 @@ class ALEKernel(KernelTransformer):
             mask_data = self.mask.get_data().astype(np.bool)
         imgs = []
         kernels = {}
-        for id_, data in self.coordinates.groupby('id'):
+        temp_coordinates = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        for id_, data in temp_coordinates.groupby('id'):
             # ijk = data[['i', 'j', 'k']].values.astype(int)
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if n is not None:
@@ -141,7 +143,8 @@ class MKDAKernel(KernelTransformer):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_, data in self.coordinates.groupby('id'):
+        temp_coordinates = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        for id_, data in temp_coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
@@ -208,7 +211,8 @@ class KDAKernel(KernelTransformer):
             mask_data = self.mask.get_data().astype(np.bool)
 
         imgs = []
-        for id_, data in self.coordinates.groupby('id'):
+        temp_coordinates = self.coordinates.loc[self.coordinates['id'].isin(ids)]
+        for id_, data in temp_coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]

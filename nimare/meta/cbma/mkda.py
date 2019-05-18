@@ -21,51 +21,57 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
 class MKDADensity(CBMAEstimator):
-    """
+    r"""
     Multilevel kernel density analysis- Density analysis
+
+    Parameters
+    ----------
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        here, with the prefix '\kernel__' in the variable name.
     """
-    def __init__(self, dataset, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, kernel_estimator=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for kwarg in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized.'.format(kwarg))
 
         if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
                              'KernelTransformer')
 
+        self.kernel_estimator = kernel_estimator
+        self.kernel_arguments = kernel_args
+        self.mask = None
+        self.coordinates = None
+        self.results = None
+
+    def fit(self, dataset):
+        """
+        Run the MKDA meta-analysis.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset on which to run the meta-analysis.
+
+        Returns
+        -------
+        results : :obj:`nimare.base.MetaResult`
+            Results from meta-analysis
+        """
         self.mask = dataset.mask
         self.coordinates = dataset.coordinates
 
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
-        self.ids = None
-        self.voxel_thresh = None
-        self.clust_thresh = None
-        self.n_iters = None
-        self.results = None
-
-    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=-1):
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
-        self.ids = ids
-        self.voxel_thresh = voxel_thresh
-        self.clust_thresh = q
-        self.n_iters = n_iters
-
-        if n_cores == -1:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                'Desired number of cores ({0}) greater than number '
-                'available ({1}). Setting to {1}.'.format(n_cores,
-                                                          mp.cpu_count()))
-            n_cores = mp.cpu_count()
-
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        k_est = self.kernel_estimator(red_coords, self.mask)
-        ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        k_est = self.kernel_estimator(self.coordinates, self.mask)
+        ma_maps = k_est.transform(**self.kernel_arguments)
 
         # Weight each SCM by square root of sample size
-        ids_df = red_coords.groupby('id').first()
+        ids_df = self.coordinates.groupby('id').first()
         if 'n' in ids_df.columns and 'inference' not in ids_df.columns:
             ids_n = ids_df.loc[self.ids, 'n'].astype(float).values
             weight_vec = np.sqrt(ids_n)[:, None] / np.sum(np.sqrt(ids_n))
@@ -82,15 +88,55 @@ class MKDADensity(CBMAEstimator):
         ma_maps *= weight_vec
         of_map = np.sum(ma_maps, axis=0)
         of_map = unmask(of_map, self.mask)
+        images = {'of': of_map}
+        results = MetaResult(self, images, mask=self.mask)
 
+    def _fwe_correct(self, results, voxel_thresh=0.01, q=0.05, n_iters=10000,
+                     n_cores=-1):
+        """
+        Perform family-wise error rate correction
+
+        Parameters
+        ----------
+        results : :obj:`nimare.base.MetaResult`
+            Results from meta-analysis
+        voxel_thresh : :obj:`float`, optional
+            Voxel-level OF-value threshold. Default is 0.01.
+        q : :obj:`float`, optional
+            Family-wise error rate. Default is 0.05.
+        n_iters : :obj:`int`, optional
+            Number of iterations for building null distributions. Default is
+            10000.
+        n_cores : :obj:`int`, optional
+            Number of cores to use for permutations. Default is -1 (use all
+            available cores).
+
+        Returns
+        -------
+        results : :obj:`nimare.base.MetaResult`
+            Result maps with updated corrected maps.
+        """
+        if n_cores == -1:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
+            n_cores = mp.cpu_count()
+
+        assert isinstance(results, MetaResult)
+
+        of_map = result['of_map']
         vthresh_of_map = of_map.get_data().copy()
         vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
 
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
         rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(red_coords.shape[0], n_iters))
+                                    size=(self.coordinates.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = red_coords.copy()
+        iter_df = self.coordinates.copy()
 
         conn = np.ones((3, 3, 3))
 
@@ -130,12 +176,13 @@ class MKDADensity(CBMAEstimator):
         vfwe_of_map = apply_mask(nib.Nifti1Image(vfwe_of_map, of_map.affine),
                                  self.mask)
 
-        vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
-                                                    of_map.affine),
+        vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map, of_map.affine),
                                     self.mask)
-        self.results = MetaResult(self, vthresh=vthresh_of_map,
-                                  cfwe=cfwe_of_map, vfwe=vfwe_of_map,
-                                  mask=self.mask)
+        images = {'of_vthresh': vthresh_of_map,
+                  'of_cfwe': cfwe_of_map,
+                  'of_vfwe': vfwe_of_map}
+        results.maps.update(images)
+        return results
 
     def _perm(self, params):
         iter_ijk, iter_df, weight_vec, conn = params
