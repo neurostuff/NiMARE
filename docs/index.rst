@@ -39,6 +39,7 @@ To install NiMARE check out our `installation guide`_.
 
   installation
   documentation
+  ecosystem
   cli
   contributing
   api
