@@ -56,7 +56,7 @@ class Dataset(object):
         self._load_coordinates()
         self._load_images()
         self._load_annotations()
-        self._load_text()
+        self._load_texts()
 
     def slice(self, ids):
         """
@@ -114,7 +114,7 @@ class Dataset(object):
         df = df.replace(to_replace='None', value=np.nan)
         self.annotations = df
 
-    def _load_text(self):
+    def _load_texts(self):
         """
         Load texts in Dataset into a DataFrame.
         """
@@ -311,6 +311,30 @@ class Dataset(object):
             labels = res.loc[res].index.tolist()
 
         return labels
+
+    def get_texts(self, ids=None):
+        """
+        Extract list of labels for which studies in Dataset have annotations.
+
+        Parameters
+        ----------
+        ids : list, optional
+            A list of IDs in the Dataset for which to find labels. Default is
+            None, in which case all labels are returned.
+
+        Returns
+        -------
+        labels : list
+            List of labels for which there are annotations in the Dataset.
+        """
+        id_cols = ['id', 'study_id', 'contrast_id']
+        labels = [c for c in self.texts.columns if c not in id_cols]
+        if ids is not None:
+            temp_annotations = self.texts.loc[self.annotations['id'].isin(ids)]
+            res = temp_annotations[labels].any(axis=0)
+            texts = res.loc[res].index.tolist()
+
+        return texts
 
     def get_studies_by_label(self, labels=None, label_threshold=0.5):
         """
