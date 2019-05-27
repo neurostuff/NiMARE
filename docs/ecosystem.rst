@@ -6,8 +6,16 @@ A Proposed Meta-Analytic Ecosystem
 .. image:: _static/ecosystem.png
   :width: 100 %
 
-NiMARE aims to fill a gap in the meta-analytic ecosystem currently (partially)
-filled by Neurosynth.
+NiMARE aims to fill a gap in the burgeoning meta-analytic ecosystem.
+The goal of NiMARE is to collect a wide range of meta-analytic tools in one
+Python library.
+Currently, those methods are spread out across a range of programming languages
+and user interfaces, or are never even translated from the original papers into
+useable tools.
+NiMARE operates on NIMADS-format datasets, which users will be able to compile
+by searching the NeuroStuff database with the pyNIMADS library.
+A number of other services in the ecosystem will then use NiMARE functions to
+perform meta-analyses, including Neurosynth 2.0, NeuroVault, and metaCurious.
 
 Neurosynth 2.0
 --------------
@@ -29,7 +37,6 @@ meta-analytic databases.
 
 NeuroVault
 ----------
-
 `NeuroVault`_ is a database for unthresholded images.
 Users may upload individual maps or `NIDM Results`_, which can be exported from
 a number of fMRI analysis tools, like `AfNI`_, `SPM`_, `FSL`_, and
@@ -75,6 +82,3 @@ pyNIMADS
 --------
 pyNIMADS (tentatively named) will act as a Python wrapper for the NeuroStuff
 API.
-
-NiMARE
-------
