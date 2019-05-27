@@ -61,7 +61,7 @@ def download_abstracts(dataset, email):
     # PubMed only allows you to search ~1000 at a time. I chose 900 to be safe.
     chunks = [pmids[x: x + 900] for x in range(0, len(pmids), 900)]
     for i, chunk in enumerate(chunks):
-        LGR.info('Downloading chunk {0} of {1}'.format(i+1, len(chunks)))
+        LGR.info('Downloading chunk {0} of {1}'.format(i + 1, len(chunks)))
         h = Entrez.efetch(db='pubmed', id=chunk, rettype='medline',
                           retmode='text')
         records += list(Medline.parse(h))
