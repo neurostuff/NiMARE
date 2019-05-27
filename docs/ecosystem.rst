@@ -40,7 +40,11 @@ NeuroVault also has integrations with `NeuroPower`_ (for power analyses) and
 
 brainspell
 ----------
-`brainspell`_ is a clone of the Neurosynth database
+`brainspell`_ is a clone of the Neurosynth database meant for crowdsourced
+manual annotation.
+It provides a website where users can correct mistakes made by ACE or can add
+labels from multiple cognitive ontologies (including `CogPO` and
+`Cognitive Atlas`) to experiments.
 
 metaCurious
 -----------
@@ -65,10 +69,12 @@ NeuroStuff
 NeuroStuff will act as a centralized repository for coordinates and maps from
 neuroimaging studies, stored in NIMADS format.
 Users will be able to query and add to the repository using its API and the
-pyNIMADS Python package.
+pyNIMADS Python library.
 
 pyNIMADS
 --------
+pyNIMADS (tentatively named) will act as a Python wrapper for the NeuroStuff
+API.
 
 NiMARE
 ------
