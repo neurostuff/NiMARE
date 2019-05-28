@@ -6,7 +6,7 @@ A Proposed Meta-Analytic Ecosystem
 .. image:: _static/ecosystem.png
   :width: 100 %
 
-NiMARE aims to fill a gap in the burgeoning meta-analytic ecosystem.
+NiMARE aims to fill a gap in a burgeoning meta-analytic ecosystem.
 The goal of NiMARE is to collect a wide range of meta-analytic tools in one
 Python library.
 Currently, those methods are spread out across a range of programming languages
@@ -15,7 +15,15 @@ useable tools.
 NiMARE operates on NIMADS-format datasets, which users will be able to compile
 by searching the NeuroStuff database with the pyNIMADS library.
 A number of other services in the ecosystem will then use NiMARE functions to
-perform meta-analyses, including Neurosynth 2.0, NeuroVault, and metaCurious.
+perform meta-analyses, including Neurosynth 2.0, `NeuroVault`_, and
+`metaCurious`_.
+
+.. note::
+  This page outlines a *tentative* plan for a system of services
+  for neuroimaging meta-analysis.
+  Several of the services detailed here do not currently exist or only partially
+  support the functionality described below.
+  This plan is likely to change over time.
 
 Neurosynth 2.0
 --------------
@@ -25,15 +33,15 @@ for automated meta-analyses, functional decoding, and gene expression
 visualization, and provides a Python package implementing the above methods.
 
 In order to improve modularization, the next iteration of Neurosynth will limit
-itself to the web interface, providing a centralized storage for large-scale
+itself to the web interface and providing a centralized storage for large-scale
 automated meta-analyses, but not actually implementing the algorithms used
 to run those meta-analyses or to perform the other services provided on the
 website (e.g., functional decoding and topic modeling).
-The algorithms currently implemented in the Neurosynth Python package will be
+The algorithms currently implemented in the `Neurosynth Python package`_ will be
 implemented (among many others) in NiMARE.
-The database currently stored by Neurosynth will instead by stored in the
-NeuroStuff database, which will also store other coordinate- and image-based
-meta-analytic databases.
+Under the current plan, the database at the moment stored by Neurosynth will
+instead by stored in the NeuroStuff database, which will also store other
+coordinate- and image-based meta-analytic databases in NIMADS format.
 
 NeuroVault
 ----------
@@ -43,15 +51,16 @@ a number of fMRI analysis tools, like `AfNI`_, `SPM`_, `FSL`_, and
 `NeuroScout`_.
 
 NeuroVault also has integrations with `NeuroPower`_ (for power analyses) and
-`Neurosynth`_ (for functional decoding), and supports simple meta-analyses.
+`Neurosynth`_ (for functional decoding), and supports simple image-based
+meta-analyses.
 
 brainspell
 ----------
 `brainspell`_ is a clone of the Neurosynth database meant for crowdsourced
 manual annotation.
 It provides a website where users can correct mistakes made by ACE or can add
-labels from multiple cognitive ontologies (including `CogPO` and
-`Cognitive Atlas`) to experiments.
+labels from multiple cognitive ontologies (including the
+`Cognitive Paradigm Ontology`_ and the `Cognitive Atlas`_) to experiments.
 
 metaCurious
 -----------
@@ -69,16 +78,17 @@ NIMADS
 ------
 NIMADS is a new standard for organizing and representing meta-analytic
 neuroimaging data.
-NIMADS will be used by NeuroStuff, pyNIMADS, metaCurious, and NiMARE.
+NIMADS will be used by NeuroStuff, pyNIMADS, `metaCurious`_, and NiMARE.
 
 NeuroStuff
 ----------
-NeuroStuff will act as a centralized repository for coordinates and maps from
-neuroimaging studies, stored in NIMADS format.
+NeuroStuff (tentatively named) will act as a centralized repository for
+coordinates and maps from neuroimaging studies, stored in NIMADS format.
 Users will be able to query and add to the repository using its API and the
 pyNIMADS Python library.
 
 pyNIMADS
 --------
-pyNIMADS (tentatively named) will act as a Python wrapper for the NeuroStuff
-API.
+pyNIMADS (also tentatively named) is a planned Python library that will act as
+a wrapper for the NeuroStuff API, allowing users to query the database and to
+build NiMARE-compatible datasets for analysis.

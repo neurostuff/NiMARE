@@ -10,6 +10,8 @@
 
 .. _NeuroSynth: http://neurosynth.org/
 
+.. _Neurosynth Python package: https://github.com/neurosynth/neurosynth
+
 .. _NeuroVault: https://neurovault.org/
 
 .. _OpenNeuro: https://openneuro.org
