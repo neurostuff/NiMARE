@@ -54,8 +54,9 @@ class Dataset(object):
         self.mask = mask_img
         self.space = target
         self._load_coordinates()
-        self._load_annotations()
         self._load_images()
+        self._load_annotations()
+        self._load_texts()
 
     def slice(self, ids):
         """
@@ -66,6 +67,7 @@ class Dataset(object):
         new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates['id'].isin(ids)]
         new_dset.images = new_dset.images.loc[new_dset.images['id'].isin(ids)]
         new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
+        new_dset.text = new_dset.text.loc[new_dset.text['id'].isin(ids)]
         temp_data = {}
         for id_ in ids:
             pid, expid = id_.split('-')
@@ -111,6 +113,42 @@ class Dataset(object):
         df = df.reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)
         self.annotations = df
+
+    def _load_texts(self):
+        """
+        Load texts in Dataset into a DataFrame.
+        """
+        # Required columns
+        columns = ['id', 'study_id', 'contrast_id']
+
+        # build list of ids
+        all_ids = []
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                exp = self.data[pid]['contrasts'][expid]
+                id_ = '{0}-{1}'.format(pid, expid)
+                all_ids.append([id_, pid, expid])
+
+        id_df = pd.DataFrame(columns=columns, data=all_ids)
+        id_df = id_df.set_index('id', drop=False)
+
+        exp_dict = {}
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                exp = self.data[pid]['contrasts'][expid]
+                id_ = '{0}-{1}'.format(pid, expid)
+
+                if 'texts' not in self.data[pid]['contrasts'][expid].keys():
+                    continue
+
+                exp_dict[id_] = exp['texts']
+
+        text_df = pd.DataFrame.from_dict(exp_dict, orient='index')
+        df = pd.merge(id_df, text_df, left_index=True, right_index=True, how='outer')
+
+        df = df.reset_index(drop=True)
+        df = df.replace(to_replace='None', value=np.nan)
+        self.texts = df
 
     def _load_images(self):
         """
@@ -273,6 +311,30 @@ class Dataset(object):
             labels = res.loc[res].index.tolist()
 
         return labels
+
+    def get_texts(self, ids=None):
+        """
+        Extract list of labels for which studies in Dataset have annotations.
+
+        Parameters
+        ----------
+        ids : list, optional
+            A list of IDs in the Dataset for which to find labels. Default is
+            None, in which case all labels are returned.
+
+        Returns
+        -------
+        labels : list
+            List of labels for which there are annotations in the Dataset.
+        """
+        id_cols = ['id', 'study_id', 'contrast_id']
+        labels = [c for c in self.texts.columns if c not in id_cols]
+        if ids is not None:
+            temp_annotations = self.texts.loc[self.annotations['id'].isin(ids)]
+            res = temp_annotations[labels].any(axis=0)
+            texts = res.loc[res].index.tolist()
+
+        return texts
 
     def get_studies_by_label(self, labels=None, label_threshold=0.5):
         """
