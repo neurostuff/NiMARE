@@ -24,8 +24,8 @@ To install NiMARE check out our `installation guide`_.
    :target: https://codecov.io/gh/neurostuff/nimare
    :alt: Codecov
 
-.. image:: https://img.shields.io/badge/slack-join_chat%20%E2%86%92-brightgreen.svg?logo=slack
-   :target: https://brainhack.slack.com/messages/CFAC93KJB
+.. image:: https://img.shields.io/badge/mattermost-join_chat%20%E2%86%92-brightgreen.svg
+   :target: https://mattermost.brainhack.org/brainhack/channels/nimare
    :alt: Join the chat
 
 .. _installation guide: installation.html

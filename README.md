@@ -5,7 +5,7 @@ A Python library for coordinate- and image-based meta-analysis.
 [![CircleCI](https://circleci.com/gh/neurostuff/NiMARE.svg?style=shield)](https://circleci.com/gh/neurostuff/NiMARE)
 [![Documentation Status](https://readthedocs.org/projects/nimare/badge/?version=latest)](http://nimare.readthedocs.io/en/latest/?badge=latest)
 [![Codecov](https://codecov.io/gh/neurostuff/NiMARE/branch/master/graph/badge.svg)](https://codecov.io/gh/neurostuff/nimare)
-[![Join the chat at https://brainhack.slack.com/messages/CFAC93KJB](https://img.shields.io/badge/slack-join_chat%20%E2%86%92-brightgreen.svg?logo=slack)](https://brainhack.slack.com/messages/CFAC93KJB)
+[![Join the chat at https://mattermost.brainhack.org/brainhack/channels/nimare](https://img.shields.io/badge/mattermost-join_chat%20%E2%86%92-brightgreen.svg)](https://mattermost.brainhack.org/brainhack/channels/nimare)
 
 ## Supported meta-analytic methods (`nimare.meta`)
 - Coordinate-based methods (`nimare.meta.cbma`)
