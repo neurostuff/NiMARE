@@ -9,7 +9,6 @@ import pandas as pd
 import nibabel as nib
 from scipy.stats import multivariate_normal
 
-from ...base import AnnotationModel
 from ...due import due, Doi
 from ...utils import get_template
 
