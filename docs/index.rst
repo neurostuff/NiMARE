@@ -38,7 +38,7 @@ To install NiMARE check out our `installation guide`_.
   :caption: Contents:
 
   installation
-  documentation
+  about
   cli
   contributing
   api
