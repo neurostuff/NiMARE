@@ -9,7 +9,6 @@ import pandas as pd
 import nibabel as nib
 from scipy.stats import multivariate_normal
 
-from ...base import AnnotationModel
 from ...due import due, Doi
 from ...utils import get_template
 
@@ -18,7 +17,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Introduces GC-LDA decoding.')
-class GCLDAModel(AnnotationModel):
+class GCLDAModel(object):
     """
     Generate a GCLDA topic model.
 
@@ -31,8 +30,8 @@ class GCLDAModel(AnnotationModel):
         of times the feature is found in a given article.
     coordinates_df : :obj:`pandas.DataFrame`
         A DataFrame with a list of foci in the dataset. The index is 'id',
-        used for identifying studies. Additional columns include 'i', 'j' and
-        'k' (the matrix indices of the foci in standard space).
+        used for identifying studies. Additional columns include 'x', 'y' and
+        'z' (foci in standard space).
     n_topics : :obj:`int`, optional
         Number of topics to generate in model. The default is 100.
     n_regions : :obj:`int`, optional
@@ -62,16 +61,36 @@ class GCLDAModel(AnnotationModel):
     name : :obj:`str`, optional
         Name of model.
     """
-    def __init__(self, count_df, coordinates_df, mask='Mni152_2mm',
+    def __init__(self, count_df, coordinates_df, mask='mni152_2mm',
                  n_topics=100, n_regions=2, symmetric=True, alpha=.1,
                  beta=.01, gamma=.01, delta=1.0, dobs=25, roi_size=50.0,
                  seed_init=1, name='gclda'):
         LGR.info('Constructing/Initializing GCLDA Model')
+        count_df = count_df.copy()
+        coordinates_df = coordinates_df.copy()
+
+        # Check IDs from DataFrames
+        count_df.index = count_df.index.astype(str)
+        count_df['id'] = count_df.index
+        count_ids = count_df.index.tolist()
+        if 'id' not in coordinates_df.columns:
+            coordinates_df['id'] = coordinates_df.index
+        coordinates_df['id'] = coordinates_df['id'].astype(str)
+        coord_ids = coordinates_df['id'].tolist()
+        ids = sorted(list(set(count_ids).intersection(coord_ids)))
+        if len(count_ids) != len(coord_ids) != len(ids):
+            union_ids = sorted(list(set(count_ids + coord_ids)))
+            LGR.info('IDs mismatch detected: retaining {0} of {1} unique '
+                     'IDs'.format(len(ids), len(union_ids)))
+
+        # Reduce inputs based on shared IDs
+        count_df = count_df.loc[count_df['id'].isin(ids)]
+        coordinates_df = coordinates_df.loc[coordinates_df['id'].isin(ids)]
 
         # --- Checking to make sure parameters are valid
         if (symmetric is True) and (n_regions != 2):
             # symmetric model only valid if R = 2
-            raise ValueError('Cannot run a symmetric model unless #Subregions '
+            raise ValueError('Cannot run a symmetric model unless # subregions '
                              '(n_regions) == 2 !')
 
         # Initialize sampling parameters
@@ -123,13 +142,10 @@ class GCLDAModel(AnnotationModel):
         self.vocabulary = count_df.columns.tolist()
 
         # Extract document and word indices from count_df
-        count_df.index = count_df.index.astype(str)
-        ids = count_df.index.tolist()
         docidx_mapper = {id_: i for (i, id_) in enumerate(ids)}
         self.ids = ids
 
         # Create docidx column
-        count_df['id'] = count_df.index
         count_df['docidx'] = count_df['id'].map(docidx_mapper)
         count_df = count_df.dropna(subset=['docidx'])
         count_df = count_df.drop('id', 1)
@@ -158,8 +174,6 @@ class GCLDAModel(AnnotationModel):
         self.wtoken_word_idx = widx_df['widx'].tolist()
 
         # Import all peak-indices into lists
-        if 'id' not in coordinates_df.columns:
-            coordinates_df['id'] = coordinates_df.index
         coordinates_df['docidx'] = coordinates_df['id'].astype(str).map(docidx_mapper)
         coordinates_df = coordinates_df.dropna(subset=['docidx'])
         coordinates_df = coordinates_df[['docidx', 'x', 'y', 'z']]
@@ -228,6 +242,11 @@ class GCLDAModel(AnnotationModel):
         self.loglikely_x = []  # Tracks log-likelihood of peak tokens
         self.loglikely_w = []  # Tracks log-likelihood of word tokens
         self.loglikely_tot = []  # Tracks log-likelihood of peak + word tokens
+
+        # TODO: Handle this more elegantly
+        self.p_topic_g_voxel = None
+        self.p_voxel_g_topic = None
+        self.p_word_g_topic = None
 
         # Initialize peak->subregion assignments (r)
         if not self.params['symmetric']:
@@ -301,6 +320,11 @@ class GCLDAModel(AnnotationModel):
         """
         for i in range(self.iter, n_iters):
             self.update(loglikely_freq=loglikely_freq, verbose=verbose)
+
+        # TODO: Handle this more elegantly
+        (self.p_topic_g_voxel,
+         self.p_voxel_g_topic,
+         self.p_word_g_topic) = self.get_spatial_probs()
 
     def update(self, loglikely_freq=1, verbose=2):
         """
@@ -799,9 +823,13 @@ class GCLDAModel(AnnotationModel):
             A voxel-by-topic array of conditional probabilities: p(topic|voxel).
             For cell ij, the value is the probability of topic j being selected
             given voxel i is active.
+        p_word_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
+            A word-by-topic array of conditional probabilities: p(word|topic).
+            For cell ij, the value is the probability of word j being selected
+            given topic i is active.
         """
-        affine = self.mask_img.affine
-        mask_ijk = np.vstack(np.where(self.mask_img.get_data())).T
+        affine = self.mask.affine
+        mask_ijk = np.vstack(np.where(self.mask.get_data())).T
         mask_xyz = nib.affines.apply_affine(affine, mask_ijk)
 
         spatial_dists = np.zeros((mask_xyz.shape[0], self.params['n_topics']), float)
@@ -818,7 +846,11 @@ class GCLDAModel(AnnotationModel):
         p_voxel_g_topic = spatial_dists / np.sum(spatial_dists, axis=0)[None, :]
         p_voxel_g_topic = np.nan_to_num(p_voxel_g_topic, 0)  # might be unnecessary
 
-        return p_topic_g_voxel, p_voxel_g_topic
+        n_word_tokens_per_topic = np.sum(self.n_word_tokens_word_by_topic, axis=0)
+        p_word_g_topic = self.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
+        p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
+
+        return p_topic_g_voxel, p_voxel_g_topic, p_word_g_topic
 
     def save_model_params(self, out_dir, n_top_words=15):
         """
