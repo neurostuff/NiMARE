@@ -22,6 +22,7 @@ ALE meta-analysis on those studies.
 import os.path as op
 from os import mkdir
 from neurosynth.base.dataset import download
+from nilearn import plotting
 
 from nimare.io import convert_neurosynth_to_dataset
 from nimare.dataset import Dataset
@@ -55,8 +56,15 @@ pain_studies = dset.get_studies_by_label('pain', frequency_threshold=0.001)
 print('{0} studies found.'.format(len(pain_studies)))
 # Reduce to only 50 for expediency
 pain_studies = pain_studies[:50]
+pain_dset = dset.slice(pain_studies)
 
 ###############################################################################
 # Run ALE
 # --------------------------------------------------
-ale = ALE()
+ale = ALE(dset)
+ale.fit(pain_studies, n_iters=100)
+
+###############################################################################
+# Show results
+# --------------------------------------------------
+fig = plotting.plot_stat_map(ale.results.images['cfwe'])
