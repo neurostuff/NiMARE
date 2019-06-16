@@ -10,6 +10,7 @@ import nibabel as nib
 from scipy.stats import multivariate_normal
 
 from ...due import due, Doi
+from ...base import AnnotationModel
 from ...utils import get_template
 
 LGR = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Introduces GC-LDA decoding.')
-class GCLDAModel(object):
+class GCLDAModel(AnnotationModel):
     """
     Generate a GCLDA topic model.
 
@@ -118,14 +119,6 @@ class GCLDAModel(object):
                                      # (only for n_regions = 2)
             'seed_init': seed_init,  # Random seed for initializing model
         }
-        self.model_name = ('{0}_{1}T_{2}R_alpha{3:.3f}_beta{4:.3f}_'
-                           'gamma{5:.3f}_delta{6:.3f}_{7}dobs_{8:.1f}roi_{9}'
-                           'symmetric_{10}').format(
-            name, self.params['n_topics'], self.params['n_regions'],
-            self.params['alpha'], self.params['beta'],
-            self.params['gamma'], self.params['delta'],
-            self.params['dobs'], self.params['roi_size'],
-            self.params['symmetric'], self.params['seed_init'])
 
         # Prepare data
         if isinstance(mask, str) and not op.isfile(mask):
@@ -246,6 +239,7 @@ class GCLDAModel(object):
         # TODO: Handle this more elegantly
         self.p_topic_g_voxel = None
         self.p_voxel_g_topic = None
+        self.p_topic_g_word = None
         self.p_word_g_topic = None
 
         # Initialize peak->subregion assignments (r)
@@ -322,9 +316,12 @@ class GCLDAModel(object):
             self.update(loglikely_freq=loglikely_freq, verbose=verbose)
 
         # TODO: Handle this more elegantly
-        (self.p_topic_g_voxel,
-         self.p_voxel_g_topic,
-         self.p_word_g_topic) = self.get_spatial_probs()
+        (p_topic_g_voxel, p_voxel_g_topic,
+         p_topic_g_word, p_word_g_topic) = self.get_probs()
+        self.p_topic_g_voxel = p_topic_g_voxel
+        self.p_voxel_g_topic = p_voxel_g_topic
+        self.p_topic_g_word = p_topic_g_word
+        self.p_word_g_topic = p_word_g_topic
 
     def update(self, loglikely_freq=1, verbose=2):
         """
@@ -808,25 +805,29 @@ class GCLDAModel(object):
                                          # to avoid any underflow issues
         return p
 
-    def get_spatial_probs(self):
+    def get_probs(self):
         """
         Get conditional probability of selecting each voxel in the brain mask
         given each topic.
 
         Returns
         -------
-        p_voxel_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
-            A voxel-by-topic array of conditional probabilities: p(voxel|topic).
-            For cell ij, the value is the probability of voxel i being selected
-            given topic j has already been selected.
         p_topic_g_voxel : :obj:`numpy.ndarray` of :obj:`numpy.float64`
             A voxel-by-topic array of conditional probabilities: p(topic|voxel).
             For cell ij, the value is the probability of topic j being selected
             given voxel i is active.
+        p_voxel_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
+            A voxel-by-topic array of conditional probabilities: p(voxel|topic).
+            For cell ij, the value is the probability of voxel i being selected
+            given topic j has already been selected.
+        p_topic_g_word : :obj:`numpy.ndarray` of :obj:`numpy.float64`
+            A word-by-topic array of conditional probabilities: p(topic|word).
+            For cell ij, the value is the probability of topic i being selected
+            given word j is present.
         p_word_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
             A word-by-topic array of conditional probabilities: p(word|topic).
             For cell ij, the value is the probability of word j being selected
-            given topic i is active.
+            given topic i has already been selected.
         """
         affine = self.mask.affine
         mask_ijk = np.vstack(np.where(self.mask.get_data())).T
@@ -850,128 +851,8 @@ class GCLDAModel(object):
         p_word_g_topic = self.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
         p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
 
-        return p_topic_g_voxel, p_voxel_g_topic, p_word_g_topic
+        n_topics_per_word_token = np.sum(self.n_word_tokens_word_by_topic, axis=1)
+        p_topic_g_word = self.n_word_tokens_word_by_topic / n_topics_per_word_token[:, None]
+        p_topic_g_word = np.nan_to_num(p_topic_g_word, 0)
 
-    def save_model_params(self, out_dir, n_top_words=15):
-        """
-        Run all export-methods: calls all save-methods to export parameters to
-        files.
-
-        Parameters
-        ----------
-        out_dir : :obj:`str`
-            The name of the output directory.
-        n_top_words : :obj:`int`, optional
-            The number of words associated with each topic to report in topic
-            word probabilities file.
-        """
-        # If output directory doesn't exist, make it
-        if not op.isdir(out_dir):
-            op.mkdir(out_dir)
-
-        # print topic-word distributions for top-K words in easy-to-read format
-        out_file = op.join(out_dir, 'Topic_X_Word_Probs.csv')
-        self._save_topic_word_probs(out_file, n_top_words=n_top_words)
-
-        # print topic x word count matrix: m.n_word_tokens_word_by_topic
-        out_file = op.join(out_dir, 'Topic_X_Word_CountMatrix.csv')
-        self._save_topic_word_counts(out_file)
-
-        # print activation-assignments to topics and subregions:
-        # Peak_x, Peak_y, Peak_z, peak_topic_idx, peak_region_idx
-        out_file = op.join(out_dir, 'ActivationAssignments.csv')
-        self._save_activation_assignments(out_file)
-
-    def _save_activation_assignments(self, out_file):
-        """
-        Save Peak->Topic and Peak->Subregion assignments for all x-tokens in
-        model to file.
-
-        Parameters
-        ----------
-        out_file : :obj:`str`
-            The name of the output file.
-        """
-        for i_ptoken in range(self.n_peak_tokens):
-            ptopic_idx = self.peak_topic_idx[i_ptoken] + 1
-            pregion_idx = self.peak_region_idx[i_ptoken] + 1
-            data = np.hstack((self.peak_vals[i_ptoken, :3],
-                              ptopic_idx[:, None],
-                              pregion_idx[:, None]))
-            if i_ptoken == 0:
-                data2 = data
-            else:
-                data2 = np.vstack(data2, data)
-
-        df = pd.DataFrame(data=data2,
-                          columns=['Peak_X', 'Peak_Y', 'Peak_Z',
-                                   'Topic_Assignment', 'Subregion_Assignment'])
-        df.to_csv(out_file, index=False)
-
-    def _save_topic_word_counts(self, out_file):
-        """
-        Save Topic->Word counts for all topics and words to file.
-
-        Parameters
-        ----------
-        out_file : :obj:`str`
-            The name of the output file.
-        """
-        with open(out_file, 'w+') as fid:
-            # Print the topic-headers
-            fid.write('WordLabel,')
-            for i_topic in range(self.params['n_topics']):
-                fid.write('Topic_{0:02d},'.format(i_topic + 1))
-            fid.write('\n')
-
-            # For each row / wlabel: wlabel-string and its count under each
-            # topic (the \phi matrix before adding \beta and normalizing)
-            for i_word in range(len(self.word_labels)):
-                fid.write('{0},'.format(self.word_labels[i_word]))
-
-                # Print counts under all topics
-                for j_topic in range(self.params['n_topics']):
-                    fid.write('{0},'.format(self.n_word_tokens_word_by_topic[i_word,
-                                                                             j_topic]))
-                # Newline for next wlabel row
-                fid.write('\n')
-
-    def _save_topic_word_probs(self, out_file, n_top_words=15):
-        """
-        Save Topic->Word probability distributions for top K words to file.
-
-        Parameters
-        ----------
-        out_file : :obj:`str`
-            The name of the output file.
-        n_top_words : :obj:`int`, optional
-            The number of top words to be written out for each topic.
-        """
-        with open(out_file, 'w+') as fid:
-            # Compute topic->word probs and marginal topic-probs
-            wprobs = self.n_word_tokens_word_by_topic + self.params['beta']
-
-            # Marginal topicprobs
-            topic_probs = np.sum(wprobs, axis=0) / np.sum(wprobs)
-            wprobs = wprobs / np.sum(wprobs, axis=0)  # Normalized word-probs
-
-            # Get the sorted probabilities and indices of words under each topic
-            rnk_vals = np.sort(wprobs, axis=0)
-            rnk_vals = rnk_vals[::-1]
-            rnk_idx = np.argsort(wprobs, axis=0)
-            rnk_idx = rnk_idx[::-1]
-
-            # Print the topic-headers
-            for i_topic in range(self.params['n_topics']):
-                # Print each topic and its marginal probability to columns
-                fid.write('Topic_{0:02d},{1:.4f},'.format(i_topic + 1,
-                                                          topic_probs[i_topic]))
-            fid.write('\n')
-
-            # Print the top K word-strings and word-probs for each topic
-            for i in range(n_top_words):
-                for j_topic in range(self.params['n_topics']):
-                    # Print the kth word in topic t and its probability
-                    fid.write('{0},{1:.4f},'.format(self.word_labels[rnk_idx[i, j_topic]],
-                                                    rnk_vals[i, j_topic]))
-                fid.write('\n')
+        return p_topic_g_voxel, p_voxel_g_topic, p_topic_g_word, p_word_g_topic

@@ -1,6 +1,8 @@
 """
 Base classes for datasets.
 """
+import gzip
+import pickle
 import logging
 import multiprocessing as mp
 from collections import defaultdict
@@ -122,6 +124,67 @@ class NiMAREBase(with_metaclass(ABCMeta)):
             valid_params[key].set_params(**sub_params)
 
         return self
+
+    def save(self, filename, compress=True):
+        """
+        Pickle the class instance to the provided file.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            File to which object will be saved.
+        compress : :obj:`bool`, optional
+            If True, the file will be compressed with gzip. Otherwise, the
+            uncompressed version will be saved. Default = True.
+        """
+        if compress:
+            with gzip.GzipFile(filename, 'wb') as file_object:
+                pickle.dump(self, file_object)
+        else:
+            with open(filename, 'wb') as file_object:
+                pickle.dump(self, file_object)
+
+    @classmethod
+    def load(cls, filename, compressed=True):
+        """
+        Load a pickled class instance from file.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            Name of file containing object.
+        compressed : :obj:`bool`, optional
+            If True, the file is assumed to be compressed and gzip will be used
+            to load it. Otherwise, it will assume that the file is not
+            compressed. Default = True.
+
+        Returns
+        -------
+        obj : class object
+            Loaded class object.
+        """
+        if compressed:
+            try:
+                with gzip.GzipFile(filename, 'rb') as file_object:
+                    obj = pickle.load(file_object)
+            except UnicodeDecodeError:
+                # Need to try this for python3
+                with gzip.GzipFile(filename, 'rb') as file_object:
+                    obj = pickle.load(file_object, encoding='latin')
+        else:
+            try:
+                with open(filename, 'rb') as file_object:
+                    obj = pickle.load(file_object)
+            except UnicodeDecodeError:
+                # Need to try this for python3
+                with open(filename, 'rb') as file_object:
+                    obj = pickle.load(file_object, encoding='latin')
+
+        if not isinstance(obj, cls):
+            raise IOError('Pickled object must be {0}, '
+                          'not {1}'.format(cls, type(obj)))
+
+        return obj
 
 
 class Transformer(NiMAREBase):

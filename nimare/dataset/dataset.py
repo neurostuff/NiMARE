@@ -3,9 +3,7 @@ Classes for representing datasets of images and/or coordinates.
 """
 from __future__ import print_function
 import json
-import gzip
 import copy
-import pickle
 import logging
 
 import numpy as np
@@ -443,64 +441,3 @@ class Dataset(object):
         This method is not yet implemented.
         """
         pass
-
-    def save(self, filename, compress=True):
-        """
-        Pickle the Dataset instance to the provided file.
-
-        Parameters
-        ----------
-        filename : :obj:`str`
-            File to which dataset will be saved.
-        compress : :obj:`bool`, optional
-            If True, the file will be compressed with gzip. Otherwise, the
-            uncompressed version will be saved. Default = True.
-        """
-        if compress:
-            with gzip.GzipFile(filename, 'wb') as file_object:
-                pickle.dump(self, file_object)
-        else:
-            with open(filename, 'wb') as file_object:
-                pickle.dump(self, file_object)
-
-    @classmethod
-    def load(cls, filename, compressed=True):
-        """
-        Load a pickled Dataset instance from file.
-
-        Parameters
-        ----------
-        filename : :obj:`str`
-            Name of file containing dataset.
-        compressed : :obj:`bool`, optional
-            If True, the file is assumed to be compressed and gzip will be used
-            to load it. Otherwise, it will assume that the file is not
-            compressed. Default = True.
-
-        Returns
-        -------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Loaded dataset object.
-        """
-        if compressed:
-            try:
-                with gzip.GzipFile(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object)
-            except UnicodeDecodeError:
-                # Need to try this for python3
-                with gzip.GzipFile(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object, encoding='latin')
-        else:
-            try:
-                with open(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object)
-            except UnicodeDecodeError:
-                # Need to try this for python3
-                with open(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object, encoding='latin')
-
-        if not isinstance(dataset, Dataset):
-            raise IOError('Pickled object must be `nimare.dataset.dataset.Dataset`, '
-                          'not {0}'.format(type(dataset)))
-
-        return dataset
