@@ -6,14 +6,12 @@ import pathlib
 from shutil import copyfile
 
 import click
-import numpy as np
 
 from ..io import convert_sleuth_to_dataset
 from ..meta.cbma import ALE
 
 N_ITERS_DEFAULT = 10000
 CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
-CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 
 
 @click.command(name='ale',

@@ -13,7 +13,6 @@ from ..meta.cbma import ALE
 
 N_ITERS_DEFAULT = 10000
 CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
-CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 
 
 @click.command(name='macm',
@@ -127,9 +126,6 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
     click.echo("Performing meta-analysis...")
     ale.fit(n_iters=n_iters, ids=sel_ids, voxel_thresh=v_thr, corr='FWE',
             n_cores=n_cores)
-
-    min_clust = np.percentile(ale.null['cfwe'], 100 * (1 - c_thr))
-    min_clust *= np.prod(dset.mask.header.get_zooms())
 
     boilerplate = boilerplate.format(
         n_exps_db=len(dset.ids),
