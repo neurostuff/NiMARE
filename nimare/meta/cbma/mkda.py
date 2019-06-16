@@ -105,9 +105,8 @@ class MKDADensity(CBMAEstimator):
 
         # Cluster-level FWE
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_of_map, conn)
-        clust_sizes = [np.sum(labeled_matrix == val) for val in range(1, n_clusters+1)]
         cfwe_map = np.zeros(self.mask.shape)
-        for i_clust in range(1, n_clusters+1):
+        for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
             cfwe_map[clust_idx] = -np.log(null_to_p(
