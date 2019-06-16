@@ -6,7 +6,6 @@ import pathlib
 from shutil import copyfile
 
 import click
-import numpy as np
 
 from ..dataset import Dataset
 from ..meta.cbma import ALE
