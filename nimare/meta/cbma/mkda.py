@@ -40,15 +40,13 @@ class MKDADensity(CBMAEstimator):
         self.kernel_arguments = kernel_args
         self.ids = None
         self.voxel_thresh = None
-        self.clust_thresh = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.01, q=0.05, n_iters=1000, n_cores=-1):
+    def fit(self, ids, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.voxel_thresh = voxel_thresh
-        self.clust_thresh = q
         self.n_iters = n_iters
 
         if n_cores == -1:
@@ -105,36 +103,29 @@ class MKDADensity(CBMAEstimator):
 
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
-        percentile = 100 * (1 - q)
-
         # Cluster-level FWE
-        # Determine size of clusters in [1 - clust_thresh]th percentile (e.g.
-        # 95th)
-        clust_size_thresh = np.percentile(perm_clust_sizes, percentile)
-
-        cfwe_of_map = np.zeros(of_map.shape)
-        labeled_matrix = ndimage.measurements.label(vthresh_of_map, conn)[0]
-        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        for i, clust_size in enumerate(clust_sizes):
-            if clust_size >= clust_size_thresh and i > 0:
-                clust_idx = np.where(labeled_matrix == i)
-                cfwe_of_map[clust_idx] = vthresh_of_map[clust_idx]
-        cfwe_of_map = apply_mask(nib.Nifti1Image(cfwe_of_map, of_map.affine),
-                                 self.mask)
+        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_of_map, conn)
+        clust_sizes = [np.sum(labeled_matrix == val) for val in range(1, n_clusters+1)]
+        cfwe_map = np.zeros(self.mask.shape)
+        for i_clust in range(1, n_clusters+1):
+            clust_size = np.sum(labeled_matrix == i_clust)
+            clust_idx = np.where(labeled_matrix == i_clust)
+            cfwe_map[clust_idx] = -np.log(null_to_p(
+                clust_size, perm_clust_sizes, 'upper'))
+        cfwe_map[np.isinf(cfwe_map)] = -np.log(np.finfo(float).eps)
+        cfwe_map = apply_mask(nib.Nifti1Image(cfwe_map, self.mask.affine),
+                              self.mask)
 
         # Voxel-level FWE
-        # Determine OF values in [1 - clust_thresh]th percentile (e.g. 95th)
-        vfwe_thresh = np.percentile(perm_max_values, percentile)
-        vfwe_of_map = of_map.get_data().copy()
-        vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
-        vfwe_of_map = apply_mask(nib.Nifti1Image(vfwe_of_map, of_map.affine),
-                                 self.mask)
-
+        vfwe_map = apply_mask(of_map, self.mask)
+        for i_vox, val in enumerate(vfwe_map):
+            vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, 'upper'))
+        vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
         vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
                                                     of_map.affine),
                                     self.mask)
         self.results = MetaResult(self, vthresh=vthresh_of_map,
-                                  cfwe=cfwe_of_map, vfwe=vfwe_of_map,
+                                  logp_cfwe=cfwe_map, logp_vfwe=vfwe_map,
                                   mask=self.mask)
 
     def _perm(self, params):
@@ -195,7 +186,7 @@ class MKDAChi2(CBMAEstimator):
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, ids2=None, voxel_thresh=0.01, q=0.05, corr='FWE',
+    def fit(self, ids, ids2=None, voxel_thresh=0.01, corr='FWE',
             n_iters=5000, prior=0.5, n_cores=-1):
         self.voxel_thresh = voxel_thresh
         self.corr = corr
@@ -297,7 +288,6 @@ class MKDAChi2(CBMAEstimator):
 
             # pAgF_FWE
             pAgF_null_chi2_dist = np.squeeze(pAgF_null_chi2_dist)
-            np.savetxt('null_dist.txt', pAgF_null_chi2_dist)
             pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
             for voxel in range(pFgA_chi2_vals.shape[0]):
                 pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel],
@@ -400,14 +390,12 @@ class KDA(CBMAEstimator):
         self.kernel_arguments = kernel_args
         self.ids = None
         self.ids2 = None
-        self.clust_thresh = None
         self.n_iters = None
         self.images = {}
 
-    def fit(self, ids, q=0.05, n_iters=10000, n_cores=-1):
+    def fit(self, ids, n_iters=10000, n_cores=-1):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
-        self.clust_thresh = q
         self.n_iters = n_iters
 
         if n_cores == -1:
@@ -438,13 +426,13 @@ class KDA(CBMAEstimator):
             perm_max_values = list(tqdm(p.imap(self._perm, params),
                                         total=self.n_iters))
 
-        percentile = 100 * (1 - q)
+        # Voxel-level FWE
+        vfwe_map = of_map.copy()
+        for i_vox, val in enumerate(of_map):
+            vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, 'upper'))
+        vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
 
-        # Determine OF values in [1 - clust_thresh]th percentile (e.g. 95th)
-        vfwe_thresh = np.percentile(perm_max_values, percentile)
-        vfwe_of_map = of_map.copy()
-        vfwe_of_map[vfwe_of_map < vfwe_thresh] = 0.
-        self.results = MetaResult(self, vfwe=vfwe_of_map, mask=self.mask)
+        self.results = MetaResult(self, logp_vfwe=vfwe_map, mask=self.mask)
 
     def _perm(self, params):
         iter_ijk, iter_df = params

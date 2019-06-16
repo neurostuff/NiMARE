@@ -74,12 +74,11 @@ class ALE(CBMAEstimator):
         self.kernel_estimator = kernel_estimator
         self.kernel_arguments = kernel_args
         self.voxel_thresh = None
-        self.clust_thresh = None
         self.corr = None
         self.n_iters = None
         self.results = None
 
-    def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
+    def fit(self, ids, ids2=None, voxel_thresh=0.001, corr='FWE',
             n_iters=10000, n_cores=-1):
         """
         Run an ALE meta-analysis on a subset of the dataset.
@@ -93,8 +92,6 @@ class ALE(CBMAEstimator):
             subtraction analysis. Default is None.
         voxel_thresh : float, optional
             Uncorrected voxel-level threshold. Default: 0.001
-        q : float, optional
-            Cluster-level threshold.
         corr : {'FWE'}, optional
             Type of multiple comparisons correction to employ. Only currently
             supported option is FWE, which derives both cluster- and voxel-
@@ -108,7 +105,6 @@ class ALE(CBMAEstimator):
         self.ids = ids
         self.ids2 = ids2
         self.voxel_thresh = voxel_thresh
-        self.clust_thresh = q
         self.corr = corr
         self.n_iters = n_iters
         self.null = {}
@@ -330,26 +326,21 @@ class ALE(CBMAEstimator):
 
         self.null[prefix + 'vfwe'], self.null[prefix + 'cfwe'] = zip(*perm_results)
 
-        percentile = 100 * (1 - self.clust_thresh)
-
         # Cluster-level FWE
-        # Determine size of clusters in [1 - clust_thresh]th percentile (e.g. 95th)
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
-        labeled_matrix = ndimage.measurements.label(vthresh_z_map, conn)[0]
-        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_size_thresh = np.percentile(self.null[prefix + 'cfwe'], percentile)
-        z_map = unmask(z_values, self.mask).get_data()
+        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
+        clust_sizes = [np.sum(labeled_matrix == val) for val in range(1, n_clusters+1)]
         cfwe_map = np.zeros(self.mask.shape)
-        for i, clust_size in enumerate(clust_sizes):
-            # Skip zeros
-            if clust_size >= clust_size_thresh and i > 0:
-                clust_idx = np.where(labeled_matrix == i)
-                cfwe_map[clust_idx] = z_map[clust_idx]
+        for i_clust in range(1, n_clusters+1):
+            clust_size = np.sum(labeled_matrix == i_clust)
+            clust_idx = np.where(labeled_matrix == i_clust)
+            cfwe_map[clust_idx] = -np.log(null_to_p(
+                clust_size, self.null[prefix + 'cfwe'], 'upper'))
+        cfwe_map[np.isinf(cfwe_map)] = -np.log(np.finfo(float).eps)
         cfwe_map = apply_mask(nib.Nifti1Image(cfwe_map, self.mask.affine),
                               self.mask)
 
         # Voxel-level FWE
-        # Determine ALE values in [1 - clust_thresh]th percentile (e.g. 95th)
         p_fwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
             p_fwe_values[voxel] = null_to_p(
@@ -364,7 +355,7 @@ class ALE(CBMAEstimator):
                   prefix + 'vthresh': vthresh_z_values,
                   prefix + 'p_vfwe': p_fwe_values,
                   prefix + 'z_vfwe': z_fwe_values,
-                  prefix + 'cfwe': cfwe_map}
+                  prefix + 'logp_cfwe': cfwe_map}
         return images
 
     def _compute_ale(self, df=None, hist_bins=None, ma_maps=None):
