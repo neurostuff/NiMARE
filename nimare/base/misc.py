@@ -3,7 +3,7 @@ Miscellaneous base classes.
 """
 from abc import abstractmethod, ABCMeta
 
-from .base import Estimator
+from .estimators import Estimator
 
 
 class Parcellator(Estimator):

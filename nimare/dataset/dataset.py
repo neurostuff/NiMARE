@@ -10,12 +10,13 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
+from ..base.base import NiMAREBase
 from ..utils import tal2mni, mni2tal, mm2vox, get_template
 
 LGR = logging.getLogger(__name__)
 
 
-class Dataset(object):
+class Dataset(NiMAREBase):
     """
     Storage container for a coordinate- and/or image-based meta-analytic
     dataset/database.

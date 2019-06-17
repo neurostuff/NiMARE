@@ -8,6 +8,7 @@ logging.basicConfig(level=logging.INFO)
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("ignore")
+    from . import base
     from . import dataset
     from . import meta
     from . import resources

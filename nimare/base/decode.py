@@ -1,7 +1,7 @@
 """
 Base classes for decoding/encoding.
 """
-from .base import Estimator
+from .estimators import Estimator
 
 
 class Decoder(Estimator):
