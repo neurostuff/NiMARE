@@ -6,7 +6,7 @@ import pickle
 import logging
 import multiprocessing as mp
 from collections import defaultdict
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 
 import inspect
 from six import with_metaclass

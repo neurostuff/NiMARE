@@ -1,14 +1,9 @@
 """
 Base classes for datasets.
 """
-import gzip
-import pickle
 import logging
-import multiprocessing as mp
-from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
-import inspect
 from six import with_metaclass
 
 from .base import NiMAREBase
