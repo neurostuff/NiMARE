@@ -1,10 +1,10 @@
 """
 Base classes for meta-analytic annotation methods.
 """
-from .base import Transformer
+from .base import NiMAREBase
 
 
-class AnnotationModel(Transformer):
+class AnnotationModel(NiMAREBase):
     """
     Base class for topic and vector models.
     """
