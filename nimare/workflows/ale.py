@@ -37,6 +37,11 @@ CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 @click.option('--c_thr', default=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
               show_default=True,
               help="Cluster size corrected p-value threshold.")
+@click.option('--fwhm', default=None, type=float,
+              show_default=True,
+              help='Override sample size-based kernel determination with a '
+                   'single FWHM (in mm) applied to all experiments. Useful '
+                   'when sample size is not available for all data.')
 @click.option('--n_cores', default=-1,
               show_default=True,
               help="Number of processes to use for meta-analysis. If -1, use "
@@ -46,11 +51,17 @@ def ale_sleuth_workflow(sleuth_file, sleuth_file2=None, output_dir=None,
                         n_iters=N_ITERS_DEFAULT,
                         v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
                         c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
-                        n_cores=-1):
+                        fwhm=None, n_cores=-1):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """
     click.echo("Loading coordinates...")
+
+    if fwhm:
+        fwhm_str = "of {0} mm".format(fwhm)
+    else:
+        fwhm_str = "determined by sample size"
+
     if not sleuth_file2:
         dset = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
         n_subs = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
@@ -62,8 +73,8 @@ meta-analysis was performed using NiMARE. The input dataset included {n_foci}
 foci from {n_subs} participants across {n_exps} studies/experiments.
 
 Modeled activation maps were generated for each study/experiment by convolving
-each focus with a Gaussian kernel determined by the study/experiment's sample
-size. For voxels with overlapping kernels, the maximum value was retained.
+each focus with a Gaussian kernel {fwhm_str}.
+For voxels with overlapping kernels, the maximum value was retained.
 The modeled activation maps were rendered in MNI 152 space (Fonov et al., 2009;
 Fonov et al., 2011) at 2x2x2mm resolution. A map of ALE values was then
 computed for the sample as the union of modeled activation values across
@@ -107,7 +118,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
         """
 
-        ale = ALE(dset)
+        ale = ALE(dset, kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
         ale.fit(n_iters=n_iters, ids=dset.ids,
@@ -124,7 +135,8 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
             unc=v_thr,
             fwe=c_thr,
             n_iters=n_iters,
-            min_clust=min_clust)
+            min_clust=min_clust,
+            fwhm_str=fwhm_str)
     else:
         dset1 = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
         dset2 = convert_sleuth_to_dataset(sleuth_file2, target='ale_2mm')
@@ -141,7 +153,7 @@ The first input dataset included {n_foci1} foci from {n_subs1} participants
 across {n_exps1} studies/experiments. The second input dataset included
 {n_foci2} foci from {n_subs2} participants across {n_exps2} studies/experiments.
 
-Foci were convolved with Gaussian kernels determined by sample size,
+Foci were convolved with Gaussian kernels {fwhm_str},
 implemented on the MNI 152 template (Fonov et al., 2009; Fonov et al., 2011)
 at 2x2x2mm resolution.
 
@@ -189,7 +201,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
 25(1), 155-164.
         """
 
-        ale = ALE(dset_combined)
+        ale = ALE(dset_combined, kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
         ale.fit(n_iters=n_iters, ids=dset1.ids, ids2=dset2.ids,
@@ -212,7 +224,8 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
             fwe=c_thr,
             n_iters=n_iters,
             min_clust1=min_clust1,
-            min_clust2=min_clust2)
+            min_clust2=min_clust2,
+            fwhm_str=fwhm_str)
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(sleuth_file))
