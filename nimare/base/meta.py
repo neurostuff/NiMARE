@@ -5,7 +5,7 @@ from os.path import exists, join
 
 from nilearn.masking import unmask
 
-from .base import Estimator, Transformer, Result
+from .estimators import Estimator, Transformer, Result
 
 
 class KernelTransformer(Transformer):

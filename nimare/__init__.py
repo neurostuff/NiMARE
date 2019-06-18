@@ -8,6 +8,7 @@ logging.basicConfig(level=logging.INFO)
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("ignore")
+    from . import base
     from . import dataset
     from . import meta
     from . import resources
@@ -16,5 +17,5 @@ with warnings.catch_warnings(record=True) as w:
     from . import utils
     from .version import __version__
 
-    __all__ = ['dataset', 'meta', 'resources', 'io', 'stats', 'utils',
+    __all__ = ['base', 'dataset', 'meta', 'resources', 'io', 'stats', 'utils',
                '__version__']

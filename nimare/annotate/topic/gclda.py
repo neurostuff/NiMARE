@@ -10,6 +10,7 @@ import nibabel as nib
 from scipy.stats import multivariate_normal
 
 from ...due import due, Doi
+from ...base import AnnotationModel
 from ...utils import get_template
 
 LGR = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(Doi('10.1371/journal.pcbi.1005649'),
            description='Introduces GC-LDA decoding.')
-class GCLDAModel(object):
+class GCLDAModel(AnnotationModel):
     """
     Generate a GCLDA topic model.
 
@@ -118,14 +119,10 @@ class GCLDAModel(object):
                                      # (only for n_regions = 2)
             'seed_init': seed_init,  # Random seed for initializing model
         }
-        self.model_name = ('{0}_{1}T_{2}R_alpha{3:.3f}_beta{4:.3f}_'
-                           'gamma{5:.3f}_delta{6:.3f}_{7}dobs_{8:.1f}roi_{9}'
-                           'symmetric_{10}').format(
-            name, self.params['n_topics'], self.params['n_regions'],
-            self.params['alpha'], self.params['beta'],
-            self.params['gamma'], self.params['delta'],
-            self.params['dobs'], self.params['roi_size'],
-            self.params['symmetric'], self.params['seed_init'])
+
+        # Add dictionaries for other model info
+        self.data = {}
+        self.topics = {}
 
         # Prepare data
         if isinstance(mask, str) and not op.isfile(mask):
@@ -136,10 +133,6 @@ class GCLDAModel(object):
             self.mask = mask
         else:
             raise Exception('Input "mask" could not be figured out.')
-
-        # Import all word-labels into a list
-        # List of word-strings (wtoken_word_idx values are indices into this list)
-        self.vocabulary = count_df.columns.tolist()
 
         # Extract document and word indices from count_df
         docidx_mapper = {id_: i for (i, id_) in enumerate(ids)}
@@ -154,10 +147,11 @@ class GCLDAModel(object):
         count_df = count_df.loc[:, (count_df != 0).any(axis=0)]
 
         # Get updated vocabulary
-        word_labels = count_df.columns.tolist()
-        word_labels.remove('docidx')
-        self.word_labels = word_labels
-        widx_mapper = {word: i for (i, word) in enumerate(self.word_labels)}
+        # List of word-strings (wtoken_word_idx values are indices into this list)
+        vocabulary = count_df.columns.tolist()
+        vocabulary.remove('docidx')
+        self.vocabulary = vocabulary
+        widx_mapper = {word: i for (i, word) in enumerate(self.vocabulary)}
 
         # Melt dataframe and create widx column
         widx_df = pd.melt(count_df, id_vars=['docidx'], var_name='word',
@@ -168,10 +162,11 @@ class GCLDAModel(object):
         widx_df = widx_df.loc[np.repeat(widx_df.index.values, widx_df['count'])]
         widx_df = widx_df[['docidx', 'widx']].astype(int)
         widx_df.sort_values(by=['docidx', 'widx'], inplace=True)
+
         # List of document-indices for word-tokens
-        self.wtoken_doc_idx = widx_df['docidx'].tolist()
+        self.data['wtoken_doc_idx'] = widx_df['docidx'].tolist()
         # List of word-indices for word-tokens
-        self.wtoken_word_idx = widx_df['widx'].tolist()
+        self.data['wtoken_word_idx'] = widx_df['widx'].tolist()
 
         # Import all peak-indices into lists
         coordinates_df['docidx'] = coordinates_df['id'].astype(str).map(docidx_mapper)
@@ -179,43 +174,43 @@ class GCLDAModel(object):
         coordinates_df = coordinates_df[['docidx', 'x', 'y', 'z']]
         coordinates_df['docidx'] = coordinates_df['docidx'].astype(int)
         # List of document-indices for peak-tokens x
-        self.ptoken_doc_idx = coordinates_df['docidx'].tolist()
-        self.peak_vals = coordinates_df[['x', 'y', 'z']].values
+        self.data['ptoken_doc_idx'] = coordinates_df['docidx'].tolist()
+        self.data['peak_vals'] = coordinates_df[['x', 'y', 'z']].values
 
         # Seed random number generator
         np.random.seed(self.params['seed_init'])  # pylint: disable=no-member
 
         # Preallocate vectors of assignment indices
-        self.wtoken_topic_idx = np.zeros(
-            len(self.wtoken_word_idx), dtype=int)  # word->topic assignments
+        self.topics['wtoken_topic_idx'] = np.zeros(
+            len(self.data['wtoken_word_idx']), dtype=int)  # word->topic assignments
 
         # Randomly initialize peak->topic assignments (y) ~ unif(1...n_topics)
-        self.peak_topic_idx = np.random.randint(
+        self.topics['peak_topic_idx'] = np.random.randint(
             self.params['n_topics'],  # pylint: disable=no-member
-            size=(len(self.ptoken_doc_idx)))
+            size=(len(self.data['ptoken_doc_idx'])))
 
-        self.peak_region_idx = np.zeros(
-            len(self.ptoken_doc_idx), dtype=int)  # peak->region assignments
+        self.topics['peak_region_idx'] = np.zeros(
+            len(self.data['ptoken_doc_idx']), dtype=int)  # peak->region assignments
 
         # Preallocate count matrices
         # Peaks: D x T: Number of peak-tokens assigned to each topic per document
-        self.n_peak_tokens_doc_by_topic = np.zeros(
+        self.topics['n_peak_tokens_doc_by_topic'] = np.zeros(
             (len(self.ids), self.params['n_topics']), dtype=int)
 
         # Peaks: R x T: Number of peak-tokens assigned to each subregion per topic
-        self.n_peak_tokens_region_by_topic = np.zeros(
+        self.topics['n_peak_tokens_region_by_topic'] = np.zeros(
             (self.params['n_regions'], self.params['n_topics']), dtype=int)
 
         # Words: W x T: Number of word-tokens assigned to each topic per word-type
-        self.n_word_tokens_word_by_topic = np.zeros(
-            (len(self.word_labels), self.params['n_topics']), dtype=int)
+        self.topics['n_word_tokens_word_by_topic'] = np.zeros(
+            (len(self.vocabulary), self.params['n_topics']), dtype=int)
 
         # Words: D x T: Number of word-tokens assigned to each topic per document
-        self.n_word_tokens_doc_by_topic = np.zeros(
+        self.topics['n_word_tokens_doc_by_topic'] = np.zeros(
             (len(self.ids), self.params['n_topics']), dtype=int)
 
         # Words: 1 x T: Total number of word-tokens assigned to each topic (across all docs)
-        self.total_n_word_tokens_by_topic = np.zeros(
+        self.topics['total_n_word_tokens_by_topic'] = np.zeros(
             (1, self.params['n_topics']), dtype=int)
 
         # Preallocate Gaussians for all subregions
@@ -225,17 +220,14 @@ class GCLDAModel(object):
         # arrays
         #   regions_mu = (n_topics, n_regions, 1, n_peak_dims)
         #   regions_sigma = (n_topics, n_regions, n_peak_dims, n_peak_dims)
-        self.regions_mu = []
-        self.regions_sigma = []
-        for i_topic in range(self.params['n_topics']):
-            topic_mu = []
-            topic_sigma = []
-            for j_region in range(self.params['n_regions']):
-                topic_mu.append(np.zeros((1, self.peak_vals.shape[1])))
-                topic_sigma.append(np.zeros(
-                    (self.peak_vals.shape[1], self.peak_vals.shape[1])))
-            self.regions_mu.append(topic_mu)  # (\mu^{(t)}_r)
-            self.regions_sigma.append(topic_sigma)  # (\sigma^{(t)}_r)
+        self.topics['regions_mu'] = np.zeros((self.params['n_topics'],  # (\mu^{(t)}_r)
+                                              self.params['n_regions'],
+                                              1,
+                                              self.data['peak_vals'].shape[1]))
+        self.topics['regions_sigma'] = np.zeros((self.params['n_topics'],  # (\sigma^{(t)}_r)
+                                                 self.params['n_regions'],
+                                                 self.data['peak_vals'].shape[1],
+                                                 self.data['peak_vals'].shape[1]))
 
         # Initialize lists for tracking log-likelihood of data over sampling iterations
         self.loglikely_iter = []  # Tracks iteration we compute each loglikelihood at
@@ -246,39 +238,40 @@ class GCLDAModel(object):
         # TODO: Handle this more elegantly
         self.p_topic_g_voxel = None
         self.p_voxel_g_topic = None
+        self.p_topic_g_word = None
         self.p_word_g_topic = None
 
         # Initialize peak->subregion assignments (r)
         if not self.params['symmetric']:
             # if symmetric model use deterministic assignment :
             #     if peak_val[0] > 0, r = 1, else r = 0
-            self.peak_region_idx[:] = np.random.randint(
+            self.topics['peak_region_idx'][:] = np.random.randint(
                 self.params['n_regions'],  # pylint: disable=no-member
-                size=(len(self.ptoken_doc_idx)))
+                size=(len(self.data['ptoken_doc_idx'])))
         else:
             # if asymmetric model, randomly sample r ~ unif(1...n_regions)
-            self.peak_region_idx[:] = (self.peak_vals[:, 0] > 0).astype(int)
+            self.topics['peak_region_idx'][:] = (self.data['peak_vals'][:, 0] > 0).astype(int)
 
         # Update model vectors and count matrices to reflect y and r assignments
-        for i_ptoken in range(len(self.ptoken_doc_idx)):
+        for i_ptoken in range(len(self.data['ptoken_doc_idx'])):
             # document -idx (d)
-            doc = self.ptoken_doc_idx[i_ptoken]
-            topic = self.peak_topic_idx[i_ptoken]  # peak-token -> topic assignment (y_i)
-            region = self.peak_region_idx[i_ptoken]  # peak-token -> subregion assignment (c_i)
-            self.n_peak_tokens_doc_by_topic[doc, topic] += 1  # Increment document-by-topic counts
-            self.n_peak_tokens_region_by_topic[region, topic] += 1  # Increment region-by-topic
+            doc = self.data['ptoken_doc_idx'][i_ptoken]
+            topic = self.topics['peak_topic_idx'][i_ptoken]  # peak-token -> topic assignment (y_i)
+            region = self.topics['peak_region_idx'][i_ptoken]  # peak-token -> subregion assignment (c_i)
+            self.topics['n_peak_tokens_doc_by_topic'][doc, topic] += 1  # Increment document-by-topic counts
+            self.topics['n_peak_tokens_region_by_topic'][region, topic] += 1  # Increment region-by-topic
 
         # Randomly Initialize Word->Topic Assignments (z) for each word
         # token w_i: sample z_i proportional to p(topic|doc_i)
-        for i_wtoken in range(len(self.wtoken_word_idx)):
+        for i_wtoken in range(len(self.data['wtoken_word_idx'])):
             # w_i word-type
-            word = self.wtoken_word_idx[i_wtoken]
+            word = self.data['wtoken_word_idx'][i_wtoken]
 
             # w_i doc-index
-            doc = self.wtoken_doc_idx[i_wtoken]
+            doc = self.data['wtoken_doc_idx'][i_wtoken]
 
             # Estimate p(t|d) for current doc
-            p_topic_g_doc = self.n_peak_tokens_doc_by_topic[doc] + self.params['gamma']
+            p_topic_g_doc = self.topics['n_peak_tokens_doc_by_topic'][doc] + self.params['gamma']
 
             # Sample a topic from p(t|d) for the z-assignment
             probs = np.cumsum(p_topic_g_doc)  # Compute a cdf of the sampling
@@ -291,10 +284,10 @@ class GCLDAModel(object):
                                          # rand-sample
 
             # Update model assignment vectors and count-matrices to reflect z
-            self.wtoken_topic_idx[i_wtoken] = topic  # Word-token -> topic assignment (z_i)
-            self.n_word_tokens_word_by_topic[word, topic] += 1
-            self.total_n_word_tokens_by_topic[0, topic] += 1
-            self.n_word_tokens_doc_by_topic[doc, topic] += 1
+            self.topics['wtoken_topic_idx'][i_wtoken] = topic  # Word-token -> topic assignment (z_i)
+            self.topics['n_word_tokens_word_by_topic'][word, topic] += 1
+            self.topics['total_n_word_tokens_by_topic'][0, topic] += 1
+            self.topics['n_word_tokens_doc_by_topic'][doc, topic] += 1
 
         # Get Initial Spatial Parameter Estimates
         self._update_regions()
@@ -322,9 +315,12 @@ class GCLDAModel(object):
             self.update(loglikely_freq=loglikely_freq, verbose=verbose)
 
         # TODO: Handle this more elegantly
-        (self.p_topic_g_voxel,
-         self.p_voxel_g_topic,
-         self.p_word_g_topic) = self.get_spatial_probs()
+        (p_topic_g_voxel, p_voxel_g_topic,
+         p_topic_g_word, p_word_g_topic) = self.get_probs()
+        self.p_topic_g_voxel = p_topic_g_voxel
+        self.p_voxel_g_topic = p_voxel_g_topic
+        self.p_topic_g_word = p_topic_g_word
+        self.p_word_g_topic = p_word_g_topic
 
     def update(self, loglikely_freq=1, verbose=2):
         """
@@ -381,25 +377,25 @@ class GCLDAModel(object):
         np.random.seed(randseed)  # pylint: disable=no-member
 
         # Loop over all word tokens
-        for i_wtoken in range(len(self.wtoken_word_idx)):
+        for i_wtoken in range(len(self.data['wtoken_word_idx'])):
             # Get indices for current token
-            word = self.wtoken_word_idx[i_wtoken]  # w_i word-type
-            doc = self.wtoken_doc_idx[i_wtoken]  # w_i doc-index
-            topic = self.wtoken_topic_idx[i_wtoken]  # current topic assignment for
+            word = self.data['wtoken_word_idx'][i_wtoken]  # w_i word-type
+            doc = self.data['wtoken_doc_idx'][i_wtoken]  # w_i doc-index
+            topic = self.topics['wtoken_topic_idx'][i_wtoken]  # current topic assignment for
                                                      # word token w_i
 
             # Decrement count-matrices to remove current wtoken_topic_idx
-            self.n_word_tokens_word_by_topic[word, topic] -= 1
-            self.total_n_word_tokens_by_topic[0, topic] -= 1
-            self.n_word_tokens_doc_by_topic[doc, topic] -= 1
+            self.topics['n_word_tokens_word_by_topic'][word, topic] -= 1
+            self.topics['total_n_word_tokens_by_topic'][0, topic] -= 1
+            self.topics['n_word_tokens_doc_by_topic'][doc, topic] -= 1
 
             # Get sampling distribution:
             #    p(z_i|z,d,w) ~ p(w|t) * p(t|d)
             #                 ~ p_w_t * p_topic_g_doc
-            p_word_g_topic = (self.n_word_tokens_word_by_topic[word, :] + self.params['beta']) /\
-                             (self.total_n_word_tokens_by_topic +
-                              self.params['beta'] * len(self.word_labels))
-            p_topic_g_doc = self.n_peak_tokens_doc_by_topic[doc, :] + self.params['gamma']
+            p_word_g_topic = (self.topics['n_word_tokens_word_by_topic'][word, :] + self.params['beta']) /\
+                             (self.topics['total_n_word_tokens_by_topic'] +
+                              self.params['beta'] * len(self.vocabulary))
+            p_topic_g_doc = self.topics['n_peak_tokens_doc_by_topic'][doc, :] + self.params['gamma']
             probs = p_word_g_topic * p_topic_g_doc  # The unnormalized sampling distribution
 
             # Sample a z_i assignment for the current word-token from the sampling distribution
@@ -410,10 +406,10 @@ class GCLDAModel(object):
             topic = np.where(vec)[0][0]  # Extract selected topic from vector
 
             # Update the indices and the count matrices using the sampled z assignment
-            self.wtoken_topic_idx[i_wtoken] = topic  # Update w_i topic-assignment
-            self.n_word_tokens_word_by_topic[word, topic] += 1
-            self.total_n_word_tokens_by_topic[0, topic] += 1
-            self.n_word_tokens_doc_by_topic[doc, topic] += 1
+            self.topics['wtoken_topic_idx'][i_wtoken] = topic  # Update w_i topic-assignment
+            self.topics['n_word_tokens_word_by_topic'][word, topic] += 1
+            self.topics['total_n_word_tokens_by_topic'][0, topic] += 1
+            self.topics['n_word_tokens_doc_by_topic'][doc, topic] += 1
 
     def _update_peak_assignments(self, randseed):
         """
@@ -431,16 +427,16 @@ class GCLDAModel(object):
         peak_probs = self._get_peak_probs(self)
 
         # Iterate over all peaks x, and sample a new y and r assignment for each
-        for i_ptoken in range(len(self.ptoken_doc_idx)):
-            doc = self.ptoken_doc_idx[i_ptoken]
-            topic = self.peak_topic_idx[i_ptoken]
-            region = self.peak_region_idx[i_ptoken]
+        for i_ptoken in range(len(self.data['ptoken_doc_idx'])):
+            doc = self.data['ptoken_doc_idx'][i_ptoken]
+            topic = self.topics['peak_topic_idx'][i_ptoken]
+            region = self.topics['peak_region_idx'][i_ptoken]
 
             # Decrement count in Subregion x Topic count matrix
-            self.n_peak_tokens_region_by_topic[region, topic] -= 1
+            self.topics['n_peak_tokens_region_by_topic'][region, topic] -= 1
 
             # Decrement count in Document x Topic count matrix
-            self.n_peak_tokens_doc_by_topic[doc, topic] -= 1
+            self.topics['n_peak_tokens_doc_by_topic'][doc, topic] -= 1
 
             # Retrieve the probability of generating current x from all
             # subregions: [R x T] array of probs
@@ -449,14 +445,14 @@ class GCLDAModel(object):
             # Compute the probabilities of all subregions given doc
             #     p(r|d) ~ p(r|t) * p(t|d)
             # Counts of subregions per topic + prior: p(r|t)
-            p_region_g_topic = self.n_peak_tokens_region_by_topic + self.params['delta']
+            p_region_g_topic = self.topics['n_peak_tokens_region_by_topic'] + self.params['delta']
 
             # Normalize the columns such that each topic's distribution over
             # subregions sums to 1
             p_region_g_topic = p_region_g_topic / np.sum(p_region_g_topic, axis=0)
 
             # Counts of topics per document + prior: p(t|d)
-            p_topic_g_doc = self.n_peak_tokens_doc_by_topic[doc, :] + self.params['alpha']
+            p_topic_g_doc = self.topics['n_peak_tokens_doc_by_topic'][doc, :] + self.params['alpha']
 
             # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
             p_topic_g_doc = np.array([p_topic_g_doc] * self.params['n_regions'])
@@ -469,8 +465,8 @@ class GCLDAModel(object):
             # Need the current vector of all z and y assignments for current doc
             # The multinomial from which z is sampled is proportional to number
             # of y assigned to each topic, plus constant \gamma
-            doc_y_counts = self.n_peak_tokens_doc_by_topic[doc, :] + self.params['gamma']
-            doc_z_counts = self.n_word_tokens_doc_by_topic[doc, :]
+            doc_y_counts = self.topics['n_peak_tokens_doc_by_topic'][doc, :] + self.params['gamma']
+            doc_z_counts = self.topics['n_word_tokens_doc_by_topic'][doc, :]
             p_peak_g_topic = self._compute_prop_multinomial_from_zy_vectors(
                 doc_z_counts, doc_y_counts)
 
@@ -500,13 +496,13 @@ class GCLDAModel(object):
             topic = int(np.floor(sample_idx / self.params['n_regions']))  # Topic sampled (y)
 
             # Update the indices and the count matrices using the sampled y/r assignments
-            self.n_peak_tokens_region_by_topic[region, topic] += 1  # Increment count in
+            self.topics['n_peak_tokens_region_by_topic'][region, topic] += 1  # Increment count in
                                                                     # Subregion x Topic count
                                                                     # matrix
-            self.n_peak_tokens_doc_by_topic[doc, topic] += 1  # Increment count in
+            self.topics['n_peak_tokens_doc_by_topic'][doc, topic] += 1  # Increment count in
                                                               # Document x Topic count matrix
-            self.peak_topic_idx[i_ptoken] = topic  # Update y->topic assignment
-            self.peak_region_idx[i_ptoken] = region  # Update y->subregion assignment
+            self.topics['peak_topic_idx'][i_ptoken] = topic  # Update y->topic assignment
+            self.topics['peak_region_idx'][i_ptoken] = region  # Update y->subregion assignment
 
     def _update_regions(self):
         """
@@ -516,22 +512,22 @@ class GCLDAModel(object):
         distribution of each subregion.
         """
         # Generate default ROI based on default_width
-        default_roi = self.params['roi_size'] * np.eye(self.peak_vals.shape[1])
+        default_roi = self.params['roi_size'] * np.eye(self.data['peak_vals'].shape[1])
 
         if not self.params['symmetric']:
             # For each region, compute a mean and a regularized covariance matrix
             for i_topic in range(self.params['n_topics']):
                 for j_region in range(self.params['n_regions']):
                     # Get all peaks assigned to current topic & subregion
-                    idx = (self.peak_topic_idx == i_topic) & (self.peak_region_idx == j_region)
-                    vals = self.peak_vals[idx]
-                    n_obs = self.n_peak_tokens_region_by_topic[j_region, i_topic]
+                    idx = (self.topics['peak_topic_idx'] == i_topic) & (self.topics['peak_region_idx'] == j_region)
+                    vals = self.data['peak_vals'][idx]
+                    n_obs = self.topics['n_peak_tokens_region_by_topic'][j_region, i_topic]
 
                     # Estimate mean
                     # If there are no observations, we set mean equal to zeros,
                     # otherwise take MLE
                     if n_obs == 0:
-                        mu = np.zeros([self.peak_vals.shape[1]])
+                        mu = np.zeros([self.data['peak_vals'].shape[1]])
                     else:
                         mu = np.mean(vals, axis=0)
 
@@ -549,25 +545,25 @@ class GCLDAModel(object):
                     sigma = d_c * c_hat + (1 - d_c) * default_roi
 
                     # Store estimates in model object
-                    self.regions_mu[i_topic][j_region][:] = mu
-                    self.regions_sigma[i_topic][j_region][:] = sigma
+                    self.topics['regions_mu'][i_topic, j_region, ...] = mu
+                    self.topics['regions_sigma'][i_topic, j_region, ...] = sigma
         else:
             # With symmetric subregions, we jointly compute all estimates for
             # subregions 1 & 2, constraining the means to be symmetric w.r.t.
             # the origin along x-dimension
             for i_topic in range(self.params['n_topics']):
                 # Get all peaks assigned to current topic & subregion 1
-                idx1 = (self.peak_topic_idx == i_topic) & (self.peak_region_idx == 0)
-                vals1 = self.peak_vals[idx1]
-                n_obs1 = self.n_peak_tokens_region_by_topic[0, i_topic]
+                idx1 = (self.topics['peak_topic_idx'] == i_topic) & (self.topics['peak_region_idx'] == 0)
+                vals1 = self.data['peak_vals'][idx1]
+                n_obs1 = self.topics['n_peak_tokens_region_by_topic'][0, i_topic]
 
                 # Get all peaks assigned to current topic & subregion 2
-                idx2 = (self.peak_topic_idx == i_topic) & (self.peak_region_idx == 1)
-                vals2 = self.peak_vals[idx2]
-                n_obs2 = self.n_peak_tokens_region_by_topic[1, i_topic]
+                idx2 = (self.topics['peak_topic_idx'] == i_topic) & (self.topics['peak_region_idx'] == 1)
+                vals2 = self.data['peak_vals'][idx2]
+                n_obs2 = self.topics['n_peak_tokens_region_by_topic'][1, i_topic]
 
                 # Get all peaks assigned to current topic & either subregion
-                allvals = self.peak_vals[idx1 | idx2]
+                allvals = self.data['peak_vals'][idx1 | idx2]
 
                 # Estimate means
                 # If there are no observations, we set mean equal to zeros,
@@ -575,13 +571,13 @@ class GCLDAModel(object):
 
                 # Estimate independent mean for subregion 1
                 if n_obs1 == 0:
-                    m = np.zeros([self.peak_vals.shape[1]])
+                    m = np.zeros([self.data['peak_vals'].shape[1]])
                 else:
                     m = np.mean(vals1, axis=0)
 
                 # Estimate independent mean for subregion 2
                 if n_obs2 == 0:
-                    n = np.zeros([self.peak_vals.shape[1]])
+                    n = np.zeros([self.data['peak_vals'].shape[1]])
                 else:
                     n = np.mean(vals2, axis=0)
 
@@ -591,16 +587,16 @@ class GCLDAModel(object):
                 weighted_mean_otherdims = np.mean(allvals[:, 1:], axis=0)
 
                 # Store weighted mean estimates
-                mu1 = np.zeros([1, self.peak_vals.shape[1]])
-                mu2 = np.zeros([1, self.peak_vals.shape[1]])
+                mu1 = np.zeros([1, self.data['peak_vals'].shape[1]])
+                mu2 = np.zeros([1, self.data['peak_vals'].shape[1]])
                 mu1[0, 0] = -weighted_mean_dim1
                 mu1[0, 1:] = weighted_mean_otherdims
                 mu2[0, 0] = weighted_mean_dim1
                 mu2[0, 1:] = weighted_mean_otherdims
 
                 # Store estimates in model object
-                self.regions_mu[i_topic][0][:] = mu1
-                self.regions_mu[i_topic][1][:] = mu2
+                self.topics['regions_mu'][i_topic, 0, ...] = mu1
+                self.topics['regions_mu'][i_topic, 1, ...] = mu2
 
                 # Estimate Covariances
                 # Covariances are estimated independently
@@ -624,8 +620,8 @@ class GCLDAModel(object):
                 sigma2 = d_c_2 * c_hat2 + (1 - d_c_2) * default_roi
 
                 # Store estimates in model object
-                self.regions_sigma[i_topic][0][:] = sigma1
-                self.regions_sigma[i_topic][1][:] = sigma2
+                self.topics['regions_sigma'][i_topic, 0, ...] = sigma1
+                self.topics['regions_sigma'][i_topic, 1, ...] = sigma2
 
     @due.dcite(Doi('10.1145/1577069.1755845'),
                description='Describes method for computing log-likelihood '
@@ -671,22 +667,22 @@ class GCLDAModel(object):
         # Pre-compute all probabilities from count matrices that are needed
         # for loglikelihood computations
         # Compute docprobs for y = ND x NT: p( y_i=t | d )
-        doccounts = self.n_peak_tokens_doc_by_topic + self.params['alpha']
+        doccounts = self.topics['n_peak_tokens_doc_by_topic'] + self.params['alpha']
         doccounts_sum = np.sum(doccounts, axis=1)
         docprobs_y = np.transpose(np.transpose(doccounts) / doccounts_sum)
 
         # Compute docprobs for z = ND x NT: p( z_i=t | y^(d) )
-        doccounts = self.n_peak_tokens_doc_by_topic + self.params['gamma']
+        doccounts = self.topics['n_peak_tokens_doc_by_topic'] + self.params['gamma']
         doccounts_sum = np.sum(doccounts, axis=1)
         docprobs_z = np.transpose(np.transpose(doccounts) / doccounts_sum)
 
         # Compute regionprobs = NR x NT: p( r | t )
-        regioncounts = (self.n_peak_tokens_region_by_topic) + self.params['delta']
+        regioncounts = (self.topics['n_peak_tokens_region_by_topic']) + self.params['delta']
         regioncounts_sum = np.sum(regioncounts, axis=0)
         regionprobs = regioncounts / regioncounts_sum
 
         # Compute wordprobs = NW x NT: p( w | t )
-        wordcounts = self.n_word_tokens_word_by_topic + self.params['beta']
+        wordcounts = self.topics['n_word_tokens_word_by_topic'] + self.params['beta']
         wordcounts_sum = np.sum(wordcounts, axis=0)
         wordprobs = wordcounts / wordcounts_sum
 
@@ -702,8 +698,8 @@ class GCLDAModel(object):
         x_loglikely = 0
 
         # Go over all observed peaks and add p(x|model) to running total
-        for i_ptoken in range(len(self.ptoken_doc_idx)):
-            doc = self.ptoken_doc_idx[i_ptoken] - 1  # convert didx from 1-idx to 0-idx
+        for i_ptoken in range(len(self.data['ptoken_doc_idx'])):
+            doc = self.data['ptoken_doc_idx'][i_ptoken] - 1  # convert didx from 1-idx to 0-idx
             p_x = 0  # Running total for p(x|d) across subregions:
                      # Compute p(x_i|d) for each subregion separately and then
                      # sum across the subregions
@@ -737,11 +733,11 @@ class GCLDAModel(object):
         p_wtoken_g_doc = np.dot(docprobs_z, np.transpose(wordprobs))
 
         # Go over all observed word tokens and add p(w|model) to running total
-        for i_wtoken in range(len(self.wtoken_word_idx)):
+        for i_wtoken in range(len(self.data['wtoken_word_idx'])):
             # convert wtoken_word_idx from 1-idx to 0-idx
-            word_token = self.wtoken_word_idx[i_wtoken] - 1
+            word_token = self.data['wtoken_word_idx'][i_wtoken] - 1
             # convert wtoken_doc_idx from 1-idx to 0-idx
-            doc = self.wtoken_doc_idx[i_wtoken] - 1
+            doc = self.data['wtoken_doc_idx'][i_wtoken] - 1
             # Probability of sampling current w token from d
             p_wtoken = p_wtoken_g_doc[doc, word_token]
             # Add log-probability of current token to running total for all w tokens
@@ -771,14 +767,14 @@ class GCLDAModel(object):
             probability of sampling each peak (x) from all subregions.
         """
         peak_probs = np.zeros(
-            (len(model.ptoken_doc_idx), self.params['n_topics'],
+            (len(model.data['ptoken_doc_idx']), self.params['n_topics'],
              self.params['n_regions']), dtype=float)
         for i_topic in range(self.params['n_topics']):
             for j_region in range(self.params['n_regions']):
                 pdf = multivariate_normal.pdf(
-                    model.peak_vals,
-                    mean=self.regions_mu[i_topic][j_region][0],
-                    cov=self.regions_sigma[i_topic][j_region])
+                    model.data['peak_vals'],
+                    mean=self.topics['regions_mu'][i_topic, j_region, 0, :],
+                    cov=self.topics['regions_sigma'][i_topic, j_region, ...])
                 peak_probs[:, i_topic, j_region] = pdf
         return peak_probs
 
@@ -808,25 +804,29 @@ class GCLDAModel(object):
                                          # to avoid any underflow issues
         return p
 
-    def get_spatial_probs(self):
+    def get_probs(self):
         """
         Get conditional probability of selecting each voxel in the brain mask
         given each topic.
 
         Returns
         -------
-        p_voxel_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
-            A voxel-by-topic array of conditional probabilities: p(voxel|topic).
-            For cell ij, the value is the probability of voxel i being selected
-            given topic j has already been selected.
         p_topic_g_voxel : :obj:`numpy.ndarray` of :obj:`numpy.float64`
             A voxel-by-topic array of conditional probabilities: p(topic|voxel).
             For cell ij, the value is the probability of topic j being selected
             given voxel i is active.
+        p_voxel_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
+            A voxel-by-topic array of conditional probabilities: p(voxel|topic).
+            For cell ij, the value is the probability of voxel i being selected
+            given topic j has already been selected.
+        p_topic_g_word : :obj:`numpy.ndarray` of :obj:`numpy.float64`
+            A word-by-topic array of conditional probabilities: p(topic|word).
+            For cell ij, the value is the probability of topic i being selected
+            given word j is present.
         p_word_g_topic : :obj:`numpy.ndarray` of :obj:`numpy.float64`
             A word-by-topic array of conditional probabilities: p(word|topic).
             For cell ij, the value is the probability of word j being selected
-            given topic i is active.
+            given topic i has already been selected.
         """
         affine = self.mask.affine
         mask_ijk = np.vstack(np.where(self.mask.get_data())).T
@@ -837,8 +837,8 @@ class GCLDAModel(object):
             for j_region in range(self.params['n_regions']):
                 pdf = multivariate_normal.pdf(
                     mask_xyz,
-                    mean=self.regions_mu[i_topic][j_region][0],
-                    cov=self.regions_sigma[i_topic][j_region])
+                    mean=self.topics['regions_mu'][i_topic, j_region, 0, :],
+                    cov=self.topics['regions_sigma'][i_topic, j_region, ...])
                 spatial_dists[:, i_topic] += pdf
         p_topic_g_voxel = spatial_dists / np.sum(spatial_dists, axis=1)[:, None]
         p_topic_g_voxel = np.nan_to_num(p_topic_g_voxel, 0)  # might be unnecessary
@@ -846,132 +846,12 @@ class GCLDAModel(object):
         p_voxel_g_topic = spatial_dists / np.sum(spatial_dists, axis=0)[None, :]
         p_voxel_g_topic = np.nan_to_num(p_voxel_g_topic, 0)  # might be unnecessary
 
-        n_word_tokens_per_topic = np.sum(self.n_word_tokens_word_by_topic, axis=0)
-        p_word_g_topic = self.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
+        n_word_tokens_per_topic = np.sum(self.topics['n_word_tokens_word_by_topic'], axis=0)
+        p_word_g_topic = self.topics['n_word_tokens_word_by_topic'] / n_word_tokens_per_topic[None, :]
         p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
 
-        return p_topic_g_voxel, p_voxel_g_topic, p_word_g_topic
+        n_topics_per_word_token = np.sum(self.topics['n_word_tokens_word_by_topic'], axis=1)
+        p_topic_g_word = self.topics['n_word_tokens_word_by_topic'] / n_topics_per_word_token[:, None]
+        p_topic_g_word = np.nan_to_num(p_topic_g_word, 0)
 
-    def save_model_params(self, out_dir, n_top_words=15):
-        """
-        Run all export-methods: calls all save-methods to export parameters to
-        files.
-
-        Parameters
-        ----------
-        out_dir : :obj:`str`
-            The name of the output directory.
-        n_top_words : :obj:`int`, optional
-            The number of words associated with each topic to report in topic
-            word probabilities file.
-        """
-        # If output directory doesn't exist, make it
-        if not op.isdir(out_dir):
-            op.mkdir(out_dir)
-
-        # print topic-word distributions for top-K words in easy-to-read format
-        out_file = op.join(out_dir, 'Topic_X_Word_Probs.csv')
-        self._save_topic_word_probs(out_file, n_top_words=n_top_words)
-
-        # print topic x word count matrix: m.n_word_tokens_word_by_topic
-        out_file = op.join(out_dir, 'Topic_X_Word_CountMatrix.csv')
-        self._save_topic_word_counts(out_file)
-
-        # print activation-assignments to topics and subregions:
-        # Peak_x, Peak_y, Peak_z, peak_topic_idx, peak_region_idx
-        out_file = op.join(out_dir, 'ActivationAssignments.csv')
-        self._save_activation_assignments(out_file)
-
-    def _save_activation_assignments(self, out_file):
-        """
-        Save Peak->Topic and Peak->Subregion assignments for all x-tokens in
-        model to file.
-
-        Parameters
-        ----------
-        out_file : :obj:`str`
-            The name of the output file.
-        """
-        for i_ptoken in range(self.n_peak_tokens):
-            ptopic_idx = self.peak_topic_idx[i_ptoken] + 1
-            pregion_idx = self.peak_region_idx[i_ptoken] + 1
-            data = np.hstack((self.peak_vals[i_ptoken, :3],
-                              ptopic_idx[:, None],
-                              pregion_idx[:, None]))
-            if i_ptoken == 0:
-                data2 = data
-            else:
-                data2 = np.vstack(data2, data)
-
-        df = pd.DataFrame(data=data2,
-                          columns=['Peak_X', 'Peak_Y', 'Peak_Z',
-                                   'Topic_Assignment', 'Subregion_Assignment'])
-        df.to_csv(out_file, index=False)
-
-    def _save_topic_word_counts(self, out_file):
-        """
-        Save Topic->Word counts for all topics and words to file.
-
-        Parameters
-        ----------
-        out_file : :obj:`str`
-            The name of the output file.
-        """
-        with open(out_file, 'w+') as fid:
-            # Print the topic-headers
-            fid.write('WordLabel,')
-            for i_topic in range(self.params['n_topics']):
-                fid.write('Topic_{0:02d},'.format(i_topic + 1))
-            fid.write('\n')
-
-            # For each row / wlabel: wlabel-string and its count under each
-            # topic (the \phi matrix before adding \beta and normalizing)
-            for i_word in range(len(self.word_labels)):
-                fid.write('{0},'.format(self.word_labels[i_word]))
-
-                # Print counts under all topics
-                for j_topic in range(self.params['n_topics']):
-                    fid.write('{0},'.format(self.n_word_tokens_word_by_topic[i_word,
-                                                                             j_topic]))
-                # Newline for next wlabel row
-                fid.write('\n')
-
-    def _save_topic_word_probs(self, out_file, n_top_words=15):
-        """
-        Save Topic->Word probability distributions for top K words to file.
-
-        Parameters
-        ----------
-        out_file : :obj:`str`
-            The name of the output file.
-        n_top_words : :obj:`int`, optional
-            The number of top words to be written out for each topic.
-        """
-        with open(out_file, 'w+') as fid:
-            # Compute topic->word probs and marginal topic-probs
-            wprobs = self.n_word_tokens_word_by_topic + self.params['beta']
-
-            # Marginal topicprobs
-            topic_probs = np.sum(wprobs, axis=0) / np.sum(wprobs)
-            wprobs = wprobs / np.sum(wprobs, axis=0)  # Normalized word-probs
-
-            # Get the sorted probabilities and indices of words under each topic
-            rnk_vals = np.sort(wprobs, axis=0)
-            rnk_vals = rnk_vals[::-1]
-            rnk_idx = np.argsort(wprobs, axis=0)
-            rnk_idx = rnk_idx[::-1]
-
-            # Print the topic-headers
-            for i_topic in range(self.params['n_topics']):
-                # Print each topic and its marginal probability to columns
-                fid.write('Topic_{0:02d},{1:.4f},'.format(i_topic + 1,
-                                                          topic_probs[i_topic]))
-            fid.write('\n')
-
-            # Print the top K word-strings and word-probs for each topic
-            for i in range(n_top_words):
-                for j_topic in range(self.params['n_topics']):
-                    # Print the kth word in topic t and its probability
-                    fid.write('{0},{1:.4f},'.format(self.word_labels[rnk_idx[i, j_topic]],
-                                                    rnk_vals[i, j_topic]))
-                fid.write('\n')
+        return p_topic_g_voxel, p_voxel_g_topic, p_topic_g_word, p_word_g_topic

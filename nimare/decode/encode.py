@@ -96,11 +96,11 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
     if isinstance(text, list):
         text = ' '.join(text)
 
-    # Assume that words in word_labels are underscore-separated.
+    # Assume that words in vocabulary are underscore-separated.
     # Convert to space-separation for vectorization of input string.
-    vocabulary = [term.replace('_', ' ') for term in model.word_labels]
+    vocabulary = [term.replace('_', ' ') for term in model.vocabulary]
     max_len = max([len(term.split(' ')) for term in vocabulary])
-    vectorizer = CountVectorizer(vocabulary=model.word_labels,
+    vectorizer = CountVectorizer(vocabulary=model.vocabulary,
                                  ngram_range=(1, max_len))
     word_counts = np.squeeze(vectorizer.fit_transform([text]).toarray())
     keep_idx = np.where(word_counts > 0)[0]
