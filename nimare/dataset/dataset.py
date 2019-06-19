@@ -247,17 +247,29 @@ class Dataset(NiMAREBase):
 
         # Now to apply transformations!
         if 'mni' in self.space.lower() or 'ale' in self.space.lower():
-            transform = {'TAL': tal2mni,
+            transform = {'MNI': None,
+                         'TAL': tal2mni,
+                         'Talairach': tal2mni,
                          }
         elif 'tal' in self.space.lower():
             transform = {'MNI': mni2tal,
+                         'TAL': None,
+                         'Talairach': None,
                          }
+        else:
+            raise ValueError('Unrecognized space: {0}'.format(self.space))
 
-        for trans in transform.keys():
-            alg = transform[trans]
-            idx = df['space'] == trans
-            df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
+        found_spaces = df['space'].unique()
+        for found_space in found_spaces:
+            if found_space not in transform.keys():
+                LGR.warning('Not applying transforms to coordinates in '
+                            'unrecognized space "{0}"'.format(found_space))
+            alg = transform.get(found_space, None)
+            idx = df['space'] == found_space
+            if alg:
+                df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
             df.loc[idx, 'space'] = self.space
+
         xyz = df[['x', 'y', 'z']].values
         ijk = pd.DataFrame(mm2vox(xyz, self.mask.affine), columns=['i', 'j', 'k'])
         df = pd.concat([df, ijk], axis=1)
