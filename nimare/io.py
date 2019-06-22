@@ -129,9 +129,12 @@ def convert_sleuth_to_dict(text_file):
     data = [line for line in data if line]
     # First line indicates space. The rest are studies, ns, and coords
     space = data[0].replace(' ', '').replace('//Reference=', '')
-    if space not in ['MNI', 'TAL']:
+
+    SPACE_OPTS = ['MNI', 'TAL', 'Talairach']
+    if space not in SPACE_OPTS:
         raise Exception('Space {0} unknown. Options supported: '
-                        'MNI or TAL.'.format(space))
+                        '{0}.'.format(space, ', '.format(SPACE_OPTS)))
+
     # Split into experiments
     data = data[1:]
     metadata_idx = [i for i, line in enumerate(data) if line.startswith('//')]
@@ -211,7 +214,12 @@ def convert_sleuth_to_json(text_file, out_file):
     dict_ = {}
     for text_file in text_files:
         temp_dict = convert_sleuth_to_dict(text_file)
-        dict_ = {**dict_, **temp_dict}
+        for sid in temp_dict.keys():
+            if sid in dict_.keys():
+                dict_[sid]['contrasts'] = {**dict_[sid]['contrasts'],
+                                           **temp_dict[sid]['contrasts']}
+            else:
+                dict_[sid] = temp_dict[sid]
 
     with open(out_file, 'w') as fo:
         json.dump(dict_, fo, indent=4, sort_keys=True)

@@ -6,14 +6,12 @@ import pathlib
 from shutil import copyfile
 
 import click
-import numpy as np
 
 from ..io import convert_sleuth_to_dataset
 from ..meta.cbma import ALE
 
 N_ITERS_DEFAULT = 10000
 CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
-CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 
 
 @click.command(name='ale',
@@ -34,9 +32,11 @@ CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 @click.option('--v_thr', default=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
               show_default=True,
               help="Voxel p-value threshold used to create clusters.")
-@click.option('--c_thr', default=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
+@click.option('--fwhm', default=None, type=float,
               show_default=True,
-              help="Cluster size corrected p-value threshold.")
+              help='Override sample size-based kernel determination with a '
+                   'single FWHM (in mm) applied to all experiments. Useful '
+                   'when sample size is not available for all data.')
 @click.option('--n_cores', default=-1,
               show_default=True,
               help="Number of processes to use for meta-analysis. If -1, use "
@@ -45,12 +45,17 @@ def ale_sleuth_workflow(sleuth_file, sleuth_file2=None, output_dir=None,
                         prefix=None,
                         n_iters=N_ITERS_DEFAULT,
                         v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-                        c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
-                        n_cores=-1):
+                        fwhm=None, n_cores=-1):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """
     click.echo("Loading coordinates...")
+
+    if fwhm:
+        fwhm_str = "of {0} mm".format(fwhm)
+    else:
+        fwhm_str = "determined by sample size"
+
     if not sleuth_file2:
         dset = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
         n_subs = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
@@ -62,8 +67,8 @@ meta-analysis was performed using NiMARE. The input dataset included {n_foci}
 foci from {n_subs} participants across {n_exps} studies/experiments.
 
 Modeled activation maps were generated for each study/experiment by convolving
-each focus with a Gaussian kernel determined by the study/experiment's sample
-size. For voxels with overlapping kernels, the maximum value was retained.
+each focus with a Gaussian kernel {fwhm_str}.
+For voxels with overlapping kernels, the maximum value was retained.
 The modeled activation maps were rendered in MNI 152 space (Fonov et al., 2009;
 Fonov et al., 2011) at 2x2x2mm resolution. A map of ALE values was then
 computed for the sample as the union of modeled activation values across
@@ -73,12 +78,13 @@ Eickhoff, Bzdok, Laird, Kurth, & Fox (2012), prior to multiple comparisons
 correction.
 
 -> If the cluster-level FWE-corrected results were used, include the following:
-A cluster-forming threshold of p < {unc} was used, along with a cluster-extent
-threshold of {fwe}. {n_iters} iterations were performed to estimate a null
-distribution of cluster sizes, in which the locations of coordinates were
-randomly drawn from a gray matter template and the maximum cluster size was
-recorded after applying an uncorrected cluster-forming threshold of p < {unc},
-resulting in a minimum cluster size of {min_clust:.02f} mm3.
+A cluster-forming threshold of p < {unc} was used to perform cluster-level FWE
+correction. {n_iters} iterations were performed to estimate a null distribution
+of cluster sizes, in which the locations of coordinates were randomly drawn
+from a gray matter template and the maximum cluster size was recorded after
+applying an uncorrected cluster-forming threshold of p < {unc}. The negative
+log-transformed p-value for each cluster in the thresholded map was determined
+based on the cluster sizes.
 
 -> If voxel-level FWE-corrected results were used, include the following:
 Voxel-level FWE-correction was performed and results were thresholded at
@@ -107,24 +113,19 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
         """
 
-        ale = ALE(dset)
+        ale = ALE(dset, kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
-        ale.fit(n_iters=n_iters, ids=dset.ids,
-                voxel_thresh=v_thr, q=c_thr, corr='FWE',
+        ale.fit(n_iters=n_iters, ids=dset.ids, voxel_thresh=v_thr, corr='FWE',
                 n_cores=n_cores)
-
-        min_clust = np.percentile(ale.null['cfwe'], 100 * (1 - c_thr))
-        min_clust *= np.prod(dset.mask.header.get_zooms())
 
         boilerplate = boilerplate.format(
             n_exps=len(dset.ids),
             n_subs=n_subs,
             n_foci=dset.coordinates.shape[0],
             unc=v_thr,
-            fwe=c_thr,
             n_iters=n_iters,
-            min_clust=min_clust)
+            fwhm_str=fwhm_str)
     else:
         dset1 = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
         dset2 = convert_sleuth_to_dataset(sleuth_file2, target='ale_2mm')
@@ -141,18 +142,18 @@ The first input dataset included {n_foci1} foci from {n_subs1} participants
 across {n_exps1} studies/experiments. The second input dataset included
 {n_foci2} foci from {n_subs2} participants across {n_exps2} studies/experiments.
 
-Foci were convolved with Gaussian kernels determined by sample size,
+Foci were convolved with Gaussian kernels {fwhm_str},
 implemented on the MNI 152 template (Fonov et al., 2009; Fonov et al., 2011)
 at 2x2x2mm resolution.
 
 -> If the cluster-level FWE-corrected results were used, include the following:
-A cluster-forming threshold of p < {unc} was used, along with a cluster-extent
-threshold of {fwe}. {n_iters} iterations were performed to estimate a null
-distribution of cluster sizes, in which the locations of coordinates were
-randomly drawn from a gray matter template and the maximum cluster size was
-recorded after applying an uncorrected cluster-forming threshold of p < {unc},
-resulting in a minimum cluster size of {min_clust1:.02f} mm3 for the first
-dataset and {min_clust2:.02f} mm3 for the second dataset.
+A cluster-forming threshold of p < {unc} was used to perform cluster-level FWE
+correction. {n_iters} iterations were performed to estimate a null distribution
+of cluster sizes, in which the locations of coordinates were randomly drawn
+from a gray matter template and the maximum cluster size was recorded after
+applying an uncorrected cluster-forming threshold of p < {unc}. The negative
+log-transformed p-value for each cluster in the thresholded map was determined
+based on the cluster sizes.
 
 -> If voxel-level FWE-corrected results were used, include the following:
 Voxel-level FWE-correction was performed and results were thresholded at
@@ -189,17 +190,11 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
 25(1), 155-164.
         """
 
-        ale = ALE(dset_combined)
+        ale = ALE(dset_combined, kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
         ale.fit(n_iters=n_iters, ids=dset1.ids, ids2=dset2.ids,
-                voxel_thresh=v_thr, q=c_thr, corr='FWE',
-                n_cores=n_cores)
-
-        min_clust1 = np.percentile(ale.null['group1_cfwe'], 100 * (1 - c_thr))
-        min_clust1 *= np.prod(dset_combined.mask.header.get_zooms())
-        min_clust2 = np.percentile(ale.null['group2_cfwe'], 100 * (1 - c_thr))
-        min_clust2 *= np.prod(dset_combined.mask.header.get_zooms())
+                voxel_thresh=v_thr, corr='FWE', n_cores=n_cores)
 
         boilerplate = boilerplate.format(
             n_exps1=len(dset1.ids),
@@ -209,10 +204,8 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
             n_subs2=n_subs2,
             n_foci2=dset2.coordinates.shape[0],
             unc=v_thr,
-            fwe=c_thr,
             n_iters=n_iters,
-            min_clust1=min_clust1,
-            min_clust2=min_clust2)
+            fwhm_str=fwhm_str)
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(sleuth_file))

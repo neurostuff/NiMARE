@@ -6,14 +6,12 @@ import pathlib
 from shutil import copyfile
 
 import click
-import numpy as np
 
 from ..dataset import Dataset
 from ..meta.cbma import ALE
 
 N_ITERS_DEFAULT = 10000
 CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
-CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 
 
 @click.command(name='macm',
@@ -29,9 +27,6 @@ CLUSTER_SIZE_THRESHOLD_Q_DEFAULT = 0.05
 @click.option('--v_thr', default=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
               show_default=True,
               help="Voxel p-value threshold used to create clusters.")
-@click.option('--c_thr', default=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
-              show_default=True,
-              help="Cluster size corrected p-value threshold.")
 @click.option('--n_cores', default=-1,
               show_default=True,
               help="Number of processes to use for meta-analysis. If -1, use "
@@ -40,7 +35,6 @@ def macm_workflow(dataset_file, mask_file, output_dir=None,
                   prefix=None,
                   n_iters=N_ITERS_DEFAULT,
                   v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-                  c_thr=CLUSTER_SIZE_THRESHOLD_Q_DEFAULT,
                   n_cores=-1):
     """
     Perform MACM with ALE algorithm.
@@ -79,12 +73,13 @@ Eickhoff, Bzdok, Laird, Kurth, & Fox (2012), prior to multiple comparisons
 correction.
 
 -> If the cluster-level FWE-corrected results were used, include the following:
-A cluster-forming threshold of p < {unc} was used, along with a cluster-extent
-threshold of {fwe}. {n_iters} iterations were performed to estimate a null
-distribution of cluster sizes, in which the locations of coordinates were
-randomly drawn from a gray matter template and the maximum cluster size was
-recorded after applying an uncorrected cluster-forming threshold of p < {unc},
-resulting in a minimum cluster size of {min_clust:.02f} mm3.
+A cluster-forming threshold of p < {unc} was used to perform cluster-level FWE
+correction. {n_iters} iterations were performed to estimate a null distribution
+of cluster sizes, in which the locations of coordinates were randomly drawn
+from a gray matter template and the maximum cluster size was recorded after
+applying an uncorrected cluster-forming threshold of p < {unc}. The negative
+log-transformed p-value for each cluster in the thresholded map was determined
+based on the cluster sizes.
 
 -> If voxel-level FWE-corrected results were used, include the following:
 Voxel-level FWE-correction was performed and results were thresholded at
@@ -128,12 +123,8 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
     ale = ALE(dset)
 
     click.echo("Performing meta-analysis...")
-    ale.fit(n_iters=n_iters, ids=sel_ids,
-            voxel_thresh=v_thr, q=c_thr, corr='FWE',
+    ale.fit(n_iters=n_iters, ids=sel_ids, voxel_thresh=v_thr, corr='FWE',
             n_cores=n_cores)
-
-    min_clust = np.percentile(ale.null['cfwe'], 100 * (1 - c_thr))
-    min_clust *= np.prod(dset.mask.header.get_zooms())
 
     boilerplate = boilerplate.format(
         n_exps_db=len(dset.ids),
@@ -143,9 +134,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         n_subs_sel=n_subs_sel,
         n_foci_sel=sel_coords.shape[0],
         unc=v_thr,
-        fwe=c_thr,
-        n_iters=n_iters,
-        min_clust=min_clust)
+        n_iters=n_iters)
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(dataset_file))

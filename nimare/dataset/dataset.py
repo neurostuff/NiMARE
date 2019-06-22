@@ -3,21 +3,20 @@ Classes for representing datasets of images and/or coordinates.
 """
 from __future__ import print_function
 import json
-import gzip
 import copy
-import pickle
 import logging
 
 import numpy as np
 import pandas as pd
 import nibabel as nib
 
+from ..base.base import NiMAREBase
 from ..utils import tal2mni, mni2tal, mm2vox, get_template
 
 LGR = logging.getLogger(__name__)
 
 
-class Dataset(object):
+class Dataset(NiMAREBase):
     """
     Storage container for a coordinate- and/or image-based meta-analytic
     dataset/database.
@@ -248,17 +247,29 @@ class Dataset(object):
 
         # Now to apply transformations!
         if 'mni' in self.space.lower() or 'ale' in self.space.lower():
-            transform = {'TAL': tal2mni,
+            transform = {'MNI': None,
+                         'TAL': tal2mni,
+                         'Talairach': tal2mni,
                          }
         elif 'tal' in self.space.lower():
             transform = {'MNI': mni2tal,
+                         'TAL': None,
+                         'Talairach': None,
                          }
+        else:
+            raise ValueError('Unrecognized space: {0}'.format(self.space))
 
-        for trans in transform.keys():
-            alg = transform[trans]
-            idx = df['space'] == trans
-            df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
+        found_spaces = df['space'].unique()
+        for found_space in found_spaces:
+            if found_space not in transform.keys():
+                LGR.warning('Not applying transforms to coordinates in '
+                            'unrecognized space "{0}"'.format(found_space))
+            alg = transform.get(found_space, None)
+            idx = df['space'] == found_space
+            if alg:
+                df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
             df.loc[idx, 'space'] = self.space
+
         xyz = df[['x', 'y', 'z']].values
         ijk = pd.DataFrame(mm2vox(xyz, self.mask.affine), columns=['i', 'j', 'k'])
         df = pd.concat([df, ijk], axis=1)
@@ -443,64 +454,3 @@ class Dataset(object):
         This method is not yet implemented.
         """
         pass
-
-    def save(self, filename, compress=True):
-        """
-        Pickle the Dataset instance to the provided file.
-
-        Parameters
-        ----------
-        filename : :obj:`str`
-            File to which dataset will be saved.
-        compress : :obj:`bool`, optional
-            If True, the file will be compressed with gzip. Otherwise, the
-            uncompressed version will be saved. Default = True.
-        """
-        if compress:
-            with gzip.GzipFile(filename, 'wb') as file_object:
-                pickle.dump(self, file_object)
-        else:
-            with open(filename, 'wb') as file_object:
-                pickle.dump(self, file_object)
-
-    @classmethod
-    def load(cls, filename, compressed=True):
-        """
-        Load a pickled Dataset instance from file.
-
-        Parameters
-        ----------
-        filename : :obj:`str`
-            Name of file containing dataset.
-        compressed : :obj:`bool`, optional
-            If True, the file is assumed to be compressed and gzip will be used
-            to load it. Otherwise, it will assume that the file is not
-            compressed. Default = True.
-
-        Returns
-        -------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Loaded dataset object.
-        """
-        if compressed:
-            try:
-                with gzip.GzipFile(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object)
-            except UnicodeDecodeError:
-                # Need to try this for python3
-                with gzip.GzipFile(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object, encoding='latin')
-        else:
-            try:
-                with open(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object)
-            except UnicodeDecodeError:
-                # Need to try this for python3
-                with open(filename, 'rb') as file_object:
-                    dataset = pickle.load(file_object, encoding='latin')
-
-        if not isinstance(dataset, Dataset):
-            raise IOError('Pickled object must be `nimare.dataset.dataset.Dataset`, '
-                          'not {0}'.format(type(dataset)))
-
-        return dataset
