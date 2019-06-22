@@ -56,6 +56,22 @@ class ALE(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    Notes
+    -----
+    The ALE algorithm was originally developed in [1]_, then updated in [2]_
+    and [3]_.
+
+    References
+    ----------
+    .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
+        neuroanatomy of single-word reading: method and validation."
+        Neuroimage 16.3 (2002): 765-780.
+    .. [2] Turkeltaub, Peter E., et al. "Minimizing within‐experiment and
+        within‐group effects in activation likelihood estimation
+        meta‐analyses." Human brain mapping 33.1 (2012): 1-13.
+    .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
+        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
     def __init__(self, dataset, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -143,7 +159,7 @@ class ALE(CBMAEstimator):
 
         self.results = MetaResult(self, mask=self.mask, **images)
 
-    def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
+    def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps=None):
         """
         Run a subtraction analysis comparing two groups of experiments within
         the dataset.
@@ -160,15 +176,33 @@ class ALE(CBMAEstimator):
         image2 : img_like or array_like
             Cluster-level FWE-corrected z-statistic map for group 2, masked to
             1D array.
-        ma_maps : (E x V) array_like
+        ma_maps : (E x V) array_like or None, optional
             Experiments (ids + ids2) by voxels array of modeled activation
-            values.
+            values. If not provided, MA maps will be generated from ids + ids2.
+
+        Notes
+        -----
+        This method was originally developed in [1]_ and refined in [2]_.
+
+        References
+        ----------
+        .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
+            false discovery rate and performing statistical contrasts." Human
+            brain mapping 25.1 (2005): 155-164.
+            https://doi.org/10.1002/hbm.20136
+        .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
+            meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+            https://doi.org/10.1016/j.neuroimage.2011.09.017
         """
         if not isinstance(image1, np.ndarray):
             image1 = apply_mask(image1, self.mask)
             image2 = apply_mask(image2, self.mask)
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
+
+        if ma_maps is None:
+            all_ids = np.hstack((np.array(ids), np.array(ids2)))
+            ma_maps = k_est.transform(all_ids, **self.kernel_arguments)
         n_grp1 = len(ids)
 
         all_ids = np.hstack((np.array(ids), np.array(ids2)))
@@ -498,7 +532,7 @@ class ALE(CBMAEstimator):
                        'estimation (SCALE) algorithm.')
 class SCALE(CBMAEstimator):
     r"""
-    Specific coactivation likelihood estimation
+    Specific coactivation likelihood estimation [1]_.
 
     Parameters
     ----------
@@ -514,6 +548,12 @@ class SCALE(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Langner, Robert, et al. "Meta-analytic connectivity modeling
+        revisited: controlling for activation base rates." NeuroImage 99
+        (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
     def __init__(self, dataset, ijk=None, kernel_estimator=ALEKernel,
                  **kwargs):
@@ -538,7 +578,7 @@ class SCALE(CBMAEstimator):
 
     def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """
-        Perform specific coactivation likelihood estimation[1]_ meta-analysis
+        Perform specific coactivation likelihood estimation meta-analysis
         on dataset.
 
         Parameters
@@ -552,13 +592,6 @@ class SCALE(CBMAEstimator):
         n_cores : int, optional
             Number of processes to use for meta-analysis. If -1, use all
             available cores. Default: -1
-
-        References
-        ----------
-        .. [1] Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., &
-               Eickhoff, S. B. (2014). Meta-analytic connectivity modeling
-               revisited: controlling for activation base rates.
-               NeuroImage, 99, 559-570.
         """
         self.ids = ids
         self.voxel_thresh = voxel_thresh
