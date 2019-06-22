@@ -133,8 +133,8 @@ class ALE(CBMAEstimator):
                      'FWE-corrected maps thresholded at p < 0.05.')
             sub_images = self.subtraction_analysis(
                 self.ids, self.ids2,
-                images1['group1_cfwe'] >= np.log(0.05),
-                images2['group2_cfwe'] >= np.log(0.05),
+                images1['group1_logp_cfwe'] >= np.log(0.05),
+                images2['group2_logp_cfwe'] >= np.log(0.05),
                 ma_maps)
             images = {**images1, **images2, **sub_images}
         else:
