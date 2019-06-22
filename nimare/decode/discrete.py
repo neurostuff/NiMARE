@@ -19,11 +19,12 @@ from ..due import due, Doi
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     r"""
     Perform image-to-text decoding for discrete image inputs (e.g., regions
-    of interest, significant clusters).
+    of interest, significant clusters) according to the method described in
+    [1]_.
 
     Parameters
     ----------
-    model : :obj:`gclda.model.Model`
+    model : :obj:`nimare.annotate.topic.GCLDAModel`
         Model object needed for decoding.
     roi : :obj:`nibabel.nifti.Nifti1Image` or :obj:`str`
         Binary image to decode into text. If string, path to a file with
@@ -67,6 +68,13 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
             - :math:`p(w|r) \propto \\tau_{t} \cdot p(w|t)`
     4.  The resulting vector (``word_weights``) reflects arbitrarily scaled
         term weights for the ROI.
+
+    References
+    ----------
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
+        large-scale probabilistic functional-anatomical atlas of human
+        cognition." PLoS computational biology 13.10 (2017): e1005649.
+        https://doi.org/10.1371/journal.pcbi.1005649
     """
     if isinstance(roi, str):
         roi = nib.load(roi)
@@ -109,7 +117,13 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
                     frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
     """
     Perform image-to-text decoding for discrete image inputs (e.g., regions
-    of interest, significant clusters) according to the BrainMap method.
+    of interest, significant clusters) according to the BrainMap method [1]_.
+
+    References
+    ----------
+    .. [1] Amft, Maren, et al. "Definition and characterization of an extended
+        social-affective default network." Brain Structure and Function 220.2
+        (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
     """
     id_cols = ['id', 'study_id', 'contrast_id']
     dataset_ids = sorted(list(set(coordinates['id'].values)))
@@ -211,12 +225,18 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
                       correction='fdr_bh'):
     """
     Perform discrete functional decoding according to Neurosynth's
-    meta-analytic method. This does not employ correlations between
+    meta-analytic method [1]_. This does not employ correlations between
     unthresholded maps, which are the method of choice for decoding within
     Neurosynth and Neurovault.
     Metadata (i.e., feature labels) for studies within the selected sample
     (`ids`) are compared to the unselected studies remaining in the database
     (`dataset`).
+
+    References
+    ----------
+    .. [1] Yarkoni, Tal, et al. "Large-scale automated synthesis of human
+        functional neuroimaging data." Nature methods 8.8 (2011): 665.
+        https://doi.org/10.1038/nmeth.1635
     """
     id_cols = ['id', 'study_id', 'contrast_id']
     dataset_ids = sorted(list(set(coordinates['id'].values)))

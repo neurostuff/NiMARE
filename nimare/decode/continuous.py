@@ -16,11 +16,11 @@ from ..due import due, Doi
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""
     Perform image-to-text decoding for continuous inputs (e.g.,
-    unthresholded statistical maps).
+    unthresholded statistical maps), according to the method described in [1]_.
 
     Parameters
     ----------
-    model : :obj:`gclda.model.Model`
+    model : :obj:`nimare.annotate.topic.GCLDAModel`
         Model object needed for decoding.
     image : :obj:`nibabel.nifti.Nifti1Image` or :obj:`str`
         Whole-brain image to decode into text. Must be in same space as
@@ -67,6 +67,13 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
             - :math:`p(w|i) \propto \\tau_{t} \cdot p(w|t)`
     5.  The resulting vector (``word_weights``) reflects arbitrarily scaled
         term weights for the input image.
+
+    References
+    ----------
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
+        large-scale probabilistic functional-anatomical atlas of human
+        cognition." PLoS computational biology 13.10 (2017): e1005649.
+        https://doi.org/10.1371/journal.pcbi.1005649
     """
     if isinstance(image, str):
         image = nib.load(image)

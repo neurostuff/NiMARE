@@ -15,7 +15,7 @@ from ..due import due, Doi
            description='Introduces the MAPBOT algorithm.')
 class MAPBOT(Parcellator):
     """
-    Meta-analytic parcellation based on text (MAPBOT).
+    Meta-analytic parcellation based on text (MAPBOT) [1]_.
 
     Parameters
     ----------
@@ -52,6 +52,12 @@ class MAPBOT(Parcellator):
     Warnings
     --------
     This method is not yet implemented.
+
+    References
+    ----------
+    .. [1] Yuan, Rui, et al. "MAPBOT: Meta-analytic parcellation based on text,
+        and its application to the human thalamus." NeuroImage 157 (2017):
+        716-732. https://doi.org/10.1016/j.neuroimage.2017.06.032
     """
     def __init__(self, tfidf_df, coordinates_df, mask):
         self.mask = mask
@@ -63,6 +69,8 @@ class MAPBOT(Parcellator):
         """
         Run MAPBOT parcellation.
 
+        Parameters
+        ----------
         region_name : :obj:`str`
             Name of region for parcellation.
         n_parcels : :obj:`int`, optional

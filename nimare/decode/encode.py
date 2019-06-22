@@ -6,26 +6,26 @@ from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
 
 from .utils import weight_priors
-from ..due import due, Doi, BibTeX
+from ..due import due, Doi
 
 
-@due.dcite(BibTeX(r"""
-    @article{dockes2018text,
-    title={Text to brain: predicting the spatial distribution of neuroimaging
-           observations from text reports},
-    author={Dock{\`e}s, J{\'e}r{\^o}me and Wassermann, Demian and Poldrack,
-            Russell and Suchanek, Fabian and Thirion, Bertrand and
-            Varoquaux, Ga{\"e}l},
-    journal={arXiv preprint arXiv:1806.01139},
-    year={2018}
-    }"""))
+@due.dcite(Doi('https://doi.org/10.1007/978-3-030-00931-1_67'),
+           description='Introduced text2brain models for annotation.')
 def text2brain():
     """
-    Perform text-to-image encoding with the text2brain model.
+    Perform text-to-image encoding with the text2brain model [1]_.
 
     Warnings
     --------
     This method is not yet implemented.
+
+    References
+    ----------
+    .. [1] Dockès, Jérôme, et al. "Text to brain: predicting the spatial
+        distribution of neuroimaging observations from text reports."
+        International Conference on Medical Image Computing and
+        Computer-Assisted Intervention. Springer, Cham, 2018.
+        https://doi.org/10.1007/978-3-030-00931-1_67
     """
     pass
 
@@ -35,11 +35,11 @@ def text2brain():
 def encode_gclda(model, text, out_file=None, topic_priors=None,
                  prior_weight=1.):
     r"""
-    Perform text-to-image encoding.
+    Perform text-to-image encoding according to the method described in [1]_.
 
     Parameters
     ----------
-    model : :obj:`gclda.model.Model`
+    model : :obj:`nimare.annotate.topic.GCLDAModel`
         Model object needed for decoding.
     text : :obj:`str` or :obj:`list`
         Text to encode into an image.
@@ -92,6 +92,13 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
     8.  The resulting array (``voxel_weights``) reflects arbitrarily scaled
         voxel weights for the input text.
     9.  Unmask and reshape ``voxel_weights`` into brain image.
+
+    References
+    ----------
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
+        large-scale probabilistic functional-anatomical atlas of human
+        cognition." PLoS computational biology 13.10 (2017): e1005649.
+        https://doi.org/10.1371/journal.pcbi.1005649
     """
     if isinstance(text, list):
         text = ' '.join(text)

@@ -16,7 +16,7 @@ from ..due import due, Doi
            description='Introduces the MAMP algorithm.')
 class MAMP(Parcellator):
     """
-    Meta-analytic activation modeling-based parcellation (MAMP).
+    Meta-analytic activation modeling-based parcellation (MAMP) [1]_.
 
     Parameters
     ----------
@@ -42,6 +42,13 @@ class MAMP(Parcellator):
     Warnings
     --------
     This method is not yet implemented.
+
+    References
+    ----------
+    .. [1] Yang, Yong, et al. "Identifying functional subdivisions in the human
+        brain using meta-analytic activation modeling-based parcellation."
+        Neuroimage 124 (2016): 300-309.
+        https://doi.org/10.1016/j.neuroimage.2015.08.027
     """
     def __init__(self, dataset, ids):
         self.mask = dataset.mask

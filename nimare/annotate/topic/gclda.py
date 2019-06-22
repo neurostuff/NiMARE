@@ -20,7 +20,8 @@ LGR = logging.getLogger(__name__)
            description='Introduces GC-LDA decoding.')
 class GCLDAModel(AnnotationModel):
     """
-    Generate a GCLDA topic model.
+    Generate a generalized correspondence latent Dirichlet allocation
+    (GCLDA) [1]_ topic model.
 
     Parameters
     ----------
@@ -29,7 +30,7 @@ class GCLDAModel(AnnotationModel):
         used for identifying studies. Other columns are features (e.g.,
         unigrams and bigrams from Neurosynth), where each value is the number
         of times the feature is found in a given article.
-    coordinates_df : :obj:`pandas.DataFrame`
+    coordinates_df : :obj:`pandas.DataFrame`, optional
         A DataFrame with a list of foci in the dataset. The index is 'id',
         used for identifying studies. Additional columns include 'x', 'y' and
         'z' (foci in standard space).
@@ -59,13 +60,24 @@ class GCLDAModel(AnnotationModel):
         requires n_regions = 2. The default is False.
     seed_init : :obj:`int`, optional
         Initial value of random seed. The default is 1.
-    name : :obj:`str`, optional
-        Name of model.
+
+    References
+    ----------
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
+        large-scale probabilistic functional-anatomical atlas of human
+        cognition." PLoS computational biology 13.10 (2017): e1005649.
+        https://doi.org/10.1371/journal.pcbi.1005649
+
+    See Also
+    --------
+    nimare.decode.continuous.gclda_decode_map : GCLDA map decoding
+    nimare.decode.discrete.gclda_decode_roi : GCLDA ROI decoding
+    nimare.decode.encode.encode_gclda : GCLDA text-to-map encoding
     """
     def __init__(self, count_df, coordinates_df, mask='mni152_2mm',
                  n_topics=100, n_regions=2, symmetric=True, alpha=.1,
                  beta=.01, gamma=.01, delta=1.0, dobs=25, roi_size=50.0,
-                 seed_init=1, name='gclda'):
+                 seed_init=1):
         LGR.info('Constructing/Initializing GCLDA Model')
         count_df = count_df.copy()
         coordinates_df = coordinates_df.copy()

@@ -17,7 +17,7 @@ from ..due import due, Doi
            description='Introduces CBP.')
 class CoordCBP(Parcellator):
     """
-    Coordinate-based coactivation-based parcellation
+    Coordinate-based coactivation-based parcellation [1]_.
 
     Notes
     -----
@@ -38,6 +38,13 @@ class CoordCBP(Parcellator):
     Warnings
     --------
     This method is currently untested.
+
+    References
+    ----------
+    .. [1] Bzdok, D., Laird, A. R., Zilles, K., Fox, P. T., & Eickhoff, S. B.
+        (2013). An investigation of the structural, connectional, and
+        functional subspecialization in the human amygdala. Human brain
+        mapping, 34(12), 3247-3266. https://doi.org/10.1002/hbm.22138
     """
     def __init__(self, dataset, ids):
         self.dataset = dataset
