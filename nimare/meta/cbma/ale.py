@@ -202,6 +202,7 @@ class ALE(CBMAEstimator):
 
         if ma_maps is None:
             all_ids = np.hstack((np.array(ids), np.array(ids2)))
+            k_est = self.kernel_estimator(self.coordinates, self.mask)
             ma_maps = k_est.transform(all_ids, **self.kernel_arguments)
         n_grp1 = len(ids)
 
