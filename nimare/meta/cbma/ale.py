@@ -91,7 +91,8 @@ class ALE(CBMAEstimator):
             If not None, ids2 is used to identify a second sample for a
             subtraction analysis. Default is None.
         voxel_thresh : float, optional
-            Uncorrected voxel-level threshold. Default: 0.001
+            Uncorrected voxel-level threshold. Used to define clusters for
+            cluster-level thresholding. Default: 0.001
         corr : {'FWE'}, optional
             Type of multiple comparisons correction to employ. Only currently
             supported option is FWE, which derives both cluster- and voxel-
@@ -127,9 +128,13 @@ class ALE(CBMAEstimator):
                                     n_cores=n_cores)
             images2 = self._run_ale(ma_maps[len(self.ids):], prefix='group2_',
                                     n_cores=n_cores)
+            # Perform subtraction analysis using thresholded cFWE maps.
+            LGR.info('Performing subtraction analysis with cluster-level '
+                     'FWE-corrected maps thresholded at p < 0.05.')
             sub_images = self.subtraction_analysis(
                 self.ids, self.ids2,
-                images1['group1_cfwe'], images2['group2_cfwe'],
+                images1['group1_cfwe'] >= np.log(0.05),
+                images2['group2_cfwe'] >= np.log(0.05),
                 ma_maps)
             images = {**images1, **images2, **sub_images}
         else:
@@ -149,20 +154,22 @@ class ALE(CBMAEstimator):
             List of IDs from dataset to analyze as group 1.
         ids2 : array_like or None, optional
             List of IDs from dataset to analyze as group 2.
-        image1 : array_like
+        image1 : img_like or array_like
             Cluster-level FWE-corrected z-statistic map for group 1, masked to
             1D array.
-        image2 : array_like
+        image2 : img_like or array_like
             Cluster-level FWE-corrected z-statistic map for group 2, masked to
             1D array.
         ma_maps : (E x V) array_like
             Experiments (ids + ids2) by voxels array of modeled activation
             values.
         """
+        if not isinstance(image1, np.ndarray):
+            image1 = apply_mask(image1, self.mask)
+            image2 = apply_mask(image2, self.mask)
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
         n_grp1 = len(ids)
-        # img1 = unmask(image1, self.mask)
 
         all_ids = np.hstack((np.array(ids), np.array(ids2)))
         id_idx = np.arange(len(all_ids))
