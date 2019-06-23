@@ -491,4 +491,4 @@ class Dataset(NiMAREBase):
         else:
             images = self.images[imtype].tolist()
 
-        return texts
+        return images
