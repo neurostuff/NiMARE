@@ -21,8 +21,26 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
 class MKDADensity(CBMAEstimator):
-    """
-    Multilevel kernel density analysis- Density analysis
+    r"""
+    Multilevel kernel density analysis- Density analysis [1]_.
+
+    Parameters
+    ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        Dataset to analyze.
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        MKDAKernel.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
+        of functional neuroimaging data: current and future directions." Social
+        cognitive and affective neuroscience 2.2 (2007): 150-158.
+        https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, dataset, kernel_estimator=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -44,6 +62,21 @@ class MKDADensity(CBMAEstimator):
         self.results = None
 
     def fit(self, ids, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
+        """
+        Perform MKDA density meta-analysis on dataset.
+
+        Parameters
+        ----------
+        ids : array_like
+            List of IDs from dataset to analyze.
+        voxel_thresh : float, optional
+            Uncorrected voxel-level threshold. Default: 0.001
+        n_iters : int, optional
+            Number of iterations for correction. Default: 10000
+        n_cores : int, optional
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
+        """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.voxel_thresh = voxel_thresh
@@ -153,8 +186,26 @@ class MKDADensity(CBMAEstimator):
 
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
 class MKDAChi2(CBMAEstimator):
-    """
-    Multilevel kernel density analysis- Chi-square analysis
+    r"""
+    Multilevel kernel density analysis- Chi-square analysis [1]_.
+
+    Parameters
+    ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        Dataset to analyze.
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        MKDAKernel.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
+        of functional neuroimaging data: current and future directions." Social
+        cognitive and affective neuroscience 2.2 (2007): 150-158.
+        https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, dataset, kernel_estimator=MKDAKernel,
                  **kwargs):
@@ -187,6 +238,31 @@ class MKDAChi2(CBMAEstimator):
 
     def fit(self, ids, ids2=None, voxel_thresh=0.01, corr='FWE',
             n_iters=5000, prior=0.5, n_cores=-1):
+        """
+        Perform MKDA chi2 meta-analysis on dataset.
+
+        Parameters
+        ----------
+        ids : array_like
+            List of IDs from dataset to analyze.
+        ids2 : array_like or None, optional
+            If not None, ids2 is used to identify a second sample for
+            comparison. Default is None.
+        voxel_thresh : float, optional
+            Uncorrected voxel-level threshold. Default: 0.01
+        corr : {'FWE', 'FDR'}, optional
+            Type of multiple comparisons correction to employ. Only currently
+            supported option are FWE (which derives both cluster- and voxel-
+            level corrected results) and FDR (performed directly on p-values).
+        n_iters : int, optional
+            Number of iterations for correction. Default: 10000
+        prior : float, optional
+            Uniform prior probability of each feature being active in a map in
+            the absence of evidence from the map. Default: 0.5
+        n_cores : int, optional
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
+        """
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
@@ -371,8 +447,29 @@ class MKDAChi2(CBMAEstimator):
 @due.dcite(Doi('10.1016/j.neuroimage.2004.03.052'),
            description='Also introduces the KDA algorithm.')
 class KDA(CBMAEstimator):
-    """
-    Kernel density analysis
+    r"""
+    Kernel density analysis [1]_.
+
+    Parameters
+    ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        Dataset to analyze.
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        KDAKernel.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Wager, Tor D., et al. "Valence, gender, and lateralization of
+        functional brain anatomy in emotion: a meta-analysis of findings from
+        neuroimaging." Neuroimage 19.3 (2003): 513-531.
+        https://doi.org/10.1016/S1053-8119(03)00078-8
+    .. [2] Wager, Tor D., John Jonides, and Susan Reading. "Neuroimaging
+        studies of shifting attention: a meta-analysis." Neuroimage 22.4
+        (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
     def __init__(self, dataset, kernel_estimator=KDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -393,6 +490,19 @@ class KDA(CBMAEstimator):
         self.images = {}
 
     def fit(self, ids, n_iters=10000, n_cores=-1):
+        """
+        Perform KDA meta-analysis on dataset.
+
+        Parameters
+        ----------
+        ids : array_like
+            List of IDs from dataset to analyze.
+        n_iters : int, optional
+            Number of iterations for correction. Default: 10000
+        n_cores : int, optional
+            Number of processes to use for meta-analysis. If -1, use all
+            available cores. Default: -1
+        """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         self.ids = ids
         self.n_iters = n_iters
