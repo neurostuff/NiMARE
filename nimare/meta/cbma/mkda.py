@@ -22,7 +22,7 @@ LGR = logging.getLogger(__name__)
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
 class MKDADensity(CBMAEstimator):
     r"""
-    Multilevel kernel density analysis- Density analysis
+    Multilevel kernel density analysis- Density analysis [1]_.
 
     Parameters
     ----------
@@ -34,6 +34,13 @@ class MKDADensity(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
+        of functional neuroimaging data: current and future directions." Social
+        cognitive and affective neuroscience 2.2 (2007): 150-158.
+        https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, dataset, kernel_estimator=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -180,7 +187,7 @@ class MKDADensity(CBMAEstimator):
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
 class MKDAChi2(CBMAEstimator):
     r"""
-    Multilevel kernel density analysis- Chi-square analysis
+    Multilevel kernel density analysis- Chi-square analysis [1]_.
 
     Parameters
     ----------
@@ -192,6 +199,13 @@ class MKDAChi2(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
+        of functional neuroimaging data: current and future directions." Social
+        cognitive and affective neuroscience 2.2 (2007): 150-158.
+        https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, dataset, kernel_estimator=MKDAKernel,
                  **kwargs):
@@ -434,7 +448,7 @@ class MKDAChi2(CBMAEstimator):
            description='Also introduces the KDA algorithm.')
 class KDA(CBMAEstimator):
     r"""
-    Kernel density analysis
+    Kernel density analysis [1]_.
 
     Parameters
     ----------
@@ -446,6 +460,16 @@ class KDA(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Wager, Tor D., et al. "Valence, gender, and lateralization of
+        functional brain anatomy in emotion: a meta-analysis of findings from
+        neuroimaging." Neuroimage 19.3 (2003): 513-531.
+        https://doi.org/10.1016/S1053-8119(03)00078-8
+    .. [2] Wager, Tor D., John Jonides, and Susan Reading. "Neuroimaging
+        studies of shifting attention: a meta-analysis." Neuroimage 22.4
+        (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
     def __init__(self, dataset, kernel_estimator=KDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()

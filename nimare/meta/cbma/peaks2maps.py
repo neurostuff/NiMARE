@@ -1,5 +1,8 @@
 
 def model_fn(features, labels, mode, params):
+    """
+    Used internally by utils.peaks2maps
+    """
     import tensorflow as tf
     from tensorflow.python.estimator.export.export_output import PredictOutput
     ngf = 64
