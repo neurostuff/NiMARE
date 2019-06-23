@@ -50,10 +50,11 @@ for automated meta-analyses, functional decoding, and gene expression
 visualization, and provides a Python package implementing the above methods.
 
 In order to improve modularization, the next iteration of Neurosynth will limit
-itself to the web interface and providing a centralized storage for large-scale
-automated meta-analyses, but not actually implementing the algorithms used
-to run those meta-analyses or to perform the other services provided on the
-website (e.g., functional decoding and topic modeling).
+itself to a web interface for meta-analytic model specification and providing a
+centralized storage for large-scale meta-analyses, but not actually
+implementing the algorithms used to run those meta-analyses or to perform the
+other services provided on the website (e.g., functional decoding and topic
+modeling).
 The algorithms currently implemented in the `Neurosynth Python package`_ will be
 implemented (among many others) in NiMARE.
 Under the current plan, the database at the moment stored by Neurosynth will

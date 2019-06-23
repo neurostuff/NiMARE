@@ -471,7 +471,7 @@ class Dataset(NiMAREBase):
         ids : list, optional
             A list of IDs in the Dataset for which to find texts. Default is
             None, in which case all texts of requested type are returned.
-        imgtype : str, optional
+        imtype : str, optional
             Type of image to extract. Corresponds to column name in
             Dataset.images DataFrame. Default is 'z'.
 
