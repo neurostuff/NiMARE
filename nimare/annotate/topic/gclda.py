@@ -640,7 +640,7 @@ class GCLDAModel(AnnotationModel):
                            'used in model.')
     def compute_log_likelihood(self, model=None, update_vectors=True):
         """
-        Compute Log-likelihood of a model object given current model.
+        Compute log-likelihood [1]_ of a model object given current model.
         Computes the log-likelihood of data in any model object (either train
         or test) given the posterior predictive distributions over peaks and
         word-types for the model. Note that this is not computing the joint
@@ -666,9 +666,9 @@ class GCLDAModel(AnnotationModel):
 
         References
         ----------
-        [1] Newman, D., Asuncion, A., Smyth, P., & Welling, M. (2009).
-        Distributed algorithms for topic models. Journal of Machine Learning
-        Research, 10(Aug), 1801-1828.
+        .. [1] Newman, D., Asuncion, A., Smyth, P., & Welling, M. (2009).
+            Distributed algorithms for topic models. Journal of Machine
+            Learning Research, 10(Aug), 1801-1828.
         """
         if model is None:
             model = self
