@@ -60,6 +60,16 @@ class Dataset(NiMAREBase):
     def slice(self, ids):
         """
         Return a reduced dataset with only requested IDs.
+
+        Parameters
+        ----------
+        ids : array_like
+            List of study IDs to include in new dataset
+
+        Returns
+        -------
+        new_dset : :obj:`nimare.dataset.Dataset`
+            Redcued Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
         new_dset.ids = ids
@@ -323,27 +333,34 @@ class Dataset(NiMAREBase):
 
         return labels
 
-    def get_texts(self, ids=None):
+    def get_texts(self, ids=None, text_type='abstract'):
         """
-        Extract list of labels for which studies in Dataset have annotations.
+        Extract list of texts of a given type for selected IDs.
 
         Parameters
         ----------
         ids : list, optional
-            A list of IDs in the Dataset for which to find labels. Default is
-            None, in which case all labels are returned.
+            A list of IDs in the Dataset for which to find texts. Default is
+            None, in which case all texts of requested type are returned.
+        text_type : str, optional
+            Type of text to extract. Corresponds to column name in
+            Dataset.texts DataFrame. Default is 'abstract'.
 
         Returns
         -------
-        labels : list
-            List of labels for which there are annotations in the Dataset.
+        texts : list
+            List of texts of requested type for selected IDs.
         """
         id_cols = ['id', 'study_id', 'contrast_id']
-        labels = [c for c in self.texts.columns if c not in id_cols]
+        text_types = [c for c in self.texts.columns if c not in id_cols]
+        if text_type not in text_types:
+            raise ValueError('Text type "{0}" not found.\nAvailable types: '
+                             '{1}'.format(text_type, ', '.join(text_types)))
+
         if ids is not None:
-            temp_annotations = self.texts.loc[self.annotations['id'].isin(ids)]
-            res = temp_annotations[labels].any(axis=0)
-            texts = res.loc[res].index.tolist()
+            texts = self.texts[text_type].loc[self.texts['id'].isin(ids)]
+        else:
+            texts = self.texts[text_type]
 
         return texts
 
@@ -445,12 +462,33 @@ class Dataset(NiMAREBase):
         """
         pass
 
-    def get_images(self, ids, imtype):
+    def get_images(self, ids, imtype='z'):
         """
         Get images of a certain type for a subset of studies in the dataset.
 
-        Warnings
-        --------
-        This method is not yet implemented.
+        Parameters
+        ----------
+        ids : list, optional
+            A list of IDs in the Dataset for which to find texts. Default is
+            None, in which case all texts of requested type are returned.
+        imgtype : str, optional
+            Type of image to extract. Corresponds to column name in
+            Dataset.images DataFrame. Default is 'z'.
+
+        Returns
+        -------
+        images : list
+            List of images of requested type for selected IDs.
         """
-        pass
+        id_cols = ['id', 'study_id', 'contrast_id']
+        imtypes = [c for c in self.images.columns if c not in id_cols]
+        if imtype not in imtypes:
+            raise ValueError('Image type "{0}" not found.\nAvailable types: '
+                             '{1}'.format(imtype, ', '.join(imtypes)))
+
+        if ids is not None:
+            images = self.images[imtype].loc[self.images['id'].isin(ids)].tolist()
+        else:
+            images = self.images[imtype].tolist()
+
+        return texts
