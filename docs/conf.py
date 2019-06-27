@@ -170,6 +170,9 @@ sphinx_gallery_conf = {
     'ignore_patterns'   : ['utils/'],
     }
 
+# Generate the plots for the gallery
+plot_gallery = True
+
 # -- Options for Texinfo output -------------------------------------------
 
 # Grouping the document tree into Texinfo files. List of tuples

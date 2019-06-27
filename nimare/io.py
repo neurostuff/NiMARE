@@ -11,19 +11,23 @@ import pandas as pd
 from .dataset import Dataset
 
 
-def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
+def convert_neurosynth_to_dict(text_file, annotations_file=None):
     """
-    Convert Neurosynth dataset text file to a NiMARE json file.
+    Convert Neurosynth database files to a dictionary.
 
     Parameters
     ----------
     text_file : :obj:`str`
         Text file with Neurosynth's coordinates. Normally named "database.txt".
-    out_file : :obj:`str`
-        Output NiMARE-format json file.
     annotations_file : :obj:`str` or None, optional
         Optional file with Neurosynth's annotations. Normally named
         "features.txt". Default is None.
+
+    Returns
+    -------
+    dict_ : :obj:`dict`
+        NiMARE-organized dictionary containing experiment information from text
+        files.
     """
     dset_df = pd.read_csv(text_file, sep='\t')
     if annotations_file is not None:
@@ -55,8 +59,51 @@ def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
             study_dict['contrasts']['1']['labels'] = label_df.loc[sid].to_dict()
         dict_[sid] = study_dict
 
+    return dict_
+
+
+def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
+    """
+    Convert Neurosynth dataset text file to a NiMARE json file.
+
+    Parameters
+    ----------
+    text_file : :obj:`str`
+        Text file with Neurosynth's coordinates. Normally named "database.txt".
+    out_file : :obj:`str`
+        Output NiMARE-format json file.
+    annotations_file : :obj:`str` or None, optional
+        Optional file with Neurosynth's annotations. Normally named
+        "features.txt". Default is None.
+    """
+    dict_ = convert_neurosynth_to_dict(text_file, annotations_file)
     with open(out_file, 'w') as fo:
         json.dump(dict_, fo, indent=4, sort_keys=True)
+
+
+def convert_neurosynth_to_dataset(text_file, annotations_file=None,
+                                  target='mni152_2mm'):
+    """
+    Convert Neurosynth database files into dictionary and create NiMARE Dataset
+    with dictionary.
+
+    Parameters
+    ----------
+    text_file : :obj:`str`
+        Text file with Neurosynth's coordinates. Normally named "database.txt".
+    target : {'mni152_2mm', 'ale_2mm'}, optional
+        Target template space for coordinates. Default is 'mni152_2mm'.
+    annotations_file : :obj:`str` or None, optional
+        Optional file with Neurosynth's annotations. Normally named
+        "features.txt". Default is None.
+
+    Returns
+    -------
+    :obj:`nimare.dataset.Dataset`
+        Dataset object containing experiment information from text_file.
+    """
+    dict_ = convert_neurosynth_to_dict(text_file, annotations_file)
+    return Dataset(dict_, target=target)
 
 
 def convert_sleuth_to_dict(text_file):
