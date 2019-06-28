@@ -40,7 +40,6 @@ To install NiMARE check out our `installation guide`_.
   installation
   about
   cli
-  auto_examples/index
   contributing
   api
 
