@@ -2,7 +2,6 @@
 Test nimare.meta.cbma.ale (ALE/SCALE meta-analytic algorithms).
 """
 import pytest
-import numpy as np
 import pandas as pd
 
 import nimare
