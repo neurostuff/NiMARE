@@ -1,11 +1,13 @@
 """
-Test nimare.meta.cbma.mkda (KDA-based meta-analytic algorithms).
+Test nimare.meta.cbma.ale (ALE/SCALE meta-analytic algorithms).
 """
 import pytest
+import numpy as np
 import pandas as pd
+import nibabel as nib
 
 import nimare
-from nimare.meta.cbma import mkda
+from nimare.meta.cbma import ale
 from nimare.utils import get_template, mm2vox
 
 
@@ -20,6 +22,7 @@ class DummyDataset(object):
 @pytest.fixture(scope='module')
 def testdata1():
     mask_img = get_template(space='mni152_2mm', mask='brain')
+    mask_img = nib.Nifti1Image(np.ones((20, 20, 20), int), mask_img.affine)
     df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
                       data=[[1, -28, -20, -16, 100, 'mni'],
                             [2, -28, -20, -16, 100, 'mni'],
@@ -40,38 +43,12 @@ def testdata1():
     return dset
 
 
-def test_mkda_density(testdata1):
+def test_scale(testdata1):
     """
-    Smoke test for MKDADensity
+    Smoke test for SCALE
     """
-    mkda_meta = mkda.MKDADensity(testdata1)
-    mkda_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
-    assert isinstance(mkda_meta.results, nimare.base.meta.MetaResult)
-
-
-def test_mkda_chi2_fdr(testdata1):
-    """
-    Smoke test for MKDAChi2
-    """
-    mkda_meta = mkda.MKDAChi2(testdata1)
-    mkda_meta.fit(corr='fdr', ids=testdata1.ids, ids2=testdata1.ids, n_cores=1)
-    assert isinstance(mkda_meta.results, nimare.base.meta.MetaResult)
-
-
-def test_mkda_chi2_fwe(testdata1):
-    """
-    Smoke test for MKDAChi2
-    """
-    mkda_meta = mkda.MKDAChi2(testdata1)
-    mkda_meta.fit(n_iters=5, ids=testdata1.ids, ids2=testdata1.ids, corr='fwe',
-                  n_cores=1)
-    assert isinstance(mkda_meta.results, nimare.base.meta.MetaResult)
-
-
-def test_kda_density(testdata1):
-    """
-    Smoke test for KDA
-    """
-    kda_meta = mkda.KDA(testdata1)
-    kda_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
-    assert isinstance(kda_meta.results, nimare.base.meta.MetaResult)
+    ijk = np.vstack(np.where(testdata1.mask.get_data())).T
+    ijk = ijk[:, :100]
+    scale_meta = ale.SCALE(testdata1, ijk=ijk)
+    scale_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
+    assert isinstance(scale_meta.results, nimare.base.meta.MetaResult)
