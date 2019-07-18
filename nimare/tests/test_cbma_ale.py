@@ -55,7 +55,7 @@ def test_ale_subtraction(testdata1):
     Smoke test for ALE
     """
     ale_meta = ale.ALE(testdata1)
-    ale_meta.fit(n_iters=5, ids=testdata1.ids[:5], ids2=testdata1.ids[5:],
+    ale_meta.fit(n_iters=1, ids=testdata1.ids[:5], ids2=testdata1.ids[5:],
                  n_cores=1)
     assert isinstance(ale_meta.results, nimare.base.meta.MetaResult)
 

@@ -2,7 +2,7 @@
 #
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
-version: 2
+version: 2.1
 jobs:
 
   build:
@@ -17,7 +17,7 @@ jobs:
           command:  |
             conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
             source activate testenv
-            pip install pytest pytest-cov codecov flake8
+            pip install pytest pytest-cov codecov coverage coveralls flake8
             pip install -r requirements.txt
             python setup.py install --user
       - save_cache:
@@ -65,12 +65,12 @@ jobs:
           name: Coverage
           command:  |
             source activate testenv
-            pytest --cov-report term-missing --cov=nimare -vs /tmp/src/NiMARE/
+            py.test --cov-report term-missing --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py nimare
       - store_artifacts:
           path: /tmp/data/coverage
 
 workflows:
-  version: 2
+  version: 2.1
   run_tests:
     jobs:
       - build
