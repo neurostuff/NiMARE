@@ -3,6 +3,8 @@
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
 version: 2.1
+orbs:
+  codecov: codecov/codecov@1.0.2
 jobs:
 
   build:
@@ -65,9 +67,9 @@ jobs:
           name: Coverage
           command:  |
             source activate testenv
-            py.test --cov-report html:/tmp/data/coverage --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py nimare
-      - store_artifacts:
-          path: /tmp/data/coverage
+            coverage xml
+      - codecov/upload:
+          file: /tmp/src/NiMARE/coverage.xml
 
 workflows:
   version: 2.1
