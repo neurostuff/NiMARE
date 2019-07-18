@@ -30,6 +30,8 @@ jobs:
     docker:
       - image: continuumio/miniconda3
     steps:
+      - restore_cache:  # ensure this step occurs *before* installing dependencies
+          key: deps9-{{ .Branch }}
       - run:
           name: Tests
           command:  |
