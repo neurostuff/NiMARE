@@ -27,6 +27,7 @@ jobs:
           key: deps9-{{ .Branch }}
           paths:
             - "/opt/conda/envs/testenv"
+            - "/tmp/src/NiMARE"
 
   tests:
     working_directory: /tmp/src/NiMARE
