@@ -2,44 +2,77 @@
 #
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
-version: 2.1
+version: 2
 jobs:
+
   build:
     working_directory: /tmp/src/NiMARE
     docker:
-      - image: circleci/python:3.6.4
-    environment:
-        DISTRIB: "conda"
-        PYTHON_VERSION: "3.6"
-        NUMPY_VERSION: "*"
-        SCIPY_VERSION: "*"
-        SCIKIT_LEARN_VERSION: "*"
-        MATPLOTLIB_VERSION: "*"
+      - image: continuumio/miniconda3
     steps:
       - checkout
-      - run: sudo chown -R circleci:circleci /usr/local/bin
-      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.6/site-packages
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+          key: deps9-{{ .Branch }}
       - run:
           command:  |
-            pip install --upgrade pip
-            conda create -n testenv python=3.6 numpy scipy scikit-learn -yq
+            conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
             source activate testenv
-            pip install pytest
+            pip install pytest flake8
             pip install -r requirements.txt
             python setup.py install --user
       - save_cache:
-          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+          key: deps9-{{ .Branch }}
           paths:
-            - ".venv"
-            - "/usr/local/bin"
-            - "/usr/local/lib/python3.6/site-packages"
+            - "/opt/conda/envs/testenv"
+
+  tests:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
       - run:
+          name: Tests
           command:  |
             source activate testenv
             pytest /tmp/src/NiMARE --ignore=nimare/tests/test_ibma_fsl.py
-      - persist_to_workspace:
-          root: /tmp
-          paths:
-              - src/NiMARE/
+
+  lint:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - run:
+          name: Linting
+          command:  |
+            source activate testenv
+            flake8 --ignore=E501,E722,E114,E116,W503,W504 /tmp/src/NiMARE/nimare
+      - store_artifacts:
+          path: /tmp/data/lint
+
+  coverage:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - run:
+          name: Coverage
+          command:  |
+            source activate testenv
+            pytest --cov-report term-missing --cov=nimare -vs /tmp/src/NiMARE/
+      - store_artifacts:
+          path: /tmp/data/coverage
+
+workflows:
+  version: 2
+  run_tests:
+    jobs:
+      - build
+      - tests:
+          requires:
+            - build
+      - lint:
+          requires:
+            - build
+      - coverage:
+          requires:
+            - build
