@@ -36,6 +36,7 @@ jobs:
           name: Tests
           command:  |
             source activate testenv
+            echo `ls /tmp/src/NiMARE/`
             pytest /tmp/src/NiMARE --ignore=nimare/tests/test_ibma_fsl.py
 
   lint:
@@ -43,6 +44,8 @@ jobs:
     docker:
       - image: continuumio/miniconda3
     steps:
+      - restore_cache:  # ensure this step occurs *before* installing dependencies
+          key: deps9-{{ .Branch }}
       - run:
           name: Linting
           command:  |
@@ -56,6 +59,8 @@ jobs:
     docker:
       - image: continuumio/miniconda3
     steps:
+      - restore_cache:  # ensure this step occurs *before* installing dependencies
+          key: deps9-{{ .Branch }}
       - run:
           name: Coverage
           command:  |
