@@ -3,245 +3,32 @@
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
 version: 2.1
-
-orbs:
-  codecov: codecov/codecov@1.0.1
-
 jobs:
-
   build:
-    docker:
-      - image: docker:18.01.0-ce-git
     working_directory: /tmp/src/NiMARE
+    docker:
+      - image: circleci/python:3.6.4
     steps:
-      - run:
-          name: Install parallel gzip and python3
-          command: |
-            apk add --no-cache pigz python3
-      - restore_cache:
-          keys:
-            - docker-v1-{{ .Branch }}-{{ epoch }}
-            - docker-v1-{{ .Branch }}-
-            - docker-v1-master-
-            - docker-v1-
-          paths:
-            - /tmp/cache/docker.tar.gz
       - checkout
-      - setup_remote_docker
+      - run: sudo chown -R circleci:circleci /usr/local/bin
+      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.6/site-packages
+      - restore_cache:  # ensure this step occurs *before* installing dependencies
+          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
       - run:
-          name: Load Docker image layer cache
-          no_output_timeout: 30m
-          command: |
-            docker info
-            set +o pipefail
-            if [ -f /tmp/cache/docker.tar.gz ]; then
-              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
-              docker images
-            fi
+          command:  |
+            pip install pytest
+            pip install requirements.txt
+            python setup.py install
+      - save_cache:
+          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+          paths:
+            - ".venv"
+            - "/usr/local/bin"
+            - "/usr/local/lib/python3.6/site-packages"
       - run:
-          name: Build Docker image
-          no_output_timeout: 60m
-          command: |
-            # Get version, update files.
-            # THISVERSION=$( python3 get_version.py )
-            #if [[ ${THISVERSION:0:1} == "0" ]] ; then
-            #  echo "WARNING: latest git tag could not be found"
-            #  echo "Please, make sure you fetch all tags from upstream with"
-            #  echo "the command ``git fetch --tags --verbose`` and push"
-            #  echo "them to your fork with ``git push origin --tags``"
-            #fi
-            # Build docker image
-            e=1 && for i in {1..5}; do
-              docker build \
-                --cache-from=neurostuff/nimare \
-                --rm=false \
-                -t neurostuff/nimare:latest \
-                --build-arg BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"` \
-                --build-arg VCS_REF=`git rev-parse --short HEAD` \
-                --build-arg VERSION="${CIRCLE_TAG:-$THISVERSION}" . \
-              && e=0 && break || sleep 15
-            done && [ "$e" -eq "0" ]
-      - run:
-          name: Docker save
-          no_output_timeout: 40m
-          command: |
-            mkdir -p /tmp/cache
-            docker save neurostuff/nimare:latest \
-            | pigz -8 -p 3 > /tmp/cache/docker.tar.gz
+          command:  |
+            pytest /tmp/src/NiMARE --ignore=nimare/tests/test_ibma_fsl.py
       - persist_to_workspace:
           root: /tmp
           paths:
-            - cache/docker.tar.gz
-            - src/NiMARE
-
-  update_cache:
-    machine:
-      # Ubuntu 14.04 with Docker 17.10.0-ce
-      image: circleci/classic:201711-01
-    working_directory: /tmp/src/NiMARE
-    steps:
-      - attach_workspace:
-          at: /tmp
-      - save_cache:
-         key: docker-v1-{{ .Branch }}-{{ epoch }}
-         paths:
-            - /tmp/cache/docker.tar.gz
-
-  lint:
-    machine:
-      image: circleci/classic:201711-01
-    working_directory: /tmp/src/NiMARE
-    steps:
-      - checkout:
-          path: /home/circleci/src/NiMARE
-      - run:
-          name: Check PyPi preconditions
-          command: |
-            pyenv global 3.5.2
-            virtualenv venv
-            pip install flake8
-      - run:
-          name: Linting
-          command: |
-            flake8 --ignore=E501,E722,E114,E116,W503,W504 /home/circleci/src/NiMARE/nimare
-
-  test_python:
-    machine:
-      image: circleci/classic:201711-01
-    working_directory: /tmp/src/NiMARE
-    steps:
-      - checkout:
-          path: /home/circleci/src/NiMARE
-      - run:
-          name: Check whether build should be skipped
-          command: |
-            cd /home/circleci/src/NiMARE
-            if [[ "$( git log --format=oneline -n 1 $CIRCLE_SHA1 | grep -i -E '\[skip[ _]?test[s]?\]' )" != "" ]]; then
-              echo "Skipping python tests"
-              circleci step halt
-            fi
-      - attach_workspace:
-          at: /tmp
-      - run:
-          name: Check PyPi preconditions
-          command: |
-            pyenv global 3.5.2
-            virtualenv venv
-            pip install "setuptools>=27.0" cython numpy twine docutils pytest
-            python setup.py check -r -s
-            python setup.py sdist
-
-      - run:
-          name: Load Docker image layer cache
-          no_output_timeout: 30m
-          command: |
-            docker info
-            set +o pipefail
-            if [ -f /tmp/cache/docker.tar.gz ]; then
-              sudo apt update && sudo apt -y install pigz
-              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
-              docker images
-            fi
-      - run:
-          name: Run pytest
-          command: |
-            docker run --rm neurostuff/nimare pytest --cov-report term-missing --cov=nimare -vs /src/NiMARE/
-            docker run --rm neurostuff/nimare codecov
-
-  deploy_pypi:
-    machine:
-      image: circleci/classic:201711-01
-    working_directory: /tmp/src/NiMARE
-    steps:
-      - attach_workspace:
-          at: /tmp
-      - run:
-          name: Deploy to PyPi
-          command: |
-            pyenv global 3.5.2
-            virtualenv venv
-            pip install "setuptools>=27.0" cython numpy twine docutils
-            # echo "${CIRCLE_TAG}" > NiMARE/VERSION
-            # echo "include NiMARE/VERSION" >> MANIFEST.in
-            python setup.py check -r -s
-            python setup.py sdist
-            twine upload dist/*
-            cd wrapper && python setup.py sdist
-            twine upload dist/*
-
-  deploy_docker:
-    machine:
-      image: circleci/classic:201711-01
-    working_directory: /tmp/src/NiMARE
-    steps:
-
-      - attach_workspace:
-          at: /tmp
-      - run:
-          name: Load Docker image layer cache
-          no_output_timeout: 30m
-          command: |
-            docker info
-            set +o pipefail
-            if [ -f /tmp/cache/docker.tar.gz ]; then
-              sudo apt update && sudo apt -y install pigz
-              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
-              docker images
-            fi
-      - run:
-          name: Deploy to Docker Hub
-          no_output_timeout: 40m
-          command: |
-            if [[ -n "$DOCKER_PASS" ]]; then
-              docker login -u $DOCKER_USER -p $DOCKER_PASS
-              docker tag neurostuff/nimare neurostuff/nimare:unstable
-              docker push neurostuff/nimare:unstable
-              if [[ -n "$CIRCLE_TAG" ]]; then
-                docker push neurostuff/nimare:latest
-                docker tag neurostuff/nimare neurostuff/nimare:$CIRCLE_TAG
-                docker push neurostuff/nimare:$CIRCLE_TAG
-              fi
-            fi
-
-workflows:
-  version: 2
-  build_test:
-    jobs:
-      - build:
-          filters:
-            tags:
-              only: /.*/
-
-      - update_cache:
-          requires:
-            - build
-
-      - test_python:
-          requires:
-            - build
-
-      - deploy_pypi:
-          requires:
-            - build
-            - test_python
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /.*/
-
-      - deploy_docker:
-          requires:
-            - build
-            - test_python
-          filters:
-            branches:
-              only: master
-            tags:
-              only: /.*/
-  run_lint:
-    jobs:
-      - lint:
-          filters:
-            tags:
-              only: /.*/
+              - src/NiMARE/
