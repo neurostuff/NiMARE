@@ -41,20 +41,11 @@ def testdata1():
     return dset
 
 
-def test_ale(testdata1):
+def test_scale(testdata1):
     """
-    Smoke test for ALE
+    Smoke test for SCALE
     """
-    ale_meta = ale.ALE(testdata1)
-    ale_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
-    assert isinstance(ale_meta.results, nimare.base.meta.MetaResult)
-
-
-def test_ale_subtraction(testdata1):
-    """
-    Smoke test for ALE
-    """
-    ale_meta = ale.ALE(testdata1)
-    ale_meta.fit(n_iters=5, ids=testdata1.ids[:5], ids2=testdata1.ids[5:],
-                 n_cores=1)
-    assert isinstance(ale_meta.results, nimare.base.meta.MetaResult)
+    ijk = np.vstack(np.where(testdata1.mask.get_data())).T
+    scale_meta = ale.SCALE(testdata1, ijk=ijk)
+    scale_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
+    assert isinstance(scale_meta.results, nimare.base.meta.MetaResult)
