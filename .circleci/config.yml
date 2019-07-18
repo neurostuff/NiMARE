@@ -67,7 +67,7 @@ jobs:
           name: Coverage
           command:  |
             source activate testenv
-            coverage xml
+            py.test --cov-report xml:coverage.xml --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py nimare
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
 
