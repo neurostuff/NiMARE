@@ -156,7 +156,7 @@ def convert_sleuth_to_dict(text_file):
             contrast_name = ':'.join(study_info.split(':')[1:]).strip()
             sample_size = int(exp_data[n_idx].replace(
                 ' ', '').replace('//Subjects=', ''))
-            xyz = exp_data[n_idx+1:]  # Coords are everything after study info and n
+            xyz = exp_data[n_idx + 1:]  # Coords are everything after study info and n
             xyz = [row.split('\t') for row in xyz]
             correct_shape = np.all([len(coord) == 3 for coord in xyz])
             if not correct_shape:
