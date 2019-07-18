@@ -17,9 +17,9 @@ jobs:
       - run:
           command:  |
             pip install --upgrade pip
+            conda create -n testenv python=3.6 numpy scipy scikit-learn -yq
+            source activate testenv
             pip install pytest
-            echo `pwd`
-            echo `ls`
             pip install -r requirements.txt
             python setup.py install
       - save_cache:
@@ -30,6 +30,7 @@ jobs:
             - "/usr/local/lib/python3.6/site-packages"
       - run:
           command:  |
+            source activate testenv
             pytest /tmp/src/NiMARE --ignore=nimare/tests/test_ibma_fsl.py
       - persist_to_workspace:
           root: /tmp
