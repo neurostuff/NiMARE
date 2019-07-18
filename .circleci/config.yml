@@ -18,7 +18,8 @@ jobs:
           command:  |
             pip install --upgrade pip
             pip install pytest
-            echo $pwd
+            echo `pwd`
+            echo `ls`
             pip install -r requirements.txt
             python setup.py install
       - save_cache:
