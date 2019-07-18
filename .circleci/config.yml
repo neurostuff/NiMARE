@@ -65,7 +65,7 @@ jobs:
           name: Coverage
           command:  |
             source activate testenv
-            py.test --cov-report term-missing --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py nimare
+            py.test --cov-report html:/tmp/data/coverage --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py nimare
       - store_artifacts:
           path: /tmp/data/coverage
 
