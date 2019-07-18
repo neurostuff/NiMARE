@@ -8,6 +8,13 @@ jobs:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: circleci/python:3.6.4
+    environment:
+        DISTRIB: "conda"
+        PYTHON_VERSION: "3.6"
+        NUMPY_VERSION: "*"
+        SCIPY_VERSION: "*"
+        SCIKIT_LEARN_VERSION: "*"
+        MATPLOTLIB_VERSION: "*"
     steps:
       - checkout
       - run: sudo chown -R circleci:circleci /usr/local/bin
@@ -16,7 +23,7 @@ jobs:
           key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
       - run:
           command:  |
-            pip install --upgrade pip conda
+            pip install --upgrade pip
             conda create -n testenv python=3.6 numpy scipy scikit-learn -yq
             source activate testenv
             pip install pytest
