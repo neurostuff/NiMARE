@@ -15,6 +15,9 @@ jobs:
           key: deps9-{{ .Branch }}
       - run:
           command:  |
+            echo hello
+            echo `ls /opt/conda/envs/`
+            echo goodbye
             conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
             source activate testenv
             pip install pytest flake8
@@ -36,7 +39,11 @@ jobs:
           name: Tests
           command:  |
             source activate testenv
+            echo hello
+            echo `pwd`
+            echo middle
             echo `ls /tmp/src/NiMARE/`
+            echo goodbye
             pytest /tmp/src/NiMARE --ignore=nimare/tests/test_ibma_fsl.py
 
   lint:
