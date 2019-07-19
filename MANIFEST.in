@@ -1,1 +1,2 @@
 recursive-include nimare/resources *
+recursive-include nimare/tests/data *
