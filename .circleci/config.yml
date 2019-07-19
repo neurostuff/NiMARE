@@ -13,41 +13,37 @@ jobs:
       - image: continuumio/miniconda3
     steps:
       - checkout
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/NiMARE
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ .Branch }}-{{ .Revision }}
-      - run:
+          key: deps9-{{ checksum "requirements.txt" }}
+      - run:  # will overwrite NiMARE installation each time
           command:  |
-            conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
-            source activate testenv
-            pip install pytest pytest-cov codecov coverage coveralls flake8
-            pip install -r requirements.txt
+            if [[ -e /opt/conda/envs/testenv ]]; then
+                echo "Restoring environment from cache"
+            else
+                conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
+                source activate testenv
+                pip install pytest pytest-cov codecov coverage coveralls flake8
+                pip install -r requirements.txt
+            fi
             python setup.py install --user
-      - save_cache:
-          key: deps9-{{ .Branch }}-{{ .Revision }}
+      - save_cache:  # environment cache tied to requirements
+          key: deps9-{{ checksum "requirements.txt" }}
           paths:
             - "/opt/conda/envs/testenv"
-            - "/tmp/src/NiMARE"
 
-  tests:
+  style_check:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
     steps:
-      - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ .Branch }}-{{ .Revision }}
-      - run:
-          name: Tests
-          command:  |
-            source activate testenv
-            pytest /tmp/src/NiMARE --ignore=nimare/tests/test_ibma_fsl.py
-
-  lint:
-    working_directory: /tmp/src/NiMARE
-    docker:
-      - image: continuumio/miniconda3
-    steps:
-      - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ .Branch }}-{{ .Revision }}
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps9-{{ checksum "requirements.txt" }}
       - run:
           name: Linting
           command:  |
@@ -56,13 +52,15 @@ jobs:
       - store_artifacts:
           path: /tmp/data/lint
 
-  coverage:
+  coverage_and_tests:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
     steps:
-      - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ .Branch }}-{{ .Revision }}
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps9-{{ checksum "requirements.txt" }}
       - run:
           name: Coverage
           command:  |
@@ -76,12 +74,9 @@ workflows:
   run_tests:
     jobs:
       - build
-      - tests:
+      - style_check:
           requires:
             - build
-      - lint:
-          requires:
-            - build
-      - coverage:
+      - coverage_and_tests:
           requires:
             - build
