@@ -18,7 +18,7 @@ jobs:
           paths:
               - src/NiMARE
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ checksum "requirements.txt" }}
+          key: deps9-{{ .Revision }}-{{ checksum "requirements.txt" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -31,6 +31,7 @@ jobs:
                 pip install -r requirements.txt
             fi
             python setup.py install --user
+            echo `which gcc`
       - save_cache:  # environment cache tied to requirements
           key: deps9-{{ checksum "requirements.txt" }}
           paths:
