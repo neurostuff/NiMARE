@@ -20,6 +20,7 @@ jobs:
       - restore_cache:  # ensure this step occurs *before* installing dependencies
           key: deps9-{{ checksum "requirements.txt" }}
       - run:  # will overwrite NiMARE installation each time
+          name: Generate environment
           command:  |
             if [[ -e /opt/conda/envs/testenv ]]; then
                 echo "Restoring environment from cache"
