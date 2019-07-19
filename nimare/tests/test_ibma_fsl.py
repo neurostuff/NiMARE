@@ -132,64 +132,19 @@ def get_data(download_data):
     pytest.sample_sizes_con = sample_sizes
 
 
-def test_z_perm():
+def test_ffx_glm():
     """
-    Smoke test for z permutation.
+    Smoke test for FFX GLM.
     """
-    result = ibma.stouffers(pytest.z_data, pytest.mask_img,
-                            inference='rfx', null='empirical', n_iters=10,
-                            corr='FDR')
+    result = ibma.ffx_glm(pytest.con_data, pytest.se_data,
+                          pytest.sample_sizes_con, pytest.mask_img)
     assert isinstance(result, nimare.base.meta.MetaResult)
 
 
-def test_stouffers_ffx():
+def test_mfx_glm():
     """
-    Smoke test for Stouffer's FFX.
+    Smoke test for MFX GLM.
     """
-    result = ibma.stouffers(pytest.z_data, pytest.mask_img,
-                            inference='ffx', null='theoretical', n_iters=None)
-    assert isinstance(result, nimare.base.meta.MetaResult)
-
-
-def test_stouffers_rfx():
-    """
-    Smoke test for Stouffer's RFX.
-    """
-    result = ibma.weighted_stouffers(pytest.z_data, pytest.sample_sizes_z,
-                                     pytest.mask_img)
-    assert isinstance(result, nimare.base.meta.MetaResult)
-
-
-def test_weighted_stouffers():
-    """
-    Smoke test for Weighted Stouffer's.
-    """
-    result = ibma.stouffers(pytest.z_data, pytest.mask_img,
-                            inference='rfx', null='theoretical', n_iters=None)
-    assert isinstance(result, nimare.base.meta.MetaResult)
-
-
-def test_fishers():
-    """
-    Smoke test for Fisher's.
-    """
-    result = ibma.fishers(pytest.z_data, pytest.mask_img)
-    assert isinstance(result, nimare.base.meta.MetaResult)
-
-
-def test_con_perm():
-    """
-    Smoke test for contrast permutation.
-    """
-    result = ibma.rfx_glm(pytest.con_data, pytest.mask_img, null='empirical',
-                          n_iters=10, corr='FDR')
-    assert isinstance(result, nimare.base.meta.MetaResult)
-
-
-def test_rfx_glm():
-    """
-    Smoke test for RFX GLM.
-    """
-    result = ibma.rfx_glm(pytest.con_data, pytest.mask_img, null='theoretical',
-                          n_iters=None)
+    result = ibma.mfx_glm(pytest.con_data, pytest.se_data,
+                          pytest.sample_sizes_con, pytest.mask_img)
     assert isinstance(result, nimare.base.meta.MetaResult)

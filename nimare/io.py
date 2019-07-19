@@ -147,12 +147,16 @@ def convert_sleuth_to_dict(text_file):
     for i_exp, exp_idx in enumerate(split_idx):
         exp_data = data[exp_idx[0]:exp_idx[1]]
         if exp_data:
-            study_info = exp_data[0].replace('//', '').strip()
+            header_idx = [i for i in range(len(exp_data)) if exp_data[i].startswith('//')]
+            study_info_idx = header_idx[:-1]
+            n_idx = header_idx[-1]
+            study_info = [exp_data[i].replace('//', '').strip() for i in study_info_idx]
+            study_info = ' '.join(study_info)
             study_name = study_info.split(':')[0]
             contrast_name = ':'.join(study_info.split(':')[1:]).strip()
-            sample_size = int(exp_data[1].replace(
+            sample_size = int(exp_data[n_idx].replace(
                 ' ', '').replace('//Subjects=', ''))
-            xyz = exp_data[2:]  # Coords are everything after study info and n
+            xyz = exp_data[n_idx + 1:]  # Coords are everything after study info and n
             xyz = [row.split('\t') for row in xyz]
             correct_shape = np.all([len(coord) == 3 for coord in xyz])
             if not correct_shape:
