@@ -32,7 +32,7 @@ LGR = logging.getLogger(__name__)
               }
            """),
            description='Fishers citation.')
-def fishers(z_maps, mask, corr='FWE', two_sided=True):
+def fishers(z_maps, corr='FWE', two_sided=True):
     """
     Run a Fisher's image-based meta-analysis on z-statistic maps.
 
@@ -40,8 +40,6 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
@@ -110,7 +108,7 @@ class Fishers(IBMAEstimator):
     def fit(self, ids, corr='FWE', two_sided=True):
         self.ids = ids
         z_maps = self.dataset.get_images(self.ids, imtype='z')
-        images = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
+        images = fishers(z_maps, corr=corr, two_sided=two_sided)
         self.results = MetaResult(self, self.mask, maps=images)
 
 
@@ -125,7 +123,7 @@ class Fishers(IBMAEstimator):
              }
            """),
            description='Stouffers citation.')
-def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
+def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
               corr='FWE', two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
@@ -134,8 +132,6 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistic maps in the same space, after masking.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
     inference : {'ffx', 'rfx'}, optional
         Whether to use fixed-effects inference (default) or random-effects
         inference.
@@ -290,7 +286,7 @@ class Stouffers(IBMAEstimator):
         self.null = null
         self.n_iters = n_iters
         z_maps = self.dataset.get_images(self.ids, imtype='z')
-        images = stouffers(z_maps, self.mask, inference=inference, null=null,
+        images = stouffers(z_maps, inference=inference, null=null,
                            n_iters=n_iters, corr=corr, two_sided=two_sided)
         self.results = MetaResult(self, self.mask, maps=images)
 
@@ -309,7 +305,7 @@ class Stouffers(IBMAEstimator):
              }
            """),
            description='Weighted Stouffers citation.')
-def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
+def weighted_stouffers(z_maps, sample_sizes, corr='FWE', two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
 
@@ -320,8 +316,6 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
         A 1D array of sample sizes associated with contrasts in ``z_maps``.
         Must be in same order as rows in ``z_maps``.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
 
@@ -390,13 +384,13 @@ class WeightedStouffers(IBMAEstimator):
     def fit(self, ids, two_sided=True):
         self.ids = ids
         z_maps = self.dataset.get_images(self.ids, imtype='z')
+        z_maps = apply_mask(z_maps, self.mask)
         sample_sizes = self.dataset.get_metadata(self.ids, 'n')
-        images = weighted_stouffers(z_maps, sample_sizes, self.mask,
-                                    two_sided=two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        results = weighted_stouffers(z_maps, sample_sizes, two_sided=two_sided)
+        self.results = MetaResult(self, self.mask, maps=results)
 
 
-def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
+def rfx_glm(con_maps, null='theoretical', n_iters=None,
             corr='FWE', two_sided=True):
     """
     Run a random-effects (RFX) GLM on contrast maps.
@@ -405,8 +399,6 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     ----------
     con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
     null : {'theoretical', 'empirical'}, optional
         Whether to use a theoretical null T distribution or an empirically-
         derived null distribution determined via sign flipping.
@@ -509,7 +501,7 @@ class RFX_GLM(IBMAEstimator):
         self.null = null
         self.n_iters = n_iters
         con_maps = self.dataset.get_images(self.ids, imtype='con')
-        images = rfx_glm(con_maps, self.mask, null=self.null,
+        images = rfx_glm(con_maps, null=self.null,
                          n_iters=self.n_iters, corr=corr, two_sided=two_sided)
         self.results = MetaResult(self, self.mask, maps=images)
 
