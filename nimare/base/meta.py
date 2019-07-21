@@ -39,22 +39,25 @@ class IBMAEstimator(MetaEstimator):
     pass
 
 
-class MetaResult(Result):
+class MetaResult(object):
     """
     Base class for meta-analytic results.
-    Will contain slots for different kinds of results maps (e.g., z-map, p-map)
     """
-    def __init__(self, estimator, mask=None, **kwargs):
+    def __init__(self, estimator, mask, maps=None):
         self.estimator = estimator
         self.mask = mask
-        self.images = {}
-        for key, array in kwargs.items():
-            self.images[key] = unmask(array, self.mask)
+        self.maps = maps or {}
 
-    def save_results(self, output_dir='.', prefix='', prefix_sep='_'):
+    def get_map(self, name, return_type='image'):
+        m = self.maps.get(name)
+        if not m:
+            raise ValueError("No map with name '{}' found.".format(name))
+        return nl.masking.unmask(m, self.mask) if return_type == 'image' else m
+
+    def save_maps(self, output_dir='.', prefix='', prefix_sep='_',
+                  names=None):
         """
         Save results to files.
-
         Parameters
         ----------
         output_dir : :obj:`str`, optional
@@ -69,10 +72,13 @@ class MetaResult(Result):
         if prefix == '':
             prefix_sep = ''
 
-        if not exists(output_dir):
-            makedirs(output_dir)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
-        for imgtype, img in self.images.items():
+        names = names or list(self.maps.keys())
+        maps = {k: self.get_map(k) for k in names}
+
+        for imgtype, img in maps.items():
             filename = prefix + prefix_sep + imgtype + '.nii.gz'
-            outpath = join(output_dir, filename)
+            outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)

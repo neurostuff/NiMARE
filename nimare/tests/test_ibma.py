@@ -139,7 +139,7 @@ def test_z_perm():
     result = ibma.stouffers(pytest.z_data, pytest.mask_img,
                             inference='rfx', null='empirical', n_iters=10,
                             corr='FDR')
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)
 
 
 def test_stouffers_ffx():
@@ -148,7 +148,7 @@ def test_stouffers_ffx():
     """
     result = ibma.stouffers(pytest.z_data, pytest.mask_img,
                             inference='ffx', null='theoretical', n_iters=None)
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)
 
 
 def test_stouffers_rfx():
@@ -157,7 +157,7 @@ def test_stouffers_rfx():
     """
     result = ibma.weighted_stouffers(pytest.z_data, pytest.sample_sizes_z,
                                      pytest.mask_img)
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)
 
 
 def test_weighted_stouffers():
@@ -166,7 +166,7 @@ def test_weighted_stouffers():
     """
     result = ibma.stouffers(pytest.z_data, pytest.mask_img,
                             inference='rfx', null='theoretical', n_iters=None)
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)
 
 
 def test_fishers():
@@ -174,7 +174,7 @@ def test_fishers():
     Smoke test for Fisher's.
     """
     result = ibma.fishers(pytest.z_data, pytest.mask_img)
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)
 
 
 def test_con_perm():
@@ -183,7 +183,7 @@ def test_con_perm():
     """
     result = ibma.rfx_glm(pytest.con_data, pytest.mask_img, null='empirical',
                           n_iters=10, corr='FDR')
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)
 
 
 def test_rfx_glm():
@@ -192,4 +192,4 @@ def test_rfx_glm():
     """
     result = ibma.rfx_glm(pytest.con_data, pytest.mask_img, null='theoretical',
                           n_iters=None)
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)

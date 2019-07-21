@@ -86,9 +86,11 @@ def fishers(z_maps, mask, corr='FWE', two_sided=True):
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
 
-    result = MetaResult('fishers', mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
-                        z=z_corr_map, log_p=log_p_map)
-    return result
+    images = {'ffx_stat': ffx_stat_map,
+              'p': p_corr_map,
+              'z': z_corr_map,
+              'log_p': log_p_map}
+    return images
 
 
 class Fishers(IBMAEstimator):
@@ -107,9 +109,9 @@ class Fishers(IBMAEstimator):
 
     def fit(self, ids, corr='FWE', two_sided=True):
         self.ids = ids
-        z_maps = self.dataset.get(self.ids, 'z')
-        result = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
-        self.results = result
+        z_maps = self.dataset.get_images(self.ids, imtype='z')
+        images = fishers(z_maps, self.mask, corr=corr, two_sided=two_sided)
+        self.results = MetaResult(self, self.mask, maps=images)
 
 
 @due.dcite(BibTeX("""
@@ -149,8 +151,8 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
 
     Returns
     -------
-    result : :obj:`nimare.base.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
+    result : :obj:`dict`
+        Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
     if corr == 'FDR':
@@ -214,8 +216,10 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
         # Convert p to z, preserving signs
         z_corr_map = p_to_z(p_corr_map, tail='two') * sign
         log_p_map = -np.log10(p_corr_map)
-        result = MetaResult('stouffers', mask=mask, t=t_map, p=p_corr_map, z=z_corr_map,
-                            log_p=log_p_map)
+        images = {'t': t_map,
+                  'p': p_corr_map,
+                  'z': z_corr_map,
+                  'log_p': log_p_map}
     elif inference == 'ffx':
         if null == 'theoretical':
             k = z_maps.shape[0]
@@ -241,14 +245,15 @@ def stouffers(z_maps, mask, inference='ffx', null='theoretical', n_iters=None,
             # Convert p to z, preserving signs
             z_corr_map = p_to_z(p_corr_map, tail='two') * sign
             log_p_map = -np.log10(p_corr_map)
-            result = MetaResult('stouffers', mask=mask, z=z_corr_map, p=p_corr_map,
-                                log_p=log_p_map)
+            images = {'z': z_corr_map,
+                      'p': p_corr_map,
+                      'log_p': log_p_map}
         else:
             raise ValueError('Only theoretical null distribution may be used '
                              'for FFX Stouffers.')
     else:
         raise ValueError('Input inference must be "rfx" or "ffx".')
-    return result
+    return images
 
 
 class Stouffers(IBMAEstimator):
@@ -284,10 +289,10 @@ class Stouffers(IBMAEstimator):
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
-        z_maps = self.dataset.get(self.ids, 'z')
-        result = stouffers(z_maps, self.mask, inference=inference, null=null,
+        z_maps = self.dataset.get_images(self.ids, imtype='z')
+        images = stouffers(z_maps, self.mask, inference=inference, null=null,
                            n_iters=n_iters, corr=corr, two_sided=two_sided)
-        self.results = result
+        self.results = MetaResult(self, self.mask, maps=images)
 
 
 @due.dcite(BibTeX("""
@@ -322,8 +327,8 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
 
     Returns
     -------
-    result : :obj:`nimare.base.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
+    result : :obj:`dict`
+        Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
     assert z_maps.shape[0] == sample_sizes.shape[0]
@@ -359,9 +364,11 @@ def weighted_stouffers(z_maps, sample_sizes, mask, corr='FWE', two_sided=True):
     sign[sign == 0] = 1
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
-    result = MetaResult('weighted_stouffers', mask=mask, ffx_stat=ffx_stat_map, p=p_corr_map,
-                        z=z_corr_map, log_p=log_p_map)
-    return result
+    images = {'ffx_stat': ffx_stat_map,
+              'p': p_corr_map,
+              'z': z_corr_map,
+              'log_p': log_p_map}
+    return images
 
 
 class WeightedStouffers(IBMAEstimator):
@@ -382,11 +389,11 @@ class WeightedStouffers(IBMAEstimator):
 
     def fit(self, ids, two_sided=True):
         self.ids = ids
-        z_maps = self.dataset.get(self.ids, 'z')
-        sample_sizes = self.dataset.get(self.ids, 'n')
-        result = weighted_stouffers(z_maps, sample_sizes, self.mask,
+        z_maps = self.dataset.get_images(self.ids, imtype='z')
+        sample_sizes = self.dataset.get_metadata(self.ids, 'n')
+        images = weighted_stouffers(z_maps, sample_sizes, self.mask,
                                     two_sided=two_sided)
-        self.results = result
+        self.results = MetaResult(self, self.mask, maps=images)
 
 
 def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
@@ -411,8 +418,8 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
 
     Returns
     -------
-    result : :obj:`nimare.base.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
+    result : :obj:`dict`
+        Dictionary object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
     if corr == 'FDR':
@@ -474,9 +481,11 @@ def rfx_glm(con_maps, mask, null='theoretical', n_iters=None,
     sign[sign == 0] = 1
     z_corr_map = p_to_z(p_corr_map, tail='two') * sign
     log_p_map = -np.log10(p_corr_map)
-    result = MetaResult('rfx_glm', mask=mask, t=t_map, z=z_corr_map, p=p_corr_map,
-                        log_p=log_p_map)
-    return result
+    images = {'t': t_map,
+              'z': z_corr_map,
+              'p': p_corr_map,
+              'log_p': log_p_map}
+    return images
 
 
 class RFX_GLM(IBMAEstimator):
@@ -499,10 +508,10 @@ class RFX_GLM(IBMAEstimator):
         self.ids = ids
         self.null = null
         self.n_iters = n_iters
-        con_maps = self.dataset.get(self.ids, 'con')
-        result = rfx_glm(con_maps, self.mask, null=self.null,
+        con_maps = self.dataset.get_images(self.ids, imtype='con')
+        images = rfx_glm(con_maps, self.mask, null=self.null,
                          n_iters=self.n_iters, corr=corr, two_sided=two_sided)
-        self.results = result
+        self.results = MetaResult(self, self.mask, maps=images)
 
 
 def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
@@ -661,10 +670,13 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     # Compile outputs
     out_p_map = stats.norm.sf(abs(out_z_map)) * 2
     log_p_map = -np.log10(out_p_map)
-    result = MetaResult('fsl_glm', mask=mask, cope=out_cope_map, z=out_z_map,
-                        thresh_z=thresh_z_map, t=out_t_map, p=out_p_map,
-                        log_p=log_p_map)
-    return result
+    images = {'cope': out_cope_map,
+              'z': out_z_map,
+              'thresh_z': thresh_z_map,
+              't': out_t_map,
+              'p': out_p_map,
+              'log_p': log_p_map}
+    return images
 
 
 def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
@@ -696,8 +708,8 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
 
     Returns
     -------
-    result : :obj:`nimare.base.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
+    result : :obj:`dict`
+        Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
     result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
@@ -729,16 +741,16 @@ class FFX_GLM(IBMAEstimator):
         self.ids = ids
         self.sample_sizes = sample_sizes
         self.equal_var = equal_var
-        con_maps = self.dataset.get(self.ids, 'con')
-        var_maps = self.dataset.get(self.ids, 'con_se')
+        con_maps = self.dataset.get_images(self.ids, imtype='con')
+        var_maps = self.dataset.get_images(self.ids, imtype='con_se')
         if self.sample_sizes is not None:
             sample_sizes = np.repeat(self.sample_sizes, len(ids))
         else:
-            sample_sizes = self.dataset.get(self.ids, 'n')
-        result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
+            sample_sizes = self.dataset.get_metadata(self.ids, 'n')
+        images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
                          equal_var=self.equal_var, corr=corr,
                          two_sided=two_sided)
-        self.results = result
+        self.results = MetaResult(self, self.mask, maps=images)
 
 
 def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
@@ -770,8 +782,8 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
 
     Returns
     -------
-    result : :obj:`nimare.base.meta.MetaResult`
-        MetaResult object containing maps for test statistics, p-values, and
+    result : :obj:`dict`
+        Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
     result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
@@ -801,13 +813,13 @@ class MFX_GLM(IBMAEstimator):
         self.ids = ids
         self.sample_sizes = sample_sizes
         self.equal_var = equal_var
-        con_maps = self.dataset.get(self.ids, 'con')
-        var_maps = self.dataset.get(self.ids, 'con_se')
+        con_maps = self.dataset.get_images(self.ids, imtype='con')
+        var_maps = self.dataset.get_images(self.ids, imtype='con_se')
         if self.sample_sizes is not None:
             sample_sizes = np.repeat(self.sample_sizes, len(ids))
         else:
-            sample_sizes = self.dataset.get(self.ids, 'n')
-        result = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
+            sample_sizes = self.dataset.get_metadata(self.ids, 'n')
+        images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
                          equal_var=self.equal_var, corr=corr,
                          two_sided=two_sided)
-        self.results = result
+        self.results = MetaResult(self, self.mask, maps=images)
