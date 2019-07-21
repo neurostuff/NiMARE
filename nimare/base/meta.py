@@ -1,11 +1,10 @@
 """Base classes for meta-analyses.
 """
-from os import makedirs
-from os.path import exists, join
+import os
 
-from nilearn.masking import unmask
+import nilearn as nl
 
-from .estimators import Estimator, Transformer, Result
+from .estimators import Estimator, Transformer
 
 
 class KernelTransformer(Transformer):
