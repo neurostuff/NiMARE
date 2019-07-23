@@ -138,7 +138,7 @@ def test_ffx_glm():
     """
     result = ibma.ffx_glm(pytest.con_data, pytest.se_data,
                           pytest.sample_sizes_con, pytest.mask_img)
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)
 
 
 def test_mfx_glm():
@@ -147,4 +147,4 @@ def test_mfx_glm():
     """
     result = ibma.mfx_glm(pytest.con_data, pytest.se_data,
                           pytest.sample_sizes_con, pytest.mask_img)
-    assert isinstance(result, nimare.base.meta.MetaResult)
+    assert isinstance(result, dict)

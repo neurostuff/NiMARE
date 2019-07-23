@@ -35,7 +35,8 @@ API
    :toctree: generated/
    :template: module.rst
 
-   nimare.meta.ibma.ibma
+   nimare.meta.esma
+   nimare.meta.ibma
    nimare.meta.cbma.kernel
    nimare.meta.cbma.ale
    nimare.meta.cbma.mkda

@@ -156,9 +156,10 @@ class MKDADensity(CBMAEstimator):
         vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
                                                     of_map.affine),
                                     self.mask)
-        self.results = MetaResult(self, vthresh=vthresh_of_map,
-                                  logp_cfwe=cfwe_map, logp_vfwe=vfwe_map,
-                                  mask=self.mask)
+        images = {'vthresh': vthresh_of_map,
+                  'logp_cfwe': cfwe_map,
+                  'logp_vfwe': vfwe_map}
+        self.results = MetaResult(self, self.mask, maps=images)
 
     def _perm(self, params):
         iter_ijk, iter_df, weight_vec, conn = params
@@ -405,7 +406,7 @@ class MKDAChi2(CBMAEstimator):
             pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail='two') * pFgA_sign
             images['specificity_z_FDR'] = pFgA_z_FDR
 
-        self.results = MetaResult(self, mask=self.mask, **images)
+        self.results = MetaResult(self, self.mask, maps=images)
 
     def _perm(self, params):
         iter_df, iter_ijk = params
@@ -541,7 +542,8 @@ class KDA(CBMAEstimator):
             vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, 'upper'))
         vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
 
-        self.results = MetaResult(self, logp_vfwe=vfwe_map, mask=self.mask)
+        images = {'logp_vfwe': vfwe_map}
+        self.results = MetaResult(self, self.mask, maps=images)
 
     def _perm(self, params):
         iter_ijk, iter_df = params
