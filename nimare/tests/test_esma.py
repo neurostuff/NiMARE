@@ -1,5 +1,5 @@
 """
-Test nimare.meta.ibma (image-based meta-analytic algorithms).
+Test nimare.meta.esma (effect-size meta-analytic algorithms).
 """
 import json
 import os.path as op
@@ -10,7 +10,7 @@ import nibabel as nib
 from nilearn.masking import apply_mask
 
 import nimare
-from nimare.meta import ibma
+from nimare.meta import esma
 from nimare.stats import t_to_z
 from nimare.tests.utils import get_test_data_path, download_nidm_pain
 
@@ -136,7 +136,7 @@ def test_z_perm():
     """
     Smoke test for z permutation.
     """
-    result = ibma.stouffers(pytest.z_data, inference='rfx', null='empirical',
+    result = esma.stouffers(pytest.z_data, inference='rfx', null='empirical',
                             n_iters=10, corr='FDR')
     assert isinstance(result, dict)
 
@@ -145,7 +145,7 @@ def test_stouffers_ffx():
     """
     Smoke test for Stouffer's FFX.
     """
-    result = ibma.stouffers(pytest.z_data, inference='ffx', null='theoretical',
+    result = esma.stouffers(pytest.z_data, inference='ffx', null='theoretical',
                             n_iters=None)
     assert isinstance(result, dict)
 
@@ -154,7 +154,7 @@ def test_stouffers_rfx():
     """
     Smoke test for Stouffer's RFX.
     """
-    result = ibma.weighted_stouffers(pytest.z_data, pytest.sample_sizes_z)
+    result = esma.weighted_stouffers(pytest.z_data, pytest.sample_sizes_z)
     assert isinstance(result, dict)
 
 
@@ -162,7 +162,7 @@ def test_weighted_stouffers():
     """
     Smoke test for Weighted Stouffer's.
     """
-    result = ibma.stouffers(pytest.z_data, inference='rfx', null='theoretical',
+    result = esma.stouffers(pytest.z_data, inference='rfx', null='theoretical',
                             n_iters=None)
     assert isinstance(result, dict)
 
@@ -171,7 +171,7 @@ def test_fishers():
     """
     Smoke test for Fisher's.
     """
-    result = ibma.fishers(pytest.z_data)
+    result = esma.fishers(pytest.z_data)
     assert isinstance(result, dict)
 
 
@@ -179,7 +179,7 @@ def test_con_perm():
     """
     Smoke test for contrast permutation.
     """
-    result = ibma.rfx_glm(pytest.con_data, null='empirical', n_iters=10,
+    result = esma.rfx_glm(pytest.con_data, null='empirical', n_iters=10,
                           corr='FDR')
     assert isinstance(result, dict)
 
@@ -188,5 +188,5 @@ def test_rfx_glm():
     """
     Smoke test for RFX GLM.
     """
-    result = ibma.rfx_glm(pytest.con_data, null='theoretical', n_iters=None)
+    result = esma.rfx_glm(pytest.con_data, null='theoretical', n_iters=None)
     assert isinstance(result, dict)
