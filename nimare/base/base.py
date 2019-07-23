@@ -198,7 +198,7 @@ class MetaResult(object):
 
     def get_map(self, name, return_type='image'):
         m = self.maps.get(name)
-        if not m:
+        if m is None:
             raise ValueError("No map with name '{}' found.".format(name))
         return nl.masking.unmask(m, self.mask) if return_type == 'image' else m
 

@@ -97,10 +97,9 @@ def test_mkdakernel_smoke(testdata1):
     """
     Smoke test for nimare.meta.cbma.kernel.MKDAKernel
     """
-    ids = [1, 2]
-    kern = kernel.MKDAKernel(testdata1.coordinates, testdata1.mask)
-    ale_kernels = kern.transform(ids=ids)
-    assert len(ale_kernels) == len(ids)
+    kern = kernel.MKDAKernel(testdata1)
+    ale_kernels = kern.transform()
+    assert len(ale_kernels) == 2
 
 
 def test_mkdakernel1(testdata1):

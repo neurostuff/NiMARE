@@ -8,6 +8,7 @@ of peak coords and sample sizes/statistics (a la Neurosynth).
 """
 from __future__ import division
 import numpy as np
+import pandas as pd
 import nibabel as nib
 
 from nilearn.image import resample_to_img, math_img
@@ -21,28 +22,35 @@ __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
 class ALEKernel(KernelTransformer):
     """
     Generate ALE modeled activation images from coordinates and sample size.
-    """
-    def __init__(self, coordinates, mask):
-        self.mask = mask
-        self.coordinates = coordinates
-        self.fwhm = None
-        self.n = None
 
-    def transform(self, ids, fwhm=None, n=None, masked=False):
+    Parameters
+    ----------
+    fwhm : :obj:`float`, optional
+        Full-width half-max for Gaussian kernel, if you want to have a
+        constant kernel across Contrasts. Mutually exclusive with ``n``.
+    n : :obj:`int`, optional
+        Sample size, used to derive FWHM for Gaussian kernel based on
+        formulae from Eickhoff et al. (2012). This sample size overwrites
+        the Contrast-specific sample sizes in the dataset, in order to hold
+        kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
+    """
+    def __init__(self, fwhm=None, n=None):
+        if fwhm is not None and n is not None:
+            raise ValueError('Only one of fwhm and n may be provided.')
+        self.fwhm = fwhm
+        self.n = n
+
+    def transform(self, dataset, mask=None, masked=False):
         """
         Generate ALE modeled activation images for each Contrast in dataset.
 
         Parameters
         ----------
-        fwhm : :obj:`float`, optional
-            Full-width half-max for Gaussian kernel, if you want to have a
-            constant kernel across Contrasts. Mutually exclusive with ``n``.
-        n : :obj:`int`, optional
-            Sample size, used to derive FWHM for Gaussian kernel based on
-            formulae from Eickhoff et al. (2012). This sample size overwrites
-            the Contrast-specific sample sizes in the dataset, in order to hold
-            kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-        masked: :bool:, optional
+        dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
+            Dataset for which to make images. Can be a DataFrame if necessary.
+        mask : img_like, optional
+            Only used if dataset is a DataFrame.
+        masked: :obj:`bool`, optional
             Return an array instead of a niimg.
 
         Returns
@@ -51,44 +59,45 @@ class ALEKernel(KernelTransformer):
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
-        self.fwhm = fwhm
-        self.n = n
-        if fwhm is not None and n is not None:
-            raise ValueError('Only one of fwhm and n may be provided.')
+        if isinstance(dataset, pd.DataFrame):
+            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            coordinates = dataset.copy()
+        else:
+            mask = dataset.mask
+            coordinates = dataset.coordinates
 
         if not masked:
-            mask_data = self.mask.get_data().astype(float)
+            mask_data = mask.get_data().astype(float)
         else:
-            mask_data = self.mask.get_data().astype(np.bool)
+            mask_data = mask.get_data().astype(np.bool)
+
         imgs = []
         kernels = {}
-        temp_coordinates = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        for id_, data in temp_coordinates.groupby('id'):
-            # ijk = data[['i', 'j', 'k']].values.astype(int)
+        for id_, data in coordinates.groupby('id'):
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            if n is not None:
-                n_subjects = n
-            elif fwhm is None:
+            if self.n is not None:
+                n_subjects = self.n
+            elif self.fwhm is None:
                 n_subjects = data.n.astype(float).values[0]
 
-            if fwhm is not None:
-                assert np.isfinite(fwhm), 'FWHM must be finite number'
-                if fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(self.mask, fwhm=fwhm)
+            if self.fwhm is not None:
+                assert np.isfinite(self.fwhm), 'FWHM must be finite number'
+                if self.fwhm not in kernels.keys():
+                    _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
                     kernels[fwhm] = kern
                 else:
                     kern = kernels[fwhm]
             else:
                 assert np.isfinite(n_subjects), 'Sample size must be finite number'
-                if n not in kernels.keys():
-                    _, kern = get_ale_kernel(self.mask, n=n_subjects)
-                    kernels[n] = kern
+                if n_subjects not in kernels.keys():
+                    _, kern = get_ale_kernel(mask, n=n_subjects)
+                    kernels[n_subjects] = kern
                 else:
-                    kern = kernels[n]
-            kernel_data = compute_ma(self.mask.shape, ijk, kern)
+                    kern = kernels[n_subjects]
+            kernel_data = compute_ma(mask.shape, ijk, kern)
             if not masked:
                 kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, self.mask.affine)
+                img = nib.Nifti1Image(kernel_data, mask.affine)
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
