@@ -365,7 +365,6 @@ class ALE(CBMAEstimator):
             for pp in tqdm(params, total=self.n_iters):
                 perm_results.append(self._perm(pp))
         else:
-            print(self.__dict__)
             with mp.Pool(self.n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
