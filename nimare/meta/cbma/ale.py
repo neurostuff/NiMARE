@@ -96,8 +96,8 @@ class ALE(CBMAEstimator):
                              'KernelTransformer')
 
         self.mask = None
-        self.coordinates = None
-        self.coordinates2 = None
+        self.dataset = None
+        self.dataset2 = None
 
         self.kernel_estimator = kernel_estimator(**kernel_args)
         self.voxel_thresh = voxel_thresh
@@ -129,30 +129,30 @@ class ALE(CBMAEstimator):
             If not None, dataset2 is used as a second sample for a
             subtraction analysis. Default is None.
         """
-        self.coordinates = dataset.coordinates
-        self.coordinates2 = dataset2.coordinates if dataset2 is not None else None
+        self.dataset = dataset
+        self.dataset2 = dataset2
         self.mask = dataset.mask
 
-        if self.coordinates2 is not None:
+        if self.dataset2 is not None:
             assert np.array_equal(dataset.mask.affine,
                                   dataset2.mask.affine)
-            ma_maps1 = self.kernel_estimator.transform(self.coordinates, mask=self.mask, masked=False)
-            ma_maps2 = self.kernel_estimator.transform(self.coordinates2, mask=self.mask, masked=False)
-            images1 = self._run_ale(self.coordinates, ma_maps1, prefix='group1_')
-            images2 = self._run_ale(self.coordinates2, ma_maps2, prefix='group2_')
+            ma_maps1 = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
+            ma_maps2 = self.kernel_estimator.transform(self.dataset2, mask=self.mask, masked=False)
+            images1 = self._run_ale(self.dataset, ma_maps1, prefix='group1_')
+            images2 = self._run_ale(self.dataset2, ma_maps2, prefix='group2_')
 
             # Perform subtraction analysis using thresholded cFWE maps.
             LGR.info('Performing subtraction analysis with cluster-level '
                      'FWE-corrected maps thresholded at p < 0.05.')
             sub_images = self.subtraction_analysis(
-                self.coordinates, self.coordinates2,
+                self.dataset, self.dataset2,
                 images1['group1_logp_cfwe'] >= np.log(0.05),
                 images2['group2_logp_cfwe'] >= np.log(0.05),
                 ma_maps1, ma_maps2)
             images = {**images1, **images2, **sub_images}
         else:
-            ma_maps = self.kernel_estimator.transform(self.coordinates, mask=self.mask, masked=False)
-            images = self._run_ale(self.coordinates, ma_maps, prefix='')
+            ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
+            images = self._run_ale(self.dataset, ma_maps, prefix='')
 
         self.results = MetaResult(self, self.mask, maps=images)
 
@@ -311,7 +311,7 @@ class ALE(CBMAEstimator):
         images = {'grp1-grp2_z': diff_z_map}
         return images
 
-    def _run_ale(self, coordinates, ma_maps, prefix=''):
+    def _run_ale(self, dataset, ma_maps, prefix=''):
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
         max_poss_ale = 1.
@@ -341,7 +341,7 @@ class ALE(CBMAEstimator):
         conn[1, :, :] = 1
 
         # Multiple comparisons correction
-        iter_df = coordinates.copy()
+        iter_df = dataset.coordinates.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = null_ijk[rand_idx, :]
