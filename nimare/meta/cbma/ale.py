@@ -99,8 +99,7 @@ class ALE(CBMAEstimator):
         self.coordinates = None
         self.coordinates2 = None
 
-        self.kernel_estimator = kernel_estimator
-        self.kernel_args = kernel_args
+        self.kernel_estimator = kernel_estimator(**kernel_args)
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
@@ -134,13 +133,11 @@ class ALE(CBMAEstimator):
         self.coordinates2 = dataset2.coordinates if dataset2 is not None else None
         self.mask = dataset.mask
 
-        k_est = self.kernel_estimator(**self.kernel_args)
-
         if self.coordinates2 is not None:
             assert np.array_equal(dataset.mask.affine,
                                   dataset2.mask.affine)
-            ma_maps1 = k_est.transform(self.coordinates, mask=self.mask, masked=False)
-            ma_maps2 = k_est.transform(self.coordinates2, mask=self.mask, masked=False)
+            ma_maps1 = self.kernel_estimator.transform(self.coordinates, mask=self.mask, masked=False)
+            ma_maps2 = self.kernel_estimator.transform(self.coordinates2, mask=self.mask, masked=False)
             images1 = self._run_ale(self.coordinates, ma_maps1, prefix='group1_')
             images2 = self._run_ale(self.coordinates2, ma_maps2, prefix='group2_')
 
@@ -154,7 +151,7 @@ class ALE(CBMAEstimator):
                 ma_maps1, ma_maps2)
             images = {**images1, **images2, **sub_images}
         else:
-            ma_maps = k_est.transform(self.coordinates, mask=self.mask, masked=False)
+            ma_maps = self.kernel_estimator.transform(self.coordinates, mask=self.mask, masked=False)
             images = self._run_ale(self.coordinates, ma_maps, prefix='')
 
         self.results = MetaResult(self, self.mask, maps=images)
@@ -204,13 +201,11 @@ class ALE(CBMAEstimator):
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
 
-        k_est = self.kernel_estimator(**self.kernel_args)
-
         if ma_maps1 is None:
-            ma_maps1 = k_est.transform(dataset1, masked=False)
+            ma_maps1 = self.kernel_estimator.transform(dataset1, masked=False)
 
         if ma_maps2 is None:
-            ma_maps2 = k_est.transform(dataset2, masked=False)
+            ma_maps2 = self.kernel_estimator.transform(dataset2, masked=False)
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
 
@@ -415,8 +410,7 @@ class ALE(CBMAEstimator):
             ma_hists = None
 
         if df is not None:
-            k_est = self.kernel_estimator(**self.kernel_args)
-            ma_maps = k_est.transform(df, self.mask, masked=True)
+            ma_maps = self.kernel_estimator.transform(df, self.mask, masked=True)
             ma_values = ma_maps
         else:
             assert ma_maps is not None
