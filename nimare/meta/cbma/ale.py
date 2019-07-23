@@ -1,5 +1,5 @@
 """
-Coordinate-based meta-analysis estimators
+CBMA methods from the activation likelihood estimation (ALE) family
 """
 import logging
 import multiprocessing as mp

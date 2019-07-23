@@ -1,5 +1,5 @@
 """
-Coordinate-based meta-analysis estimators
+CBMA methods from the multilevel kernel density analysis (MKDA) family
 """
 import logging
 import multiprocessing as mp
