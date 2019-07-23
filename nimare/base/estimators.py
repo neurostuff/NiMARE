@@ -7,7 +7,7 @@ from abc import ABCMeta, abstractmethod
 from six import with_metaclass
 
 from .base import NiMAREBase
-from ..dataset.dataset import Dataset
+from ..dataset import Dataset
 
 LGR = logging.getLogger(__name__)
 

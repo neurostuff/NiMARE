@@ -14,11 +14,6 @@ API
 
    nimare.dataset.Dataset
 
-   :toctree: generated/
-   :template: module.rst
-
-   nimare.dataset.extract
-
  .. currentmodule:: nimare
 
  .. _calibration_ref:
@@ -189,10 +184,8 @@ API
    :template: module.rst
 
    nimare.base.base
-   nimare.base.data
    nimare.base.annotate
    nimare.base.decode
-   nimare.base.inputs
    nimare.base.meta
    nimare.base.misc
 
