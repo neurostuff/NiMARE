@@ -1,9 +1,5 @@
 """Base classes for meta-analyses.
 """
-import os
-
-import nilearn as nl
-
 from .estimators import Estimator, Transformer
 
 
