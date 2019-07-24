@@ -21,7 +21,7 @@ class CBMAEstimator(Estimator):
     pass
 
 
-class IBMAEstimator(MetaEstimator):
+class IBMAEstimator(Estimator):
     """Base class for image-based meta-analysis methods.
     """
     pass
