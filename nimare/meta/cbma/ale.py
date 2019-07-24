@@ -206,6 +206,7 @@ class ALE(CBMAEstimator):
 
         if ma_maps2 is None:
             ma_maps2 = self.kernel_estimator.transform(dataset2, masked=False)
+
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
 
@@ -312,6 +313,10 @@ class ALE(CBMAEstimator):
         return images
 
     def _run_ale(self, dataset, ma_maps, prefix=''):
+        """
+        Calculate ALE values, derive ALE-value null distribution, convert ALE
+        values to z-values, and perform multiple comparisons correction.
+        """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
         max_poss_ale = 1.
@@ -410,7 +415,7 @@ class ALE(CBMAEstimator):
             ma_hists = None
 
         if df is not None:
-            ma_maps = self.kernel_estimator.transform(df, self.mask, masked=True)
+            ma_maps = self.kernel_estimator.transform(df, mask=self.mask, masked=True)
             ma_values = ma_maps
         else:
             assert ma_maps is not None
@@ -532,8 +537,13 @@ class SCALE(CBMAEstimator):
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset to analyze.
+    voxel_thresh : float, optional
+        Uncorrected voxel-level threshold. Default: 0.001
+    n_iters : int, optional
+        Number of iterations for correction. Default: 10000
+    n_cores : int, optional
+        Number of processes to use for meta-analysis. If -1, use all
+        available cores. Default: -1
     ijk : :obj:`str` or (N x 3) array_like
         Tab-delimited file of coordinates from database or numpy array with ijk
         coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
@@ -551,71 +561,64 @@ class SCALE(CBMAEstimator):
         revisited: controlling for activation base rates." NeuroImage 99
         (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
-    def __init__(self, dataset, ijk=None, kernel_estimator=ALEKernel,
-                 **kwargs):
+    def __init__(self, voxel_thresh=0.001, n_iters=10000, n_cores=-1, ijk=None,
+                 kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
                              'KernelTransformer')
 
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for k in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
-        self.ids = None
+        self.mask = None
+        self.dataset = None
+
+        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.voxel_thresh = voxel_thresh
         self.ijk = ijk
-        self.n_iters = None
-        self.voxel_thresh = None
+        self.n_iters = n_iters
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
+        if n_cores <= 0:
+            self.n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
+            self.n_cores = mp.cpu_count()
+        else:
+            self.n_cores = n_cores
+
+    def fit(self, dataset):
         """
         Perform specific coactivation likelihood estimation meta-analysis
         on dataset.
 
         Parameters
         ----------
-        ids : array_like
-            List of IDs from dataset to analyze.
-        voxel_thresh : float, optional
-            Uncorrected voxel-level threshold. Default: 0.001
-        n_iters : int, optional
-            Number of iterations for correction. Default: 10000
-        n_cores : int, optional
-            Number of processes to use for meta-analysis. If -1, use all
-            available cores. Default: -1
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
         """
-        self.ids = ids
-        self.voxel_thresh = voxel_thresh
-        self.n_iters = n_iters
+        self.dataset = dataset
+        self.mask = dataset.mask
 
-        if n_cores == -1:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                'Desired number of cores ({0}) greater than number '
-                'available ({1}). Setting to {1}.'.format(n_cores,
-                                                          mp.cpu_count()))
-            n_cores = mp.cpu_count()
-
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        k_est = self.kernel_estimator(red_coords, self.mask)
-        ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        ma_maps = self.kernel_estimator.transform(self.dataset, masked=False)
 
         max_poss_ale = 1.
         for ma_map in ma_maps:
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
-
         max_poss_ale = 1 - max_poss_ale
+
         hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
 
         ale_values = self._compute_ale(df=None, ma_maps=ma_maps)
 
-        iter_df = red_coords.copy()
+        iter_df = self.dataset.coordinates.copy()
         rand_idx = np.random.choice(self.ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = self.ijk[rand_idx, :]
@@ -625,12 +628,12 @@ class SCALE(CBMAEstimator):
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
 
-        if n_cores == 1:
+        if self.n_cores == 1:
             perm_scale_values = []
             for pp in tqdm(params, total=self.n_iters):
                 perm_scale_values.append(self._perm(pp))
         else:
-            with mp.Pool(n_cores) as p:
+            with mp.Pool(self.n_cores) as p:
                 perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         perm_scale_values = np.stack(perm_scale_values)
@@ -659,10 +662,11 @@ class SCALE(CBMAEstimator):
         Returns masked array of ALE values and 1XnBins null distribution.
         """
         if df is not None:
-            ma_maps = self.kernel_estimator.transform(df, masked=True)
+            ma_maps = self.kernel_estimator.transform(df, self.mask, masked=True)
             ma_values = ma_maps
         else:
             assert ma_maps is not None
+            print(type(self.mask))
             ma_values = apply_mask(ma_maps, self.mask)
 
         ale_values = np.ones(ma_values.shape[1])
@@ -708,6 +712,10 @@ class SCALE(CBMAEstimator):
         return p_values, z_values
 
     def _make_hist(self, oned_arr, hist_bins):
+        """
+        Make a history from a 1d array and hist_bins. Meant to be applied
+        along an axis to a 2d array.
+        """
         hist_ = np.histogram(a=oned_arr, bins=hist_bins,
                              range=(np.min(hist_bins), np.max(hist_bins)),
                              density=False)[0]

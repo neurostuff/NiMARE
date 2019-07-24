@@ -72,7 +72,7 @@ class ALEKernel(KernelTransformer):
             mask_data = mask.get_data().astype(np.bool)
 
         imgs = []
-        kernels = {}
+        kernels = {}  # retain kernels in dictionary to speed things up
         for id_, data in coordinates.groupby('id'):
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if self.n is not None:
@@ -111,14 +111,19 @@ class ALEKernel(KernelTransformer):
 class MKDAKernel(KernelTransformer):
     """
     Generate MKDA modeled activation images from coordinates.
-    """
-    def __init__(self, coordinates, mask):
-        self.mask = mask
-        self.coordinates = coordinates
-        self.r = None
-        self.value = None
 
-    def transform(self, ids, r=10, value=1, masked=False):
+    Parameters
+    ----------
+    r : :obj:`int`, optional
+        Sphere radius, in mm.
+    value : :obj:`int`, optional
+        Value for sphere.
+    """
+    def __init__(self, r=10, value=1):
+        self.r = float(r)
+        self.value = value
+
+    def transform(self, dataset, mask=None, masked=False):
         """
         Generate MKDA modeled activation images for each Contrast in dataset.
         For each Contrast, a binary sphere of radius ``r`` is placed around
@@ -127,46 +132,49 @@ class MKDAKernel(KernelTransformer):
 
         Parameters
         ----------
-        ids : :obj:`list`
-            A list of Contrast IDs for which to generate modeled activation
-            images.
-        r : :obj:`int`, optional
-            Sphere radius, in mm.
-        value : :obj:`int`, optional
-            Value for sphere.
+        dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
+            Dataset for which to make images. Can be a DataFrame if necessary.
+        mask : img_like, optional
+            Only used if dataset is a DataFrame.
+        masked: :obj:`bool`, optional
+            Return an array instead of a niimg.
 
         Returns
         -------
-        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
+        imgs : :obj:`list` of `nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
-        self.r = r
-        self.value = value
-        r = float(r)
-        dims = self.mask.shape
-        vox_dims = self.mask.header.get_zooms()
-        if not masked:
-            mask_data = self.mask.get_data()
+        if isinstance(dataset, pd.DataFrame):
+            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            coordinates = dataset.copy()
         else:
-            mask_data = self.mask.get_data().astype(np.bool)
+            mask = dataset.mask
+            coordinates = dataset.coordinates
+
+        if not masked:
+            mask_data = mask.get_data().astype(float)
+        else:
+            mask_data = mask.get_data().astype(np.bool)
+
+        dims = mask.shape
+        vox_dims = mask.header.get_zooms()
 
         imgs = []
-        temp_coordinates = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        for id_, data in temp_coordinates.groupby('id'):
+        for id_, data in coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
+                xx, yy, zz = [slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
+                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= self.r]
                 sphere = np.round(sphere.T + ijk)
                 idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
                 sphere = sphere[idx, :].astype(int)
-                kernel_data[tuple(sphere.T)] = value
+                kernel_data[tuple(sphere.T)] = self.value
 
             if not masked:
                 kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, self.mask.affine)
+                img = nib.Nifti1Image(kernel_data, mask.affine)
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
@@ -179,14 +187,19 @@ class MKDAKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """
     Generate KDA modeled activation images from coordinates.
-    """
-    def __init__(self, coordinates, mask):
-        self.mask = mask
-        self.coordinates = coordinates
-        self.r = None
-        self.value = None
 
-    def transform(self, ids, r=6, value=1, masked=False):
+    Parameters
+    ----------
+    r : :obj:`int`, optional
+        Sphere radius, in mm.
+    value : :obj:`int`, optional
+        Value for sphere.
+    """
+    def __init__(self, r=6, value=1):
+        self.r = float(r)
+        self.value = value
+
+    def transform(self, dataset, mask=None, masked=False):
         """
         Generate KDA modeled activation images for each Contrast in dataset.
         Differs from MKDA images in that binary spheres are summed together in
@@ -195,46 +208,49 @@ class KDAKernel(KernelTransformer):
 
         Parameters
         ----------
-        ids : :obj:`list`
-            A list of Contrast IDs for which to generate modeled activation
-            images.
-        r : :obj:`int`, optional
-            Sphere radius, in mm.
-        value : :obj:`int`, optional
-            Value for sphere.
+        dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
+            Dataset for which to make images. Can be a DataFrame if necessary.
+        mask : img_like, optional
+            Only used if dataset is a DataFrame.
+        masked: :obj:`bool`, optional
+            Return an array instead of a niimg.
 
         Returns
         -------
-        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
+        imgs : :obj:`list` of `nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
-        self.r = r
-        self.value = value
-        r = float(r)
-        dims = self.mask.shape
-        vox_dims = self.mask.header.get_zooms()
-        if not masked:
-            mask_data = self.mask.get_data()
+        if isinstance(dataset, pd.DataFrame):
+            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            coordinates = dataset.copy()
         else:
-            mask_data = self.mask.get_data().astype(np.bool)
+            mask = dataset.mask
+            coordinates = dataset.coordinates
+
+        if not masked:
+            mask_data = mask.get_data().astype(float)
+        else:
+            mask_data = mask.get_data().astype(np.bool)
+
+        dims = mask.shape
+        vox_dims = mask.header.get_zooms()
 
         imgs = []
-        temp_coordinates = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        for id_, data in temp_coordinates.groupby('id'):
+        for id_, data in coordinates.groupby('id'):
             kernel_data = np.zeros(dims)
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
+                xx, yy, zz = [slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1) for i in range(len(ijk))]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= r]
+                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= self.r]
                 sphere = np.round(sphere.T + ijk)
                 idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
                 sphere = sphere[idx, :].astype(int)
-                kernel_data[tuple(sphere.T)] += value
+                kernel_data[tuple(sphere.T)] += self.value
 
             if not masked:
                 kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, self.mask.affine)
+                img = nib.Nifti1Image(kernel_data, mask.affine)
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
