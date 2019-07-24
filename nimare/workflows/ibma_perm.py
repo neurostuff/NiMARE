@@ -63,6 +63,6 @@ Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     click.echo("Saving output maps...")
-    res.save_results(output_dir=output_dir, prefix=prefix)
+    res.save_maps(output_dir=output_dir, prefix=prefix)
     click.echo("Workflow completed.")
     click.echo(boilerplate)

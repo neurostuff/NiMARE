@@ -218,7 +218,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         prefix += '_'
 
     click.echo("Saving output maps...")
-    ale.results.save_results(output_dir=output_dir, prefix=prefix)
+    ale.results.save_maps(output_dir=output_dir, prefix=prefix)
     if not sleuth_file2:
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
     else:

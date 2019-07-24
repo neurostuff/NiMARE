@@ -52,4 +52,4 @@ def peaks2maps_workflow(sleuth_file, output_dir=None, output_prefix=None,
         output_prefix += '_'
 
     click.echo("Saving output maps...")
-    res.save_results(output_dir=output_dir, prefix=output_prefix)
+    res.save_maps(output_dir=output_dir, prefix=output_prefix)
