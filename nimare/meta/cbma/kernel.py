@@ -84,9 +84,9 @@ class ALEKernel(KernelTransformer):
                 assert np.isfinite(self.fwhm), 'FWHM must be finite number'
                 if self.fwhm not in kernels.keys():
                     _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
-                    kernels[fwhm] = kern
+                    kernels[self.fwhm] = kern
                 else:
-                    kern = kernels[fwhm]
+                    kern = kernels[self.fwhm]
             else:
                 assert np.isfinite(n_subjects), 'Sample size must be finite number'
                 if n_subjects not in kernels.keys():

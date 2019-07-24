@@ -24,7 +24,7 @@ class Corrector(metaclass=ABCMeta):
         pass
 
     @abstractproperty
-    def _name_suffix:(self):
+    def _name_suffix(self):
         pass
 
     def _validate_input(self, result):
@@ -101,7 +101,7 @@ class FDRCorrector(Corrector):
         self.method = method
 
     @property
-    def _name_suffix:(self):
+    def _name_suffix(self):
         return '_corr-FDR_q-{}_method-{}'.format(self.q, self.method)
 
     def _transform(self, result):
