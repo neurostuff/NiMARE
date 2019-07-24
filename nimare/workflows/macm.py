@@ -147,7 +147,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         prefix += '_'
 
     click.echo("Saving output maps...")
-    ale.results.save_results(output_dir=output_dir, prefix=prefix)
+    ale.results.save_maps(output_dir=output_dir, prefix=prefix)
     copyfile(dataset_file, os.path.join(output_dir, prefix + 'input_dataset.json'))
     click.echo("Workflow completed.")
     click.echo(boilerplate)

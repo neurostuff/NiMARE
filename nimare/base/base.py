@@ -206,6 +206,7 @@ class MetaResult(object):
                   names=None):
         """
         Save results to files.
+
         Parameters
         ----------
         output_dir : :obj:`str`, optional

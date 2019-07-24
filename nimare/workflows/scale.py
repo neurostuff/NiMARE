@@ -90,7 +90,7 @@ rates. NeuroImage, 99, 559-570.
         prefix, _ = os.path.splitext(base)
         prefix += '_'
 
-    estimator.results.save_results(output_dir=output_dir, prefix=prefix)
+    estimator.results.save_maps(output_dir=output_dir, prefix=prefix)
     copyfile(database, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
 
     click.echo("Workflow completed.")
