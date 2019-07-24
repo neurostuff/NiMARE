@@ -1,9 +1,5 @@
 """Base classes for meta-analyses.
 """
-import os
-
-import nilearn as nl
-
 from .estimators import Estimator, Transformer
 
 
@@ -15,13 +11,6 @@ class KernelTransformer(Transformer):
     original analyses. This generally involves convolving each coordinate with
     a kernel (typically a Gaussian or binary sphere) that may be weighted based
     on some additional measure, such as statistic value or sample size.
-    """
-    pass
-
-
-class MetaEstimator(Estimator):
-    """
-    Base class for meta-analysis estimators.
     """
     pass
 
