@@ -36,7 +36,7 @@ class Fishers(IBMAEstimator):
     """
     _inputs = {
         'z_maps': ('maps', {'type': 'z'})
-        }
+    }
 
     def __init__(self, two_sided=True):
         self.two_sided = two_sided
