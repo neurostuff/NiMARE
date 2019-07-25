@@ -3,8 +3,8 @@ Multiple comparisons correction
 """
 import warnings
 
-
 from .fdr import FDRCorrector
+
 
 __all__ = [
     'FDRCorrector'
