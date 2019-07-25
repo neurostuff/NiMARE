@@ -4,7 +4,6 @@ Test nimare.dataset (Dataset IO/transformations).
 import os.path as op
 
 import numpy as np
-import pandas as pd
 
 import nimare
 from nimare import dataset
