@@ -344,7 +344,7 @@ class MKDAChi2(CBMAEstimator):
             iter_dfs = [merged_coords] * self.n_iters
             null_ijk = np.vstack(np.where(self.mask.get_data())).T
             rand_idx = np.random.choice(null_ijk.shape[0],
-                                        size=(merged_coords.shape[0], n_iters))
+                                        size=(merged_coords.shape[0], self.n_iters))
             rand_ijk = null_ijk[rand_idx, :]
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
