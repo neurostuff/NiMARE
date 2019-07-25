@@ -5,6 +5,7 @@ import logging
 import multiprocessing as mp
 
 import numpy as np
+import pandas as pd
 import nibabel as nib
 from tqdm.auto import tqdm
 from scipy import ndimage, special
@@ -26,8 +27,13 @@ class MKDADensity(CBMAEstimator):
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset to analyze.
+    voxel_thresh : float, optional
+        Uncorrected voxel-level threshold. Default: 0.001
+    n_iters : int, optional
+        Number of iterations for correction. Default: 10000
+    n_cores : int, optional
+        Number of processes to use for meta-analysis. If -1, use all
+        available cores. Default: -1
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
@@ -42,68 +48,64 @@ class MKDADensity(CBMAEstimator):
         cognitive and affective neuroscience 2.2 (2007): 150-158.
         https://doi.org/10.1093/scan/nsm015
     """
-    def __init__(self, dataset, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, voxel_thresh=0.01, n_iters=1000, n_cores=-1,
+                 kernel_estimator=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
                              'KernelTransformer')
 
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for k in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
-        self.ids = None
-        self.voxel_thresh = None
-        self.n_iters = None
-        self.results = None
-
-    def fit(self, ids, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
-        """
-        Perform MKDA density meta-analysis on dataset.
-
-        Parameters
-        ----------
-        ids : array_like
-            List of IDs from dataset to analyze.
-        voxel_thresh : float, optional
-            Uncorrected voxel-level threshold. Default: 0.001
-        n_iters : int, optional
-            Number of iterations for correction. Default: 10000
-        n_cores : int, optional
-            Number of processes to use for meta-analysis. If -1, use all
-            available cores. Default: -1
-        """
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
-        self.ids = ids
+        self.kernel_estimator = kernel_estimator(**kernel_args)
         self.voxel_thresh = voxel_thresh
         self.n_iters = n_iters
+        self.n_cores = n_cores
 
-        if n_cores == -1:
-            n_cores = mp.cpu_count()
+        self.mask = None
+        self.dataset = None
+        self.results = None
+
+        if n_cores <= 0:
+            self.n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
             LGR.warning(
                 'Desired number of cores ({0}) greater than number '
                 'available ({1}). Setting to {1}.'.format(n_cores,
                                                           mp.cpu_count()))
-            n_cores = mp.cpu_count()
+            self.n_cores = mp.cpu_count()
+        else:
+            self.n_cores = n_cores
 
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        k_est = self.kernel_estimator(red_coords, self.mask)
-        ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+    def fit(self, dataset):
+        """
+        Perform MKDA density meta-analysis on dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
+        """
+        self.dataset = dataset
+        self.mask = dataset.mask
+
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+
+        ma_maps = self.kernel_estimator.transform(dataset)
 
         # Weight each SCM by square root of sample size
-        ids_df = red_coords.groupby('id').first()
+        ids_df = self.dataset.coordinates.groupby('id').first()
         if 'n' in ids_df.columns and 'inference' not in ids_df.columns:
-            ids_n = ids_df.loc[self.ids, 'n'].astype(float).values
+            ids_n = ids_df['n'].astype(float).values
             weight_vec = np.sqrt(ids_n)[:, None] / np.sum(np.sqrt(ids_n))
         elif 'n' in ids_df.columns and 'inference' in ids_df.columns:
-            ids_n = ids_df.loc[self.ids, 'n'].astype(float).values
-            ids_inf = ids_df.loc[self.ids, 'inference'].map({'ffx': 0.75,
-                                                             'rfx': 1.}).values
+            ids_n = ids_df['n'].astype(float).values
+            ids_inf = ids_df['inference'].map({'ffx': 0.75,
+                                               'rfx': 1.}).values
             weight_vec = ((np.sqrt(ids_n)[:, None] * ids_inf[:, None]) /
                           np.sum(np.sqrt(ids_n) * ids_inf))
         else:
@@ -115,24 +117,30 @@ class MKDADensity(CBMAEstimator):
         of_map = unmask(of_map, self.mask)
 
         vthresh_of_map = of_map.get_data().copy()
-        vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
+        vthresh_of_map[vthresh_of_map < self.voxel_thresh] = 0
 
-        rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(red_coords.shape[0], n_iters))
+        rand_idx = np.random.choice(
+            null_ijk.shape[0],
+            size=(self.dataset.coordinates.shape[0], self.n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = red_coords.copy()
+        iter_df = self.dataset.coordinates.copy()
 
         conn = np.ones((3, 3, 3))
 
         # Define parameters
-        iter_conn = [conn] * n_iters
-        iter_wv = [weight_vec] * n_iters
-        iter_dfs = [iter_df] * n_iters
+        iter_conn = [conn] * self.n_iters
+        iter_wv = [weight_vec] * self.n_iters
+        iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_ijks, iter_dfs, iter_wv, iter_conn)
 
-        with mp.Pool(n_cores) as p:
-            perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+        if self.n_cores == 1:
+            perm_results = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_results.append(self._perm(pp))
+        else:
+            with mp.Pool(self.n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
@@ -165,8 +173,7 @@ class MKDADensity(CBMAEstimator):
         iter_ijk, iter_df, weight_vec, conn = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        k_est = self.kernel_estimator(iter_df, self.mask)
-        iter_ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask)
         iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
         iter_ma_maps *= weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
@@ -192,8 +199,20 @@ class MKDAChi2(CBMAEstimator):
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset to analyze.
+    voxel_thresh : float, optional
+        Uncorrected voxel-level threshold. Default: 0.01
+    corr : {'FWE', 'FDR'}, optional
+        Type of multiple comparisons correction to employ. Only currently
+        supported option are FWE (which derives both cluster- and voxel-
+        level corrected results) and FDR (performed directly on p-values).
+    n_iters : int, optional
+        Number of iterations for correction. Default: 10000
+    prior : float, optional
+        Uniform prior probability of each feature being active in a map in
+        the absence of evidence from the map. Default: 0.5
+    n_cores : int, optional
+        Number of processes to use for meta-analysis. If -1, use all
+        available cores. Default: -1
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
@@ -208,92 +227,66 @@ class MKDAChi2(CBMAEstimator):
         cognitive and affective neuroscience 2.2 (2007): 150-158.
         https://doi.org/10.1093/scan/nsm015
     """
-    def __init__(self, dataset, kernel_estimator=MKDAKernel,
-                 **kwargs):
+    def __init__(self, voxel_thresh=0.01, corr='FWE', n_iters=5000, prior=0.5,
+                 n_cores=-1, kernel_estimator=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not
-                  k.startswith('kernel__')}
 
         if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
                              'KernelTransformer')
 
-        self.mask = dataset.mask
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for k in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        # Check kernel estimator (must be MKDA)
-        k_est = kernel_estimator(dataset.coordinates, self.mask)
-        assert isinstance(k_est, MKDAKernel)
-
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
-
-        self.coordinates = dataset.coordinates
-
-        self.ids = None
-        self.ids2 = None
-        self.voxel_thresh = None
-        self.corr = None
-        self.n_iters = None
-        self.results = None
-
-    def fit(self, ids, ids2=None, voxel_thresh=0.01, corr='FWE',
-            n_iters=5000, prior=0.5, n_cores=-1):
-        """
-        Perform MKDA chi2 meta-analysis on dataset.
-
-        Parameters
-        ----------
-        ids : array_like
-            List of IDs from dataset to analyze.
-        ids2 : array_like or None, optional
-            If not None, ids2 is used to identify a second sample for
-            comparison. Default is None.
-        voxel_thresh : float, optional
-            Uncorrected voxel-level threshold. Default: 0.01
-        corr : {'FWE', 'FDR'}, optional
-            Type of multiple comparisons correction to employ. Only currently
-            supported option are FWE (which derives both cluster- and voxel-
-            level corrected results) and FDR (performed directly on p-values).
-        n_iters : int, optional
-            Number of iterations for correction. Default: 10000
-        prior : float, optional
-            Uniform prior probability of each feature being active in a map in
-            the absence of evidence from the map. Default: 0.5
-        n_cores : int, optional
-            Number of processes to use for meta-analysis. If -1, use all
-            available cores. Default: -1
-        """
+        self.kernel_estimator = kernel_estimator(**kernel_args)
         self.voxel_thresh = voxel_thresh
         self.corr = corr
         self.n_iters = n_iters
-        self.ids = ids
-        if ids2 is None:
-            ids2 = list(set(self.coordinates['id'].values) - set(self.ids))
-        self.ids2 = ids2
+        self.prior = prior
+        self.n_cores = n_cores
 
-        if n_cores == -1:
-            n_cores = mp.cpu_count()
+        self.mask = None
+        self.dataset = None
+        self.dataset2 = None
+        self.results = None
+
+        if n_cores <= 0:
+            self.n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
             LGR.warning(
                 'Desired number of cores ({0}) greater than number '
                 'available ({1}). Setting to {1}.'.format(n_cores,
                                                           mp.cpu_count()))
-            n_cores = mp.cpu_count()
+            self.n_cores = mp.cpu_count()
+        else:
+            self.n_cores = n_cores
 
-        all_ids = self.ids + self.ids2
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
+    def fit(self, dataset, dataset2):
+        """
+        Perform MKDA chi2 meta-analysis on dataset.
 
-        k_est = self.kernel_estimator(red_coords, self.mask)
-        ma_maps1 = k_est.transform(self.ids, masked=True,
-                                   **self.kernel_arguments)
-        ma_maps2 = k_est.transform(self.ids2, masked=True,
-                                   **self.kernel_arguments)
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
+        dataset2 : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
+        """
+        self.dataset = dataset
+        self.dataset2 = dataset2
+
+        merged_coords = pd.concat((self.dataset.coordinates,
+                                   self.dataset2.coordinates))
+
+        ma_maps1 = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=True)
+        ma_maps2 = self.kernel_estimator.transform(self.dataset2, mask=self.mask, masked=True)
 
         # Calculate different count variables
         eps = np.spacing(1)
-        n_selected = len(self.ids)
-        n_unselected = len(self.ids2)
+        n_selected = ma_maps1.shape[0]
+        n_unselected = ma_maps2.shape[0]
         n_mappables = n_selected + n_unselected
 
         # Transform MA maps to 1d arrays
@@ -315,8 +308,8 @@ class MKDAChi2(CBMAEstimator):
         pFgA = pAgF * pF / pA
 
         # Recompute conditionals with uniform prior
-        pAgF_prior = prior * pAgF + (1 - prior) * pAgU
-        pFgA_prior = pAgF * prior / pAgF_prior
+        pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
+        pFgA_prior = pAgF * self.prior / pAgF_prior
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels),
@@ -340,26 +333,30 @@ class MKDAChi2(CBMAEstimator):
             'pA': pA,
             'pAgF': pAgF,
             'pFgA': pFgA,
-            ('pAgF_given_pF=%0.2f' % prior): pAgF_prior,
-            ('pFgA_given_pF=%0.2f' % prior): pFgA_prior,
+            ('pAgF_given_pF=%0.2f' % self.prior): pAgF_prior,
+            ('pFgA_given_pF=%0.2f' % self.prior): pFgA_prior,
             'consistency_z': pAgF_z,
             'specificity_z': pFgA_z,
             'consistency_chi2': pAgF_chi2_vals,
             'specificity_chi2': pFgA_chi2_vals}
 
-        if corr == 'FWE':
-            iter_dfs = [red_coords.copy()] * n_iters
+        if self.corr == 'FWE':
+            iter_dfs = [merged_coords] * self.n_iters
             null_ijk = np.vstack(np.where(self.mask.get_data())).T
             rand_idx = np.random.choice(null_ijk.shape[0],
-                                        size=(red_coords.shape[0], n_iters))
+                                        size=(merged_coords.shape[0], self.n_iters))
             rand_ijk = null_ijk[rand_idx, :]
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
             params = zip(iter_dfs, iter_ijks)
 
-            with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._perm, params),
-                                         total=self.n_iters))
+            if self.n_cores == 1:
+                perm_results = []
+                for pp in tqdm(params, total=self.n_iters):
+                    perm_results.append(self._perm(pp))
+            else:
+                with mp.Pool(self.n_cores) as p:
+                    perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
             pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
             # pAgF_FWE
@@ -391,7 +388,7 @@ class MKDAChi2(CBMAEstimator):
             pFgA_z_FWE = p_to_z(pFgA_p_FWE, tail='two') * pFgA_sign
             images['specificity_p_FWE'] = pFgA_p_FWE
             images['specificity_z_FWE'] = pFgA_z_FWE
-        elif corr == 'FDR':
+        elif self.corr == 'FDR':
             _, pAgF_p_FDR, _, _ = multipletests(pAgF_p_vals, alpha=0.05,
                                                 method='fdr_bh',
                                                 is_sorted=False,
@@ -453,8 +450,11 @@ class KDA(CBMAEstimator):
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset to analyze.
+    n_iters : int, optional
+        Number of iterations for correction. Default: 10000
+    n_cores : int, optional
+        Number of processes to use for meta-analysis. If -1, use all
+        available cores. Default: -1
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         KDAKernel.
@@ -472,69 +472,75 @@ class KDA(CBMAEstimator):
         studies of shifting attention: a meta-analysis." Neuroimage 22.4
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
-    def __init__(self, dataset, kernel_estimator=KDAKernel, **kwargs):
+    def __init__(self, n_iters=10000, n_cores=-1, kernel_estimator=KDAKernel,
+                 **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         if not issubclass(kernel_estimator, KernelTransformer):
             raise ValueError('Argument "kernel_estimator" must be a '
                              'KernelTransformer')
 
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
-        self.ids = None
-        self.ids2 = None
-        self.n_iters = None
-        self.images = {}
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for k in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-    def fit(self, ids, n_iters=10000, n_cores=-1):
-        """
-        Perform KDA meta-analysis on dataset.
-
-        Parameters
-        ----------
-        ids : array_like
-            List of IDs from dataset to analyze.
-        n_iters : int, optional
-            Number of iterations for correction. Default: 10000
-        n_cores : int, optional
-            Number of processes to use for meta-analysis. If -1, use all
-            available cores. Default: -1
-        """
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
-        self.ids = ids
+        self.kernel_estimator = kernel_estimator(**kernel_args)
         self.n_iters = n_iters
+        self.n_cores = n_cores
 
-        if n_cores == -1:
-            n_cores = mp.cpu_count()
+        self.mask = None
+        self.dataset = None
+        self.results = None
+
+        if n_cores <= 0:
+            self.n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
             LGR.warning(
                 'Desired number of cores ({0}) greater than number '
                 'available ({1}). Setting to {1}.'.format(n_cores,
                                                           mp.cpu_count()))
-            n_cores = mp.cpu_count()
+            self.n_cores = mp.cpu_count()
+        else:
+            self.n_cores = n_cores
 
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        k_est = self.kernel_estimator(red_coords, self.mask)
-        ma_maps = k_est.transform(self.ids, masked=True, **self.kernel_arguments)
+    def fit(self, dataset):
+        """
+        Perform KDA meta-analysis on dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
+        """
+        self.dataset = dataset
+        self.mask = dataset.mask
+
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+
+        ma_maps = self.kernel_estimator.transform(dataset, masked=True)
         of_map = np.sum(ma_maps, axis=0)
 
-        rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(red_coords.shape[0], n_iters))
+        rand_idx = np.random.choice(
+            null_ijk.shape[0],
+            size=(self.dataset.coordinates.shape[0], self.n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = red_coords.copy()
+        iter_df = self.dataset.coordinates.copy()
 
         # Define parameters
-        iter_dfs = [iter_df] * n_iters
+        iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_ijks, iter_dfs)
 
-        with mp.Pool(n_cores) as p:
-            perm_max_values = list(tqdm(p.imap(self._perm, params),
-                                        total=self.n_iters))
+        if self.n_cores == 1:
+            perm_results = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_results.append(self._perm(pp))
+        else:
+            with mp.Pool(self.n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+
+        perm_max_values = perm_results
 
         # Voxel-level FWE
         vfwe_map = of_map.copy()
@@ -549,8 +555,7 @@ class KDA(CBMAEstimator):
         iter_ijk, iter_df = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        k_est = self.kernel_estimator(iter_df, self.mask)
-        iter_ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask)
         iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)

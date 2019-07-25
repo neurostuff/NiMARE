@@ -5,13 +5,14 @@ from __future__ import print_function
 import json
 import copy
 import logging
+import os.path as op
 
 import numpy as np
 import pandas as pd
 import nibabel as nib
 
 from .base.base import NiMAREBase
-from .utils import tal2mni, mni2tal, mm2vox, get_template
+from .utils import tal2mni, mni2tal, mm2vox, get_template, listify, try_prepend, find_stem
 
 LGR = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ class Dataset(NiMAREBase):
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
     """
+    _id_cols = ['id', 'study_id', 'contrast_id']
+
     def __init__(self, source, target='mni152_2mm', mask_file=None):
         if isinstance(source, str):
             with open(source, 'r') as f_obj:
@@ -56,6 +59,7 @@ class Dataset(NiMAREBase):
         self._load_images()
         self._load_annotations()
         self._load_texts()
+        self._load_metadata()
 
     def slice(self, ids):
         """
@@ -76,7 +80,7 @@ class Dataset(NiMAREBase):
         new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates['id'].isin(ids)]
         new_dset.images = new_dset.images.loc[new_dset.images['id'].isin(ids)]
         new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
-        new_dset.text = new_dset.text.loc[new_dset.text['id'].isin(ids)]
+        new_dset.texts = new_dset.texts.loc[new_dset.texts['id'].isin(ids)]
         temp_data = {}
         for id_ in ids:
             pid, expid = id_.split('-')
@@ -86,6 +90,23 @@ class Dataset(NiMAREBase):
             temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
         new_dset.data = temp_data
         return new_dset
+
+    def update_path(self, new_path):
+        """
+        Update paths to images. Prepends new path to the relative path for
+        files in Dataset.images.
+
+        Parameters
+        ----------
+        new_path : :obj:`str`
+            Path to prepend to relative paths of files in Dataset.images.
+        """
+        relative_path_cols = [c for c in self.images if c.endswith('__relative')]
+        for col in relative_path_cols:
+            abs_col = col.replace('__relative', '')
+            if abs_col in self.images.columns:
+                LGR.info('Overwriting images column {}'.format(abs_col))
+            self.images[abs_col] = self.images[col].apply(try_prepend, prefix=new_path)
 
     def _load_annotations(self):
         """
@@ -105,7 +126,7 @@ class Dataset(NiMAREBase):
         id_df = pd.DataFrame(columns=columns, data=all_ids)
         id_df = id_df.set_index('id', drop=False)
 
-        label_dict = {}
+        exp_dict = {}
         for pid in self.data.keys():
             for expid in self.data[pid]['contrasts'].keys():
                 exp = self.data[pid]['contrasts'][expid]
@@ -114,14 +135,50 @@ class Dataset(NiMAREBase):
                 if 'labels' not in self.data[pid]['contrasts'][expid].keys():
                     continue
 
-                label_dict[id_] = exp['labels']
+                exp_dict[id_] = exp['labels']
 
-        label_df = pd.DataFrame.from_dict(label_dict, orient='index')
-        df = pd.merge(id_df, label_df, left_index=True, right_index=True, how='outer')
+        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
+        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
 
         df = df.reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)
         self.annotations = df
+
+    def _load_metadata(self):
+        """
+        Load metadata in Dataset into DataFrame.
+        """
+        # Required columns
+        columns = ['id', 'study_id', 'contrast_id']
+
+        # build list of ids
+        all_ids = []
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                exp = self.data[pid]['contrasts'][expid]
+                id_ = '{0}-{1}'.format(pid, expid)
+                all_ids.append([id_, pid, expid])
+
+        id_df = pd.DataFrame(columns=columns, data=all_ids)
+        id_df = id_df.set_index('id', drop=False)
+
+        exp_dict = {}
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                exp = self.data[pid]['contrasts'][expid]
+                id_ = '{0}-{1}'.format(pid, expid)
+
+                if 'metadata' not in self.data[pid]['contrasts'][expid].keys():
+                    continue
+
+                exp_dict[id_] = exp['metadata']
+
+        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
+        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
+
+        df = df.reset_index(drop=True)
+        df = df.replace(to_replace='None', value=np.nan)
+        self.metadata = df
 
     def _load_texts(self):
         """
@@ -152,8 +209,8 @@ class Dataset(NiMAREBase):
 
                 exp_dict[id_] = exp['texts']
 
-        text_df = pd.DataFrame.from_dict(exp_dict, orient='index')
-        df = pd.merge(id_df, text_df, left_index=True, right_index=True, how='outer')
+        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
+        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
 
         df = df.reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)
@@ -176,7 +233,7 @@ class Dataset(NiMAREBase):
         id_df = pd.DataFrame(columns=columns, data=all_ids)
         id_df = id_df.set_index('id', drop=False)
 
-        image_dict = {}
+        exp_dict = {}
         for pid in self.data.keys():
             for expid in self.data[pid]['contrasts'].keys():
                 exp = self.data[pid]['contrasts'][expid]
@@ -185,13 +242,45 @@ class Dataset(NiMAREBase):
                 if 'images' not in self.data[pid]['contrasts'][expid].keys():
                     continue
 
-                image_dict[id_] = exp['images']
+                exp_dict[id_] = exp['images']
 
-        image_df = pd.DataFrame.from_dict(image_dict, orient='index')
-        df = pd.merge(id_df, image_df, left_index=True, right_index=True, how='outer')
+        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
+        valid_suffices = ['.brik', '.head', '.nii', '.img', '.hed']
+        file_cols = []
+        for col in temp_df.columns:
+            vals = [v for v in temp_df[col].values if isinstance(v, str)]
+            fc = any([any([vs in v for vs in valid_suffices]) for v in vals])
+            if fc:
+                file_cols.append(col)
 
+        # Clean up temp_df
+        # Find out which columns have full paths and which have relative paths
+        abs_cols = []
+        for col in file_cols:
+            files = temp_df[col].tolist()
+            abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
+            if all(abspaths):
+                abs_cols.append(col)
+            elif not any(abspaths):
+                temp_df = temp_df.rename(columns={col: col + '__relative'})
+            else:
+                raise ValueError('Mix of absolute and relative paths detected '
+                                 'for "{0}" images'.format(col))
+
+        # Set relative paths from absolute ones
+        if len(abs_cols):
+            all_files = list(np.ravel(temp_df[abs_cols].values))
+            all_files = [f for f in all_files if isinstance(f, str)]
+            shared_path = find_stem(all_files)
+            LGR.info('Shared path detected: "{0}"'.format(shared_path))
+            for abs_col in abs_cols:
+                temp_df[abs_col + '__relative'] = temp_df[abs_col].apply(
+                    lambda x: x.split(shared_path)[1] if isinstance(x, str) else x)
+
+        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
         df = df.reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)
+
         self.images = df
 
     def _load_coordinates(self):
@@ -324,14 +413,16 @@ class Dataset(NiMAREBase):
         labels : list
             List of labels for which there are annotations in the Dataset.
         """
-        id_cols = ['id', 'study_id', 'contrast_id']
-        labels = [c for c in self.annotations.columns if c not in id_cols]
+        if not isinstance(ids, list) and ids is not None:
+            ids = listify(ids)
+
+        result = [c for c in self.annotations.columns if c not in self._id_cols]
         if ids is not None:
             temp_annotations = self.annotations.loc[self.annotations['id'].isin(ids)]
-            res = temp_annotations[labels].any(axis=0)
-            labels = res.loc[res].index.tolist()
+            res = temp_annotations[result].any(axis=0)
+            result = res.loc[res].index.tolist()
 
-        return labels
+        return result
 
     def get_texts(self, ids=None, text_type='abstract'):
         """
@@ -351,18 +442,107 @@ class Dataset(NiMAREBase):
         texts : list
             List of texts of requested type for selected IDs.
         """
-        id_cols = ['id', 'study_id', 'contrast_id']
-        text_types = [c for c in self.texts.columns if c not in id_cols]
+        return_first = False
+        if not isinstance(ids, list) and ids is not None:
+            return_first = True
+            ids = listify(ids)
+
+        text_types = [c for c in self.texts.columns if c not in self._id_cols]
         if text_type not in text_types:
             raise ValueError('Text type "{0}" not found.\nAvailable types: '
                              '{1}'.format(text_type, ', '.join(text_types)))
 
         if ids is not None:
-            texts = self.texts[text_type].loc[self.texts['id'].isin(ids)]
+            result = self.texts[text_type].loc[self.texts['id'].isin(ids)]
         else:
-            texts = self.texts[text_type]
+            result = self.texts[text_type]
 
-        return texts
+        if return_first:
+            return result[0]
+        else:
+            return result
+
+        return result
+
+    def get_metadata(self, ids=None, field='sample_sizes'):
+        """
+        Get metadata from Dataset.
+
+        Parameters
+        ----------
+        ids : list, optional
+            A list of IDs in the Dataset for which to find texts. Default is
+            None, in which case all texts of requested type are returned.
+        field : str, optional
+            Metadata field to extract. Corresponds to column name in
+            Dataset.metadata DataFrame. Default is 'sample_sizes'.
+
+        Returns
+        -------
+        metadata : list
+            List of values of requested type for selected IDs.
+
+        Warnings
+        --------
+        This method is not yet implemented.
+        """
+        return_first = False
+        if not isinstance(ids, list) and ids is not None:
+            return_first = True
+            ids = listify(ids)
+
+        md_fields = [c for c in self.metadata.columns if c not in self._id_cols]
+        if field not in md_fields:
+            raise ValueError('Metadata field "{0}" not found.\nAvailable fields: '
+                             '{1}'.format(field, ', '.join(md_fields)))
+
+        if ids is not None:
+            result = self.metadata[field].loc[self.metadata['id'].isin(ids)].tolist()
+        else:
+            result = self.metadata[field].tolist()
+
+        if return_first:
+            return result[0]
+        else:
+            return result
+
+    def get_images(self, ids=None, imtype='z'):
+        """
+        Get images of a certain type for a subset of studies in the dataset.
+
+        Parameters
+        ----------
+        ids : list, optional
+            A list of IDs in the Dataset for which to find texts. Default is
+            None, in which case all texts of requested type are returned.
+        imtype : str, optional
+            Type of image to extract. Corresponds to column name in
+            Dataset.images DataFrame. Default is 'z'.
+
+        Returns
+        -------
+        images : list
+            List of images of requested type for selected IDs.
+        """
+        return_first = False
+        if not isinstance(ids, list) and ids is not None:
+            return_first = True
+            ids = listify(ids)
+
+        imtypes = [c for c in self.images.columns if c not in self._id_cols]
+        if imtype not in imtypes:
+            raise ValueError('Image type "{0}" not found.\nAvailable types: '
+                             '{1}'.format(imtype, ', '.join(imtypes)))
+
+        if ids is not None:
+            result = self.images[imtype].loc[self.images['id'].isin(ids)].tolist()
+        else:
+            result = self.images[imtype].tolist()
+
+        if return_first:
+            return result[0]
+        else:
+            return result
 
     def get_studies_by_label(self, labels=None, label_threshold=0.5):
         """
@@ -390,9 +570,8 @@ class Dataset(NiMAREBase):
         elif not isinstance(labels, list):
             raise ValueError('Argument "labels" cannot be {0}'.format(type(labels)))
 
-        id_cols = ['id', 'study_id', 'contrast_id']
         found_labels = [l for l in labels if l in self.annotations.columns]
-        temp_annotations = self.annotations[id_cols + found_labels]
+        temp_annotations = self.annotations[self._id_cols + found_labels]
         found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
         if any(found_rows):
             found_ids = temp_annotations.loc[found_rows, 'id'].tolist()
@@ -424,7 +603,7 @@ class Dataset(NiMAREBase):
         mask_ijk = np.vstack(np.where(mask.get_data())).T
         distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
         distances = np.any(distances == 0, axis=0)
-        found_ids = self.coordinates.loc[distances, 'id'].unique()
+        found_ids = list(self.coordinates.loc[distances, 'id'].unique())
         return found_ids
 
     def get_studies_by_coordinate(self, xyz, r=20):
@@ -449,46 +628,5 @@ class Dataset(NiMAREBase):
         assert xyz.shape[1] == 3 and xyz.ndim == 2
         distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
         distances = np.any(distances <= r, axis=0)
-        found_ids = self.coordinates.loc[distances, 'id'].unique()
+        found_ids = list(self.coordinates.loc[distances, 'id'].unique())
         return found_ids
-
-    def get_metadata(self):
-        """
-        Get metadata from Dataset.
-
-        Warnings
-        --------
-        This method is not yet implemented.
-        """
-        pass
-
-    def get_images(self, ids, imtype='z'):
-        """
-        Get images of a certain type for a subset of studies in the dataset.
-
-        Parameters
-        ----------
-        ids : list, optional
-            A list of IDs in the Dataset for which to find texts. Default is
-            None, in which case all texts of requested type are returned.
-        imtype : str, optional
-            Type of image to extract. Corresponds to column name in
-            Dataset.images DataFrame. Default is 'z'.
-
-        Returns
-        -------
-        images : list
-            List of images of requested type for selected IDs.
-        """
-        id_cols = ['id', 'study_id', 'contrast_id']
-        imtypes = [c for c in self.images.columns if c not in id_cols]
-        if imtype not in imtypes:
-            raise ValueError('Image type "{0}" not found.\nAvailable types: '
-                             '{1}'.format(imtype, ', '.join(imtypes)))
-
-        if ids is not None:
-            images = self.images[imtype].loc[self.images['id'].isin(ids)].tolist()
-        else:
-            images = self.images[imtype].tolist()
-
-        return images

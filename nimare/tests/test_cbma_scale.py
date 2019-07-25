@@ -49,6 +49,6 @@ def test_scale(testdata1):
     """
     ijk = np.vstack(np.where(testdata1.mask.get_data())).T
     ijk = ijk[:, :100]
-    scale_meta = ale.SCALE(testdata1, ijk=ijk)
-    scale_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
-    assert isinstance(scale_meta.results, nimare.base.base.MetaResult)
+    scale_meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk)
+    scale_meta.fit(testdata1)
+    assert isinstance(scale_meta.results, nimare.base.MetaResult)

@@ -28,17 +28,29 @@ class Fishers(IBMAEstimator):
 
     Requirements:
         - t OR z
+
+    Parameters
+    ----------
+    corr
+    two_sided
     """
-    def __init__(self, dataset):
+    def __init__(self, corr='FWE', two_sided=True):
+        self.corr = corr
+        self.two_sided = two_sided
+
+    def fit(self, dataset):
+        """
+        Run a Fisher's meta-analysis.
+
+        Parameters
+        ----------
+        dataset
+        """
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = None
-        self.results = None
-
-    def fit(self, ids, corr='FWE', two_sided=True):
-        self.ids = ids
-        z_maps = self.dataset.get_images(self.ids, imtype='z')
-        images = fishers(z_maps, corr=corr, two_sided=two_sided)
+        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
+        z_maps = apply_mask(z_maps, self.mask)
+        images = fishers(z_maps, corr=self.corr, two_sided=self.two_sided)
         self.results = MetaResult(self, self.mask, maps=images)
 
 
@@ -48,8 +60,6 @@ class Stouffers(IBMAEstimator):
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset to analyze.
     inference : {'rfx', 'ffx'}
         Whether to run a random- or fixed-effects model.
     null : {'theoretical', 'empirical'}
@@ -60,24 +70,30 @@ class Stouffers(IBMAEstimator):
     Requirements:
         - z
     """
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        self.ids = None
-        self.inference = None
-        self.null = None
-        self.n_iters = None
-        self.results = None
-
-    def fit(self, ids, inference='ffx', null='theoretical', n_iters=None,
-            corr='FWE', two_sided=True):
-        self.ids = ids
+    def __init__(self, inference='ffx', null='theoretical', n_iters=None,
+                 corr='FWE', two_sided=True):
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
-        z_maps = self.dataset.get_images(self.ids, imtype='z')
-        images = stouffers(z_maps, inference=inference, null=null,
-                           n_iters=n_iters, corr=corr, two_sided=two_sided)
+        self.corr = corr
+        self.two_sided = two_sided
+
+    def fit(self, dataset):
+        """
+        Run a Stouffer's meta-analysis.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
+        """
+        self.dataset = dataset
+        self.mask = self.dataset.mask
+        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
+        z_maps = apply_mask(z_maps, self.mask)
+        images = stouffers(z_maps, inference=self.inference, null=self.null,
+                           n_iters=self.n_iters, corr=self.corr,
+                           two_sided=self.two_sided)
         self.results = MetaResult(self, self.mask, maps=images)
 
 
@@ -91,18 +107,24 @@ class WeightedStouffers(IBMAEstimator):
         - z
         - n
     """
-    def __init__(self, dataset):
+    def __init__(self, two_sided=True):
+        self.two_sided = two_sided
+
+    def fit(self, dataset):
+        """
+        Run a weighted Stouffer's meta-analysis.
+
+        Parameters
+        ----------
+        dataset
+        """
         self.dataset = dataset
         self.mask = self.dataset.mask
-        self.ids = None
-        self.results = None
-
-    def fit(self, ids, two_sided=True):
-        self.ids = ids
-        z_maps = self.dataset.get_images(self.ids, imtype='z')
+        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
         z_maps = apply_mask(z_maps, self.mask)
-        sample_sizes = self.dataset.get_metadata(self.ids, 'n')
-        results = weighted_stouffers(z_maps, sample_sizes, two_sided=two_sided)
+        sample_sizes = self.dataset.get_metadata(self.dataset.ids, 'sample_sizes')
+        sample_sizes = np.array([np.mean(n) for n in sample_sizes])
+        results = weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
         self.results = MetaResult(self, self.mask, maps=results)
 
 
@@ -113,22 +135,28 @@ class RFX_GLM(IBMAEstimator):
     Requirements:
         - con
     """
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        self.ids = None
-        self.null = None
-        self.n_iters = None
-        self.results = None
-
-    def fit(self, ids, null='theoretical', n_iters=None, corr='FWE',
-            two_sided=True):
-        self.ids = ids
+    def __init__(self, null='theoretical', n_iters=None, corr='FWE',
+                 two_sided=True):
         self.null = null
         self.n_iters = n_iters
-        con_maps = self.dataset.get_images(self.ids, imtype='con')
-        images = rfx_glm(con_maps, null=self.null,
-                         n_iters=self.n_iters, corr=corr, two_sided=two_sided)
+        self.corr = corr
+        self.two_sided = two_sided
+        self.results = None
+
+    def fit(self, dataset):
+        """
+        Run an RFX GLM meta-analysis.
+
+        Parameters
+        ----------
+        dataset
+        """
+        self.dataset = dataset
+        self.mask = self.dataset.mask
+        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
+        con_maps = apply_mask(con_maps, self.mask)
+        images = rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
+                         corr=self.corr, two_sided=self.two_sided)
         self.results = MetaResult(self, self.mask, maps=images)
 
 
@@ -344,30 +372,30 @@ class FFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        self.ids = None
-        self.sample_sizes = None
-        self.equal_var = None
+    def __init__(self, sample_size=None, equal_var=True, corr='FWE',
+                 two_sided=True):
+        self.sample_size = sample_size
+        self.equal_var = equal_var
+        self.corr = corr
+        self.two_sided = two_sided
 
-    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
-            two_sided=True):
+    def fit(self, dataset):
         """
         Perform meta-analysis given parameters.
         """
-        self.ids = ids
-        self.sample_sizes = sample_sizes
-        self.equal_var = equal_var
-        con_maps = self.dataset.get_images(self.ids, imtype='con')
-        var_maps = self.dataset.get_images(self.ids, imtype='con_se')
-        if self.sample_sizes is not None:
-            sample_sizes = np.repeat(self.sample_sizes, len(ids))
+        self.dataset = dataset
+        self.mask = self.dataset.mask
+
+        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
+        var_maps = self.dataset.get_images(self.dataset.ids, imtype='con_se')
+        if self.sample_size is not None:
+            sample_sizes = np.repeat(self.sample_size, len(self.datasets.ids))
         else:
-            sample_sizes = self.dataset.get_metadata(self.ids, 'n')
+            sample_sizes = self.dataset.get_metadata(self.datasets.ids, 'sample_sizes')
+            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
         images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, corr=corr,
-                         two_sided=two_sided)
+                         equal_var=self.equal_var, corr=self.corr,
+                         two_sided=self.two_sided)
         self.results = MetaResult(self, self.mask, maps=images)
 
 
@@ -418,26 +446,27 @@ class MFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        self.ids = None
+    def __init__(self, sample_size=None, equal_var=True, corr='FWE',
+                 two_sided=True):
+        self.sample_size = sample_size
+        self.equal_var = equal_var
+        self.corr = corr
+        self.two_sided = two_sided
 
-    def fit(self, ids, sample_sizes=None, equal_var=True, corr='FWE',
-            two_sided=True):
+    def fit(self, dataset):
         """
         Perform meta-analysis given parameters.
         """
-        self.ids = ids
-        self.sample_sizes = sample_sizes
-        self.equal_var = equal_var
-        con_maps = self.dataset.get_images(self.ids, imtype='con')
-        var_maps = self.dataset.get_images(self.ids, imtype='con_se')
-        if self.sample_sizes is not None:
-            sample_sizes = np.repeat(self.sample_sizes, len(ids))
+        self.dataset = dataset
+        self.mask = self.dataset.mask
+        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
+        var_maps = self.dataset.get_images(self.dataset.ids, imtype='con_se')
+        if self.sample_size is not None:
+            sample_sizes = np.repeat(self.sample_size, len(self.dataset.ids))
         else:
-            sample_sizes = self.dataset.get_metadata(self.ids, 'n')
+            sample_sizes = self.dataset.get_metadata(self.dataset.ids, 'sample_sizes')
+            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
         images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, corr=corr,
-                         two_sided=two_sided)
+                         equal_var=self.equal_var, corr=self.corr,
+                         two_sided=self.two_sided)
         self.results = MetaResult(self, self.mask, maps=images)

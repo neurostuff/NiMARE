@@ -211,3 +211,41 @@ def get_resource_path():
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
     return op.abspath(op.join(op.dirname(__file__), 'resources') + op.sep)
+
+
+def try_prepend(value, prefix):
+    if isinstance(value, str):
+        return op.join(prefix, value)
+    else:
+        return value
+
+
+def find_stem(arr):
+    """
+    From https://www.geeksforgeeks.org/longest-common-substring-array-strings/
+    """
+    # Determine size of the array
+    n = len(arr)
+
+    # Take first word from array
+    # as reference
+    s = arr[0]
+    ll = len(s)
+
+    res = ""
+    for i in range(ll):
+        for j in range(i + 1, ll + 1):
+            # generating all possible substrings of our ref string arr[0] i.e s
+            stem = s[i:j]
+            k = 1
+            for k in range(1, n):
+                # Check if the generated stem is common to to all words
+                if stem not in arr[k]:
+                    break
+
+            # If current substring is present in all strings and its length is
+            # greater than current result
+            if (k + 1 == n and len(res) < len(stem)):
+                res = stem
+
+    return res

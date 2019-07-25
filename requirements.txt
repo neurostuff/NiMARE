@@ -1,4 +1,4 @@
-nibabel
+nibabel<2.3
 numpy
 scipy
 pandas

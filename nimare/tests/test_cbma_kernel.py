@@ -49,10 +49,9 @@ def test_alekernel_smoke(testdata2):
     """
     Smoke test for nimare.meta.cbma.kernel.ALEKernel
     """
-    ids = [1, 2]
-    kern = kernel.ALEKernel(testdata2.coordinates, testdata2.mask)
-    ale_kernels = kern.transform(ids=ids)
-    assert len(ale_kernels) == len(ids)
+    kern = kernel.ALEKernel()
+    ale_kernels = kern.transform(testdata2.coordinates, testdata2.mask)
+    assert len(ale_kernels) == 2
 
 
 def test_alekernel1(testdata1):
@@ -62,8 +61,8 @@ def test_alekernel1(testdata1):
     Test on 1mm template.
     """
     id_ = 1
-    kern = kernel.ALEKernel(testdata1.coordinates, testdata1.mask)
-    ale_kernels = kern.transform(ids=[id_])
+    kern = kernel.ALEKernel()
+    ale_kernels = kern.transform(testdata1.coordinates, testdata1.mask)
 
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
@@ -81,8 +80,8 @@ def test_alekernel2(testdata2):
     Test on 2mm template.
     """
     id_ = 1
-    kern = kernel.ALEKernel(testdata2.coordinates, testdata2.mask)
-    ale_kernels = kern.transform(ids=[id_])
+    kern = kernel.ALEKernel()
+    ale_kernels = kern.transform(testdata2.coordinates, mask=testdata2.mask)
 
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
@@ -97,10 +96,9 @@ def test_mkdakernel_smoke(testdata1):
     """
     Smoke test for nimare.meta.cbma.kernel.MKDAKernel
     """
-    ids = [1, 2]
-    kern = kernel.MKDAKernel(testdata1.coordinates, testdata1.mask)
-    ale_kernels = kern.transform(ids=ids)
-    assert len(ale_kernels) == len(ids)
+    kern = kernel.MKDAKernel()
+    ale_kernels = kern.transform(testdata1)
+    assert len(ale_kernels) == 2
 
 
 def test_mkdakernel1(testdata1):
@@ -110,13 +108,13 @@ def test_mkdakernel1(testdata1):
     Test on 1mm template.
     """
     id_ = 1
-    kern = kernel.MKDAKernel(testdata1.coordinates, testdata1.mask)
-    mkda_kernels = kern.transform(ids=[id_], r=4, value=1)
+    kern = kernel.MKDAKernel(r=4, value=1)
+    maps = kern.transform(testdata1.coordinates, testdata1.mask)
 
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = mkda_kernels[0].get_data()
+    kern_data = maps[0].get_data()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
@@ -129,13 +127,13 @@ def test_mkdakernel2(testdata2):
     Test on 2mm template.
     """
     id_ = 1
-    kern = kernel.MKDAKernel(testdata2.coordinates, testdata2.mask)
-    mkda_kernels = kern.transform(ids=[id_], r=4, value=1)
+    kern = kernel.MKDAKernel(r=4, value=1)
+    maps = kern.transform(testdata2.coordinates, testdata2.mask)
 
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = mkda_kernels[0].get_data()
+    kern_data = maps[0].get_data()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
@@ -145,10 +143,9 @@ def test_kdakernel_smoke(testdata1):
     """
     Smoke test for nimare.meta.cbma.kernel.KDAKernel
     """
-    ids = [1, 2]
-    kern = kernel.KDAKernel(testdata1.coordinates, testdata1.mask)
-    ale_kernels = kern.transform(ids=ids)
-    assert len(ale_kernels) == len(ids)
+    kern = kernel.KDAKernel()
+    maps = kern.transform(testdata1.coordinates, testdata1.mask)
+    assert len(maps) == 2
 
 
 def test_kdakernel1(testdata1):
@@ -158,13 +155,13 @@ def test_kdakernel1(testdata1):
     Test on 1mm template.
     """
     id_ = 1
-    kern = kernel.KDAKernel(testdata1.coordinates, testdata1.mask)
-    kda_kernels = kern.transform(ids=[id_], r=4, value=1)
+    kern = kernel.KDAKernel(r=4, value=1)
+    maps = kern.transform(testdata1.coordinates, testdata1.mask)
 
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = kda_kernels[0].get_data()
+    kern_data = maps[0].get_data()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
@@ -177,13 +174,13 @@ def test_kdakernel2(testdata2):
     Test on 2mm template.
     """
     id_ = 1
-    kern = kernel.KDAKernel(testdata2.coordinates, testdata2.mask)
-    kda_kernels = kern.transform(ids=[id_], r=4, value=1)
+    kern = kernel.KDAKernel(r=4, value=1)
+    maps = kern.transform(testdata2.coordinates, testdata2.mask)
 
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = kda_kernels[0].get_data()
+    kern_data = maps[0].get_data()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)

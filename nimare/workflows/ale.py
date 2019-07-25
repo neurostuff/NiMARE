@@ -87,10 +87,10 @@ log-transformed p-value for each cluster in the thresholded map was determined
 based on the cluster sizes.
 
 -> If voxel-level FWE-corrected results were used, include the following:
-Voxel-level FWE-correction was performed and results were thresholded at
-p < {fwe}. {n_iters} iterations were performed to estimate a null
-distribution of ALE values, in which the locations of coordinates were randomly
-drawn from a gray matter template and the maximum ALE value was recorded.
+Voxel-level FWE-correction was performed. {n_iters} iterations were performed
+to estimate a null distribution of ALE values, in which the locations of
+coordinates were randomly drawn from a gray matter template and the maximum
+ALE value was recorded.
 
 References
 ----------
@@ -113,11 +113,11 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
         """
 
-        ale = ALE(dset, kernel__fwhm=fwhm)
+        ale = ALE(n_iters=n_iters, voxel_thresh=v_thr, corr='FWE',
+                  n_cores=n_cores, kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
-        ale.fit(n_iters=n_iters, ids=dset.ids, voxel_thresh=v_thr, corr='FWE',
-                n_cores=n_cores)
+        ale.fit(dset)
 
         boilerplate = boilerplate.format(
             n_exps=len(dset.ids),
@@ -129,8 +129,6 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
     else:
         dset1 = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
         dset2 = convert_sleuth_to_dataset(sleuth_file2, target='ale_2mm')
-        dset_combined = convert_sleuth_to_dataset(
-            [sleuth_file, sleuth_file2], target='ale_2mm')
         n_subs1 = dset1.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
         n_subs2 = dset2.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
 
@@ -156,10 +154,10 @@ log-transformed p-value for each cluster in the thresholded map was determined
 based on the cluster sizes.
 
 -> If voxel-level FWE-corrected results were used, include the following:
-Voxel-level FWE-correction was performed and results were thresholded at
-p < {fwe}. {n_iters} iterations were performed to estimate a null
-distribution of ALE values, in which the locations of coordinates were randomly
-drawn from a gray matter template and the maximum ALE value was recorded.
+Voxel-level FWE-correction was performed. {n_iters} iterations were performed
+to estimate a null distribution of ALE values, in which the locations of
+coordinates were randomly drawn from a gray matter template and the maximum
+ALE value was recorded.
 
 Following dataset-specific ALE meta-analyses, a subtraction analysis was
 performed to compare the two datasets according to the procedure from Laird
@@ -190,11 +188,11 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
 25(1), 155-164.
         """
 
-        ale = ALE(dset_combined, kernel__fwhm=fwhm)
+        ale = ALE(n_iters=n_iters, voxel_thresh=v_thr, corr='FWE',
+                  n_cores=n_cores, kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
-        ale.fit(n_iters=n_iters, ids=dset1.ids, ids2=dset2.ids,
-                voxel_thresh=v_thr, corr='FWE', n_cores=n_cores)
+        ale.fit(dset1, dset2)
 
         boilerplate = boilerplate.format(
             n_exps1=len(dset1.ids),

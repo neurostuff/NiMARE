@@ -27,14 +27,16 @@ LGR = logging.getLogger(__name__)
            description='Fishers citation.')
 def fishers(z_maps, corr='FWE', two_sided=True):
     """
-    Run a Fisher's image-based meta-analysis on z-statistic maps.
+    Run a Fisher's image-based meta-analysis on z-statistics.
 
     Parameters
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of z-statistic maps in the same space, after masking.
+        A 2D array of z-statistics.
     corr : :obj:`str` or :obj:`None`, optional
         Multiple comparisons correction method to employ. May be None.
+    two_sided : :obj:`bool`, optional
+        Default is True.
 
     Returns
     -------

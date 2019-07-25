@@ -44,34 +44,33 @@ def test_mkda_density(testdata1):
     """
     Smoke test for MKDADensity
     """
-    mkda_meta = mkda.MKDADensity(testdata1)
-    mkda_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
-    assert isinstance(mkda_meta.results, nimare.base.base.MetaResult)
+    mkda_meta = mkda.MKDADensity(n_iters=5, n_cores=1)
+    mkda_meta.fit(testdata1)
+    assert isinstance(mkda_meta.results, nimare.base.MetaResult)
 
 
 def test_mkda_chi2_fdr(testdata1):
     """
     Smoke test for MKDAChi2
     """
-    mkda_meta = mkda.MKDAChi2(testdata1)
-    mkda_meta.fit(corr='fdr', ids=testdata1.ids, ids2=testdata1.ids, n_cores=1)
-    assert isinstance(mkda_meta.results, nimare.base.base.MetaResult)
+    mkda_meta = mkda.MKDAChi2(corr='fdr', n_cores=1)
+    mkda_meta.fit(testdata1, testdata1)
+    assert isinstance(mkda_meta.results, nimare.base.MetaResult)
 
 
 def test_mkda_chi2_fwe(testdata1):
     """
     Smoke test for MKDAChi2
     """
-    mkda_meta = mkda.MKDAChi2(testdata1)
-    mkda_meta.fit(n_iters=5, ids=testdata1.ids, ids2=testdata1.ids, corr='fwe',
-                  n_cores=1)
-    assert isinstance(mkda_meta.results, nimare.base.base.MetaResult)
+    mkda_meta = mkda.MKDAChi2(n_iters=5, corr='fwe', n_cores=1)
+    mkda_meta.fit(testdata1, testdata1)
+    assert isinstance(mkda_meta.results, nimare.base.MetaResult)
 
 
 def test_kda_density(testdata1):
     """
     Smoke test for KDA
     """
-    kda_meta = mkda.KDA(testdata1)
-    kda_meta.fit(n_iters=5, ids=testdata1.ids, n_cores=1)
-    assert isinstance(kda_meta.results, nimare.base.base.MetaResult)
+    kda_meta = mkda.KDA(n_iters=5, n_cores=1)
+    kda_meta.fit(testdata1)
+    assert isinstance(kda_meta.results, nimare.base.MetaResult)
