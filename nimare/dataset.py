@@ -493,7 +493,7 @@ class Dataset(NiMAREBase):
 
         md_fields = [c for c in self.metadata.columns if c not in self._id_cols]
         if field not in md_fields:
-            raise ValueError('Metadat field "{0}" not found.\nAvailable fields: '
+            raise ValueError('Metadata field "{0}" not found.\nAvailable fields: '
                              '{1}'.format(field, ', '.join(md_fields)))
 
         if ids is not None:
@@ -603,7 +603,7 @@ class Dataset(NiMAREBase):
         mask_ijk = np.vstack(np.where(mask.get_data())).T
         distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
         distances = np.any(distances == 0, axis=0)
-        found_ids = self.coordinates.loc[distances, 'id'].unique()
+        found_ids = list(self.coordinates.loc[distances, 'id'].unique())
         return found_ids
 
     def get_studies_by_coordinate(self, xyz, r=20):
@@ -628,5 +628,5 @@ class Dataset(NiMAREBase):
         assert xyz.shape[1] == 3 and xyz.ndim == 2
         distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
         distances = np.any(distances <= r, axis=0)
-        found_ids = self.coordinates.loc[distances, 'id'].unique()
+        found_ids = list(self.coordinates.loc[distances, 'id'].unique())
         return found_ids

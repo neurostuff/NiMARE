@@ -23,7 +23,8 @@ def download_data(tmpdir_factory):
                              'neurovault-data',
                              'collection-1425',
                              dir=True)
-    download_nidm_pain(out_dir)
+    if not op.isdir(op.join(out_dir, 'pain_21.nidm')):
+        download_nidm_pain(out_dir)
     pytest.dset_dir = out_dir
     return tst_dir
 
