@@ -262,7 +262,7 @@ class Dataset(NiMAREBase):
             if all(abspaths):
                 abs_cols.append(col)
             elif not any(abspaths):
-                temp_df = temp_df.rename(columns={col: col+'__relative'})
+                temp_df = temp_df.rename(columns={col: col + '__relative'})
             else:
                 raise ValueError('Mix of absolute and relative paths detected '
                                  'for "{0}" images'.format(col))
@@ -274,7 +274,7 @@ class Dataset(NiMAREBase):
             shared_path = find_stem(all_files)
             LGR.info('Shared path detected: "{0}"'.format(shared_path))
             for abs_col in abs_cols:
-                temp_df[abs_col+'__relative'] = temp_df[abs_col].apply(
+                temp_df[abs_col + '__relative'] = temp_df[abs_col].apply(
                     lambda x: x.split(shared_path)[1] if isinstance(x, str) else x)
 
         df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
@@ -413,9 +413,7 @@ class Dataset(NiMAREBase):
         labels : list
             List of labels for which there are annotations in the Dataset.
         """
-        return_first = False
         if not isinstance(ids, list) and ids is not None:
-            return_first = True
             ids = listify(ids)
 
         result = [c for c in self.annotations.columns if c not in self._id_cols]

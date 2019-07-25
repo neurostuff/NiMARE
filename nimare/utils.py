@@ -230,11 +230,11 @@ def find_stem(arr):
     # Take first word from array
     # as reference
     s = arr[0]
-    l = len(s)
+    ll = len(s)
 
     res = ""
-    for i in range(l):
-        for j in range(i + 1, l + 1):
+    for i in range(ll):
+        for j in range(i + 1, ll + 1):
             # generating all possible substrings of our ref string arr[0] i.e s
             stem = s[i:j]
             k = 1
