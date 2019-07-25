@@ -3,7 +3,7 @@ Multiple comparisons correction
 """
 import warnings
 
-from .fdr import FDRCorrector
+from .correct import FDRCorrector
 
 
 __all__ = [
@@ -11,9 +11,3 @@ __all__ = [
 ]
 
 warnings.simplefilter('default')
-
-warnings.warn(
-    "{} is an experimental module under active development; use it at your "
-    "own risk.".format(__name__),
-    ImportWarning
-)

@@ -34,24 +34,16 @@ class Fishers(IBMAEstimator):
     corr
     two_sided
     """
-    def __init__(self, corr='FWE', two_sided=True):
-        self.corr = corr
+    _inputs = {
+        'z_maps': ('maps', {'type': 'z'})
+        }
+
+    def __init__(self, two_sided=True):
         self.two_sided = two_sided
+        self.__init__()
 
-    def fit(self, dataset):
-        """
-        Run a Fisher's meta-analysis.
-
-        Parameters
-        ----------
-        dataset
-        """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
-        z_maps = apply_mask(z_maps, self.mask)
-        images = fishers(z_maps, corr=self.corr, two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+    def _fit(self, dataset):
+        return fishers(self._z_maps, two_sided=self.two_sided)
 
 
 class Stouffers(IBMAEstimator):

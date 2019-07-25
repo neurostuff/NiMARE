@@ -25,7 +25,7 @@ LGR = logging.getLogger(__name__)
               }
            """),
            description='Fishers citation.')
-def fishers(z_maps, corr='FWE', two_sided=True):
+def fishers(z_maps, two_sided=True):
     """
     Run a Fisher's image-based meta-analysis on z-statistics.
 
@@ -33,8 +33,6 @@ def fishers(z_maps, corr='FWE', two_sided=True):
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistics.
-    corr : :obj:`str` or :obj:`None`, optional
-        Multiple comparisons correction method to employ. May be None.
     two_sided : :obj:`bool`, optional
         Default is True.
 
@@ -44,15 +42,6 @@ def fishers(z_maps, corr='FWE', two_sided=True):
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    if corr == 'FDR':
-        method = 'fdr_bh'
-    elif corr == 'FWE':
-        method = 'bonferroni'
-    elif corr is None:
-        method = None
-    else:
-        raise ValueError('{0} correction not supported.'.format(corr))
-
     # Get test-value signs for p-to-z conversion
     sign = np.sign(np.mean(z_maps, axis=0))
     sign[sign == 0] = 1
@@ -68,22 +57,10 @@ def fishers(z_maps, corr='FWE', two_sided=True):
         ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0,
                                                          scale=1)), axis=0)
     p_map = stats.chi2.sf(ffx_stat_map, 2 * k)
+    z_map = p_to_z(p_map, tail='two') * sign
+    log_p_map = -np.log10(p_map)
 
-    # Multiple comparisons correction
-    if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False,
-                                            returnsorted=False)
-    else:
-        p_corr_map = p_map.copy()
-    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
-    log_p_map = -np.log10(p_corr_map)
-
-    images = {'ffx_stat': ffx_stat_map,
-              'p': p_corr_map,
-              'z': z_corr_map,
-              'log_p': log_p_map}
-    return images
+    return dict(ffx_stat=ffx_stat_map, p=p_map, z=z_map, log_p=log_p_map)
 
 
 @due.dcite(BibTeX("""
