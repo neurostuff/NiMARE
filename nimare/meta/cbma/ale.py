@@ -83,8 +83,7 @@ class ALE(CBMAEstimator):
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
-    def __init__(self, voxel_thresh=0.001, corr='FWE', n_iters=10000,
-                 n_cores=-1, kernel_estimator=ALEKernel, **kwargs):
+    def __init__(self, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
@@ -99,22 +98,8 @@ class ALE(CBMAEstimator):
         self.dataset = None
 
         self.kernel_estimator = kernel_estimator(**kernel_args)
-        self.voxel_thresh = voxel_thresh
-        self.corr = corr
-        self.n_iters = n_iters
         self.results = None
         self.null = {}
-
-        if n_cores <= 0:
-            self.n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                'Desired number of cores ({0}) greater than number '
-                'available ({1}). Setting to {1}.'.format(n_cores,
-                                                          mp.cpu_count()))
-            self.n_cores = mp.cpu_count()
-        else:
-            self.n_cores = n_cores
 
     def _fit(self, dataset):
         """
@@ -132,22 +117,13 @@ class ALE(CBMAEstimator):
         self.mask = dataset.mask
 
         ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
-        images = self._run_ale(self.dataset, ma_maps)
 
-        return images
-
-    def _run_ale(self, dataset, ma_maps):
-        """
-        Calculate ALE values, derive ALE-value null distribution, convert ALE
-        values to z-values, and perform multiple comparisons correction.
-        """
         max_poss_ale = 1.
         for ma_map in ma_maps:
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
         max_poss_ale = 1 - max_poss_ale
 
         self.hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
-
         ale_values, null_distribution = self._compute_ale(df=None, ma_maps=ma_maps)
         self.null_distribution = null_distribution
         p_values, z_values = self._ale_to_p(ale_values)
@@ -256,12 +232,12 @@ class ALE(CBMAEstimator):
         z_values = p_to_z(p_values, tail='one')
         return p_values, z_values
 
-    def _perm(self, params):
+    def _fwe_permutation(self, params):
         """
         Run a single random permutation of a dataset. Does the shared work
         between vFWE and cFWE.
         """
-        iter_df, iter_ijk, conn = params
+        iter_df, iter_ijk, conn, z_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
         ale_values, _ = self._compute_ale(df=iter_df, ma_maps=None)
@@ -270,7 +246,6 @@ class ALE(CBMAEstimator):
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        z_thresh = p_to_z(self.voxel_thresh, tail='one')
         iter_z_map = unmask(z_values, self.mask)
         vthresh_iter_z_map = iter_z_map.get_data()
         vthresh_iter_z_map[vthresh_iter_z_map < z_thresh] = 0
@@ -284,7 +259,7 @@ class ALE(CBMAEstimator):
             iter_max_cluster = np.max(clust_sizes)
         return iter_max_value, iter_max_cluster
 
-    def _fwe_correct(self, result, voxel_thresh=0.001):
+    def _fwe_correct(self, result, voxel_thresh=0.001, n_cores=-1, n_iters=10000):
         """
         Perform FWE correction.
         """
@@ -293,6 +268,15 @@ class ALE(CBMAEstimator):
         z_values = result.get_map('z', return_type='array')
         ale_values = result.get_map('ale', return_type='array')
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
+
+        if n_cores <= 0:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
+            n_cores = mp.cpu_count()
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
@@ -310,22 +294,23 @@ class ALE(CBMAEstimator):
         # Multiple comparisons correction
         iter_df = self.dataset.coordinates.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(iter_df.shape[0], self.n_iters))
+                                    size=(iter_df.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
 
         # Define parameters
-        iter_conns = [conn] * self.n_iters
-        iter_dfs = [iter_df] * self.n_iters
-        params = zip(iter_dfs, iter_ijks, iter_conns)
+        iter_conns = [conn] * n_iters
+        iter_dfs = [iter_df] * n_iters
+        iter_thresh = [z_thresh] * n_iters
+        params = zip(iter_dfs, iter_ijks, iter_conns, iter_thresh)
 
-        if self.n_cores == 1:
+        if n_cores == 1:
             perm_results = []
-            for pp in tqdm(params, total=self.n_iters):
-                perm_results.append(self._perm(pp))
+            for pp in tqdm(params, total=n_iters):
+                perm_results.append(self._fwe_permutation(pp))
         else:
-            with mp.Pool(self.n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._fwe_permutation, params), total=n_iters))
 
         self.null['vfwe'], self.null['cfwe'] = zip(*perm_results)
 
