@@ -2,9 +2,7 @@
 Base classes for datasets.
 """
 import logging
-from abc import ABCMeta, abstractmethod
-
-from six import with_metaclass
+from abc import abstractmethod
 
 from .base import NiMAREBase, MetaResult
 

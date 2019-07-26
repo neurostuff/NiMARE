@@ -1,8 +1,6 @@
 """
 Miscellaneous base classes.
 """
-from abc import abstractmethod, ABCMeta
-
 from .estimators import Estimator
 
 

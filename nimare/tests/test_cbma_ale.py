@@ -1,8 +1,6 @@
 """
 Test nimare.meta.cbma.ale (ALE/SCALE meta-analytic algorithms).
 """
-import pytest
-
 import nimare
 from nimare.meta.cbma import ale
 from nimare.correct import FWECorrector

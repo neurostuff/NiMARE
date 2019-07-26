@@ -1,8 +1,6 @@
 """
 Test nimare.meta.cbma.mkda (KDA-based meta-analytic algorithms).
 """
-import pytest
-
 import nimare
 from nimare.meta.cbma import mkda
 from nimare.correct import FWECorrector

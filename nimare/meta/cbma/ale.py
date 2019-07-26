@@ -155,7 +155,7 @@ class ALE(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = apply_mask(ma_maps, self.mask)
-        elif isinstace(ma_maps, np.ndarray):
+        elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
