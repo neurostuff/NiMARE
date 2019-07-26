@@ -78,8 +78,6 @@ class MKDADensity(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.mask
 
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
-
         ma_maps = self.kernel_estimator.transform(dataset)
 
         # Weight each SCM by square root of sample size
@@ -95,27 +93,27 @@ class MKDADensity(CBMAEstimator):
                           np.sum(np.sqrt(ids_n) * ids_inf))
         else:
             weight_vec = np.ones((len(ma_maps), 1))
+        self.weight_vec = weight_vec
 
-        ma_maps = apply_mask(ma_maps, self.mask)
-        ma_maps *= weight_vec
-        of_map = np.sum(ma_maps, axis=0)
-        of_map = unmask(of_map, self.mask)
+        ma_values = apply_mask(ma_maps, self.mask)
+        ma_values *= self.weight_vec
+        of_values = np.sum(ma_values, axis=0)
 
-        images = {'of': of_map}
+        images = {'of': of_values}
         return images
 
     def _fwe_permutation(self, params):
-        iter_ijk, iter_df, weight_vec, conn = params
+        iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
         iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask)
         iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
-        iter_ma_maps *= weight_vec
+        iter_ma_maps *= self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = unmask(iter_of_map, self.mask)
         vthresh_iter_of_map = iter_of_map.get_data().copy()
-        vthresh_iter_of_map[vthresh_iter_of_map < self.voxel_thresh] = 0
+        vthresh_iter_of_map[vthresh_iter_of_map < voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
@@ -128,6 +126,7 @@ class MKDADensity(CBMAEstimator):
 
     def _fwe_correct(self, result, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
         of_map = result.get_map('of', return_type='image')
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -152,9 +151,9 @@ class MKDADensity(CBMAEstimator):
 
         # Define parameters
         iter_conn = [conn] * n_iters
-        iter_wv = [weight_vec] * n_iters
         iter_dfs = [iter_df] * n_iters
-        params = zip(iter_ijks, iter_dfs, iter_wv, iter_conn)
+        iter_voxel_thresh = [voxel_thresh] * n_iters
+        params = zip(iter_ijks, iter_dfs, iter_conn, iter_voxel_thresh)
 
         if n_cores == 1:
             perm_results = []
