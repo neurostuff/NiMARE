@@ -3,6 +3,7 @@ Base classes for datasets.
 """
 import os
 import gzip
+import copy
 import pickle
 import logging
 import multiprocessing as mp
@@ -231,3 +232,6 @@ class MetaResult(object):
             filename = prefix + prefix_sep + imgtype + '.nii.gz'
             outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)
+
+    def copy(self):
+        return copy.copy(self)

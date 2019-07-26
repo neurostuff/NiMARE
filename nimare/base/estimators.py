@@ -24,7 +24,7 @@ class Transformer(NiMAREBase):
     def transform(self, dataset):
         """Add stuff to transformer.
         """
-        if not isinstance(dataset, Dataset):
+        if not hasattr(dataset, 'slice'):
             raise ValueError('Argument "dataset" must be a valid Dataset '
                              'object, not a {0}'.format(type(dataset)))
 
@@ -38,7 +38,7 @@ class Estimator(NiMAREBase):
     _inputs = {}
 
     def _validate_input(self, dataset):
-        if not isinstance(dataset, Dataset):
+        if not hasattr(dataset, 'slice'):
             raise ValueError('Argument "dataset" must be a valid Dataset '
                              'object, not a {0}'.format(type(dataset)))
         for k, v in self._inputs.items():
@@ -53,7 +53,7 @@ class Estimator(NiMAREBase):
     def fit(self, dataset):
         self._validate_input(dataset)
         maps = self._fit(dataset)
-        self.results = MetaResult(self, dataset, maps)
+        self.results = MetaResult(self, dataset.mask, maps)
 
     @abstractmethod
     def _fit(self, dataset):

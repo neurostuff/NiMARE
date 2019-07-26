@@ -7,6 +7,8 @@ import pandas as pd
 import nimare
 from nimare.meta.cbma import ale
 from nimare.utils import get_template, mm2vox
+from nimare.dataset import Dataset
+from nimare.correct import FWECorrector
 
 
 # Fixtures used in the rest of the tests
@@ -14,6 +16,9 @@ class DummyDataset(object):
     def __init__(self, df, img):
         self.coordinates = df
         self.mask = img
+
+    def slice(self):
+        pass
 
 
 @pytest.fixture(scope='module')
@@ -68,13 +73,29 @@ def test_ale(testdata1):
     """
     ale_meta = ale.ALE(n_iters=5, n_cores=1)
     ale_meta.fit(testdata1)
+    corr = FWECorrector(method='permutation')
+    result_corr = corr.transform(ale_meta.results, voxel_thresh=0.001)
     assert isinstance(ale_meta.results, nimare.base.MetaResult)
+    assert isinstance(result_corr, nimare.base.MetaResult)
 
 
 def test_ale_subtraction(testdata1, testdata2):
     """
     Smoke test for ALE
     """
-    ale_meta = ale.ALE(n_iters=5, n_cores=1)
-    ale_meta.fit(testdata1, dataset2=testdata2)
-    assert isinstance(ale_meta.results, nimare.base.MetaResult)
+    ale_meta1 = ale.ALE(n_iters=5, n_cores=1)
+    ale_meta1.fit(testdata1)
+
+    ale_meta2 = ale.ALE(n_iters=5, n_cores=1)
+    ale_meta2.fit(testdata1)
+
+    corr = FWECorrector(method='permutation')
+    result_corr1 = corr.transform(ale_meta1.results, voxel_thresh=0.001)
+    result_corr2 = corr.transform(ale_meta2.results, voxel_thresh=0.001)
+
+    sub_meta = ale.ALESubtraction(n_iters=5)
+    sub_meta.fit(
+        ale_meta1, ale_meta2,
+        image1=result_corr1.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'),
+        image2=result_corr2.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'))
+    assert isinstance(sub_meta.results, nimare.base.MetaResult)

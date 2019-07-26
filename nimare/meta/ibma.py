@@ -62,6 +62,10 @@ class Stouffers(IBMAEstimator):
     Requirements:
         - z
     """
+    _inputs = {
+        'z_maps': ('maps', {'type': 'z'})
+    }
+
     def __init__(self, inference='ffx', null='theoretical', n_iters=None,
                  corr='FWE', two_sided=True):
         self.inference = inference

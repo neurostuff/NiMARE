@@ -19,145 +19,12 @@ from ...utils import round2
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(BibTeX("""
-           @article{turkeltaub2002meta,
-             title={Meta-analysis of the functional neuroanatomy of single-word
-                    reading: method and validation},
-             author={Turkeltaub, Peter E and Eden, Guinevere F and Jones,
-                     Karen M and Zeffiro, Thomas A},
-             journal={Neuroimage},
-             volume={16},
-             number={3},
-             pages={765--780},
-             year={2002},
-             publisher={Elsevier}
-           }
-           """),
-           description='Introduces ALE.')
-@due.dcite(Doi('10.1002/hbm.21186'),
-           description='Modifies ALE algorithm to eliminate within-experiment '
-                       'effects and generate MA maps based on subject group '
-                       'instead of experiment.')
-@due.dcite(Doi('10.1016/j.neuroimage.2011.09.017'),
-           description='Modifies ALE algorithm to allow FWE correction and to '
-                       'more quickly and accurately generate the null '
-                       'distribution for significance testing.')
-class ALE(CBMAEstimator):
-    r"""
-    Activation likelihood estimation
-
-    Parameters
-    ----------
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Used to define clusters for
-        cluster-level thresholding. Default: 0.001
-    corr : {'FWE'}, optional
-        Type of multiple comparisons correction to employ. Only currently
-        supported option is FWE, which derives both cluster- and voxel-
-        level corrected results.
-    n_iters : int, optional
-        Number of iterations for correction. Default: 10000
-    n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
-        Kernel with which to convolve coordinates from dataset. Default is
-        ALEKernel.
-    **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
-        here, with the prefix '\kernel__' in the variable name.
-
-    Notes
-    -----
-    The ALE algorithm was originally developed in [1]_, then updated in [2]_
-    and [3]_.
-
-    References
-    ----------
-    .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
-        neuroanatomy of single-word reading: method and validation."
-        Neuroimage 16.3 (2002): 765-780.
-    .. [2] Turkeltaub, Peter E., et al. "Minimizing within‐experiment and
-        within‐group effects in activation likelihood estimation
-        meta‐analyses." Human brain mapping 33.1 (2012): 1-13.
-    .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
-        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
-    """
-    def __init__(self, voxel_thresh=0.001, corr='FWE', n_iters=10000,
-                 n_cores=-1, kernel_estimator=ALEKernel, **kwargs):
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
-                       if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
-        for k in kwargs.keys():
-            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
-
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
-                             'KernelTransformer')
-
-        self.mask = None
-        self.dataset = None
-        self.dataset2 = None
-
-        self.kernel_estimator = kernel_estimator(**kernel_args)
-        self.voxel_thresh = voxel_thresh
-        self.corr = corr
+class ALESubtraction():
+    def __init__(self, n_iters=10000):
         self.n_iters = n_iters
-        self.results = None
-        self.null = {}
 
-        if n_cores <= 0:
-            self.n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                'Desired number of cores ({0}) greater than number '
-                'available ({1}). Setting to {1}.'.format(n_cores,
-                                                          mp.cpu_count()))
-            self.n_cores = mp.cpu_count()
-        else:
-            self.n_cores = n_cores
-
-    def fit(self, dataset, dataset2=None):
-        """
-        Run an ALE meta-analysis on a subset of the dataset.
-
-        Parameters
-        ----------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Dataset object to analyze.
-        dataset2 : :obj:`nimare.dataset.Dataset` or None, optional
-            If not None, dataset2 is used as a second sample for a
-            subtraction analysis. Default is None.
-        """
-        self.dataset = dataset
-        self.dataset2 = dataset2
-        self.mask = dataset.mask
-
-        if self.dataset2 is not None:
-            assert np.array_equal(dataset.mask.affine,
-                                  dataset2.mask.affine)
-            ma_maps1 = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
-            ma_maps2 = self.kernel_estimator.transform(self.dataset2, mask=self.mask, masked=False)
-            images1 = self._run_ale(self.dataset, ma_maps1, prefix='group1_')
-            images2 = self._run_ale(self.dataset2, ma_maps2, prefix='group2_')
-
-            # Perform subtraction analysis using thresholded cFWE maps.
-            LGR.info('Performing subtraction analysis with cluster-level '
-                     'FWE-corrected maps thresholded at p < 0.05.')
-            sub_images = self.subtraction_analysis(
-                self.dataset, self.dataset2,
-                images1['group1_logp_cfwe'] >= np.log(0.05),
-                images2['group2_logp_cfwe'] >= np.log(0.05),
-                ma_maps1, ma_maps2)
-            images = {**images1, **images2, **sub_images}
-        else:
-            ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
-            images = self._run_ale(self.dataset, ma_maps, prefix='')
-
-        self.results = MetaResult(self, self.mask, maps=images)
-
-    def subtraction_analysis(self, dataset1, dataset2, image1, image2,
-                             ma_maps1=None, ma_maps2=None):
+    def fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
+            ma_maps2=None):
         """
         Run a subtraction analysis comparing two groups of experiments within
         the dataset.
@@ -195,6 +62,18 @@ class ALE(CBMAEstimator):
             meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
             https://doi.org/10.1016/j.neuroimage.2011.09.017
         """
+        assert np.array_equal(ale1.dataset.mask.affine,
+                              ale2.dataset.mask.affine)
+        self.mask = ale1.dataset.mask
+
+        if image1 is None:
+            LGR.info('Performing subtraction analysis with cluster-level '
+                     'FWE-corrected maps thresholded at p < 0.05.')
+            image1 = ale1.results.get_map('logp_cfwe', return_type='array') >= np.log(0.05)
+
+        if image2 is None:
+            image2 = ale2.results.get_map('logp_cfwe', return_type='array') >= np.log(0.05)
+
         if not isinstance(image1, np.ndarray):
             image1 = apply_mask(image1, self.mask)
             image2 = apply_mask(image2, self.mask)
@@ -202,10 +81,10 @@ class ALE(CBMAEstimator):
         grp2_voxel = image2 > 0
 
         if ma_maps1 is None:
-            ma_maps1 = self.kernel_estimator.transform(dataset1, masked=False)
+            ma_maps1 = ale1.kernel_estimator.transform(ale1.dataset, masked=False)
 
         if ma_maps2 is None:
-            ma_maps2 = self.kernel_estimator.transform(dataset2, masked=False)
+            ma_maps2 = ale2.kernel_estimator.transform(ale2.dataset, masked=False)
 
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
@@ -310,33 +189,162 @@ class ALE(CBMAEstimator):
         diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
 
         images = {'grp1-grp2_z': diff_z_map}
+        self.results = MetaResult(self, self.mask, maps=images)
+
+
+@due.dcite(BibTeX("""
+           @article{turkeltaub2002meta,
+             title={Meta-analysis of the functional neuroanatomy of single-word
+                    reading: method and validation},
+             author={Turkeltaub, Peter E and Eden, Guinevere F and Jones,
+                     Karen M and Zeffiro, Thomas A},
+             journal={Neuroimage},
+             volume={16},
+             number={3},
+             pages={765--780},
+             year={2002},
+             publisher={Elsevier}
+           }
+           """),
+           description='Introduces ALE.')
+@due.dcite(Doi('10.1002/hbm.21186'),
+           description='Modifies ALE algorithm to eliminate within-experiment '
+                       'effects and generate MA maps based on subject group '
+                       'instead of experiment.')
+@due.dcite(Doi('10.1016/j.neuroimage.2011.09.017'),
+           description='Modifies ALE algorithm to allow FWE correction and to '
+                       'more quickly and accurately generate the null '
+                       'distribution for significance testing.')
+class ALE(CBMAEstimator):
+    r"""
+    Activation likelihood estimation
+
+    Parameters
+    ----------
+    voxel_thresh : float, optional
+        Uncorrected voxel-level threshold. Used to define clusters for
+        cluster-level thresholding. Default: 0.001
+    corr : {'FWE'}, optional
+        Type of multiple comparisons correction to employ. Only currently
+        supported option is FWE, which derives both cluster- and voxel-
+        level corrected results.
+    n_iters : int, optional
+        Number of iterations for correction. Default: 10000
+    n_cores : int, optional
+        Number of processes to use for meta-analysis. If -1, use all
+        available cores. Default: -1
+    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        here, with the prefix '\kernel__' in the variable name.
+
+    Notes
+    -----
+    The ALE algorithm was originally developed in [1]_, then updated in [2]_
+    and [3]_.
+
+    References
+    ----------
+    .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
+        neuroanatomy of single-word reading: method and validation."
+        Neuroimage 16.3 (2002): 765-780.
+    .. [2] Turkeltaub, Peter E., et al. "Minimizing within‐experiment and
+        within‐group effects in activation likelihood estimation
+        meta‐analyses." Human brain mapping 33.1 (2012): 1-13.
+    .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
+        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+    """
+    def __init__(self, voxel_thresh=0.001, corr='FWE', n_iters=10000,
+                 n_cores=-1, kernel_estimator=ALEKernel, **kwargs):
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
+                       if k.startswith('kernel__')}
+        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for k in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
+
+        if not issubclass(kernel_estimator, KernelTransformer):
+            raise ValueError('Argument "kernel_estimator" must be a '
+                             'KernelTransformer')
+
+        self.mask = None
+        self.dataset = None
+
+        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.voxel_thresh = voxel_thresh
+        self.corr = corr
+        self.n_iters = n_iters
+        self.results = None
+        self.null = {}
+
+        if n_cores <= 0:
+            self.n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
+            self.n_cores = mp.cpu_count()
+        else:
+            self.n_cores = n_cores
+
+    def _fit(self, dataset):
+        """
+        Run an ALE meta-analysis on a subset of the dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset object to analyze.
+        dataset2 : :obj:`nimare.dataset.Dataset` or None, optional
+            If not None, dataset2 is used as a second sample for a
+            subtraction analysis. Default is None.
+        """
+        self.dataset = dataset
+        self.mask = dataset.mask
+
+        ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
+        images = self._run_ale(self.dataset, ma_maps)
+
         return images
 
-    def _run_ale(self, dataset, ma_maps, prefix=''):
+    def _run_ale(self, dataset, ma_maps):
         """
         Calculate ALE values, derive ALE-value null distribution, convert ALE
         values to z-values, and perform multiple comparisons correction.
         """
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
-
         max_poss_ale = 1.
         for ma_map in ma_maps:
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
         max_poss_ale = 1 - max_poss_ale
 
-        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
+        self.hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
 
         ale_values, null_distribution = self._compute_ale(df=None,
-                                                          hist_bins=hist_bins,
+                                                          hist_bins=self.hist_bins,
                                                           ma_maps=ma_maps)
-        p_values, z_values = self._ale_to_p(ale_values, hist_bins,
-                                            null_distribution)
+        self.null_distribution = null_distribution
+        p_values, z_values = self._ale_to_p(ale_values, self.hist_bins,
+                                            self.null_distribution)
+
+        images = {
+            'ale': ale_values,
+            'p': p_values,
+            'z': z_values,
+        }
+        return images
+
+    def _fwe_correct(self, result, voxel_thresh=0.001):
+        z_values = result.get_map('z', return_type='array')
+        ale_values = result.get_map('ale', return_type='array')
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        z_thresh = p_to_z(self.voxel_thresh, tail='one')
+        z_thresh = p_to_z(voxel_thresh, tail='one')
         vthresh_z_values = z_values.copy()
-        vthresh_z_values[vthresh_z_values < z_thresh] = 0
+        vthresh_z_values[np.abs(vthresh_z_values) < z_thresh] = 0
 
         # Find number of voxels per cluster (includes 0, which is empty space in
         # the matrix)
@@ -346,7 +354,7 @@ class ALE(CBMAEstimator):
         conn[1, :, :] = 1
 
         # Multiple comparisons correction
-        iter_df = dataset.coordinates.copy()
+        iter_df = self.dataset.coordinates.copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = null_ijk[rand_idx, :]
@@ -355,8 +363,8 @@ class ALE(CBMAEstimator):
         # Define parameters
         iter_conns = [conn] * self.n_iters
         iter_dfs = [iter_df] * self.n_iters
-        iter_null_dists = [null_distribution] * self.n_iters
-        iter_hist_bins = [hist_bins] * self.n_iters
+        iter_null_dists = [self.null_distribution] * self.n_iters
+        iter_hist_bins = [self.hist_bins] * self.n_iters
         params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
                      iter_conns)
 
@@ -368,37 +376,36 @@ class ALE(CBMAEstimator):
             with mp.Pool(self.n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
 
-        self.null[prefix + 'vfwe'], self.null[prefix + 'cfwe'] = zip(*perm_results)
+        self.null['vfwe'], self.null['cfwe'] = zip(*perm_results)
 
         # Cluster-level FWE
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
-        cfwe_map = np.zeros(self.mask.shape)
+        logp_cfwe_map = np.zeros(self.mask.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
-            cfwe_map[clust_idx] = -np.log(null_to_p(
-                clust_size, self.null[prefix + 'cfwe'], 'upper'))
-        cfwe_map[np.isinf(cfwe_map)] = -np.log(np.finfo(float).eps)
-        cfwe_map = apply_mask(nib.Nifti1Image(cfwe_map, self.mask.affine),
-                              self.mask)
+            logp_cfwe_map[clust_idx] = -np.log(null_to_p(
+                clust_size, self.null['cfwe'], 'upper'))
+        logp_cfwe_map[np.isinf(logp_cfwe_map)] = -np.log(np.finfo(float).eps)
+        logp_cfwe_map = apply_mask(nib.Nifti1Image(logp_cfwe_map, self.mask.affine),
+                                   self.mask)
 
         # Voxel-level FWE
         p_fwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
             p_fwe_values[voxel] = null_to_p(
-                ale_values[voxel], self.null[prefix + 'vfwe'], tail='upper')
+                ale_values[voxel], self.null['vfwe'], tail='upper')
 
         z_fwe_values = p_to_z(p_fwe_values, tail='one')
 
         # Write out unthresholded value images
-        images = {prefix + 'ale': ale_values,
-                  prefix + 'p': p_values,
-                  prefix + 'z': z_values,
-                  prefix + 'vthresh': vthresh_z_values,
-                  prefix + 'p_vfwe': p_fwe_values,
-                  prefix + 'z_vfwe': z_fwe_values,
-                  prefix + 'logp_cfwe': cfwe_map}
+        images = {
+            'vthresh': vthresh_z_values,
+            'p_level-voxel': p_fwe_values,
+            'z_level-voxel': z_fwe_values,
+            'logp_level-cluster': logp_cfwe_map,
+        }
         return images
 
     def _compute_ale(self, df=None, hist_bins=None, ma_maps=None):
@@ -666,7 +673,6 @@ class SCALE(CBMAEstimator):
             ma_values = ma_maps
         else:
             assert ma_maps is not None
-            print(type(self.mask))
             ma_values = apply_mask(ma_maps, self.mask)
 
         ale_values = np.ones(ma_values.shape[1])

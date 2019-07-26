@@ -47,8 +47,7 @@ class Corrector(metaclass=ABCMeta):
             corr_maps['log_p'] = -np.log10(p)
         return corr_maps
 
-    def transform(self, result):
-        self._validate_input(result)
+    def transform(self, result, **kwargs):
         est = result.estimator
         method = self._correction_method
 
@@ -59,10 +58,11 @@ class Corrector(metaclass=ABCMeta):
         # MetaEstimator, use it. Otherwise fall back on _transform.
         if (method is not None and hasattr(est, method)):
             # Feed all init arguments to the estimator's method
-            kwargs = inspect.getargspec(self.__init__)[1:]
-            kwargs = {k: getattr(self, k) for k in kwargs}
+            # kwargs = inspect.getargspec(getattr(est, method))[0][2:]
+            # kwargs = {k: eval(k) for k in kwargs}
             corr_maps = getattr(est, method)(result, **kwargs)
         else:
+            self._validate_input(result)
             corr_maps = self._transform(result)
 
         # Update corrected map names and add them to maps dict
@@ -78,6 +78,35 @@ class Corrector(metaclass=ABCMeta):
         # the _name_suffix:, as that will be added in transform() (i.e.,
         # return "p" not "p_corr-FDR_q-0.05_method-indep").
         pass
+
+
+class FWECorrector(Corrector):
+    """
+    Perform family-wise error rate correction on a meta-analysis.
+
+    Parameters
+    ----------
+    voxel_thresh : `obj`:float
+        The FDR correction rate to use.
+    method : `obj`:str
+        The FWE correction to use. Either 'bonferroni' or 'permutation'.
+    """
+
+    _correction_method = '_fwe_correct'
+
+    def __init__(self, method='bonferroni'):
+        self.method = method
+
+    @property
+    def _name_suffix(self):
+        return '_corr-FWE_method-{}'.format(self.method)
+
+    def _transform(self, result, voxel_thresh=0.001):
+        p = result.maps['p']
+        _, p_corr = mc.multipletests(p, alpha=0.05, method=self.method, is_sorted=False)
+        corr_maps = {'p': p_corr}
+        self._generate_secondary_maps(result, corr_maps)
+        return corr_maps
 
 
 class FDRCorrector(Corrector):
