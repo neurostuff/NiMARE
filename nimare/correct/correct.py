@@ -1,4 +1,3 @@
-import inspect
 from abc import ABCMeta, abstractmethod, abstractproperty
 
 import numpy as np
@@ -57,9 +56,6 @@ class Corrector(metaclass=ABCMeta):
         # If a correction method with the same name exists in the current
         # MetaEstimator, use it. Otherwise fall back on _transform.
         if (method is not None and hasattr(est, method)):
-            # Feed all init arguments to the estimator's method
-            # kwargs = inspect.getargspec(getattr(est, method))[0][2:]
-            # kwargs = {k: eval(k) for k in kwargs}
             corr_maps = getattr(est, method)(result, **kwargs)
         else:
             self._validate_input(result)

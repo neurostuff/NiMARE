@@ -7,7 +7,6 @@ import pandas as pd
 import nimare
 from nimare.meta.cbma import ale
 from nimare.utils import get_template, mm2vox
-from nimare.dataset import Dataset
 from nimare.correct import FWECorrector
 
 
