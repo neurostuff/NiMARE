@@ -265,8 +265,6 @@ class ALE(CBMAEstimator):
         """
         Perform FWE correction.
         """
-        _required_maps = ('z', 'ale')
-
         z_values = result.get_map('z', return_type='array')
         ale_values = result.get_map('ale', return_type='array')
         null_ijk = np.vstack(np.where(self.mask.get_data())).T

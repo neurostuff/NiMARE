@@ -16,6 +16,9 @@ class DummyDataset(object):
         self.coordinates = df
         self.mask = img
 
+    def slice(self):
+        pass
+
 
 @pytest.fixture(scope='module')
 def testdata1():

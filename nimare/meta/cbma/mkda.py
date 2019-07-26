@@ -48,8 +48,7 @@ class MKDADensity(CBMAEstimator):
         cognitive and affective neuroscience 2.2 (2007): 150-158.
         https://doi.org/10.1093/scan/nsm015
     """
-    def __init__(self, voxel_thresh=0.01, n_iters=1000, n_cores=-1,
-                 kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, kernel_estimator=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
@@ -62,26 +61,12 @@ class MKDADensity(CBMAEstimator):
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
         self.kernel_estimator = kernel_estimator(**kernel_args)
-        self.voxel_thresh = voxel_thresh
-        self.n_iters = n_iters
-        self.n_cores = n_cores
 
         self.mask = None
         self.dataset = None
         self.results = None
 
-        if n_cores <= 0:
-            self.n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                'Desired number of cores ({0}) greater than number '
-                'available ({1}). Setting to {1}.'.format(n_cores,
-                                                          mp.cpu_count()))
-            self.n_cores = mp.cpu_count()
-        else:
-            self.n_cores = n_cores
-
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Perform MKDA density meta-analysis on dataset.
 
@@ -116,12 +101,49 @@ class MKDADensity(CBMAEstimator):
         of_map = np.sum(ma_maps, axis=0)
         of_map = unmask(of_map, self.mask)
 
+        images = {'of': of_map}
+        return images
+
+    def _fwe_permutation(self, params):
+        iter_ijk, iter_df, weight_vec, conn = params
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[['i', 'j', 'k']] = iter_ijk
+        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask)
+        iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
+        iter_ma_maps *= weight_vec
+        iter_of_map = np.sum(iter_ma_maps, axis=0)
+        iter_max_value = np.max(iter_of_map)
+        iter_of_map = unmask(iter_of_map, self.mask)
+        vthresh_iter_of_map = iter_of_map.get_data().copy()
+        vthresh_iter_of_map[vthresh_iter_of_map < self.voxel_thresh] = 0
+
+        labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
+        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
+        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+        if clust_sizes:
+            iter_max_cluster = np.max(clust_sizes)
+        else:
+            iter_max_cluster = 0
+        return iter_max_value, iter_max_cluster
+
+    def _fwe_correct(self, result, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
+        of_map = result.get_map('of', return_type='image')
+
+        if n_cores <= 0:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
+            n_cores = mp.cpu_count()
+
         vthresh_of_map = of_map.get_data().copy()
-        vthresh_of_map[vthresh_of_map < self.voxel_thresh] = 0
+        vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
 
         rand_idx = np.random.choice(
             null_ijk.shape[0],
-            size=(self.dataset.coordinates.shape[0], self.n_iters))
+            size=(self.dataset.coordinates.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         iter_df = self.dataset.coordinates.copy()
@@ -129,18 +151,19 @@ class MKDADensity(CBMAEstimator):
         conn = np.ones((3, 3, 3))
 
         # Define parameters
-        iter_conn = [conn] * self.n_iters
-        iter_wv = [weight_vec] * self.n_iters
-        iter_dfs = [iter_df] * self.n_iters
+        iter_conn = [conn] * n_iters
+        iter_wv = [weight_vec] * n_iters
+        iter_dfs = [iter_df] * n_iters
         params = zip(iter_ijks, iter_dfs, iter_wv, iter_conn)
 
-        if self.n_cores == 1:
+        if n_cores == 1:
             perm_results = []
-            for pp in tqdm(params, total=self.n_iters):
-                perm_results.append(self._perm(pp))
+            for pp in tqdm(params, total=n_iters):
+                perm_results.append(self._fwe_permutation(pp))
         else:
-            with mp.Pool(self.n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._fwe_permutation, params),
+                                         total=n_iters))
 
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
@@ -165,31 +188,9 @@ class MKDADensity(CBMAEstimator):
                                                     of_map.affine),
                                     self.mask)
         images = {'vthresh': vthresh_of_map,
-                  'logp_cfwe': cfwe_map,
-                  'logp_vfwe': vfwe_map}
-        self.results = MetaResult(self, self.mask, maps=images)
-
-    def _perm(self, params):
-        iter_ijk, iter_df, weight_vec, conn = params
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask)
-        iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
-        iter_ma_maps *= weight_vec
-        iter_of_map = np.sum(iter_ma_maps, axis=0)
-        iter_max_value = np.max(iter_of_map)
-        iter_of_map = unmask(iter_of_map, self.mask)
-        vthresh_iter_of_map = iter_of_map.get_data().copy()
-        vthresh_iter_of_map[vthresh_iter_of_map < self.voxel_thresh] = 0
-
-        labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
-        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        if clust_sizes:
-            iter_max_cluster = np.max(clust_sizes)
-        else:
-            iter_max_cluster = 0
-        return iter_max_value, iter_max_cluster
+                  'logp_level-cluster': cfwe_map,
+                  'logp_level-voxel': vfwe_map}
+        return images
 
 
 @due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
