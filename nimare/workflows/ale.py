@@ -9,6 +9,7 @@ import click
 
 from ..io import convert_sleuth_to_dataset
 from ..meta.cbma import ALE
+from ..correct import FWECorrector
 
 N_ITERS_DEFAULT = 10000
 CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
@@ -113,11 +114,13 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
         """
 
-        ale = ALE(n_iters=n_iters, voxel_thresh=v_thr, corr='FWE',
-                  n_cores=n_cores, kernel__fwhm=fwhm)
+        ale = ALE(kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
         ale.fit(dset)
+        corrector = FWECorrector(method='permutation')
+        cres = corrector.transform(ale.results, n_iters=n_iters,
+                                   voxel_thresh=v_thr, n_cores=n_cores)
 
         boilerplate = boilerplate.format(
             n_exps=len(dset.ids),
@@ -216,7 +219,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         prefix += '_'
 
     click.echo("Saving output maps...")
-    ale.results.save_maps(output_dir=output_dir, prefix=prefix)
+    cres.save_maps(output_dir=output_dir, prefix=prefix)
     if not sleuth_file2:
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
     else:

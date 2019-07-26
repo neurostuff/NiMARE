@@ -61,8 +61,3 @@ class Estimator(NiMAREBase):
         ndarrays.
         """
         pass
-
-
-class Result(with_metaclass(ABCMeta)):
-    def __init__(self):
-        pass

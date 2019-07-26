@@ -6,6 +6,7 @@ import multiprocessing as mp
 from tqdm.auto import tqdm
 
 import numpy as np
+import pandas as pd
 import nibabel as nib
 from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
@@ -99,7 +100,7 @@ class ALE(CBMAEstimator):
 
         self.kernel_estimator = kernel_estimator(**kernel_args)
         self.results = None
-        self.null = {}
+        self.null_distributions = {}
 
     def _fit(self, dataset):
         """
@@ -117,15 +118,8 @@ class ALE(CBMAEstimator):
         self.mask = dataset.mask
 
         ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
-
-        max_poss_ale = 1.
-        for ma_map in ma_maps:
-            max_poss_ale *= (1 - np.max(ma_map.get_data()))
-        max_poss_ale = 1 - max_poss_ale
-
-        self.hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
-        ale_values, null_distribution = self._compute_ale(df=None, ma_maps=ma_maps)
-        self.null_distribution = null_distribution
+        ale_values = self._compute_ale(ma_maps)
+        self._compute_null(ma_maps)
         p_values, z_values = self._ale_to_p(ale_values)
 
         images = {
@@ -135,53 +129,60 @@ class ALE(CBMAEstimator):
         }
         return images
 
-    def _compute_ale(self, df=None, ma_maps=None):
+    def _compute_ale(self, data):
         """
-        Generate ALE-value array and null distribution from list of contrasts.
-        For ALEs on the original dataset, computes the null distribution.
-        For permutation ALEs and all SCALEs, just computes ALE values.
-        Returns masked array of ALE values and 1XnBins null distribution.
+        Generate ALE-value array from MA values.
+        Returns masked array of ALE values.
         """
-        if ma_maps is not None:
-            assert df is None
-            ma_hists = np.zeros((len(ma_maps), self.hist_bins.shape[0]))
-            compute_null = True
-            ma_values = apply_mask(ma_maps, self.mask)
+        if isinstance(data, pd.DataFrame):
+            ma_values = self.kernel_estimator.transform(data, mask=self.mask, masked=True)
+        elif isinstance(data, list):
+            ma_values = apply_mask(data, self.mask)
+        elif isinstance(data, np.ndarray):
+            ma_values = data.copy()
         else:
-            assert df is not None
-            ma_hists = None
-            compute_null = False
-            ma_maps = self.kernel_estimator.transform(df, mask=self.mask, masked=True)
-            ma_values = ma_maps
+            raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
+            ale_values *= (1. - ma_values[i, :])
+        ale_values = 1 - ale_values
+        return ale_values
+
+    def _compute_null(self, ma_maps):
+        """
+        Compute uncorrected ALE-value null distribution from MA values.
+        """
+        if isinstance(ma_maps, list):
+            ma_values = apply_mask(ma_maps, self.mask)
+        elif isinstace(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+
+        # Determine histogram bins for ALE-value null distribution
+        max_poss_ale = 1.
+        for i in range(ma_values.shape[0]):
+            max_poss_ale *= (1 - np.max(ma_values[i, :]))
+        max_poss_ale = 1 - max_poss_ale
+
+        self.null_distributions['histogram_bins'] = np.round(
+            np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
+
+        ma_hists = np.zeros((ma_values.shape[0],
+                             self.null_distributions['histogram_bins'].shape[0]))
+        for i in range(ma_values.shape[0]):
             # Remember that histogram uses bin edges (not centers), so it
             # returns a 1xhist_bins-1 array
-            if compute_null:
-                n_zeros = len(np.where(ma_values[i, :] == 0)[0])
-                reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
-                ma_hists[i, 0] = n_zeros
-                ma_hists[i, 1:] = np.histogram(a=reduced_ma_values,
-                                               bins=self.hist_bins,
-                                               density=False)[0]
-            ale_values *= (1. - ma_values[i, :])
+            n_zeros = len(np.where(ma_values[i, :] == 0)[0])
+            reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
+            ma_hists[i, 0] = n_zeros
+            ma_hists[i, 1:] = np.histogram(a=reduced_ma_values,
+                                           bins=self.null_distributions['histogram_bins'],
+                                           density=False)[0]
 
-        ale_values = 1 - ale_values
-
-        if compute_null:
-            null_distribution = self._compute_null(ma_hists)
-        else:
-            null_distribution = None
-
-        return ale_values, null_distribution
-
-    def _compute_null(self, ma_hists):
-        """
-        Compute ALE null distribution.
-        """
         # Inverse of step size in histBins (0.0001) = 10000
-        step = 1 / np.mean(np.diff(self.hist_bins))
+        step = 1 / np.mean(np.diff(self.null_distributions['histogram_bins']))
 
         # Null distribution to convert ALE to p-values.
         ale_hist = ma_hists[0, :]
@@ -198,14 +199,15 @@ class ALE(CBMAEstimator):
             ma_hist /= np.sum(ma_hist)
 
             # Perform weighted convolution of histograms.
-            ale_hist = np.zeros(self.hist_bins.shape[0])
+            ale_hist = np.zeros(self.null_distributions['histogram_bins'].shape[0])
             for j_idx in exp_idx:
                 # Compute probabilities of observing each ALE value in histBins
                 # by randomly combining maps represented by maHist and aleHist.
                 # Add observed probabilities to corresponding bins in ALE
                 # histogram.
                 probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - self.hist_bins[j_idx]) * (1 - self.hist_bins[ale_idx])
+                ale_scores = 1 - (1 - self.null_distributions['histogram_bins'][j_idx]) *\
+                    (1 - self.null_distributions['histogram_bins'][ale_idx])
                 score_idx = np.floor(ale_scores * step).astype(int)
                 np.add.at(ale_hist, score_idx, probabilities)
 
@@ -215,20 +217,20 @@ class ALE(CBMAEstimator):
         null_distribution = ale_hist / np.sum(ale_hist)
         null_distribution = np.cumsum(null_distribution[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
-        return null_distribution
+        self.null_distributions['histogram_weights'] = null_distribution
 
     def _ale_to_p(self, ale_values):
         """
         Compute p- and z-values.
         """
-        step = 1 / np.mean(np.diff(self.hist_bins))
+        step = 1 / np.mean(np.diff(self.null_distributions['histogram_bins']))
 
         # Determine p- and z-values from ALE values and null distribution.
         p_values = np.ones(ale_values.shape)
 
         idx = np.where(ale_values > 0)[0]
         ale_bins = round2(ale_values[idx] * step)
-        p_values[idx] = self.null_distribution[ale_bins]
+        p_values[idx] = self.null_distributions['histogram_weights'][ale_bins]
         z_values = p_to_z(p_values, tail='one')
         return p_values, z_values
 
@@ -240,7 +242,7 @@ class ALE(CBMAEstimator):
         iter_df, iter_ijk, conn, z_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        ale_values, _ = self._compute_ale(df=iter_df, ma_maps=None)
+        ale_values = self._compute_ale(iter_df)
         _, z_values = self._ale_to_p(ale_values)
         iter_max_value = np.max(ale_values)
 
@@ -310,9 +312,11 @@ class ALE(CBMAEstimator):
                 perm_results.append(self._fwe_permutation(pp))
         else:
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._fwe_permutation, params), total=n_iters))
+                perm_results = list(tqdm(p.imap(self._fwe_permutation, params),
+                                         total=n_iters))
 
-        self.null['vfwe'], self.null['cfwe'] = zip(*perm_results)
+        (self.null_distributions['fwe_level-voxel'],
+         self.null_distributions['fwe_level-cluster']) = zip(*perm_results)
 
         # Cluster-level FWE
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
@@ -322,7 +326,7 @@ class ALE(CBMAEstimator):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
             logp_cfwe_map[clust_idx] = -np.log(null_to_p(
-                clust_size, self.null['cfwe'], 'upper'))
+                clust_size, self.null_distributions['fwe_level-cluster'], 'upper'))
         logp_cfwe_map[np.isinf(logp_cfwe_map)] = -np.log(np.finfo(float).eps)
         logp_cfwe_map = apply_mask(nib.Nifti1Image(logp_cfwe_map, self.mask.affine),
                                    self.mask)
@@ -331,7 +335,8 @@ class ALE(CBMAEstimator):
         p_fwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
             p_fwe_values[voxel] = null_to_p(
-                ale_values[voxel], self.null['vfwe'], tail='upper')
+                ale_values[voxel], self.null_distributions['fwe_level-voxel'],
+                tail='upper')
 
         z_fwe_values = p_to_z(p_fwe_values, tail='one')
 
@@ -359,16 +364,11 @@ class ALESubtraction():
 
         Parameters
         ----------
-        dataset1 : array_like
-            List of IDs from dataset to analyze as group 1.
-        dataset2 : array_like or None, optional
-            List of IDs from dataset to analyze as group 2.
-        image1 : img_like or array_like
-            Cluster-level FWE-corrected z-statistic map for group 1, masked to
-            1D array.
-        image2 : img_like or array_like
-            Cluster-level FWE-corrected z-statistic map for group 2, masked to
-            1D array.
+        ale1, ale2 : :obj:`nimare.meta.cbma.ALE`
+            Fitted ALE models for datasets to compare.
+        image1, image2 : img_like or array_like
+            Cluster-level FWE-corrected z-statistic maps associated with the
+            respective models.
         ma_maps1 : (E x V) array_like or None, optional
             Experiments by voxels array of modeled activation
             values. If not provided, MA maps will be generated from dataset1.
