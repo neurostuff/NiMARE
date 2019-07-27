@@ -234,4 +234,7 @@ class MetaResult(object):
             img.to_filename(outpath)
 
     def copy(self):
-        return copy.copy(self)
+        new = MetaResult(copy.copy(self.estimator),
+                         copy.copy(self.mask),
+                         copy.deepcopy(self.maps))
+        return new
