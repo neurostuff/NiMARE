@@ -40,10 +40,9 @@ class Fishers(IBMAEstimator):
 
     def __init__(self, two_sided=True):
         self.two_sided = two_sided
-        self.__init__()
 
     def _fit(self, dataset):
-        return fishers(self._z_maps, two_sided=self.two_sided)
+        return fishers(self.inputs_['z_maps'], two_sided=self.two_sided)
 
 
 class Stouffers(IBMAEstimator):

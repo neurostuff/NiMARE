@@ -104,15 +104,12 @@ class ALE(CBMAEstimator):
 
     def _fit(self, dataset):
         """
-        Run an ALE meta-analysis on a subset of the dataset.
+        Run an ALE meta-analysis on a dataset.
 
         Parameters
         ----------
         dataset : :obj:`nimare.dataset.Dataset`
             Dataset object to analyze.
-        dataset2 : :obj:`nimare.dataset.Dataset` or None, optional
-            If not None, dataset2 is used as a second sample for a
-            subtraction analysis. Default is None.
         """
         self.dataset = dataset
         self.mask = dataset.mask

@@ -38,6 +38,8 @@ class Estimator(NiMAREBase):
         if not hasattr(dataset, 'slice'):
             raise ValueError('Argument "dataset" must be a valid Dataset '
                              'object, not a {0}'.format(type(dataset)))
+
+        self.inputs_ = {}
         for k, v in self._required_inputs.items():
             data = dataset.get(v[0], **v[1])
             if not data:
@@ -45,7 +47,7 @@ class Estimator(NiMAREBase):
                                  "contain {1} with filters {2}, but none "
                                  "were found.".format(self.__class__.__name__,
                                                       v[0], v[1]))
-            setattr(self, k, data)
+            self.inputs_[k] = data
 
     def fit(self, dataset):
         self._validate_input(dataset)

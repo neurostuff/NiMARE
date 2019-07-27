@@ -10,13 +10,13 @@ def test_mkda_density(cbma_testdata1):
     """
     Smoke test for MKDADensity
     """
-    meta = mkda.MKDADensity(n_iters=5, n_cores=1)
-    meta.fit(cbma_testdata1)
-    corr = FWECorrector(method='permutation')
-    result_corr = corr.transform(meta.results, voxel_thresh=0.001,
-                                 n_iters=5, n_cores=1)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(result_corr, nimare.base.MetaResult)
+    meta = mkda.MKDADensity()
+    res = meta.fit(cbma_testdata1)
+    corr = FWECorrector(method='permutation', voxel_thresh=0.001,
+                        n_iters=5, n_cores=1)
+    corr_res = corr.transform(res)
+    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(corr_res, nimare.base.MetaResult)
 
 
 def test_mkda_chi2_fdr(cbma_testdata1):
