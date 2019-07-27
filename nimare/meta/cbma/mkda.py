@@ -78,7 +78,7 @@ class MKDADensity(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.mask
 
-        ma_maps = self.kernel_estimator.transform(dataset)
+        ma_values = self.kernel_estimator.transform(dataset, masked=True)
 
         # Weight each SCM by square root of sample size
         ids_df = self.dataset.coordinates.groupby('id').first()
@@ -92,22 +92,20 @@ class MKDADensity(CBMAEstimator):
             weight_vec = ((np.sqrt(ids_n)[:, None] * ids_inf[:, None]) /
                           np.sum(np.sqrt(ids_n) * ids_inf))
         else:
-            weight_vec = np.ones((len(ma_maps), 1))
+            weight_vec = np.ones((ma_values.shape[0], 1))
         self.weight_vec = weight_vec
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ma_values *= self.weight_vec
         of_values = np.sum(ma_values, axis=0)
 
         images = {'of': of_values}
         return images
 
-    def _fwe_permutation(self, params):
+    def _run_fwe_permutation(self, params):
         iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask)
-        iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
+        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask, masked=True)
         iter_ma_maps *= self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
@@ -124,7 +122,8 @@ class MKDADensity(CBMAEstimator):
             iter_max_cluster = 0
         return iter_max_value, iter_max_cluster
 
-    def _fwe_correct(self, result, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
+    def _fwe_correct_permutation(self, result, voxel_thresh=0.01, n_iters=1000,
+                                 n_cores=-1):
         of_map = result.get_map('of', return_type='image')
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
@@ -158,10 +157,10 @@ class MKDADensity(CBMAEstimator):
         if n_cores == 1:
             perm_results = []
             for pp in tqdm(params, total=n_iters):
-                perm_results.append(self._fwe_permutation(pp))
+                perm_results.append(self._run_fwe_permutation(pp))
         else:
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._fwe_permutation, params),
+                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params),
                                          total=n_iters))
 
         perm_max_values, perm_clust_sizes = zip(*perm_results)
@@ -555,8 +554,7 @@ class KDA(CBMAEstimator):
         iter_ijk, iter_df = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask)
-        iter_ma_maps = apply_mask(iter_ma_maps, self.mask)
+        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask, masked=True)
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         return iter_max_value

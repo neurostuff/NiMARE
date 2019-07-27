@@ -32,7 +32,7 @@ class Corrector(metaclass=ABCMeta):
                              "instance of class MetaResult, not {}."
                              .format(type(result)))
         for rm in self._required_maps:
-            if not result.maps.get(rm):
+            if result.maps.get(rm) is None:
                 raise ValueError("{0} requires {1} maps to be present in the "
                                  "MetaResult, but none were found."
                                  .format(type(self), rm))
@@ -41,22 +41,23 @@ class Corrector(metaclass=ABCMeta):
         # Generates corrected version of z and log-p maps if they exist
         p = corr_maps['p']
         if 'z' in result.maps:
-            corr_maps.maps['z'] = p_to_z(p) * np.sign(result.maps['z'])
+            corr_maps['z'] = p_to_z(p) * np.sign(result.maps['z'])
         if 'log_p' in result.maps:
             corr_maps['log_p'] = -np.log10(p)
         return corr_maps
 
-    def transform(self, result, **kwargs):
+    def transform(self, result):
         est = result.estimator
-        method = self._correction_method
+        correction_method = self._correction_method + '_' + self.method
 
         # Make sure we return a copy of the MetaResult
         result = result.copy()
 
         # If a correction method with the same name exists in the current
         # MetaEstimator, use it. Otherwise fall back on _transform.
-        if (method is not None and hasattr(est, method)):
-            corr_maps = getattr(est, method)(result, **kwargs)
+        if (correction_method is not None and hasattr(est, correction_method)):
+            print(self.parameters)
+            corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._validate_input(result)
             corr_maps = self._transform(result)
@@ -82,24 +83,26 @@ class FWECorrector(Corrector):
 
     Parameters
     ----------
-    voxel_thresh : `obj`:float
-        The FDR correction rate to use.
     method : `obj`:str
         The FWE correction to use. Either 'bonferroni' or 'permutation'.
+    **kwargs
+        Keyword arguments to be used by the FWE correction implementation.
     """
 
     _correction_method = '_fwe_correct'
 
-    def __init__(self, method='bonferroni'):
+    def __init__(self, method='bonferroni', **kwargs):
         self.method = method
+        self.parameters = kwargs
 
     @property
     def _name_suffix(self):
         return '_corr-FWE_method-{}'.format(self.method)
 
-    def _transform(self, result, voxel_thresh=0.001):
+    def _transform(self, result):
         p = result.maps['p']
-        _, p_corr = mc.multipletests(p, alpha=0.05, method=self.method, is_sorted=False)
+        _, p_corr, _, _ = mc.multipletests(p, alpha=0.05, method=self.method,
+                                           is_sorted=False)
         corr_maps = {'p': p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps

@@ -234,7 +234,7 @@ class ALE(CBMAEstimator):
         z_values = p_to_z(p_values, tail='one')
         return p_values, z_values
 
-    def _fwe_permutation(self, params):
+    def _run_fwe_permutation(self, params):
         """
         Run a single random permutation of a dataset. Does the shared work
         between vFWE and cFWE.
@@ -261,9 +261,10 @@ class ALE(CBMAEstimator):
             iter_max_cluster = np.max(clust_sizes)
         return iter_max_value, iter_max_cluster
 
-    def _fwe_correct(self, result, voxel_thresh=0.001, n_cores=-1, n_iters=10000):
+    def _fwe_correct_permutation(self, result, voxel_thresh=0.001, n_cores=-1,
+                                 n_iters=10000):
         """
-        Perform FWE correction.
+        Perform FWE correction using the max-value permutation method.
         """
         z_values = result.get_map('z', return_type='array')
         ale_values = result.get_map('ale', return_type='array')
@@ -307,10 +308,10 @@ class ALE(CBMAEstimator):
         if n_cores == 1:
             perm_results = []
             for pp in tqdm(params, total=n_iters):
-                perm_results.append(self._fwe_permutation(pp))
+                perm_results.append(self._run_fwe_permutation(pp))
         else:
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._fwe_permutation, params),
+                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params),
                                          total=n_iters))
 
         (self.null_distributions['fwe_level-voxel'],
