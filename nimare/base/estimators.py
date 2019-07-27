@@ -32,13 +32,13 @@ class Estimator(NiMAREBase):
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
-    _inputs = {}
+    _required_inputs = {}
 
     def _validate_input(self, dataset):
         if not hasattr(dataset, 'slice'):
             raise ValueError('Argument "dataset" must be a valid Dataset '
                              'object, not a {0}'.format(type(dataset)))
-        for k, v in self._inputs.items():
+        for k, v in self._required_inputs.items():
             data = dataset.get(v[0], **v[1])
             if not data:
                 raise ValueError("Estimator {0} requires input dataset to "
@@ -51,6 +51,7 @@ class Estimator(NiMAREBase):
         self._validate_input(dataset)
         maps = self._fit(dataset)
         self.results = MetaResult(self, dataset.mask, maps)
+        return self.results
 
     @abstractmethod
     def _fit(self, dataset):
