@@ -20,8 +20,7 @@ def test_z_perm():
     """
     Smoke test for z permutation.
     """
-    meta = ibma.Stouffers(inference='rfx', null='empirical', n_iters=10,
-                          corr='FDR')
+    meta = ibma.Stouffers(inference='rfx', null='empirical', n_iters=10)
     meta.fit(pytest.dset_z)
     assert isinstance(meta.results, nimare.base.MetaResult)
 
@@ -57,7 +56,7 @@ def test_con_perm():
     """
     Smoke test for contrast permutation.
     """
-    meta = ibma.RFX_GLM(null='empirical', n_iters=10, corr='FDR')
+    meta = ibma.RFX_GLM(null='empirical', n_iters=10)
     meta.fit(pytest.dset_conse)
     assert isinstance(meta.results, nimare.base.MetaResult)
 

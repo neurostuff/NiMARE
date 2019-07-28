@@ -11,7 +11,7 @@ def test_z_perm():
     Smoke test for z permutation.
     """
     result = esma.stouffers(pytest.data_z, inference='rfx', null='empirical',
-                            n_iters=10, corr='FDR')
+                            n_iters=10)
     assert isinstance(result, dict)
 
 
@@ -53,8 +53,7 @@ def test_con_perm():
     """
     Smoke test for contrast permutation.
     """
-    result = esma.rfx_glm(pytest.data_con, null='empirical', n_iters=10,
-                          corr='FDR')
+    result = esma.rfx_glm(pytest.data_con, null='empirical', n_iters=10)
     assert isinstance(result, dict)
 
 
