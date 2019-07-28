@@ -12,8 +12,8 @@ def test_scale():
     """
     Smoke test for SCALE
     """
-    ijk = np.vstack(np.where(pytest.cbma_testdata1.mask.get_data())).T
+    ijk = np.vstack(np.where(pytest.cbma_testdata3.mask.get_data())).T
     ijk = ijk[:, :100]
     meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk)
-    res = meta.fit(pytest.cbma_testdata1)
+    res = meta.fit(pytest.cbma_testdata3)
     assert isinstance(res, nimare.base.MetaResult)

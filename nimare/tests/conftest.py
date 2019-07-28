@@ -132,3 +132,22 @@ def cbma_testdata2():
 
     dset = DummyDataset(df, mask_img)
     pytest.cbma_testdata2 = dset
+
+
+@pytest.fixture(scope='session', autouse=True)
+def cbma_testdata3():
+    """
+    Reduced dataset for SCALE test.
+    """
+    mask_img = get_template(space='mni152_2mm', mask='brain')
+    mask_img = nib.Nifti1Image(np.ones((20, 20, 20), int), mask_img.affine)
+    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
+                      data=[[1, -28, -20, -16, 100, 'mni'],
+                            [2, -28, -20, -16, 100, 'mni'],
+                            [3, -28, -20, -16, 100, 'mni']])
+    xyz = df[['x', 'y', 'z']].values
+    ijk = pd.DataFrame(mm2vox(xyz, mask_img.affine), columns=['i', 'j', 'k'])
+    df = pd.concat([df, ijk], axis=1)
+
+    dset = DummyDataset(df, mask_img)
+    pytest.cbma_testdata3 = dset
