@@ -8,7 +8,7 @@ from shutil import copyfile
 import click
 
 from ..io import convert_sleuth_to_dataset
-from ..meta.cbma import ALE
+from ..meta.cbma import ALE, ALESubtraction
 from ..correct import FWECorrector
 
 N_ITERS_DEFAULT = 10000
@@ -202,7 +202,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         cres1 = corr.transform(res1)
         cres2 = corr.transform(res2)
         sub = ALESubtraction(n_iters=n_iters)
-        sub_res = sub_meta.fit(
+        sres = sub.fit(
             ale1, ale2,
             image1=cres1.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'),
             image2=cres2.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'))
@@ -229,10 +229,16 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         prefix += '_'
 
     click.echo("Saving output maps...")
-    cres.save_maps(output_dir=output_dir, prefix=prefix)
     if not sleuth_file2:
+        cres.save_maps(output_dir=output_dir, prefix=prefix)
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
     else:
+        prefix1 = os.path.splitext(os.path.basename(sleuth_file))[0] + '_'
+        prefix2 = os.path.splitext(os.path.basename(sleuth_file2))[0] + '_'
+        prefix3 = prefix + 'subtraction_'
+        cres1.save_maps(output_dir=output_dir, prefix=prefix1)
+        cres2.save_maps(output_dir=output_dir, prefix=prefix2)
+        sres.save_maps(output_dir=output_dir, prefix=prefix3)
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'group1_input_coordinates.txt'))
         copyfile(sleuth_file2, os.path.join(output_dir, prefix + 'group2_input_coordinates.txt'))
 

@@ -43,9 +43,9 @@ class Estimator(NiMAREBase):
         self.inputs_ = {}
         for k, v in data.items():
             if not len(v):
-                raise ValueError("Estimator {0} requires input dataset to "
-                                 "contain {1}, but none were found.".format(
-                                    self.__class__.__name__, k))
+                raise ValueError(
+                    "Estimator {0} requires input dataset to contain {1}, but "
+                    "none were found.".format(self.__class__.__name__, k))
             self.inputs_[k] = v
 
     def fit(self, dataset):
