@@ -314,7 +314,7 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
 
 
 def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
-            work_dir='mfx_glm', two_sided=True):
+            work_dir='ffx_glm', two_sided=True):
     """
     Run a fixed-effects GLM on contrast and standard error images.
 
@@ -347,7 +347,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         negative log(p) values.
     """
     result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
-                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
 
@@ -360,31 +360,27 @@ class FFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, sample_size=None, equal_var=True, corr='FWE',
-                 two_sided=True):
-        self.sample_size = sample_size
-        self.equal_var = equal_var
-        self.corr = corr
+    _required_inputs = {
+        'con_maps': ('image', 'con'),
+        'se_maps': ('image', 'se'),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
+    def __init__(self, cdt=0.01, q=0.05, two_sided=True):
+        self.cdt = cdt
+        self.q = q
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Perform meta-analysis given parameters.
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-
-        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
-        var_maps = self.dataset.get_images(self.dataset.ids, imtype='con_se')
-        if self.sample_size is not None:
-            sample_sizes = np.repeat(self.sample_size, len(self.datasets.ids))
-        else:
-            sample_sizes = self.dataset.get_metadata(self.datasets.ids, 'sample_sizes')
-            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
-        images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, corr=self.corr,
-                         two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        images = ffx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
+                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        return images
 
 
 def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
@@ -421,7 +417,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         negative log(p) values.
     """
     result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
-                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
 
@@ -434,27 +430,24 @@ class MFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, sample_size=None, equal_var=True, corr='FWE',
-                 two_sided=True):
-        self.sample_size = sample_size
-        self.equal_var = equal_var
-        self.corr = corr
+    _required_inputs = {
+        'con_maps': ('image', 'con'),
+        'se_maps': ('image', 'se'),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
+    def __init__(self, cdt=0.01, q=0.05, two_sided=True):
+        self.cdt = cdt
+        self.q = q
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Perform meta-analysis given parameters.
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
-        var_maps = self.dataset.get_images(self.dataset.ids, imtype='con_se')
-        if self.sample_size is not None:
-            sample_sizes = np.repeat(self.sample_size, len(self.dataset.ids))
-        else:
-            sample_sizes = self.dataset.get_metadata(self.dataset.ids, 'sample_sizes')
-            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
-        images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, corr=self.corr,
-                         two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        images = mfx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
+                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        return images
