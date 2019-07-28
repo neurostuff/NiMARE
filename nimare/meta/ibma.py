@@ -15,7 +15,7 @@ from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
-from ..base import MetaResult, IBMAEstimator
+from ..base import IBMAEstimator
 from ..stats import p_to_z
 
 LGR = logging.getLogger(__name__)
