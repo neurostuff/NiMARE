@@ -346,14 +346,20 @@ class ALE(CBMAEstimator):
         return images
 
 
-class ALESubtraction():
+class ALESubtraction(CBMAEstimator):
     """
     """
     def __init__(self, n_iters=10000):
         self.n_iters = n_iters
 
-    def fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
+    def fit(self, dataset, dataset2, image1=None, image2=None, ma_maps1=None,
             ma_maps2=None):
+        maps = self._fit(dataset, dataset2, image1, image2, ma_maps1, ma_maps2)
+        self.results = MetaResult(self, dataset.mask, maps)
+        return self.results
+
+    def _fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
+             ma_maps2=None):
         """
         Run a subtraction analysis comparing two groups of experiments within
         the dataset.
@@ -586,7 +592,7 @@ class SCALE(CBMAEstimator):
         else:
             self.n_cores = n_cores
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Perform specific coactivation likelihood estimation meta-analysis
         on dataset.
@@ -623,10 +629,10 @@ class SCALE(CBMAEstimator):
         if self.n_cores == 1:
             perm_scale_values = []
             for pp in tqdm(params, total=self.n_iters):
-                perm_scale_values.append(self._perm(pp))
+                perm_scale_values.append(self._run_permutation(pp))
         else:
             with mp.Pool(self.n_cores) as p:
-                perm_scale_values = list(tqdm(p.imap(self._perm, params), total=self.n_iters))
+                perm_scale_values = list(tqdm(p.imap(self._run_permutation, params), total=self.n_iters))
 
         perm_scale_values = np.stack(perm_scale_values)
 
@@ -644,7 +650,7 @@ class SCALE(CBMAEstimator):
                   'p': p_values,
                   'z': z_values,
                   'vthresh': vthresh_z_values}
-        self.results = MetaResult(self, self.mask, maps=images)
+        return images
 
     def _compute_ale(self, df=None, ma_maps=None):
         """
@@ -712,7 +718,7 @@ class SCALE(CBMAEstimator):
                              density=False)[0]
         return hist_
 
-    def _perm(self, params):
+    def _run_permutation(self, params):
         """
         Run a single random SCALE permutation of a dataset.
         """

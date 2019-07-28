@@ -34,15 +34,16 @@ class Fishers(IBMAEstimator):
     corr
     two_sided
     """
-    _inputs = {
-        'z_maps': ('maps', {'type': 'z'})
+    _required_inputs = {
+        'z_maps': ('image', 'z')
     }
 
     def __init__(self, two_sided=True):
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        return fishers(self.inputs_['z_maps'], two_sided=self.two_sided)
+        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
+        return fishers(z_maps, two_sided=self.two_sided)
 
 
 class Stouffers(IBMAEstimator):
@@ -61,19 +62,18 @@ class Stouffers(IBMAEstimator):
     Requirements:
         - z
     """
-    _inputs = {
-        'z_maps': ('maps', {'type': 'z'})
+    _required_inputs = {
+        'z_maps': ('image', 'z')
     }
 
     def __init__(self, inference='ffx', null='theoretical', n_iters=None,
-                 corr='FWE', two_sided=True):
+                 n_cores=-1, two_sided=True):
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
-        self.corr = corr
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Run a Stouffer's meta-analysis.
 
@@ -82,14 +82,9 @@ class Stouffers(IBMAEstimator):
         dataset : :obj:`nimare.dataset.Dataset`
             Dataset to analyze.
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
-        z_maps = apply_mask(z_maps, self.mask)
-        images = stouffers(z_maps, inference=self.inference, null=self.null,
-                           n_iters=self.n_iters, corr=self.corr,
-                           two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
+        return stouffers(z_maps, inference=self.inference, null=self.null,
+                         n_iters=self.n_iters, two_sided=self.two_sided)
 
 
 class WeightedStouffers(IBMAEstimator):
@@ -102,10 +97,15 @@ class WeightedStouffers(IBMAEstimator):
         - z
         - n
     """
+    _required_inputs = {
+        'z_maps': ('image', 'z'),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
     def __init__(self, two_sided=True):
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Run a weighted Stouffer's meta-analysis.
 
@@ -113,14 +113,9 @@ class WeightedStouffers(IBMAEstimator):
         ----------
         dataset
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
-        z_maps = apply_mask(z_maps, self.mask)
-        sample_sizes = self.dataset.get_metadata(self.dataset.ids, 'sample_sizes')
-        sample_sizes = np.array([np.mean(n) for n in sample_sizes])
-        results = weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=results)
+        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        return weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
 
 
 class RFX_GLM(IBMAEstimator):
@@ -130,15 +125,17 @@ class RFX_GLM(IBMAEstimator):
     Requirements:
         - con
     """
-    def __init__(self, null='theoretical', n_iters=None, corr='FWE',
-                 two_sided=True):
+    _required_inputs = {
+        'con_maps': ('image', 'con'),
+    }
+
+    def __init__(self, null='theoretical', n_iters=None, two_sided=True):
         self.null = null
         self.n_iters = n_iters
-        self.corr = corr
         self.two_sided = two_sided
         self.results = None
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Run an RFX GLM meta-analysis.
 
@@ -146,13 +143,9 @@ class RFX_GLM(IBMAEstimator):
         ----------
         dataset
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
-        con_maps = apply_mask(con_maps, self.mask)
-        images = rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
-                         corr=self.corr, two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        return rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
+                       two_sided=self.two_sided)
 
 
 def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,

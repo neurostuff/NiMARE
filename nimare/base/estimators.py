@@ -39,15 +39,14 @@ class Estimator(NiMAREBase):
             raise ValueError('Argument "dataset" must be a valid Dataset '
                              'object, not a {0}'.format(type(dataset)))
 
+        data = dataset.get(self._required_inputs)
         self.inputs_ = {}
-        for k, v in self._required_inputs.items():
-            data = dataset.get(v[0], **v[1])
-            if not data:
+        for k, v in data.items():
+            if not len(v):
                 raise ValueError("Estimator {0} requires input dataset to "
-                                 "contain {1} with filters {2}, but none "
-                                 "were found.".format(self.__class__.__name__,
-                                                      v[0], v[1]))
-            self.inputs_[k] = data
+                                 "contain {1}, but none were found.".format(
+                                    self.__class__.__name__, k))
+            self.inputs_[k] = v
 
     def fit(self, dataset):
         self._validate_input(dataset)

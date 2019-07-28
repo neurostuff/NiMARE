@@ -7,6 +7,15 @@ import nimare
 from nimare.meta import ibma
 
 
+def test_fishers():
+    """
+    Smoke test for Fisher's.
+    """
+    meta = ibma.Fishers()
+    meta.fit(pytest.dset_z)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+
+
 def test_z_perm():
     """
     Smoke test for z permutation.
@@ -40,15 +49,6 @@ def test_weighted_stouffers():
     Smoke test for Weighted Stouffer's.
     """
     meta = ibma.WeightedStouffers()
-    meta.fit(pytest.dset_z)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-
-
-def test_fishers():
-    """
-    Smoke test for Fisher's.
-    """
-    meta = ibma.Fishers()
     meta.fit(pytest.dset_z)
     assert isinstance(meta.results, nimare.base.MetaResult)
 

@@ -374,29 +374,43 @@ class Dataset(NiMAREBase):
         df = pd.concat([df, ijk], axis=1)
         self.coordinates = df
 
-    def get(self):
+    def get(self, dict_):
         """
         Retrieve files and/or metadata from the current Dataset.
 
-        Should this work like a grabbit Layout's get method?
-
         Parameters
         ----------
-        search : :obj:`str`
-            Search term for selecting contrasts within database.
-        target : :obj:`str`
-            Target space for outputted images and coordinates.
+        dict_ : :obj:`dict`
+            Dictionary specifying images or metadata to collect
 
         Returns
         -------
-        dset : :obj:`nimare.dataset.Dataset`
-            A Dataset object containing selection of dataset.
-
-        Warnings
-        --------
-        This method is not yet implemented.
+        results : :obj:`dict`
+            A dictionary of lists of requested data.
         """
-        pass
+        results = {}
+        results['id'] = self.ids
+        keep_idx = np.arange(len(self.ids), dtype=int)
+        for k in dict_:
+            vals = dict_[k]
+            if vals[0] == 'image':
+                temp = self.get_images(imtype=vals[1])
+            elif vals[0] == 'metadata':
+                temp = self.get_metadata(field=vals[1])
+            else:
+                raise ValueError('Input "{}" not understood.'.format(vals[0]))
+            results[k] = temp
+            temp_keep_idx = np.where([t is not None for t in temp])[0]
+            keep_idx = np.intersect1d(keep_idx, temp_keep_idx)
+
+        # reduce
+        if len(keep_idx) != len(self.ids):
+            LGR.info('Retaining {0}/{1} studies'.format(len(keep_idx),
+                                                        len(self.ids)))
+
+        for k in results:
+            results[k] = [results[k][i] for i in keep_idx]
+        return results
 
     def get_labels(self, ids=None):
         """

@@ -56,7 +56,6 @@ class Corrector(metaclass=ABCMeta):
         # If a correction method with the same name exists in the current
         # MetaEstimator, use it. Otherwise fall back on _transform.
         if (correction_method is not None and hasattr(est, correction_method)):
-            print(self.parameters)
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._validate_input(result)
@@ -124,13 +123,13 @@ class FDRCorrector(Corrector):
 
     _correction_method = '_fdr_correct'
 
-    def __init__(self, q=0.05, method='indep'):
-        self. q = q
+    def __init__(self, method='indep', **kwargs):
         self.method = method
+        self.parameters = kwargs
 
     @property
     def _name_suffix(self):
-        return '_corr-FDR_q-{}_method-{}'.format(self.q, self.method)
+        return '_corr-FDR_method-{}'.format(self.method)
 
     def _transform(self, result):
         p = result.maps['p']

@@ -108,7 +108,7 @@ def cbma_testdata1():
     df = pd.concat([df, ijk], axis=1)
 
     dset = DummyDataset(df, mask_img)
-    return dset
+    pytest.cbma_testdata1 = dset
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -131,4 +131,4 @@ def cbma_testdata2():
     df = pd.concat([df, ijk], axis=1)
 
     dset = DummyDataset(df, mask_img)
-    return dset
+    pytest.cbma_testdata2 = dset
