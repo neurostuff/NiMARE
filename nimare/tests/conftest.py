@@ -140,7 +140,7 @@ def cbma_testdata3():
     Reduced dataset for SCALE test.
     """
     mask_img = get_template(space='mni152_2mm', mask='brain')
-    mask_img = nib.Nifti1Image(np.ones((20, 20, 20), int), mask_img.affine)
+    mask_img = nib.Nifti1Image(np.ones((10, 10, 10), int), mask_img.affine)
     df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
                       data=[[1, -28, -20, -16, 100, 'mni'],
                             [2, -28, -20, -16, 100, 'mni'],
