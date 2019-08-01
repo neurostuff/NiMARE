@@ -5,6 +5,7 @@ docs/modules/
 docs/auto_examples/
 nimare/resources/data/neurovault-data/
 nimare/tests/data/downloaded/
+nimare/tests/resources/data/neurovault-data/
 .pytest_cache
 
 #

@@ -7,7 +7,6 @@ import logging
 
 import numpy as np
 from scipy import stats
-from statsmodels.sandbox.stats.multicomp import multipletests
 
 from ..stats import null_to_p, p_to_z
 from ..due import due, BibTeX
@@ -25,7 +24,7 @@ LGR = logging.getLogger(__name__)
               }
            """),
            description='Fishers citation.')
-def fishers(z_maps, corr='FWE', two_sided=True):
+def fishers(z_maps, two_sided=True):
     """
     Run a Fisher's image-based meta-analysis on z-statistics.
 
@@ -33,8 +32,6 @@ def fishers(z_maps, corr='FWE', two_sided=True):
     ----------
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistics.
-    corr : :obj:`str` or :obj:`None`, optional
-        Multiple comparisons correction method to employ. May be None.
     two_sided : :obj:`bool`, optional
         Default is True.
 
@@ -44,15 +41,6 @@ def fishers(z_maps, corr='FWE', two_sided=True):
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    if corr == 'FDR':
-        method = 'fdr_bh'
-    elif corr == 'FWE':
-        method = 'bonferroni'
-    elif corr is None:
-        method = None
-    else:
-        raise ValueError('{0} correction not supported.'.format(corr))
-
     # Get test-value signs for p-to-z conversion
     sign = np.sign(np.mean(z_maps, axis=0))
     sign[sign == 0] = 1
@@ -68,22 +56,10 @@ def fishers(z_maps, corr='FWE', two_sided=True):
         ffx_stat_map = -2 * np.sum(np.log(stats.norm.cdf(-z_maps, loc=0,
                                                          scale=1)), axis=0)
     p_map = stats.chi2.sf(ffx_stat_map, 2 * k)
+    z_map = p_to_z(p_map, tail='two') * sign
+    log_p_map = -np.log10(p_map)
 
-    # Multiple comparisons correction
-    if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False,
-                                            returnsorted=False)
-    else:
-        p_corr_map = p_map.copy()
-    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
-    log_p_map = -np.log10(p_corr_map)
-
-    images = {'ffx_stat': ffx_stat_map,
-              'p': p_corr_map,
-              'z': z_corr_map,
-              'log_p': log_p_map}
-    return images
+    return dict(ffx_stat=ffx_stat_map, p=p_map, z=z_map, log_p=log_p_map)
 
 
 @due.dcite(BibTeX("""
@@ -98,7 +74,7 @@ def fishers(z_maps, corr='FWE', two_sided=True):
            """),
            description='Stouffers citation.')
 def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
-              corr='FWE', two_sided=True):
+              two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
 
@@ -116,8 +92,6 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
     n_iters : :obj:`int` or :obj:`None`, optional
         The number of iterations to run in estimating the null distribution.
         Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
-    corr : :obj:`str` or :obj:`None`, optional
-        Multiple comparisons correction method to employ. May be None.
 
     Returns
     -------
@@ -125,15 +99,6 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    if corr == 'FDR':
-        method = 'fdr_bh'
-    elif corr == 'FWE':
-        method = 'bonferroni'
-    elif corr is None:
-        method = None
-    else:
-        raise ValueError('{0} correction not supported.'.format(corr))
-
     sign = np.sign(np.mean(z_maps, axis=0))
     sign[sign == 0] = 1
 
@@ -175,20 +140,12 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
         elif null != 'theoretical':
             raise ValueError('Input null must be "theoretical" or "empirical".')
 
-        # Multiple comparisons correction
-        if corr is not None:
-            _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05,
-                                                method=method, is_sorted=False,
-                                                returnsorted=False)
-        else:
-            p_corr_map = p_map.copy()
-
         # Convert p to z, preserving signs
-        z_corr_map = p_to_z(p_corr_map, tail='two') * sign
-        log_p_map = -np.log10(p_corr_map)
+        z_map = p_to_z(p_map, tail='two') * sign
+        log_p_map = -np.log10(p_map)
         images = {'t': t_map,
-                  'p': p_corr_map,
-                  'z': z_corr_map,
+                  'p': p_map,
+                  'z': z_map,
                   'log_p': log_p_map}
     elif inference == 'ffx':
         if null == 'theoretical':
@@ -203,20 +160,11 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
                 # one-tailed method
                 p_map = stats.norm.cdf(-z_map, loc=0, scale=1)
 
-            # Multiple comparisons correction
-            if corr is not None:
-                _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05,
-                                                    method=method,
-                                                    is_sorted=False,
-                                                    returnsorted=False)
-            else:
-                p_corr_map = p_map.copy()
-
             # Convert p to z, preserving signs
-            z_corr_map = p_to_z(p_corr_map, tail='two') * sign
-            log_p_map = -np.log10(p_corr_map)
-            images = {'z': z_corr_map,
-                      'p': p_corr_map,
+            z_map = p_to_z(p_map, tail='two') * sign
+            log_p_map = -np.log10(p_map)
+            images = {'z': z_map,
+                      'p': p_map,
                       'log_p': log_p_map}
         else:
             raise ValueError('Only theoretical null distribution may be used '
@@ -240,7 +188,7 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
              }
            """),
            description='Weighted Stouffers citation.')
-def weighted_stouffers(z_maps, sample_sizes, corr='FWE', two_sided=True):
+def weighted_stouffers(z_maps, sample_sizes, two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
 
@@ -251,8 +199,6 @@ def weighted_stouffers(z_maps, sample_sizes, corr='FWE', two_sided=True):
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
         A 1D array of sample sizes associated with contrasts in ``z_maps``.
         Must be in same order as rows in ``z_maps``.
-    corr : :obj:`str` or :obj:`None`, optional
-        Multiple comparisons correction method to employ. May be None.
 
     Returns
     -------
@@ -261,14 +207,6 @@ def weighted_stouffers(z_maps, sample_sizes, corr='FWE', two_sided=True):
         negative log(p) values.
     """
     assert z_maps.shape[0] == sample_sizes.shape[0]
-    if corr == 'FDR':
-        method = 'fdr_bh'
-    elif corr == 'FWE':
-        method = 'bonferroni'
-    elif corr is None:
-        method = None
-    else:
-        raise ValueError('{0} correction not supported.'.format(corr))
 
     weighted_z_maps = z_maps * np.sqrt(sample_sizes)[:, None]
     ffx_stat_map = np.sum(weighted_z_maps, axis=0) / np.sqrt(np.sum(sample_sizes))
@@ -280,28 +218,19 @@ def weighted_stouffers(z_maps, sample_sizes, corr='FWE', two_sided=True):
         # one-tailed method
         p_map = stats.norm.cdf(-ffx_stat_map, loc=0, scale=1)
 
-    # Multiple comparisons correction
-    if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False,
-                                            returnsorted=False)
-    else:
-        p_corr_map = p_map.copy()
-
     # Convert p to z, preserving signs
     sign = np.sign(ffx_stat_map)
     sign[sign == 0] = 1
-    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
-    log_p_map = -np.log10(p_corr_map)
+    z_map = p_to_z(p_map, tail='two') * sign
+    log_p_map = -np.log10(p_map)
     images = {'ffx_stat': ffx_stat_map,
-              'p': p_corr_map,
-              'z': z_corr_map,
+              'p': p_map,
+              'z': z_map,
               'log_p': log_p_map}
     return images
 
 
-def rfx_glm(con_maps, null='theoretical', n_iters=None,
-            corr='FWE', two_sided=True):
+def rfx_glm(con_maps, null='theoretical', n_iters=None, n_cores=-1, two_sided=True):
     """
     Run a random-effects (RFX) GLM on contrast maps.
 
@@ -315,8 +244,6 @@ def rfx_glm(con_maps, null='theoretical', n_iters=None,
     n_iters : :obj:`int` or :obj:`None`, optional
         The number of iterations to run in estimating the null distribution.
         Only used if ``null = 'empirical'``.
-    corr : :obj:`str` or :obj:`None`, optional
-        Multiple comparisons correction method to employ. May be None.
 
     Returns
     -------
@@ -324,15 +251,6 @@ def rfx_glm(con_maps, null='theoretical', n_iters=None,
         Dictionary object containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    if corr == 'FDR':
-        method = 'fdr_bh'
-    elif corr == 'FWE':
-        method = 'bonferroni'
-    elif corr is None:
-        method = None
-    else:
-        raise ValueError('{0} correction not supported.'.format(corr))
-
     # Normalize contrast maps to have unit variance
     con_maps = con_maps / np.std(con_maps, axis=1)[:, None]
     t_map, p_map = stats.ttest_1samp(con_maps, popmean=0, axis=0)
@@ -370,21 +288,13 @@ def rfx_glm(con_maps, null='theoretical', n_iters=None,
     elif null != 'theoretical':
         raise ValueError('Input null must be "theoretical" or "empirical".')
 
-    # Multiple comparisons correction
-    if corr is not None:
-        _, p_corr_map, _, _ = multipletests(p_map, alpha=0.05, method=method,
-                                            is_sorted=False,
-                                            returnsorted=False)
-    else:
-        p_corr_map = p_map.copy()
-
     # Convert p to z, preserving signs
     sign = np.sign(t_map)
     sign[sign == 0] = 1
-    z_corr_map = p_to_z(p_corr_map, tail='two') * sign
-    log_p_map = -np.log10(p_corr_map)
+    z_map = p_to_z(p_map, tail='two') * sign
+    log_p_map = -np.log10(p_map)
     images = {'t': t_map,
-              'z': z_corr_map,
-              'p': p_corr_map,
+              'z': z_map,
+              'p': p_map,
               'log_p': log_p_map}
     return images

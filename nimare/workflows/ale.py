@@ -8,7 +8,8 @@ from shutil import copyfile
 import click
 
 from ..io import convert_sleuth_to_dataset
-from ..meta.cbma import ALE
+from ..meta.cbma import ALE, ALESubtraction
+from ..correct import FWECorrector
 
 N_ITERS_DEFAULT = 10000
 CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
@@ -113,11 +114,13 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
         """
 
-        ale = ALE(n_iters=n_iters, voxel_thresh=v_thr, corr='FWE',
-                  n_cores=n_cores, kernel__fwhm=fwhm)
+        ale = ALE(kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
-        ale.fit(dset)
+        results = ale.fit(dset)
+        corr = FWECorrector(method='permutation', n_iters=n_iters,
+                            voxel_thresh=v_thr, n_cores=n_cores)
+        cres = corr.transform(results)
 
         boilerplate = boilerplate.format(
             n_exps=len(dset.ids),
@@ -188,11 +191,21 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
 25(1), 155-164.
         """
 
-        ale = ALE(n_iters=n_iters, voxel_thresh=v_thr, corr='FWE',
-                  n_cores=n_cores, kernel__fwhm=fwhm)
+        ale1 = ALE(kernel__fwhm=fwhm)
+        ale2 = ALE(kernel__fwhm=fwhm)
 
         click.echo("Performing meta-analysis...")
-        ale.fit(dset1, dset2)
+        res1 = ale1.fit(dset1)
+        res2 = ale2.fit(dset2)
+        corr = FWECorrector(method='permutation', n_iters=n_iters,
+                            voxel_thresh=v_thr, n_cores=n_cores)
+        cres1 = corr.transform(res1)
+        cres2 = corr.transform(res2)
+        sub = ALESubtraction(n_iters=n_iters)
+        sres = sub.fit(
+            ale1, ale2,
+            image1=cres1.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'),
+            image2=cres2.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'))
 
         boilerplate = boilerplate.format(
             n_exps1=len(dset1.ids),
@@ -216,10 +229,16 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         prefix += '_'
 
     click.echo("Saving output maps...")
-    ale.results.save_maps(output_dir=output_dir, prefix=prefix)
     if not sleuth_file2:
+        cres.save_maps(output_dir=output_dir, prefix=prefix)
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
     else:
+        prefix1 = os.path.splitext(os.path.basename(sleuth_file))[0] + '_'
+        prefix2 = os.path.splitext(os.path.basename(sleuth_file2))[0] + '_'
+        prefix3 = prefix + 'subtraction_'
+        cres1.save_maps(output_dir=output_dir, prefix=prefix1)
+        cres2.save_maps(output_dir=output_dir, prefix=prefix2)
+        sres.save_maps(output_dir=output_dir, prefix=prefix3)
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'group1_input_coordinates.txt'))
         copyfile(sleuth_file2, os.path.join(output_dir, prefix + 'group2_input_coordinates.txt'))
 

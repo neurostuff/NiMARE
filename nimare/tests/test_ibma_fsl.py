@@ -3,7 +3,26 @@ Test nimare.meta.ibma (image-based meta-analytic algorithms).
 """
 import pytest
 
+import nimare
 from nimare.meta import ibma
+
+
+def test_FFX_GLM():
+    """
+    Smoke test for FFX GLM.
+    """
+    meta = ibma.FFX_GLM()
+    res = meta.fit(pytest.dset_conse)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_MFX_GLM():
+    """
+    Smoke test for MFX GLM.
+    """
+    meta = ibma.MFX_GLM()
+    res = meta.fit(pytest.dset_conse)
+    assert isinstance(res, nimare.base.MetaResult)
 
 
 def test_ffx_glm():

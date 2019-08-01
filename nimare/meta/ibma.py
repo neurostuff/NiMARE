@@ -15,7 +15,7 @@ from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
-from ..base import MetaResult, IBMAEstimator
+from ..base import IBMAEstimator
 from ..stats import p_to_z
 
 LGR = logging.getLogger(__name__)
@@ -34,24 +34,16 @@ class Fishers(IBMAEstimator):
     corr
     two_sided
     """
-    def __init__(self, corr='FWE', two_sided=True):
-        self.corr = corr
+    _required_inputs = {
+        'z_maps': ('image', 'z')
+    }
+
+    def __init__(self, two_sided=True):
         self.two_sided = two_sided
 
-    def fit(self, dataset):
-        """
-        Run a Fisher's meta-analysis.
-
-        Parameters
-        ----------
-        dataset
-        """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
-        z_maps = apply_mask(z_maps, self.mask)
-        images = fishers(z_maps, corr=self.corr, two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+    def _fit(self, dataset):
+        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
+        return fishers(z_maps, two_sided=self.two_sided)
 
 
 class Stouffers(IBMAEstimator):
@@ -70,15 +62,18 @@ class Stouffers(IBMAEstimator):
     Requirements:
         - z
     """
+    _required_inputs = {
+        'z_maps': ('image', 'z')
+    }
+
     def __init__(self, inference='ffx', null='theoretical', n_iters=None,
-                 corr='FWE', two_sided=True):
+                 n_cores=-1, two_sided=True):
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
-        self.corr = corr
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Run a Stouffer's meta-analysis.
 
@@ -87,14 +82,9 @@ class Stouffers(IBMAEstimator):
         dataset : :obj:`nimare.dataset.Dataset`
             Dataset to analyze.
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
-        z_maps = apply_mask(z_maps, self.mask)
-        images = stouffers(z_maps, inference=self.inference, null=self.null,
-                           n_iters=self.n_iters, corr=self.corr,
-                           two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
+        return stouffers(z_maps, inference=self.inference, null=self.null,
+                         n_iters=self.n_iters, two_sided=self.two_sided)
 
 
 class WeightedStouffers(IBMAEstimator):
@@ -107,10 +97,15 @@ class WeightedStouffers(IBMAEstimator):
         - z
         - n
     """
+    _required_inputs = {
+        'z_maps': ('image', 'z'),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
     def __init__(self, two_sided=True):
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Run a weighted Stouffer's meta-analysis.
 
@@ -118,14 +113,9 @@ class WeightedStouffers(IBMAEstimator):
         ----------
         dataset
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        z_maps = self.dataset.get_images(self.dataset.ids, imtype='z')
-        z_maps = apply_mask(z_maps, self.mask)
-        sample_sizes = self.dataset.get_metadata(self.dataset.ids, 'sample_sizes')
-        sample_sizes = np.array([np.mean(n) for n in sample_sizes])
-        results = weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=results)
+        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        return weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
 
 
 class RFX_GLM(IBMAEstimator):
@@ -135,15 +125,17 @@ class RFX_GLM(IBMAEstimator):
     Requirements:
         - con
     """
-    def __init__(self, null='theoretical', n_iters=None, corr='FWE',
-                 two_sided=True):
+    _required_inputs = {
+        'con_maps': ('image', 'con'),
+    }
+
+    def __init__(self, null='theoretical', n_iters=None, two_sided=True):
         self.null = null
         self.n_iters = n_iters
-        self.corr = corr
         self.two_sided = two_sided
         self.results = None
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Run an RFX GLM meta-analysis.
 
@@ -151,13 +143,9 @@ class RFX_GLM(IBMAEstimator):
         ----------
         dataset
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
-        con_maps = apply_mask(con_maps, self.mask)
-        images = rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
-                         corr=self.corr, two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        return rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
+                       two_sided=self.two_sided)
 
 
 def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
@@ -326,7 +314,7 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
 
 
 def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
-            work_dir='mfx_glm', two_sided=True):
+            work_dir='ffx_glm', two_sided=True):
     """
     Run a fixed-effects GLM on contrast and standard error images.
 
@@ -359,7 +347,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         negative log(p) values.
     """
     result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
-                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
 
@@ -372,31 +360,27 @@ class FFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, sample_size=None, equal_var=True, corr='FWE',
-                 two_sided=True):
-        self.sample_size = sample_size
-        self.equal_var = equal_var
-        self.corr = corr
+    _required_inputs = {
+        'con_maps': ('image', 'con'),
+        'se_maps': ('image', 'se'),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
+    def __init__(self, cdt=0.01, q=0.05, two_sided=True):
+        self.cdt = cdt
+        self.q = q
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Perform meta-analysis given parameters.
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-
-        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
-        var_maps = self.dataset.get_images(self.dataset.ids, imtype='con_se')
-        if self.sample_size is not None:
-            sample_sizes = np.repeat(self.sample_size, len(self.datasets.ids))
-        else:
-            sample_sizes = self.dataset.get_metadata(self.datasets.ids, 'sample_sizes')
-            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
-        images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, corr=self.corr,
-                         two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        images = ffx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
+                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        return images
 
 
 def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
@@ -433,7 +417,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         negative log(p) values.
     """
     result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
-                     cdt=0.01, q=0.05, work_dir='mfx_glm', two_sided=True)
+                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
 
@@ -446,27 +430,24 @@ class MFX_GLM(IBMAEstimator):
         - con
         - se
     """
-    def __init__(self, sample_size=None, equal_var=True, corr='FWE',
-                 two_sided=True):
-        self.sample_size = sample_size
-        self.equal_var = equal_var
-        self.corr = corr
+    _required_inputs = {
+        'con_maps': ('image', 'con'),
+        'se_maps': ('image', 'se'),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
+    def __init__(self, cdt=0.01, q=0.05, two_sided=True):
+        self.cdt = cdt
+        self.q = q
         self.two_sided = two_sided
 
-    def fit(self, dataset):
+    def _fit(self, dataset):
         """
         Perform meta-analysis given parameters.
         """
-        self.dataset = dataset
-        self.mask = self.dataset.mask
-        con_maps = self.dataset.get_images(self.dataset.ids, imtype='con')
-        var_maps = self.dataset.get_images(self.dataset.ids, imtype='con_se')
-        if self.sample_size is not None:
-            sample_sizes = np.repeat(self.sample_size, len(self.dataset.ids))
-        else:
-            sample_sizes = self.dataset.get_metadata(self.dataset.ids, 'sample_sizes')
-            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
-        images = ffx_glm(con_maps, var_maps, sample_sizes, self.mask,
-                         equal_var=self.equal_var, corr=self.corr,
-                         two_sided=self.two_sided)
-        self.results = MetaResult(self, self.mask, maps=images)
+        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        images = mfx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
+                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        return images
