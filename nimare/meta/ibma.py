@@ -351,15 +351,16 @@ class FFX(IBMAEstimator):
         """
         Perform meta-analysis given parameters.
         """
-        if self.method == 'fsl':
-            con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
-            var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
-            sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = fsl_glm(con_maps, var_maps, sample_sizes, dataset.mask,
-                         inference='ffx', cdt=self.cdt, q=self.q,
-                         two_sided=self.two_sided)
+        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
 
-        return images
+        if self.method == 'fsl':
+            sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+            return fsl_glm(con_maps, var_maps, sample_sizes, dataset.mask,
+                           inference='ffx', cdt=self.cdt, q=self.q,
+                           two_sided=self.two_sided)
+        else:
+            return ffx(con_maps, var_maps, self.two_sided)
 
 
 # def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
