@@ -5,7 +5,8 @@ import numpy as np
 from scipy import stats
 from scipy.special import ndtri
 
-from .due import due, BibTeX, Doi
+from .due import due
+from . import references
 
 
 def one_way(data, n):
@@ -110,21 +111,9 @@ def p_to_z(p, tail='two'):
     return z
 
 
-@due.dcite(BibTeX("""
-           @article{hughett2007accurate,
-             title={Accurate Computation of the F-to-z and t-to-z Transforms
-                    for Large Arguments},
-             author={Hughett, Paul and others},
-             journal={Journal of Statistical Software},
-             volume={23},
-             number={1},
-             pages={1--5},
-             year={2007},
-             publisher={Foundation for Open Access Statistics}
-           }
-           """),
+@due.dcite(references.T2Z_TRANSFORM,
            description='Introduces T-to-Z transform.')
-@due.dcite(Doi('10.5281/zenodo.32508'),
+@due.dcite(references.T2Z_IMPLEMENTATION,
            description='Python implementation of T-to-Z transform.')
 def t_to_z(t_values, dof):
     """

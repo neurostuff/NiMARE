@@ -11,28 +11,15 @@ import pandas as pd
 
 from ...base import AnnotationModel
 from ...utils import get_resource_path
-from ...due import due, BibTeX, Doi
+from ...due import due
+from ... import references
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(BibTeX("""
-    @article{blei2003latent,
-      title={Latent dirichlet allocation},
-      author={Blei, David M and Ng, Andrew Y and Jordan, Michael I},
-      journal={Journal of machine Learning research},
-      volume={3},
-      number={Jan},
-      pages={993--1022},
-      year={2003}}
-    """), description='Introduces LDA.')
-@due.dcite(BibTeX("""
-    @article{mallettoolbox,
-      title={MALLET: A Machine Learning for Language Toolkit.},
-      author={McCallum, Andrew K},
-      year={2002}}
-    """), description='Citation for MALLET toolbox')
-@due.dcite(Doi('10.1371/journal.pcbi.1002707'),
+@due.dcite(references.LDA, description='Introduces LDA.')
+@due.dcite(references.MALLET, description='Citation for MALLET toolbox')
+@due.dcite(references.LDAMODEL,
            description='First use of LDA for automated annotation of '
            'neuroimaging literature.')
 class LDAModel(AnnotationModel):

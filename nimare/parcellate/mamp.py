@@ -9,11 +9,11 @@ from nilearn.masking import apply_mask, unmask
 
 from ..base import Parcellator
 from ..meta.cbma.kernel import ALEKernel
-from ..due import due, Doi
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('10.1016/j.neuroimage.2015.08.027'),
-           description='Introduces the MAMP algorithm.')
+@due.dcite(references.MAMP, description='Introduces the MAMP algorithm.')
 class MAMP(Parcellator):
     """
     Meta-analytic activation modeling-based parcellation (MAMP) [1]_.

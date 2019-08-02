@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans, SpectralClustering, DBSCAN
 from sklearn.metrics import silhouette_score
 
-from ..due import due, Doi
+from ..due import due
+from .. import references
 from ..meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
 from ..io import convert_sleuth_to_dataset
 
@@ -25,9 +26,9 @@ from ..io import convert_sleuth_to_dataset
 @click.option('--coord/--img', required=True, default=False, help='Is input data image- or coordinate-based?')
 @click.option('--algorithm', '-a', default='kmeans', type=click.Choice(['kmeans', 'dbscan', 'spectral']), help='Clustering algorithm to be used, from sklearn.cluster.')
 @click.option('--clust_range', nargs=2, type=int, help='Select a range for k over which clustering solutions will be evaluated (e.g., 2 10 will evaluate solutions with k = 2 clusters to k = 10 clusters).')
-@due.dcite(Doi('10.1016/j.neuroimage.2015.06.044'),
+@due.dcite(references.META_CLUSTER,
            description='Introduces meta-analytic clustering analysis; hierarchically clusering face paradigms.')
-@due.dcite(Doi('10.1162/netn_a_00050'),
+@due.dcite(references.META_CLUSTER2,
            description='Performs the specific meta-analytic clustering approach included here.')
 def meta_cluster_workflow(database, output_dir=None, output_prefix=None,
                           kernel='ALEKernel', coord=True, algorithm='kmeans',

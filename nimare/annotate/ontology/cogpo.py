@@ -1,13 +1,13 @@
 """
 Automated annotation of Cognitive Paradigm Ontology labels.
 """
-from ...due import due, Doi
+from ...due import due
+from ... import references
 
 
-@due.dcite(Doi('10.1007/s12021-011-9126-x'),
+@due.dcite(references.COGNITIVE_PARADIGM_ONTOLOGY,
            description='Introduces the Cognitive Paradigm Ontology.')
-@due.dcite(Doi('10.3389/fnins.2019.00494'),
-           description='Introduces ATHENA classifiers.')
+@due.dcite(references.ATHENA, description='Introduces ATHENA classifiers.')
 def extract_cogpo():
     """
     Predict Cognitive Paradigm Ontology [1]_ labels with ATHENA classifiers

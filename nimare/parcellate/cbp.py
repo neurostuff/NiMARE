@@ -10,11 +10,11 @@ from nilearn.masking import apply_mask, unmask
 
 from ..base import Parcellator
 from ..meta.cbma.ale import SCALE
-from ..due import due, Doi
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('10.1002/hbm.22138'),
-           description='Introduces CBP.')
+@due.dcite(references.CBP, description='Introduces CBP.')
 class CoordCBP(Parcellator):
     """
     Coordinate-based coactivation-based parcellation [1]_.

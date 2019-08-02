@@ -16,7 +16,8 @@ from lzma import LZMAFile
 from tqdm.auto import tqdm
 
 from .peaks2maps import model_fn
-from ...due import due, Doi
+from ...due import due
+from ... import references
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 LGR = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ def _get_checkpoint_dir():
     return checkpoint_dir
 
 
-@due.dcite(Doi('10.7490/f1000research.1116395.1'),
+@due.dcite(references.PEAKS2MAPS,
            description='Transforms coordinates of peaks to unthresholded maps using a deep '
                        'convolutional neural net.')
 def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
@@ -191,7 +192,7 @@ def compute_ma(shape, ijk, kernel):
     return ma_values
 
 
-@due.dcite(Doi('10.1002/hbm.20718'),
+@due.dcite(references.ALE_KERNEL,
            description='Introduces sample size-dependent kernels to ALE.')
 def get_ale_kernel(img, n=None, fwhm=None):
     """

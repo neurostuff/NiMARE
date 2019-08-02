@@ -1,3 +1,7 @@
+"""
+Functions for the Peaks2Maps transformer.
+"""
+
 
 def model_fn(features, labels, mode, params):
     """
