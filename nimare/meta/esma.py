@@ -14,6 +14,48 @@ from ..due import due, BibTeX
 LGR = logging.getLogger(__name__)
 
 
+def ffx(con_maps, var_maps=None, weights=None, two_sided=True):
+    """
+    Run a fixed-effects meta-analysis using inverse-variance weighting.
+
+    Parameters
+    ----------
+    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast maps in the same space, after masking.
+    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast variance maps in the same space, after
+        masking. Must match shape and order of ``con_maps``.
+    weights : (n_contrasts, ) :obj:`numpy.ndarray`
+        An optional 1D array to use as study weights. If None, defaults to
+        using var_maps or sample_sizes (if provided).
+    two_sided : :obj:`bool`, optional
+        Whether analysis should be two-sided (True) or one-sided (False).
+
+    Returns
+    -------
+    result : :obj:`dict`
+        Dictionary containing maps for meta-analytic estimate, p-values,
+        z-score, standard error, and negative log(p) values.
+    """
+    if weights is None:
+        if var_maps is None:
+            raise ValueError("One of var_maps or weights must be provided!")
+        weights = 1. / var_maps
+
+    est = weights.dot(con_maps).sum() / weights.sum()
+    se = np.sqrt(1/weights.sum())
+    z = est / se
+
+    if two_sided:
+        p = 2 * stats.norm.pdf(np.abs(z))
+    else:
+        p = 1 - stats.norm.pdf(z)
+
+    log_p = np.log10(p)
+
+    return dict(estimate=est, p=p, z=z, log_p=log_p, se=se)
+
+
 @due.dcite(BibTeX("""
            @article{fisher1932statistical,
               title={Statistical methods for research workers, Edinburgh:
