@@ -14,7 +14,7 @@ from scipy import stats
 from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 
-from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
+from .esma import fishers, stouffers, weighted_stouffers, rfx_glm, ffx
 from ..base import IBMAEstimator
 from ..stats import p_to_z
 
@@ -313,112 +313,91 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     return images
 
 
-def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
-            work_dir='ffx_glm', two_sided=True):
+class FFX(IBMAEstimator):
     """
-    Run a fixed-effects GLM on contrast and standard error images.
+    Fixed-effects estimator for image-based meta-analysis.
 
     Parameters
     ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``con_maps``.
-    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
-        ``var_maps``.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
-    cdt : :obj:`float`, optional
-        Cluster-defining p-value threshold.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
-    work_dir : :obj:`str`, optional
-        Working directory for FSL flameo outputs.
+    method : {None, 'fsl'}
+        The estimation method to use. By default, uses the standard
+        fixed-effects meta-analysis model. If 'fsl', fits a fixed-effects
+        GLM using FSL.
     two_sided : :obj:`bool`, optional
         Whether analysis should be two-sided (True) or one-sided (False).
+    cdt : :obj:`float`, optional
+        Cluster-defining p-value threshold (only used for method='fsl').
+    q : :obj:`float`, optional
+        Alpha for multiple comparisons correction (only used for method='fsl').
 
-    Returns
-    -------
-    result : :obj:`dict`
-        Dictionary containing maps for test statistics, p-values, and
-        negative log(p) values.
-    """
-    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
-                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
-    return result
-
-
-class FFX_GLM(IBMAEstimator):
-    """
-    An image-based meta-analytic test using contrast and standard error images.
-    Don't estimate variance, just take from first level
-
-    Requirements:
-        - con
-        - se
+    Required inputs
+    ---------------
+    The FFX class requires the following images to be present:
+        con: contrast estimate
+        var: variance of the contrast estimate
     """
     _required_inputs = {
         'con_maps': ('image', 'con'),
-        'se_maps': ('image', 'se'),
-        'sample_sizes': ('metadata', 'sample_sizes')
+        'var_maps': ('image', 'var')
     }
 
-    def __init__(self, cdt=0.01, q=0.05, two_sided=True):
+    def __init__(self, method=None, two_sided=True, cdt=0.01, q=0.05):
+        self.method = method.lower()
+        self.two_sided = two_sided
         self.cdt = cdt
         self.q = q
-        self.two_sided = two_sided
 
     def _fit(self, dataset):
         """
         Perform meta-analysis given parameters.
         """
-        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
-        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
-        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = ffx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
-                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        if self.method == 'fsl':
+            con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+            var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
+            sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        images = fsl_glm(con_maps, var_maps, sample_sizes, dataset.mask,
+                         inference='ffx', cdt=self.cdt, q=self.q,
+                         two_sided=self.two_sided)
+
         return images
 
 
-def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
-            work_dir='mfx_glm', two_sided=True):
-    """
-    Run a mixed-effects GLM on contrast and standard error images.
+# def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
+#             work_dir='mfx_glm', two_sided=True):
+#     """
+#     Run a mixed-effects GLM on contrast and standard error images.
 
-    Parameters
-    ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``con_maps``.
-    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
-        ``var_maps``.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
-    cdt : :obj:`float`, optional
-        Cluster-defining p-value threshold.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
-    work_dir : :obj:`str`, optional
-        Working directory for FSL flameo outputs.
-    two_sided : :obj:`bool`, optional
-        Whether analysis should be two-sided (True) or one-sided (False).
+#     Parameters
+#     ----------
+#     con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+#         A 2D array of contrast maps in the same space, after masking.
+#     var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+#         A 2D array of contrast standard error maps in the same space, after
+#         masking. Must match shape and order of ``con_maps``.
+#     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+#         A 1D array of sample sizes associated with contrasts in ``con_maps``
+#         and ``var_maps``. Must be in same order as rows in ``con_maps`` and
+#         ``var_maps``.
+#     mask : :obj:`nibabel.Nifti1Image`
+#         Mask image, used to unmask results maps in compiling output.
+#     cdt : :obj:`float`, optional
+#         Cluster-defining p-value threshold.
+#     q : :obj:`float`, optional
+#         Alpha for multiple comparisons correction.
+#     work_dir : :obj:`str`, optional
+#         Working directory for FSL flameo outputs.
+#     two_sided : :obj:`bool`, optional
+#         Whether analysis should be two-sided (True) or one-sided (False).
 
-    Returns
-    -------
-    result : :obj:`dict`
-        Dictionary containing maps for test statistics, p-values, and
-        negative log(p) values.
-    """
-    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
-                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
-    return result
+#     Returns
+#     -------
+#     result : :obj:`dict`
+#         Dictionary containing maps for test statistics, p-values, and
+#         negative log(p) values.
+#     """
+#     result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
+#                      cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
+#     return result
 
 
 class MFX_GLM(IBMAEstimator):
