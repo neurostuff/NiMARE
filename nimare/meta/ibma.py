@@ -428,6 +428,7 @@ class MFX_GLM(IBMAEstimator):
         con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
         var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = mfx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
-                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        images = fsl_glm(con_maps, var_maps, sample_sizes, dataset.mask,
+                         inference='mfx', cdt=self.cdt, q=self.q,
+                         two_sided=self.two_sided)
         return images
