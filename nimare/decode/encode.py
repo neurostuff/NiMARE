@@ -54,7 +54,7 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
 
     Returns
     -------
-    img : :obj:`nibabel.nifti.Nifti1Image`
+    img : :obj:`nibabel.nifti1.Nifti1Image`
         The encoded image.
     topic_weights : :obj:`numpy.ndarray` of :obj:`float`
         The weights of the topics used in encoding.

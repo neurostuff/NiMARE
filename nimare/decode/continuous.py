@@ -22,7 +22,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     ----------
     model : :obj:`nimare.annotate.topic.GCLDAModel`
         Model object needed for decoding.
-    image : :obj:`nibabel.nifti.Nifti1Image` or :obj:`str`
+    image : :obj:`nibabel.nifti1.Nifti1Image` or :obj:`str`
         Whole-brain image to decode into text. Must be in same space as
         model and dataset. Model's template available in
         `model.dataset.mask_img`.
