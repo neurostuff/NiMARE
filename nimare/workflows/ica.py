@@ -1,9 +1,10 @@
-from ..due import due, Doi
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('10.1162/jocn_a_00077'),
+@due.dcite(references.META_ICA,
            description='Introduces metaICA using BrainMap database.')
-@due.dcite(Doi('10.1162/jocn_a_00077'),
+@due.dcite(references.META_ICA2,
            description='Compares results of BrainMap metaICA with resting state ICA.')
 def meta_ica_workflow():
     """

@@ -14,12 +14,13 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from .kernel import MKDAKernel, KDAKernel
 from ...base import MetaResult, CBMAEstimator, KernelTransformer
 from ...stats import null_to_p, p_to_z, one_way, two_way
-from ...due import due, Doi
+from ...due import due
+from ... import references
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
+@due.dcite(references.MKDA, description='Introduces MKDA.')
 class MKDADensity(CBMAEstimator):
     r"""
     Multilevel kernel density analysis- Density analysis [1]_.
@@ -183,7 +184,7 @@ class MKDADensity(CBMAEstimator):
         return images
 
 
-@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
+@due.dcite(references.MKDA, description='Introduces MKDA.')
 class MKDAChi2(CBMAEstimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis [1]_.
@@ -447,10 +448,8 @@ class MKDAChi2(CBMAEstimator):
         return images
 
 
-@due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
-           description='Introduces the KDA algorithm.')
-@due.dcite(Doi('10.1016/j.neuroimage.2004.03.052'),
-           description='Also introduces the KDA algorithm.')
+@due.dcite(references.KDA1, description='Introduces the KDA algorithm.')
+@due.dcite(references.KDA2, description='Also introduces the KDA algorithm.')
 class KDA(CBMAEstimator):
     r"""
     Kernel density analysis [1]_.

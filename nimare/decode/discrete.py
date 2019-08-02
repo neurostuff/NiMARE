@@ -11,11 +11,11 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .utils import weight_priors
 from ..stats import p_to_z, one_way, two_way
-from ..due import due, Doi
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('10.1371/journal.pcbi.1005649'),
-           description='Citation for GCLDA decoding.')
+@due.dcite(references.GCLDA_DECODING, description='Citation for GCLDA decoding.')
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     r"""
     Perform image-to-text decoding for discrete image inputs (e.g., regions
@@ -111,7 +111,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     return decoded_df, topic_weights
 
 
-@due.dcite(Doi('10.1007/s00429-013-0698-0'),
+@due.dcite(references.BRAINMAP_DECODING,
            description='Citation for BrainMap-style decoding.')
 def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
                     frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
@@ -219,7 +219,7 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     return out_df
 
 
-@due.dcite(Doi('10.1038/nmeth.1635'), description='Introduces Neurosynth.')
+@due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
 def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
                       frequency_threshold=0.001, prior=0.5, u=0.05,
                       correction='fdr_bh'):

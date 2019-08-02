@@ -13,33 +13,20 @@ from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel
 from ...base import MetaResult, CBMAEstimator, KernelTransformer
-from ...due import due, Doi, BibTeX
+from ...due import due
+from ... import references
 from ...stats import null_to_p, p_to_z
 from ...utils import round2
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(BibTeX("""
-           @article{turkeltaub2002meta,
-             title={Meta-analysis of the functional neuroanatomy of single-word
-                    reading: method and validation},
-             author={Turkeltaub, Peter E and Eden, Guinevere F and Jones,
-                     Karen M and Zeffiro, Thomas A},
-             journal={Neuroimage},
-             volume={16},
-             number={3},
-             pages={765--780},
-             year={2002},
-             publisher={Elsevier}
-           }
-           """),
-           description='Introduces ALE.')
-@due.dcite(Doi('10.1002/hbm.21186'),
+@due.dcite(references.ALE1, description='Introduces ALE.')
+@due.dcite(references.ALE2,
            description='Modifies ALE algorithm to eliminate within-experiment '
                        'effects and generate MA maps based on subject group '
                        'instead of experiment.')
-@due.dcite(Doi('10.1016/j.neuroimage.2011.09.017'),
+@due.dcite(references.ALE3,
            description='Modifies ALE algorithm to allow FWE correction and to '
                        'more quickly and accurately generate the null '
                        'distribution for significance testing.')
@@ -517,7 +504,7 @@ class ALESubtraction(CBMAEstimator):
         self.results = MetaResult(self, self.mask, maps=images)
 
 
-@due.dcite(Doi('10.1016/j.neuroimage.2014.06.007'),
+@due.dcite(references.SCALE,
            description='Introduces the specific co-activation likelihood '
                        'estimation (SCALE) algorithm.')
 class SCALE(CBMAEstimator):

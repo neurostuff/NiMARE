@@ -10,7 +10,8 @@ import numpy as np
 import nibabel as nib
 from nilearn import datasets
 
-from .due import due, Doi
+from .due import due
+from . import references
 
 LGR = logging.getLogger(__name__)
 
@@ -112,11 +113,11 @@ def mm2vox(xyz, affine):
     return ijk
 
 
-@due.dcite(Doi('10.1002/hbm.20345'),
+@due.dcite(references.LANCASTER_TRANSFORM,
            description='Introduces the Lancaster MNI-to-Talairach transform, '
                        'as well as its inverse, the Talairach-to-MNI '
                        'transform.')
-@due.dcite(Doi('10.1016/j.neuroimage.2010.02.048'),
+@due.dcite(references.LANCASTER_TRANSFORM_VALIDATION,
            description='Validates the Lancaster MNI-to-Talairach and '
                        'Talairach-to-MNI transforms.')
 def tal2mni(coords):
@@ -168,11 +169,11 @@ def tal2mni(coords):
     return out_coords
 
 
-@due.dcite(Doi('10.1002/hbm.20345'),
+@due.dcite(references.LANCASTER_TRANSFORM,
            description='Introduces the Lancaster MNI-to-Talairach transform, '
                        'as well as its inverse, the Talairach-to-MNI '
                        'transform.')
-@due.dcite(Doi('10.1016/j.neuroimage.2010.02.048'),
+@due.dcite(references.LANCASTER_TRANSFORM_VALIDATION,
            description='Validates the Lancaster MNI-to-Talairach and '
                        'Talairach-to-MNI transforms.')
 def mni2tal(coords):

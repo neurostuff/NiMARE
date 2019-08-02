@@ -2,11 +2,11 @@
 Generate a Text2Brain vector model.
 """
 from ...base import AnnotationModel
-from ...due import due, Doi
+from ...due import due
+from ... import references
 
 
-@due.dcite(Doi('https://doi.org/10.1007/978-3-030-00931-1_67'),
-           description='Introduced text2brain models for annotation.')
+@due.dcite(references.TEXT2BRAIN)
 class Text2BrainModel(AnnotationModel):
     """
     Generate a Text2Brain vector model [1]_.

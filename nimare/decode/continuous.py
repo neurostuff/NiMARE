@@ -8,10 +8,11 @@ from nilearn.masking import apply_mask
 
 from .utils import weight_priors
 from ..meta.cbma import MKDAChi2
-from ..due import due, Doi
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('10.1371/journal.pcbi.1005649'),
+@due.dcite(references.GCLDA_DECODING,
            description='Describes decoding methods using GC-LDA.')
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""
@@ -101,8 +102,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     return decoded_df, topic_weights
 
 
-@due.dcite(Doi('10.1038/nmeth.1635'),
-           description='Introduces Neurosynth.')
+@due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
 def corr_decode(img, dataset, features=None, frequency_threshold=0.001,
                 meta_estimator=None, target_image='specificity_z'):
     """

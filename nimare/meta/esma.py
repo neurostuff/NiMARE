@@ -9,21 +9,13 @@ import numpy as np
 from scipy import stats
 
 from ..stats import null_to_p, p_to_z
-from ..due import due, BibTeX
+from ..due import due
+from .. import references
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(BibTeX("""
-           @article{fisher1932statistical,
-              title={Statistical methods for research workers, Edinburgh:
-                     Oliver and Boyd, 1925},
-              author={Fisher, RA},
-              journal={Google Scholar},
-              year={1932}
-              }
-           """),
-           description='Fishers citation.')
+@due.dcite(references.FISHERS, description='Fishers citation.')
 def fishers(z_maps, two_sided=True):
     """
     Run a Fisher's image-based meta-analysis on z-statistics.
@@ -62,17 +54,7 @@ def fishers(z_maps, two_sided=True):
     return dict(ffx_stat=ffx_stat_map, p=p_map, z=z_map, log_p=log_p_map)
 
 
-@due.dcite(BibTeX("""
-           @article{stouffer1949american,
-             title={The American soldier: Adjustment during army life.(Studies
-                    in social psychology in World War II), Vol. 1},
-             author={Stouffer, Samuel A and Suchman, Edward A and DeVinney,
-                     Leland C and Star, Shirley A and Williams Jr, Robin M},
-             year={1949},
-             publisher={Princeton Univ. Press}
-             }
-           """),
-           description='Stouffers citation.')
+@due.dcite(references.STOUFFERS, description='Stouffers citation.')
 def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
               two_sided=True):
     """
@@ -176,20 +158,7 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
     return images
 
 
-@due.dcite(BibTeX("""
-           @article{zaykin2011optimally,
-             title={Optimally weighted Z-test is a powerful method for
-                    combining probabilities in meta-analysis},
-             author={Zaykin, Dmitri V},
-             journal={Journal of evolutionary biology},
-             volume={24},
-             number={8},
-             pages={1836--1841},
-             year={2011},
-             publisher={Wiley Online Library}
-             }
-           """),
-           description='Weighted Stouffers citation.')
+@due.dcite(references.WEIGHTED_STOUFFERS, description='Weighted Stouffers citation.')
 def weighted_stouffers(z_maps, sample_sizes, two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.

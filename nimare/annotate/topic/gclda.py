@@ -9,15 +9,15 @@ import pandas as pd
 import nibabel as nib
 from scipy.stats import multivariate_normal
 
-from ...due import due, Doi
+from ...due import due
 from ...base import AnnotationModel
 from ...utils import get_template
+from ... import references
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(Doi('10.1371/journal.pcbi.1005649'),
-           description='Introduces GC-LDA decoding.')
+@due.dcite(references.GCLDAMODEL)
 class GCLDAModel(AnnotationModel):
     """
     Generate a generalized correspondence latent Dirichlet allocation
@@ -635,7 +635,7 @@ class GCLDAModel(AnnotationModel):
                 self.topics['regions_sigma'][i_topic, 0, ...] = sigma1
                 self.topics['regions_sigma'][i_topic, 1, ...] = sigma2
 
-    @due.dcite(Doi('10.1145/1577069.1755845'),
+    @due.dcite(references.LOG_LIKELIHOOD,
                description='Describes method for computing log-likelihood '
                            'used in model.')
     def compute_log_likelihood(self, model=None, update_vectors=True):
