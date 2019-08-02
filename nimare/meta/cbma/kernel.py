@@ -295,7 +295,7 @@ class Peaks2MapsKernel(KernelTransformer):
         for id_, data in coordinates.groupby('id'):
             mm_coords = []
             for coord in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                mm_coords.append(vox2mm(coord, self.mask.affine))
+                mm_coords.append(vox2mm(coord, dataset.mask.affine))
             coordinates_list.append(mm_coords)
 
         imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
@@ -303,16 +303,16 @@ class Peaks2MapsKernel(KernelTransformer):
         if self.resample_to_mask:
             resampled_imgs = []
             for img in imgs:
-                resampled_imgs.append(resample_to_img(img, self.mask))
+                resampled_imgs.append(resample_to_img(img, dataset.mask))
             imgs = resampled_imgs
 
         if masked:
             masked_images = []
             for img in imgs:
                 if not self.resample_to_mask:
-                    mask = resample_to_img(self.mask, imgs[0], interpolation='nearest')
+                    mask = resample_to_img(dataset.mask, imgs[0], interpolation='nearest')
                 else:
-                    mask = self.mask
+                    mask = dataset.mask
                 masked_images.append(math_img('map*mask', map=img, mask=mask))
             imgs = masked_images
 
