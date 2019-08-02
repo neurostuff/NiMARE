@@ -16,6 +16,22 @@ LGR = logging.getLogger(__name__)
 
 
 def get_template(space='mni152_1mm', mask=None):
+    """
+    Load template file.
+
+    Parameters
+    ----------
+    space : {'mni152_1mm', 'mni152_2mm', 'ale_2mm'}, optional
+        Template to load. Default is 'mni152_1mm'.
+    mask : {None, 'brain', 'gm'}, optional
+        Whether to return the raw template (None), a brain mask ('brain'), or
+        a gray-matter mask ('gm'). Default is None.
+
+    Returns
+    -------
+    img : :obj:`nibabel.nifti1.Nifti1Image`
+        Template image object.
+    """
     if space == 'mni152_1mm':
         if mask is None:
             img = nib.load(datasets.fetch_icbm152_2009()['t1'])

@@ -26,7 +26,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     ----------
     model : :obj:`nimare.annotate.topic.GCLDAModel`
         Model object needed for decoding.
-    roi : :obj:`nibabel.nifti.Nifti1Image` or :obj:`str`
+    roi : :obj:`nibabel.nifti1.Nifti1Image` or :obj:`str`
         Binary image to decode into text. If string, path to a file with
         the binary image.
     topic_priors : :obj:`numpy.ndarray` of :obj:`float`, optional
