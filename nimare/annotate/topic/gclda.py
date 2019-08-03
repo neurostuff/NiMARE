@@ -232,11 +232,13 @@ class GCLDAModel(AnnotationModel):
         # arrays
         #   regions_mu = (n_topics, n_regions, 1, n_peak_dims)
         #   regions_sigma = (n_topics, n_regions, n_peak_dims, n_peak_dims)
-        self.topics['regions_mu'] = np.zeros((self.params['n_topics'],  # (\mu^{(t)}_r)
+        # (\mu^{(t)}_r)
+        self.topics['regions_mu'] = np.zeros((self.params['n_topics'],
                                               self.params['n_regions'],
                                               1,
                                               self.data['peak_vals'].shape[1]))
-        self.topics['regions_sigma'] = np.zeros((self.params['n_topics'],  # (\sigma^{(t)}_r)
+        # (\sigma^{(t)}_r)
+        self.topics['regions_sigma'] = np.zeros((self.params['n_topics'],
                                                  self.params['n_regions'],
                                                  self.data['peak_vals'].shape[1],
                                                  self.data['peak_vals'].shape[1]))
@@ -286,14 +288,13 @@ class GCLDAModel(AnnotationModel):
             p_topic_g_doc = self.topics['n_peak_tokens_doc_by_topic'][doc] + self.params['gamma']
 
             # Sample a topic from p(t|d) for the z-assignment
-            probs = np.cumsum(p_topic_g_doc)  # Compute a cdf of the sampling
-                                              # distribution for z
+            # Compute a cdf of the sampling distribution for z
+            probs = np.cumsum(p_topic_g_doc)
             # Which elements of cdf are less than random sample?
-            sample_locs = probs < np.random.rand() * probs[-1]  # pylint: disable=no-member
-            sample_locs = np.where(sample_locs)  # How many elements of cdf are
-                                                 # less than sample
-            topic = len(sample_locs[0])  # z = # elements of cdf less than
-                                         # rand-sample
+            sample_locs = np.where(probs < np.random.rand() * probs[-1])[0]  # pylint: disable=no-member
+            # How many elements of cdf are less than sample
+            # z = # elements of cdf less than rand-sample
+            topic = len(sample_locs)
 
             # Update model assignment vectors and count-matrices to reflect z
             self.topics['wtoken_topic_idx'][i_wtoken] = topic  # Word-token -> topic assignment (z_i)
@@ -324,7 +325,7 @@ class GCLDAModel(AnnotationModel):
             1 = a little, 2 = a lot. Default value is 2.
         """
         for i in range(self.iter, n_iters):
-            self.update(loglikely_freq=loglikely_freq, verbose=verbose)
+            self._update(loglikely_freq=loglikely_freq, verbose=verbose)
 
         # TODO: Handle this more elegantly
         (p_topic_g_voxel, p_voxel_g_topic,
@@ -334,7 +335,7 @@ class GCLDAModel(AnnotationModel):
         self.p_topic_g_word = p_topic_g_word
         self.p_word_g_topic = p_word_g_topic
 
-    def update(self, loglikely_freq=1, verbose=2):
+    def _update(self, loglikely_freq=1, verbose=2):
         """
         Run a complete update cycle (sample z, sample y&r, update regions).
 
@@ -368,8 +369,8 @@ class GCLDAModel(AnnotationModel):
         if self.iter % loglikely_freq == 0:
             if verbose == 2:
                 LGR.info('Iter {0:04d}: Computing log-likelihood'.format(self.iter))
-            self.compute_log_likelihood()  # Compute log-likelihood of
-                                           # model in current state
+            # Compute log-likelihood of model in current state
+            self.compute_log_likelihood()
             if verbose > 0:
                 LGR.info('Iter {0:04d} Log-likely: x = {1:10.1f}, w = {2:10.1f}, '
                          'tot = {3:10.1f}'.format(self.iter, self.loglikely_x[-1],

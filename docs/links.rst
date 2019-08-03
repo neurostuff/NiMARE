@@ -36,7 +36,7 @@
 
 .. _peaks2maps: https://doi.org/10.7490/f1000research.1116395.1
 
-.. _NiMARE Documentation: documentation.html
+.. _NiMARE Documentation: about.html
 
 .. _Anaconda: https://www.anaconda.com/download/#macos
 
@@ -45,3 +45,5 @@
 .. _Cognitive Paradigm Ontology: http://www.cogpo.org/
 
 .. _Sleuth: http://www.brainmap.org/software.html#Sleuth
+
+.. _scikit-learn: https://scikit-learn.org/stable/developers/index.html

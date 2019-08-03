@@ -37,10 +37,11 @@ To install NiMARE check out our `installation guide`_.
   :maxdepth: 2
   :caption: Contents:
 
-  installation
   about
+  installation
   cli
   contributing
+  dev_guide
   api
 
 Indices and tables
