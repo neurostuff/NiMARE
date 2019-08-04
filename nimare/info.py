@@ -1,5 +1,7 @@
 import json
 import os.path as op
+import sys
+sys.path.append(op.dirname(__file__))
 
 from _version import get_versions
 __version__ = get_versions()['version']
