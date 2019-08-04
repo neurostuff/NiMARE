@@ -5,6 +5,7 @@
 
 def main():
     """ Install entry-point """
+    import pprint
     import versioneer
     from io import open
     import os.path as op
@@ -14,6 +15,7 @@ def main():
     ver_file = op.join('nimare', 'info.py')
     with open(ver_file) as f:
         exec(f.read())
+    vars = locals()
 
     pkg_data = {
         'nimare': [
@@ -35,23 +37,23 @@ def main():
         cmdclass = versioneer.get_cmdclass()
 
     setup(
-        name=__packagename__,
-        version=__version__,
-        description=__description__,
-        long_description=__longdesc__,
-        author=__author__,
-        author_email=__email__,
-        maintainer=__maintainer__,
-        maintainer_email=__email__,
-        url=__url__,
-        license=__license__,
-        classifiers=CLASSIFIERS,
-        download_url=DOWNLOAD_URL,
+        name=vars['PACKAGENAME'],
+        version=vars['VERSION'],
+        description=vars['DESCRIPTION'],
+        long_description=vars['LONGDESC'],
+        author=vars['AUTHOR'],
+        author_email=vars['EMAIL'],
+        maintainer=vars['MAINTAINER'],
+        maintainer_email=vars['EMAIL'],
+        url=vars['URL'],
+        license=vars['LICENSE'],
+        classifiers=vars['CLASSIFIERS'],
+        download_url=vars['DOWNLOAD_URL'],
         # Dependencies handling
-        install_requires=REQUIRES,
-        tests_require=TESTS_REQUIRES,
-        extras_require=EXTRA_REQUIRES,
-        entry_points=ENTRY_POINTS,
+        install_requires=vars['REQUIRES'],
+        tests_require=vars['TESTS_REQUIRES'],
+        extras_require=vars['EXTRA_REQUIRES'],
+        entry_points=vars['ENTRY_POINTS'],
         packages=find_packages(exclude=("tests",)),
         package_data=pkg_data,
         zip_safe=False,

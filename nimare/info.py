@@ -1,31 +1,32 @@
 import json
 import os.path as op
-import sys
-sys.path.append(op.dirname(__file__))
+import importlib.util
 
-from _version import get_versions
-__version__ = get_versions()['version']
-del get_versions
+spec = importlib.util.spec_from_file_location(
+    '_version', op.join(op.dirname(__file__), 'nimare/_version.py'))
+_version = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(_version)
+
+VERSION = _version.get_versions()['version']
+del _version
 
 # Get list of authors from Zenodo file
-code_dir = op.dirname(__file__)
-par_dir = op.abspath(op.join(code_dir, op.pardir))
-with open(op.join(par_dir, '.zenodo.json'), 'r') as fo:
+with open(op.join(op.dirname(__file__), '.zenodo.json'), 'r') as fo:
     zenodo_info = json.load(fo)
 authors = [author['name'] for author in zenodo_info['creators']]
 authors = [author.split(', ')[1] + ' ' + author.split(', ')[0] for author in authors]
 
-__author__ = 'NiMARE developers'
-__copyright__ = 'Copyright 2018--, NiMARE developers'
-__credits__ = authors
-__license__ = 'MIT'
-__maintainer__ = 'Taylor Salo'
-__email__ = 'tsalo006@fiu.edu'
-__status__ = 'Prototype'
-__url__ = 'https://github.com/neurostuff/NiMARE'
-__packagename__ = 'NiMARE'
-__description__ = 'NiMARE: Neuroimaging Meta-Analysis Research Environment'
-__longdesc__ = """
+AUTHOR = 'NiMARE developers'
+COPYRIGHT = 'Copyright 2018--, NiMARE developers'
+CREDITS = authors
+LICENSE = 'MIT'
+MAINTAINER = 'Taylor Salo'
+EMAIL = 'tsalo006@fiu.edu'
+STATUS = 'Prototype'
+URL = 'https://github.com/neurostuff/NiMARE'
+PACKAGENAME = 'NiMARE'
+DESCRIPTION = 'NiMARE: Neuroimaging Meta-Analysis Research Environment'
+LONGDESC = """
 NiMARE
 ======
 NiMARE (Neuroimaging Meta-Analysis Research Environment) is a Python package
@@ -44,7 +45,7 @@ Copyright (c) 2018--, NiMARE developers
 
 DOWNLOAD_URL = (
     'https://github.com/neurostuff/{name}/archive/{ver}.tar.gz'.format(
-        name=__packagename__, ver=__version__))
+        name=PACKAGENAME, ver=VERSION))
 
 REQUIRES = [
     'click',
