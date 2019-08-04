@@ -10,23 +10,10 @@ def main():
     import os.path as op
     from inspect import getfile, currentframe
     from setuptools import setup, find_packages
-    from nimare.info import (
-        __packagename__,
-        __version__,
-        __author__,
-        __email__,
-        __maintainer__,
-        __license__,
-        __description__,
-        __longdesc__,
-        __url__,
-        DOWNLOAD_URL,
-        CLASSIFIERS,
-        REQUIRES,
-        TESTS_REQUIRES,
-        EXTRA_REQUIRES,
-        ENTRY_POINTS,
-    )
+
+    ver_file = op.join('nimare', 'info.py')
+    with open(ver_file) as f:
+        exec(f.read())
 
     pkg_data = {
         'nimare': [
