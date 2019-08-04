@@ -1,7 +1,7 @@
 import json
 import os.path as op
 
-from ._version import get_versions
+from _version import get_versions
 __version__ = get_versions()['version']
 del get_versions
 
