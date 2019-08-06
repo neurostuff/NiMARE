@@ -139,14 +139,17 @@ def convert_sleuth_to_dict(text_file):
 
     # Split into experiments
     data = data[1:]
-
     exp_idx = []
     for i in np.arange(0, len(data)):
-        if data[i].startswith('//') and data[i+1].startswith('//') and data[i+2].startswith('//') == False:
-                exp_idx.append(i)
-    start_idx1 = exp_idx
-    end_idx = start_idx1[1:] + [len(data) + 1]
-    split_idx = zip(start_idx1, end_idx)
+        if data[i].startswith('//') and data[i+1].startswith('// Subjects') and data[i-1].startswith('//') == False:
+            exp_idx.append(i)
+        elif data[i].startswith('//') and i+2 < len(data) and data[i+2].startswith('// Subjects'):
+            exp_idx.append(i)
+        else:
+            pass
+    start_idx = exp_idx
+    end_idx = start_idx[1:] + [len(data) + 1]
+    split_idx = zip(start_idx, end_idx)
 
     dict_ = {}
     for i_exp, exp_idx in enumerate(split_idx):
