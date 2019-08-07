@@ -185,7 +185,7 @@ def convert_sleuth_to_dict(text_file):
                 table = '\n'.join([fmt.format(*row) for row in strs])
                 raise Exception('Conversion to numpy array failed for study '
                                 '"{0}". Coords:\n{1}'.format(study_info,
-                                                            table))
+                                                             table))
 
             x, y, z = list(xyz[:, 0]), list(xyz[:, 1]), list(xyz[:, 2])
 
