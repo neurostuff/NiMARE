@@ -125,7 +125,7 @@ def convert_sleuth_to_dict(text_file):
     study_name, _ = op.splitext(filename)
 
     with open(text_file, 'r') as file_object:
-      data = file_object.read()
+        data = file_object.read()
 
     data = [line.rstrip() for line in re.split('\n\r|\r\n|\n|\r', data)]
     data = [line for line in data if line]
@@ -134,8 +134,8 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ['MNI', 'TAL', 'Talairach']
     if space not in SPACE_OPTS:
-      raise Exception('Space {0} unknown. Options supported: '
-                      '{0}.'.format(space, ', '.format(SPACE_OPTS)))
+        raise Exception('Space {0} unknown. Options supported: '
+                        '{0}.'.format(space, ', '.format(SPACE_OPTS)))
 
     # Split into experiments
     data = data[1:]
@@ -153,55 +153,55 @@ def convert_sleuth_to_dict(text_file):
 
     dict_ = {}
     for i_exp, exp_idx in enumerate(split_idx):
-      exp_data = data[exp_idx[0]:exp_idx[1]]
-      if exp_data:
-          header_idx = [i for i in range(len(exp_data)) if exp_data[i].startswith('//')]
-          study_info_idx = header_idx[:-1]
-          n_idx = header_idx[-1]
-          study_info = [exp_data[i].replace('//', '').strip() for i in study_info_idx]
-          study_info = ' '.join(study_info)
-          study_name = study_info.split(':')[0]
-          contrast_name = ':'.join(study_info.split(':')[1:]).strip()
-          sample_size = int(exp_data[n_idx].replace(
-              ' ', '').replace('//Subjects=', ''))
-          xyz = exp_data[n_idx + 1:]  # Coords are everything after study info and n
-          xyz = [row.split('\t') for row in xyz]
-          correct_shape = np.all([len(coord) == 3 for coord in xyz])
-          if not correct_shape:
-              all_shapes = np.unique([len(coord) for coord in xyz]).astype(
-                  str)  # pylint: disable=no-member
-              raise Exception('Coordinates for study "{0}" are not all '
-                              'correct length. Lengths detected: '
-                              '{1}.'.format(study_info,
-                                            ', '.join(all_shapes)))
+        exp_data = data[exp_idx[0]:exp_idx[1]]
+        if exp_data:
+            header_idx = [i for i in range(len(exp_data)) if exp_data[i].startswith('//')]
+            study_info_idx = header_idx[:-1]
+            n_idx = header_idx[-1]
+            study_info = [exp_data[i].replace('//', '').strip() for i in study_info_idx]
+            study_info = ' '.join(study_info)
+            study_name = study_info.split(':')[0]
+            contrast_name = ':'.join(study_info.split(':')[1:]).strip()
+            sample_size = int(exp_data[n_idx].replace(
+                ' ', '').replace('//Subjects=', ''))
+            xyz = exp_data[n_idx + 1:]  # Coords are everything after study info and n
+            xyz = [row.split('\t') for row in xyz]
+            correct_shape = np.all([len(coord) == 3 for coord in xyz])
+            if not correct_shape:
+                all_shapes = np.unique([len(coord) for coord in xyz]).astype(
+                    str)  # pylint: disable=no-member
+                raise Exception('Coordinates for study "{0}" are not all '
+                                'correct length. Lengths detected: '
+                                '{1}.'.format(study_info,
+                                              ', '.join(all_shapes)))
 
-          try:
-              xyz = np.array(xyz, dtype=float)
-          except:
-              # Prettify xyz
-              strs = [[str(e) for e in row] for row in xyz]
-              lens = [max(map(len, col)) for col in zip(*strs)]
-              fmt = '\t'.join('{{:{}}}'.format(x) for x in lens)
-              table = '\n'.join([fmt.format(*row) for row in strs])
-              raise Exception('Conversion to numpy array failed for study '
-                              '"{0}". Coords:\n{1}'.format(study_info,
-                                                           table))
+            try:
+                xyz = np.array(xyz, dtype=float)
+            except:
+                # Prettify xyz
+                strs = [[str(e) for e in row] for row in xyz]
+                lens = [max(map(len, col)) for col in zip(*strs)]
+                fmt = '\t'.join('{{:{}}}'.format(x) for x in lens)
+                table = '\n'.join([fmt.format(*row) for row in strs])
+                raise Exception('Conversion to numpy array failed for study '
+                                '"{0}". Coords:\n{1}'.format(study_info,
+                                                            table))
 
-          x, y, z = list(xyz[:, 0]), list(xyz[:, 1]), list(xyz[:, 2])
+            x, y, z = list(xyz[:, 0]), list(xyz[:, 1]), list(xyz[:, 2])
 
-          if study_name not in dict_.keys():
-              dict_[study_name] = {'contrasts': {}}
-          dict_[study_name]['contrasts'][contrast_name] = {
-              'coords': {},
-              'sample_sizes': [],
-          }
-          dict_[study_name]['contrasts'][contrast_name]['coords'][
-              'space'] = space
-          dict_[study_name]['contrasts'][contrast_name]['coords']['x'] = x
-          dict_[study_name]['contrasts'][contrast_name]['coords']['y'] = y
-          dict_[study_name]['contrasts'][contrast_name]['coords']['z'] = z
-          dict_[study_name]['contrasts'][contrast_name][
-              'sample_sizes'] = [sample_size]
+            if study_name not in dict_.keys():
+                dict_[study_name] = {'contrasts': {}}
+            dict_[study_name]['contrasts'][contrast_name] = {
+                'coords': {},
+                'sample_sizes': [],
+                }
+            dict_[study_name]['contrasts'][contrast_name]['coords'][
+                'space'] = space
+            dict_[study_name]['contrasts'][contrast_name]['coords']['x'] = x
+            dict_[study_name]['contrasts'][contrast_name]['coords']['y'] = y
+            dict_[study_name]['contrasts'][contrast_name]['coords']['z'] = z
+            dict_[study_name]['contrasts'][contrast_name][
+                'sample_sizes'] = [sample_size]
     return dict_
 
 
