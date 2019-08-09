@@ -89,7 +89,8 @@ EXTRA_REQUIRES = {
         'sphinx>=1.5.3',
         'sphinx_rtd_theme',
         'sphinx-argparse',
-        'numpydoc'
+        'numpydoc',
+        'm2r'
     ],
     'tests': TESTS_REQUIRES,
     'duecredit': ['duecredit'],
