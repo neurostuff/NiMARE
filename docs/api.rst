@@ -1,6 +1,8 @@
 API
 ===
 
+.. _api_dataset_ref:
+
 :mod:`nimare.dataset`: Dataset IO
 --------------------------------------------------
 
@@ -8,16 +10,16 @@ API
    :no-members:
    :no-inherited-members:
 
+.. currentmodule:: nimare.dataset
+
 .. autosummary:: nimare.dataset
    :toctree: generated/
    :template: class.rst
 
    nimare.dataset.Dataset
 
- .. currentmodule:: nimare
 
- .. _calibration_ref:
-
+.. _api_meta_ref:
 
 :mod:`nimare.meta`: Meta-analytic algorithms
 --------------------------------------------------
@@ -25,6 +27,8 @@ API
 .. automodule:: nimare.meta
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.meta
 
 .. autosummary:: nimare.meta
    :toctree: generated/
@@ -37,10 +41,27 @@ API
    nimare.meta.cbma.mkda
    nimare.meta.cbma.model
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
+.. _api_correct_ref:
 
+:mod:`nimare.correct`: Multiple comparisons correction
+------------------------------------------------------
+
+.. automodule:: nimare.correct
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare.correct
+
+.. autosummary:: nimare.correct
+   :toctree: generated/
+   :template: class.rst
+
+   nimare.correct.FWECorrector
+   nimare.correct.FDRCorrector
+
+
+.. _api_annotate_ref:
 
 :mod:`nimare.annotate`: Automated annotation
 --------------------------------------------------
@@ -48,6 +69,8 @@ API
 .. automodule:: nimare.annotate
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.annotate
 
 .. autosummary:: nimare.annotate
    :toctree: generated/
@@ -58,10 +81,8 @@ API
    nimare.annotate.vector
    nimare.annotate.text
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_decode_ref:
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
@@ -69,6 +90,8 @@ API
 .. automodule:: nimare.decode
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.decode
 
 .. autosummary:: nimare.decode
    :toctree: generated/
@@ -78,10 +101,8 @@ API
    nimare.decode.continuous
    nimare.decode.encode
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_parcellate_ref:
 
 :mod:`nimare.parcellate`: Meta-analytic parcellation
 ----------------------------------------------------
@@ -89,6 +110,8 @@ API
 .. automodule:: nimare.parcellate
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.parcellate
 
 .. autosummary:: nimare.parcellate
    :toctree: generated/
@@ -98,10 +121,8 @@ API
    nimare.parcellate.mamp
    nimare.parcellate.mapbot
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_io_ref:
 
 :mod:`nimare.io`: Input/Output
 -----------------------------------------------------
@@ -109,6 +130,8 @@ API
 .. automodule:: nimare.io
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.io
 
 .. autosummary:: nimare.io
    :toctree: generated/
@@ -119,10 +142,8 @@ API
    nimare.io.convert_sleuth_to_json
    nimare.io.convert_sleuth_to_dataset
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_stats_ref:
 
 :mod:`nimare.stats`: Statistical functions
 -----------------------------------------------------
@@ -130,6 +151,8 @@ API
 .. automodule:: nimare.stats
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.stats
 
 .. autosummary:: nimare.stats
    :toctree: generated/
@@ -143,10 +166,8 @@ API
    nimare.stats.t_to_z
    nimare.stats.fdr
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_utils_ref:
 
 :mod:`nimare.utils`: Utility functions and submodules
 -----------------------------------------------------
@@ -154,6 +175,8 @@ API
 .. automodule:: nimare.utils
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.utils
 
 .. autosummary:: nimare.utils
    :toctree: generated/
@@ -168,16 +191,16 @@ API
    nimare.utils.mni2tal
    nimare.utils.get_resource_path
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_base_ref:
 
 :mod:`nimare.base`: Base classes
 --------------------------------------------------
 .. automodule:: nimare.base
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare.base
 
 .. autosummary:: nimare.base
    :toctree: generated/
@@ -188,7 +211,3 @@ API
    nimare.base.decode
    nimare.base.meta
    nimare.base.misc
-
-.. currentmodule:: nimare
-
-.. _calibration_ref:

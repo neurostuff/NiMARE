@@ -1,5 +1,5 @@
 """
-Automated annotation tools.
+Automated annotation tools
 """
 import warnings
 

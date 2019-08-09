@@ -1,5 +1,5 @@
 """
-Functional decoding tools.
+Functional decoding tools
 """
 import warnings
 
