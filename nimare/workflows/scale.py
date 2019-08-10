@@ -15,7 +15,7 @@ from ..meta.cbma.ale import SCALE
 LGR = logging.getLogger(__name__)
 
 
-def scale_workflow(database, baseline, output_dir=None, prefix=None,
+def scale_workflow(dataset_file, baseline, output_dir=None, prefix=None,
                    n_iters=2500, v_thr=0.001):
     """
     Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
@@ -24,10 +24,10 @@ def scale_workflow(database, baseline, output_dir=None, prefix=None,
     --------
     This method is not yet implemented.
     """
-    if database.endswith('.json'):
-        dset = Dataset(database, target='mni152_2mm')
-    if database.endswith('.txt'):
-        dset = convert_sleuth_to_dataset(database, target='mni152_2mm')
+    if dataset_file.endswith('.json'):
+        dset = Dataset(dataset_file, target='mni152_2mm')
+    if dataset_file.endswith('.txt'):
+        dset = convert_sleuth_to_dataset(dataset_file, target='mni152_2mm')
 
     boilerplate = """
 A specific coactivation likelihood estimation (SCALE; Langner et al., 2014)
@@ -61,17 +61,17 @@ rates. NeuroImage, 99, 559-570.
     estimator.fit(dset.ids, voxel_thresh=v_thr, n_iters=n_iters, n_cores=2)
 
     if output_dir is None:
-        output_dir = os.path.dirname(database)
+        output_dir = os.path.dirname(dataset_file)
     else:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     if prefix is None:
-        base = os.path.basename(database)
+        base = os.path.basename(dataset_file)
         prefix, _ = os.path.splitext(base)
         prefix += '_'
 
     estimator.results.save_maps(output_dir=output_dir, prefix=prefix)
-    copyfile(database, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
+    copyfile(dataset_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
 
     LGR.info('Workflow completed.')
     LGR.info(boilerplate)

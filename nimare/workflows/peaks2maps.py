@@ -1,4 +1,6 @@
 """
+Workflow for contrast permutation meta-analysis on images constructed from
+coordinates using the Peaks2Maps kernel.
 """
 import os
 import logging
