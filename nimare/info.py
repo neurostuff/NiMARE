@@ -48,7 +48,6 @@ DOWNLOAD_URL = (
         name=PACKAGENAME, ver=VERSION))
 
 REQUIRES = [
-    'click',
     'cognitiveatlas',
     'fuzzywuzzy',
     'matplotlib',
