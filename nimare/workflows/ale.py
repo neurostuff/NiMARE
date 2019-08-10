@@ -2,60 +2,29 @@
 Workflow for running an ALE meta-analysis from a Sleuth text file.
 """
 import os
+import logging
 import pathlib
 from shutil import copyfile
-
-import click
 
 from ..io import convert_sleuth_to_dataset
 from ..meta.cbma import ALE, ALESubtraction
 from ..correct import FWECorrector
 
-N_ITERS_DEFAULT = 10000
-CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
+LGR = logging.getLogger(__name__)
 
 
-@click.command(name='ale',
-               short_help='Run activation likelihood estimation (ALE) on Sleuth text file. '
-                          'A permutation-based meta-analysis of coordinates that uses '
-                          '3D Gaussians to model activation.',
-               help='Method for performing coordinate based meta analysis that uses a convolution'
-                    'with a 3D Gaussian to model activation. Statistical inference is performed '
-                    'using a permutation based approach with Family Wise Error multiple '
-                    'comparison correction.')
-@click.argument('sleuth_file', type=click.Path(exists=True))
-@click.option('--output_dir', help="Where to put the output maps.")
-@click.option('--prefix', help="Common prefix for output maps.")
-@click.option('--file2', 'sleuth_file2', default=None, show_default=True,
-              help="Optional second Sleuth file for subtraction analysis.")
-@click.option('--n_iters', default=N_ITERS_DEFAULT, show_default=True,
-              help="Number of iterations for permutation testing.")
-@click.option('--v_thr', default=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-              show_default=True,
-              help="Voxel p-value threshold used to create clusters.")
-@click.option('--fwhm', default=None, type=float,
-              show_default=True,
-              help='Override sample size-based kernel determination with a '
-                   'single FWHM (in mm) applied to all experiments. Useful '
-                   'when sample size is not available for all data.')
-@click.option('--n_cores', default=-1,
-              show_default=True,
-              help="Number of processes to use for meta-analysis. If -1, use "
-                   "all available cores.")
 def ale_sleuth_workflow(sleuth_file, sleuth_file2=None, output_dir=None,
-                        prefix=None,
-                        n_iters=N_ITERS_DEFAULT,
-                        v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
+                        prefix=None, n_iters=10000, v_thr=0.001,
                         fwhm=None, n_cores=-1):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """
-    click.echo("Loading coordinates...")
+    LGR.info('Loading coordinates...')
 
     if fwhm:
-        fwhm_str = "of {0} mm".format(fwhm)
+        fwhm_str = 'of {0} mm'.format(fwhm)
     else:
-        fwhm_str = "determined by sample size"
+        fwhm_str = 'determined by sample size'
 
     if not sleuth_file2:
         dset = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
@@ -116,7 +85,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 
         ale = ALE(kernel__fwhm=fwhm)
 
-        click.echo("Performing meta-analysis...")
+        LGR.info('Performing meta-analysis...')
         results = ale.fit(dset)
         corr = FWECorrector(method='permutation', n_iters=n_iters,
                             voxel_thresh=v_thr, n_cores=n_cores)
@@ -194,7 +163,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         ale1 = ALE(kernel__fwhm=fwhm)
         ale2 = ALE(kernel__fwhm=fwhm)
 
-        click.echo("Performing meta-analysis...")
+        LGR.info('Performing meta-analysis...')
         res1 = ale1.fit(dset1)
         res2 = ale2.fit(dset2)
         corr = FWECorrector(method='permutation', n_iters=n_iters,
@@ -228,7 +197,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         prefix, _ = os.path.splitext(base)
         prefix += '_'
 
-    click.echo("Saving output maps...")
+    LGR.info('Saving output maps...')
     if not sleuth_file2:
         cres.save_maps(output_dir=output_dir, prefix=prefix)
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
@@ -242,5 +211,5 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         copyfile(sleuth_file, os.path.join(output_dir, prefix + 'group1_input_coordinates.txt'))
         copyfile(sleuth_file2, os.path.join(output_dir, prefix + 'group2_input_coordinates.txt'))
 
-    click.echo("Workflow completed.")
-    click.echo(boilerplate)
+    LGR.info('Workflow completed.')
+    LGR.info(boilerplate)

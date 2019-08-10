@@ -16,7 +16,7 @@ from ..io import convert_sleuth_to_dataset
                short_help='clusters experiments based on similarity'
                           'of activation patterns, to investigate '
                           'heterogeneity across a meta-analytic dataset',
-               help='Method for investigating recurrent patterns of activation accross a '
+               help='Method for investigating recurrent patterns of activation across a '
                     'meta-analytic dataset, thus identifying trends across a collection of '
                     'experiments.')
 @click.argument('database', required=True, type=click.Path(exists=True, readable=True))
@@ -110,14 +110,14 @@ def meta_cluster_workflow(database, output_dir=None, output_prefix=None,
             clusters.append(list(np.where(labels[i] == j)[0]))
         clusters_idx['Solution {0}'.format(i)] = clusters
 
-    variation_of_infofmation = {}
+    variation_of_information = {}
     for i in k[:-1]:
         j = clusters_idx['Solution {0}'.format(i)]
         z = clusters_idx['Solution {0}'.format(i + 1)]
         var_info = VI(j, z)
-        variation_of_infofmation[i + 1] = var_info
+        variation_of_information[i + 1] = var_info
 
-    vi = pd.Series(variation_of_infofmation, name='Variation of Information')
+    vi = pd.Series(variation_of_information, name='Variation of Information')
 
     metrics = pd.concat([vi, silhouettes], axis=1)
     metrics.to_csv('{0}/{1}_metrics.csv'.format(output_dir, output_prefix))

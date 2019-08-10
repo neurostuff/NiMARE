@@ -1,45 +1,22 @@
 """
-
 """
 import os
+import logging
 import pathlib
 from shutil import copyfile
-
-import click
 
 from ..dataset import Dataset
 from ..meta.cbma import ALE
 
-N_ITERS_DEFAULT = 10000
-CLUSTER_FORMING_THRESHOLD_P_DEFAULT = 0.001
+LGR = logging.getLogger(__name__)
 
 
-@click.command(name='macm',
-               short_help='Run a meta-analytic coactivation modeling (MACM) '
-                          'analysis using activation likelihood estimation '
-                          '(ALE) on a NiMARE dataset file and a target mask.')
-@click.argument('dataset_file', type=click.Path(exists=True))
-@click.option('--mask', '--mask_file', type=click.Path(exists=True))
-@click.option('--output_dir', help="Where to put the output maps.")
-@click.option('--prefix', help="Common prefix for output maps.")
-@click.option('--n_iters', default=N_ITERS_DEFAULT, show_default=True,
-              help="Number of iterations for permutation testing.")
-@click.option('--v_thr', default=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-              show_default=True,
-              help="Voxel p-value threshold used to create clusters.")
-@click.option('--n_cores', default=-1,
-              show_default=True,
-              help="Number of processes to use for meta-analysis. If -1, use "
-                   "all available cores.")
-def macm_workflow(dataset_file, mask_file, output_dir=None,
-                  prefix=None,
-                  n_iters=N_ITERS_DEFAULT,
-                  v_thr=CLUSTER_FORMING_THRESHOLD_P_DEFAULT,
-                  n_cores=-1):
+def macm_workflow(dataset_file, mask_file, output_dir=None, prefix=None,
+                  n_iters=10000, v_thr=0.001, n_cores=-1):
     """
     Perform MACM with ALE algorithm.
     """
-    click.echo("Loading coordinates...")
+    LGR.info('Loading coordinates...')
     dset = Dataset(dataset_file)
     sel_ids = dset.get_studies_by_mask(mask_file)
 
@@ -47,7 +24,7 @@ def macm_workflow(dataset_file, mask_file, output_dir=None,
     n_subs_db = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
     sel_coords = dset.coordinates.loc[dset.coordinates['id'].isin(sel_ids)]
     n_subs_sel = sel_coords.drop_duplicates('id')['n'].astype(float).astype(int).sum()
-    click.echo("{0} studies selected out of {1}.".format(len(sel_ids),
+    LGR.info('{0} studies selected out of {1}.'.format(len(sel_ids),
                                                          len(dset.ids)))
 
     boilerplate = """
@@ -122,7 +99,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 
     ale = ALE(dset)
 
-    click.echo("Performing meta-analysis...")
+    LGR.info('Performing meta-analysis...')
     ale.fit(n_iters=n_iters, ids=sel_ids, voxel_thresh=v_thr, corr='FWE',
             n_cores=n_cores)
 
@@ -146,8 +123,8 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         prefix, _ = os.path.splitext(base)
         prefix += '_'
 
-    click.echo("Saving output maps...")
+    LGR.info('Saving output maps...')
     ale.results.save_maps(output_dir=output_dir, prefix=prefix)
     copyfile(dataset_file, os.path.join(output_dir, prefix + 'input_dataset.json'))
-    click.echo("Workflow completed.")
-    click.echo(boilerplate)
+    LGR.info('Workflow completed.')
+    LGR.info(boilerplate)

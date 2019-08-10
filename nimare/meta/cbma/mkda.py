@@ -452,7 +452,7 @@ class MKDAChi2(CBMAEstimator):
 @due.dcite(references.KDA2, description='Also introduces the KDA algorithm.')
 class KDA(CBMAEstimator):
     r"""
-    Kernel density analysis [1]_.
+    Kernel density analysis.
 
     Parameters
     ----------
@@ -462,6 +462,10 @@ class KDA(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_estimator can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    Notes
+    -----
+    Kernel density analysis was
 
     References
     ----------

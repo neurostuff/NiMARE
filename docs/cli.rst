@@ -16,6 +16,7 @@ To use NiMARE from the command line, open a terminal window and type:
 This will print the instructions for using the command line interface in your
 command line.
 
-.. click:: cli:cli
-	:prog: nimare
-	:show-nested:
+.. argparse::
+   :ref: nimare.cli._get_parser
+   :prog: nimare
+   :func: _get_parser

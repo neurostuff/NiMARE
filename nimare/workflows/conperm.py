@@ -1,33 +1,25 @@
+"""
+Workflow for running a contrast permutation meta-analysis on a set of images.
+"""
 import os
+import logging
 import pathlib
-import click
 from nilearn.masking import apply_mask
 
 from ..utils import get_template
 from ..meta.ibma import rfx_glm
 
-N_ITERS_DEFAULT = 10000
-PREFIX_DEFAULT = ''
+LGR = logging.getLogger(__name__)
 
 
-@click.command(name='conperm', short_help='Permutation-based meta-analysis of contrast maps',
-               help='Meta-analysis of contrast maps using random effects and '
-                    'two-sided inference with empirical (permutation-based) null distribution '
-                    'and Family Wise Error multiple comparisons correction. '
-                    'Input may be a list of 3D files or a single 4D file.')
-@click.argument('contrast_images', nargs=-1, required=True,
-                type=click.Path(exists=True))
-@click.option('--output_dir', help="Where to put the output maps.")
-@click.option('--prefix', help="Common prefix for output maps.",
-              default=PREFIX_DEFAULT, show_default=True)
-@click.option('--n_iters', default=N_ITERS_DEFAULT, show_default=True,
-              help="Number of iterations for permutation testing.")
-def con_perm_workflow(contrast_images, output_dir=None, prefix=PREFIX_DEFAULT,
-                      n_iters=N_ITERS_DEFAULT):
+def conperm_workflow(contrast_images, output_dir=None, prefix='', n_iters=10000):
+    """
+    Contrast permutation workflow.
+    """
     target = 'mni152_2mm'
     mask_img = get_template(target, mask='brain')
     n_studies = len(contrast_images)
-    click.echo("Loading contrast maps...")
+    LGR.info('Loading contrast maps...')
     z_data = apply_mask(contrast_images, mask_img)
 
     boilerplate = """
@@ -50,7 +42,7 @@ to adulthood. NeuroImage, (47), S102.
 Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
     """
 
-    click.echo("Performing meta-analysis.")
+    LGR.info('Performing meta-analysis.')
     res = rfx_glm(z_data, mask_img, null='empirical', n_iters=n_iters)
 
     boilerplate = boilerplate.format(
@@ -62,7 +54,7 @@ Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
     else:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    click.echo("Saving output maps...")
+    LGR.info('Saving output maps...')
     res.save_maps(output_dir=output_dir, prefix=prefix)
-    click.echo("Workflow completed.")
-    click.echo(boilerplate)
+    LGR.info('Workflow completed.')
+    LGR.info(boilerplate)
