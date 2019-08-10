@@ -26,7 +26,7 @@ def macm_workflow(dataset_file, mask_file, output_dir=None, prefix=None,
     sel_coords = dset.coordinates.loc[dset.coordinates['id'].isin(sel_ids)]
     n_subs_sel = sel_coords.drop_duplicates('id')['n'].astype(float).astype(int).sum()
     LGR.info('{0} studies selected out of {1}.'.format(len(sel_ids),
-                                                         len(dset.ids)))
+                                                       len(dset.ids)))
 
     boilerplate = """
 Meta-analytic connectivity modeling (MACM; Laird et al., 2009; Robinson et al.,
