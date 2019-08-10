@@ -465,7 +465,7 @@ class KDA(CBMAEstimator):
 
     Notes
     -----
-    Kernel density analysis was
+    Kernel density analysis was first introduced in [1]_ and [2]_.
 
     References
     ----------
