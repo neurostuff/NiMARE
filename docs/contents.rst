@@ -3,8 +3,9 @@ Site Map
 
 .. toctree::
 
+   about
    installation
-   documentation
    cli
    contributing
+   dev_guide
    api

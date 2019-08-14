@@ -1,5 +1,5 @@
 """
-Top-level namespace for nimare base.
+Base classes used throughout NiMARE
 """
 
 from .base import MetaResult

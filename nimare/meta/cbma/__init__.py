@@ -1,5 +1,5 @@
 """
-Top-level namespace for meta-analyses.
+Meta-analysis estimators
 """
 
 from .ale import ALE, SCALE, ALESubtraction

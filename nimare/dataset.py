@@ -495,10 +495,6 @@ class Dataset(NiMAREBase):
         -------
         metadata : list
             List of values of requested type for selected IDs.
-
-        Warnings
-        --------
-        This method is not yet implemented.
         """
         return_first = False
         if not isinstance(ids, list) and ids is not None:

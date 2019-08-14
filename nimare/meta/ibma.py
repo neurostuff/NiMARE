@@ -24,15 +24,17 @@ LGR = logging.getLogger(__name__)
 class Fishers(IBMAEstimator):
     """
     An image-based meta-analytic test using t- or z-statistic images.
-    Sum of -log P-values (from T/Zs converted to Ps)
-
-    Requirements:
-        - t OR z
+    Requires z-statistic images, but will be extended to work with t-statistic
+    images as well.
 
     Parameters
     ----------
-    corr
-    two_sided
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
+
+    Notes
+    -----
+    Sum of -log P-values (from T/Zs converted to Ps)
     """
     _required_inputs = {
         'z_maps': ('image', 'z')
@@ -48,40 +50,35 @@ class Fishers(IBMAEstimator):
 
 class Stouffers(IBMAEstimator):
     """
-    A t-test on z-statistic images.
+    A t-test on z-statistic images. Requires z-statistic images.
 
     Parameters
     ----------
-    inference : {'rfx', 'ffx'}
-        Whether to run a random- or fixed-effects model.
-    null : {'theoretical', 'empirical'}
-        Whether to compare test statistics to theoretical or empirical null
-        distribution. Empirical null distribution is only possible when
-        inference is set to 'rfx'.
-
-    Requirements:
-        - z
+    inference : {'ffx', 'rfx'}, optional
+        Whether to use fixed-effects inference (default) or random-effects
+        inference.
+    null : {'theoretical', 'empirical'}, optional
+        Whether to use a theoretical null T distribution or an empirically-
+        derived null distribution determined via sign flipping. Empirical null
+        is only possible if ``inference = 'rfx'``.
+    n_iters : :obj:`int` or :obj:`None`, optional
+        The number of iterations to run in estimating the null distribution.
+        Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
     """
     _required_inputs = {
         'z_maps': ('image', 'z')
     }
 
     def __init__(self, inference='ffx', null='theoretical', n_iters=None,
-                 n_cores=-1, two_sided=True):
+                 two_sided=True):
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        """
-        Run a Stouffer's meta-analysis.
-
-        Parameters
-        ----------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Dataset to analyze.
-        """
         z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
         return stouffers(z_maps, inference=self.inference, null=self.null,
                          n_iters=self.n_iters, two_sided=self.two_sided)
@@ -90,12 +87,12 @@ class Stouffers(IBMAEstimator):
 class WeightedStouffers(IBMAEstimator):
     """
     An image-based meta-analytic test using z-statistic images and
-    sample sizes.
-    Zs from bigger studies get bigger weight
+    sample sizes. Zs from bigger studies get bigger weights.
 
-    Requirements:
-        - z
-        - n
+    Parameters
+    ----------
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
     """
     _required_inputs = {
         'z_maps': ('image', 'z'),
@@ -106,13 +103,6 @@ class WeightedStouffers(IBMAEstimator):
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        """
-        Run a weighted Stouffer's meta-analysis.
-
-        Parameters
-        ----------
-        dataset
-        """
         z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
         return weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
@@ -120,10 +110,19 @@ class WeightedStouffers(IBMAEstimator):
 
 class RFX_GLM(IBMAEstimator):
     """
-    A t-test on contrast images.
+    A t-test on contrast images. Requires contrast images.
 
-    Requirements:
-        - con
+    Parameters
+    ----------
+    null : {'theoretical', 'empirical'}, optional
+        Whether to use a theoretical null T distribution or an empirically-
+        derived null distribution determined via sign flipping.
+        Default is 'theoretical'.
+    n_iters : :obj:`int` or :obj:`None`, optional
+        The number of iterations to run in estimating the null distribution.
+        Only used if ``null = 'empirical'``.
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
     """
     _required_inputs = {
         'con_maps': ('image', 'con'),
@@ -136,13 +135,6 @@ class RFX_GLM(IBMAEstimator):
         self.results = None
 
     def _fit(self, dataset):
-        """
-        Run an RFX GLM meta-analysis.
-
-        Parameters
-        ----------
-        dataset
-        """
         con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
         return rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
                        two_sided=self.two_sided)
@@ -150,6 +142,9 @@ class RFX_GLM(IBMAEstimator):
 
 def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
             work_dir='fsl_glm', two_sided=True):
+    """
+    Run a GLM with FSL.
+    """
     assert con_maps.shape == se_maps.shape
     assert con_maps.shape[0] == sample_sizes.shape[0]
 
@@ -348,9 +343,6 @@ class FFX(IBMAEstimator):
         self.q = q
 
     def _fit(self, dataset):
-        """
-        Perform meta-analysis given parameters.
-        """
         con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
         var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
 
@@ -406,9 +398,14 @@ class MFX_GLM(IBMAEstimator):
     The gold standard image-based meta-analytic test. Uses contrast and
     standard error images.
 
-    Requirements:
-        - con
-        - se
+    Parameters
+    ----------
+    cdt : :obj:`float`, optional
+        Cluster-defining p-value threshold.
+    q : :obj:`float`, optional
+        Alpha for multiple comparisons correction.
+    two_sided : :obj:`bool`, optional
+        Whether analysis should be two-sided (True) or one-sided (False).
     """
     _required_inputs = {
         'con_maps': ('image', 'con'),
@@ -422,9 +419,6 @@ class MFX_GLM(IBMAEstimator):
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        """
-        Perform meta-analysis given parameters.
-        """
         con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
         var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])

@@ -4,6 +4,7 @@ import click
 from nilearn.image import resample_to_img
 from nilearn.masking import apply_mask
 
+from ..base import MetaResult
 from ..meta.ibma import rfx_glm
 from ..meta.cbma import Peaks2MapsKernel
 from ..io import convert_sleuth_to_dataset
@@ -32,17 +33,18 @@ def peaks2maps_workflow(sleuth_file, output_dir=None, output_prefix=None,
     dset = convert_sleuth_to_dataset(sleuth_file)
 
     click.echo("Reconstructing unthresholded maps...")
-    k = Peaks2MapsKernel(dset.coordinates, mask=dset.mask)
-    imgs = k.transform(ids=dset.ids, masked=False, resample_to_mask=False)
+    k = Peaks2MapsKernel(resample_to_mask=False)
+    imgs = k.transform(dset, masked=False)
 
     mask_img = resample_to_img(dset.mask, imgs[0], interpolation='nearest')
     z_data = apply_mask(imgs, mask_img)
 
     click.echo("Estimating the null distribution...")
-    res = rfx_glm(z_data, mask_img, null='empirical', n_iters=n_iters)
+    res = rfx_glm(z_data, null='empirical', n_iters=n_iters)
+    res = MetaResult('rfx_glm', maps=res, mask=mask_img)
 
     if output_dir is None:
-        output_dir = os.path.dirname(sleuth_file)
+        output_dir = os.path.dirname(os.path.abspath(sleuth_file))
     else:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 

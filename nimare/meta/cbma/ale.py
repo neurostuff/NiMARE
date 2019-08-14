@@ -13,33 +13,20 @@ from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel
 from ...base import MetaResult, CBMAEstimator, KernelTransformer
-from ...due import due, Doi, BibTeX
+from ...due import due
+from ... import references
 from ...stats import null_to_p, p_to_z
 from ...utils import round2
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(BibTeX("""
-           @article{turkeltaub2002meta,
-             title={Meta-analysis of the functional neuroanatomy of single-word
-                    reading: method and validation},
-             author={Turkeltaub, Peter E and Eden, Guinevere F and Jones,
-                     Karen M and Zeffiro, Thomas A},
-             journal={Neuroimage},
-             volume={16},
-             number={3},
-             pages={765--780},
-             year={2002},
-             publisher={Elsevier}
-           }
-           """),
-           description='Introduces ALE.')
-@due.dcite(Doi('10.1002/hbm.21186'),
+@due.dcite(references.ALE1, description='Introduces ALE.')
+@due.dcite(references.ALE2,
            description='Modifies ALE algorithm to eliminate within-experiment '
                        'effects and generate MA maps based on subject group '
                        'instead of experiment.')
-@due.dcite(Doi('10.1016/j.neuroimage.2011.09.017'),
+@due.dcite(references.ALE3,
            description='Modifies ALE algorithm to allow FWE correction and to '
                        'more quickly and accurately generate the null '
                        'distribution for significance testing.')
@@ -49,18 +36,6 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Used to define clusters for
-        cluster-level thresholding. Default: 0.001
-    corr : {'FWE'}, optional
-        Type of multiple comparisons correction to employ. Only currently
-        supported option is FWE, which derives both cluster- and voxel-
-        level corrected results.
-    n_iters : int, optional
-        Number of iterations for correction. Default: 10000
-    n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
@@ -103,14 +78,6 @@ class ALE(CBMAEstimator):
         self.null_distributions = {}
 
     def _fit(self, dataset):
-        """
-        Run an ALE meta-analysis on a dataset.
-
-        Parameters
-        ----------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Dataset object to analyze.
-        """
         self.dataset = dataset
         self.mask = dataset.mask
 
@@ -348,21 +315,35 @@ class ALE(CBMAEstimator):
 
 class ALESubtraction(CBMAEstimator):
     """
+    ALE subtraction analysis.
+
+    Parameters
+    ----------
+    n_iters : :obj:`int`, optional
+        Default is 10000.
+
+    Notes
+    -----
+    This method was originally developed in [1]_ and refined in [2]_.
+
+    References
+    ----------
+    .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
+        false discovery rate and performing statistical contrasts." Human
+        brain mapping 25.1 (2005): 155-164.
+        https://doi.org/10.1002/hbm.20136
+    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
+        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+        https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
     def __init__(self, n_iters=10000):
         self.n_iters = n_iters
 
-    def fit(self, dataset, dataset2, image1=None, image2=None, ma_maps1=None,
+    def fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
             ma_maps2=None):
-        maps = self._fit(dataset, dataset2, image1, image2, ma_maps1, ma_maps2)
-        self.results = MetaResult(self, dataset.mask, maps)
-        return self.results
-
-    def _fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
-             ma_maps2=None):
         """
-        Run a subtraction analysis comparing two groups of experiments within
-        the dataset.
+        Run a subtraction analysis comparing two groups of experiments from
+        separate meta-analyses.
 
         Parameters
         ----------
@@ -378,20 +359,17 @@ class ALESubtraction(CBMAEstimator):
             Experiments by voxels array of modeled activation
             values. If not provided, MA maps will be generated from dataset2.
 
-        Notes
-        -----
-        This method was originally developed in [1]_ and refined in [2]_.
-
-        References
-        ----------
-        .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
-            false discovery rate and performing statistical contrasts." Human
-            brain mapping 25.1 (2005): 155-164.
-            https://doi.org/10.1002/hbm.20136
-        .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
-            meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
-            https://doi.org/10.1016/j.neuroimage.2011.09.017
+        Returns
+        -------
+        :obj:`nimare.base.MetaResult`
+            Results of ALE subtraction analysis.
         """
+        maps = self._fit(ale1, ale2, image1, image2, ma_maps1, ma_maps2)
+        self.results = MetaResult(self, ale1.mask, maps)
+        return self.results
+
+    def _fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
+             ma_maps2=None):
         assert np.array_equal(ale1.dataset.mask.affine,
                               ale2.dataset.mask.affine)
         self.mask = ale1.dataset.mask
@@ -526,7 +504,7 @@ class ALESubtraction(CBMAEstimator):
         self.results = MetaResult(self, self.mask, maps=images)
 
 
-@due.dcite(Doi('10.1016/j.neuroimage.2014.06.007'),
+@due.dcite(references.SCALE,
            description='Introduces the specific co-activation likelihood '
                        'estimation (SCALE) algorithm.')
 class SCALE(CBMAEstimator):
@@ -710,7 +688,7 @@ class SCALE(CBMAEstimator):
 
     def _make_hist(self, oned_arr, hist_bins):
         """
-        Make a history from a 1d array and hist_bins. Meant to be applied
+        Make a histogram from a 1d array and hist_bins. Meant to be applied
         along an axis to a 2d array.
         """
         hist_ = np.histogram(a=oned_arr, bins=hist_bins,

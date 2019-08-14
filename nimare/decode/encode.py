@@ -6,10 +6,11 @@ from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
 
 from .utils import weight_priors
-from ..due import due, Doi
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('https://doi.org/10.1007/978-3-030-00931-1_67'),
+@due.dcite(references.TEXT2BRAIN,
            description='Introduced text2brain models for annotation.')
 def text2brain():
     """
@@ -30,8 +31,7 @@ def text2brain():
     pass
 
 
-@due.dcite(Doi('10.1371/journal.pcbi.1005649'),
-           description='Citation for GCLDA encoding.')
+@due.dcite(references.GCLDA_DECODING, description='Citation for GCLDA encoding.')
 def encode_gclda(model, text, out_file=None, topic_priors=None,
                  prior_weight=1.):
     r"""
@@ -54,7 +54,7 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
 
     Returns
     -------
-    img : :obj:`nibabel.nifti.Nifti1Image`
+    img : :obj:`nibabel.nifti1.Nifti1Image`
         The encoded image.
     topic_weights : :obj:`numpy.ndarray` of :obj:`float`
         The weights of the topics used in encoding.

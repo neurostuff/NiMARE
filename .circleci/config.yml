@@ -18,7 +18,7 @@ jobs:
           paths:
               - src/NiMARE
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ checksum "requirements.txt" }}
+          key: deps9-{{ checksum "nimare/info.py" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -28,12 +28,11 @@ jobs:
             else
                 conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
                 source activate testenv
-                pip install pytest pytest-cov codecov coverage coveralls flake8
-                pip install -r requirements.txt
+                pip install -e .[tests]
             fi
             python setup.py install --user
       - save_cache:  # environment cache tied to requirements
-          key: deps9-{{ checksum "requirements.txt" }}
+          key: deps9-{{ checksum "nimare/info.py" }}
           paths:
             - "/opt/conda/envs/testenv"
 
@@ -45,7 +44,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "requirements.txt" }}
+          key: deps9-{{ checksum "nimare/info.py" }}
       - run:
           name: Linting
           command:  |
@@ -62,7 +61,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "requirements.txt" }}
+          key: deps9-{{ checksum "nimare/info.py" }}
       - run:
           name: Coverage
           command:  |

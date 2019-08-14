@@ -1,5 +1,5 @@
 """
-Meta-analytic parcellation tools.
+Meta-analytic parcellation tools
 """
 import warnings
 

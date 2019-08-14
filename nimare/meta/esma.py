@@ -10,7 +10,8 @@ import pandas as pd
 from scipy import stats
 
 from ..stats import null_to_p, p_to_z
-from ..due import due, BibTeX
+from ..due import due
+from .. import references
 
 try:
     from pystan import StanModel
@@ -175,16 +176,7 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
     }
 
 
-@due.dcite(BibTeX("""
-           @article{fisher1932statistical,
-              title={Statistical methods for research workers, Edinburgh:
-                     Oliver and Boyd, 1925},
-              author={Fisher, RA},
-              journal={Google Scholar},
-              year={1932}
-              }
-           """),
-           description='Fishers citation.')
+@due.dcite(references.FISHERS, description='Fishers citation.')
 def fishers(z_maps, two_sided=True):
     """
     Run a Fisher's image-based meta-analysis on z-statistics.
@@ -194,7 +186,7 @@ def fishers(z_maps, two_sided=True):
     z_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of z-statistics.
     two_sided : :obj:`bool`, optional
-        Default is True.
+        Whether to do a two- or one-sided test. Default is True.
 
     Returns
     -------
@@ -223,17 +215,7 @@ def fishers(z_maps, two_sided=True):
     return dict(ffx_stat=ffx_stat_map, p=p_map, z=z_map, log_p=log_p_map)
 
 
-@due.dcite(BibTeX("""
-           @article{stouffer1949american,
-             title={The American soldier: Adjustment during army life.(Studies
-                    in social psychology in World War II), Vol. 1},
-             author={Stouffer, Samuel A and Suchman, Edward A and DeVinney,
-                     Leland C and Star, Shirley A and Williams Jr, Robin M},
-             year={1949},
-             publisher={Princeton Univ. Press}
-             }
-           """),
-           description='Stouffers citation.')
+@due.dcite(references.STOUFFERS, description='Stouffers citation.')
 def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
               two_sided=True):
     """
@@ -253,6 +235,8 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
     n_iters : :obj:`int` or :obj:`None`, optional
         The number of iterations to run in estimating the null distribution.
         Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
 
     Returns
     -------
@@ -335,20 +319,7 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
     return images
 
 
-@due.dcite(BibTeX("""
-           @article{zaykin2011optimally,
-             title={Optimally weighted Z-test is a powerful method for
-                    combining probabilities in meta-analysis},
-             author={Zaykin, Dmitri V},
-             journal={Journal of evolutionary biology},
-             volume={24},
-             number={8},
-             pages={1836--1841},
-             year={2011},
-             publisher={Wiley Online Library}
-             }
-           """),
-           description='Weighted Stouffers citation.')
+@due.dcite(references.WEIGHTED_STOUFFERS, description='Weighted Stouffers citation.')
 def weighted_stouffers(z_maps, sample_sizes, two_sided=True):
     """
     Run a Stouffer's image-based meta-analysis on z-statistic maps.
@@ -360,6 +331,8 @@ def weighted_stouffers(z_maps, sample_sizes, two_sided=True):
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
         A 1D array of sample sizes associated with contrasts in ``z_maps``.
         Must be in same order as rows in ``z_maps``.
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
 
     Returns
     -------
@@ -391,7 +364,7 @@ def weighted_stouffers(z_maps, sample_sizes, two_sided=True):
     return images
 
 
-def rfx_glm(con_maps, null='theoretical', n_iters=None, n_cores=-1, two_sided=True):
+def rfx_glm(con_maps, null='theoretical', n_iters=None, two_sided=True):
     """
     Run a random-effects (RFX) GLM on contrast maps.
 
@@ -402,9 +375,12 @@ def rfx_glm(con_maps, null='theoretical', n_iters=None, n_cores=-1, two_sided=Tr
     null : {'theoretical', 'empirical'}, optional
         Whether to use a theoretical null T distribution or an empirically-
         derived null distribution determined via sign flipping.
+        Default is 'theoretical'.
     n_iters : :obj:`int` or :obj:`None`, optional
         The number of iterations to run in estimating the null distribution.
         Only used if ``null = 'empirical'``.
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
 
     Returns
     -------

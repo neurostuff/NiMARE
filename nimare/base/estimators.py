@@ -50,6 +50,19 @@ class Estimator(NiMAREBase):
                 self.inputs_[k] = v
 
     def fit(self, dataset):
+        """
+        Fit Estimator to Dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset object to analyze.
+
+        Returns
+        -------
+        :obj:`nimare.base.MetaResult`
+            Results of Estimator fitting.
+        """
         self._validate_input(dataset)
         maps = self._fit(dataset)
         self.results = MetaResult(self, dataset.mask, maps)

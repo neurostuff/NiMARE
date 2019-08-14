@@ -13,8 +13,9 @@ from cognitiveatlas.api import get_task
 from cognitiveatlas.api import get_disorder
 
 from ..text import uk_to_us
-from ...due import due, Doi
+from ...due import due
 from ...utils import get_resource_path
+from ... import references
 
 
 def _longify(df):
@@ -274,8 +275,7 @@ def _generate_weights(rel_df, weights):
     return expanded_df
 
 
-@due.dcite(Doi('10.3389/fninf.2011.00017'),
-           description='Introduces the Cognitive Atlas.')
+@due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
 class CogAtLemmatizer(object):
     """
     Replace synonyms and abbreviations with Cognitive Atlas [1]_ identifiers in
@@ -351,8 +351,7 @@ class CogAtLemmatizer(object):
         return text
 
 
-@due.dcite(Doi('10.3389/fninf.2011.00017'),
-           description='Introduces the Cognitive Atlas.')
+@due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
 def extract_cogat(text_df, id_df):
     """
     Extract Cognitive Atlas [1]_ terms and perform hierarchical expansion.

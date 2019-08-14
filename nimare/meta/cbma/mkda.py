@@ -14,25 +14,19 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from .kernel import MKDAKernel, KDAKernel
 from ...base import MetaResult, CBMAEstimator, KernelTransformer
 from ...stats import null_to_p, p_to_z, one_way, two_way
-from ...due import due, Doi
+from ...due import due
+from ... import references
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
+@due.dcite(references.MKDA, description='Introduces MKDA.')
 class MKDADensity(CBMAEstimator):
     r"""
     Multilevel kernel density analysis- Density analysis [1]_.
 
     Parameters
     ----------
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Default: 0.001
-    n_iters : int, optional
-        Number of iterations for correction. Default: 10000
-    n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
@@ -190,27 +184,16 @@ class MKDADensity(CBMAEstimator):
         return images
 
 
-@due.dcite(Doi('10.1093/scan/nsm015'), description='Introduces MKDA.')
+@due.dcite(references.MKDA, description='Introduces MKDA.')
 class MKDAChi2(CBMAEstimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis [1]_.
 
     Parameters
     ----------
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Default: 0.01
-    corr : {'FWE', 'FDR'}, optional
-        Type of multiple comparisons correction to employ. Only currently
-        supported option are FWE (which derives both cluster- and voxel-
-        level corrected results) and FDR (performed directly on p-values).
-    n_iters : int, optional
-        Number of iterations for correction. Default: 10000
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
-    n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
@@ -241,6 +224,19 @@ class MKDAChi2(CBMAEstimator):
         self.prior = prior
 
     def fit(self, dataset, dataset2):
+        """
+        Fit Estimator to datasets.
+
+        Parameters
+        ----------
+        dataset, dataset2 : :obj:`nimare.dataset.Dataset`
+            Dataset objects to analyze.
+
+        Returns
+        -------
+        :obj:`nimare.base.MetaResult`
+            Results of Estimator fitting.
+        """
         self._validate_input(dataset)
         self._validate_input(dataset2)
         maps = self._fit(dataset, dataset2)
@@ -248,16 +244,6 @@ class MKDAChi2(CBMAEstimator):
         return self.results
 
     def _fit(self, dataset, dataset2):
-        """
-        Perform MKDA chi2 meta-analysis on dataset.
-
-        Parameters
-        ----------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Dataset to analyze.
-        dataset2 : :obj:`nimare.dataset.Dataset`
-            Dataset to analyze.
-        """
         self.dataset = dataset
         self.dataset2 = dataset2
         self.mask = dataset.mask
@@ -360,8 +346,6 @@ class MKDAChi2(CBMAEstimator):
 
     def _fwe_correct_permutation(self, result, voxel_thresh=0.01, n_iters=5000,
                                  n_cores=-1):
-        """
-        """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
         pAgF_chi2_vals = result.get_map('consistency_chi2', return_type='array')
         pFgA_chi2_vals = result.get_map('specificity_chi2', return_type='array')
@@ -464,21 +448,14 @@ class MKDAChi2(CBMAEstimator):
         return images
 
 
-@due.dcite(Doi('10.1016/S1053-8119(03)00078-8'),
-           description='Introduces the KDA algorithm.')
-@due.dcite(Doi('10.1016/j.neuroimage.2004.03.052'),
-           description='Also introduces the KDA algorithm.')
+@due.dcite(references.KDA1, description='Introduces the KDA algorithm.')
+@due.dcite(references.KDA2, description='Also introduces the KDA algorithm.')
 class KDA(CBMAEstimator):
     r"""
     Kernel density analysis [1]_.
 
     Parameters
     ----------
-    n_iters : int, optional
-        Number of iterations for correction. Default: 10000
-    n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
     kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         KDAKernel.

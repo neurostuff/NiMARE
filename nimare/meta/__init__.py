@@ -1,5 +1,5 @@
 """
-Top-level namespace for meta-analyses.
+Coordinate-, image-, and effect-size-based meta-analysis estimators.
 """
 
 from . import cbma

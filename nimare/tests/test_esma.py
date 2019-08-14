@@ -27,18 +27,18 @@ def test_stouffers_ffx():
 
 def test_stouffers_rfx():
     """
-    Smoke test for Stouffer's RFX.
+    Smoke test for Weighted Stouffer's.
     """
-    result = esma.weighted_stouffers(pytest.data_z, pytest.sample_sizes_z)
+    result = esma.stouffers(pytest.data_z, inference='rfx', null='theoretical',
+                            n_iters=None)
     assert isinstance(result, dict)
 
 
 def test_weighted_stouffers():
     """
-    Smoke test for Weighted Stouffer's.
+    Smoke test for Stouffer's RFX.
     """
-    result = esma.stouffers(pytest.data_z, inference='rfx', null='theoretical',
-                            n_iters=None)
+    result = esma.weighted_stouffers(pytest.data_z, pytest.sample_sizes_z)
     assert isinstance(result, dict)
 
 

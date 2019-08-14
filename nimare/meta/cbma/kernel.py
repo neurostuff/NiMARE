@@ -263,11 +263,10 @@ class Peaks2MapsKernel(KernelTransformer):
     """
     Generate peaks2maps modeled activation images from coordinates.
     """
-    def __init__(self, coordinates, mask):
-        self.mask = mask
-        self.coordinates = coordinates
+    def __init__(self, resample_to_mask=True):
+        self.resample_to_mask = resample_to_mask
 
-    def transform(self, ids, masked=False, resample_to_mask=True):
+    def transform(self, dataset, mask=None, masked=False):
         """
         Generate peaks2maps modeled activation images for each Contrast in dataset.
 
@@ -285,29 +284,35 @@ class Peaks2MapsKernel(KernelTransformer):
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
+        if isinstance(dataset, pd.DataFrame):
+            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            coordinates = dataset.copy()
+        else:
+            mask = dataset.mask
+            coordinates = dataset.coordinates
+
         coordinates_list = []
-        for id_ in ids:
-            data = self.coordinates.loc[self.coordinates['id'] == id_]
+        for id_, data in coordinates.groupby('id'):
             mm_coords = []
             for coord in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                mm_coords.append(vox2mm(coord, self.mask.affine))
+                mm_coords.append(vox2mm(coord, dataset.mask.affine))
             coordinates_list.append(mm_coords)
 
         imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
 
-        if resample_to_mask:
+        if self.resample_to_mask:
             resampled_imgs = []
             for img in imgs:
-                resampled_imgs.append(resample_to_img(img, self.mask))
+                resampled_imgs.append(resample_to_img(img, dataset.mask))
             imgs = resampled_imgs
 
         if masked:
             masked_images = []
             for img in imgs:
-                if not resample_to_mask:
-                    mask = resample_to_img(self.mask, imgs[0], interpolation='nearest')
+                if not self.resample_to_mask:
+                    mask = resample_to_img(dataset.mask, imgs[0], interpolation='nearest')
                 else:
-                    mask = self.mask
+                    mask = dataset.mask
                 masked_images.append(math_img('map*mask', map=img, mask=mask))
             imgs = masked_images
 

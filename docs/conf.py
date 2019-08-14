@@ -19,8 +19,9 @@
 #
 import os
 import sys
+from datetime import datetime
 sys.path.insert(0, os.path.abspath('sphinxext'))
-sys.path.insert(0, os.path.abspath('../nimare'))
+sys.path.insert(0, os.path.abspath(os.path.pardir))
 
 from github_link import make_linkcode_resolve
 
@@ -50,7 +51,8 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.ifconfig',
               'sphinx.ext.linkcode',
               'sphinx_gallery.gen_gallery',
-              'sphinx_click.ext']
+              'sphinx_click.ext',
+              'm2r']
 
 import sphinx
 from distutils.version import LooseVersion
@@ -70,7 +72,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'NiMARE'
-copyright = '2018-2019, NiMARE developers'
+copyright = '2018-' + datetime.today().strftime("%Y") + ', NiMARE developers'
 author = 'NiMARE developers'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -118,8 +120,6 @@ html_theme = 'sphinx_rtd_theme'
 # documentation.
 #
 # html_theme_options = {}
-
-# html_style = 'nimare.css'
 html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'searchbox.html', 'indexsidebar.html'] }
 
 # Add any paths that contain custom static files (such as style sheets) here,
