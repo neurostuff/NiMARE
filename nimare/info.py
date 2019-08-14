@@ -64,7 +64,8 @@ REQUIRES = [
     'six',
     'statsmodels',
     'tqdm',
-    'traits'
+    'traits',
+    'pystan'
 ]
 
 TESTS_REQUIRES = [
