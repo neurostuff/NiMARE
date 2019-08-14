@@ -6,10 +6,17 @@ from __future__ import division
 import logging
 
 import numpy as np
+import pandas as pd
 from scipy import stats
 
 from ..stats import null_to_p, p_to_z
 from ..due import due, BibTeX
+
+try:
+    from pystan import StanModel
+except:
+    StanModel is None
+
 
 LGR = logging.getLogger(__name__)
 
@@ -27,7 +34,7 @@ def ffx(con_maps, var_maps=None, weights=None, two_sided=True):
         masking. Must match shape and order of ``con_maps``.
     weights : (n_contrasts, ) :obj:`numpy.ndarray`
         An optional 1D array to use as study weights. If None, defaults to
-        using var_maps or sample_sizes (if provided).
+        using inverse-variance weighting.
     two_sided : :obj:`bool`, optional
         Whether analysis should be two-sided (True) or one-sided (False).
 
@@ -54,6 +61,99 @@ def ffx(con_maps, var_maps=None, weights=None, two_sided=True):
     log_p = np.log10(p)
 
     return dict(estimate=est, p=p, z=z, log_p=log_p, se=se)
+
+
+def stan_mfx(con_maps, var_maps=None, sample_sizes=None, covariates=None,
+             model=None, **sampling_kwargs):
+    """
+    Run a mixed-effects meta-analysis.
+
+    Parameters
+    ----------
+    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of effect sizes, where each row is a different study/group,
+        and the columns contain (optional) parallel samples (e.g., voxels).
+    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of sample variances. Must match shape and order of
+        ``con_maps``.
+    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+        A 1D array of sample sizes. Must have the same length as the first
+        dimension of con_maps.
+    covariates : (n_contrast, n_covars) :obj:`numpy.ndarray`
+        Optional 2D array containing covariates to include in the MFX model.
+        First dimension must match that of con_maps.
+    model : :obj:`pystan.StanModel`
+        A compiled PyStan model to use (instead of compiling a new model).
+    sampling_kwargs : :obj:`dict`
+        Optional keyword arguments to pass onto PyStan model's sampling() call.
+
+    Returns
+    -------
+    result : :obj:`dict`
+        Dictionary containing maps for meta-analytic estimate, p-values,
+        z-score, standard error, and negative log(p) values.
+    """
+
+    if StanModel is None:
+        raise ImportError("Unable to import from PyStan package. Is it installed?")
+
+    K = con_maps.shape[0]
+
+    data = {"K": K}
+
+    if covariates is not None:
+        data_str = "int<lower=1> C;\n\tmatrix[K, C] X;"
+        param_str = "vector[C] beta;"
+        model_str = " + X * beta"
+        data['C'] = covariates.shape[1]
+        data['X'] = covariates;
+    else:
+        data_str, param_str, model_str = "", "", ""
+
+    spec = f"""
+    data {{
+        int<lower=1> K;
+        vector[K] y;
+        vector[K] sigma;
+        {data_str}
+    }}
+    parameters {{
+        vector[K] theta;
+        real mu;
+        real<lower=0> tau;
+        {param_str}
+    }}
+    model {{
+        y ~ normal(theta, sigma);
+        theta ~ normal(mu{model_str}, tau);
+        mu ~ normal(0, 10);
+    }}
+    """
+
+    # Compile model
+    if model is None:
+        model = StanModel(model_code=spec)
+
+    n_cols = con_maps.shape[1]
+    stats = np.zeros((4, n_cols))
+
+    for i in range(n_cols):
+        data['y'] = con_maps[:, i]
+        data['sigma'] = var_maps[:, i]
+        result = model.sampling(data=data, **sampling_kwargs)
+        s = result.summary(['mu', 'tau'], probs=())
+        s = pd.DataFrame(s['summary'], columns=s['summary_colnames'],
+                        index=s['summary_rownames'])
+        stats[:, i] = np.r_[s.loc['mu', ['mean', 'sd']].values,
+                            s.loc['tau', ['mean', 'sd']].values]
+
+
+    return {
+        "mu": stats[0],
+        "mu_sd": stats[1],
+        "tau": stats[2],
+        "tau_sd": stats[3]
+    }
 
 
 @due.dcite(BibTeX("""
