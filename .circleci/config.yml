@@ -28,6 +28,7 @@ jobs:
             else
                 conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
                 source activate testenv
+                conda install pystan
                 pip install -e .[tests]
             fi
             python setup.py install --user
