@@ -74,7 +74,7 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
     estimates : (n_observations, n_voxels) :obj:`numpy.ndarray`
         A 2D array of effect sizes, where each row is a different study/group,
         and the columns contain (optional) parallel samples (e.g., voxels).
-    variances : (n_observations, n_voxels) :obj:`numpy.ndarray`
+    standard_errors : (n_observations, n_voxels) :obj:`numpy.ndarray`
         A 2D array of standard errors of estimates. Must match shape and order
         of `estimates`.
     variances : (n_observations, n_voxels) :obj:`numpy.ndarray`
@@ -99,14 +99,23 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
 
     Notes
     -----
-    Either `standard_errors` or `variances` must be passed. If `variances` is
-    passed, `sample_sizes` should also be passed, otherwise equal sample sizes
-    for all observations will be assumed.
+    Either `standard_errors` or `variances` must be passed. (If `variances` is
+    passed, `sample_sizes` must also be passed.)
 
     """
 
     if StanModel is None:
         raise ImportError("Unable to import from PyStan package. Is it installed?")
+
+    if standard_errors is None:
+        if variances is None:
+            raise ValueError("Either standard_errors or variances must be "
+                             "passed!")
+        if sample_sizes is None:
+            raise ValueError("If variances is passed, sample_sizes must also "
+                             "be provided.")
+
+        standard_errors = variances / np.sqrt(sample_sizes)
 
     K = estimates.shape[0]
 
@@ -150,14 +159,13 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
 
     for i in range(n_cols):
         data['y'] = estimates[:, i]
-        data['sigma'] = variances[:, i]
+        data['sigma'] = standard_errors[:, i]
         result = model.sampling(data=data, **sampling_kwargs)
         s = result.summary(['mu', 'tau'], probs=())
         s = pd.DataFrame(s['summary'], columns=s['summary_colnames'],
                         index=s['summary_rownames'])
         stats[:, i] = np.r_[s.loc['mu', ['mean', 'sd']].values,
                             s.loc['tau', ['mean', 'sd']].values]
-
 
     return {
         "mu": stats[0],
