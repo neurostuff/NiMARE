@@ -163,7 +163,7 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
         result = model.sampling(data=data, **sampling_kwargs)
         s = result.summary(['mu', 'tau'], probs=())
         s = pd.DataFrame(s['summary'], columns=s['summary_colnames'],
-                        index=s['summary_rownames'])
+                         index=s['summary_rownames'])
         stats[:, i] = np.r_[s.loc['mu', ['mean', 'sd']].values,
                             s.loc['tau', ['mean', 'sd']].values]
 

@@ -4,6 +4,7 @@ Test nimare.meta.esma (effect-size meta-analytic algorithms).
 import pytest
 
 from nimare.meta import esma
+from .utils import generate_data
 
 
 def test_z_perm():
@@ -63,3 +64,10 @@ def test_rfx_glm():
     """
     result = esma.rfx_glm(pytest.data_con, null='theoretical', n_iters=None)
     assert isinstance(result, dict)
+
+
+def test_stan_mfx_with_ses():
+    data = generate_data(k=20, columns=5)
+    results = esma.stan_mfx(data['estimates'], data['standard_errors'])
+    assert set(list(results.keys())) == {'mu', 'mu_sd', 'tau', 'tau_sd'}
+    assert results['mu'].shape == (5,)
