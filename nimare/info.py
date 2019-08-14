@@ -59,13 +59,13 @@ REQUIRES = [
     'numpy',
     'pandas',
     'pyneurovault',
+    'pystan',
     'scikit-learn',
     'scipy',
     'six',
     'statsmodels',
     'tqdm',
-    'traits',
-    'pystan'
+    'traits'
 ]
 
 TESTS_REQUIRES = [
