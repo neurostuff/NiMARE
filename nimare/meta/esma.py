@@ -63,25 +63,29 @@ def ffx(con_maps, var_maps=None, weights=None, two_sided=True):
     return dict(estimate=est, p=p, z=z, log_p=log_p, se=se)
 
 
-def stan_mfx(con_maps, var_maps=None, sample_sizes=None, covariates=None,
-             model=None, **sampling_kwargs):
+def stan_mfx(estimates, standard_errors=None, variances=None,
+             sample_sizes=None, covariates=None, model=None,
+             **sampling_kwargs):
     """
     Run a mixed-effects meta-analysis.
 
     Parameters
     ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+    estimates : (n_observations, n_voxels) :obj:`numpy.ndarray`
         A 2D array of effect sizes, where each row is a different study/group,
         and the columns contain (optional) parallel samples (e.g., voxels).
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+    variances : (n_observations, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of standard errors of estimates. Must match shape and order
+        of `estimates`.
+    variances : (n_observations, n_voxels) :obj:`numpy.ndarray`
         A 2D array of sample variances. Must match shape and order of
-        ``con_maps``.
-    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
+        ``estimates``. If passed, sample_sizes must also be provided.
+    sample_sizes : (n_observations,) :obj:`numpy.ndarray`
         A 1D array of sample sizes. Must have the same length as the first
-        dimension of con_maps.
+        dimension of `estimates`. Mandatory if variances is passed.
     covariates : (n_contrast, n_covars) :obj:`numpy.ndarray`
         Optional 2D array containing covariates to include in the MFX model.
-        First dimension must match that of con_maps.
+        First dimension must match that of `estimates`.
     model : :obj:`pystan.StanModel`
         A compiled PyStan model to use (instead of compiling a new model).
     sampling_kwargs : :obj:`dict`
@@ -92,12 +96,19 @@ def stan_mfx(con_maps, var_maps=None, sample_sizes=None, covariates=None,
     result : :obj:`dict`
         Dictionary containing maps for meta-analytic estimate, p-values,
         z-score, standard error, and negative log(p) values.
+
+    Notes
+    -----
+    Either `standard_errors` or `variances` must be passed. If `variances` is
+    passed, `sample_sizes` should also be passed, otherwise equal sample sizes
+    for all observations will be assumed.
+
     """
 
     if StanModel is None:
         raise ImportError("Unable to import from PyStan package. Is it installed?")
 
-    K = con_maps.shape[0]
+    K = estimates.shape[0]
 
     data = {"K": K}
 
@@ -106,7 +117,7 @@ def stan_mfx(con_maps, var_maps=None, sample_sizes=None, covariates=None,
         param_str = "vector[C] beta;"
         model_str = " + X * beta"
         data['C'] = covariates.shape[1]
-        data['X'] = covariates;
+        data['X'] = covariates
     else:
         data_str, param_str, model_str = "", "", ""
 
@@ -134,12 +145,12 @@ def stan_mfx(con_maps, var_maps=None, sample_sizes=None, covariates=None,
     if model is None:
         model = StanModel(model_code=spec)
 
-    n_cols = con_maps.shape[1]
+    n_cols = estimates.shape[1]
     stats = np.zeros((4, n_cols))
 
     for i in range(n_cols):
-        data['y'] = con_maps[:, i]
-        data['sigma'] = var_maps[:, i]
+        data['y'] = estimates[:, i]
+        data['sigma'] = variances[:, i]
         result = model.sampling(data=data, **sampling_kwargs)
         s = result.summary(['mu', 'tau'], probs=())
         s = pd.DataFrame(s['summary'], columns=s['summary_colnames'],
