@@ -26,9 +26,8 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate testenv
             else
-                conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
+                conda create -n testenv python=3.6 numpy scipy scikit-learn traits gcc pystan -yq
                 source activate testenv
-                conda install pystan
                 pip install -e .[tests]
             fi
             python setup.py install --user
