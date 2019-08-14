@@ -59,6 +59,7 @@ REQUIRES = [
     'numpy',
     'pandas',
     'pyneurovault',
+
     'pystan',
     'scikit-learn',
     'scipy',
