@@ -29,10 +29,13 @@ class Dataset(NiMAREBase):
         object
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
+    mask : `str`, `Nifti1Image`, or any nilearn `Masker`
+        Mask(er) to use. If None, uses the target space image, with all
+        non-zero voxels included in the mask.
     """
     _id_cols = ['id', 'study_id', 'contrast_id']
 
-    def __init__(self, source, target='mni152_2mm', mask_file=None):
+    def __init__(self, source, target='mni152_2mm', mask=None):
         if isinstance(source, str):
             with open(source, 'r') as f_obj:
                 self.data = json.load(f_obj)
@@ -49,11 +52,21 @@ class Dataset(NiMAREBase):
                 raw_ids.append('{0}-{1}'.format(pid, cid))
         self.ids = raw_ids
 
-        if mask_file is None:
-            mask_img = get_template(target, mask='brain')
-        else:
-            mask_img = nib.load(mask_file)
-        self.mask = mask_img
+        # Set up Masker
+        if mask is None:
+            mask = get_template(target, mask='brain')
+        elif isinstance(mask, str):
+            mask = nib.load(mask)
+
+        if isinstance(mask, nib.nifti1.Nifti1Image):
+            mask = NiftiMasker(mask)
+
+        if not (hasattr(mask, 'transform') and
+                hasattr(mask, 'inverse_transform')):
+            raise ValueError("mask argument must be a string, a nibabel image,"
+                             " or a Nilearn Masker instance.")
+
+        self.masker = mask
         self.space = target
         self._load_coordinates()
         self._load_images()
