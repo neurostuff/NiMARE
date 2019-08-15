@@ -49,6 +49,12 @@ class Estimator(NiMAREBase):
                         "none were found.".format(self.__class__.__name__, k))
                 self.inputs_[k] = v
 
+    def _preprocess_input(self, dataset):
+        '''
+        Perform any additional preprocessing steps on data in self.input_
+        '''
+        pass
+
     def fit(self, dataset):
         """
         Fit Estimator to Dataset.
@@ -64,6 +70,7 @@ class Estimator(NiMAREBase):
             Results of Estimator fitting.
         """
         self._validate_input(dataset)
+        self._preprocess_input(dataset)
         maps = self._fit(dataset)
         self.results = MetaResult(self, dataset.mask, maps)
         return self.results
