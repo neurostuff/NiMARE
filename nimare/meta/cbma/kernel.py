@@ -13,7 +13,7 @@ import nibabel as nib
 
 from nilearn.image import resample_to_img, math_img
 from .utils import compute_ma, get_ale_kernel, peaks2maps
-from ...utils import vox2mm
+from ...utils import vox2mm, get_masker
 
 from ...base.estimators import Transformer
 
@@ -73,8 +73,10 @@ class ALEKernel(KernelTransformer):
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
+
         if isinstance(dataset, pd.DataFrame):
             assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            mask = get_masker(mask).mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
@@ -161,6 +163,7 @@ class MKDAKernel(KernelTransformer):
         """
         if isinstance(dataset, pd.DataFrame):
             assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            mask = get_masker(mask).mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
@@ -237,6 +240,7 @@ class KDAKernel(KernelTransformer):
         """
         if isinstance(dataset, pd.DataFrame):
             assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            mask = get_masker(mask).mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
@@ -300,6 +304,7 @@ class Peaks2MapsKernel(KernelTransformer):
         """
         if isinstance(dataset, pd.DataFrame):
             assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
+            mask = get_masker(mask).mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img

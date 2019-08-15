@@ -5,6 +5,7 @@ import pytest
 import numpy as np
 import pandas as pd
 from scipy.ndimage.measurements import center_of_mass
+from nilearn.input_data import NiftiMasker
 
 from nimare.meta.cbma import kernel
 from nimare.utils import get_template, mm2vox
@@ -14,7 +15,7 @@ from nimare.utils import get_template, mm2vox
 class DummyDataset(object):
     def __init__(self, df, img):
         self.coordinates = df
-        self.mask = img
+        self.masker = NiftiMasker(img)
 
     def slice(self):
         pass
@@ -53,7 +54,7 @@ def test_alekernel_smoke(testdata2):
     Smoke test for nimare.meta.cbma.kernel.ALEKernel
     """
     kern = kernel.ALEKernel()
-    ale_kernels = kern.transform(testdata2.coordinates, testdata2.mask)
+    ale_kernels = kern.transform(testdata2.coordinates, testdata2.masker)
     assert len(ale_kernels) == 2
 
 
@@ -65,7 +66,7 @@ def test_alekernel1(testdata1):
     """
     id_ = 1
     kern = kernel.ALEKernel()
-    ale_kernels = kern.transform(testdata1.coordinates, testdata1.mask)
+    ale_kernels = kern.transform(testdata1.coordinates, testdata1.masker)
 
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
@@ -84,7 +85,7 @@ def test_alekernel2(testdata2):
     """
     id_ = 1
     kern = kernel.ALEKernel()
-    ale_kernels = kern.transform(testdata2.coordinates, mask=testdata2.mask)
+    ale_kernels = kern.transform(testdata2.coordinates, mask=testdata2.masker)
 
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
@@ -112,7 +113,7 @@ def test_mkdakernel1(testdata1):
     """
     id_ = 1
     kern = kernel.MKDAKernel(r=4, value=1)
-    maps = kern.transform(testdata1.coordinates, testdata1.mask)
+    maps = kern.transform(testdata1.coordinates, testdata1.masker)
 
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
@@ -131,7 +132,7 @@ def test_mkdakernel2(testdata2):
     """
     id_ = 1
     kern = kernel.MKDAKernel(r=4, value=1)
-    maps = kern.transform(testdata2.coordinates, testdata2.mask)
+    maps = kern.transform(testdata2.coordinates, testdata2.masker)
 
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
@@ -147,7 +148,7 @@ def test_kdakernel_smoke(testdata1):
     Smoke test for nimare.meta.cbma.kernel.KDAKernel
     """
     kern = kernel.KDAKernel()
-    maps = kern.transform(testdata1.coordinates, testdata1.mask)
+    maps = kern.transform(testdata1.coordinates, testdata1.masker)
     assert len(maps) == 2
 
 
@@ -159,7 +160,7 @@ def test_kdakernel1(testdata1):
     """
     id_ = 1
     kern = kernel.KDAKernel(r=4, value=1)
-    maps = kern.transform(testdata1.coordinates, testdata1.mask)
+    maps = kern.transform(testdata1.coordinates, testdata1.masker)
 
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
@@ -178,7 +179,7 @@ def test_kdakernel2(testdata2):
     """
     id_ = 1
     kern = kernel.KDAKernel(r=4, value=1)
-    maps = kern.transform(testdata2.coordinates, testdata2.mask)
+    maps = kern.transform(testdata2.coordinates, testdata2.masker)
 
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
