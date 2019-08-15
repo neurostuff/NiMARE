@@ -24,4 +24,15 @@ class CBMAEstimator(Estimator):
 class IBMAEstimator(Estimator):
     """Base class for image-based meta-analysis methods.
     """
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mask_file = kwargs.get('mask_file')
+        self.mask_regions = kwargs.get('regions', False)
+        if self.mask_file is not None:
+            self.set_mask(self.mask_file, self.mask_regions)
+
+    def set_mask(self, mask_file, regions=False):
+        pass
+
+    def _preprocess_input(self, dataset):
+        pass
