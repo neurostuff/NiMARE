@@ -13,6 +13,7 @@ import nibabel as nib
 from scipy import stats
 from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
+from nilearn.regions import img_to_signals_labels
 
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
 from ..base.estimators import Estimator
@@ -26,16 +27,39 @@ class IBMAEstimator(Estimator):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.mask_file = kwargs.get('mask_file')
-        self.mask_regions = kwargs.get('regions', False)
-        if self.mask_file is not None:
-            self.set_mask(self.mask_file, self.mask_regions)
+        mask_file = kwargs.get('mask_file')
+        if mask_file is not None:
+            self.set_mask(mask_file, kwargs.get('mask_regions', False))
 
-    def set_mask(self, mask_file, regions=False):
-        pass
+    def set_mask(self, mask_file, mask_regions=False):
+        """
+        Sets Estimator-level mask, overriding Dataset-level value.
+
+        Parameters
+        ----------
+        mask_file : str
+            Location of image file to use as mask
+        regions : bool
+            If False, analyze all non-zero voxels in mask. If True, interprets
+            values in mask image as region labels, implicitly averaging over
+            all voxels that share the same value.
+        """
+        self.mask_file = nib.load(mask_file)
+        self.mask_regions = mask_regions
 
     def _preprocess_input(self, dataset):
-        pass
+        """ Mask required input images using either the dataset's mask or the
+        estimator's. """
+        mask = dataset.mask if self.mask_file is None else self.mask_file
+        for name, (type_, _) in self._required_inputs.items():
+            if type_ != 'image':
+                continue
+            img = self.inputs_[name]
+            if self.mask_regions:
+                self.inputs_[name] = img_to_signals_labels(
+                    img, mask, mask_img=dataset.mask)
+            else:
+                self.inputs_[name] = apply_mask(img, mask)
 
 
 class Fishers(IBMAEstimator):

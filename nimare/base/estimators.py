@@ -43,7 +43,7 @@ class Estimator(NiMAREBase):
             data = dataset.get(self._required_inputs)
             self.inputs_ = {}
             for k, v in data.items():
-                if not len(v):
+                if not v:
                     raise ValueError(
                         "Estimator {0} requires input dataset to contain {1}, but "
                         "none were found.".format(self.__class__.__name__, k))
