@@ -201,7 +201,7 @@ class MetaResult(object):
         m = self.maps.get(name)
         if m is None:
             raise ValueError("No map with name '{}' found.".format(name))
-        return nl.masking.unmask(m, self.mask) if return_type == 'image' else m
+        return self.mask.inverse_transform(m) if return_type == 'image' else m
 
     def save_maps(self, output_dir='.', prefix='', prefix_sep='_',
                   names=None):

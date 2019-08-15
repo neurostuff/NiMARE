@@ -5,17 +5,16 @@ import pytest
 import numpy as np
 import pandas as pd
 from scipy.ndimage.measurements import center_of_mass
-from nilearn.input_data import NiftiMasker
 
 from nimare.meta.cbma import kernel
-from nimare.utils import get_template, mm2vox
+from nimare.utils import get_template, mm2vox, get_masker
 
 
 # Fixtures used in the rest of the tests
 class DummyDataset(object):
     def __init__(self, df, img):
         self.coordinates = df
-        self.masker = NiftiMasker(img)
+        self.masker = get_masker(img)
 
     def slice(self):
         pass

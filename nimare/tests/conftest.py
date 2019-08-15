@@ -8,10 +8,9 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 from nilearn.masking import apply_mask
-from nilearn.input_data import NiftiMasker
 
 import nimare
-from nimare.utils import get_template, mm2vox
+from nimare.utils import get_template, mm2vox, get_masker
 from nimare.tests.utils import download_nidm_pain, get_test_data_path
 
 
@@ -79,7 +78,7 @@ def get_data(download_data):
 class DummyDataset(object):
     def __init__(self, df, img):
         self.coordinates = df
-        self.masker = NiftiMasker(img)
+        self.masker = get_masker(img)
 
     def slice(self):
         pass
