@@ -58,7 +58,7 @@ class IBMAEstimator(Estimator):
             img = self.inputs_[name]
             if self.mask_regions:
                 self.inputs_[name] = img_to_signals_labels(
-                    img, mask, mask_img=dataset.mask)
+                    img, mask, mask_img=dataset.mask)[0]
             else:
                 self.inputs_[name] = apply_mask(img, mask)
 
