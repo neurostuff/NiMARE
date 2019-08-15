@@ -12,7 +12,9 @@ from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
-from ...base import MetaResult, CBMAEstimator, KernelTransformer
+from ...base import MetaResult
+from .base import CBMAEstimator
+from .kernel import KernelTransformer
 from ...stats import null_to_p, p_to_z, one_way, two_way
 from ...due import due
 from ... import references

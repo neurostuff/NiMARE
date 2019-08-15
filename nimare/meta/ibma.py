@@ -15,10 +15,27 @@ from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
-from ..base import IBMAEstimator
+from ..base.estimators import Estimator
 from ..stats import p_to_z
 
 LGR = logging.getLogger(__name__)
+
+
+class IBMAEstimator(Estimator):
+    """Base class for image-based meta-analysis methods.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mask_file = kwargs.get('mask_file')
+        self.mask_regions = kwargs.get('regions', False)
+        if self.mask_file is not None:
+            self.set_mask(self.mask_file, self.mask_regions)
+
+    def set_mask(self, mask_file, regions=False):
+        pass
+
+    def _preprocess_input(self, dataset):
+        pass
 
 
 class Fishers(IBMAEstimator):

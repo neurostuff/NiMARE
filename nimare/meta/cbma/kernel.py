@@ -13,10 +13,24 @@ import nibabel as nib
 
 from nilearn.image import resample_to_img, math_img
 from .utils import compute_ma, get_ale_kernel, peaks2maps
-from ...base.meta import KernelTransformer
 from ...utils import vox2mm
 
+from ...base.estimators import Transformer
+
+
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
+
+
+class KernelTransformer(Transformer):
+    """Base class for modeled activation-generating methods.
+
+    Coordinate-based meta-analyses leverage coordinates reported in
+    neuroimaging papers to simulate the thresholded statistical maps from the
+    original analyses. This generally involves convolving each coordinate with
+    a kernel (typically a Gaussian or binary sphere) that may be weighted based
+    on some additional measure, such as statistic value or sample size.
+    """
+    pass
 
 
 class ALEKernel(KernelTransformer):
