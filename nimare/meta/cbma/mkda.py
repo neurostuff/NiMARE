@@ -71,7 +71,7 @@ class MKDADensity(CBMAEstimator):
             Dataset to analyze.
         """
         self.dataset = dataset
-        self.mask = dataset.mask
+        self.mask = dataset.masker.mask_img
 
         ma_values = self.kernel_estimator.transform(dataset, masked=True)
 
@@ -242,13 +242,13 @@ class MKDAChi2(CBMAEstimator):
         self._validate_input(dataset)
         self._validate_input(dataset2)
         maps = self._fit(dataset, dataset2)
-        self.results = MetaResult(self, dataset.mask, maps)
+        self.results = MetaResult(self, dataset.masker.mask_img, maps)
         return self.results
 
     def _fit(self, dataset, dataset2):
         self.dataset = dataset
         self.dataset2 = dataset2
-        self.mask = dataset.mask
+        self.mask = dataset.masker.mask_img
 
         ma_maps1 = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=True)
         ma_maps2 = self.kernel_estimator.transform(self.dataset2, mask=self.mask, masked=True)
@@ -499,7 +499,7 @@ class KDA(CBMAEstimator):
             Dataset to analyze.
         """
         self.dataset = dataset
-        self.mask = dataset.mask
+        self.mask = dataset.masker.mask_img
 
         ma_maps = self.kernel_estimator.transform(dataset, masked=True)
         of_values = np.sum(ma_maps, axis=0)

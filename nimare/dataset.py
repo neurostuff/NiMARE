@@ -10,6 +10,7 @@ import os.path as op
 import numpy as np
 import pandas as pd
 import nibabel as nib
+from nilearn.input_data import NiftiMasker
 
 from .base.base import NiMAREBase
 from .utils import tal2mni, mni2tal, mm2vox, get_template, listify, try_prepend, find_stem
@@ -383,7 +384,8 @@ class Dataset(NiMAREBase):
             df.loc[idx, 'space'] = self.space
 
         xyz = df[['x', 'y', 'z']].values
-        ijk = pd.DataFrame(mm2vox(xyz, self.mask.affine), columns=['i', 'j', 'k'])
+        ijk = pd.DataFrame(mm2vox(xyz, self.masker.mask_img.affine),
+                                  columns=['i', 'j', 'k'])
         df = pd.concat([df, ijk], axis=1)
         self.coordinates = df
 
@@ -620,9 +622,10 @@ class Dataset(NiMAREBase):
         if isinstance(mask, str):
             mask = nib.load(mask)
 
-        if not np.array_equal(self.mask.affine, mask.affine):
+        curr_mask = self.mask.mask_img
+        if not np.array_equal(curr_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
-            mask = resample_to_img(mask, self.mask)
+            mask = resample_to_img(mask, curr_mask)
         mask_ijk = np.vstack(np.where(mask.get_data())).T
         distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
         distances = np.any(distances == 0, axis=0)

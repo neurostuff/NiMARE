@@ -80,7 +80,7 @@ class ALE(CBMAEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.mask = dataset.mask
+        self.mask = dataset.masker.mask_img
 
         ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
         ale_values = self._compute_ale(ma_maps)
@@ -371,9 +371,9 @@ class ALESubtraction(CBMAEstimator):
 
     def _fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
              ma_maps2=None):
-        assert np.array_equal(ale1.dataset.mask.affine,
-                              ale2.dataset.mask.affine)
-        self.mask = ale1.dataset.mask
+        assert np.array_equal(ale1.dataset.masker.mask_img.affine,
+                              ale2.dataset.masker.mask_img.affine)
+        self.mask = ale1.dataset.masker.mask_img
 
         if image1 is None:
             LGR.info('Performing subtraction analysis with cluster-level '
@@ -582,7 +582,7 @@ class SCALE(CBMAEstimator):
             Dataset to analyze.
         """
         self.dataset = dataset
-        self.mask = dataset.mask
+        self.mask = dataset.masker.mask_img
 
         ma_maps = self.kernel_estimator.transform(self.dataset, masked=False)
 

@@ -51,16 +51,10 @@ class IBMAEstimator(Estimator):
     def _preprocess_input(self, dataset):
         """ Mask required input images using either the dataset's mask or the
         estimator's. """
-        mask = dataset.mask if self.mask_file is None else self.mask_file
+        masker = self.masker or dataset.masker
         for name, (type_, _) in self._required_inputs.items():
-            if type_ != 'image':
-                continue
-            img = self.inputs_[name]
-            if self.mask_regions:
-                self.inputs_[name] = img_to_signals_labels(
-                    img, mask, mask_img=dataset.mask)[0]
-            else:
-                self.inputs_[name] = apply_mask(img, mask)
+            if type_ == 'image':
+                self.inputs_[name] = masker.transform(self.inputs_[name])            
 
 
 class Fishers(IBMAEstimator):
@@ -422,8 +416,9 @@ class FFX_GLM(IBMAEstimator):
         con_maps = self.inputs_['con_maps']
         var_maps = self.inputs_['se_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = ffx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
-                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        images = ffx_glm(con_maps, var_maps, sample_sizes,
+                         dataset.masker.mask_img, cdt=self.cdt, q=self.q,
+                         two_sided=self.two_sided)
         return images
 
 
@@ -495,6 +490,7 @@ class MFX_GLM(IBMAEstimator):
         con_maps = self.inputs_['con_maps']
         var_maps = self.inputs_['se_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = mfx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
-                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        images = mfx_glm(con_maps, var_maps, sample_sizes,
+                         dataset.masker.mask_img, cdt=self.cdt, q=self.q,
+                         two_sided=self.two_sided)
         return images
