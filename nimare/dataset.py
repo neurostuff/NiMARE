@@ -13,7 +13,8 @@ import nibabel as nib
 from nilearn.input_data import NiftiMasker
 
 from .base.base import NiMAREBase
-from .utils import tal2mni, mni2tal, mm2vox, get_template, listify, try_prepend, find_stem
+from .utils import (tal2mni, mni2tal, mm2vox, get_template, listify,
+                    try_prepend, find_stem, get_masker)
 
 LGR = logging.getLogger(__name__)
 
@@ -56,18 +57,7 @@ class Dataset(NiMAREBase):
         # Set up Masker
         if mask is None:
             mask = get_template(target, mask='brain')
-        elif isinstance(mask, str):
-            mask = nib.load(mask)
-
-        if isinstance(mask, nib.nifti1.Nifti1Image):
-            mask = NiftiMasker(mask)
-
-        if not (hasattr(mask, 'transform') and
-                hasattr(mask, 'inverse_transform')):
-            raise ValueError("mask argument must be a string, a nibabel image,"
-                             " or a Nilearn Masker instance.")
-
-        self.masker = mask
+        self.masker = get_masker(mask)
         self.space = target
         self._load_coordinates()
         self._load_images()

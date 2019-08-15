@@ -9,6 +9,7 @@ import logging
 import numpy as np
 import nibabel as nib
 from nilearn import datasets
+from nilearn.input_data import NiftiMasker
 
 from .due import due
 from . import references
@@ -69,6 +70,37 @@ def get_template(space='mni152_1mm', mask=None):
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img
+
+
+def get_masker(mask):
+    """
+    Get an initialized, fitted nilearn Masker instance from passed argument.
+
+    Parameters
+    ----------
+    mask : str, Nifti1nibabel.nifti1.Nifti1Image, or any nilearn Masker
+
+    Returns
+    -------
+    masker : an initialized, fitted instance of a subclass of
+        `nilearn.input_data.base_masker.BaseMasker`
+    """
+    if isinstance(mask, str):
+        mask = nib.load(mask)
+
+    if isinstance(mask, nib.nifti1.Nifti1Image):
+        mask = NiftiMasker(mask)
+
+    if not (hasattr(mask, 'transform') and
+            hasattr(mask, 'inverse_transform')):
+        raise ValueError("mask argument must be a string, a nibabel image,"
+                            " or a Nilearn Masker instance.")
+
+    # Fit the masker if needed
+    if not hasattr(mask, 'mask_img_'):
+        mask.fit()
+
+    return mask
 
 
 def listify(obj):

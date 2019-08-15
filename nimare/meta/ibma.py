@@ -15,6 +15,7 @@ from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 from nilearn.regions import img_to_signals_labels
 
+from ..utils import get_masker
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
 from ..base.estimators import Estimator
 from ..stats import p_to_z
@@ -27,26 +28,10 @@ class IBMAEstimator(Estimator):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.set_mask(kwargs.get('mask_file'),
-                      kwargs.get('mask_regions', False))
-
-    def set_mask(self, mask_file, mask_regions=False):
-        """
-        Sets Estimator-level mask, overriding Dataset-level value.
-
-        Parameters
-        ----------
-        mask_file : str
-            Location of image file to use as mask
-        mask_regions : bool
-            If False, analyze all non-zero voxels in mask. If True, interprets
-            values in mask image as region labels, implicitly averaging over
-            all voxels that share the same value.
-        """
-        if mask_file is not None:
-            mask_file = nib.load(mask_file)
-        self.mask_file = mask_file
-        self.mask_regions = mask_regions
+        mask = kwargs.get('mask')
+        if mask is not None:
+            mask = get_masker(mask)
+        self.masker = mask
 
     def _preprocess_input(self, dataset):
         """ Mask required input images using either the dataset's mask or the
