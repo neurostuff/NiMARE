@@ -13,7 +13,6 @@ import nibabel as nib
 from scipy import stats
 from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
-from nilearn.regions import img_to_signals_labels
 
 from ..utils import get_masker
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
@@ -39,7 +38,7 @@ class IBMAEstimator(Estimator):
         masker = self.masker or dataset.masker
         for name, (type_, _) in self._required_inputs.items():
             if type_ == 'image':
-                self.inputs_[name] = masker.transform(self.inputs_[name])            
+                self.inputs_[name] = masker.transform(self.inputs_[name])      
 
 
 class Fishers(IBMAEstimator):

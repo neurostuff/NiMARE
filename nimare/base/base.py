@@ -11,7 +11,6 @@ from collections import defaultdict
 from abc import ABCMeta
 
 import inspect
-import nilearn as nl
 from six import with_metaclass
 
 LGR = logging.getLogger(__name__)
