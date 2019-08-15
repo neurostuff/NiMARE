@@ -11,8 +11,9 @@ import nibabel as nib
 from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
 
-from .kernel import ALEKernel
-from ...base import MetaResult, CBMAEstimator, KernelTransformer
+from .kernel import ALEKernel, KernelTransformer
+from ...base import MetaResult
+from .base import CBMAEstimator
 from ...due import due
 from ... import references
 from ...stats import null_to_p, p_to_z
