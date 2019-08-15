@@ -4,6 +4,7 @@ Test nimare.meta.ibma (image-based meta-analytic estimators).
 import os.path as op
 
 import pytest
+from nilearn.input_data import NiftiLabelsMasker
 
 import nimare
 from nimare.meta import ibma
@@ -74,20 +75,12 @@ def test_rfx_glm():
     assert isinstance(meta.results, nimare.base.MetaResult)
 
 
-def test_ibma_with_mask_regions():
+def test_ibma_with_custom_masker():
     """ Ensure voxel-to-ROI reduction works. """
     atlas = op.join(get_resource_path(), 'atlases',
                     'HarvardOxford-cort-maxprob-thr25-2mm.nii.gz')
-
-    # With explicit set_mask() call
-    meta = ibma.Fishers()
-    meta.set_mask(atlas, mask_regions=True)
-    meta.fit(pytest.dset_z)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert meta.results.maps['z'].shape == (48, )
-
-    # With arguments passed at IBMAEstimator init()
-    meta = ibma.Fishers(mask_file=atlas, mask_regions=True)
+    masker = NiftiLabelsMasker(atlas)
+    meta = ibma.Fishers(mask=masker)
     meta.fit(pytest.dset_z)
     assert isinstance(meta.results, nimare.base.MetaResult)
     assert meta.results.maps['z'].shape == (48, )
