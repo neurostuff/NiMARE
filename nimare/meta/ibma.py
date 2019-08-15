@@ -83,7 +83,7 @@ class Fishers(IBMAEstimator):
     }
 
     def __init__(self, two_sided=True, *args, **kwargs):
-        super().__init__(*args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.two_sided = two_sided
 
     def _fit(self, dataset):
