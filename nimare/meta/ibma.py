@@ -38,7 +38,7 @@ class IBMAEstimator(Estimator):
         ----------
         mask_file : str
             Location of image file to use as mask
-        regions : bool
+        mask_regions : bool
             If False, analyze all non-zero voxels in mask. If True, interprets
             values in mask image as region labels, implicitly averaging over
             all voxels that share the same value.
