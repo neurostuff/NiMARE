@@ -66,33 +66,3 @@ def download_nidm_pain(out_dir=None):
 
     os.remove(fname)
     shutil.rmtree(folder)
-
-
-def generate_data(k=80, mu=1, tau=1, eta=1, n=20, covars=None, columns=1):
-    """
-    Generate structured fake data for use in testing meta-analysis functions.
-    """
-    est = np.zeros((k, columns))
-    var = np.zeros((k, columns))
-    se = np.zeros((k, columns))
-    theta = np.random.normal(mu, tau, size=(k, columns))
-
-    if isinstance(n, int):
-        n = [n] * k
-
-    for i in range(k):
-        samp = np.random.normal(theta[i], eta, size=(n[i], columns))
-        est[i] = samp.mean(0)
-        var[i] = np.var(samp, ddof=1, axis=0)
-        se[i] = var[i] / np.sqrt(n[i])
-
-    if covars is not None:
-        n_cov = covars
-        covars = np.random.normal(size=(k, n_cov))
-
-    return {
-        "estimates": est,
-        "variances": var,
-        "standard_errors": se,
-        "covariates": covars
-    }

@@ -10,8 +10,8 @@ import nibabel as nib
 from nilearn.masking import apply_mask
 
 import nimare
-from nimare.utils import get_template, mm2vox
-from nimare.tests.utils import download_nidm_pain, get_test_data_path
+from ..utils import get_template, mm2vox
+from .utils import download_nidm_pain, get_test_data_path
 
 
 @pytest.fixture(scope='session', autouse=True)

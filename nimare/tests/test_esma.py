@@ -1,10 +1,19 @@
 """
 Test nimare.meta.esma (effect-size meta-analytic algorithms).
 """
+import os.path as op
+
 import pytest
+import pandas as pd
 
 from nimare.meta import esma
-from .utils import generate_data
+from .utils import get_test_data_path
+
+
+@pytest.fixture(scope='module')
+def stroop_data():
+    path = op.join(get_test_data_path(), 'vonBastian_stroop.csv')
+    return pd.read_csv(path)
 
 
 def test_z_perm():
@@ -66,8 +75,9 @@ def test_rfx_glm():
     assert isinstance(result, dict)
 
 
-def test_stan_mfx_with_ses():
-    data = generate_data(k=20, columns=5)
-    results = esma.stan_mfx(data['estimates'], data['standard_errors'])
-    assert set(list(results.keys())) == {'mu', 'mu_sd', 'tau', 'tau_sd'}
+def test_stan_mfx_only_group_level_estimates(stroop_data):
+    estimates = stroop_data.groupby('ID')['rt'].mean()
+    results = esma.stan_mfx(estimates)
+    names = {'estimate', 'estimate_sd', 'tau', 'tau_sd'}
+    assert set(list(results.keys())) == names
     assert results['mu'].shape == (5,)
