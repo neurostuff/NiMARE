@@ -65,31 +65,35 @@ def ffx(con_maps, var_maps=None, weights=None, two_sided=True):
 
 
 def stan_mfx(estimates, standard_errors=None, variances=None,
-             sample_sizes=None, covariates=None, model=None,
+             sample_sizes=None, covariates=None, groups=None, model=None,
              **sampling_kwargs):
     """
     Run a mixed-effects meta-analysis.
 
     Parameters
     ----------
-    estimates : (n_observations, n_voxels) :obj:`numpy.ndarray`
+    estimates : (n_estimates, n_voxels) :obj:`numpy.ndarray`
         A 2D array of effect sizes, where each row is a different study/group,
         and the columns contain (optional) parallel samples (e.g., voxels).
-    standard_errors : (n_observations, n_voxels) :obj:`numpy.ndarray`
+    standard_errors : (n_estimates, n_voxels) :obj:`numpy.ndarray`, optional
         A 2D array of standard errors of estimates. Must match shape and order
         of `estimates`.
-    variances : (n_observations, n_voxels) :obj:`numpy.ndarray`
+    variances : (n_estimates, n_voxels) :obj:`numpy.ndarray`, optional
         A 2D array of sample variances. Must match shape and order of
         ``estimates``. If passed, sample_sizes must also be provided.
-    sample_sizes : (n_observations,) :obj:`numpy.ndarray`
+    sample_sizes : (n_estimates,) :obj:`numpy.ndarray`, optional
         A 1D array of sample sizes. Must have the same length as the first
         dimension of `estimates`. Mandatory if variances is passed.
-    covariates : (n_contrast, n_covars) :obj:`numpy.ndarray`
+    covariates : (n_estimates, n_covars) :obj:`numpy.ndarray`, optional
         Optional 2D array containing covariates to include in the MFX model.
         First dimension must match that of `estimates`.
-    model : :obj:`pystan.StanModel`
+    groups : (n_estimates,) `numpy.ndarray`, optional
+        A 1D array containing group identifiers for the rows in `estimates`.
+        If not provided, it is assumed that each row in estimates reflects a
+        different group.
+    model : :obj:`pystan.StanModel`, optional
         A compiled PyStan model to use (instead of compiling a new model).
-    sampling_kwargs : :obj:`dict`
+    sampling_kwargs : :obj:`dict`, optional
         Optional keyword arguments to pass onto PyStan model's sampling() call.
 
     Returns
@@ -100,9 +104,11 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
 
     Notes
     -----
-    Either `standard_errors` or `variances` must be passed. (If `variances` is
-    passed, `sample_sizes` must also be passed.)
-
+    If `groups` is None, either `standard_errors` or `variances` must be
+    passed (and if `variances` is passed, `sample_sizes` must also be passed.)
+    If `groups` is provided, a multi-level structure is assumed, and each
+    group's variance is estimated directly (in effect, this is a mega-analysis
+    rather than a meta-analysis).
     """
 
     if StanModel is None:
@@ -123,7 +129,7 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
     data = {"K": K}
 
     if covariates is not None:
-        data_str = "int<lower=1> C;\n\tmatrix[K, C] X;"
+        data_str = "int<lower=1> C;\n\t\tmatrix[K, C] X;"
         param_str = "vector[C] beta;"
         model_str = " + X * beta"
         data['C'] = covariates.shape[1]
