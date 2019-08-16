@@ -115,45 +115,61 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
         raise ImportError("Unable to import from PyStan package. Is it installed?")
 
     if standard_errors is None:
-        if variances is None:
-            raise ValueError("Either standard_errors or variances must be "
-                             "passed!")
-        if sample_sizes is None:
-            raise ValueError("If variances is passed, sample_sizes must also "
-                             "be provided.")
+        if variances is not None:
+            if sample_sizes is None:
+                raise ValueError("If variances is passed, sample_sizes must "
+                                 "also be provided.")
 
-        standard_errors = variances / np.sqrt(sample_sizes)
+            standard_errors = variances / np.sqrt(sample_sizes)
 
-    K = estimates.shape[0]
+    N = estimates.shape[0]
 
-    data = {"K": K}
+    if groups is None:
+        groups = np.arange(1, N + 1, dtype=int)
+
+    K = len(np.unique(groups))
+
+    data = {"K": K, "N": N, 'id': groups}
+
+    data_str, param_str, covar_str, model_str = "", "", "", ""
 
     if covariates is not None:
-        data_str = "int<lower=1> C;\n\t\tmatrix[K, C] X;"
-        param_str = "vector[C] beta;"
-        model_str = " + X * beta"
+        data_str += "\n\tint<lower=1> C;\n\t\tmatrix[K, C] X;"
+        param_str += "\n\tvector[C] beta;"
+        covar_str += " + X * beta"
+        model_str += "\n\tbeta ~ normal(0, 0.2);"
         data['C'] = covariates.shape[1]
         data['X'] = covariates
+
+    if standard_errors is not None:
+        data_str += "\n\tvector[N] sigma;"
     else:
-        data_str, param_str, model_str = "", "", ""
+        param_str += "\n\treal<lower=0> sigma;"
+        model_str += "\n\tsigma ~ cauchy(0, 0.2);"
 
     spec = f"""
     data {{
+        int<lower=1> N;
         int<lower=1> K;
-        vector[K] y;
-        vector[K] sigma;
-        {data_str}
+        vector[N] y;
+        int<lower=1,upper=K> id[N];{data_str}
     }}
     parameters {{
+        vector[K] theta_raw;
+        real alpha;
+        real<lower=0> tau;{param_str}
+    }}
+    transformed parameters {{
         vector[K] theta;
-        real mu;
-        real<lower=0> tau;
-        {param_str}
+        vector[N] mu;
+        theta = alpha + tau * theta_raw;
+        mu = theta[id]{covar_str};
     }}
     model {{
-        y ~ normal(theta, sigma);
-        theta ~ normal(mu{model_str}, tau);
-        mu ~ normal(0, 10);
+        y ~ normal(mu, sigma);
+        theta_raw ~ normal(0, 1);
+        alpha ~ normal(0, 0.5);
+        tau ~ cauchy(0, 0.2);{model_str}
     }}
     """
 
@@ -166,20 +182,23 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
 
     for i in range(n_cols):
         data['y'] = estimates[:, i]
-        data['sigma'] = standard_errors[:, i]
+        if standard_errors is not None:
+            data['sigma'] = standard_errors[:, i]
+        print(data)
         result = model.sampling(data=data, **sampling_kwargs)
-        s = result.summary(['mu', 'tau'], probs=())
+        s = result.summary(['alpha', 'tau'], probs=())
         s = pd.DataFrame(s['summary'], columns=s['summary_colnames'],
                          index=s['summary_rownames'])
-        stats[:, i] = np.r_[s.loc['mu', ['mean', 'sd']].values,
+        stats[:, i] = np.r_[s.loc['alpha', ['mean', 'sd']].values,
                             s.loc['tau', ['mean', 'sd']].values]
 
     return {
-        "mu": stats[0],
-        "mu_sd": stats[1],
+        "estimate": stats[0],
+        "estimate_sd": stats[1],
         "tau": stats[2],
         "tau_sd": stats[3]
     }
+    return result
 
 
 @due.dcite(references.FISHERS, description='Fishers citation.')
