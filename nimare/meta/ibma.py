@@ -26,7 +26,6 @@ class IBMAEstimator(Estimator):
     """Base class for image-based meta-analysis methods.
     """
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         mask = kwargs.get('mask')
         if mask is not None:
             mask = get_masker(mask)

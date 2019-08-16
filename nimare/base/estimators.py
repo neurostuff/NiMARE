@@ -34,9 +34,6 @@ class Estimator(NiMAREBase):
     # attributes to set; values are strings indicating location in Dataset.
     _required_inputs = {}
 
-    def __init__(*args, **kwargs):
-        pass
-
     def _validate_input(self, dataset):
         if not hasattr(dataset, 'slice'):
             raise ValueError('Argument "dataset" must be a valid Dataset '
