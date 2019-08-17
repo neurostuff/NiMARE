@@ -12,7 +12,8 @@ import pandas as pd
 import nibabel as nib
 
 from .base.base import NiMAREBase
-from .utils import tal2mni, mni2tal, mm2vox, get_template, listify, try_prepend, find_stem
+from .utils import (tal2mni, mni2tal, mm2vox, get_template, listify,
+                    try_prepend, find_stem, get_masker)
 
 LGR = logging.getLogger(__name__)
 
@@ -29,10 +30,13 @@ class Dataset(NiMAREBase):
         object
     target : :obj:`str`
         Desired coordinate space for coordinates. Names follow NIDM convention.
+    mask : `str`, `Nifti1Image`, or any nilearn `Masker`
+        Mask(er) to use. If None, uses the target space image, with all
+        non-zero voxels included in the mask.
     """
     _id_cols = ['id', 'study_id', 'contrast_id']
 
-    def __init__(self, source, target='mni152_2mm', mask_file=None):
+    def __init__(self, source, target='mni152_2mm', mask=None):
         if isinstance(source, str):
             with open(source, 'r') as f_obj:
                 self.data = json.load(f_obj)
@@ -49,11 +53,10 @@ class Dataset(NiMAREBase):
                 raw_ids.append('{0}-{1}'.format(pid, cid))
         self.ids = raw_ids
 
-        if mask_file is None:
-            mask_img = get_template(target, mask='brain')
-        else:
-            mask_img = nib.load(mask_file)
-        self.mask = mask_img
+        # Set up Masker
+        if mask is None:
+            mask = get_template(target, mask='brain')
+        self.masker = get_masker(mask)
         self.space = target
         self._load_coordinates()
         self._load_images()
@@ -370,7 +373,8 @@ class Dataset(NiMAREBase):
             df.loc[idx, 'space'] = self.space
 
         xyz = df[['x', 'y', 'z']].values
-        ijk = pd.DataFrame(mm2vox(xyz, self.mask.affine), columns=['i', 'j', 'k'])
+        ijk = pd.DataFrame(mm2vox(xyz, self.masker.mask_img.affine),
+                                  columns=['i', 'j', 'k'])
         df = pd.concat([df, ijk], axis=1)
         self.coordinates = df
 
@@ -607,9 +611,10 @@ class Dataset(NiMAREBase):
         if isinstance(mask, str):
             mask = nib.load(mask)
 
-        if not np.array_equal(self.mask.affine, mask.affine):
+        curr_mask = self.mask.mask_img
+        if not np.array_equal(curr_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
-            mask = resample_to_img(mask, self.mask)
+            mask = resample_to_img(mask, curr_mask)
         mask_ijk = np.vstack(np.where(mask.get_data())).T
         distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
         distances = np.any(distances == 0, axis=0)

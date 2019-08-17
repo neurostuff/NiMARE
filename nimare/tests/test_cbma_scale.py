@@ -12,7 +12,7 @@ def test_scale():
     """
     Smoke test for SCALE
     """
-    ijk = np.vstack(np.where(pytest.cbma_testdata3.mask.get_data())).T
+    ijk = np.vstack(np.where(pytest.cbma_testdata3.masker.mask_img.get_data())).T
     ijk = ijk[:, :20]
     meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk)
     res = meta.fit(pytest.cbma_testdata3)

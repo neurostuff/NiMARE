@@ -43,11 +43,17 @@ class Estimator(NiMAREBase):
             data = dataset.get(self._required_inputs)
             self.inputs_ = {}
             for k, v in data.items():
-                if not len(v):
+                if not v:
                     raise ValueError(
                         "Estimator {0} requires input dataset to contain {1}, but "
                         "none were found.".format(self.__class__.__name__, k))
                 self.inputs_[k] = v
+
+    def _preprocess_input(self, dataset):
+        '''
+        Perform any additional preprocessing steps on data in self.input_
+        '''
+        pass
 
     def fit(self, dataset):
         """
@@ -64,8 +70,15 @@ class Estimator(NiMAREBase):
             Results of Estimator fitting.
         """
         self._validate_input(dataset)
+        self._preprocess_input(dataset)
         maps = self._fit(dataset)
-        self.results = MetaResult(self, dataset.mask, maps)
+
+        if hasattr(self, 'masker') and self.masker is not None:
+            masker = self.masker
+        else:
+            masker = dataset.masker
+
+        self.results = MetaResult(self, masker, maps)
         return self.results
 
     @abstractmethod

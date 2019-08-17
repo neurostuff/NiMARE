@@ -11,8 +11,10 @@ from collections import defaultdict
 from abc import ABCMeta
 
 import inspect
-import nilearn as nl
 from six import with_metaclass
+
+from ..utils import get_masker
+
 
 LGR = logging.getLogger(__name__)
 
@@ -194,14 +196,14 @@ class MetaResult(object):
     """
     def __init__(self, estimator, mask, maps=None):
         self.estimator = estimator
-        self.mask = mask
+        self.masker = get_masker(mask)
         self.maps = maps or {}
 
     def get_map(self, name, return_type='image'):
         m = self.maps.get(name)
         if m is None:
             raise ValueError("No map with name '{}' found.".format(name))
-        return nl.masking.unmask(m, self.mask) if return_type == 'image' else m
+        return self.masker.inverse_transform(m) if return_type == 'image' else m
 
     def save_maps(self, output_dir='.', prefix='', prefix_sep='_',
                   names=None):
@@ -234,7 +236,7 @@ class MetaResult(object):
             img.to_filename(outpath)
 
     def copy(self):
-        new = MetaResult(copy.copy(self.estimator),
-                         copy.copy(self.mask),
+        new = MetaResult(self.estimator,
+                         self.masker,
                          copy.deepcopy(self.maps))
         return new

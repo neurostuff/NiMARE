@@ -10,7 +10,7 @@ import nibabel as nib
 from nilearn.masking import apply_mask
 
 import nimare
-from nimare.utils import get_template, mm2vox
+from nimare.utils import get_template, mm2vox, get_masker
 from nimare.tests.utils import download_nidm_pain, get_test_data_path
 
 
@@ -48,7 +48,7 @@ def get_data(download_data):
 
     # Now get the actual data for esma
     z_imgs = [nib.load(f) for f in z_files]
-    z_data = apply_mask(z_imgs, dset.mask)
+    z_data = apply_mask(z_imgs, dset.masker.mask_img)
     pytest.data_z = z_data
     pytest.sample_sizes_z = sample_sizes
 
@@ -67,8 +67,8 @@ def get_data(download_data):
     sample_sizes = np.array([np.mean(n) for n in sample_sizes])
     con_imgs = [nib.load(f) for f in con_files]
     se_imgs = [nib.load(f) for f in se_files]
-    con_data = apply_mask(con_imgs, dset.mask)
-    se_data = apply_mask(se_imgs, dset.mask)
+    con_data = apply_mask(con_imgs, dset.masker.mask_img)
+    se_data = apply_mask(se_imgs, dset.masker.mask_img)
     pytest.data_con = con_data
     pytest.data_se = se_data
     pytest.sample_sizes_con = sample_sizes
@@ -78,7 +78,7 @@ def get_data(download_data):
 class DummyDataset(object):
     def __init__(self, df, img):
         self.coordinates = df
-        self.mask = img
+        self.masker = get_masker(img)
 
     def slice(self):
         pass

@@ -14,11 +14,30 @@ from scipy import stats
 from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 
+from ..utils import get_masker
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
-from ..base import IBMAEstimator
+from ..base.estimators import Estimator
 from ..stats import p_to_z
 
 LGR = logging.getLogger(__name__)
+
+
+class IBMAEstimator(Estimator):
+    """Base class for image-based meta-analysis methods.
+    """
+    def __init__(self, *args, **kwargs):
+        mask = kwargs.get('mask')
+        if mask is not None:
+            mask = get_masker(mask)
+        self.masker = mask
+
+    def _preprocess_input(self, dataset):
+        """ Mask required input images using either the dataset's mask or the
+        estimator's. """
+        masker = self.masker or dataset.masker
+        for name, (type_, _) in self._required_inputs.items():
+            if type_ == 'image':
+                self.inputs_[name] = masker.transform(self.inputs_[name])      
 
 
 class Fishers(IBMAEstimator):
@@ -40,12 +59,12 @@ class Fishers(IBMAEstimator):
         'z_maps': ('image', 'z')
     }
 
-    def __init__(self, two_sided=True):
+    def __init__(self, two_sided=True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
-        return fishers(z_maps, two_sided=self.two_sided)
+        return fishers(self.inputs_['z_maps'], two_sided=self.two_sided)
 
 
 class Stouffers(IBMAEstimator):
@@ -72,16 +91,17 @@ class Stouffers(IBMAEstimator):
     }
 
     def __init__(self, inference='ffx', null='theoretical', n_iters=None,
-                 two_sided=True):
+                 two_sided=True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.inference = inference
         self.null = null
         self.n_iters = n_iters
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
-        return stouffers(z_maps, inference=self.inference, null=self.null,
-                         n_iters=self.n_iters, two_sided=self.two_sided)
+        return stouffers(self.inputs_['z_maps'], inference=self.inference,
+                         null=self.null, n_iters=self.n_iters,
+                         two_sided=self.two_sided)
 
 
 class WeightedStouffers(IBMAEstimator):
@@ -99,11 +119,12 @@ class WeightedStouffers(IBMAEstimator):
         'sample_sizes': ('metadata', 'sample_sizes')
     }
 
-    def __init__(self, two_sided=True):
+    def __init__(self, two_sided=True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        z_maps = apply_mask(self.inputs_['z_maps'], dataset.mask)
+        z_maps = self.inputs_['z_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
         return weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
 
@@ -128,14 +149,16 @@ class RFX_GLM(IBMAEstimator):
         'con_maps': ('image', 'con'),
     }
 
-    def __init__(self, null='theoretical', n_iters=None, two_sided=True):
+    def __init__(self, null='theoretical', n_iters=None, two_sided=True, *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
         self.null = null
         self.n_iters = n_iters
         self.two_sided = two_sided
         self.results = None
 
     def _fit(self, dataset):
-        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
+        con_maps = self.inputs_['con_maps']
         return rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
                        two_sided=self.two_sided)
 
@@ -366,17 +389,19 @@ class FFX_GLM(IBMAEstimator):
         'sample_sizes': ('metadata', 'sample_sizes')
     }
 
-    def __init__(self, cdt=0.01, q=0.05, two_sided=True):
+    def __init__(self, cdt=0.01, q=0.05, two_sided=True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.cdt = cdt
         self.q = q
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
-        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
+        con_maps = self.inputs_['con_maps']
+        var_maps = self.inputs_['se_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = ffx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
-                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        images = ffx_glm(con_maps, var_maps, sample_sizes,
+                         dataset.masker.mask_img, cdt=self.cdt, q=self.q,
+                         two_sided=self.two_sided)
         return images
 
 
@@ -438,15 +463,17 @@ class MFX_GLM(IBMAEstimator):
         'sample_sizes': ('metadata', 'sample_sizes')
     }
 
-    def __init__(self, cdt=0.01, q=0.05, two_sided=True):
+    def __init__(self, cdt=0.01, q=0.05, two_sided=True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.cdt = cdt
         self.q = q
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        con_maps = apply_mask(self.inputs_['con_maps'], dataset.mask)
-        var_maps = apply_mask(self.inputs_['se_maps'], dataset.mask)
+        con_maps = self.inputs_['con_maps']
+        var_maps = self.inputs_['se_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = mfx_glm(con_maps, var_maps, sample_sizes, dataset.mask,
-                         cdt=self.cdt, q=self.q, two_sided=self.two_sided)
+        images = mfx_glm(con_maps, var_maps, sample_sizes,
+                         dataset.masker.mask_img, cdt=self.cdt, q=self.q,
+                         two_sided=self.two_sided)
         return images
