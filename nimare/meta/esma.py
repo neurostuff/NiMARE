@@ -184,7 +184,7 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
         data['y'] = estimates[:, i]
         if standard_errors is not None:
             data['sigma'] = standard_errors[:, i]
-        print(data)
+
         result = model.sampling(data=data, **sampling_kwargs)
         s = result.summary(['alpha', 'tau'], probs=())
         s = pd.DataFrame(s['summary'], columns=s['summary_colnames'],
@@ -198,7 +198,6 @@ def stan_mfx(estimates, standard_errors=None, variances=None,
         "tau": stats[2],
         "tau_sd": stats[3]
     }
-    return result
 
 
 @due.dcite(references.FISHERS, description='Fishers citation.')
