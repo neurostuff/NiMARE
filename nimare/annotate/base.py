@@ -1,7 +1,7 @@
 """
 Base classes for meta-analytic annotation methods
 """
-from .base import NiMAREBase
+from ..base import NiMAREBase
 
 
 class AnnotationModel(NiMAREBase):

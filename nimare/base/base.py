@@ -20,6 +20,9 @@ LGR = logging.getLogger(__name__)
 
 
 class NiMAREBase(with_metaclass(ABCMeta)):
+    """
+    Base class for NiMARE.
+    """
     def __init__(self):
         """
         TODO: Actually write/refactor class methods. They mostly come directly from sklearn
@@ -200,6 +203,9 @@ class MetaResult(object):
         self.maps = maps or {}
 
     def get_map(self, name, return_type='image'):
+        """
+        Get stored map as image or array.
+        """
         m = self.maps.get(name)
         if m is None:
             raise ValueError("No map with name '{}' found.".format(name))
@@ -236,6 +242,9 @@ class MetaResult(object):
             img.to_filename(outpath)
 
     def copy(self):
+        """
+        Returns copy of result object.
+        """
         new = MetaResult(self.estimator,
                          self.masker,
                          copy.deepcopy(self.maps))
