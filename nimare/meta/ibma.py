@@ -37,7 +37,7 @@ class IBMAEstimator(Estimator):
         masker = self.masker or dataset.masker
         for name, (type_, _) in self._required_inputs.items():
             if type_ == 'image':
-                self.inputs_[name] = masker.transform(self.inputs_[name])      
+                self.inputs_[name] = masker.transform(self.inputs_[name])
 
 
 class Fishers(IBMAEstimator):

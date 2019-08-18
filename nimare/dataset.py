@@ -374,7 +374,7 @@ class Dataset(NiMAREBase):
 
         xyz = df[['x', 'y', 'z']].values
         ijk = pd.DataFrame(mm2vox(xyz, self.masker.mask_img.affine),
-                                  columns=['i', 'j', 'k'])
+                           columns=['i', 'j', 'k'])
         df = pd.concat([df, ijk], axis=1)
         self.coordinates = df
 
