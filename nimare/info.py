@@ -48,7 +48,6 @@ DOWNLOAD_URL = (
         name=PACKAGENAME, ver=VERSION))
 
 REQUIRES = [
-    'click',
     'cognitiveatlas',
     'fuzzywuzzy',
     'matplotlib',
@@ -100,7 +99,7 @@ EXTRA_REQUIRES = {
 EXTRA_REQUIRES['all'] = list(set([
     v for deps in EXTRA_REQUIRES.values() for v in deps]))
 
-ENTRY_POINTS = {'console_scripts': ['nimare=nimare.cli:cli']}
+ENTRY_POINTS = {'console_scripts': ['nimare=nimare.cli:_main']}
 
 # Package classifiers
 CLASSIFIERS = [

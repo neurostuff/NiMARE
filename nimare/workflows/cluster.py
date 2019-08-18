@@ -1,4 +1,6 @@
-import click
+"""
+Meta-analytic clustering workflow
+"""
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -12,29 +14,17 @@ from ..meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKerne
 from ..io import convert_sleuth_to_dataset
 
 
-@click.command(name='metacluster',
-               short_help='clusters experiments based on similarity'
-                          'of activation patterns, to investigate '
-                          'heterogeneity across a meta-analytic dataset',
-               help='Method for investigating recurrent patterns of activation accross a '
-                    'meta-analytic dataset, thus identifying trends across a collection of '
-                    'experiments.')
-@click.argument('database', required=True, type=click.Path(exists=True, readable=True))
-@click.option('--output_dir', required=True, type=click.Path(exists=True), help='Directory into which clustering results will be written.')
-@click.option('--output_prefix', default='metacluster', type=str, help='Common prefix for output clustering results.')
-@click.option('--kernel', default='ALEKernel', type=click.Choice(['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']), help='Kernel estimator, for coordinate-based metaclustering.')
-@click.option('--coord/--img', required=True, default=False, help='Is input data image- or coordinate-based?')
-@click.option('--algorithm', '-a', default='kmeans', type=click.Choice(['kmeans', 'dbscan', 'spectral']), help='Clustering algorithm to be used, from sklearn.cluster.')
-@click.option('--clust_range', nargs=2, type=int, help='Select a range for k over which clustering solutions will be evaluated (e.g., 2 10 will evaluate solutions with k = 2 clusters to k = 10 clusters).')
 @due.dcite(references.META_CLUSTER,
-           description='Introduces meta-analytic clustering analysis; hierarchically clusering face paradigms.')
+           description='Introduces meta-analytic clustering analysis; '
+                       'hierarchically clustering face paradigms.')
 @due.dcite(references.META_CLUSTER2,
-           description='Performs the specific meta-analytic clustering approach included here.')
-def meta_cluster_workflow(database, output_dir=None, output_prefix=None,
+           description='Performs the specific meta-analytic clustering '
+                       'approach implemented here.')
+def meta_cluster_workflow(dataset_file, output_dir=None, output_prefix=None,
                           kernel='ALEKernel', coord=True, algorithm='kmeans',
                           clust_range=(2, 10)):
     """
-    Perform a meta-analytic clustering analysis on a database file.
+    Perform a meta-analytic clustering analysis on a dataset file.
 
     Warnings
     --------
@@ -54,15 +44,16 @@ def meta_cluster_workflow(database, output_dir=None, output_prefix=None,
                     sigma += r * (log(r / p, 2) + log(r / q, 2))
         return abs(sigma)
     # template_file = get_template(space='mni152_1mm', mask=None)
-    if database.endswith('.json'):
-        db = database  # how do I read in a generic database file? do I need options for source type?
+    if dataset_file.endswith('.json'):
+        db = dataset_file  # how do I read in a generic dataset_file file? do I need options for source type?
         ids = db.ids
         dset = db.get_dataset(ids, target='mni152_2mm')
-    elif database.endswith('.txt'):
-        db = convert_sleuth_to_dataset(database)
+    elif dataset_file.endswith('.txt'):
+        db = convert_sleuth_to_dataset(dataset_file)
         dset = db.get_dataset(target='mni152_2mm')
     else:
-        raise click.BadParameter('You\'ve provided a database that metacluster can\'t read. :(', param_hint='database')
+        raise ValueError("You've provided a dataset file that metacluster "
+                         "can't read. :(")
     # imgs = dset.images
     if coord:
         if kernel == 'ALEKernel':
@@ -99,7 +90,8 @@ def meta_cluster_workflow(database, output_dir=None, output_prefix=None,
     silhouette_scores = {}
     for i in k:
         j = i - 2
-        silhouette = silhouette_score(imgs_arr, labels[i], metric='correlation', random_state=None)
+        silhouette = silhouette_score(imgs_arr, labels[i],
+                                      metric='correlation', random_state=None)
         silhouette_scores[i] = silhouette
     silhouettes = pd.Series(silhouette_scores, name='Average Silhouette Scores')
 
@@ -110,14 +102,14 @@ def meta_cluster_workflow(database, output_dir=None, output_prefix=None,
             clusters.append(list(np.where(labels[i] == j)[0]))
         clusters_idx['Solution {0}'.format(i)] = clusters
 
-    variation_of_infofmation = {}
+    variation_of_information = {}
     for i in k[:-1]:
         j = clusters_idx['Solution {0}'.format(i)]
         z = clusters_idx['Solution {0}'.format(i + 1)]
         var_info = VI(j, z)
-        variation_of_infofmation[i + 1] = var_info
+        variation_of_information[i + 1] = var_info
 
-    vi = pd.Series(variation_of_infofmation, name='Variation of Information')
+    vi = pd.Series(variation_of_information, name='Variation of Information')
 
     metrics = pd.concat([vi, silhouettes], axis=1)
     metrics.to_csv('{0}/{1}_metrics.csv'.format(output_dir, output_prefix))

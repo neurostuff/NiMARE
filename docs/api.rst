@@ -192,6 +192,28 @@ API
    nimare.utils.get_resource_path
 
 
+.. _api_workflows_ref:
+
+:mod:`nimare.workflows`: Common workflows
+--------------------------------------------------
+
+.. automodule:: nimare.workflows
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare.workflows
+
+.. autosummary:: nimare.workflows
+   :toctree: generated/
+   :template: module.rst
+
+   nimare.workflows.ale
+   nimare.workflows.conperm
+   nimare.workflows.macm
+   nimare.workflows.peaks2maps
+   nimare.workflows.scale
+
+
 .. _api_base_ref:
 
 :mod:`nimare.base`: Base classes
