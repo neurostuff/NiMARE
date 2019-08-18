@@ -1,7 +1,7 @@
 """
-Miscellaneous base classes.
+Base classes for parcellation.
 """
-from .estimators import Estimator
+from ..base.estimators import Estimator
 
 
 class Parcellator(Estimator):

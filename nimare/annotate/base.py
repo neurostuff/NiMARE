@@ -1,5 +1,5 @@
 """
-Base classes for meta-analytic annotation methods.
+Base classes for meta-analytic annotation methods
 """
 from .base import NiMAREBase
 
