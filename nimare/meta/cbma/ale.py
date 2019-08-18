@@ -362,7 +362,7 @@ class ALESubtraction(CBMAEstimator):
 
         Returns
         -------
-        :obj:`nimare.base.MetaResult`
+        :obj:`nimare.base.base.MetaResult`
             Results of ALE subtraction analysis.
         """
         maps = self._fit(ale1, ale2, image1, image2, ma_maps1, ma_maps2)

@@ -236,7 +236,7 @@ class MKDAChi2(CBMAEstimator):
 
         Returns
         -------
-        :obj:`nimare.base.MetaResult`
+        :obj:`nimare.base.base.MetaResult`
             Results of Estimator fitting.
         """
         self._validate_input(dataset)
