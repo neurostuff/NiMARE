@@ -58,11 +58,24 @@ class Dataset(NiMAREBase):
             mask = get_template(target, mask='brain')
         self.masker = get_masker(mask)
         self.space = target
-        self._load_coordinates()
-        self._load_images()
-        self._load_annotations()
-        self._load_texts()
-        self._load_metadata()
+
+        # build list of ids
+        id_columns = ['id', 'study_id', 'contrast_id']
+        all_ids = []
+        for pid in self.data.keys():
+            for expid in self.data[pid]['contrasts'].keys():
+                exp = self.data[pid]['contrasts'][expid]
+                id_ = '{0}-{1}'.format(pid, expid)
+                all_ids.append([id_, pid, expid])
+        id_df = pd.DataFrame(columns=id_columns, data=all_ids)
+        id_df = id_df.set_index('id', drop=False)
+
+        self.annotations = self._load_data(id_df, key='labels')
+        self.metadata = self._load_data(id_df, key='metadata')
+        self.texts = self._load_data(id_df, key='text')
+        raw_image_df = self._load_data(id_df, key='images')
+        self.images = self._validate_images(raw_image_df)
+        self.coordinates = self._load_coordinates()
 
     def slice(self, ids):
         """
@@ -111,180 +124,62 @@ class Dataset(NiMAREBase):
                 LGR.info('Overwriting images column {}'.format(abs_col))
             self.images[abs_col] = self.images[col].apply(try_prepend, prefix=new_path)
 
-    def _load_annotations(self):
+    def _load_data(self, id_df, key='labels'):
         """
         Load labels in Dataset into DataFrame.
         """
-        # Required columns
-        columns = ['id', 'study_id', 'contrast_id']
-
-        # build list of ids
-        all_ids = []
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-                all_ids.append([id_, pid, expid])
-
-        id_df = pd.DataFrame(columns=columns, data=all_ids)
-        id_df = id_df.set_index('id', drop=False)
-
         exp_dict = {}
         for pid in self.data.keys():
             for expid in self.data[pid]['contrasts'].keys():
                 exp = self.data[pid]['contrasts'][expid]
                 id_ = '{0}-{1}'.format(pid, expid)
 
-                if 'labels' not in self.data[pid]['contrasts'][expid].keys():
+                if key not in self.data[pid]['contrasts'][expid].keys():
                     continue
-
-                exp_dict[id_] = exp['labels']
+                exp_dict[id_] = exp[key]
 
         temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
         df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
-
         df = df.reset_index(drop=True)
         df = df.replace(to_replace='None', value=np.nan)
-        self.annotations = df
+        return df
 
-    def _load_metadata(self):
+    def _validate_images(self, image_df):
         """
-        Load metadata in Dataset into DataFrame.
+        Check and update image paths in DataFrame.
         """
-        # Required columns
-        columns = ['id', 'study_id', 'contrast_id']
-
-        # build list of ids
-        all_ids = []
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-                all_ids.append([id_, pid, expid])
-
-        id_df = pd.DataFrame(columns=columns, data=all_ids)
-        id_df = id_df.set_index('id', drop=False)
-
-        exp_dict = {}
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-
-                if 'metadata' not in self.data[pid]['contrasts'][expid].keys():
-                    continue
-
-                exp_dict[id_] = exp['metadata']
-
-        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
-        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
-
-        df = df.reset_index(drop=True)
-        df = df.replace(to_replace='None', value=np.nan)
-        self.metadata = df
-
-    def _load_texts(self):
-        """
-        Load texts in Dataset into a DataFrame.
-        """
-        # Required columns
-        columns = ['id', 'study_id', 'contrast_id']
-
-        # build list of ids
-        all_ids = []
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-                all_ids.append([id_, pid, expid])
-
-        id_df = pd.DataFrame(columns=columns, data=all_ids)
-        id_df = id_df.set_index('id', drop=False)
-
-        exp_dict = {}
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-
-                if 'texts' not in self.data[pid]['contrasts'][expid].keys():
-                    continue
-
-                exp_dict[id_] = exp['texts']
-
-        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
-        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
-
-        df = df.reset_index(drop=True)
-        df = df.replace(to_replace='None', value=np.nan)
-        self.texts = df
-
-    def _load_images(self):
-        """
-        Load images in Dataset into a DataFrame.
-        """
-        columns = ['id', 'study_id', 'contrast_id']
-
-        # build list of ids
-        all_ids = []
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-                all_ids.append([id_, pid, expid])
-
-        id_df = pd.DataFrame(columns=columns, data=all_ids)
-        id_df = id_df.set_index('id', drop=False)
-
-        exp_dict = {}
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-
-                if 'images' not in self.data[pid]['contrasts'][expid].keys():
-                    continue
-
-                exp_dict[id_] = exp['images']
-
-        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
         valid_suffices = ['.brik', '.head', '.nii', '.img', '.hed']
         file_cols = []
-        for col in temp_df.columns:
-            vals = [v for v in temp_df[col].values if isinstance(v, str)]
+        for col in image_df.columns:
+            vals = [v for v in image_df[col].values if isinstance(v, str)]
             fc = any([any([vs in v for vs in valid_suffices]) for v in vals])
             if fc:
                 file_cols.append(col)
 
-        # Clean up temp_df
+        # Clean up image_df
         # Find out which columns have full paths and which have relative paths
         abs_cols = []
         for col in file_cols:
-            files = temp_df[col].tolist()
+            files = image_df[col].tolist()
             abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
             if all(abspaths):
                 abs_cols.append(col)
             elif not any(abspaths):
-                temp_df = temp_df.rename(columns={col: col + '__relative'})
+                image_df = image_df.rename(columns={col: col + '__relative'})
             else:
                 raise ValueError('Mix of absolute and relative paths detected '
                                  'for "{0}" images'.format(col))
 
         # Set relative paths from absolute ones
         if len(abs_cols):
-            all_files = list(np.ravel(temp_df[abs_cols].values))
+            all_files = list(np.ravel(image_df[abs_cols].values))
             all_files = [f for f in all_files if isinstance(f, str)]
             shared_path = find_stem(all_files)
             LGR.info('Shared path detected: "{0}"'.format(shared_path))
             for abs_col in abs_cols:
-                temp_df[abs_col + '__relative'] = temp_df[abs_col].apply(
+                image_df[abs_col + '__relative'] = image_df[abs_col].apply(
                     lambda x: x.split(shared_path)[1] if isinstance(x, str) else x)
-
-        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
-        df = df.reset_index(drop=True)
-        df = df.replace(to_replace='None', value=np.nan)
-
-        self.images = df
+        return image_df
 
     def _load_coordinates(self):
         """
@@ -376,7 +271,7 @@ class Dataset(NiMAREBase):
         ijk = pd.DataFrame(mm2vox(xyz, self.masker.mask_img.affine),
                            columns=['i', 'j', 'k'])
         df = pd.concat([df, ijk], axis=1)
-        self.coordinates = df
+        return df
 
     def get(self, dict_):
         """
