@@ -64,7 +64,6 @@ class Dataset(NiMAREBase):
         all_ids = []
         for pid in self.data.keys():
             for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
                 id_ = '{0}-{1}'.format(pid, expid)
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
