@@ -60,6 +60,11 @@ class ALE(CBMAEstimator):
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
+    _required_inputs = {
+        'coordinates': ('coordinates',),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
     def __init__(self, kernel_estimator=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
@@ -79,10 +84,15 @@ class ALE(CBMAEstimator):
         self.null_distributions = {}
 
     def _fit(self, dataset):
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        temp_coordinates = self.inputs_['coordinates'].copy()
+        for i, df in enumerate(temp_coordinates):
+            df['n'] = sample_sizes[i]
+        coordinates = pd.concat(temp_coordinates)
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
+        ma_maps = self.kernel_estimator.transform(coordinates, mask=self.mask, masked=False)
         ale_values = self._compute_ale(ma_maps)
         self._compute_null(ma_maps)
         p_values, z_values = self._ale_to_p(ale_values)
