@@ -1,19 +1,17 @@
 """
 Base classes for datasets.
 """
-import os
 import gzip
-import copy
 import pickle
 import logging
 import multiprocessing as mp
 from collections import defaultdict
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 
 import inspect
 from six import with_metaclass
 
-from ..utils import get_masker
+from .results import MetaResult
 
 
 LGR = logging.getLogger(__name__)
@@ -193,59 +191,82 @@ class NiMAREBase(with_metaclass(ABCMeta)):
         return obj
 
 
-class MetaResult(object):
-    """
-    Base class for meta-analytic results.
-    """
-    def __init__(self, estimator, mask, maps=None):
-        self.estimator = estimator
-        self.masker = get_masker(mask)
-        self.maps = maps or {}
+class Transformer(NiMAREBase):
+    """Transformers take in Datasets and return Datasets
 
-    def get_map(self, name, return_type='image'):
-        """
-        Get stored map as image or array.
-        """
-        m = self.maps.get(name)
-        if m is None:
-            raise ValueError("No map with name '{}' found.".format(name))
-        return self.masker.inverse_transform(m) if return_type == 'image' else m
+    Initialize with hyperparameters.
+    """
+    def __init__(self):
+        pass
 
-    def save_maps(self, output_dir='.', prefix='', prefix_sep='_',
-                  names=None):
+    @abstractmethod
+    def transform(self, dataset):
+        """Add stuff to transformer.
         """
-        Save results to files.
+        if not hasattr(dataset, 'slice'):
+            raise ValueError('Argument "dataset" must be a valid Dataset '
+                             'object, not a {0}'.format(type(dataset)))
+
+
+class Estimator(NiMAREBase):
+    """Estimators take in Datasets and return MetaResults
+    """
+
+    # Inputs that must be available in input Dataset. Keys are names of
+    # attributes to set; values are strings indicating location in Dataset.
+    _required_inputs = {}
+
+    def _validate_input(self, dataset):
+        if not hasattr(dataset, 'slice'):
+            raise ValueError('Argument "dataset" must be a valid Dataset '
+                             'object, not a {0}'.format(type(dataset)))
+
+        if self._required_inputs:
+            data = dataset.get(self._required_inputs)
+            self.inputs_ = {}
+            for k, v in data.items():
+                if not v:
+                    raise ValueError(
+                        "Estimator {0} requires input dataset to contain {1}, but "
+                        "none were found.".format(self.__class__.__name__, k))
+                self.inputs_[k] = v
+
+    def _preprocess_input(self, dataset):
+        '''
+        Perform any additional preprocessing steps on data in self.input_
+        '''
+        pass
+
+    def fit(self, dataset):
+        """
+        Fit Estimator to Dataset.
 
         Parameters
         ----------
-        output_dir : :obj:`str`, optional
-            Output directory in which to save results. If the directory doesn't
-            exist, it will be created. Default is current directory.
-        prefix : :obj:`str`, optional
-            Prefix to prepent to output file names. Default is none.
-        prefix_sep : :obj:`str`, optional
-            Separator to add between prefix and default file names. Default is
-            _.
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset object to analyze.
+
+        Returns
+        -------
+        :obj:`nimare.base.base.MetaResult`
+            Results of Estimator fitting.
         """
-        if prefix == '':
-            prefix_sep = ''
+        self._validate_input(dataset)
+        self._preprocess_input(dataset)
+        maps = self._fit(dataset)
 
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        if hasattr(self, 'masker') and self.masker is not None:
+            masker = self.masker
+        else:
+            masker = dataset.masker
 
-        names = names or list(self.maps.keys())
-        maps = {k: self.get_map(k) for k in names}
+        self.results = MetaResult(self, masker, maps)
+        return self.results
 
-        for imgtype, img in maps.items():
-            filename = prefix + prefix_sep + imgtype + '.nii.gz'
-            outpath = os.path.join(output_dir, filename)
-            img.to_filename(outpath)
-
-    def copy(self):
+    @abstractmethod
+    def _fit(self, dataset):
+        """Apply estimation to dataset and output results. Must return a
+        dictionary of results, where keys are names of images and values are
+        ndarrays.
         """
-        Returns copy of result object.
-        """
-        new = MetaResult(self.estimator,
-                         self.masker,
-                         copy.deepcopy(self.maps))
-        return new
+        pass

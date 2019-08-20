@@ -1,7 +1,7 @@
 """
 Base classes for parcellation.
 """
-from ..base.estimators import Estimator
+from ..base import Estimator
 
 
 class Parcellator(Estimator):

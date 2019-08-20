@@ -12,7 +12,7 @@ from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel, KernelTransformer
-from ...base import MetaResult
+from ...results import MetaResult
 from .base import CBMAEstimator
 from ...due import due
 from ... import references

@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 
 import numpy as np
 
-from ..base import MetaResult
+from ..results import MetaResult
 from ..stats import p_to_z
 
 

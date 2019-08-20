@@ -15,7 +15,7 @@ from nilearn.image import resample_to_img, math_img
 from .utils import compute_ma, get_ale_kernel, peaks2maps
 from ...utils import vox2mm, get_masker
 
-from ...base.estimators import Transformer
+from ...base import Transformer
 
 
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
