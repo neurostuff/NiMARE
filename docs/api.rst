@@ -229,7 +229,4 @@ API
    :template: module.rst
 
    nimare.base.base
-   nimare.base.annotate
-   nimare.base.decode
-   nimare.base.meta
-   nimare.base.misc
+   nimare.base.estimators

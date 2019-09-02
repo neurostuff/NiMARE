@@ -10,7 +10,7 @@ import nibabel as nib
 from scipy.stats import multivariate_normal
 
 from ...due import due
-from ...base import AnnotationModel
+from ..base import AnnotationModel
 from ...utils import get_template
 from ... import references
 

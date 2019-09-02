@@ -16,7 +16,7 @@ from nilearn.masking import unmask, apply_mask
 
 from ..utils import get_masker
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
-from ..base.estimators import Estimator
+from ..base import Estimator
 from ..stats import p_to_z
 
 LGR = logging.getLogger(__name__)

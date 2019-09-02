@@ -1,4 +1,4 @@
-from ...base.estimators import Estimator
+from ...base import Estimator
 
 
 class CBMAEstimator(Estimator):
