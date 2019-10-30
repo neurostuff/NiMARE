@@ -43,7 +43,7 @@ class FDRCorrector(Corrector):
 
     Parameters
     ----------
-    q : `obj`:float
+    alpha : `obj`:float
         The FDR correction rate to use.
     method : `obj`:str
         The FDR correction to use. Either 'indep' (for independent or
@@ -53,8 +53,8 @@ class FDRCorrector(Corrector):
 
     _correction_method = '_fdr_correct'
 
-    def __init__(self, q=0.05, method='indep', **kwargs):
-        self.q = q
+    def __init__(self, alpha=0.05, method='indep', **kwargs):
+        self.alpha = alpha
         self.method = method
         self.parameters = kwargs
 
@@ -64,7 +64,7 @@ class FDRCorrector(Corrector):
 
     def _transform(self, result):
         p = result.maps['p']
-        _, p_corr = mc.fdrcorrection(p, alpha=self.q, method=self.method,
+        _, p_corr = mc.fdrcorrection(p, alpha=self.alpha, method=self.method,
                                      is_sorted=False)
         corr_maps = {'p': p_corr}
         self._generate_secondary_maps(result, corr_maps)
