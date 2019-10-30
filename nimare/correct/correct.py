@@ -53,7 +53,8 @@ class FDRCorrector(Corrector):
 
     _correction_method = '_fdr_correct'
 
-    def __init__(self, method='indep', **kwargs):
+    def __init__(self, q=0.05, method='indep', **kwargs):
+        self.q = q
         self.method = method
         self.parameters = kwargs
 
