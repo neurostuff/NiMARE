@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from .base.base import NiMAREBase
+from .base import NiMAREBase
 from .utils import (tal2mni, mni2tal, mm2vox, get_template, listify,
                     try_prepend, find_stem, get_masker)
 

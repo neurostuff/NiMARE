@@ -7,7 +7,7 @@ from sklearn.cluster import k_means
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from ..base import Parcellator
+from .base import Parcellator
 from ..meta.cbma.kernel import ALEKernel
 from ..due import due
 from .. import references

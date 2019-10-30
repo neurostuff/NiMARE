@@ -51,7 +51,6 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.ifconfig',
               'sphinx.ext.linkcode',
               'sphinx_gallery.gen_gallery',
-              'sphinx_click.ext',
               'm2r']
 
 import sphinx
