@@ -19,7 +19,7 @@ def test_fishers():
     """
     meta = ibma.Fishers()
     res = meta.fit(pytest.dset_z)
-    corr = FDRCorrector(method='fdr_bh', alpha=0.001)
+    corr = FDRCorrector(method='indep', alpha=0.001)
     cres = corr.transform(res)
     assert isinstance(meta.results, nimare.base.MetaResult)
     assert isinstance(res, nimare.base.MetaResult)
