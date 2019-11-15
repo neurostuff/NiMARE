@@ -8,6 +8,7 @@ from nilearn.input_data import NiftiLabelsMasker
 
 import nimare
 from nimare.meta import ibma
+from nimare.correct import FDRCorrector
 from ..utils import get_resource_path
 
 
@@ -17,8 +18,12 @@ def test_fishers():
     Smoke test for Fisher's.
     """
     meta = ibma.Fishers()
-    meta.fit(pytest.dset_z)
+    res = meta.fit(pytest.dset_z)
+    corr = FDRCorrector(method='fdr_bh', alpha=0.001)
+    cres = corr.transform(res)
     assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(cres, nimare.base.MetaResult)
 
 
 def test_z_perm():
