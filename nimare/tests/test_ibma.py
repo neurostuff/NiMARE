@@ -12,7 +12,6 @@ from nimare.correct import FDRCorrector
 from ..utils import get_resource_path
 
 
-
 def test_fishers():
     """
     Smoke test for Fisher's.
