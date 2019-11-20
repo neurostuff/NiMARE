@@ -9,6 +9,7 @@ A Python library for coordinate- and image-based meta-analysis.
 [![Documentation Status](https://readthedocs.org/projects/nimare/badge/?version=latest)](http://nimare.readthedocs.io/en/latest/?badge=latest)
 [![Codecov](https://codecov.io/gh/neurostuff/NiMARE/branch/master/graph/badge.svg)](https://codecov.io/gh/neurostuff/nimare)
 [![Join the chat at https://mattermost.brainhack.org/brainhack/channels/nimare](https://img.shields.io/badge/mattermost-join_chat%20%E2%86%92-brightgreen.svg)](https://mattermost.brainhack.org/brainhack/channels/nimare)
+[![RRID:SCR_017398](https://img.shields.io/badge/RRID-SCR__017398-blue.svg)](https://scicrunch.org/scicrunch/Resources/record/nlx_144509-1/SCR_017398/resolver?q=nimare&l=nimare)
 
 Currently, NiMARE implements a range of image- and coordinate-based meta-analytic algorithms, as well as Generalized Correspondence Latent Dirichlet Allocation (GC-LDA) and a number of functional decoding methods.
 
@@ -69,6 +70,11 @@ Ultimately, however, we plan to support all (or most) of the methods listed belo
     - Meta-analytic independent components analysis (metaICA)
 
 ## Installation
+
+### Installation with pip
+```
+pip install nimare
+```
 
 ### Local installation (development version)
 ```
