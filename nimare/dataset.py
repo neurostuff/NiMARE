@@ -308,7 +308,7 @@ class Dataset(NiMAREBase):
                 rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
 
                 # collect sample size if available
-                sample_size = exp.get('sample_sizes', np.nan)
+                sample_size = exp['metadata'].get('sample_sizes', np.nan)
                 if not isinstance(sample_size, list):
                     sample_size = [sample_size]
                 sample_size = np.array([n for n in sample_size if n])
@@ -317,7 +317,6 @@ class Dataset(NiMAREBase):
                     sample_size = np.array([sample_size] * n_coords)
                 else:
                     sample_size = np.array([np.nan] * n_coords)
-
                 space = exp['coords'].get('space')
                 space = np.array([space] * n_coords)
                 temp_data = np.vstack((rep_id,
