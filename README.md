@@ -7,7 +7,10 @@ A Python library for coordinate- and image-based meta-analysis.
 [![Codecov](https://codecov.io/gh/neurostuff/NiMARE/branch/master/graph/badge.svg)](https://codecov.io/gh/neurostuff/nimare)
 [![Join the chat at https://mattermost.brainhack.org/brainhack/channels/nimare](https://img.shields.io/badge/mattermost-join_chat%20%E2%86%92-brightgreen.svg)](https://mattermost.brainhack.org/brainhack/channels/nimare)
 
-## Supported meta-analytic methods (`nimare.meta`)
+Currently, NiMARE implements a range of image- and coordinate-based meta-analytic algorithms, as well as Generalized Correspondence Latent Dirichlet Allocation (GC-LDA) and a number of functional decoding methods.
+
+Ultimately, however, we plan to support all (or most) of the methods listed below:
+
 - Coordinate-based methods (`nimare.meta.cbma`)
     - Kernel-based methods
         - Activation likelihood estimation (ALE)
@@ -27,9 +30,6 @@ A Python library for coordinate- and image-based meta-analysis.
     - Random effects Stouffer's meta-analysis
     - Weighted Stouffer's meta-analysis
     - Fisher's meta-analysis
-
-## Additional functionality
-
 - Automated annotation (`nimare.annotate`)
     - Tf-idf vectorization of text (`nimare.annotate.tfidf`)
     - Ontology-based annotation (`nimare.annotate.ontology`)

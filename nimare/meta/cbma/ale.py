@@ -306,7 +306,7 @@ class ALE(CBMAEstimator):
 
         # Write out unthresholded value images
         images = {
-            'vthresh': vthresh_z_values,
+            'z_vthresh': vthresh_z_values,
             'p_level-voxel': p_fwe_values,
             'z_level-voxel': z_fwe_values,
             'logp_level-cluster': logp_cfwe_map,
@@ -628,7 +628,7 @@ class SCALE(CBMAEstimator):
         images = {'ale': ale_values,
                   'p': p_values,
                   'z': z_values,
-                  'vthresh': vthresh_z_values}
+                  'z_vthresh': vthresh_z_values}
         return images
 
     def _compute_ale(self, df=None, ma_maps=None):
