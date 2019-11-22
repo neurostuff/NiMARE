@@ -610,7 +610,7 @@ class Dataset(NiMAREBase):
         if isinstance(mask, str):
             mask = nib.load(mask)
 
-        curr_mask = self.mask.mask_img
+        curr_mask = self.masker.mask_img
         if not np.array_equal(curr_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
             mask = resample_to_img(mask, curr_mask)
