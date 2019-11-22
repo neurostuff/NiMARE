@@ -50,6 +50,7 @@ def convert_neurosynth_to_dict(text_file, annotations_file=None):
         study_dict['metadata']['title'] = study_df['title'].tolist()[0]
         study_dict['contrasts'] = {}
         study_dict['contrasts']['1'] = {}
+        study_dict['contrasts']['1']['metadata'] = {}
         study_dict['contrasts']['1']['coords'] = {}
         study_dict['contrasts']['1']['coords']['space'] = study_df['space'].tolist()[0]
         study_dict['contrasts']['1']['coords']['x'] = study_df['x'].tolist()
