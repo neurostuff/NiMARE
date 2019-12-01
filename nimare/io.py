@@ -186,14 +186,14 @@ def convert_sleuth_to_dict(text_file):
                 dict_[study_name] = {'contrasts': {}}
             dict_[study_name]['contrasts'][contrast_name] = {
                 'coords': {},
-                'sample_sizes': [],
+                'metadata': {},
             }
             dict_[study_name]['contrasts'][contrast_name]['coords'][
                 'space'] = space
             dict_[study_name]['contrasts'][contrast_name]['coords']['x'] = x
             dict_[study_name]['contrasts'][contrast_name]['coords']['y'] = y
             dict_[study_name]['contrasts'][contrast_name]['coords']['z'] = z
-            dict_[study_name]['contrasts'][contrast_name][
+            dict_[study_name]['contrasts'][contrast_name]['metadata'][
                 'sample_sizes'] = [sample_size]
     return dict_
 
