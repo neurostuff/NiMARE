@@ -19,7 +19,7 @@ def test_ale():
     cres = corr.transform(res)
     assert isinstance(cres, nimare.base.MetaResult)
     corr = FWECorrector(method='permutation', voxel_thresh=0.001,
-                        n_iters=5, n_cores=2)
+                        n_iters=5, n_cores=1)
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.base.MetaResult)
 
