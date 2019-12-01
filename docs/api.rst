@@ -40,6 +40,24 @@ API
    nimare.meta.cbma.ale
    nimare.meta.cbma.mkda
    nimare.meta.cbma.model
+   nimare.meta.base
+
+.. _api_results_ref:
+
+:mod:`nimare.results`: Meta-analytic results
+------------------------------------------------------
+
+.. automodule:: nimare.results
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare.results
+
+.. autosummary:: nimare.results
+   :toctree: generated/
+   :template: class.rst
+
+   nimare.results.MetaResult
 
 
 .. _api_correct_ref:
@@ -137,7 +155,9 @@ API
    :toctree: generated/
    :template: function.rst
 
+   nimare.io.convert_neurosynth_to_dict
    nimare.io.convert_neurosynth_to_json
+   nimare.io.convert_neurosynth_to_dataset
    nimare.io.convert_sleuth_to_dict
    nimare.io.convert_sleuth_to_json
    nimare.io.convert_sleuth_to_dataset
@@ -226,7 +246,8 @@ API
 
 .. autosummary:: nimare.base
    :toctree: generated/
-   :template: module.rst
+   :template: class.rst
 
-   nimare.base.base
-   nimare.base.estimators
+   nimare.base.NiMAREBase
+   nimare.base.Estimator
+   nimare.base.Transformer

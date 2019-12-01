@@ -248,7 +248,7 @@ class Estimator(NiMAREBase):
 
         Returns
         -------
-        :obj:`nimare.base.base.MetaResult`
+        :obj:`nimare.results.MetaResult`
             Results of Estimator fitting.
         """
         self._validate_input(dataset)
