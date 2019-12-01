@@ -20,6 +20,7 @@ def main():
     pkg_data = {
         'nimare': [
             'tests/data/*',
+            'resources/*'
         ]
     }
 
