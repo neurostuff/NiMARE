@@ -217,6 +217,9 @@ class Estimator(NiMAREBase):
     _required_inputs = {}
 
     def _validate_input(self, dataset):
+        """
+        Search for, and validate, required inputs as necessary.
+        """
         if not hasattr(dataset, 'slice'):
             raise ValueError('Argument "dataset" must be a valid Dataset '
                              'object, not a {0}'.format(type(dataset)))
@@ -232,9 +235,9 @@ class Estimator(NiMAREBase):
                 self.inputs_[k] = v
 
     def _preprocess_input(self, dataset):
-        '''
+        """
         Perform any additional preprocessing steps on data in self.input_
-        '''
+        """
         pass
 
     def fit(self, dataset):
@@ -248,7 +251,7 @@ class Estimator(NiMAREBase):
 
         Returns
         -------
-        :obj:`nimare.base.base.MetaResult`
+        :obj:`nimare.results.MetaResult`
             Results of Estimator fitting.
         """
         self._validate_input(dataset)
@@ -265,7 +268,8 @@ class Estimator(NiMAREBase):
 
     @abstractmethod
     def _fit(self, dataset):
-        """Apply estimation to dataset and output results. Must return a
+        """
+        Apply estimation to dataset and output results. Must return a
         dictionary of results, where keys are names of images and values are
         ndarrays.
         """

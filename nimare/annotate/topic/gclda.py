@@ -775,7 +775,7 @@ class GCLDAModel(AnnotationModel):
 
         Returns
         -------
-        peak_probs : :obj:`numpy.ndarray` of :obj:`numpy.64`
+        peak_probs : :obj:`numpy.ndarray` of :obj:`numpy.float64`
             nPeaks x nTopics x nRegions matrix of probabilities, giving
             probability of sampling each peak (x) from all subregions.
         """
