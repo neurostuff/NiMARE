@@ -12,7 +12,7 @@ class FWECorrector(Corrector):
 
     Parameters
     ----------
-    method : `obj`:str
+    method : :obj:`str`
         The FWE correction to use. Either 'bonferroni' or 'permutation'.
     **kwargs
         Keyword arguments to be used by the FWE correction implementation.
@@ -43,9 +43,9 @@ class FDRCorrector(Corrector):
 
     Parameters
     ----------
-    alpha : `obj`:float
+    alpha : :obj:`float`
         The FDR correction rate to use.
-    method : `obj`:str
+    method : :obj:`str`
         The FDR correction to use. Either 'indep' (for independent or
         positively correlated values) or 'negcorr' (for general or negatively
         correlated tests).

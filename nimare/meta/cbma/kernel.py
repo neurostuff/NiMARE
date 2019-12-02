@@ -69,7 +69,7 @@ class ALEKernel(KernelTransformer):
 
         Returns
         -------
-        imgs : :obj:`list` of `nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
@@ -157,7 +157,7 @@ class MKDAKernel(KernelTransformer):
 
         Returns
         -------
-        imgs : :obj:`list` of `nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
@@ -234,7 +234,7 @@ class KDAKernel(KernelTransformer):
 
         Returns
         -------
-        imgs : :obj:`list` of `nibabel.Nifti1Image`
+        imgs : :obj:`list` of :obj:`nibabel.Nifti1Image`
             A list of modeled activation images (one for each of the Contrasts
             in the input dataset).
         """
