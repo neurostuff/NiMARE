@@ -13,16 +13,27 @@ class FWECorrector(Corrector):
     Parameters
     ----------
     method : :obj:`str`
-        The FWE correction to use. Either 'bonferroni' or 'permutation'.
+        The FWE correction to use. Available internal methods are 'bonferroni'.
+        Additional methods may be implemented within the provided Estimator.
     **kwargs
         Keyword arguments to be used by the FWE correction implementation.
+
+    Notes
+    -----
+    This corrector supports a small number of internal FDR correction methods,
+    but can also use special methods implemented within individual Estimators.
+    To determine what methods are available for the Estimator you're using,
+    check the Estimator's documentation. Estimators have special methods
+    following the naming convention correct_[correction-type]_[method]
+    (e.g., ALE.correct_fwe_permutation).
     """
 
-    _correction_method = '_fwe_correct'
+    _correction_method = 'fwe'
 
     def __init__(self, method='bonferroni', **kwargs):
         self.method = method
         self.parameters = kwargs
+        self._native_methods = ['bonferroni']
 
     @property
     def _name_suffix(self):
@@ -49,9 +60,18 @@ class FDRCorrector(Corrector):
         The FDR correction to use. Either 'indep' (for independent or
         positively correlated values) or 'negcorr' (for general or negatively
         correlated tests).
+
+    Notes
+    -----
+    This corrector supports a small number of internal FDR correction methods,
+    but can also use special methods implemented within individual Estimators.
+    To determine what methods are available for the Estimator you're using,
+    check the Estimator's documentation. Estimators have special methods
+    following the naming convention correct_[correction-type]_[method]
+    (e.g., ALE.correct_fwe_permutation).
     """
 
-    _correction_method = '_fdr_correct'
+    _correction_method = 'fdr'
 
     def __init__(self, alpha=0.05, method='indep', **kwargs):
         self.alpha = alpha
