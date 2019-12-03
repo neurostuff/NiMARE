@@ -77,6 +77,7 @@ class FDRCorrector(Corrector):
         self.alpha = alpha
         self.method = method
         self.parameters = kwargs
+        self._native_methods = ['indep', 'negcorr']
 
     @property
     def _name_suffix(self):
