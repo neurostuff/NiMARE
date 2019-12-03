@@ -103,16 +103,16 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
 
 @due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
-def corr_decode(img, dataset, features=None, frequency_threshold=0.001,
+def corr_decode(dataset, img, features=None, frequency_threshold=0.001,
                 meta_estimator=None, target_image='specificity_z'):
     """
     Parameters
     ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        A dataset with coordinates.
     img : :obj:`nibabel.Nifti1.Nifti1Image`
         Input image to decode. Must have same affine/dimensions as dataset
         mask.
-    dataset
-        A dataset with coordinates.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
         Default is None, which uses all features available.
@@ -162,7 +162,7 @@ def corr_decode(img, dataset, features=None, frequency_threshold=0.001,
     return out_df
 
 
-def corr_dist_decode(img, dataset, features=None, frequency_threshold=0.001,
+def corr_dist_decode(dataset, img, features=None, frequency_threshold=0.001,
                      target_image='z'):
     """
     Builds feature-specific distributions of correlations with input image
@@ -170,11 +170,11 @@ def corr_dist_decode(img, dataset, features=None, frequency_threshold=0.001,
 
     Parameters
     ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        A dataset with images.
     img : :obj:`nibabel.Nifti1.Nifti1Image`
         Input image to decode. Must have same affine/dimensions as dataset
         mask.
-    dataset
-        A dataset with images.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
         Default is None, which uses all features available.

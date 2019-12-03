@@ -37,7 +37,7 @@ class CoordCBP(Parcellator):
 
     Warnings
     --------
-    This method is currently untested.
+    This method is not yet implemented.
 
     References
     ----------

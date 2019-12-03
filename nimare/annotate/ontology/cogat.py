@@ -323,7 +323,7 @@ class CogAtLemmatizer(object):
             regex_dict[term] = pattern
         self.regex = regex_dict
 
-    def lemmatize(self, text, convert_uk=True):
+    def transform(self, text, convert_uk=True):
         """
         Replace terms in text with unique Cognitive Atlas identifiers.
 
