@@ -118,7 +118,7 @@ def convert_sleuth_to_dict(text_file):
 
     Returns
     -------
-    dict_ : :obj:`dict`
+    :obj:`dict`
         NiMARE-organized dictionary containing experiment information from text
         file.
     """
