@@ -86,6 +86,7 @@ class LDAModel(AnnotationModel):
         }
         self.p_topic_g_doc_ = None
         self.p_word_g_topic_ = None
+        self.tempdir = tempdir
 
         # Check for presence of text files and convert if necessary
         if not op.isdir(text_dir):
@@ -123,7 +124,7 @@ class LDAModel(AnnotationModel):
                                              beta=self.params['beta'])
         self.commands_ = [import_str, train_str]
 
-    def fit():
+    def fit(self):
         """
         Fit LDA model to corpus.
         """
@@ -142,7 +143,7 @@ class LDAModel(AnnotationModel):
         # weights for the topics in the preceding column. These columns are sorted
         # on an individual id basis by the weights.
         n_cols = (2 * self.params['n_topics']) + 1
-        dt_df = pd.read_csv(op.join(tempdir, 'doc_topics.txt'),
+        dt_df = pd.read_csv(op.join(self.tempdir, 'doc_topics.txt'),
                             delimiter='\t', skiprows=1, header=None,
                             index_col=0)
         dt_df = dt_df[dt_df.columns[:n_cols]]
@@ -174,7 +175,7 @@ class LDAModel(AnnotationModel):
         self.p_topic_g_doc_ = p_topic_g_doc_df.values
 
         # Topic word weights
-        p_word_g_topic_df = pd.read_csv(op.join(tempdir, 'topic_word_weights.txt'),
+        p_word_g_topic_df = pd.read_csv(op.join(self.tempdir, 'topic_word_weights.txt'),
                                         dtype=str, keep_default_na=False,
                                         na_values=[], sep='\t', header=None,
                                         names=['topic', 'word', 'weight'])
@@ -188,7 +189,7 @@ class LDAModel(AnnotationModel):
         self.p_word_g_topic_ = p_word_g_topic_df.values
 
         # Remove all temporary files (text files, model, and outputs).
-        shutil.rmtree(tempdir)
+        shutil.rmtree(self.tempdir)
 
     def _clean_str(self, string):
         return op.basename(op.splitext(string)[0])
