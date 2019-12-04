@@ -98,8 +98,7 @@ class LDAModel(AnnotationModel):
 
         # Run MALLET topic modeling
         LGR.info('Generating topics...')
-        mallet_bin = op.join(op.dirname(op.dirname(__file__)),
-                             'resources/mallet/bin/mallet')
+        mallet_bin = op.join(get_resource_path(), 'mallet/bin/mallet')
         import_str = ('{mallet} import-dir '
                       '--input {text_dir} '
                       '--output {outdir}/topic-input.mallet '
