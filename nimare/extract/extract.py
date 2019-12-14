@@ -35,8 +35,8 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     dataset_name = "nidm_21pain"
 
     data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
-
-    if op.isdir(data_dir) and overwrite is False:
+    desc_file = op.join(data_dir, 'description.txt')
+    if op.isfile(desc_file) and overwrite is False:
         return data_dir
 
     # Download
@@ -62,6 +62,9 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
 
     os.remove(fname)
     shutil.rmtree(folder)
+
+    with open(desc_file, 'w') as fo:
+        fo.write('21 pain studies in NIDM-results packs.')
     return data_dir
 
 
@@ -89,7 +92,8 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     dataset_name = "mallet"
 
     data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
-    if op.isdir(data_dir) and overwrite is False:
+    desc_file = op.join(data_dir, 'description.txt')
+    if op.isfile(desc_file) and overwrite is False:
         return data_dir
 
     mallet_file = op.join(data_dir, op.basename(url))
@@ -98,4 +102,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     with tarfile.open(mallet_file) as tf:
         tf.extractall(path=data_dir)
     os.remove(mallet_file)
+
+    with open(desc_file, 'w') as fo:
+        fo.write('The MALLET toolbox for latent Dirichlet allocation.')
     return data_dir
