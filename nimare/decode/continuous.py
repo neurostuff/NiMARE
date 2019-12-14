@@ -84,7 +84,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     # Load image file and get voxel values
     input_values = apply_mask(image, model.mask)
-    topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel.T,
+    topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel_.T,
                                       input_values[:, None]))
     if topic_priors is not None:
         weighted_priors = weight_priors(topic_priors, prior_weight)
@@ -94,7 +94,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     # n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
     # p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
     # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
-    word_weights = np.dot(model.p_word_g_topic, topic_weights)
+    word_weights = np.dot(model.p_word_g_topic_, topic_weights)
 
     decoded_df = pd.DataFrame(index=model.vocabulary,
                               columns=['Weight'], data=word_weights)

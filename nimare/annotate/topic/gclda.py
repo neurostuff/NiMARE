@@ -61,6 +61,17 @@ class GCLDAModel(AnnotationModel):
     seed_init : :obj:`int`, optional
         Initial value of random seed. The default is 1.
 
+    Attributes
+    ----------
+    p_topic_g_voxel_ : (V x T) :obj:`numpy.ndarray`
+        Probability of each topic (T) give a voxel (V)
+    p_voxel_g_topic_ : (V x T) :obj:`numpy.ndarray`
+        Probability of each voxel (V) given a topic (T)
+    p_topic_g_word_ : (W x T) :obj:`numpy.ndarray`
+        Probability of each topic (T) given a word (W)
+    p_word_g_topic_ : (W x T) :obj:`numpy.ndarray`
+        Probability of each word (W) given a topic (T)
+
     References
     ----------
     .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
@@ -249,12 +260,6 @@ class GCLDAModel(AnnotationModel):
         self.loglikely_w = []  # Tracks log-likelihood of word tokens
         self.loglikely_tot = []  # Tracks log-likelihood of peak + word tokens
 
-        # TODO: Handle this more elegantly
-        self.p_topic_g_voxel = None
-        self.p_voxel_g_topic = None
-        self.p_topic_g_word = None
-        self.p_word_g_topic = None
-
         # Initialize peak->subregion assignments (r)
         if not self.params['symmetric']:
             # if symmetric model use deterministic assignment :
@@ -302,13 +307,6 @@ class GCLDAModel(AnnotationModel):
             self.topics['total_n_word_tokens_by_topic'][0, topic] += 1
             self.topics['n_word_tokens_doc_by_topic'][doc, topic] += 1
 
-        # Get Initial Spatial Parameter Estimates
-        self._update_regions()
-
-        # Get Log-Likelihood of data for Initialized model and save to
-        # variables tracking loglikely
-        self.compute_log_likelihood()
-
     def fit(self, n_iters=10000, loglikely_freq=10, verbose=1):
         """
         Run multiple iterations.
@@ -324,16 +322,24 @@ class GCLDAModel(AnnotationModel):
             Determines how much info is printed to console. 0 = none,
             1 = a little, 2 = a lot. Default value is 2.
         """
+        if self.iter == 0:
+            # Get Initial Spatial Parameter Estimates
+            self._update_regions()
+
+            # Get Log-Likelihood of data for Initialized model and save to
+            # variables tracking loglikely
+            self.compute_log_likelihood()
+
         for i in range(self.iter, n_iters):
             self._update(loglikely_freq=loglikely_freq, verbose=verbose)
 
         # TODO: Handle this more elegantly
         (p_topic_g_voxel, p_voxel_g_topic,
          p_topic_g_word, p_word_g_topic) = self.get_probs()
-        self.p_topic_g_voxel = p_topic_g_voxel
-        self.p_voxel_g_topic = p_voxel_g_topic
-        self.p_topic_g_word = p_topic_g_word
-        self.p_word_g_topic = p_word_g_topic
+        self.p_topic_g_voxel_ = p_topic_g_voxel
+        self.p_voxel_g_topic_ = p_voxel_g_topic
+        self.p_topic_g_word_ = p_topic_g_word
+        self.p_word_g_topic_ = p_word_g_topic
 
     def _update(self, loglikely_freq=1, verbose=2):
         """

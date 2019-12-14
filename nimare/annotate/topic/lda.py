@@ -50,8 +50,6 @@ class LDAModel(AnnotationModel):
     ----------
     commands_ : :obj:`list` of :obj:`str`
         List of MALLET commands called to fit model.
-    p_topic_g_doc_
-    p_word_g_topic_
 
     References
     ----------
@@ -84,8 +82,6 @@ class LDAModel(AnnotationModel):
             'alpha': alpha,
             'beta': beta,
         }
-        self.p_topic_g_doc_ = None
-        self.p_word_g_topic_ = None
         self.tempdir = tempdir
 
         # Check for presence of text files and convert if necessary
@@ -127,6 +123,13 @@ class LDAModel(AnnotationModel):
     def fit(self):
         """
         Fit LDA model to corpus.
+
+        Attributes
+        ----------
+        p_topic_g_doc_ : :obj:`numpy.ndarray`
+            Probability of each topic given a document
+        p_word_g_topic_ : :obj:`numpy.ndarray`
+            Probability of each word given a topic
         """
         subprocess.call(self.commands_[0], shell=True)
         subprocess.call(self.commands_[1], shell=True)

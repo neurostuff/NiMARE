@@ -68,7 +68,7 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
     :math:`t`                 Topic
     :math:`w`                 Word type
     :math:`h`                 Input text
-    :math:`p(v|t)`            Probability of topic given voxel (``p_topic_g_voxel``)
+    :math:`p(v|t)`            Probability of voxel given topic (``p_voxel_g_topic_``)
     :math:`\\tau_{t}`          Topic weight vector (``topic_weights``)
     :math:`p(w|t)`            Probability of word type given topic (``p_word_g_topic``)
     :math:`\omega`            1d array from input image (``input_values``)
@@ -116,14 +116,14 @@ def encode_gclda(model, text, out_file=None, topic_priors=None,
     # n_topics_per_word_token = np.sum(model.n_word_tokens_word_by_topic, axis=1)
     # p_topic_g_word = model.n_word_tokens_word_by_topic / n_topics_per_word_token[:, None]
     # p_topic_g_word = np.nan_to_num(p_topic_g_word, 0)
-    p_topic_g_text = model.p_topic_g_word[keep_idx]  # p(T|W) for words in text only
+    p_topic_g_text = model.p_topic_g_word_[keep_idx]  # p(T|W) for words in text only
     prod = p_topic_g_text * text_counts[:, None]  # Multiply p(T|W) by words in text
     topic_weights = np.sum(prod, axis=0)  # Sum across words
     if topic_priors is not None:
         weighted_priors = weight_priors(topic_priors, prior_weight)
         topic_weights *= weighted_priors
 
-    voxel_weights = np.dot(model.p_voxel_g_topic, topic_weights)
+    voxel_weights = np.dot(model.p_voxel_g_topic_, topic_weights)
     img = unmask(voxel_weights, model.mask)
 
     if out_file is not None:
