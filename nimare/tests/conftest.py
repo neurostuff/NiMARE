@@ -22,6 +22,8 @@ def download_data():
     """
     nidm_path = download_nidm_pain(data_dir=op.join(op.expanduser('~'), '.nimare'))
     pytest.dset_dir = nidm_path
+    raise Exception('{}:\n\t{}'.format(
+        nidm_path, '\n\t'.join(glob(op.join(nidm_path, '*')))))
     return nidm_path
 
 
