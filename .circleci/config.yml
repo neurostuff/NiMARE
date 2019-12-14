@@ -65,6 +65,7 @@ jobs:
       - run:
           name: Coverage
           command:  |
+            apt-get install -yqq curl
             source activate testenv
             py.test --cov-report xml:coverage.xml --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py nimare
       - codecov/upload:

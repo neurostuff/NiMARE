@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from .base.base import NiMAREBase
+from .base import NiMAREBase
 from .utils import (tal2mni, mni2tal, mm2vox, get_template, listify,
                     try_prepend, find_stem, get_masker)
 
@@ -200,6 +200,17 @@ class Dataset(NiMAREBase):
                 # Required info (ids, x, y, z, space)
                 n_coords = len(exp['coords']['x'])
                 rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
+
+                # collect sample size if available
+                sample_size = exp['metadata'].get('sample_sizes', np.nan)
+                if not isinstance(sample_size, list):
+                    sample_size = [sample_size]
+                sample_size = np.array([n for n in sample_size if n])
+                if len(sample_size):
+                    sample_size = np.mean(sample_size)
+                    sample_size = np.array([sample_size] * n_coords)
+                else:
+                    sample_size = np.array([np.nan] * n_coords)
 
                 space = exp['coords'].get('space')
                 space = np.array([space] * n_coords)
@@ -497,7 +508,7 @@ class Dataset(NiMAREBase):
         if isinstance(mask, str):
             mask = nib.load(mask)
 
-        curr_mask = self.mask.mask_img
+        curr_mask = self.masker.mask_img
         if not np.array_equal(curr_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
             mask = resample_to_img(mask, curr_mask)

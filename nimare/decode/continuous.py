@@ -84,7 +84,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     # Load image file and get voxel values
     input_values = apply_mask(image, model.mask)
-    topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel.T,
+    topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel_.T,
                                       input_values[:, None]))
     if topic_priors is not None:
         weighted_priors = weight_priors(topic_priors, prior_weight)
@@ -94,7 +94,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     # n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
     # p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
     # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
-    word_weights = np.dot(model.p_word_g_topic, topic_weights)
+    word_weights = np.dot(model.p_word_g_topic_, topic_weights)
 
     decoded_df = pd.DataFrame(index=model.vocabulary,
                               columns=['Weight'], data=word_weights)
@@ -103,16 +103,16 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
 
 @due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
-def corr_decode(img, dataset, features=None, frequency_threshold=0.001,
+def corr_decode(dataset, img, features=None, frequency_threshold=0.001,
                 meta_estimator=None, target_image='specificity_z'):
     """
     Parameters
     ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        A dataset with coordinates.
     img : :obj:`nibabel.Nifti1.Nifti1Image`
         Input image to decode. Must have same affine/dimensions as dataset
         mask.
-    dataset
-        A dataset with coordinates.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
         Default is None, which uses all features available.
@@ -162,7 +162,7 @@ def corr_decode(img, dataset, features=None, frequency_threshold=0.001,
     return out_df
 
 
-def corr_dist_decode(img, dataset, features=None, frequency_threshold=0.001,
+def corr_dist_decode(dataset, img, features=None, frequency_threshold=0.001,
                      target_image='z'):
     """
     Builds feature-specific distributions of correlations with input image
@@ -170,11 +170,11 @@ def corr_dist_decode(img, dataset, features=None, frequency_threshold=0.001,
 
     Parameters
     ----------
+    dataset : :obj:`nimare.dataset.Dataset`
+        A dataset with images.
     img : :obj:`nibabel.Nifti1.Nifti1Image`
         Input image to decode. Must have same affine/dimensions as dataset
         mask.
-    dataset
-        A dataset with images.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
         Default is None, which uses all features available.

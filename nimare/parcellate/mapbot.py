@@ -7,7 +7,7 @@ from sklearn.decomposition import NMF
 from scipy.spatial.distance import cdist
 from nilearn.masking import apply_mask, unmask
 
-from ..base import Parcellator
+from .base import Parcellator
 from ..due import due
 from .. import references
 

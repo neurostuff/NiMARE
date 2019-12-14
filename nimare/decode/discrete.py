@@ -93,7 +93,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     roi_vec = roi.get_data().astype(bool).ravel()
     roi_vec = roi_vec[mask_vec]
     roi_idx = np.where(roi_vec)[0]
-    p_topic_g_roi = model.p_topic_g_voxel[roi_idx, :]  # p(T|V) for voxels in ROI only
+    p_topic_g_roi = model.p_topic_g_voxel_[roi_idx, :]  # p(T|V) for voxels in ROI only
     topic_weights = np.sum(p_topic_g_roi, axis=0)  # Sum across words
     if topic_priors is not None:
         weighted_priors = weight_priors(topic_priors, prior_weight)
@@ -103,7 +103,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     # n_word_tokens_per_topic = np.sum(model.n_word_tokens_word_by_topic, axis=0)
     # p_word_g_topic = model.n_word_tokens_word_by_topic / n_word_tokens_per_topic[None, :]
     # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
-    word_weights = np.dot(model.p_word_g_topic, topic_weights)
+    word_weights = np.dot(model.p_word_g_topic_, topic_weights)
 
     decoded_df = pd.DataFrame(index=model.vocabulary,
                               columns=['Weight'], data=word_weights)

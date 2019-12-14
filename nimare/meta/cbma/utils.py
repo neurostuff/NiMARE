@@ -144,7 +144,7 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
 
 def compute_ma(shape, ijk, kernel):
     """
-    Generate modeled activation (MA) maps.
+    Generate ALE modeled activation (MA) maps.
     Replaces the values around each focus in ijk with the contrast-specific
     kernel. Takes the element-wise maximum when looping through foci, which
     accounts for foci which are near to one another and may have overlapping

@@ -42,53 +42,64 @@ with open(dset_file, 'r') as fo:
     dset_dict = json.load(fo)
 dset = nimare.dataset.Dataset(dset_file)
 
-mask_img = dset.mask
+mask_img = dset.masker.mask_img
 
 ###############################################################################
 # MKDA density analysis
 # --------------------------------------------------
-mkda = nimare.meta.cbma.MKDADensity(dset, kernel__r=10)
-mkda.fit(n_iters=10, ids=dset.ids, n_cores=1)
-plot_stat_map(mkda.results.images['logp_vfwe'], cut_coords=[0, 0, -8],
-              draw_cross=False, cmap='RdBu_r')
+mkda = nimare.meta.cbma.MKDADensity(kernel__r=10)
+mkda.fit(dset)
+corr = nimare.correct.FWECorrector(method='permutation', n_iters=10, n_cores=1)
+cres = corr.transform(mkda.results)
+plot_stat_map(cres.get_map('logp_level-voxel_corr-FWE_method-permutation'),
+              cut_coords=[0, 0, -8], draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
 # MKDA Chi2 with FDR correction
 # --------------------------------------------------
-mkda = nimare.meta.cbma.MKDAChi2(dset, kernel__r=10)
-mkda.fit(corr='FDR', ids=dset.ids, ids2=dset.ids, n_cores=1)
-plot_stat_map(mkda.results.images['consistency_z'], threshold=1.65, cut_coords=[0, 0, -8],
-              draw_cross=False, cmap='RdBu_r')
+mkda = nimare.meta.cbma.MKDAChi2(kernel__r=10)
+dset1 = dset.slice(dset.ids)
+dset2 = dset.slice(dset.ids)
+mkda.fit(dset1, dset2)
+corr = nimare.correct.FDRCorrector(method='fdr_bh', alpha=0.001)
+cres = corr.transform(mkda.results)
+plot_stat_map(cres.get_map('consistency_z_FDR_corr-FDR_method-fdr_bh'),
+              threshold=1.65, cut_coords=[0, 0, -8], draw_cross=False,
+              cmap='RdBu_r')
 
 ###############################################################################
 # MKDA Chi2 with FWE correction
 # --------------------------------------------------
-mkda = nimare.meta.cbma.MKDAChi2(dset, kernel__r=10)
-mkda.fit(corr='FWE', n_iters=10, ids=dset.ids, ids2=dset.ids, n_cores=1)
-plot_stat_map(mkda.results.images['consistency_z'], threshold=1.65, cut_coords=[0, 0, -8],
-              draw_cross=False, cmap='RdBu_r')
+corr = nimare.correct.FWECorrector(method='permutation', n_iters=10, n_cores=1)
+cres = corr.transform(mkda.results)
+plot_stat_map(cres.get_map('consistency_z'), threshold=1.65,
+              cut_coords=[0, 0, -8], draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
 # KDA
 # --------------------------------------------------
-kda = nimare.meta.cbma.KDA(dset, kernel__r=10)
-kda.fit(n_iters=10, ids=dset.ids, n_cores=1)
-plot_stat_map(kda.results.images['logp_vfwe'], cut_coords=[0, 0, -8],
-              draw_cross=False, cmap='RdBu_r')
+kda = nimare.meta.cbma.KDA(kernel__r=10)
+kda.fit(dset)
+corr = nimare.correct.FWECorrector(method='permutation', n_iters=10, n_cores=1)
+cres = corr.transform(kda.results)
+plot_stat_map(cres.get_map('logp_level-voxel_corr-FWE_method-permutation'),
+              cut_coords=[0, 0, -8], draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
 # ALE
 # --------------------------------------------------
-ale = nimare.meta.cbma.ALE(dset, ids=dset.ids)
-ale.fit(n_iters=10, ids=dset.ids, n_cores=1)
-plot_stat_map(ale.results.images['logp_cfwe'], cut_coords=[0, 0, -8],
-              draw_cross=False, cmap='RdBu_r')
+ale = nimare.meta.cbma.ALE()
+ale.fit(dset)
+corr = nimare.correct.FWECorrector(method='permutation', n_iters=10, n_cores=1)
+cres = corr.transform(ale.results)
+plot_stat_map(cres.get_map('logp_level-cluster_corr-FWE_method-permutation'),
+              cut_coords=[0, 0, -8], draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
 # SCALE
 # --------------------------------------------------
-ijk = np.vstack(np.where(dset.mask.get_data())).T
-scale = nimare.meta.cbma.SCALE(dset, ijk=ijk, n_cores=1)
-scale.fit(n_iters=10, ids=dset.ids)
-plot_stat_map(scale.results.images['vthresh'], cut_coords=[0, 0, -8],
+ijk = np.vstack(np.where(mask_img.get_data())).T
+scale = nimare.meta.cbma.SCALE(ijk=ijk, n_iters=10, n_cores=1)
+scale.fit(dset)
+plot_stat_map(scale.results.get_map('z_vthresh'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')

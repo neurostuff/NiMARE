@@ -27,7 +27,7 @@ def test_mkda_chi2_fdr():
     """
     meta = mkda.MKDAChi2()
     res = meta.fit(pytest.cbma_testdata1, pytest.cbma_testdata1)
-    corr = FDRCorrector(method='fdr_bh', alpha=0.001)
+    corr = FDRCorrector(method='bh', alpha=0.001)
     cres = corr.transform(res)
     assert isinstance(res, nimare.base.MetaResult)
     assert isinstance(cres, nimare.base.MetaResult)

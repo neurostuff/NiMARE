@@ -8,7 +8,7 @@ from scipy.spatial.distance import cdist
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from ..base import Parcellator
+from .base import Parcellator
 from ..meta.cbma.ale import SCALE
 from ..due import due
 from .. import references
@@ -37,7 +37,7 @@ class CoordCBP(Parcellator):
 
     Warnings
     --------
-    This method is currently untested.
+    This method is not yet implemented.
 
     References
     ----------

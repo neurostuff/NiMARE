@@ -9,7 +9,7 @@ import subprocess
 
 import pandas as pd
 
-from ...base import AnnotationModel
+from ..base import AnnotationModel
 from ...utils import get_resource_path
 from ...due import due
 from ... import references
@@ -30,21 +30,26 @@ class LDAModel(AnnotationModel):
     Parameters
     ----------
     text_df : :obj:`pandas.DataFrame`
-        A pandas DataFrame with two columns ('id' and 'text') containing
-        article text_df.
+        A pandas DataFrame with two columns ('id' and text_column) containing
+        article text.
+    text_column : :obj:`str`, optional
+        Name of column in text_df that contains text. Default is 'abstract'.
     n_topics : :obj:`int`, optional
         Number of topics to generate. Default=50.
-    n_words : :obj:`int`, optional
-        Number of top words to return for each topic. Default=31, based on
-        Poldrack et al. (2012). Not used.
     n_iters : :obj:`int`, optional
         Number of iterations to run in training topic model. Default=1000.
-    alpha : :obj:`float`, optional
+    alpha : :obj:`float` or 'auto', optional
         The Dirichlet prior on the per-document topic distributions.
-        Default: 50 / n_topics, based on Poldrack et al. (2012).
+        Default: auto, which calculates 50 / n_topics, based on Poldrack et al.
+        (2012).
     beta : :obj:`float`, optional
         The Dirichlet prior on the per-topic word distribution. Default: 0.001,
         based on Poldrack et al. (2012).
+
+    Attributes
+    ----------
+    commands_ : :obj:`list` of :obj:`str`
+        List of MALLET commands called to fit model.
 
     References
     ----------
@@ -58,10 +63,10 @@ class LDAModel(AnnotationModel):
         biology 8.10 (2012): e1002707.
         https://doi.org/10.1371/journal.pcbi.1002707
     """
-    def __init__(self, text_df, n_topics=50, n_iters=1000, alpha='auto',
-                 beta=0.001):
+    def __init__(self, text_df, text_column='abstract', n_topics=50,
+                 n_iters=1000, alpha='auto', beta=0.001):
         resdir = op.abspath(get_resource_path())
-        tempdir = op.join(resdir, 'topic_models')
+        tempdir = op.join(resdir, 'MALLET_LDA')
         text_dir = op.join(tempdir, 'texts')
         if not op.isdir(tempdir):
             os.mkdir(tempdir)
@@ -77,6 +82,7 @@ class LDAModel(AnnotationModel):
             'alpha': alpha,
             'beta': beta,
         }
+        self.tempdir = tempdir
 
         # Check for presence of text files and convert if necessary
         if not op.isdir(text_dir):
@@ -89,8 +95,7 @@ class LDAModel(AnnotationModel):
 
         # Run MALLET topic modeling
         LGR.info('Generating topics...')
-        mallet_bin = op.join(op.dirname(op.dirname(__file__)),
-                             'resources/mallet/bin/mallet')
+        mallet_bin = op.join(get_resource_path(), 'mallet/bin/mallet')
         import_str = ('{mallet} import-dir '
                       '--input {text_dir} '
                       '--output {outdir}/topic-input.mallet '
@@ -113,9 +118,21 @@ class LDAModel(AnnotationModel):
                                              n_iters=self.params['n_iters'],
                                              alpha=self.params['alpha'],
                                              beta=self.params['beta'])
+        self.commands_ = [import_str, train_str]
 
-        subprocess.call(import_str, shell=True)
-        subprocess.call(train_str, shell=True)
+    def fit(self):
+        """
+        Fit LDA model to corpus.
+
+        Attributes
+        ----------
+        p_topic_g_doc_ : :obj:`numpy.ndarray`
+            Probability of each topic given a document
+        p_word_g_topic_ : :obj:`numpy.ndarray`
+            Probability of each word given a topic
+        """
+        subprocess.call(self.commands_[0], shell=True)
+        subprocess.call(self.commands_[1], shell=True)
 
         # Read in and convert doc_topics and topic_keys.
         topic_names = ['topic_{0:03d}'.format(i) for i in range(self.params['n_topics'])]
@@ -129,7 +146,7 @@ class LDAModel(AnnotationModel):
         # weights for the topics in the preceding column. These columns are sorted
         # on an individual id basis by the weights.
         n_cols = (2 * self.params['n_topics']) + 1
-        dt_df = pd.read_csv(op.join(tempdir, 'doc_topics.txt'),
+        dt_df = pd.read_csv(op.join(self.tempdir, 'doc_topics.txt'),
                             delimiter='\t', skiprows=1, header=None,
                             index_col=0)
         dt_df = dt_df[dt_df.columns[:n_cols]]
@@ -158,10 +175,10 @@ class LDAModel(AnnotationModel):
         p_topic_g_doc_df = pd.DataFrame(columns=topic_names, data=weights,
                                         index=dt_df[1])
         p_topic_g_doc_df.index.name = 'id'
-        self.p_topic_g_doc = p_topic_g_doc_df.values
+        self.p_topic_g_doc_ = p_topic_g_doc_df.values
 
         # Topic word weights
-        p_word_g_topic_df = pd.read_csv(op.join(tempdir, 'topic_word_weights.txt'),
+        p_word_g_topic_df = pd.read_csv(op.join(self.tempdir, 'topic_word_weights.txt'),
                                         dtype=str, keep_default_na=False,
                                         na_values=[], sep='\t', header=None,
                                         names=['topic', 'word', 'weight'])
@@ -172,10 +189,10 @@ class LDAModel(AnnotationModel):
                                                     values='weight')
         p_word_g_topic_df = p_word_g_topic_df.div(p_word_g_topic_df.sum(axis=1),
                                                   axis=0)
-        self.p_word_g_topic = p_word_g_topic_df.values
+        self.p_word_g_topic_ = p_word_g_topic_df.values
 
         # Remove all temporary files (text files, model, and outputs).
-        shutil.rmtree(tempdir)
+        shutil.rmtree(self.tempdir)
 
     def _clean_str(self, string):
         return op.basename(op.splitext(string)[0])

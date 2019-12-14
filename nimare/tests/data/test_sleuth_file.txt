@@ -1,0 +1,12 @@
+// Reference = MNI
+// StudyName: ExperimentName
+// Subjects = 50
+-16	-58	-22
+26	-64	-50
+12	-70	-42
+-10	12	50
+
+// StudyName2: ExperimentName
+// Subjects = 46
+-9	-72	57
+-15	9	-3

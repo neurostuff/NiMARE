@@ -50,6 +50,7 @@ def convert_neurosynth_to_dict(text_file, annotations_file=None):
         study_dict['metadata']['title'] = study_df['title'].tolist()[0]
         study_dict['contrasts'] = {}
         study_dict['contrasts']['1'] = {}
+        study_dict['contrasts']['1']['metadata'] = {}
         study_dict['contrasts']['1']['coords'] = {}
         study_dict['contrasts']['1']['coords']['space'] = study_df['space'].tolist()[0]
         study_dict['contrasts']['1']['coords']['x'] = study_df['x'].tolist()
@@ -117,7 +118,7 @@ def convert_sleuth_to_dict(text_file):
 
     Returns
     -------
-    dict_ : :obj:`dict`
+    :obj:`dict`
         NiMARE-organized dictionary containing experiment information from text
         file.
     """
@@ -185,14 +186,14 @@ def convert_sleuth_to_dict(text_file):
                 dict_[study_name] = {'contrasts': {}}
             dict_[study_name]['contrasts'][contrast_name] = {
                 'coords': {},
-                'sample_sizes': [],
+                'metadata': {},
             }
             dict_[study_name]['contrasts'][contrast_name]['coords'][
                 'space'] = space
             dict_[study_name]['contrasts'][contrast_name]['coords']['x'] = x
             dict_[study_name]['contrasts'][contrast_name]['coords']['y'] = y
             dict_[study_name]['contrasts'][contrast_name]['coords']['z'] = z
-            dict_[study_name]['contrasts'][contrast_name][
+            dict_[study_name]['contrasts'][contrast_name]['metadata'][
                 'sample_sizes'] = [sample_size]
     return dict_
 
