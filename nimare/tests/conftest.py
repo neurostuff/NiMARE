@@ -10,8 +10,9 @@ import nibabel as nib
 from nilearn.masking import apply_mask
 
 import nimare
+from nimare.extract import download_nidm_pain
 from nimare.utils import get_template, mm2vox, get_masker
-from nimare.tests.utils import download_nidm_pain, get_test_data_path
+from nimare.tests.utils import get_test_data_path
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -19,12 +20,9 @@ def download_data():
     """
     Download and save 21 pain studies from NeuroVault to test IBMA functions.
     """
-    home = op.expanduser("~")
-    out_dir = op.join(home, '.nimare', 'data', 'neurovault', 'collection-1425')
-    if not op.isdir(op.join(out_dir, 'pain_21.nidm')):
-        download_nidm_pain(out_dir)
-    pytest.dset_dir = out_dir
-    return out_dir
+    nidm_path = download_nidm_pain()
+    pytest.dset_dir = nidm_path
+    return nidm_path
 
 
 @pytest.fixture(scope='session', autouse=True)
