@@ -2,6 +2,7 @@
 Runs before tests
 """
 import os.path as op
+from glob import glob
 
 import pytest
 import numpy as np
