@@ -1,3 +1,6 @@
+"""
+Tools for downloading datasets.
+"""
 import os
 import os.path as op
 import zipfile
@@ -81,7 +84,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     data_dir : :obj:`str`
         Updated data directory pointing to MALLET files.
     """
-    url = 'https://neurovault.org/collections/1425/download'
+    url = 'http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz'
 
     dataset_name = "mallet"
 
@@ -89,9 +92,8 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     if op.isdir(data_dir) and overwrite is False:
         return data_dir
 
-    mallet_file = op.join(data_dir, 'mallet-2.0.7.tar.gz')
-    _download_zipped_file('http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz',
-                          mallet_file)
+    mallet_file = op.join(data_dir, op.basename(url))
+    _download_zipped_file(url, mallet_file)
 
     with tarfile.open(mallet_file) as tf:
         tf.extractall(path=data_dir)

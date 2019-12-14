@@ -20,7 +20,7 @@ def download_data():
     """
     Download and save 21 pain studies from NeuroVault to test IBMA functions.
     """
-    nidm_path = download_nidm_pain()
+    nidm_path = download_nidm_pain(data_dir=op.join(op.expanduser('~'), '.nimare'))
     pytest.dset_dir = nidm_path
     return nidm_path
 
