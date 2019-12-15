@@ -56,6 +56,7 @@ To install NiMARE check out our `installation guide`_.
   about
   installation
   cli
+  auto_examples/index
   contributing
   dev_guide
   api

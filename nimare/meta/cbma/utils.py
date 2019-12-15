@@ -18,6 +18,7 @@ from tqdm.auto import tqdm
 from .peaks2maps import model_fn
 from ...due import due
 from ... import references
+from ...extract import download_peaks2maps_model
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 LGR = logging.getLogger(__name__)
@@ -53,35 +54,6 @@ def _get_generator(contrasts_coordinates, target_shape, affine,
             yield (encoded_coords, encoded_coords)
 
     return generator
-
-
-def _get_checkpoint_dir():
-    from appdirs import AppDirs
-    dirs = AppDirs(appname="nimare", appauthor="neurostuff", version="1.0")
-    checkpoint_dir = os.path.join(dirs.user_data_dir, "ohbm2018_model")
-    if not os.path.exists(checkpoint_dir):
-        LGR.info('Downloading the model (this is a one-off operation)...')
-        url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
-        # Streaming, so we can iterate over the response.
-        r = requests.get(url, stream=True)
-        f = BytesIO()
-
-        # Total size in bytes.
-        total_size = int(r.headers.get('content-length', 0))
-        block_size = 1024 * 1024
-        wrote = 0
-        for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size),
-                         unit='MB', unit_scale=True):
-            wrote = wrote + len(data)
-            f.write(data)
-        if total_size != 0 and wrote != total_size:
-            raise Exception("Download interrupted")
-
-        f.seek(0)
-        LGR.info('Uncompressing the model to %s...'.format(checkpoint_dir))
-        tarfile = TarFile(fileobj=LZMAFile(f), mode="r")
-        tarfile.extractall(dirs.user_data_dir)
-    return checkpoint_dir
 
 
 @due.dcite(references.PEAKS2MAPS,
@@ -131,7 +103,7 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
         iterator = dataset.make_one_shot_iterator()
         return iterator.get_next()
 
-    model_dir = _get_checkpoint_dir()
+    model_dir = download_peaks2maps_model()
     model = tf.estimator.Estimator(model_fn, model_dir=model_dir)
 
     results = model.predict(generate_input_fn)
