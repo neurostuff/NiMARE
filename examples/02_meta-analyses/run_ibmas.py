@@ -20,7 +20,6 @@ uploaded by Dr. Camille Maumet.
 # Start with the necessary imports
 # --------------------------------
 import os
-import urllib.request
 
 import numpy as np
 import pandas as pd
@@ -29,6 +28,7 @@ from nilearn.masking import apply_mask, unmask
 from nilearn.plotting import plot_stat_map
 
 import nimare
+from nimare.tests.utils import get_test_data_path
 from nimare.meta.esma import fishers
 from nimare.meta.ibma import (Fishers, Stouffers, WeightedStouffers,
                               RFX_GLM, FFX_GLM, ffx_glm)
@@ -36,25 +36,12 @@ from nimare.meta.ibma import (Fishers, Stouffers, WeightedStouffers,
 ###############################################################################
 # Download data
 # --------------------------------
-url = "https://raw.githubusercontent.com/tsalo/NiMARE/coco2019/download_test_data.py"
-u = urllib.request.urlopen(url)
-data = u.read()
-u.close()
-
-# write python to file
-with open("download_test_data.py", "wb") as f:
-    f.write(data)
-
-# download the requisite data
-from download_test_data import download_dataset
-dset_dir = download_dataset()
-os.remove("download_test_data.py")
+dset_dir = nimare.extract.download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(os.path.dirname(nimare.__file__),
-                         'tests', 'data', 'nidm_pain_dset.json')
+dset_file = os.path.join(get_test_data_path(), 'nidm_pain_dset.json')
 dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 

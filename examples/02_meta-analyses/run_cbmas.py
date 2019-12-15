@@ -19,13 +19,11 @@ uploaded by Dr. Camille Maumet.
 ###############################################################################
 # Start with the necessary imports
 # --------------------------------
-import json
-import numpy as np
-from glob import glob
-from os.path import basename, join, dirname, isfile
-import urllib.request
 import os
+import json
+from glob import glob
 
+import numpy as np
 import pandas as pd
 import nibabel as nib
 from scipy.stats import t
@@ -33,13 +31,12 @@ from nilearn.masking import apply_mask
 from nilearn.plotting import plot_stat_map
 
 import nimare
+from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = join(dirname(nimare.__file__), 'tests', 'data', 'nidm_pain_dset.json')
-with open(dset_file, 'r') as fo:
-    dset_dict = json.load(fo)
+dset_file = os.path.join(get_test_data_path(), 'nidm_pain_dset.json')
 dset = nimare.dataset.Dataset(dset_file)
 
 mask_img = dset.masker.mask_img

@@ -12,18 +12,20 @@
 ###############################################################################
 # Start with the necessary imports
 # --------------------------------
-from os.path import dirname, join
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
 import nimare
+from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-database_file = join(dirname(nimare.__file__), 'tests/data/nidm_pain_dset.json')
-dset = nimare.dataset.Dataset(database_file)
+dset_file = os.path.join(get_test_data_path(), 'nidm_pain_dset.json')
+dset = nimare.dataset.Dataset(dset_file)
 
 ###############################################################################
 # MKDA kernel maps

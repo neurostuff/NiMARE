@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 
-from ..dataset import Dataset
 from ..utils import get_resource_path
 
 LGR = logging.getLogger(__name__)
@@ -18,72 +17,6 @@ LGR = logging.getLogger(__name__)
 SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
                        index_col='UK')
 SPELL_DICT = SPELL_DF['US'].to_dict()
-
-
-def download_abstracts(dataset, email):
-    """
-    Download the abstracts for a list of PubMed IDs. Uses the BioPython
-    package.
-
-    Parameters
-    ----------
-    dataset : :obj:`nimare.dataset.Dataset` or :obj:`list` of :obj:`str`
-        A Dataset object where IDs are in the form PMID-EXPID or a list of
-        PubMed IDs
-    email : :obj:`str`
-        Email address to use to call the PubMed API
-
-    Returns
-    -------
-    dataset : :obj:`nimare.dataset.Dataset` or :obj:`list` of :obj:`str`
-        Dataset with abstracts added.
-    """
-    try:
-        from Bio import Entrez, Medline
-    except:
-        raise Exception(
-            'Module biopython is required for downloading abstracts from '
-            'PubMed.')
-
-    Entrez.email = email
-
-    if isinstance(dataset, Dataset):
-        pmids = dataset.coordinates['id'].astype(str).tolist()
-        pmids = [pmid.split('-')[0] for pmid in pmids]
-        pmids = sorted(list(set(pmids)))
-    elif isinstance(dataset, list):
-        pmids = [str(pmid) for pmid in dataset]
-    else:
-        raise Exception(
-            'Dataset type not recognized: {0}'.format(type(dataset)))
-
-    records = []
-    # PubMed only allows you to search ~1000 at a time. I chose 900 to be safe.
-    chunks = [pmids[x: x + 900] for x in range(0, len(pmids), 900)]
-    for i, chunk in enumerate(chunks):
-        LGR.info('Downloading chunk {0} of {1}'.format(i + 1, len(chunks)))
-        h = Entrez.efetch(db='pubmed', id=chunk, rettype='medline',
-                          retmode='text')
-        records += list(Medline.parse(h))
-
-    # Pull data for studies with abstracts
-    data = [[study['PMID'], study['AB']]
-            for study in records if study.get('AB', None)]
-    df = pd.DataFrame(columns=['id', 'text'], data=data)
-
-    for pmid in dataset.data.keys():
-        if pmid in df['id'].tolist():
-            abstract = df.loc[df['id'] == pmid, 'text'].values[0]
-        else:
-            abstract = ""
-
-        for expid in dataset.data[pmid]['contrasts'].keys():
-            if 'texts' not in dataset.data[pmid]['contrasts'][expid].keys():
-                dataset.data[pmid]['contrasts'][expid]['texts'] = {}
-            dataset.data[pmid]['contrasts'][expid]['texts']['abstract'] = abstract
-
-    dataset._load_texts()
-    return dataset
 
 
 def generate_counts(text_df, text_column='abstract', tfidf=True):

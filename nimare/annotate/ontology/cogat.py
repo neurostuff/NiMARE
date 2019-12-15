@@ -2,131 +2,18 @@
 Automated annotation of Cognitive Atlas labels.
 """
 import re
-import time
-import os
-import os.path as op
+import logging
 
 import numpy as np
 import pandas as pd
-from cognitiveatlas.api import get_concept
-from cognitiveatlas.api import get_task
-from cognitiveatlas.api import get_disorder
 
 from . import utils
 from ..text import uk_to_us
 from ...due import due
-from ...utils import get_resource_path
 from ... import references
+from ...extract import download_cognitive_atlas
 
-
-def download_cogat(out_dir='auto', overwrite=False):
-    """
-    Download Cognitive Atlas ontology and combine Concepts, Tasks, and
-    Disorders to create ID and relationship DataFrames.
-
-    Parameters
-    ----------
-    out_dir : :obj:`str`, optional
-        Output directory in which to write Cognitive Atlas files. Default is
-        'auto', which writes the files to NiMARE's resources directory.
-    overwrite : :obj:`bool`, optional
-        Whether or not to overwrite existing files. Default is False.
-
-    Returns
-    -------
-    aliases : :obj:`pandas.DataFrame`
-        DataFrame containing CogAt identifiers, canonical names, and aliases,
-        sorted by alias length (number of characters).
-    relationships : :obj:`pandas.DataFrame`
-        DataFrame containing associations between CogAt items, with three
-        columns: input, output, and rel_type (relationship type).
-    """
-    if out_dir == 'auto':
-        out_dir = op.join(get_resource_path(), 'ontologies/cognitive_atlas')
-        os.makedirs(out_dir, exist_ok=True)
-    else:
-        out_dir = op.abspath(out_dir)
-
-    ids_file = op.join(out_dir, 'cogat_aliases.csv')
-    rels_file = op.join(out_dir, 'cogat_relationships.csv')
-    if overwrite or not all([op.isfile(f) for f in [ids_file, rels_file]]):
-        concepts = get_concept(silent=True).pandas
-        tasks = get_task(silent=True).pandas
-        disorders = get_disorder(silent=True).pandas
-
-        # Identifiers and aliases
-        long_concepts = utils._longify(concepts)
-        long_tasks = utils._longify(tasks)
-
-        # Disorders currently lack aliases
-        disorders['name'] = disorders['name'].str.lower()
-        disorders = disorders.assign(alias=disorders['name'])
-        disorders = disorders[['id', 'name', 'alias']]
-
-        # Combine into aliases DataFrame
-        aliases = pd.concat((long_concepts, long_tasks, disorders), axis=0)
-        aliases = utils._expand_df(aliases)
-        aliases = aliases.replace('', np.nan)
-        aliases = aliases.dropna(axis=0)
-        aliases = aliases.reset_index(drop=True)
-
-        # Relationships
-        relationship_list = []
-        for i, id_ in enumerate(concepts['id'].unique()):
-            if i % 100 == 0:
-                time.sleep(5)
-            row = [id_, id_, 'isSelf']
-            relationship_list.append(row)
-            concept = get_concept(id=id_, silent=True).json
-            for rel in concept['relationships']:
-                reltype = utils._get_concept_reltype(rel['relationship'],
-                                                     rel['direction'])
-                if reltype is not None:
-                    row = [id_, rel['id'], reltype]
-                    relationship_list.append(row)
-
-        for i, id_ in enumerate(tasks['id'].unique()):
-            if i % 100 == 0:
-                time.sleep(5)
-            row = [id_, id_, 'isSelf']
-            relationship_list.append(row)
-            task = get_task(id=id_, silent=True).json
-            for rel in task['concepts']:
-                row = [id_, rel['concept_id'], 'measures']
-                relationship_list.append(row)
-                row = [rel['concept_id'], id_, 'measuredBy']
-                relationship_list.append(row)
-
-        for i, id_ in enumerate(disorders['id'].unique()):
-            if i % 100 == 0:
-                time.sleep(5)
-            row = [id_, id_, 'isSelf']
-            relationship_list.append(row)
-            disorder = get_disorder(id=id_, silent=True).json
-            for rel in disorder['disorders']:
-                if rel['relationship'] == 'ISA':
-                    rel_type = 'isA'
-                else:
-                    rel_type = rel['relationship']
-                row = [id_, rel['id'], rel_type]
-                relationship_list.append(row)
-
-        relationships = pd.DataFrame(columns=['input', 'output', 'rel_type'],
-                                     data=relationship_list)
-        ctp_df = concepts[['id', 'id_concept_class']]
-        ctp_df = ctp_df.assign(rel_type='inCategory')
-        ctp_df.columns = ['input', 'output', 'rel_type']
-        ctp_df['output'].replace('', np.nan, inplace=True)
-        ctp_df.dropna(axis=0, inplace=True)
-        relationships = pd.concat((ctp_df, relationships))
-        relationships = relationships.reset_index(drop=True)
-        aliases.to_csv(ids_file, index=False)
-        relationships.to_csv(rels_file, index=False)
-    else:
-        aliases = pd.read_csv(ids_file)
-        relationships = pd.read_csv(rels_file)
-
-    return aliases, relationships
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
@@ -158,9 +45,8 @@ class CogAtLemmatizer(object):
     """
     def __init__(self, ontology_df=None):
         if ontology_df is None:
-            ontology_file = op.join(get_resource_path(), 'ontology',
-                                    'cogat_ids.csv')
-            self.ontology_ = pd.read_csv(ontology_file)
+            cogat = download_cognitive_atlas()
+            self.ontology_ = pd.read_csv(cogat['ids'])
         else:
             assert isinstance(ontology_df, pd.DataFrame)
             self.ontology_ = ontology_df
@@ -206,7 +92,7 @@ class CogAtLemmatizer(object):
 
 
 @due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
-def extract_cogat(text_df, id_df, text_column='abstract'):
+def extract_cogat(text_df, id_df=None, text_column='abstract'):
     """
     Extract Cognitive Atlas [1]_ terms and count instances using regular
     expressions.
@@ -236,6 +122,9 @@ def extract_cogat(text_df, id_df, text_column='abstract'):
         knowledge foundation for cognitive neuroscience." Frontiers in
         neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
     """
+    if id_df is None:
+        cogat = download_cognitive_atlas()
+        id_df = pd.read_csv(cogat['ids'])
     gazetteer = sorted(id_df['id'].unique().tolist())
     if 'id' in text_df.columns:
         text_df.set_index('id', inplace=True)
