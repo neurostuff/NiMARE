@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 
 from ..dataset import Dataset
-from ..annotate.ontology.utils import _longify, _expand_df, _get_concept_reltype
-from .utils import _get_dataset_dir, _download_zipped_file
+from .utils import (_get_dataset_dir, _download_zipped_file,
+                    _longify, _expand_df, _get_concept_reltype)
 
 LGR = logging.getLogger(__name__)
 

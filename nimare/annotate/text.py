@@ -14,10 +14,6 @@ from ..utils import get_resource_path
 
 LGR = logging.getLogger(__name__)
 
-SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
-                       index_col='UK')
-SPELL_DICT = SPELL_DF['US'].to_dict()
-
 
 def generate_counts(text_df, text_column='abstract', tfidf=True):
     """
@@ -121,24 +117,3 @@ def generate_cooccurrence(text_df, text_column='abstract', vocabulary=None,
     df = pd.Panel(items=ids, major_axis=vocabulary, minor_axis=vocabulary,
                   data=cooc_arr)
     return df
-
-
-def uk_to_us(text):
-    """
-    Convert UK spellings to US based on a converter.
-
-    english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
-
-    Parameters
-    ----------
-    text : :obj:`str`
-
-    Returns
-    -------
-    text : :obj:`str`
-    """
-    if isinstance(text, str):
-        # Convert British to American English
-        pattern = re.compile(r'\b(' + '|'.join(SPELL_DICT.keys()) + r')\b')
-        text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
-    return text
