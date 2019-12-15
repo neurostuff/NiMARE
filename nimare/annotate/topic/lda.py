@@ -10,9 +10,9 @@ import subprocess
 import pandas as pd
 
 from ..base import AnnotationModel
-from ...utils import get_resource_path
 from ...due import due
 from ... import references
+from ...extract import download_mallet, utils
 
 LGR = logging.getLogger(__name__)
 
@@ -65,11 +65,14 @@ class LDAModel(AnnotationModel):
     """
     def __init__(self, text_df, text_column='abstract', n_topics=50,
                  n_iters=1000, alpha='auto', beta=0.001):
-        resdir = op.abspath(get_resource_path())
-        tempdir = op.join(resdir, 'MALLET_LDA')
-        text_dir = op.join(tempdir, 'texts')
-        if not op.isdir(tempdir):
-            os.mkdir(tempdir)
+        mallet_dir = download_mallet()
+        mallet_bin = op.join(mallet_dir, 'bin/mallet')
+
+        model_dir = utils._get_dataset_dir('mallet_model')
+        text_dir = op.join(model_dir, 'texts')
+
+        if not op.isdir(model_dir):
+            os.mkdir(model_dir)
 
         if alpha == 'auto':
             alpha = 50. / n_topics
@@ -82,7 +85,7 @@ class LDAModel(AnnotationModel):
             'alpha': alpha,
             'beta': beta,
         }
-        self.tempdir = tempdir
+        self.model_dir = model_dir
 
         # Check for presence of text files and convert if necessary
         if not op.isdir(text_dir):
@@ -95,14 +98,13 @@ class LDAModel(AnnotationModel):
 
         # Run MALLET topic modeling
         LGR.info('Generating topics...')
-        mallet_bin = op.join(get_resource_path(), 'mallet/bin/mallet')
         import_str = ('{mallet} import-dir '
                       '--input {text_dir} '
                       '--output {outdir}/topic-input.mallet '
                       '--keep-sequence '
                       '--remove-stopwords').format(mallet=mallet_bin,
                                                    text_dir=text_dir,
-                                                   outdir=tempdir)
+                                                   outdir=model_dir)
 
         train_str = ('{mallet} train-topics '
                      '--input {out}/topic-input.mallet '
@@ -113,7 +115,7 @@ class LDAModel(AnnotationModel):
                      '--output-model {out}/saved_model.mallet '
                      '--random-seed 1 '
                      '--alpha {alpha} '
-                     '--beta {beta}').format(mallet=mallet_bin, out=tempdir,
+                     '--beta {beta}').format(mallet=mallet_bin, out=model_dir,
                                              n_topics=self.params['n_topics'],
                                              n_iters=self.params['n_iters'],
                                              alpha=self.params['alpha'],
@@ -146,7 +148,7 @@ class LDAModel(AnnotationModel):
         # weights for the topics in the preceding column. These columns are sorted
         # on an individual id basis by the weights.
         n_cols = (2 * self.params['n_topics']) + 1
-        dt_df = pd.read_csv(op.join(self.tempdir, 'doc_topics.txt'),
+        dt_df = pd.read_csv(op.join(self.model_dir, 'doc_topics.txt'),
                             delimiter='\t', skiprows=1, header=None,
                             index_col=0)
         dt_df = dt_df[dt_df.columns[:n_cols]]
@@ -178,7 +180,7 @@ class LDAModel(AnnotationModel):
         self.p_topic_g_doc_ = p_topic_g_doc_df.values
 
         # Topic word weights
-        p_word_g_topic_df = pd.read_csv(op.join(self.tempdir, 'topic_word_weights.txt'),
+        p_word_g_topic_df = pd.read_csv(op.join(self.model_dir, 'topic_word_weights.txt'),
                                         dtype=str, keep_default_na=False,
                                         na_values=[], sep='\t', header=None,
                                         names=['topic', 'word', 'weight'])
@@ -192,7 +194,7 @@ class LDAModel(AnnotationModel):
         self.p_word_g_topic_ = p_word_g_topic_df.values
 
         # Remove all temporary files (text files, model, and outputs).
-        shutil.rmtree(self.tempdir)
+        shutil.rmtree(self.model_dir)
 
     def _clean_str(self, string):
         return op.basename(op.splitext(string)[0])

@@ -400,8 +400,8 @@ class GCLDAModel(AnnotationModel):
             # Get indices for current token
             word = self.data['wtoken_word_idx'][i_wtoken]  # w_i word-type
             doc = self.data['wtoken_doc_idx'][i_wtoken]  # w_i doc-index
-            topic = self.topics['wtoken_topic_idx'][i_wtoken]  # current topic assignment for
-                                                     # word token w_i
+            # current topic assignment for word token w_i
+            topic = self.topics['wtoken_topic_idx'][i_wtoken]
 
             # Decrement count-matrices to remove current wtoken_topic_idx
             self.topics['n_word_tokens_word_by_topic'][word, topic] -= 1
@@ -418,8 +418,7 @@ class GCLDAModel(AnnotationModel):
             probs = p_word_g_topic * p_topic_g_doc  # The unnormalized sampling distribution
 
             # Sample a z_i assignment for the current word-token from the sampling distribution
-            probs = np.squeeze(probs) / np.sum(probs)  # Normalize the sampling
-                                                       # distribution
+            probs = np.squeeze(probs) / np.sum(probs)  # Normalize the sampling distribution
             # Numpy returns a [1 x T] vector with a '1' in the index of sampled topic
             vec = np.random.multinomial(1, probs)  # pylint: disable=no-member
             topic = np.where(vec)[0][0]  # Extract selected topic from vector

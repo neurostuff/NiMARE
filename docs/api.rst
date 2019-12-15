@@ -163,6 +163,27 @@ API
    nimare.io.convert_sleuth_to_dataset
 
 
+.. _api_extract_ref:
+
+:mod:`nimare.extract`: Dataset and model fetching
+-----------------------------------------------------
+
+.. automodule:: nimare.extract
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare.extract
+
+.. autosummary:: nimare.extract
+   :toctree: generated/
+   :template: function.rst
+
+   nimare.extract.download_nidm_pain
+   nimare.extract.download_mallet
+   nimare.extract.download_cognitive_atlas
+   nimare.extract.download_abstracts
+
+
 .. _api_stats_ref:
 
 :mod:`nimare.stats`: Statistical functions

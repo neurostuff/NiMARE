@@ -3,10 +3,12 @@ Utilities
 """
 from __future__ import division
 
-import os.path as op
+import re
 import logging
+import os.path as op
 
 import numpy as np
+import pandas as pd
 import nibabel as nib
 from nilearn import datasets
 from nilearn.input_data import NiftiMasker
@@ -300,3 +302,28 @@ def find_stem(arr):
                 res = stem
 
     return res
+
+
+def uk_to_us(text):
+    """
+    Convert UK spellings to US based on a converter.
+
+    english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
+
+    Parameters
+    ----------
+    text : :obj:`str`
+
+    Returns
+    -------
+    text : :obj:`str`
+    """
+    SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
+                           index_col='UK')
+    SPELL_DICT = SPELL_DF['US'].to_dict()
+
+    if isinstance(text, str):
+        # Convert British to American English
+        pattern = re.compile(r'\b(' + '|'.join(SPELL_DICT.keys()) + r')\b')
+        text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
+    return text
