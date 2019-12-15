@@ -3,7 +3,6 @@ Utility functions for ontology tools.
 """
 import numpy as np
 import pandas as pd
-from fuzzywuzzy import fuzz
 
 
 def _generate_weights(rel_df, weights):

@@ -1,7 +1,6 @@
 """
 Text extraction tools.
 """
-import re
 import logging
 import os.path as op
 
