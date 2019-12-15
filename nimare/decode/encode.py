@@ -32,7 +32,7 @@ def text2brain():
 
 
 @due.dcite(references.GCLDA_DECODING, description='Citation for GCLDA encoding.')
-def encode_gclda(model, text, out_file=None, topic_priors=None,
+def gclda_encode(model, text, out_file=None, topic_priors=None,
                  prior_weight=1.):
     r"""
     Perform text-to-image encoding according to the method described in [1]_.

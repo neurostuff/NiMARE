@@ -14,7 +14,8 @@ from ..utils import get_resource_path
 LGR = logging.getLogger(__name__)
 
 
-def generate_counts(text_df, text_column='abstract', tfidf=True):
+def generate_counts(text_df, text_column='abstract', tfidf=True,
+                    min_df=50, max_df=0.5):
     """
     Generate tf-idf weights for unigrams/bigrams derived from textual data.
 
@@ -49,11 +50,11 @@ def generate_counts(text_df, text_column='abstract', tfidf=True):
         stop_words = fo.read().splitlines()
 
     if tfidf:
-        vectorizer = TfidfVectorizer(min_df=50, max_df=0.5,
+        vectorizer = TfidfVectorizer(min_df=min_df, max_df=max_df,
                                      ngram_range=(1, 2), vocabulary=None,
                                      stop_words=stop_words)
     else:
-        vectorizer = CountVectorizer(min_df=50, max_df=0.5,
+        vectorizer = CountVectorizer(min_df=min_df, max_df=max_df,
                                      ngram_range=(1, 2), vocabulary=None,
                                      stop_words=stop_words)
     weights = vectorizer.fit_transform(text).toarray()
