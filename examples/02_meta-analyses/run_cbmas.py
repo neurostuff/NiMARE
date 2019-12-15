@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas2:
+.. _metas3:
 
 ========================================================
  Run coordinate-based meta-analyses on 21 pain studies

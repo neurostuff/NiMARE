@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas3:
+.. _metas4:
 
 ========================================================
  Run image-based meta-analyses on 21 pain studies
