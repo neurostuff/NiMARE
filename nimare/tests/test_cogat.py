@@ -18,7 +18,8 @@ def test_cogat():
     # A small test dataset with abstracts
     ns_dset_laird = nimare.dataset.Dataset.load(
         op.join(get_test_data_path(), 'neurosynth_laird_studies.pkl.gz'))
-    cogat = extract.download_cognitive_atlas(overwrite=False)
+    cogat = extract.download_cognitive_atlas(data_dir=get_test_data_path(),
+                                             overwrite=False)
     id_df = pd.read_csv(cogat['ids'])
     rel_df = pd.read_csv(cogat['relationships'])
     weights = {'isKindOf': 1, 'isPartOf': 1, 'inCategory': 1}
