@@ -47,18 +47,6 @@ class Dataset(NiMAREBase):
 
         # Datasets are organized by study, then experiment
         # To generate unique IDs, we combine study ID with experiment ID
-        raw_ids = []
-        for pid in self.data.keys():
-            for cid in self.data[pid]['contrasts'].keys():
-                raw_ids.append('{0}-{1}'.format(pid, cid))
-        self.ids = raw_ids
-
-        # Set up Masker
-        if mask is None:
-            mask = get_template(target, mask='brain')
-        self.masker = get_masker(mask)
-        self.space = target
-
         # build list of ids
         id_columns = ['id', 'study_id', 'contrast_id']
         all_ids = []
@@ -68,6 +56,13 @@ class Dataset(NiMAREBase):
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
         id_df = id_df.set_index('id', drop=False)
+        self.ids = id_df.index.values
+
+        # Set up Masker
+        if mask is None:
+            mask = get_template(target, mask='brain')
+        self.masker = get_masker(mask)
+        self.space = target
 
         self.annotations = self._load_data(id_df, key='labels')
         self.metadata = self._load_data(id_df, key='metadata')
