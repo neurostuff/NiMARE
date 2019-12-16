@@ -12,5 +12,5 @@ docker run --rm kaczmarj/neurodocker:0.4.3 generate docker -b neurodebian:stretc
     --user=root \
     --run 'apt-get update && add-apt-repository -y ppa:openjdk-r/ppa && apt-get install -y --no-install-recommends openjdk-8-jdk openjdk-8-jre' \
     --run 'update-alternatives --config java && update-alternatives --config javac' \
-    --run 'curl -o mallet-2.0.7.tar.gz http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz && tar xzf mallet-2.0.7.tar.gz && rm mallet-2.0.7.tar.gz && mkdir /home/neuro/resources && mv mallet-2.0.7 /home/neuro/resources/mallet' \
+    --run 'curl -o mallet-2.0.7.tar.gz http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz && tar xzf mallet-2.0.7.tar.gz && rm mallet-2.0.7.tar.gz && mkdir /home/neuro/.nimare && mv mallet-2.0.7 /home/neuro/.nimare/mallet' \
     --workdir /home/neuro > Dockerfile
