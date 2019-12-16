@@ -2,18 +2,12 @@
 Utilities for coordinate-based meta-analysis estimators
 """
 import os
-import math
 import logging
-import requests
-from io import BytesIO
-from tarfile import TarFile
 
 import numpy as np
 import numpy.linalg as npl
 import nibabel as nb
 from scipy import ndimage
-from lzma import LZMAFile
-from tqdm.auto import tqdm
 
 from .peaks2maps import model_fn
 from ...due import due
