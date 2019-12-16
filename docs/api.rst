@@ -182,6 +182,7 @@ API
    nimare.extract.download_mallet
    nimare.extract.download_cognitive_atlas
    nimare.extract.download_abstracts
+   nimare.extract.download_peaks2maps_model
 
 
 .. _api_stats_ref:

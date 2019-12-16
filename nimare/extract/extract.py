@@ -3,15 +3,21 @@ Tools for downloading datasets.
 """
 import os
 import os.path as op
+import math
 import time
 import shutil
 import tarfile
 import zipfile
 import logging
+import requests
 from glob import glob
+from io import BytesIO
+from tarfile import TarFile
 
 import numpy as np
 import pandas as pd
+from lzma import LZMAFile
+from tqdm.auto import tqdm
 
 from ..dataset import Dataset
 from .utils import (_get_dataset_dir, _download_zipped_file,
@@ -300,3 +306,52 @@ def download_abstracts(dataset, email):
 
     dataset.texts = dataset._load_data(dataset.texts, key='text')
     return dataset
+
+
+def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
+    """
+    Download the trained Peaks2Maps model from OHBM 2018.
+    """
+    url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
+
+    temp_dataset_name = 'peaks2maps_model_ohbm2018__temp'
+    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
+
+    dataset_name = 'peaks2maps_model_ohbm2018'
+    data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
+
+    desc_file = op.join(data_dir, 'description.txt')
+    if op.isfile(desc_file) and overwrite is False:
+        return data_dir
+
+    LGR.info('Downloading the model (this is a one-off operation)...')
+    # Streaming, so we can iterate over the response.
+    r = requests.get(url, stream=True)
+    f = BytesIO()
+
+    # Total size in bytes.
+    total_size = int(r.headers.get('content-length', 0))
+    block_size = 1024 * 1024
+    wrote = 0
+    for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size),
+                     unit='MB', unit_scale=True):
+        wrote = wrote + len(data)
+        f.write(data)
+    if total_size != 0 and wrote != total_size:
+        raise Exception("Download interrupted")
+
+    f.seek(0)
+    LGR.info('Uncompressing the model to {}...'.format(temp_data_dir))
+    tarfile = TarFile(fileobj=LZMAFile(f), mode="r")
+    tarfile.extractall(temp_data_dir)
+
+    os.rename(op.join(temp_data_dir, 'ohbm2018_model'), data_dir)
+    shutil.rmtree(temp_data_dir)
+
+    with open(desc_file, 'w') as fo:
+        fo.write('The trained Peaks2Maps model from OHBM 2018.')
+
+    if verbose > 0:
+        print('\nDataset moved to {}\n'.format(data_dir))
+
+    return data_dir

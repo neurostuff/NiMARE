@@ -2,14 +2,14 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _annotations1:
+.. _annotations2:
 
 ===============================
  Train an LDA model and use it
 ===============================
 
 This example trains a latent Dirichlet allocation with MALLET
-using abstracts from Neurosynth and then uses it for decoding.
+using abstracts from Neurosynth.
 
 """
 ###############################################################################

@@ -4,14 +4,14 @@
 
 .. _datasets1:
 
-===================================================
- Downloading and converting the Neurosynth database
-===================================================
+=============================================
+ Download and convert the Neurosynth database
+=============================================
 
 Download and convert the Neurosynth database (with abstracts) for analysis with
 NiMARE.
 
-..note::
+.. note::
     This will likely change as we work to shift database querying to a remote
     database, rather than handling it locally with NiMARE.
 
