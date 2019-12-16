@@ -18,13 +18,14 @@ using abstracts from Neurosynth.
 import os
 
 import nimare
+from nimare import annotate
+from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-out_dir = os.path.abspath('../example_data/')
 dset = nimare.dataset.Dataset.load(
-    os.path.join(out_dir, 'neurosynth_nimare_with_abstracts.pkl.gz'))
+    os.path.join(get_test_data_path(), 'neurosynth_laird_studies.pkl.gz'))
 
 ###############################################################################
 # Download MALLET
@@ -36,6 +37,6 @@ mallet_dir = nimare.extract.download_mallet()
 # Run model
 # ---------
 # Five iterations will take ~10 minutes
-model = nimare.annotate.topic.LDAModel(dset.texts, text_column='abstract', n_iters=5)
+model = annotate.topic.LDAModel(dset.texts, text_column='abstract', n_iters=5)
 model.fit()
 model.save('lda_model.pkl.gz')

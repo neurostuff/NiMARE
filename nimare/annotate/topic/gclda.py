@@ -100,7 +100,7 @@ class GCLDAModel(AnnotationModel):
         if 'id' not in coordinates_df.columns:
             coordinates_df['id'] = coordinates_df.index
         coordinates_df['id'] = coordinates_df['id'].astype(str)
-        coord_ids = coordinates_df['id'].tolist()
+        coord_ids = sorted(list(set(coordinates_df['id'].tolist())))
         ids = sorted(list(set(count_ids).intersection(coord_ids)))
         if len(count_ids) != len(coord_ids) != len(ids):
             union_ids = sorted(list(set(count_ids + coord_ids)))
