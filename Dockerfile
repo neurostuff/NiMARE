@@ -95,7 +95,7 @@ RUN apt-get update && add-apt-repository -y ppa:openjdk-r/ppa && apt-get install
 
 RUN update-alternatives --config java && update-alternatives --config javac
 
-RUN curl -o mallet-2.0.7.tar.gz http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz && tar xzf mallet-2.0.7.tar.gz && rm mallet-2.0.7.tar.gz && mkdir /home/neuro/resources && mv mallet-2.0.7 /home/neuro/resources/mallet
+RUN curl -o mallet-2.0.7.tar.gz http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz && tar xzf mallet-2.0.7.tar.gz && rm mallet-2.0.7.tar.gz && mkdir /home/neuro/.nimare && mv mallet-2.0.7 /home/neuro/.nimare/mallet
 
 WORKDIR /home/neuro
 
