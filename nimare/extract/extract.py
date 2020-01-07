@@ -112,6 +112,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
 
     desc_file = op.join(data_dir, 'description.txt')
     if op.isfile(desc_file) and overwrite is False:
+        shutil.rmtree(temp_data_dir)
         return data_dir
 
     mallet_file = op.join(temp_data_dir, op.basename(url))
@@ -322,6 +323,7 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
 
     desc_file = op.join(data_dir, 'description.txt')
     if op.isfile(desc_file) and overwrite is False:
+        shutil.rmtree(temp_data_dir)
         return data_dir
 
     LGR.info('Downloading the model (this is a one-off operation)...')

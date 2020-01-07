@@ -7,6 +7,7 @@ import shutil
 import logging
 import subprocess
 
+import numpy as np
 import pandas as pd
 
 from ..base import AnnotationModel
@@ -91,8 +92,8 @@ class LDAModel(AnnotationModel):
         if not op.isdir(text_dir):
             LGR.info('Texts folder not found. Creating text files...')
             os.mkdir(text_dir)
-            for id_ in text_df.index.values:
-                text = text_df.loc[id_]['text']
+            for id_ in text_df['id'].values:
+                text = text_df.loc[text_df['id'] == id_, text_column].values[0]
                 with open(op.join(text_dir, str(id_) + '.txt'), 'w') as fo:
                     fo.write(text)
 
@@ -161,14 +162,14 @@ class LDAModel(AnnotationModel):
         weights_df.index = dt_df[1]
         weights_df.columns = range(self.params['n_topics'])
 
-        topics_df = dt_df[dt_df.columns[1::2]]
+        topics_df = dt_df[dt_df.columns[1:-1:2]]
         topics_df.index = dt_df[1]
         topics_df.columns = range(self.params['n_topics'])
 
         # Sort columns in weights_df separately for each row using topics_df.
         sorters_df = topics_df.apply(self._get_sort, axis=1)
-        weights = weights_df.as_matrix()
-        sorters = sorters_df.as_matrix()
+        weights = weights_df.values
+        sorters = np.vstack(sorters_df.values)
         # there has to be a better way to do this.
         for i in range(sorters.shape[0]):
             weights[i, :] = weights[i, sorters[i, :]]
@@ -178,6 +179,7 @@ class LDAModel(AnnotationModel):
                                         index=dt_df[1])
         p_topic_g_doc_df.index.name = 'id'
         self.p_topic_g_doc_ = p_topic_g_doc_df.values
+        self.p_topic_g_doc_df_ = p_topic_g_doc_df
 
         # Topic word weights
         p_word_g_topic_df = pd.read_csv(op.join(self.model_dir, 'topic_word_weights.txt'),
@@ -192,6 +194,7 @@ class LDAModel(AnnotationModel):
         p_word_g_topic_df = p_word_g_topic_df.div(p_word_g_topic_df.sum(axis=1),
                                                   axis=0)
         self.p_word_g_topic_ = p_word_g_topic_df.values
+        self.p_word_g_topic_df_ = p_word_g_topic_df
 
         # Remove all temporary files (text files, model, and outputs).
         shutil.rmtree(self.model_dir)
