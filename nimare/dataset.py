@@ -343,7 +343,7 @@ class Dataset(NiMAREBase):
 
         return result
 
-    def get_texts(self, ids=None, text_type=None):
+    def get_texts(self, ids=None, text_type='abstract'):
         """
         Extract list of texts of a given type for selected IDs.
 
@@ -354,40 +354,27 @@ class Dataset(NiMAREBase):
             None, in which case all texts of requested type are returned.
         text_type : str, optional
             Type of text to extract. Corresponds to column name in
-            Dataset.texts DataFrame. Default is None.
+            Dataset.texts DataFrame. Default is 'abstract'.
 
         Returns
         -------
         texts : list
             List of texts of requested type for selected IDs.
         """
-        # Rename variables
-        value = text_type
-        df = self.texts
-
         return_first = False
-        if isinstance(ids, str) and value is not None:
+        if not isinstance(ids, list) and ids is not None:
             return_first = True
-        ids = listify(ids)
+            ids = listify(ids)
 
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        if (value is not None) and (value not in available_types):
-            raise ValueError('Text type "{0}" not found.\n'
-                             'Available types: '
-                             '{1}'.format(value, ', '.join(available_types)))
+        text_types = [c for c in self.texts.columns if c not in self._id_cols]
+        if text_type not in text_types:
+            raise ValueError('Text type "{0}" not found.\nAvailable types: '
+                             '{1}'.format(text_type, ', '.join(text_types)))
 
-        if value is not None:
-            if ids is not None:
-                result = df[value].loc[df['id'].isin(ids)].tolist()
-            else:
-                result = df[value].tolist()
+        if ids is not None:
+            result = self.texts[text_type].loc[self.texts['id'].isin(ids)]
         else:
-            if ids is not None:
-                result = {v: df[v].loc[df['id'].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
+            result = self.texts[text_type]
 
         if return_first:
             return result[0]
@@ -396,7 +383,7 @@ class Dataset(NiMAREBase):
 
         return result
 
-    def get_metadata(self, ids=None, field=None):
+    def get_metadata(self, ids=None, field='sample_sizes'):
         """
         Get metadata from Dataset.
 
@@ -407,47 +394,34 @@ class Dataset(NiMAREBase):
             None, in which case all texts of requested type are returned.
         field : str, optional
             Metadata field to extract. Corresponds to column name in
-            Dataset.metadata DataFrame. Default is None.
+            Dataset.metadata DataFrame. Default is 'sample_sizes'.
 
         Returns
         -------
         metadata : list
             List of values of requested type for selected IDs.
         """
-        # Rename variables
-        value = field
-        df = self.metadata
-
         return_first = False
-        if isinstance(ids, str) and value is not None:
+        if not isinstance(ids, list) and ids is not None:
             return_first = True
-        ids = listify(ids)
+            ids = listify(ids)
 
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        if (value is not None) and (value not in available_types):
-            raise ValueError('Metadata field "{0}" not found.\n'
-                             'Available fields: '
-                             '{1}'.format(field, ', '.join(available_types)))
+        md_fields = [c for c in self.metadata.columns if c not in self._id_cols]
+        if field not in md_fields:
+            raise ValueError('Metadata field "{0}" not found.\nAvailable fields: '
+                             '{1}'.format(field, ', '.join(md_fields)))
 
-        if value is not None:
-            if ids is not None:
-                result = df[value].loc[df['id'].isin(ids)].tolist()
-            else:
-                result = df[value].tolist()
+        if ids is not None:
+            result = self.metadata[field].loc[self.metadata['id'].isin(ids)].tolist()
         else:
-            if ids is not None:
-                result = {v: df[v].loc[df['id'].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
+            result = self.metadata[field].tolist()
 
         if return_first:
             return result[0]
         else:
             return result
 
-    def get_images(self, ids=None, imtype=None):
+    def get_images(self, ids=None, imtype='z'):
         """
         Get images of a certain type for a subset of studies in the dataset.
 
@@ -458,43 +432,27 @@ class Dataset(NiMAREBase):
             None, in which case all texts of requested type are returned.
         imtype : str, optional
             Type of image to extract. Corresponds to column name in
-            Dataset.images DataFrame. Default is None.
+            Dataset.images DataFrame. Default is 'z'.
 
         Returns
         -------
         images : list
             List of images of requested type for selected IDs.
         """
-        # Rename variables
-        value = imtype
-        df = self.images
-
         return_first = False
-        if isinstance(ids, str) and value is not None:
+        if not isinstance(ids, list) and ids is not None:
             return_first = True
-        ids = listify(ids)
+            ids = listify(ids)
 
-        metadata_fields = ['space']
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        available_types = [c for c in available_types if not c.endswith('__relative')]
-        available_types = [c for c in available_types if c not in metadata_fields]
-        if (value is not None) and (value not in available_types):
-            raise ValueError('Image type "{0}" not found.\n'
-                             'Available types: '
-                             '{1}'.format(value, ', '.join(available_types)))
+        imtypes = [c for c in self.images.columns if c not in self._id_cols]
+        if imtype not in imtypes:
+            raise ValueError('Image type "{0}" not found.\nAvailable types: '
+                             '{1}'.format(imtype, ', '.join(imtypes)))
 
-        if value is not None:
-            if ids is not None:
-                result = self.images[value].loc[self.images['id'].isin(ids)].tolist()
-            else:
-                result = self.images[value].tolist()
+        if ids is not None:
+            result = self.images[imtype].loc[self.images['id'].isin(ids)].tolist()
         else:
-            if ids is not None:
-                result = {v: df[v].loc[df['id'].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
+            result = self.images[imtype].tolist()
 
         if return_first:
             return result[0]
