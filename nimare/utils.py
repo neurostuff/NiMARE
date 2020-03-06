@@ -5,6 +5,7 @@ from __future__ import division
 
 import re
 import logging
+import collections
 import os.path as op
 
 import numpy as np
