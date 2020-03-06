@@ -90,9 +90,12 @@ class Fishers(IBMAEstimator):
 
     def __init__(self, estimator, two_sided=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.Estimator = estimator
         self.two_sided = two_sided
 
     def _fit(self, dataset):
+        estimator_object = self.Estimator()
+        return estimator_object(two_sided=self.two_sided, **self.inputs_)
 
 
 class Stouffers(IBMAEstimator):
