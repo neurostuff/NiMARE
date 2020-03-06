@@ -5,6 +5,7 @@ from __future__ import division
 
 import re
 import logging
+import collections
 import os.path as op
 
 import numpy as np
@@ -110,7 +111,7 @@ def listify(obj):
     Wraps all non-list or tuple objects in a list; provides a simple way
     to accept flexible arguments.
     """
-    return obj if isinstance(obj, (list, tuple, type(None))) else [obj]
+    return obj if isinstance(obj, (list, tuple, type(None), collections.Sequence, np.ndarray)) else [obj]
 
 
 def round2(ndarray):
