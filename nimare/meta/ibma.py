@@ -25,7 +25,11 @@ LGR = logging.getLogger(__name__)
 class IBMAEstimator(Estimator):
     """Base class for image-based meta-analysis methods.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, estimator, *args, **kwargs):
+        estimator_args = inspect.getargspec(estimator._fit).args[1:]
+        LGR.info('Estimator {} requires {}'.format(estimator, ','.join(estimator_args)))
+        self.estimator_args = estimator_args
+
         mask = kwargs.get('mask')
         if mask is not None:
             mask = get_masker(mask)
@@ -34,10 +38,35 @@ class IBMAEstimator(Estimator):
     def _preprocess_input(self, dataset):
         """ Mask required input images using either the dataset's mask or the
         estimator's. """
-        masker = self.masker or dataset.masker
-        for name, (type_, _) in self._required_inputs.items():
-            if type_ == 'image':
-                self.inputs_[name] = masker.transform(self.inputs_[name])
+        estimator_data = {}
+        for id_ in dataset.ids:
+            available_images = dataset.get_images(ids=id_)
+            self.inputs_[id_] = {}
+            for imtype in available_images:
+                f = dataset.get_images(ids=id_, imtype=imtype)
+                self.inputs_[id_][imtype] = masker.transform(f)
+            n_voxels = self.inputs_[id_][imtype].shape[0]
+
+            available_metadata = dataset.get_metadata(ids=id_)
+            for field in available_metadata:
+                f = dataset.get_metadata(ids=id_, field=field)
+                self.inputs_[id_][field] = np.full(n_voxels, f)
+            available_data = available_images + available_metadata
+            results = resolve(available_data, self.estimator_args)
+            estimator_data[id_] = dict(zip(self.estimator_args, results))
+
+        estimator_data2 = {k: np.array([]) for k in self.estimator_args}
+        for id_ in dataset.ids:
+            if sorted(list(estimator_data[id_].keys())) != sorted(self.estimator_args):
+                LGR.warning('Data missing for study {}'.format(id_))
+                continue
+            for k in self.estimator_args:
+                if not estimator_data2[k].size:
+                    estimator_data2[k] = estimator_data[id_][k]
+                else:
+                    estimator_data2[k] = np.vstack((estimator_data2[k],
+                                                    estimator_data[id_][k]))
+        self.inputs_ = estimator_data2
 
 
 class Fishers(IBMAEstimator):
@@ -59,12 +88,11 @@ class Fishers(IBMAEstimator):
         'z_maps': ('image', 'z')
     }
 
-    def __init__(self, two_sided=True, *args, **kwargs):
+    def __init__(self, estimator, two_sided=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        return fishers(self.inputs_['z_maps'], two_sided=self.two_sided)
 
 
 class Stouffers(IBMAEstimator):
