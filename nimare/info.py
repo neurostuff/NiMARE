@@ -49,7 +49,7 @@ DOWNLOAD_URL = (
 
 REQUIRES = [
     'cognitiveatlas',
-    'fuzzywuzzy',
+    'rapidfuzz',
     'matplotlib',
     'nibabel',
     'nilearn',
