@@ -48,6 +48,7 @@ jobs:
       - run:
           name: Build documentation
           command: |
+            apt-get install -yqq make
             source activate testenv
             make -C doc html
       - store_artifacts:
