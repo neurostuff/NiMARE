@@ -88,6 +88,7 @@ EXTRA_REQUIRES = {
         'sphinx>=1.5.3',
         'sphinx-argparse',
         'sphinx_rtd_theme',
+        'sphinx_gallery',
         'numpydoc',
         'm2r'
     ],
