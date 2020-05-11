@@ -86,8 +86,8 @@ EXTRA_REQUIRES = {
     ],
     'doc': [
         'sphinx>=1.5.3',
-        'sphinx_rtd_theme',
         'sphinx-argparse',
+        'sphinx_rtd_theme',
         'numpydoc',
         'm2r'
     ],
