@@ -28,13 +28,29 @@ jobs:
             else
                 conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
                 source activate testenv
-                pip install -e .[tests]
+                pip install -e .[tests,doc]
             fi
             python setup.py install --user
       - save_cache:  # environment cache tied to requirements
           key: deps9-{{ checksum "nimare/info.py" }}
           paths:
             - "/opt/conda/envs/testenv"
+
+  build_docs:
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps9-{{ checksum "nimare/info.py" }}
+      - run:
+          name: Build documentation
+          command: |
+            source activate testenv
+            make -C doc html
+      - store_artifacts:
+          path: /tmp/src/NiMARE/docs/_build/html
 
   style_check:
     working_directory: /tmp/src/NiMARE
@@ -98,6 +114,9 @@ workflows:
   run_tests:
     jobs:
       - build
+      - build_docs:
+          requires:
+            - build
       - style_check:
           requires:
             - build
