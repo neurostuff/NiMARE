@@ -81,7 +81,7 @@ class Corrector(metaclass=ABCMeta):
         # MetaEstimator, use it. Otherwise fall back on _transform.
         if (correction_method is not None and hasattr(est, correction_method)):
             LGR.info('Using correction method implemented in Estimator: {}.'
-                     '{}.'.format(est, correction_method))
+                     '{}.'.format(type(est), correction_method))
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._validate_input(result)

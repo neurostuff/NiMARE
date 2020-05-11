@@ -546,7 +546,7 @@ class ALESubtraction(CBMAEstimator):
         diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
 
         images = {'grp1-grp2_z': diff_z_map}
-        self.results = MetaResult(self, self.mask, maps=images)
+        return images
 
 
 @due.dcite(references.SCALE,
