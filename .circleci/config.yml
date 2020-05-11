@@ -37,6 +37,7 @@ jobs:
             - "/opt/conda/envs/testenv"
 
   build_docs:
+    working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
     steps:
