@@ -35,7 +35,7 @@ Ultimately, however, we plan to support all (or most) of the methods listed belo
     - Weighted Stouffer's meta-analysis
     - Fisher's meta-analysis
 - Automated annotation (`nimare.annotate`)
-    - Tf-idf vectorization of text (`nimare.annotate.tfidf`)
+    - TF-IDF vectorization of text (`nimare.annotate.tfidf`)
     - Ontology-based annotation (`nimare.annotate.ontology`)
         - Cognitive Paradigm Ontology (`nimare.annotate.ontology.cogpo`)
         - Cognitive Atlas (`nimare.annotate.ontology.cogat`)
