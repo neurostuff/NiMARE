@@ -90,7 +90,8 @@ EXTRA_REQUIRES = {
         'sphinx_rtd_theme',
         'sphinx_gallery',
         'numpydoc',
-        'm2r'
+        'm2r',
+        'pillow'
     ],
     'tests': TESTS_REQUIRES,
     'duecredit': ['duecredit'],
