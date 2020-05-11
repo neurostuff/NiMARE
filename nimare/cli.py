@@ -88,6 +88,7 @@ def _get_parser():
         '--n_cores',
         dest='n_cores',
         type=int,
+        default=1,
         help=('Number of processes to use for meta-analysis. If -1, use '
               'all available cores.')
     )
@@ -225,6 +226,7 @@ def _get_parser():
         '--n_cores',
         dest='n_cores',
         type=int,
+        default=1,
         help=('Number of processes to use for meta-analysis. If -1, use '
               'all available cores.')
     )
@@ -282,6 +284,7 @@ def _get_parser():
         '--n_cores',
         dest='n_cores',
         type=int,
+        default=1,
         help=('Number of processes to use for meta-analysis. If -1, use '
               'all available cores.')
     )
