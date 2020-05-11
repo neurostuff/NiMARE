@@ -50,7 +50,7 @@ jobs:
           command: |
             apt-get install -yqq make
             source activate testenv
-            make -C doc html
+            make -C docs html
       - store_artifacts:
           path: /tmp/src/NiMARE/docs/_build/html
 
