@@ -163,7 +163,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         ale1 = ALE(kernel__fwhm=fwhm)
         ale2 = ALE(kernel__fwhm=fwhm)
 
-        LGR.info('Performing meta-analysis...')
+        LGR.info('Performing meta-analyses...')
         res1 = ale1.fit(dset1)
         res2 = ale2.fit(dset2)
         corr = FWECorrector(method='permutation', n_iters=n_iters,
