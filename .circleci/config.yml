@@ -116,15 +116,27 @@ workflows:
   run_tests:
     jobs:
       - build
+          filters:
+            tags:
+              only: /.*/
       - build_docs:
           requires:
             - build
+          filters:
+            tags:
+              only: /.*/
       - style_check:
           requires:
             - build
+          filters:
+            tags:
+              only: /.*/
       - coverage_and_tests:
           requires:
             - build
+          filters:
+            tags:
+              only: /.*/
       - deploy:
           requires:
             - coverage_and_tests
