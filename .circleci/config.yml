@@ -115,7 +115,7 @@ workflows:
   version: 2.1
   run_tests:
     jobs:
-      - build
+      - build:
           filters:
             tags:
               only: /.*/
