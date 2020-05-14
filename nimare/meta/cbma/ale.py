@@ -37,11 +37,11 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
@@ -62,21 +62,21 @@ class ALE(CBMAEstimator):
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
-    def __init__(self, kernel_estimator=ALEKernel, **kwargs):
+    def __init__(self, kernel_transformer=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
         for k in kwargs.keys():
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         self.mask = None
         self.dataset = None
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
         self.null_distributions = {}
 
@@ -84,7 +84,7 @@ class ALE(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=False)
+        ma_maps = self.kernel_transformer.transform(self.dataset, mask=self.mask, masked=False)
         ale_values = self._compute_ale(ma_maps)
         self._compute_null(ma_maps)
         p_values, z_values = self._ale_to_p(ale_values)
@@ -102,7 +102,7 @@ class ALE(CBMAEstimator):
         Returns masked array of ALE values.
         """
         if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_estimator.transform(data, mask=self.mask, masked=True)
+            ma_values = self.kernel_transformer.transform(data, mask=self.mask, masked=True)
         elif isinstance(data, list):
             ma_values = apply_mask(data, self.mask)
         elif isinstance(data, np.ndarray):
@@ -438,10 +438,10 @@ class ALESubtraction(CBMAEstimator):
         grp2_voxel = image2 > 0
 
         if ma_maps1 is None:
-            ma_maps1 = ale1.kernel_estimator.transform(ale1.dataset, masked=False)
+            ma_maps1 = ale1.kernel_transformer.transform(ale1.dataset, masked=False)
 
         if ma_maps2 is None:
-            ma_maps2 = ale2.kernel_estimator.transform(ale2.dataset, masked=False)
+            ma_maps2 = ale2.kernel_transformer.transform(ale2.dataset, masked=False)
 
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
@@ -569,11 +569,11 @@ class SCALE(CBMAEstimator):
         Tab-delimited file of coordinates from database or numpy array with ijk
         coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
         are the three columnns.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     References
@@ -583,12 +583,12 @@ class SCALE(CBMAEstimator):
         (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
     def __init__(self, voxel_thresh=0.001, n_iters=10000, n_cores=-1, ijk=None,
-                 kernel_estimator=ALEKernel, **kwargs):
+                 kernel_transformer=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
@@ -598,7 +598,7 @@ class SCALE(CBMAEstimator):
         self.mask = None
         self.dataset = None
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.voxel_thresh = voxel_thresh
         self.ijk = ijk
         self.n_iters = n_iters
@@ -628,7 +628,7 @@ class SCALE(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_estimator.transform(self.dataset, masked=False)
+        ma_maps = self.kernel_transformer.transform(self.dataset, masked=False)
 
         max_poss_ale = 1.
         for ma_map in ma_maps:
@@ -683,7 +683,7 @@ class SCALE(CBMAEstimator):
         Returns masked array of ALE values and 1XnBins null distribution.
         """
         if df is not None:
-            ma_maps = self.kernel_estimator.transform(df, self.mask, masked=True)
+            ma_maps = self.kernel_transformer.transform(df, self.mask, masked=True)
             ma_values = ma_maps
         else:
             assert ma_maps is not None
