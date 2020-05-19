@@ -43,15 +43,15 @@ Ultimately, we plan to support all (or most) of the methods listed below in NiMA
         - Cognitive Paradigm Ontology (`nimare.annotate.ontology.cogpo`)
         - Cognitive Atlas (`nimare.annotate.ontology.cogat`)
     - Topic model-based annotation (`nimare.annotate.topic`)
-        - Latent Dirichlet allocation (`nimare.annotate.topic.lda`)
+        - Latent Dirichlet allocation (`nimare.annotate.topic.LDAModel`)
         - Generalized correspondence latent Dirichlet allocation
-          (`nimare.annotate.topic.gclda`)
-        - Deep Boltzmann machines (`nimare.annotate.topic.boltzmann`)
+          (`nimare.annotate.topic.GCLDAModel`)
+        - Deep Boltzmann machines (`nimare.annotate.topic.BoltzmannModel`)
     - Vector model-based annotation (`nimare.annotate.vector`)
         - Global Vectors for Word Representation model
-          (`nimare.annotate.vector.word2brain`)
-        - Text2Brain model (`nimare.annotate.vector.text2brain`)
-- Database extraction (`nimare.dataset.extract`)
+          (`nimare.annotate.vector.Word2BrainModel`)
+        - Text2Brain model (`nimare.annotate.vector.Text2BrainModel`)
+- Database extraction (`nimare.extract`)
     - NeuroVault
     - Neurosynth
     - Brainspell

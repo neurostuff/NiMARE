@@ -142,7 +142,7 @@ def convert_sleuth_to_dict(text_file):
     data = data[1:]
     exp_idx = []
     for i in np.arange(0, len(data)):
-        if data[i].startswith('//') and data[i + 1].startswith('// Subjects') and data[i - 1].startswith('//') is False:
+        if data[i].startswith('//') and data[i + 1].startswith('// Subjects') and not data[i - 1].startswith('//'):
             exp_idx.append(i)
         elif data[i].startswith('//') and i + 2 < len(data) and data[i + 2].startswith('// Subjects'):
             exp_idx.append(i)
