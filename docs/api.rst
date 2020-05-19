@@ -10,13 +10,13 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.dataset
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.dataset
+.. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   nimare.dataset.Dataset
+   dataset.Dataset
 
 
 .. _api_meta_ref:
@@ -28,19 +28,18 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.meta
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.meta
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.meta.esma
-   nimare.meta.ibma
-   nimare.meta.cbma.kernel
-   nimare.meta.cbma.ale
-   nimare.meta.cbma.mkda
-   nimare.meta.cbma.model
-   nimare.meta.base
+   meta.esma
+   meta.ibma
+   meta.cbma.kernel
+   meta.cbma.ale
+   meta.cbma.mkda
+   meta.cbma.model
 
 .. _api_results_ref:
 

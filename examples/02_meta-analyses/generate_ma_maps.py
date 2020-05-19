@@ -30,13 +30,13 @@ dset = nimare.dataset.Dataset(dset_file)
 ###############################################################################
 # MKDA kernel maps
 # --------------------------------------------------
-kernel = nimare.meta.cbma.MKDAKernel(r=8)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=8)
 mkda_r08 = kernel.transform(dset)
-kernel = nimare.meta.cbma.MKDAKernel(r=9)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=9)
 mkda_r09 = kernel.transform(dset)
-kernel = nimare.meta.cbma.MKDAKernel(r=10)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
 mkda_r10 = kernel.transform(dset)
-kernel = nimare.meta.cbma.MKDAKernel(r=11)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=11)
 mkda_r11 = kernel.transform(dset)
 
 fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(10, 17.5))
@@ -57,11 +57,11 @@ fig.show()
 ###############################################################################
 # Show different kernel types together
 # --------------------------------------------------
-kernel = nimare.meta.cbma.MKDAKernel(r=10)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
 mkda_res = kernel.transform(dset)
-kernel = nimare.meta.cbma.KDAKernel(r=10)
+kernel = nimare.meta.cbma.kernel.KDAKernel(r=10)
 kda_res = kernel.transform(dset)
-kernel = nimare.meta.cbma.ALEKernel(n=20)
+kernel = nimare.meta.cbma.kernel.ALEKernel(n=20)
 ale_res = kernel.transform(dset)
 max_conv = np.max(kda_res[2].get_data())
 plot_stat_map(ale_res[2], cut_coords=[-2, -10, -4], title='ALE')

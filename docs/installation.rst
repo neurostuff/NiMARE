@@ -15,16 +15,8 @@ If you want to use the most up-to-date version, you can install from master:
 
     pip install git+https://github.com/neurostuff/NiMARE.git
 
-NiMARE requires Python >=3.6 and the following packages:
-
-- nibabel
-- numpy
-- scipy
-- pandas
-- statsmodels
-- nipype
-- scikit-learn
-- nilearn
+NiMARE requires Python >=3.6 and a number of packages.
+For a complete list, please see nimare/info.py.
 
 What Next?
 ``````````
