@@ -7,14 +7,14 @@ from sklearn.cluster import k_means
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from .base import Parcellator
+from ..base import Estimator
 from ..meta.cbma.kernel import ALEKernel
 from ..due import due
 from .. import references
 
 
 @due.dcite(references.MAMP, description='Introduces the MAMP algorithm.')
-class MAMP(Parcellator):
+class MAMP(Estimator):
     """
     Meta-analytic activation modeling-based parcellation (MAMP) [1]_.
 

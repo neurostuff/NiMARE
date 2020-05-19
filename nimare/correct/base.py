@@ -13,9 +13,9 @@ LGR = logging.getLogger(__name__)
 
 
 class Corrector(metaclass=ABCMeta):
-    '''
+    """
     Base class for multiple comparison correction methods.
-    '''
+    """
 
     # The name of the method that must be implemented in an Estimator class
     # in order to override the default correction method.

@@ -10,7 +10,7 @@ import nibabel as nib
 from scipy.stats import multivariate_normal
 
 from ...due import due
-from ..base import AnnotationModel
+from ...base import NiMAREBase
 from ...utils import get_template
 from ... import references
 
@@ -18,7 +18,7 @@ LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.GCLDAMODEL)
-class GCLDAModel(AnnotationModel):
+class GCLDAModel(NiMAREBase):
     """
     Generate a generalized correspondence latent Dirichlet allocation
     (GCLDA) [1]_ topic model.
