@@ -485,7 +485,7 @@ class Dataset(NiMAREBase):
         elif not isinstance(labels, list):
             raise ValueError('Argument "labels" cannot be {0}'.format(type(labels)))
 
-        found_labels = [l for l in labels if l in self.annotations.columns]
+        found_labels = [label for label in labels if label in self.annotations.columns]
         temp_annotations = self.annotations[self._id_cols + found_labels]
         found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
         if any(found_rows):

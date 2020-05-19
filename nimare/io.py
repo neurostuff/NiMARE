@@ -135,8 +135,8 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ['MNI', 'TAL', 'Talairach']
     if space not in SPACE_OPTS:
-        raise Exception('Space {0} unknown. Options supported: '
-                        '{0}.'.format(space, ', '.format(SPACE_OPTS)))
+        raise Exception('Space {0} unknown. Options supported: {1}.'.format(
+            space, ', '.join(SPACE_OPTS)))
 
     # Split into experiments
     data = data[1:]
