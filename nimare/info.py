@@ -60,6 +60,7 @@ REQUIRES = [
     'pyneurovault',
     'scikit-learn',
     'scipy',
+    'seaborn',
     'six',
     'statsmodels',
     'tqdm',

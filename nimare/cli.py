@@ -23,6 +23,11 @@ def _is_valid_file(parser, arg):
 
 def _get_parser():
     """
+    Parses command line inputs for NiMARE
+
+    Returns
+    -------
+    parser.parse_args() : argparse dict
     """
     parser = argparse.ArgumentParser(prog='nimare')
     subparsers = parser.add_subparsers(help='NiMARE workflows')
