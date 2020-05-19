@@ -541,6 +541,7 @@ class Dataset(NiMAREBase):
             radius r of requested coordinates.
         """
         from scipy.spatial.distance import cdist
+        xyz = np.array(xyz)
         assert xyz.shape[1] == 3 and xyz.ndim == 2
         distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
         distances = np.any(distances <= r, axis=0)
