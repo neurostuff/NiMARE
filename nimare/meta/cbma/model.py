@@ -1,13 +1,13 @@
 """
 Model-based coordinate-based meta-analysis estimators
 """
-from .base import CBMAEstimator
+from ...base import Estimator
 from ...due import due
 from ... import references
 
 
 @due.dcite(references.BHICP, description='Introduces the BHICP model.')
-class BHICP(CBMAEstimator):
+class BHICP(Estimator):
     """
     Bayesian hierarchical cluster process model [1]_.
 
@@ -30,7 +30,7 @@ class BHICP(CBMAEstimator):
 
 
 @due.dcite(references.HPGRF, description='Introduces the HPGRF model.')
-class HPGRF(CBMAEstimator):
+class HPGRF(Estimator):
     """
     Hierarchical Poisson/Gamma random field model [1]_.
 
@@ -52,7 +52,7 @@ class HPGRF(CBMAEstimator):
 
 
 @due.dcite(references.SBLFR, description='Introduces the SBLFR model.')
-class SBLFR(CBMAEstimator):
+class SBLFR(Estimator):
     """
     Spatial Bayesian latent factor regression model [1]_.
 
@@ -74,7 +74,7 @@ class SBLFR(CBMAEstimator):
 
 
 @due.dcite(references.SBR, description='Introduces the SBR model.')
-class SBR(CBMAEstimator):
+class SBR(Estimator):
     """
     Spatial binary regression model [1]_.
 

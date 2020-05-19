@@ -13,7 +13,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
 from ...results import MetaResult
-from .base import CBMAEstimator
+from ...base import Estimator
 from .kernel import KernelTransformer
 from ...stats import null_to_p, p_to_z, one_way, two_way
 from ...due import due
@@ -23,7 +23,7 @@ LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDADensity(CBMAEstimator):
+class MKDADensity(Estimator):
     r"""
     Multilevel kernel density analysis- Density analysis [1]_.
 
@@ -227,7 +227,7 @@ class MKDADensity(CBMAEstimator):
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDAChi2(CBMAEstimator):
+class MKDAChi2(Estimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis [1]_.
 
@@ -559,7 +559,7 @@ class MKDAChi2(CBMAEstimator):
 
 @due.dcite(references.KDA1, description='Introduces the KDA algorithm.')
 @due.dcite(references.KDA2, description='Also introduces the KDA algorithm.')
-class KDA(CBMAEstimator):
+class KDA(Estimator):
     r"""
     Kernel density analysis.
 
