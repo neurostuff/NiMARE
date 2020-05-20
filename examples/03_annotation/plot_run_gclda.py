@@ -11,12 +11,18 @@
 This example trains a generalized correspondence latent Dirichlet allocation
 model using abstracts from Neurosynth and then uses it for decoding.
 
+.. warning::
+    The model in this example is trained using (1) a very small,
+    nonrepresentative dataset and (2) very few iterations. As such, it will not
+    provide useful results.
+    If you are interested in using GCLDA, we recommend using a large dataset
+    like Neurosynth, and training with at least 10k iterations.
 """
 import os
 
 import numpy as np
 import nibabel as nib
-from nilearn.plotting import plot_stat_map
+from nilearn.plotting import plot_stat_map, plot_roi
 
 import nimare
 from nimare import annotate, decode
@@ -43,32 +49,22 @@ counts_df = annotate.text.generate_counts(
 # ---------
 # Five iterations will take ~10 minutes with the full Neurosynth dataset.
 # It's much faster with this reduced example dataset.
+# Note that we're using only 10 topics here. This is because there are only
+# 13 studies in the dataset.
+# If the number of topics is higher than the number of studies in the dataset,
+# errors can occur during training.
 model = annotate.topic.GCLDAModel(
-    counts_df, dset.coordinates, mask=dset.masker.mask_img)
-model.fit(n_iters=10, loglikely_freq=5)
+    counts_df, dset.coordinates, mask=dset.masker.mask_img, n_topics=10)
+model.fit(n_iters=100, loglikely_freq=5)
 model.save('gclda_model.pkl.gz')
 
 # Let's remove the model now that you know how to generate it.
 os.remove('gclda_model.pkl.gz')
 
 ###############################################################################
-# Decode an ROI image
-# -------------------
-
-# Make a small cubic ROI
-arr = np.zeros(dset.masker.mask_img.shape, int)
-arr[40:44, 45:49, 40:44] = 1
-mask_img = nib.Nifti1Image(arr, dset.masker.mask_img.affine)
-
-# Run the decoder
-decoded_df, _ = decode.discrete.gclda_decode_roi(model, mask_img)
-decoded_df.sort_values(by='Weight', ascending=False).head(10)
-
-###############################################################################
 # Generate a pseudo-statistic image from text
 # -------------------------------------------
-text = ('the amygdala and the hippocampus are very important for emotion and '
-        'memory. the claustrum might do something too.')
+text = ('anterior cingulate cortex')
 encoded_img, _ = decode.encode.gclda_encode(model, text)
 plot_stat_map(encoded_img, draw_cross=False)
 
@@ -81,3 +77,17 @@ plot_stat_map(encoded_img, draw_cross=False)
 # Run the decoder
 decoded_df, _ = decode.continuous.gclda_decode_map(model, encoded_img)
 decoded_df.sort_values(by='Weight', ascending=False).head(10)
+
+###############################################################################
+# Decode an ROI image
+# -------------------
+
+# First we'll make an ROI
+arr = np.zeros(dset.masker.mask_img.shape, int)
+arr[65:75, 50:60, 50:60] = 1
+mask_img = nib.Nifti1Image(arr, dset.masker.mask_img.affine)
+plot_roi(mask_img, draw_cross=False)
+
+# Run the decoder
+decoded_df, _ = decode.discrete.gclda_decode_roi(model, mask_img)
+print(decoded_df.sort_values(by='Weight', ascending=False).head(10))

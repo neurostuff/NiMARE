@@ -89,8 +89,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
                                              np.array2string(dset_aff)))
 
     # Load ROI file and get ROI voxels overlapping with brain mask
-    mask_vec = model.mask.get_data().ravel().astype(bool)
-    roi_vec = roi.get_data().astype(bool).ravel()
+    mask_vec = model.mask.get_fdata().ravel().astype(bool)
+    roi_vec = roi.get_fdata().astype(bool).ravel()
     roi_vec = roi_vec[mask_vec]
     roi_idx = np.where(roi_vec)[0]
     p_topic_g_roi = model.p_topic_g_voxel_[roi_idx, :]  # p(T|V) for voxels in ROI only
