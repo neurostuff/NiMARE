@@ -37,7 +37,7 @@ class ALE(Estimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs
@@ -569,7 +569,7 @@ class SCALE(Estimator):
         Tab-delimited file of coordinates from database or numpy array with ijk
         coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
         are the three columnns.
-    kernel_transformer : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs

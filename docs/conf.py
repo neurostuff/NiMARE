@@ -35,7 +35,7 @@ import nimare
 
 # generate autosummary even if no references
 autosummary_generate = True
-autodoc_default_flags = ['members', 'inherited-members']
+#autodoc_default_flags = ['members', 'inherited-members']
 add_module_names = False
 
 # Add any Sphinx extension module names here, as strings. They can be

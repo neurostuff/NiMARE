@@ -29,7 +29,7 @@ class MKDADensity(Estimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
     **kwargs
@@ -236,7 +236,7 @@ class MKDAChi2(Estimator):
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
-    kernel_transformer : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
     **kwargs
@@ -565,7 +565,7 @@ class KDA(Estimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         KDAKernel.
     **kwargs

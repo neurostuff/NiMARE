@@ -83,7 +83,7 @@ class Dataset(NiMAREBase):
         Returns
         -------
         new_dset : :obj:`nimare.dataset.Dataset`
-            Redcued Dataset containing only requested studies.
+            Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
         new_dset.ids = ids
