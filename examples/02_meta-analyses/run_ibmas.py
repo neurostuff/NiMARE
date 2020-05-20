@@ -30,8 +30,7 @@ from nilearn.plotting import plot_stat_map
 import nimare
 from nimare.tests.utils import get_test_data_path
 from nimare.meta.esma import fishers
-from nimare.meta.ibma import (Fishers, Stouffers, WeightedStouffers,
-                              RFX_GLM, FFX_GLM, ffx_glm)
+from nimare.meta.ibma import (Fishers, Stouffers, WeightedStouffers, RFX_GLM)
 
 ###############################################################################
 # Download data

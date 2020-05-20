@@ -1,4 +1,4 @@
-.. _examples-index:
+.. _examples-metas:
 
 Performing meta-analyses
 ------------------------

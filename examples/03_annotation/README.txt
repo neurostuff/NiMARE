@@ -1,4 +1,4 @@
-.. _examples-index:
+.. _examples-annotations:
 
 Automated annotation
 --------------------
