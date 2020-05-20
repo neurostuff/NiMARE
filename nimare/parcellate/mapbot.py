@@ -7,13 +7,13 @@ from sklearn.decomposition import NMF
 from scipy.spatial.distance import cdist
 from nilearn.masking import apply_mask, unmask
 
-from .base import Parcellator
+from ..base import Estimator
 from ..due import due
 from .. import references
 
 
 @due.dcite(references.MAPBOT, description='Introduces the MAPBOT algorithm.')
-class MAPBOT(Parcellator):
+class MAPBOT(Estimator):
     """
     Meta-analytic parcellation based on text (MAPBOT) [1]_.
 

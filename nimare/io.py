@@ -135,14 +135,14 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ['MNI', 'TAL', 'Talairach']
     if space not in SPACE_OPTS:
-        raise Exception('Space {0} unknown. Options supported: '
-                        '{0}.'.format(space, ', '.format(SPACE_OPTS)))
+        raise Exception('Space {0} unknown. Options supported: {1}.'.format(
+            space, ', '.join(SPACE_OPTS)))
 
     # Split into experiments
     data = data[1:]
     exp_idx = []
     for i in np.arange(0, len(data)):
-        if data[i].startswith('//') and data[i + 1].startswith('// Subjects') and data[i - 1].startswith('//') is False:
+        if data[i].startswith('//') and data[i + 1].startswith('// Subjects') and not data[i - 1].startswith('//'):
             exp_idx.append(i)
         elif data[i].startswith('//') and i + 2 < len(data) and data[i + 2].startswith('// Subjects'):
             exp_idx.append(i)

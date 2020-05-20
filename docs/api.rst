@@ -10,13 +10,13 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.dataset
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.dataset
+.. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   nimare.dataset.Dataset
+   dataset.Dataset
 
 
 .. _api_meta_ref:
@@ -28,19 +28,18 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.meta
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.meta
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.meta.esma
-   nimare.meta.ibma
-   nimare.meta.cbma.kernel
-   nimare.meta.cbma.ale
-   nimare.meta.cbma.mkda
-   nimare.meta.cbma.model
-   nimare.meta.base
+   meta.esma
+   meta.ibma
+   meta.cbma.kernel
+   meta.cbma.ale
+   meta.cbma.mkda
+   meta.cbma.model
 
 .. _api_results_ref:
 
@@ -51,13 +50,13 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.results
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.results
+.. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   nimare.results.MetaResult
+   results.MetaResult
 
 
 .. _api_correct_ref:
@@ -69,14 +68,14 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.correct
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.correct
+.. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   nimare.correct.FWECorrector
-   nimare.correct.FDRCorrector
+   correct.FWECorrector
+   correct.FDRCorrector
 
 
 .. _api_annotate_ref:
@@ -88,16 +87,16 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.annotate
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.annotate
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.annotate.ontology
-   nimare.annotate.topic
-   nimare.annotate.vector
-   nimare.annotate.text
+   annotate.ontology
+   annotate.topic
+   annotate.vector
+   annotate.text
 
 
 .. _api_decode_ref:
@@ -109,15 +108,15 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.decode
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.decode
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.decode.discrete
-   nimare.decode.continuous
-   nimare.decode.encode
+   decode.discrete
+   decode.continuous
+   decode.encode
 
 
 .. _api_parcellate_ref:
@@ -129,15 +128,15 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.parcellate
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.parcellate
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.parcellate.cbp
-   nimare.parcellate.mamp
-   nimare.parcellate.mapbot
+   parcellate.cbp
+   parcellate.mamp
+   parcellate.mapbot
 
 
 .. _api_io_ref:
@@ -149,18 +148,18 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.io
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.io
+.. autosummary::
    :toctree: generated/
    :template: function.rst
 
-   nimare.io.convert_neurosynth_to_dict
-   nimare.io.convert_neurosynth_to_json
-   nimare.io.convert_neurosynth_to_dataset
-   nimare.io.convert_sleuth_to_dict
-   nimare.io.convert_sleuth_to_json
-   nimare.io.convert_sleuth_to_dataset
+   io.convert_neurosynth_to_dict
+   io.convert_neurosynth_to_json
+   io.convert_neurosynth_to_dataset
+   io.convert_sleuth_to_dict
+   io.convert_sleuth_to_json
+   io.convert_sleuth_to_dataset
 
 
 .. _api_extract_ref:
@@ -172,17 +171,17 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.extract
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.extract
+.. autosummary::
    :toctree: generated/
    :template: function.rst
 
-   nimare.extract.download_nidm_pain
-   nimare.extract.download_mallet
-   nimare.extract.download_cognitive_atlas
-   nimare.extract.download_abstracts
-   nimare.extract.download_peaks2maps_model
+   extract.download_nidm_pain
+   extract.download_mallet
+   extract.download_cognitive_atlas
+   extract.download_abstracts
+   extract.download_peaks2maps_model
 
 
 .. _api_stats_ref:
@@ -194,19 +193,19 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.stats
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.stats
+.. autosummary::
    :toctree: generated/
    :template: function.rst
 
-   nimare.stats.one_way
-   nimare.stats.two_way
-   nimare.stats.pearson
-   nimare.stats.null_to_p
-   nimare.stats.p_to_z
-   nimare.stats.t_to_z
-   nimare.stats.fdr
+   stats.one_way
+   stats.two_way
+   stats.pearson
+   stats.null_to_p
+   stats.p_to_z
+   stats.t_to_z
+   stats.fdr
 
 
 .. _api_utils_ref:
@@ -218,20 +217,20 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.utils
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.utils
+.. autosummary::
    :toctree: generated/
    :template: function.rst
 
-   nimare.utils.get_template
-   nimare.utils.listify
-   nimare.utils.round2
-   nimare.utils.vox2mm
-   nimare.utils.mm2vox
-   nimare.utils.tal2mni
-   nimare.utils.mni2tal
-   nimare.utils.get_resource_path
+   utils.get_template
+   utils.listify
+   utils.round2
+   utils.vox2mm
+   utils.mm2vox
+   utils.tal2mni
+   utils.mni2tal
+   utils.get_resource_path
 
 
 .. _api_workflows_ref:
@@ -243,17 +242,17 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.workflows
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.workflows
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.workflows.ale
-   nimare.workflows.conperm
-   nimare.workflows.macm
-   nimare.workflows.peaks2maps
-   nimare.workflows.scale
+   workflows.ale
+   workflows.conperm
+   workflows.macm
+   workflows.peaks2maps
+   workflows.scale
 
 
 .. _api_base_ref:
@@ -264,12 +263,12 @@ API
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: nimare.base
+.. currentmodule:: nimare
 
-.. autosummary:: nimare.base
+.. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   nimare.base.NiMAREBase
-   nimare.base.Estimator
-   nimare.base.Transformer
+   base.NiMAREBase
+   base.Estimator
+   base.Transformer

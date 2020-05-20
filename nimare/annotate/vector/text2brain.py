@@ -1,13 +1,13 @@
 """
 Generate a Text2Brain vector model.
 """
-from ..base import AnnotationModel
+from ...base import NiMAREBase
 from ...due import due
 from ... import references
 
 
 @due.dcite(references.TEXT2BRAIN)
-class Text2BrainModel(AnnotationModel):
+class Text2BrainModel(NiMAREBase):
     """
     Generate a Text2Brain vector model [1]_.
 

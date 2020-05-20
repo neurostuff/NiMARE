@@ -28,40 +28,43 @@ dset_file = os.path.join(get_test_data_path(), 'nidm_pain_dset.json')
 dset = nimare.dataset.Dataset(dset_file)
 
 ###############################################################################
-# MKDA kernel maps
-# --------------------------------------------------
-kernel = nimare.meta.cbma.MKDAKernel(r=8)
+# Each kernel can taken certain parameters that control behavior
+# --------------------------------------------------------------
+# For example, the MKDA kernel accepts an `r` argument to control the radius
+# of the kernel.
+
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=2)
 mkda_r08 = kernel.transform(dset)
-kernel = nimare.meta.cbma.MKDAKernel(r=9)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=6)
 mkda_r09 = kernel.transform(dset)
-kernel = nimare.meta.cbma.MKDAKernel(r=10)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
 mkda_r10 = kernel.transform(dset)
-kernel = nimare.meta.cbma.MKDAKernel(r=11)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=14)
 mkda_r11 = kernel.transform(dset)
 
-fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(10, 17.5))
+fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 10))
 plot_stat_map(mkda_r08[2], cut_coords=[-2, -10, -4],
-              title='r=8mm', vmax=2, axes=axes[0],
+              title='r=2mm', vmax=2, axes=axes[0, 0],
               draw_cross=False)
 plot_stat_map(mkda_r09[2], cut_coords=[-2, -10, -4],
-              title='r=9mm', vmax=2, axes=axes[1],
+              title='r=6mm', vmax=2, axes=axes[0, 1],
               draw_cross=False)
 plot_stat_map(mkda_r10[2], cut_coords=[-2, -10, -4],
-              title='r=10mm', vmax=2, axes=axes[2],
+              title='r=10mm', vmax=2, axes=axes[1, 0],
               draw_cross=False)
 plot_stat_map(mkda_r11[2], cut_coords=[-2, -10, -4],
-              title='r=11mm', vmax=2, axes=axes[3],
+              title='r=14mm', vmax=2, axes=axes[1, 1],
               draw_cross=False)
 fig.show()
 
 ###############################################################################
-# Show different kernel types together
+# There are several kernels available
 # --------------------------------------------------
-kernel = nimare.meta.cbma.MKDAKernel(r=10)
+kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
 mkda_res = kernel.transform(dset)
-kernel = nimare.meta.cbma.KDAKernel(r=10)
+kernel = nimare.meta.cbma.kernel.KDAKernel(r=10)
 kda_res = kernel.transform(dset)
-kernel = nimare.meta.cbma.ALEKernel(n=20)
+kernel = nimare.meta.cbma.kernel.ALEKernel(n=20)
 ale_res = kernel.transform(dset)
 max_conv = np.max(kda_res[2].get_data())
 plot_stat_map(ale_res[2], cut_coords=[-2, -10, -4], title='ALE')

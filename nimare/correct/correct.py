@@ -25,7 +25,7 @@ class FWECorrector(Corrector):
     To determine what methods are available for the Estimator you're using,
     check the Estimator's documentation. Estimators have special methods
     following the naming convention correct_[correction-type]_[method]
-    (e.g., ALE.correct_fwe_permutation).
+    (e.g., :obj:`nimare.meta.cbma.ALE.correct_fwe_permutation`).
     """
 
     _correction_method = 'fwe'

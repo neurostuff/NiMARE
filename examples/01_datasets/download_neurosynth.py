@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _datasets1:
+.. _datasets2:
 
 =============================================
  Download and convert the Neurosynth database

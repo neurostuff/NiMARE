@@ -13,7 +13,7 @@ from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel, KernelTransformer
 from ...results import MetaResult
-from .base import CBMAEstimator
+from ...base import Estimator
 from ...due import due
 from ... import references
 from ...stats import null_to_p, p_to_z
@@ -31,7 +31,7 @@ LGR = logging.getLogger(__name__)
            description='Modifies ALE algorithm to allow FWE correction and to '
                        'more quickly and accurately generate the null '
                        'distribution for significance testing.')
-class ALE(CBMAEstimator):
+class ALE(Estimator):
     r"""
     Activation likelihood estimation
 
@@ -358,7 +358,7 @@ class ALE(CBMAEstimator):
         return images
 
 
-class ALESubtraction(CBMAEstimator):
+class ALESubtraction(Estimator):
     """
     ALE subtraction analysis.
 
@@ -552,7 +552,7 @@ class ALESubtraction(CBMAEstimator):
 @due.dcite(references.SCALE,
            description='Introduces the specific co-activation likelihood '
                        'estimation (SCALE) algorithm.')
-class SCALE(CBMAEstimator):
+class SCALE(Estimator):
     r"""
     Specific coactivation likelihood estimation [1]_.
 
