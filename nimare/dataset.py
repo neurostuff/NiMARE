@@ -83,7 +83,7 @@ class Dataset(NiMAREBase):
         Returns
         -------
         new_dset : :obj:`nimare.dataset.Dataset`
-            Redcued Dataset containing only requested studies.
+            Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
         new_dset.ids = ids
@@ -485,7 +485,7 @@ class Dataset(NiMAREBase):
         elif not isinstance(labels, list):
             raise ValueError('Argument "labels" cannot be {0}'.format(type(labels)))
 
-        found_labels = [l for l in labels if l in self.annotations.columns]
+        found_labels = [label for label in labels if label in self.annotations.columns]
         temp_annotations = self.annotations[self._id_cols + found_labels]
         found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
         if any(found_rows):
@@ -541,6 +541,7 @@ class Dataset(NiMAREBase):
             radius r of requested coordinates.
         """
         from scipy.spatial.distance import cdist
+        xyz = np.array(xyz)
         assert xyz.shape[1] == 3 and xyz.ndim == 2
         distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
         distances = np.any(distances <= r, axis=0)

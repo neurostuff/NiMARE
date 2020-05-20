@@ -7,14 +7,14 @@ from sklearn.cluster import k_means
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from .base import Parcellator
+from ..base import Estimator
 from ..meta.cbma.kernel import ALEKernel
 from ..due import due
 from .. import references
 
 
 @due.dcite(references.MAMP, description='Introduces the MAMP algorithm.')
-class MAMP(Parcellator):
+class MAMP(Estimator):
     """
     Meta-analytic activation modeling-based parcellation (MAMP) [1]_.
 
@@ -57,7 +57,7 @@ class MAMP(Parcellator):
         self.solutions = None
         self.metrics = None
 
-    def fit(self, target_mask, n_parcels=2, kernel_estimator=ALEKernel,
+    def fit(self, target_mask, n_parcels=2, kernel_transformer=ALEKernel,
             **kwargs):
         """
         Run MAMP parcellation.
@@ -87,7 +87,7 @@ class MAMP(Parcellator):
         if not isinstance(n_parcels, list):
             n_parcels = [n_parcels]
 
-        k_est = kernel_estimator(self.coordinates, self.mask)
+        k_est = kernel_transformer(self.coordinates, self.mask)
         ma_maps = k_est.transform(self.ids, **kernel_args)
 
         # Step 1: Build correlation matrix

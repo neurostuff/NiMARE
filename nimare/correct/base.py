@@ -13,9 +13,9 @@ LGR = logging.getLogger(__name__)
 
 
 class Corrector(metaclass=ABCMeta):
-    '''
+    """
     Base class for multiple comparison correction methods.
-    '''
+    """
 
     # The name of the method that must be implemented in an Estimator class
     # in order to override the default correction method.
@@ -81,7 +81,7 @@ class Corrector(metaclass=ABCMeta):
         # MetaEstimator, use it. Otherwise fall back on _transform.
         if (correction_method is not None and hasattr(est, correction_method)):
             LGR.info('Using correction method implemented in Estimator: {}.'
-                     '{}.'.format(est, correction_method))
+                     '{}.'.format(type(est), correction_method))
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._validate_input(result)

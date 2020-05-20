@@ -1,13 +1,13 @@
 """
 GloVe model-based annotation.
 """
-from ..base import AnnotationModel
+from ...base import NiMAREBase
 from ...due import due
 from ... import references
 
 
 @due.dcite(references.WORD2BRAIN)
-class Word2BrainModel(AnnotationModel):
+class Word2BrainModel(NiMAREBase):
     """
     Generate a Word2Brain vector model [1]_.
 

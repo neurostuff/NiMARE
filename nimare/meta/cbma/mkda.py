@@ -13,7 +13,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
 from ...results import MetaResult
-from .base import CBMAEstimator
+from ...base import Estimator
 from .kernel import KernelTransformer
 from ...stats import null_to_p, p_to_z, one_way, two_way
 from ...due import due
@@ -23,17 +23,17 @@ LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDADensity(CBMAEstimator):
+class MKDADensity(Estimator):
     r"""
     Multilevel kernel density analysis- Density analysis [1]_.
 
     Parameters
     ----------
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
@@ -47,19 +47,19 @@ class MKDADensity(CBMAEstimator):
         cognitive and affective neuroscience 2.2 (2007): 150-158.
         https://doi.org/10.1093/scan/nsm015
     """
-    def __init__(self, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
         for k in kwargs.keys():
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
 
         self.mask = None
         self.dataset = None
@@ -77,7 +77,7 @@ class MKDADensity(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_values = self.kernel_estimator.transform(dataset, masked=True)
+        ma_values = self.kernel_transformer.transform(dataset, masked=True)
 
         # Weight each SCM by square root of sample size
         ids_df = self.dataset.coordinates.groupby('id').first()
@@ -104,7 +104,7 @@ class MKDADensity(CBMAEstimator):
         iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask, masked=True)
+        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask, masked=True)
         iter_ma_maps *= self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
@@ -227,7 +227,7 @@ class MKDADensity(CBMAEstimator):
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDAChi2(CBMAEstimator):
+class MKDAChi2(Estimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis [1]_.
 
@@ -236,11 +236,11 @@ class MKDAChi2(CBMAEstimator):
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
@@ -255,19 +255,19 @@ class MKDAChi2(CBMAEstimator):
         cognitive and affective neuroscience 2.2 (2007): 150-158.
         https://doi.org/10.1093/scan/nsm015
     """
-    def __init__(self, prior=0.5, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
         for k in kwargs.keys():
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.prior = prior
 
     def fit(self, dataset, dataset2):
@@ -295,8 +295,8 @@ class MKDAChi2(CBMAEstimator):
         self.dataset2 = dataset2
         self.mask = dataset.masker.mask_img
 
-        ma_maps1 = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=True)
-        ma_maps2 = self.kernel_estimator.transform(self.dataset2, mask=self.mask, masked=True)
+        ma_maps1 = self.kernel_transformer.transform(self.dataset, mask=self.mask, masked=True)
+        ma_maps2 = self.kernel_transformer.transform(self.dataset2, mask=self.mask, masked=True)
 
         # Calculate different count variables
         n_selected = ma_maps1.shape[0]
@@ -365,8 +365,8 @@ class MKDAChi2(CBMAEstimator):
         iter_df1[['i', 'j', 'k']] = iter_ijk1
         iter_df2[['i', 'j', 'k']] = iter_ijk2
 
-        temp_ma_maps1 = self.kernel_estimator.transform(iter_df1, self.mask, masked=True)
-        temp_ma_maps2 = self.kernel_estimator.transform(iter_df2, self.mask, masked=True)
+        temp_ma_maps1 = self.kernel_transformer.transform(iter_df1, self.mask, masked=True)
+        temp_ma_maps2 = self.kernel_transformer.transform(iter_df2, self.mask, masked=True)
 
         n_selected = temp_ma_maps1.shape[0]
         n_unselected = temp_ma_maps2.shape[0]
@@ -559,17 +559,17 @@ class MKDAChi2(CBMAEstimator):
 
 @due.dcite(references.KDA1, description='Introduces the KDA algorithm.')
 @due.dcite(references.KDA2, description='Also introduces the KDA algorithm.')
-class KDA(CBMAEstimator):
+class KDA(Estimator):
     r"""
     Kernel density analysis.
 
     Parameters
     ----------
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         KDAKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
@@ -588,19 +588,19 @@ class KDA(CBMAEstimator):
         studies of shifting attention: a meta-analysis." Neuroimage 22.4
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
-    def __init__(self, kernel_estimator=KDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=KDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
         for k in kwargs.keys():
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
 
     def _fit(self, dataset):
         """
@@ -614,7 +614,7 @@ class KDA(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_estimator.transform(dataset, masked=True)
+        ma_maps = self.kernel_transformer.transform(dataset, masked=True)
         of_values = np.sum(ma_maps, axis=0)
         images = {
             'of': of_values
@@ -625,7 +625,7 @@ class KDA(CBMAEstimator):
         iter_ijk, iter_df = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask, masked=True)
+        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask, masked=True)
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         return iter_max_value

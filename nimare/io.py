@@ -124,8 +124,10 @@ def convert_sleuth_to_dict(text_file):
     """
     filename = op.basename(text_file)
     study_name, _ = op.splitext(filename)
+
     with open(text_file, 'r') as file_object:
         data = file_object.read()
+
     data = [line.rstrip() for line in re.split('\n\r|\r\n|\n|\r', data)]
     data = [line for line in data if line]
     # First line indicates space. The rest are studies, ns, and coords
@@ -133,17 +135,23 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ['MNI', 'TAL', 'Talairach']
     if space not in SPACE_OPTS:
-        raise Exception('Space {0} unknown. Options supported: '
-                        '{0}.'.format(space, ', '.format(SPACE_OPTS)))
+        raise Exception('Space {0} unknown. Options supported: {1}.'.format(
+            space, ', '.join(SPACE_OPTS)))
 
     # Split into experiments
     data = data[1:]
-    metadata_idx = [i for i, line in enumerate(data) if line.startswith('//')]
-    exp_idx = np.split(metadata_idx,
-                       np.where(np.diff(metadata_idx) != 1)[0] + 1)
-    start_idx = [tup[0] for tup in exp_idx]
+    exp_idx = []
+    for i in np.arange(0, len(data)):
+        if data[i].startswith('//') and data[i + 1].startswith('// Subjects') and not data[i - 1].startswith('//'):
+            exp_idx.append(i)
+        elif data[i].startswith('//') and i + 2 < len(data) and data[i + 2].startswith('// Subjects'):
+            exp_idx.append(i)
+        else:
+            pass
+    start_idx = exp_idx
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
+
     dict_ = {}
     for i_exp, exp_idx in enumerate(split_idx):
         exp_data = data[exp_idx[0]:exp_idx[1]]

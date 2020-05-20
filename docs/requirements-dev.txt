@@ -2,3 +2,5 @@ sphinx-argparse
 numpydoc
 sphinx_gallery
 m2r
+sphinx_rtd_theme
+pillow

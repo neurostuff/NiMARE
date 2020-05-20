@@ -8,14 +8,14 @@ from scipy.spatial.distance import cdist
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from .base import Parcellator
+from ..base import Estimator
 from ..meta.cbma.ale import SCALE
 from ..due import due
 from .. import references
 
 
 @due.dcite(references.CBP, description='Introduces CBP.')
-class CoordCBP(Parcellator):
+class CoordCBP(Estimator):
     """
     Coordinate-based coactivation-based parcellation [1]_.
 
@@ -150,7 +150,7 @@ class CoordCBP(Parcellator):
         self.metrics = metrics
 
 
-class ImCBP(Parcellator):
+class ImCBP(Estimator):
     """
     Image-based coactivation-based parcellation
 
