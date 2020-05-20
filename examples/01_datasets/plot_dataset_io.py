@@ -14,10 +14,6 @@
 # --------------------------------
 import os
 
-import numpy as np
-import matplotlib.pyplot as plt
-from nilearn.plotting import plot_stat_map
-
 import nimare
 from nimare.tests.utils import get_test_data_path
 

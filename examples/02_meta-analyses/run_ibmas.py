@@ -16,13 +16,9 @@ uploaded by Dr. Camille Maumet.
     database, rather than handling it locally with NiMARE.
 
 """
-###############################################################################
-# Start with the necessary imports
-# --------------------------------
 import os
 
 import numpy as np
-import pandas as pd
 import nibabel as nib
 from nilearn.masking import apply_mask, unmask
 from nilearn.plotting import plot_stat_map
