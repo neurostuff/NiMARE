@@ -1,21 +1,28 @@
+.. include:: links.rst
+
 Installation
 ============
 
-You'll need to set up a working development environment to use ``nimare``.
-To set up a local environment, you will need Python >=3.6 and the following
-packages will need to be installed:
-
-- nibabel
-- numpy
-- scipy
-- pandas
-- statsmodels
-- nipype
-- scikit-learn
-- nilearn
-
-You can then install ``nimare`` with:
+NiMARE can be installed from pip. To install the latest official release:
 
 .. code-block:: bash
 
-  pip install nimare
+    pip install nimare
+
+If you want to use the most up-to-date version, you can install from master:
+
+.. code-block:: bash
+
+    pip install git+https://github.com/neurostuff/NiMARE.git
+
+NiMARE requires Python >=3.6 and a number of packages.
+For a complete list, please see nimare/info.py.
+
+What Next?
+``````````
+
+For an overview of what you can do with NiMARE see `NiMARE Documentation`_.
+
+To get right to using NiMARE see the documentation on the `command line interface`_.
+
+If you have questions, or need help with using NiMARE, check out `NeuroStars`_.

@@ -1,7 +1,9 @@
 """
-Top-level namespace for meta-analyses.
+Coordinate-, image-, and effect-size-based meta-analysis estimators.
 """
-from .cbma import ALE
-from .ibma import Stouffers
 
-del ALE, Stouffers
+from . import cbma
+from . import ibma
+from . import esma
+
+__all__ = ['cbma', 'ibma', 'esma']

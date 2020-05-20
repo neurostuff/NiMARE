@@ -1,14 +1,14 @@
-import tensorflow as tf
-from tensorflow.python.estimator.export.export_output import PredictOutput
+"""
+Functions for the Peaks2Maps transformer.
+"""
 
 
 def model_fn(features, labels, mode, params):
-    """Build the MNIST model up to where it may be used for inference.
-    Args:
-
-    Returns:
-
     """
+    Used internally by utils.peaks2maps
+    """
+    import tensorflow as tf
+    from tensorflow.python.estimator.export.export_output import PredictOutput
     ngf = 64
     layers = []
 
@@ -55,7 +55,7 @@ def model_fn(features, labels, mode, params):
         (ngf * 2, 0.2),
         # encoder_3: [batch, 64, 64, ngf * 2] => [batch, 32, 32, ngf * 4]
         (ngf * 4, 0.2),
-        #encoder_4: [batch, 32, 32, ngf * 4] => [batch, 16, 16, ngf * 8]
+        # encoder_4: [batch, 32, 32, ngf * 4] => [batch, 16, 16, ngf * 8]
         (ngf * 8, 0.2),
         # encoder_5: [batch, 16, 16, ngf * 8] => [batch, 8, 8, ngf * 8]
         # ngf * 8,

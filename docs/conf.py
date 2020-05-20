@@ -19,11 +19,13 @@
 #
 import os
 import sys
+from datetime import datetime
 sys.path.insert(0, os.path.abspath('sphinxext'))
-sys.path.insert(0, os.path.abspath('../nimare'))
+sys.path.insert(0, os.path.abspath(os.path.pardir))
 
 from github_link import make_linkcode_resolve
 
+import nimare
 
 # -- General configuration ------------------------------------------------
 
@@ -33,23 +35,25 @@ from github_link import make_linkcode_resolve
 
 # generate autosummary even if no references
 autosummary_generate = True
-autodoc_default_flags = ['members', 'inherited-members']
+#autodoc_default_flags = ['members', 'inherited-members']
 add_module_names = False
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = ['sphinx.ext.autodoc',
-              'sphinx.ext.napoleon',
-              'sphinxarg.ext',
-              'sphinx.ext.intersphinx',
               'sphinx.ext.autosummary',
               'sphinx.ext.doctest',
-              'sphinx.ext.todo',
-              'numpydoc',
               'sphinx.ext.ifconfig',
+              'sphinx.ext.intersphinx',
               'sphinx.ext.linkcode',
-              'sphinx_gallery.gen_gallery',]
+              'sphinx.ext.napoleon',
+              'sphinx.ext.todo',
+              'sphinx_gallery.gen_gallery',
+              'sphinxarg.ext',
+              'm2r',
+              'numpydoc',
+              ]
 
 import sphinx
 from distutils.version import LooseVersion
@@ -69,7 +73,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'NiMARE'
-copyright = '2018, NiMARE developers'
+copyright = '2018-' + datetime.today().strftime("%Y") + ', NiMARE developers'
 author = 'NiMARE developers'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -77,7 +81,6 @@ author = 'NiMARE developers'
 # built documents.
 #
 # The short X.Y version.
-import nimare
 version = nimare.__version__
 # The full version, including alpha/beta/rc tags.
 release = nimare.__version__
@@ -94,6 +97,9 @@ language = None
 # This patterns also effect to html_static_path and html_extra_path
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'utils/*']
 
+# The reST default role (used for this markup: `text`) to use for all documents.
+default_role = "autolink"
+
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
 
@@ -107,7 +113,9 @@ todo_include_todos = False
 # a list of builtin themes.
 #
 # installing theme package
+
 import sphinx_rtd_theme
+
 html_theme = 'sphinx_rtd_theme'
 
 # Theme options are theme-specific and customize the look and feel of a theme
@@ -115,21 +123,21 @@ html_theme = 'sphinx_rtd_theme'
 # documentation.
 #
 # html_theme_options = {}
+html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'searchbox.html', 'indexsidebar.html'] }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
-
 # https://github.com/rtfd/sphinx_rtd_theme/issues/117
 def setup(app):
     app.add_stylesheet('theme_overrides.css')
+    app.add_stylesheet('nimare.css')
     app.connect('autodoc-process-docstring', generate_example_rst)
 
-
 html_favicon = '_static/nimare_favicon.png'
-
+html_logo = '_static/nimare_banner.png'
 
 # -- Options for HTMLHelp output ------------------------------------------
 
@@ -142,15 +150,22 @@ linkcode_resolve = make_linkcode_resolve('nimare',
                                          'nimare/blob/{revision}/'
                                          '{package}/{path}#L{lineno}')
 
-# Example configuration for intersphinx: refer to the Python standard library.
+# -----------------------------------------------------------------------------
+# intersphinx
+# -----------------------------------------------------------------------------
+_python_version_str = '{0.major}.{0.minor}'.format(sys.version_info)
+_python_doc_base = 'https://docs.python.org/' + _python_version_str
 intersphinx_mapping = {
-    'http://docs.python.org/3.5': None,
-    'http://docs.scipy.org/doc/numpy': None,
-    'http://docs.scipy.org/doc/scipy/reference': None,
-    'http://matplotlib.org/': None,
-    'http://scikit-learn.org/0.17': None,
-    'http://nipy.org/nibabel/': None,
-    'http://pandas.pydata.org/pandas-docs/stable/': None,
+    'python': (_python_doc_base, None),
+    'numpy': ('https://docs.scipy.org/doc/numpy',
+              (None, './_intersphinx/numpy-objects.inv')),
+    'scipy': ('https://docs.scipy.org/doc/scipy/reference',
+              (None, './_intersphinx/scipy-objects.inv')),
+    'sklearn': ('https://scikit-learn.org/stable',
+                (None, './_intersphinx/sklearn-objects.inv')),
+    'matplotlib': ('https://matplotlib.org/',
+                   (None, 'https://matplotlib.org/objects.inv')),
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
 }
 
 sphinx_gallery_conf = {
@@ -158,12 +173,21 @@ sphinx_gallery_conf = {
     'examples_dirs'     : '../examples',
     # path where to save gallery generated examples
     'gallery_dirs'      : 'auto_examples',
-    'backreferences_dir': '_build/backreferences',
+    'backreferences_dir': 'generated',
     # Modules for which function level galleries are created.  In
     # this case sphinx_gallery and numpy in a tuple of strings.
     'doc_module'        : ('nimare'),
     'ignore_patterns'   : ['utils/'],
+    'reference_url': {
+         # The module you locally document uses None
+        'nimare': None,
+        'matplotlib': 'https://matplotlib.org/',
+        'numpy': 'http://docs.scipy.org/doc/numpy/',
+    },
     }
+
+# Generate the plots for the gallery
+plot_gallery = 'True'
 
 # -- Options for Texinfo output -------------------------------------------
 

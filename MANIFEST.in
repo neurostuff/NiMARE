@@ -1,0 +1,4 @@
+recursive-include nimare/resources *
+recursive-include nimare/tests/data *
+include versioneer.py
+include nimare/_version.py

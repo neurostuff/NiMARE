@@ -5,18 +5,17 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import NMF
 from scipy.spatial.distance import cdist
-import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from ..base import Parcellator
-from ..due import due, Doi
+from ..base import Estimator
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('10.1016/j.neuroimage.2017.06.032'),
-           description='Introduces the MAPBOT algorithm.')
-class MAPBOT(Parcellator):
+@due.dcite(references.MAPBOT, description='Introduces the MAPBOT algorithm.')
+class MAPBOT(Estimator):
     """
-    Meta-analytic parcellation based on text (MAPBOT).
+    Meta-analytic parcellation based on text (MAPBOT) [1]_.
 
     Parameters
     ----------
@@ -49,6 +48,16 @@ class MAPBOT(Parcellator):
             - D = (F.T * F) * ones(F)
             - V = F * D^-.5
         4.  Perform non-negative matrix factorization on value matrix.
+
+    Warnings
+    --------
+    This method is not yet implemented.
+
+    References
+    ----------
+    .. [1] Yuan, Rui, et al. "MAPBOT: Meta-analytic parcellation based on text,
+        and its application to the human thalamus." NeuroImage 157 (2017):
+        716-732. https://doi.org/10.1016/j.neuroimage.2017.06.032
     """
     def __init__(self, tfidf_df, coordinates_df, mask):
         self.mask = mask
@@ -60,6 +69,8 @@ class MAPBOT(Parcellator):
         """
         Run MAPBOT parcellation.
 
+        Parameters
+        ----------
         region_name : :obj:`str`
             Name of region for parcellation.
         n_parcels : :obj:`int`, optional
@@ -77,6 +88,7 @@ class MAPBOT(Parcellator):
         mask_idx = np.vstack(np.where(target_data))
         n_voxels = mask_idx.shape[1]
         voxel_arr = np.zeros((n_voxels, np.sum(self.mask)))
+        del voxel_arr  # currently unused
 
         ijk = self.coordinates[['i', 'j', 'k']].values
         temp_df = self.coordinates.copy()
@@ -106,3 +118,4 @@ class MAPBOT(Parcellator):
             model = NMF(n_components=i_parc, init='nndsvd', random_state=0)
             W = model.fit_transform(values_prime)
             H = model.components_
+            del W, H  # not sure what's next

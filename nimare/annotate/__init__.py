@@ -1,10 +1,19 @@
 """
-Automated annotation tools.
+Automated annotation tools
 """
-from .text import generate_counts
-from .topic import BoltzmannModel
-from .ontology import extract_cogat
+import warnings
 
-del BoltzmannModel, extract_cogat
+from . import topic
+from . import vector
+from . import ontology
+from . import text
 
-__all__ = ['generate_counts']
+__all__ = ['text', 'topic', 'vector', 'ontology']
+
+warnings.simplefilter('default')
+
+warnings.warn(
+    "{} is an experimental module under active development; use it at your "
+    "own risk.".format(__name__),
+    ImportWarning
+)

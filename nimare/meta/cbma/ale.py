@@ -1,127 +1,452 @@
 """
-Coordinate-based meta-analysis estimators
+CBMA methods from the activation likelihood estimation (ALE) family
 """
-from __future__ import print_function
-import os
-import copy
-import warnings
-from time import time
+import logging
 import multiprocessing as mp
+from tqdm.auto import tqdm
 
 import numpy as np
+import pandas as pd
 import nibabel as nib
 from scipy import ndimage
 from nilearn.masking import apply_mask, unmask
 
-from .kernel import ALEKernel
-from ...base import MetaResult, CBMAEstimator
-from ...due import due, Doi, BibTeX
-from ...utils import round2, null_to_p, p_to_z
+from .kernel import ALEKernel, KernelTransformer
+from ...results import MetaResult
+from ...base import Estimator
+from ...due import due
+from ... import references
+from ...stats import null_to_p, p_to_z
+from ...utils import round2
+
+LGR = logging.getLogger(__name__)
 
 
-@due.dcite(BibTeX("""
-           @article{turkeltaub2002meta,
-             title={Meta-analysis of the functional neuroanatomy of single-word
-                    reading: method and validation},
-             author={Turkeltaub, Peter E and Eden, Guinevere F and Jones,
-                     Karen M and Zeffiro, Thomas A},
-             journal={Neuroimage},
-             volume={16},
-             number={3},
-             pages={765--780},
-             year={2002},
-             publisher={Elsevier}
-           }
-           """),
-           description='Introduces ALE.')
-@due.dcite(Doi('10.1002/hbm.21186'),
+@due.dcite(references.ALE1, description='Introduces ALE.')
+@due.dcite(references.ALE2,
            description='Modifies ALE algorithm to eliminate within-experiment '
                        'effects and generate MA maps based on subject group '
                        'instead of experiment.')
-@due.dcite(Doi('10.1016/j.neuroimage.2011.09.017'),
+@due.dcite(references.ALE3,
            description='Modifies ALE algorithm to allow FWE correction and to '
                        'more quickly and accurately generate the null '
                        'distribution for significance testing.')
-class ALE(CBMAEstimator):
-    """
+class ALE(Estimator):
+    r"""
     Activation likelihood estimation
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        Dataset object to analyze.
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelEstimator`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    Notes
+    -----
+    The ALE algorithm was originally developed in [1]_, then updated in [2]_
+    and [3]_.
+
+    Available correction methods: :obj:`ALE.correct_fwe_permutation`
+
+    References
+    ----------
+    .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
+        neuroanatomy of single-word reading: method and validation."
+        Neuroimage 16.3 (2002): 765-780.
+    .. [2] Turkeltaub, Peter E., et al. "Minimizing within‐experiment and
+        within‐group effects in activation likelihood estimation
+        meta‐analyses." Human brain mapping 33.1 (2012): 1-13.
+    .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
+        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
-    def __init__(self, dataset, kernel_estimator=ALEKernel, **kwargs):
+    def __init__(self, kernel_transformer=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for k in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
+                             'KernelTransformer')
 
-        self.ids = None
-        self.ids2 = None
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
-        self.voxel_thresh = None
-        self.clust_thresh = None
-        self.corr = None
-        self.n_iters = None
+        self.mask = None
+        self.dataset = None
+
+        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
+        self.null_distributions = {}
 
-    def fit(self, ids, ids2=None, voxel_thresh=0.001, q=0.05, corr='FWE',
-            n_iters=10000, n_cores=4):
+    def _fit(self, dataset):
+        self.dataset = dataset
+        self.mask = dataset.masker.mask_img
+
+        ma_maps = self.kernel_transformer.transform(self.dataset, mask=self.mask, masked=False)
+        ale_values = self._compute_ale(ma_maps)
+        self._compute_null(ma_maps)
+        p_values, z_values = self._ale_to_p(ale_values)
+
+        images = {
+            'ale': ale_values,
+            'p': p_values,
+            'z': z_values,
+        }
+        return images
+
+    def _compute_ale(self, data):
         """
+        Generate ALE-value array from MA values.
+        Returns masked array of ALE values.
+        """
+        if isinstance(data, pd.DataFrame):
+            ma_values = self.kernel_transformer.transform(data, mask=self.mask, masked=True)
+        elif isinstance(data, list):
+            ma_values = apply_mask(data, self.mask)
+        elif isinstance(data, np.ndarray):
+            ma_values = data.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+
+        ale_values = np.ones(ma_values.shape[1])
+        for i in range(ma_values.shape[0]):
+            ale_values *= (1. - ma_values[i, :])
+        ale_values = 1 - ale_values
+        return ale_values
+
+    def _compute_null(self, ma_maps):
+        """
+        Compute uncorrected ALE-value null distribution from MA values.
+        """
+        if isinstance(ma_maps, list):
+            ma_values = apply_mask(ma_maps, self.mask)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+
+        # Determine histogram bins for ALE-value null distribution
+        max_poss_ale = 1.
+        for i in range(ma_values.shape[0]):
+            max_poss_ale *= (1 - np.max(ma_values[i, :]))
+        max_poss_ale = 1 - max_poss_ale
+
+        self.null_distributions['histogram_bins'] = np.round(
+            np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
+
+        ma_hists = np.zeros((ma_values.shape[0],
+                             self.null_distributions['histogram_bins'].shape[0]))
+        for i in range(ma_values.shape[0]):
+            # Remember that histogram uses bin edges (not centers), so it
+            # returns a 1xhist_bins-1 array
+            n_zeros = len(np.where(ma_values[i, :] == 0)[0])
+            reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
+            ma_hists[i, 0] = n_zeros
+            ma_hists[i, 1:] = np.histogram(a=reduced_ma_values,
+                                           bins=self.null_distributions['histogram_bins'],
+                                           density=False)[0]
+
+        # Inverse of step size in histBins (0.0001) = 10000
+        step = 1 / np.mean(np.diff(self.null_distributions['histogram_bins']))
+
+        # Null distribution to convert ALE to p-values.
+        ale_hist = ma_hists[0, :]
+        for i_exp in range(1, ma_hists.shape[0]):
+            temp_hist = np.copy(ale_hist)
+            ma_hist = np.copy(ma_hists[i_exp, :])
+
+            # Find histogram bins with nonzero values for each histogram.
+            ale_idx = np.where(temp_hist > 0)[0]
+            exp_idx = np.where(ma_hist > 0)[0]
+
+            # Normalize histograms.
+            temp_hist /= np.sum(temp_hist)
+            ma_hist /= np.sum(ma_hist)
+
+            # Perform weighted convolution of histograms.
+            ale_hist = np.zeros(self.null_distributions['histogram_bins'].shape[0])
+            for j_idx in exp_idx:
+                # Compute probabilities of observing each ALE value in histBins
+                # by randomly combining maps represented by maHist and aleHist.
+                # Add observed probabilities to corresponding bins in ALE
+                # histogram.
+                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
+                ale_scores = 1 - (1 - self.null_distributions['histogram_bins'][j_idx]) *\
+                    (1 - self.null_distributions['histogram_bins'][ale_idx])
+                score_idx = np.floor(ale_scores * step).astype(int)
+                np.add.at(ale_hist, score_idx, probabilities)
+
+        # Convert aleHist into null distribution. The value in each bin
+        # represents the probability of finding an ALE value (stored in
+        # histBins) of that value or lower.
+        null_distribution = ale_hist / np.sum(ale_hist)
+        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+        null_distribution /= np.max(null_distribution)
+        self.null_distributions['histogram_weights'] = null_distribution
+
+    def _ale_to_p(self, ale_values):
+        """
+        Compute p- and z-values.
+        """
+        step = 1 / np.mean(np.diff(self.null_distributions['histogram_bins']))
+
+        # Determine p- and z-values from ALE values and null distribution.
+        p_values = np.ones(ale_values.shape)
+
+        idx = np.where(ale_values > 0)[0]
+        ale_bins = round2(ale_values[idx] * step)
+        p_values[idx] = self.null_distributions['histogram_weights'][ale_bins]
+        z_values = p_to_z(p_values, tail='one')
+        return p_values, z_values
+
+    def _run_fwe_permutation(self, params):
+        """
+        Run a single random permutation of a dataset. Does the shared work
+        between vFWE and cFWE.
+        """
+        iter_df, iter_ijk, conn, z_thresh = params
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[['i', 'j', 'k']] = iter_ijk
+        ale_values = self._compute_ale(iter_df)
+        _, z_values = self._ale_to_p(ale_values)
+        iter_max_value = np.max(ale_values)
+
+        # Begin cluster-extent thresholding by thresholding matrix at cluster-
+        # defining voxel-level threshold
+        iter_z_map = unmask(z_values, self.mask)
+        vthresh_iter_z_map = iter_z_map.get_data()
+        vthresh_iter_z_map[vthresh_iter_z_map < z_thresh] = 0
+
+        labeled_matrix = ndimage.measurements.label(vthresh_iter_z_map, conn)[0]
+        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
+        if len(clust_sizes) == 1:
+            iter_max_cluster = 0
+        else:
+            clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+            iter_max_cluster = np.max(clust_sizes)
+        return iter_max_value, iter_max_cluster
+
+    def correct_fwe_permutation(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
+        """
+        Perform FWE correction using the max-value permutation method.
+        Only call this method from within a Corrector.
 
         Parameters
         ----------
-        ids : array_like
-            List of IDs from dataset to analyze.
-        ids2 : array_like or None, optional
-            If not None, ids2 is used to identify a second sample for a subtraction
-            analysis. Default is None.
+        result : :obj:`nimare.results.MetaResult`
+            Result object from an ALE meta-analysis.
+        voxel_thresh : :obj:`float`, optional
+            Cluster-defining uncorrected p-value threshold. Default is 0.001.
+        n_iters : :obj:`int`, optional
+            Number of iterations to build vFWE and cFWE null distributions.
+            Default is 10000.
+        n_cores : :obj:`int`, optional
+            Number of cores to use for parallelization.
+            If <=0, defaults to using all available cores. Default is -1.
+
+        Returns
+        -------
+        images : :obj:`dict`
+            Dictionary of 1D arrays corresponding to masked images generated by
+            the correction procedure. The following arrays are generated by
+            this method: 'z_vthresh', 'p_level-voxel', 'z_level-voxel', and
+            'logp_level-cluster'.
+
+        Notes
+        -----
+        This method also adds the following arrays to the Estimator's null
+        distributions attribute (null_distributions):
+        'fwe_level-voxel' and 'fwe_level-cluster'.
+
+        See Also
+        --------
+        nimare.correct.FWECorrector : The Corrector from which to call this method.
+
+        Examples
+        --------
+        >>> meta = ALE()
+        >>> result = meta.fit(dset)
+        >>> corrector = FWECorrector(method='permutation', voxel_thresh=0.001,
+                                     n_iters=5, n_cores=1)
+        >>> cresult = corrector.transform(result)
         """
-        self.ids = ids
-        self.ids2 = ids2
-        self.voxel_thresh = voxel_thresh
-        self.clust_thresh = q
-        self.corr = corr
+        z_values = result.get_map('z', return_type='array')
+        ale_values = result.get_map('ale', return_type='array')
+        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+
+        if n_cores <= 0:
+            n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
+            n_cores = mp.cpu_count()
+
+        # Begin cluster-extent thresholding by thresholding matrix at cluster-
+        # defining voxel-level threshold
+        z_thresh = p_to_z(voxel_thresh, tail='one')
+        vthresh_z_values = z_values.copy()
+        vthresh_z_values[np.abs(vthresh_z_values) < z_thresh] = 0
+
+        # Find number of voxels per cluster (includes 0, which is empty space in
+        # the matrix)
+        conn = np.zeros((3, 3, 3), int)
+        conn[:, :, 1] = 1
+        conn[:, 1, :] = 1
+        conn[1, :, :] = 1
+
+        # Multiple comparisons correction
+        iter_df = self.dataset.coordinates.copy()
+        rand_idx = np.random.choice(null_ijk.shape[0],
+                                    size=(iter_df.shape[0], n_iters))
+        rand_ijk = null_ijk[rand_idx, :]
+        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+
+        # Define parameters
+        iter_conns = [conn] * n_iters
+        iter_dfs = [iter_df] * n_iters
+        iter_thresh = [z_thresh] * n_iters
+        params = zip(iter_dfs, iter_ijks, iter_conns, iter_thresh)
+
+        if n_cores == 1:
+            perm_results = []
+            for pp in tqdm(params, total=n_iters):
+                perm_results.append(self._run_fwe_permutation(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params),
+                                         total=n_iters))
+
+        (self.null_distributions['fwe_level-voxel'],
+         self.null_distributions['fwe_level-cluster']) = zip(*perm_results)
+
+        # Cluster-level FWE
+        vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
+        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
+        logp_cfwe_map = np.zeros(self.mask.shape)
+        for i_clust in range(1, n_clusters + 1):
+            clust_size = np.sum(labeled_matrix == i_clust)
+            clust_idx = np.where(labeled_matrix == i_clust)
+            logp_cfwe_map[clust_idx] = -np.log(null_to_p(
+                clust_size, self.null_distributions['fwe_level-cluster'], 'upper'))
+        logp_cfwe_map[np.isinf(logp_cfwe_map)] = -np.log(np.finfo(float).eps)
+        logp_cfwe_map = apply_mask(nib.Nifti1Image(logp_cfwe_map, self.mask.affine),
+                                   self.mask)
+
+        # Voxel-level FWE
+        p_fwe_values = np.zeros(ale_values.shape)
+        for voxel in range(ale_values.shape[0]):
+            p_fwe_values[voxel] = null_to_p(
+                ale_values[voxel], self.null_distributions['fwe_level-voxel'],
+                tail='upper')
+
+        z_fwe_values = p_to_z(p_fwe_values, tail='one')
+
+        logp_vfwe_values = -np.log(p_fwe_values)
+        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log(np.finfo(float).eps)
+
+        # Write out unthresholded value images
+        images = {
+            'z_vthresh': vthresh_z_values,
+            'logp_level-voxel': logp_vfwe_values,
+            'z_level-voxel': z_fwe_values,
+            'logp_level-cluster': logp_cfwe_map,
+        }
+        return images
+
+
+class ALESubtraction(Estimator):
+    """
+    ALE subtraction analysis.
+
+    Parameters
+    ----------
+    n_iters : :obj:`int`, optional
+        Default is 10000.
+
+    Notes
+    -----
+    This method was originally developed in [1]_ and refined in [2]_.
+
+    References
+    ----------
+    .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
+        false discovery rate and performing statistical contrasts." Human
+        brain mapping 25.1 (2005): 155-164.
+        https://doi.org/10.1002/hbm.20136
+    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
+        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+        https://doi.org/10.1016/j.neuroimage.2011.09.017
+    """
+    def __init__(self, n_iters=10000):
         self.n_iters = n_iters
 
-        k_est = self.kernel_estimator(self.coordinates, self.mask)
+    def fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
+            ma_maps2=None):
+        """
+        Run a subtraction analysis comparing two groups of experiments from
+        separate meta-analyses.
 
-        if self.ids2 is not None:
-            all_ids = np.hstack((np.array(self.ids), np.array(self.ids2)))
-            ma_maps = k_est.transform(all_ids, **self.kernel_arguments)
-            images1 = self._run_ale(ma_maps[:len(self.ids)], prefix='group1_',
-                                    n_cores=n_cores)
-            images2 = self._run_ale(ma_maps[len(self.ids):], prefix='group2_',
-                                    n_cores=n_cores)
-            sub_images = self.subtraction_analysis(
-                self.ids, self.ids2,
-                images1['group1_cfwe'], images2['group2_cfwe'],
-                ma_maps)
-            images = {**images1, **images2, **sub_images}
-        else:
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
-            images = self._run_ale(ma_maps, prefix='')
+        Parameters
+        ----------
+        ale1/ale2 : :obj:`nimare.meta.cbma.ale.ALE`
+            Fitted ALE models for datasets to compare.
+        image1/image2 : img_like or array_like
+            Cluster-level FWE-corrected z-statistic maps associated with the
+            respective models.
+        ma_maps1 : (E x V) array_like or None, optional
+            Experiments by voxels array of modeled activation
+            values. If not provided, MA maps will be generated from dataset1.
+        ma_maps2 : (E x V) array_like or None, optional
+            Experiments by voxels array of modeled activation
+            values. If not provided, MA maps will be generated from dataset2.
 
-        self.results = MetaResult(mask=self.mask, **images)
+        Returns
+        -------
+        :obj:`nimare.results.MetaResult`
+            Results of ALE subtraction analysis.
+        """
+        maps = self._fit(ale1, ale2, image1, image2, ma_maps1, ma_maps2)
+        self.results = MetaResult(self, ale1.mask, maps)
+        return self.results
 
-    def subtraction_analysis(self, ids, ids2, image1, image2, ma_maps):
+    def _fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
+             ma_maps2=None):
+        assert np.array_equal(ale1.dataset.masker.mask_img.affine,
+                              ale2.dataset.masker.mask_img.affine)
+        self.mask = ale1.dataset.masker.mask_img
+
+        if image1 is None:
+            LGR.info('Performing subtraction analysis with cluster-level '
+                     'FWE-corrected maps thresholded at p < 0.05.')
+            image1 = ale1.results.get_map(
+                'logp_level-cluster_corr-FWE_method-permutation',
+                return_type='array') >= np.log(0.05)
+
+        if image2 is None:
+            image2 = ale2.results.get_map(
+                'logp_level-cluster_corr-FWE_method-permutation',
+                return_type='array') >= np.log(0.05)
+
+        if not isinstance(image1, np.ndarray):
+            image1 = apply_mask(image1, self.mask)
+            image2 = apply_mask(image2, self.mask)
         grp1_voxel = image1 > 0
         grp2_voxel = image2 > 0
-        n_grp1 = len(ids)
-        img1 = unmask(image1, self.mask)
 
-        all_ids = np.hstack((np.array(ids), np.array(ids2)))
-        id_idx = np.arange(len(all_ids))
+        if ma_maps1 is None:
+            ma_maps1 = ale1.kernel_transformer.transform(ale1.dataset, masked=False)
+
+        if ma_maps2 is None:
+            ma_maps2 = ale2.kernel_transformer.transform(ale2.dataset, masked=False)
+
+        n_grp1 = len(ma_maps1)
+        ma_maps = ma_maps1 + ma_maps2
+
+        id_idx = np.arange(len(ma_maps))
 
         # Get MA values for both samples.
         ma_arr = apply_mask(ma_maps, self.mask)
@@ -142,6 +467,8 @@ class ALE(CBMAEstimator):
 
         # A > B contrast
         grp1_p_arr = np.ones(np.sum(grp1_voxel))
+        grp1_z_map = np.zeros(image1.shape[0])
+        grp1_z_map[:] = np.nan
         if np.sum(grp1_voxel) > 0:
             diff_ale_values = grp1_ale_values - grp2_ale_values
             diff_ale_values = diff_ale_values[grp1_voxel]
@@ -170,12 +497,14 @@ class ALE(CBMAEstimator):
                                               tail='upper')
             grp1_z_arr = p_to_z(grp1_p_arr, tail='one')
             # Unmask
-            grp1_z_map = np.zeros(grp1_voxel.shape[0])
+            grp1_z_map = np.zeros(image1.shape[0])
             grp1_z_map[:] = np.nan
             grp1_z_map[grp1_voxel] = grp1_z_arr
 
         # B > A contrast
         grp2_p_arr = np.ones(np.sum(grp2_voxel))
+        grp2_z_map = np.zeros(image2.shape[0])
+        grp2_z_map[:] = np.nan
         if np.sum(grp2_voxel) > 0:
             # Get MA values for second sample only for voxels significant in
             # second sample's meta-analysis.
@@ -211,7 +540,7 @@ class ALE(CBMAEstimator):
             grp2_z_map[grp2_voxel] = grp2_z_arr
 
         # Fill in output map
-        diff_z_map = np.zeros(grp1_voxel.shape[0])
+        diff_z_map = np.zeros(image1.shape[0])
         diff_z_map[grp2_voxel] = -1 * grp2_z_map[grp2_voxel]
         # could overwrite some values. not a problem.
         diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
@@ -219,294 +548,98 @@ class ALE(CBMAEstimator):
         images = {'grp1-grp2_z': diff_z_map}
         return images
 
-    def _run_ale(self, ma_maps, prefix='', n_cores=4):
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
 
-        max_poss_ale = 1.
-        for ma_map in ma_maps:
-            max_poss_ale *= (1 - np.max(ma_map.get_data()))
-
-        max_poss_ale = 1 - max_poss_ale
-        hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
-
-        ale_values, null_distribution = self._compute_ale(df=None,
-                                                          hist_bins=hist_bins,
-                                                          ma_maps=ma_maps)
-        p_values, z_values = self._ale_to_p(ale_values, hist_bins,
-                                            null_distribution)
-
-        # Begin cluster-extent thresholding by thresholding matrix at cluster-
-        # defining voxel-level threshold
-        z_thresh = p_to_z(self.voxel_thresh, tail='one')
-        vthresh_z_values = z_values.copy()
-        vthresh_z_values[vthresh_z_values < z_thresh] = 0
-
-        # Find number of voxels per cluster (includes 0, which is empty space in
-        # the matrix)
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
-
-        # Multiple comparisons correction
-        if self.ids2 is not None:
-            all_ids = np.hstack((np.array(self.ids), np.array(self.ids2)))
-        else:
-            all_ids = self.ids
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(all_ids)]
-        iter_df = red_coords.copy()
-        rand_idx = np.random.choice(null_ijk.shape[0],
-                                    size=(iter_df.shape[0], self.n_iters))
-        rand_ijk = null_ijk[rand_idx, :]
-        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-
-        # Define parameters
-        iter_conns = [conn] * self.n_iters
-        iter_dfs = [iter_df] * self.n_iters
-        iter_null_dists = [null_distribution] * self.n_iters
-        iter_hist_bins = [hist_bins] * self.n_iters
-        params = zip(iter_dfs, iter_ijks, iter_null_dists, iter_hist_bins,
-                     iter_conns)
-        pool = mp.Pool(n_cores)
-        perm_results = pool.map(self._perm, params)
-        pool.close()
-        perm_max_values, perm_clust_sizes = zip(*perm_results)
-
-        percentile = 100 * (1 - self.clust_thresh)
-
-        # Cluster-level FWE
-        # Determine size of clusters in [1 - clust_thresh]th percentile (e.g. 95th)
-        vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
-        labeled_matrix = ndimage.measurements.label(vthresh_z_map, conn)[0]
-        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_sizes = clust_sizes
-        clust_size_thresh = np.percentile(perm_clust_sizes, percentile)
-        z_map = unmask(z_values, self.mask).get_data()
-        cfwe_map = np.zeros(self.mask.shape)
-        for i, clust_size in enumerate(clust_sizes):
-            # Skip zeros
-            if clust_size >= clust_size_thresh and i > 0:
-                clust_idx = np.where(labeled_matrix == i)
-                cfwe_map[clust_idx] = z_map[clust_idx]
-        cfwe_map = apply_mask(nib.Nifti1Image(cfwe_map, self.mask.affine),
-                              self.mask)
-
-        # Voxel-level FWE
-        # Determine ALE values in [1 - clust_thresh]th percentile (e.g. 95th)
-        p_fwe_values = np.zeros(ale_values.shape)
-        for voxel in range(ale_values.shape[0]):
-            p_fwe_values[voxel] = null_to_p(ale_values[voxel], perm_max_values,
-                                            tail='upper')
-
-        z_fwe_values = p_to_z(p_fwe_values, tail='one')
-
-        # Write out unthresholded value images
-        images = {prefix+'ale': ale_values,
-                  prefix+'p': p_values,
-                  prefix+'z': z_values,
-                  prefix+'vthresh': vthresh_z_values,
-                  prefix+'p_vfwe': p_fwe_values,
-                  prefix+'z_vfwe': z_fwe_values,
-                  prefix+'cfwe': cfwe_map}
-        return images
-
-    def _compute_ale(self, df=None, hist_bins=None, ma_maps=None):
-        """
-        Generate ALE-value array and null distribution from list of contrasts.
-        For ALEs on the original dataset, computes the null distribution.
-        For permutation ALEs and all SCALEs, just computes ALE values.
-        Returns masked array of ALE values and 1XnBins null distribution.
-        """
-        if hist_bins is not None:
-            assert ma_maps is not None
-            ma_hists = np.zeros((len(ma_maps), hist_bins.shape[0]))
-        else:
-            ma_hists = None
-
-        if df is not None:
-            k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
-        else:
-            assert ma_maps is not None
-
-        ma_values = apply_mask(ma_maps, self.mask)
-        ale_values = np.ones(ma_values.shape[1])
-        for i in range(ma_values.shape[0]):
-            # Remember that histogram uses bin edges (not centers), so it
-            # returns a 1xhist_bins-1 array
-            if hist_bins is not None:
-                n_zeros = len(np.where(ma_values[i, :] == 0)[0])
-                reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
-                ma_hists[i, 0] = n_zeros
-                ma_hists[i, 1:] = np.histogram(a=reduced_ma_values,
-                                               bins=hist_bins,
-                                               density=False)[0]
-            ale_values *= (1. - ma_values[i, :])
-
-        ale_values = 1 - ale_values
-
-        if hist_bins is not None:
-            null_distribution = self._compute_null(hist_bins, ma_hists)
-        else:
-            null_distribution = None
-
-        return ale_values, null_distribution
-
-    def _compute_null(self, hist_bins, ma_hists):
-        """
-        Compute ALE null distribution.
-        """
-        # Inverse of step size in histBins (0.0001) = 10000
-        step = 1 / np.mean(np.diff(hist_bins))
-
-        # Null distribution to convert ALE to p-values.
-        ale_hist = ma_hists[0, :]
-        for i_exp in range(1, ma_hists.shape[0]):
-            temp_hist = np.copy(ale_hist)
-            ma_hist = np.copy(ma_hists[i_exp, :])
-
-            # Find histogram bins with nonzero values for each histogram.
-            ale_idx = np.where(temp_hist > 0)[0]
-            exp_idx = np.where(ma_hist > 0)[0]
-
-            # Normalize histograms.
-            temp_hist /= np.sum(temp_hist)
-            ma_hist /= np.sum(ma_hist)
-
-            # Perform weighted convolution of histograms.
-            ale_hist = np.zeros(hist_bins.shape[0])
-            for j_idx in exp_idx:
-                # Compute probabilities of observing each ALE value in histBins
-                # by randomly combining maps represented by maHist and aleHist.
-                # Add observed probabilities to corresponding bins in ALE
-                # histogram.
-                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - hist_bins[j_idx]) * (1 - hist_bins[ale_idx])
-                score_idx = np.floor(ale_scores * step).astype(int)
-                np.add.at(ale_hist, score_idx, probabilities)
-
-        # Convert aleHist into null distribution. The value in each bin
-        # represents the probability of finding an ALE value (stored in
-        # histBins) of that value or lower.
-        null_distribution = ale_hist / np.sum(ale_hist)
-        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
-        null_distribution /= np.max(null_distribution)
-        return null_distribution
-
-    def _ale_to_p(self, ale_values, hist_bins, null_distribution):
-        """
-        Compute p- and z-values.
-        """
-        eps = np.spacing(1)  # pylint: disable=no-member
-        step = 1 / np.mean(np.diff(hist_bins))
-
-        # Determine p- and z-values from ALE values and null distribution.
-        p_values = np.ones(ale_values.shape)
-
-        idx = np.where(ale_values > 0)[0]
-        ale_bins = round2(ale_values[idx] * step)
-        p_values[idx] = null_distribution[ale_bins]
-        z_values = p_to_z(p_values, tail='one')
-        return p_values, z_values
-
-    def _perm(self, params):
-        """
-        Run a single random permutation of a dataset. Does the shared work
-        between vFWE and cFWE.
-        """
-        iter_df, iter_ijk, null_dist, hist_bins, conn = params
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[['i', 'j', 'k']] = iter_ijk
-        ale_values, _ = self._compute_ale(iter_df, hist_bins=None)
-        _, z_values = self._ale_to_p(ale_values, hist_bins, null_dist)
-        iter_max_value = np.max(ale_values)
-
-        # Begin cluster-extent thresholding by thresholding matrix at cluster-
-        # defining voxel-level threshold
-        z_thresh = p_to_z(self.voxel_thresh, tail='one')
-        iter_z_map = unmask(z_values, self.mask)
-        vthresh_iter_z_map = iter_z_map.get_data()
-        vthresh_iter_z_map[vthresh_iter_z_map < z_thresh] = 0
-
-        labeled_matrix = ndimage.measurements.label(vthresh_iter_z_map, conn)[0]
-        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
-        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        iter_max_cluster = np.max(clust_sizes)
-        return iter_max_value, iter_max_cluster
-
-
-@due.dcite(Doi('10.1016/j.neuroimage.2014.06.007'),
+@due.dcite(references.SCALE,
            description='Introduces the specific co-activation likelihood '
                        'estimation (SCALE) algorithm.')
-class SCALE(CBMAEstimator):
+class SCALE(Estimator):
+    r"""
+    Specific coactivation likelihood estimation [1]_.
+
+    Parameters
+    ----------
+    voxel_thresh : float, optional
+        Uncorrected voxel-level threshold. Default: 0.001
+    n_iters : int, optional
+        Number of iterations for correction. Default: 10000
+    n_cores : int, optional
+        Number of processes to use for meta-analysis. If -1, use all
+        available cores. Default: -1
+    ijk : :obj:`str` or (N x 3) array_like
+        Tab-delimited file of coordinates from database or numpy array with ijk
+        coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
+        are the three columnns.
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
+        here, with the prefix '\kernel__' in the variable name.
+
+    References
+    ----------
+    .. [1] Langner, Robert, et al. "Meta-analytic connectivity modeling
+        revisited: controlling for activation base rates." NeuroImage 99
+        (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
-    Specific coactivation likelihood estimation
-    """
-    def __init__(self, dataset, ijk=None, kernel_estimator=ALEKernel,
-                 **kwargs):
+    def __init__(self, voxel_thresh=0.001, n_iters=10000, n_cores=-1, ijk=None,
+                 kernel_transformer=ALEKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
+
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
+                             'KernelTransformer')
+
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
+        for k in kwargs.keys():
+            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.mask = dataset.mask
-        self.coordinates = dataset.coordinates
+        self.mask = None
+        self.dataset = None
 
-        self.kernel_estimator = kernel_estimator
-        self.kernel_arguments = kernel_args
-        self.ids = None
+        self.kernel_transformer = kernel_transformer(**kernel_args)
+        self.voxel_thresh = voxel_thresh
         self.ijk = ijk
-        self.n_iters = None
-        self.voxel_thresh = None
+        self.n_iters = n_iters
         self.results = None
 
-    def fit(self, ids, voxel_thresh=0.001, n_iters=10000, n_cores=4):
+        if n_cores <= 0:
+            self.n_cores = mp.cpu_count()
+        elif n_cores > mp.cpu_count():
+            LGR.warning(
+                'Desired number of cores ({0}) greater than number '
+                'available ({1}). Setting to {1}.'.format(n_cores,
+                                                          mp.cpu_count()))
+            self.n_cores = mp.cpu_count()
+        else:
+            self.n_cores = n_cores
+
+    def _fit(self, dataset):
         """
-        Perform specific coactivation likelihood estimation[1]_ meta-analysis
+        Perform specific coactivation likelihood estimation meta-analysis
         on dataset.
 
         Parameters
         ----------
-        dataset : ale.Dataset
+        dataset : :obj:`nimare.dataset.Dataset`
             Dataset to analyze.
-        voxel_thresh : float
-            Uncorrected voxel-level threshold.
-        n_iters : int
-            Number of iterations for correction. Default 2500
-        verbose : bool
-            If True, prints out status updates.
-        prefix : str
-            String prepended to default output filenames. May include path.
-        database_file : str
-            Tab-delimited file of coordinates from database. Voxels are rows
-            and i, j, k (meaning matrix-space) values are the three columnns.
-
-        Examples
-        --------
-
-        References
-        ----------
-        .. [1] Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., &
-               Eickhoff, S. B. (2014). Meta-analytic connectivity modeling
-               revisited: controlling for activation base rates.
-               NeuroImage, 99, 559-570.
         """
-        self.ids = ids
-        self.voxel_thresh = voxel_thresh
-        self.n_iters = n_iters
-        red_coords = self.coordinates.loc[self.coordinates['id'].isin(ids)]
-        k_est = self.kernel_estimator(red_coords, self.mask)
-        ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+        self.dataset = dataset
+        self.mask = dataset.masker.mask_img
+
+        ma_maps = self.kernel_transformer.transform(self.dataset, masked=False)
 
         max_poss_ale = 1.
         for ma_map in ma_maps:
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
-
         max_poss_ale = 1 - max_poss_ale
-        hist_bins = np.round(np.arange(0, max_poss_ale+0.001, 0.0001), 4)
+
+        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
 
         ale_values = self._compute_ale(df=None, ma_maps=ma_maps)
 
-        iter_df = red_coords.copy()
+        iter_df = self.dataset.coordinates.copy()
         rand_idx = np.random.choice(self.ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = self.ijk[rand_idx, :]
@@ -515,9 +648,15 @@ class SCALE(CBMAEstimator):
         # Define parameters
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
-        pool = mp.Pool(n_cores)
-        perm_scale_values = pool.map(self._perm, params)
-        pool.close()
+
+        if self.n_cores == 1:
+            perm_scale_values = []
+            for pp in tqdm(params, total=self.n_iters):
+                perm_scale_values.append(self._run_permutation(pp))
+        else:
+            with mp.Pool(self.n_cores) as p:
+                perm_scale_values = list(tqdm(p.imap(self._run_permutation, params), total=self.n_iters))
+
         perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(ale_values, perm_scale_values,
@@ -533,8 +672,8 @@ class SCALE(CBMAEstimator):
         images = {'ale': ale_values,
                   'p': p_values,
                   'z': z_values,
-                  'vthresh': vthresh_z_values}
-        self.results = MetaResult(mask=self.mask, **images)
+                  'z_vthresh': vthresh_z_values}
+        return images
 
     def _compute_ale(self, df=None, ma_maps=None):
         """
@@ -544,12 +683,12 @@ class SCALE(CBMAEstimator):
         Returns masked array of ALE values and 1XnBins null distribution.
         """
         if df is not None:
-            k_est = self.kernel_estimator(df, self.mask)
-            ma_maps = k_est.transform(self.ids, **self.kernel_arguments)
+            ma_maps = self.kernel_transformer.transform(df, self.mask, masked=True)
+            ma_values = ma_maps
         else:
             assert ma_maps is not None
+            ma_values = apply_mask(ma_maps, self.mask)
 
-        ma_values = apply_mask(ma_maps, self.mask)
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
             ale_values *= (1. - ma_values[i, :])
@@ -561,7 +700,6 @@ class SCALE(CBMAEstimator):
         """
         Compute p- and z-values.
         """
-        eps = np.spacing(1)  # pylint: disable=no-member
         step = 1 / np.mean(np.diff(hist_bins))
 
         scale_zeros = scale_values == 0
@@ -594,12 +732,16 @@ class SCALE(CBMAEstimator):
         return p_values, z_values
 
     def _make_hist(self, oned_arr, hist_bins):
+        """
+        Make a histogram from a 1d array and hist_bins. Meant to be applied
+        along an axis to a 2d array.
+        """
         hist_ = np.histogram(a=oned_arr, bins=hist_bins,
                              range=(np.min(hist_bins), np.max(hist_bins)),
                              density=False)[0]
         return hist_
 
-    def _perm(self, params):
+    def _run_permutation(self, params):
         """
         Run a single random SCALE permutation of a dataset.
         """

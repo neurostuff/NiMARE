@@ -1,6 +1,7 @@
 API
 ===
 
+.. _api_dataset_ref:
 
 :mod:`nimare.dataset`: Dataset IO
 --------------------------------------------------
@@ -9,22 +10,16 @@ API
    :no-members:
    :no-inherited-members:
 
-.. autosummary:: nimare.dataset
+.. currentmodule:: nimare
+
+.. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   nimare.dataset.Database
-   nimare.dataset.Dataset
+   dataset.Dataset
 
-   :toctree: generated/
-   :template: module.rst
 
-   nimare.dataset.extract
-
- .. currentmodule:: nimare
-
- .. _calibration_ref:
-
+.. _api_meta_ref:
 
 :mod:`nimare.meta`: Meta-analytic algorithms
 --------------------------------------------------
@@ -33,20 +28,57 @@ API
    :no-members:
    :no-inherited-members:
 
-.. autosummary:: nimare.meta
+.. currentmodule:: nimare
+
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.meta.ibma.ibma
-   nimare.meta.cbma.kernel
-   nimare.meta.cbma.ale
-   nimare.meta.cbma.mkda
-   nimare.meta.cbma.model
+   meta.esma
+   meta.ibma
+   meta.cbma.kernel
+   meta.cbma.ale
+   meta.cbma.mkda
+   meta.cbma.model
+
+.. _api_results_ref:
+
+:mod:`nimare.results`: Meta-analytic results
+------------------------------------------------------
+
+.. automodule:: nimare.results
+   :no-members:
+   :no-inherited-members:
 
 .. currentmodule:: nimare
 
-.. _calibration_ref:
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
 
+   results.MetaResult
+
+
+.. _api_correct_ref:
+
+:mod:`nimare.correct`: Multiple comparisons correction
+------------------------------------------------------
+
+.. automodule:: nimare.correct
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   correct.FWECorrector
+   correct.FDRCorrector
+
+
+.. _api_annotate_ref:
 
 :mod:`nimare.annotate`: Automated annotation
 --------------------------------------------------
@@ -55,23 +87,19 @@ API
    :no-members:
    :no-inherited-members:
 
-.. autosummary:: nimare.annotate
+.. currentmodule:: nimare
+
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.annotate.ontology.cogat
-   nimare.annotate.ontology.cogpo
-   nimare.annotate.topic.boltzmann
-   nimare.annotate.topic.gclda
-   nimare.annotate.topic.lda
-   nimare.annotate.vector.text2brain
-   nimare.annotate.vector.word2brain
-   nimare.annotate.text
+   annotate.ontology
+   annotate.topic
+   annotate.vector
+   annotate.text
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_decode_ref:
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
@@ -80,18 +108,18 @@ API
    :no-members:
    :no-inherited-members:
 
-.. autosummary:: nimare.decode
+.. currentmodule:: nimare
+
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.decode.discrete
-   nimare.decode.continuous
-   nimare.decode.encode
+   decode.discrete
+   decode.continuous
+   decode.encode
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_parcellate_ref:
 
 :mod:`nimare.parcellate`: Meta-analytic parcellation
 ----------------------------------------------------
@@ -100,18 +128,112 @@ API
    :no-members:
    :no-inherited-members:
 
-.. autosummary:: nimare.parcellate
+.. currentmodule:: nimare
+
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.parcellate.cbp
-   nimare.parcellate.mamp
-   nimare.parcellate.mapbot
+   parcellate.cbp
+   parcellate.mamp
+   parcellate.mapbot
+
+
+.. _api_io_ref:
+
+:mod:`nimare.io`: Input/Output
+-----------------------------------------------------
+
+.. automodule:: nimare.io
+   :no-members:
+   :no-inherited-members:
 
 .. currentmodule:: nimare
 
-.. _calibration_ref:
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
 
+   io.convert_neurosynth_to_dict
+   io.convert_neurosynth_to_json
+   io.convert_neurosynth_to_dataset
+   io.convert_sleuth_to_dict
+   io.convert_sleuth_to_json
+   io.convert_sleuth_to_dataset
+
+
+.. _api_extract_ref:
+
+:mod:`nimare.extract`: Dataset and model fetching
+-----------------------------------------------------
+
+.. automodule:: nimare.extract
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   extract.download_nidm_pain
+   extract.download_mallet
+   extract.download_cognitive_atlas
+   extract.download_abstracts
+   extract.download_peaks2maps_model
+
+
+.. _api_stats_ref:
+
+:mod:`nimare.stats`: Statistical functions
+-----------------------------------------------------
+
+.. automodule:: nimare.stats
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   stats.one_way
+   stats.two_way
+   stats.pearson
+   stats.null_to_p
+   stats.p_to_z
+   stats.t_to_z
+   stats.fdr
+
+
+.. _api_utils_ref:
+
+:mod:`nimare.utils`: Utility functions and submodules
+-----------------------------------------------------
+
+.. automodule:: nimare.utils
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   utils.get_template
+   utils.listify
+   utils.round2
+   utils.vox2mm
+   utils.mm2vox
+   utils.tal2mni
+   utils.mni2tal
+   utils.get_resource_path
+
+
+.. _api_workflows_ref:
 
 :mod:`nimare.workflows`: Common workflows
 --------------------------------------------------
@@ -122,27 +244,18 @@ API
 
 .. currentmodule:: nimare
 
-.. _calibration_ref:
-
-
-:mod:`nimare.utils`: Utility functions
---------------------------------------------------
-
-.. automodule:: nimare.utils
-   :no-members:
-   :no-inherited-members:
-
-.. autosummary:: nimare.utils
+.. autosummary::
    :toctree: generated/
    :template: module.rst
 
-   nimare.utils.utils
-   nimare.utils.stats
+   workflows.ale
+   workflows.conperm
+   workflows.macm
+   workflows.peaks2maps
+   workflows.scale
 
-.. currentmodule:: nimare
 
-.. _calibration_ref:
-
+.. _api_base_ref:
 
 :mod:`nimare.base`: Base classes
 --------------------------------------------------
@@ -150,15 +263,12 @@ API
    :no-members:
    :no-inherited-members:
 
-.. autosummary:: nimare.base
-   :toctree: generated/
-   :template: module.rst
-
-   nimare.base.data
-   nimare.base.decode
-   nimare.base.inputs
-   nimare.base.meta
-
 .. currentmodule:: nimare
 
-.. _calibration_ref:
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   base.NiMAREBase
+   base.Estimator
+   base.Transformer

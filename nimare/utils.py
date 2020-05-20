@@ -3,18 +3,39 @@ Utilities
 """
 from __future__ import division
 
-from os.path import abspath, join, dirname, sep
+import re
+import logging
+import os.path as op
 
 import numpy as np
+import pandas as pd
 import nibabel as nib
 from nilearn import datasets
-from scipy import stats
-from scipy.special import ndtri
+from nilearn.input_data import NiftiMasker
 
-from .due import due, Doi, BibTeX
+from .due import due
+from . import references
+
+LGR = logging.getLogger(__name__)
 
 
 def get_template(space='mni152_1mm', mask=None):
+    """
+    Load template file.
+
+    Parameters
+    ----------
+    space : {'mni152_1mm', 'mni152_2mm', 'ale_2mm'}, optional
+        Template to load. Default is 'mni152_1mm'.
+    mask : {None, 'brain', 'gm'}, optional
+        Whether to return the raw template (None), a brain mask ('brain'), or
+        a gray-matter mask ('gm'). Default is None.
+
+    Returns
+    -------
+    img : :obj:`nibabel.nifti1.Nifti1Image`
+        Template image object.
+    """
     if space == 'mni152_1mm':
         if mask is None:
             img = nib.load(datasets.fetch_icbm152_2009()['t1'])
@@ -40,100 +61,55 @@ def get_template(space='mni152_1mm', mask=None):
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
             raise ValueError('Mask {0} not supported'.format(mask))
+    elif space == 'ale_2mm':
+        if mask is None:
+            img = datasets.load_mni152_template()
+        else:
+            # Not the same as the nilearn brain mask, but should correspond to
+            # the default "more conservative" MNI152 mask in GingerALE.
+            img = nib.load(op.join(get_resource_path(),
+                           'templates/MNI152_2x2x2_brainmask.nii.gz'))
     else:
         raise ValueError('Space {0} not supported'.format(space))
     return img
 
 
-def null_to_p(test_value, null_array, tail='two'):
-    """Return two-sided p-value for test value against null array.
+def get_masker(mask):
     """
-    if tail == 'two':
-        p_value = (50 - np.abs(stats.percentileofscore(null_array, test_value) - 50.)) * 2. / 100.
-    elif tail == 'upper':
-        p_value = 1 - (stats.percentileofscore(null_array, test_value) / 100.)
-    elif tail == 'lower':
-        p_value = stats.percentileofscore(null_array, test_value) / 100.
-    else:
-        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
-    return p_value
+    Get an initialized, fitted nilearn Masker instance from passed argument.
 
+    Parameters
+    ----------
+    mask : str, Nifti1nibabel.nifti1.Nifti1Image, or any nilearn Masker
 
-def p_to_z(p, tail='two'):
-    """Convert p-values to z-values.
+    Returns
+    -------
+    masker : an initialized, fitted instance of a subclass of
+        `nilearn.input_data.base_masker.BaseMasker`
     """
-    eps = np.spacing(1)
-    p = np.array(p)
-    p[p < eps] = eps
-    if tail == 'two':
-        z = ndtri(1 - (p / 2))
-        z = np.array(z)
-    elif tail == 'one':
-        z = ndtri(1 - p)
-        z = np.array(z)
-        z[z < 0] = 0
-    else:
-        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+    if isinstance(mask, str):
+        mask = nib.load(mask)
 
-    if z.shape == ():
-        z = z[()]
-    return z
+    if isinstance(mask, nib.nifti1.Nifti1Image):
+        mask = NiftiMasker(mask)
 
+    if not (hasattr(mask, 'transform') and
+            hasattr(mask, 'inverse_transform')):
+        raise ValueError("mask argument must be a string, a nibabel image,"
+                         " or a Nilearn Masker instance.")
 
-@due.dcite(BibTeX("""
-           @article{hughett2007accurate,
-             title={Accurate Computation of the F-to-z and t-to-z Transforms
-                    for Large Arguments},
-             author={Hughett, Paul and others},
-             journal={Journal of Statistical Software},
-             volume={23},
-             number={1},
-             pages={1--5},
-             year={2007},
-             publisher={Foundation for Open Access Statistics}
-           }
-           """),
-           description='Introduces T-to-Z transform.')
-@due.dcite(Doi('10.5281/zenodo.32508'),
-           description='Python implementation of T-to-Z transform.')
-def t_to_z(t_values, dof):
-    """
-    From Vanessa Sochat's TtoZ package.
-    """
-    # Select just the nonzero voxels
-    nonzero = t_values[t_values != 0]
+    # Fit the masker if needed
+    if not hasattr(mask, 'mask_img_'):
+        mask.fit()
 
-    # We will store our results here
-    z_values = np.zeros(len(nonzero))
-
-    # Select values less than or == 0, and greater than zero
-    c = np.zeros(len(nonzero))
-    k1 = (nonzero <= c)
-    k2 = (nonzero > c)
-
-    # Subset the data into two sets
-    t1 = nonzero[k1]
-    t2 = nonzero[k2]
-
-    # Calculate p values for <=0
-    p_values_t1 = stats.t.cdf(t1, df=dof)
-    z_values_t1 = stats.norm.ppf(p_values_t1)
-
-    # Calculate p values for > 0
-    p_values_t2 = stats.t.cdf(-t2, df=dof)
-    z_values_t2 = -stats.norm.ppf(p_values_t2)
-    z_values[k1] = z_values_t1
-    z_values[k2] = z_values_t2
-
-    # Write new image to file
-    out = np.zeros(t_values.shape)
-    out[t_values != 0] = z_values
-    return out
+    return mask
 
 
 def listify(obj):
-    ''' Wraps all non-list or tuple objects in a list; provides a simple way
-    to accept flexible arguments. '''
+    """
+    Wraps all non-list or tuple objects in a list; provides a simple way
+    to accept flexible arguments.
+    """
     return obj if isinstance(obj, (list, tuple, type(None))) else [obj]
 
 
@@ -144,7 +120,7 @@ def round2(ndarray):
     """
     onedarray = ndarray.flatten()
     signs = np.sign(onedarray)  # pylint: disable=no-member
-    idx = np.where(np.abs(onedarray-np.round(onedarray)) == 0.5)[0]
+    idx = np.where(np.abs(onedarray - np.round(onedarray)) == 0.5)[0]
     x = np.abs(onedarray)
     y = np.round(x)
     y[idx] = np.ceil(x[idx])
@@ -173,11 +149,11 @@ def mm2vox(xyz, affine):
     return ijk
 
 
-@due.dcite(Doi('10.1002/hbm.20345'),
+@due.dcite(references.LANCASTER_TRANSFORM,
            description='Introduces the Lancaster MNI-to-Talairach transform, '
                        'as well as its inverse, the Talairach-to-MNI '
                        'transform.')
-@due.dcite(Doi('10.1016/j.neuroimage.2010.02.048'),
+@due.dcite(references.LANCASTER_TRANSFORM_VALIDATION,
            description='Validates the Lancaster MNI-to-Talairach and '
                        'Talairach-to-MNI transforms.')
 def tal2mni(coords):
@@ -197,7 +173,8 @@ def tal2mni(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        print('Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).')
+        LGR.info('Input is an ambiguous 3x3 matrix.\nAssuming coords are row '
+                 'vectors (Nx3).')
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError('Input must be an Nx3 or 3xN matrix.')
@@ -209,10 +186,10 @@ def tal2mni(coords):
         coords = coords.transpose()
 
     # Transformation matrices, different for each software package
-    icbm_other = np.array([[ 0.9357,     0.0029,    -0.0072,    -1.0423],
-                           [-0.0065,     0.9396,    -0.0726,    -1.3940],
-                           [ 0.0103,     0.0752,     0.8967,     3.6475],
-                           [ 0.0000,     0.0000,     0.0000,     1.0000]])
+    icbm_other = np.array([[0.9357, 0.0029, -0.0072, -1.0423],
+                           [-0.0065, 0.9396, -0.0726, -1.3940],
+                           [0.0103, 0.0752, 0.8967, 3.6475],
+                           [0.0000, 0.0000, 0.0000, 1.0000]])
 
     # Invert the transformation matrix
     icbm_other = np.linalg.inv(icbm_other)
@@ -228,11 +205,11 @@ def tal2mni(coords):
     return out_coords
 
 
-@due.dcite(Doi('10.1002/hbm.20345'),
+@due.dcite(references.LANCASTER_TRANSFORM,
            description='Introduces the Lancaster MNI-to-Talairach transform, '
                        'as well as its inverse, the Talairach-to-MNI '
                        'transform.')
-@due.dcite(Doi('10.1016/j.neuroimage.2010.02.048'),
+@due.dcite(references.LANCASTER_TRANSFORM_VALIDATION,
            description='Validates the Lancaster MNI-to-Talairach and '
                        'Talairach-to-MNI transforms.')
 def mni2tal(coords):
@@ -251,7 +228,8 @@ def mni2tal(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        print('Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).')
+        LGR.info('Input is an ambiguous 3x3 matrix.\nAssuming coords are row '
+                 'vectors (Nx3).')
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError('Input must be an Nx3 or 3xN matrix.')
@@ -263,10 +241,10 @@ def mni2tal(coords):
         coords = coords.transpose()
 
     # Transformation matrices, different for each software package
-    icbm_other = np.array([[ 0.9357,     0.0029,    -0.0072,    -1.0423],
-                           [-0.0065,     0.9396,    -0.0726,    -1.3940],
-                           [ 0.0103,     0.0752,     0.8967,     3.6475],
-                           [ 0.0000,     0.0000,     0.0000,     1.0000]])
+    icbm_other = np.array([[0.9357, 0.0029, -0.0072, -1.0423],
+                           [-0.0065, 0.9396, -0.0726, -1.3940],
+                           [0.0103, 0.0752, 0.8967, 3.6475],
+                           [0.0000, 0.0000, 0.0000, 1.0000]])
 
     # Apply the transformation matrix
     coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
@@ -285,4 +263,67 @@ def get_resource_path():
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    return abspath(join(dirname(__file__), 'resources') + sep)
+    return op.abspath(op.join(op.dirname(__file__), 'resources') + op.sep)
+
+
+def try_prepend(value, prefix):
+    if isinstance(value, str):
+        return op.join(prefix, value)
+    else:
+        return value
+
+
+def find_stem(arr):
+    """
+    From https://www.geeksforgeeks.org/longest-common-substring-array-strings/
+    """
+    # Determine size of the array
+    n = len(arr)
+
+    # Take first word from array
+    # as reference
+    s = arr[0]
+    ll = len(s)
+
+    res = ""
+    for i in range(ll):
+        for j in range(i + 1, ll + 1):
+            # generating all possible substrings of our ref string arr[0] i.e s
+            stem = s[i:j]
+            k = 1
+            for k in range(1, n):
+                # Check if the generated stem is common to to all words
+                if stem not in arr[k]:
+                    break
+
+            # If current substring is present in all strings and its length is
+            # greater than current result
+            if (k + 1 == n and len(res) < len(stem)):
+                res = stem
+
+    return res
+
+
+def uk_to_us(text):
+    """
+    Convert UK spellings to US based on a converter.
+
+    english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
+
+    Parameters
+    ----------
+    text : :obj:`str`
+
+    Returns
+    -------
+    text : :obj:`str`
+    """
+    SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
+                           index_col='UK')
+    SPELL_DICT = SPELL_DF['US'].to_dict()
+
+    if isinstance(text, str):
+        # Convert British to American English
+        pattern = re.compile(r'\b(' + '|'.join(SPELL_DICT.keys()) + r')\b')
+        text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
+    return text

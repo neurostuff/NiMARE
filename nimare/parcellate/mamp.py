@@ -7,16 +7,16 @@ from sklearn.cluster import k_means
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from ..base import Parcellator
+from ..base import Estimator
 from ..meta.cbma.kernel import ALEKernel
-from ..due import due, Doi
+from ..due import due
+from .. import references
 
 
-@due.dcite(Doi('10.1016/j.neuroimage.2015.08.027'),
-           description='Introduces the MAMP algorithm.')
-class MAMP(Parcellator):
+@due.dcite(references.MAMP, description='Introduces the MAMP algorithm.')
+class MAMP(Estimator):
     """
-    Meta-analytic activation modeling-based parcellation (MAMP).
+    Meta-analytic activation modeling-based parcellation (MAMP) [1]_.
 
     Parameters
     ----------
@@ -38,6 +38,17 @@ class MAMP(Parcellator):
         5.  Convert correlation coefficients to correlation distance (1 -r)
             values.
         6.  Perform clustering on correlation distance matrix.
+
+    Warnings
+    --------
+    This method is not yet implemented.
+
+    References
+    ----------
+    .. [1] Yang, Yong, et al. "Identifying functional subdivisions in the human
+        brain using meta-analytic activation modeling-based parcellation."
+        Neuroimage 124 (2016): 300-309.
+        https://doi.org/10.1016/j.neuroimage.2015.08.027
     """
     def __init__(self, dataset, ids):
         self.mask = dataset.mask
@@ -46,7 +57,7 @@ class MAMP(Parcellator):
         self.solutions = None
         self.metrics = None
 
-    def fit(self, target_mask, n_parcels=2, kernel_estimator=ALEKernel,
+    def fit(self, target_mask, n_parcels=2, kernel_transformer=ALEKernel,
             **kwargs):
         """
         Run MAMP parcellation.
@@ -76,7 +87,7 @@ class MAMP(Parcellator):
         if not isinstance(n_parcels, list):
             n_parcels = [n_parcels]
 
-        k_est = kernel_estimator(self.coordinates, self.mask)
+        k_est = kernel_transformer(self.coordinates, self.mask)
         ma_maps = k_est.transform(self.ids, **kernel_args)
 
         # Step 1: Build correlation matrix

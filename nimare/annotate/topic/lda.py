@@ -7,65 +7,73 @@ import shutil
 import logging
 import subprocess
 
+import numpy as np
 import pandas as pd
 
-from ...base import AnnotationModel
-from ...utils import get_resource_path
-from ...due import due, BibTeX, Doi
+from ...base import NiMAREBase
+from ...due import due
+from ... import references
+from ...extract import download_mallet, utils
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(BibTeX("""
-    @article{blei2003latent,
-      title={Latent dirichlet allocation},
-      author={Blei, David M and Ng, Andrew Y and Jordan, Michael I},
-      journal={Journal of machine Learning research},
-      volume={3},
-      number={Jan},
-      pages={993--1022},
-      year={2003}}
-    """), description='Introduces LDA.')
-@due.dcite(BibTeX("""
-    @article{mallettoolbox,
-      title={MALLET: A Machine Learning for Language Toolkit.},
-      author={McCallum, Andrew K},
-      year={2002}}
-    """), description='Citation for MALLET toolbox')
-@due.dcite(Doi('10.1371/journal.pcbi.1002707'),
+@due.dcite(references.LDA, description='Introduces LDA.')
+@due.dcite(references.MALLET, description='Citation for MALLET toolbox')
+@due.dcite(references.LDAMODEL,
            description='First use of LDA for automated annotation of '
            'neuroimaging literature.')
-class LDAModel(AnnotationModel):
+class LDAModel(NiMAREBase):
     """
-    Perform topic modeling using Latent Dirichlet Allocation with the
-    Java toolbox MALLET.
+    Perform topic modeling using Latent Dirichlet Allocation [1]_ with the
+    Java toolbox MALLET [2]_, as performed in [3]_.
 
     Parameters
     ----------
     text_df : :obj:`pandas.DataFrame`
-        A pandas DataFrame with two columns ('id' and 'text') containing
-        article text_df.
+        A pandas DataFrame with two columns ('id' and text_column) containing
+        article text.
+    text_column : :obj:`str`, optional
+        Name of column in text_df that contains text. Default is 'abstract'.
     n_topics : :obj:`int`, optional
         Number of topics to generate. Default=50.
-    n_words : :obj:`int`, optional
-        Number of top words to return for each topic. Default=31, based on
-        Poldrack et al. (2012). Not used.
     n_iters : :obj:`int`, optional
         Number of iterations to run in training topic model. Default=1000.
-    alpha : :obj:`float`, optional
+    alpha : :obj:`float` or 'auto', optional
         The Dirichlet prior on the per-document topic distributions.
-        Default: 50 / n_topics, based on Poldrack et al. (2012).
+        Default: auto, which calculates 50 / n_topics, based on Poldrack et al.
+        (2012).
     beta : :obj:`float`, optional
         The Dirichlet prior on the per-topic word distribution. Default: 0.001,
         based on Poldrack et al. (2012).
+
+    Attributes
+    ----------
+    commands_ : :obj:`list` of :obj:`str`
+        List of MALLET commands called to fit model.
+
+    References
+    ----------
+    .. [1] Blei, David M., Andrew Y. Ng, and Michael I. Jordan. "Latent
+        dirichlet allocation." Journal of machine Learning research 3.Jan
+        (2003): 993-1022.
+    .. [2] McCallum, Andrew Kachites. "Mallet: A machine learning for language
+        toolkit." (2002).
+    .. [3] Poldrack, Russell A., et al. "Discovering relations between mind,
+        brain, and mental disorders using topic mapping." PLoS computational
+        biology 8.10 (2012): e1002707.
+        https://doi.org/10.1371/journal.pcbi.1002707
     """
-    def __init__(self, text_df, n_topics=50, n_iters=1000, alpha='auto',
-                 beta=0.001):
-        resdir = op.abspath(get_resource_path())
-        tempdir = op.join(resdir, 'topic_models')
-        text_dir = op.join(tempdir, 'texts')
-        if not op.isdir(tempdir):
-            os.mkdir(tempdir)
+    def __init__(self, text_df, text_column='abstract', n_topics=50,
+                 n_iters=1000, alpha='auto', beta=0.001):
+        mallet_dir = download_mallet()
+        mallet_bin = op.join(mallet_dir, 'bin/mallet')
+
+        model_dir = utils._get_dataset_dir('mallet_model')
+        text_dir = op.join(model_dir, 'texts')
+
+        if not op.isdir(model_dir):
+            os.mkdir(model_dir)
 
         if alpha == 'auto':
             alpha = 50. / n_topics
@@ -77,28 +85,27 @@ class LDAModel(AnnotationModel):
             'n_iters': n_iters,
             'alpha': alpha,
             'beta': beta,
-            }
+        }
+        self.model_dir = model_dir
 
         # Check for presence of text files and convert if necessary
         if not op.isdir(text_dir):
             LGR.info('Texts folder not found. Creating text files...')
             os.mkdir(text_dir)
-            for id_ in text_df.index.values:
-                text = text_df.loc[id_]['text']
+            for id_ in text_df['id'].values:
+                text = text_df.loc[text_df['id'] == id_, text_column].values[0]
                 with open(op.join(text_dir, str(id_) + '.txt'), 'w') as fo:
                     fo.write(text)
 
         # Run MALLET topic modeling
         LGR.info('Generating topics...')
-        mallet_bin = op.join(op.dirname(op.dirname(__file__)),
-                             'resources/mallet/bin/mallet')
         import_str = ('{mallet} import-dir '
                       '--input {text_dir} '
                       '--output {outdir}/topic-input.mallet '
                       '--keep-sequence '
                       '--remove-stopwords').format(mallet=mallet_bin,
                                                    text_dir=text_dir,
-                                                   outdir=tempdir)
+                                                   outdir=model_dir)
 
         train_str = ('{mallet} train-topics '
                      '--input {out}/topic-input.mallet '
@@ -109,14 +116,26 @@ class LDAModel(AnnotationModel):
                      '--output-model {out}/saved_model.mallet '
                      '--random-seed 1 '
                      '--alpha {alpha} '
-                     '--beta {beta}').format(mallet=mallet_bin, out=tempdir,
+                     '--beta {beta}').format(mallet=mallet_bin, out=model_dir,
                                              n_topics=self.params['n_topics'],
                                              n_iters=self.params['n_iters'],
                                              alpha=self.params['alpha'],
                                              beta=self.params['beta'])
+        self.commands_ = [import_str, train_str]
 
-        subprocess.call(import_str, shell=True)
-        subprocess.call(train_str, shell=True)
+    def fit(self):
+        """
+        Fit LDA model to corpus.
+
+        Attributes
+        ----------
+        p_topic_g_doc_ : :obj:`numpy.ndarray`
+            Probability of each topic given a document
+        p_word_g_topic_ : :obj:`numpy.ndarray`
+            Probability of each word given a topic
+        """
+        subprocess.call(self.commands_[0], shell=True)
+        subprocess.call(self.commands_[1], shell=True)
 
         # Read in and convert doc_topics and topic_keys.
         topic_names = ['topic_{0:03d}'.format(i) for i in range(self.params['n_topics'])]
@@ -130,7 +149,7 @@ class LDAModel(AnnotationModel):
         # weights for the topics in the preceding column. These columns are sorted
         # on an individual id basis by the weights.
         n_cols = (2 * self.params['n_topics']) + 1
-        dt_df = pd.read_csv(op.join(tempdir, 'doc_topics.txt'),
+        dt_df = pd.read_csv(op.join(self.model_dir, 'doc_topics.txt'),
                             delimiter='\t', skiprows=1, header=None,
                             index_col=0)
         dt_df = dt_df[dt_df.columns[:n_cols]]
@@ -143,14 +162,14 @@ class LDAModel(AnnotationModel):
         weights_df.index = dt_df[1]
         weights_df.columns = range(self.params['n_topics'])
 
-        topics_df = dt_df[dt_df.columns[1::2]]
+        topics_df = dt_df[dt_df.columns[1:-1:2]]
         topics_df.index = dt_df[1]
         topics_df.columns = range(self.params['n_topics'])
 
         # Sort columns in weights_df separately for each row using topics_df.
         sorters_df = topics_df.apply(self._get_sort, axis=1)
-        weights = weights_df.as_matrix()
-        sorters = sorters_df.as_matrix()
+        weights = weights_df.values
+        sorters = np.vstack(sorters_df.values)
         # there has to be a better way to do this.
         for i in range(sorters.shape[0]):
             weights[i, :] = weights[i, sorters[i, :]]
@@ -159,10 +178,11 @@ class LDAModel(AnnotationModel):
         p_topic_g_doc_df = pd.DataFrame(columns=topic_names, data=weights,
                                         index=dt_df[1])
         p_topic_g_doc_df.index.name = 'id'
-        self.p_topic_g_doc = p_topic_g_doc_df.values
+        self.p_topic_g_doc_ = p_topic_g_doc_df.values
+        self.p_topic_g_doc_df_ = p_topic_g_doc_df
 
         # Topic word weights
-        p_word_g_topic_df = pd.read_csv(op.join(tempdir, 'topic_word_weights.txt'),
+        p_word_g_topic_df = pd.read_csv(op.join(self.model_dir, 'topic_word_weights.txt'),
                                         dtype=str, keep_default_na=False,
                                         na_values=[], sep='\t', header=None,
                                         names=['topic', 'word', 'weight'])
@@ -173,10 +193,11 @@ class LDAModel(AnnotationModel):
                                                     values='weight')
         p_word_g_topic_df = p_word_g_topic_df.div(p_word_g_topic_df.sum(axis=1),
                                                   axis=0)
-        self.p_word_g_topic = p_word_g_topic_df.values
+        self.p_word_g_topic_ = p_word_g_topic_df.values
+        self.p_word_g_topic_df_ = p_word_g_topic_df
 
         # Remove all temporary files (text files, model, and outputs).
-        shutil.rmtree(tempdir)
+        shutil.rmtree(self.model_dir)
 
     def _clean_str(self, string):
         return op.basename(op.splitext(string)[0])

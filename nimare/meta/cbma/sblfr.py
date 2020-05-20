@@ -12,8 +12,7 @@ from .base import CBMAEstimator
 from ...due import due, Doi
 
 
-@due.dcite(Doi('10.1111/biom.12713'),
-           description='Introduces the SBLFR model.')
+@due.dcite(references.SBLFR, description='Introduces the SBLFR model.')
 class SBLFR(CBMAEstimator):
     """
     Spatial Bayesian latent factor regression model

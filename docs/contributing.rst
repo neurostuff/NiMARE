@@ -1,2 +1,1 @@
-Getting involved
-================
+.. mdinclude:: ../CONTRIBUTING.md

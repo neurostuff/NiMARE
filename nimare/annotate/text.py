@@ -1,7 +1,7 @@
 """
 Text extraction tools.
 """
-import re
+import logging
 import os.path as op
 
 import nltk
@@ -11,12 +11,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 
 from ..utils import get_resource_path
 
-SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
-                       index_col='UK')
-SPELL_DICT = SPELL_DF['US'].to_dict()
+LGR = logging.getLogger(__name__)
 
 
-def generate_counts(text_df, tfidf=True):
+def generate_counts(text_df, text_column='abstract', tfidf=True,
+                    min_df=50, max_df=0.5):
     """
     Generate tf-idf weights for unigrams/bigrams derived from textual data.
 
@@ -31,18 +30,31 @@ def generate_counts(text_df, tfidf=True):
         A DataFrame where the index is 'id' and the columns are the
         unigrams/bigrams derived from the data. D = document. T = term.
     """
+    if text_column not in text_df.columns:
+        raise ValueError('Column "{0}" not found in DataFrame'.format(text_column))
+
+    # Remove rows with empty text cells
+    orig_ids = text_df['id'].tolist()
+    text_df = text_df.fillna('')
+    keep_ids = text_df.loc[text_df[text_column] != '', 'id']
+    text_df = text_df.loc[text_df['id'].isin(keep_ids)]
+
+    if len(keep_ids) != len(orig_ids):
+        LGR.info('Retaining {0}/{1} studies'.format(len(keep_ids),
+                                                    len(orig_ids)))
+
     ids = text_df['id'].tolist()
-    text = text_df['text'].tolist()
+    text = text_df[text_column].tolist()
     stoplist = op.join(get_resource_path(), 'neurosynth_stoplist.txt')
     with open(stoplist, 'r') as fo:
         stop_words = fo.read().splitlines()
 
     if tfidf:
-        vectorizer = TfidfVectorizer(min_df=50, max_df=0.5,
+        vectorizer = TfidfVectorizer(min_df=min_df, max_df=max_df,
                                      ngram_range=(1, 2), vocabulary=None,
                                      stop_words=stop_words)
     else:
-        vectorizer = CountVectorizer(min_df=50, max_df=0.5,
+        vectorizer = CountVectorizer(min_df=min_df, max_df=max_df,
                                      ngram_range=(1, 2), vocabulary=None,
                                      stop_words=stop_words)
     weights = vectorizer.fit_transform(text).toarray()
@@ -53,7 +65,8 @@ def generate_counts(text_df, tfidf=True):
     return weights_df
 
 
-def generate_cooccurrence(text_df, vocabulary=None, window=5):
+def generate_cooccurrence(text_df, text_column='abstract', vocabulary=None,
+                          window=5):
     """
     Build co-occurrence matrix from documents.
     Not the same approach as used by the GloVe model.
@@ -73,8 +86,11 @@ def generate_cooccurrence(text_df, vocabulary=None, window=5):
     df : (V, V, D) :obj:`pandas.Panel`
         One cooccurrence matrix per document in text_df.
     """
+    if text_column not in text_df.columns:
+        raise ValueError('Column "{0}" not found in DataFrame'.format(text_column))
+
     ids = text_df['id'].tolist()
-    text = text_df['text'].tolist()
+    text = text_df[text_column].tolist()
     text = [nltk.word_tokenize(doc) for doc in text]
     text = [[word.lower() for word in doc if word.isalpha()] for doc in text]
 
@@ -101,24 +117,3 @@ def generate_cooccurrence(text_df, vocabulary=None, window=5):
     df = pd.Panel(items=ids, major_axis=vocabulary, minor_axis=vocabulary,
                   data=cooc_arr)
     return df
-
-
-def uk_to_us(text):
-    """
-    Convert UK spellings to US based on a converter.
-
-    english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
-
-    Parameters
-    ----------
-    text : :obj:`str`
-
-    Returns
-    -------
-    text : :obj:`str`
-    """
-    if isinstance(text, str):
-        # Convert British to American English
-        pattern = re.compile(r'\b(' + '|'.join(SPELL_DICT.keys()) + r')\b')
-        text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
-    return text
