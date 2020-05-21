@@ -121,8 +121,7 @@ class MKDADensity(Estimator):
             iter_max_cluster = 0
         return iter_max_value, iter_max_cluster
 
-    def correct_fwe_montecarlo(self, result, voxel_thresh=0.01, n_iters=1000,
-                                n_cores=-1):
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
