@@ -16,7 +16,6 @@
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#
 import os
 import sys
 from datetime import datetime
@@ -35,24 +34,20 @@ import nimare
 
 # generate autosummary even if no references
 autosummary_generate = True
-#autodoc_default_flags = ['members', 'inherited-members']
 add_module_names = False
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.autodoc',
-              'sphinx.ext.autosummary',
-              'sphinx.ext.doctest',
-              'sphinx.ext.ifconfig',
-              'sphinx.ext.intersphinx',
-              'sphinx.ext.linkcode',
-              'sphinx.ext.napoleon',
-              'sphinx.ext.todo',
-              'sphinx_gallery.gen_gallery',
-              'sphinxarg.ext',
-              'm2r',
-              'numpydoc',
+extensions = ['sphinx.ext.autodoc',  # standard
+              'sphinx.ext.autosummary',  # standard
+              'sphinx.ext.doctest',  # runs doctests
+              'sphinx.ext.intersphinx',  # links code to other packages
+              'sphinx.ext.linkcode',  # links to code from api
+              'sphinx.ext.napoleon',  # alternative to numpydoc
+              'sphinx_gallery.gen_gallery',  # example gallery
+              'sphinxarg.ext',  # argparse
+              'm2r',  # convert markdown to rst
               ]
 
 import sphinx
@@ -103,12 +98,9 @@ default_role = "autolink"
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
 
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = False
-
-
-# -- Options for HTML output ----------------------------------------------
-
+# -----------------------------------------------------------------------------
+# HTML output
+# -----------------------------------------------------------------------------
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
@@ -139,8 +131,9 @@ def setup(app):
 html_favicon = '_static/nimare_favicon.png'
 html_logo = '_static/nimare_banner.png'
 
-# -- Options for HTMLHelp output ------------------------------------------
-
+# -----------------------------------------------------------------------------
+# HTMLHelp output
+# -----------------------------------------------------------------------------
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'nimaredoc'
 
@@ -168,6 +161,9 @@ intersphinx_mapping = {
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
 }
 
+# -----------------------------------------------------------------------------
+# Sphinx gallery
+# -----------------------------------------------------------------------------
 sphinx_gallery_conf = {
     # path to your examples scripts
     'examples_dirs'     : '../examples',
@@ -189,8 +185,9 @@ sphinx_gallery_conf = {
 # Generate the plots for the gallery
 plot_gallery = 'True'
 
-# -- Options for Texinfo output -------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Texinfo output
+# -----------------------------------------------------------------------------
 # Grouping the document tree into Texinfo files. List of tuples
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
@@ -211,15 +208,3 @@ def generate_example_rst(app, what, name, obj, options, lines):
     if not os.path.exists(examples_path):
         # touch file
         open(examples_path, 'w').close()
-
-# Documents to append as an appendix to all manuals.
-#texinfo_appendices = []
-
-# If false, no module index is generated.
-#texinfo_domain_indices = True
-
-# How to display URL addresses: 'footnote', 'no', or 'inline'.
-#texinfo_show_urls = 'footnote'
-
-# If true, do not generate a @detailmenu in the "Top" node's menu.
-#texinfo_no_detailmenu = False
