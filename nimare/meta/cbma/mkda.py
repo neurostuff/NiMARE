@@ -38,7 +38,7 @@ class MKDADensity(Estimator):
 
     Notes
     -----
-    Available correction methods: :obj:`MKDADensity.correct_fwe_permutation`
+    Available correction methods: :obj:`MKDADensity.correct_fwe_montecarlo`
 
     References
     ----------
@@ -121,7 +121,7 @@ class MKDADensity(Estimator):
             iter_max_cluster = 0
         return iter_max_value, iter_max_cluster
 
-    def correct_fwe_permutation(self, result, voxel_thresh=0.01, n_iters=1000,
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.01, n_iters=1000,
                                 n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
@@ -155,7 +155,7 @@ class MKDADensity(Estimator):
         --------
         >>> meta = MKDADensity()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='permutation', voxel_thresh=0.01,
+        >>> corrector = FWECorrector(method='montecarlo', voxel_thresh=0.01,
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
@@ -245,7 +245,7 @@ class MKDAChi2(Estimator):
 
     Notes
     -----
-    Available correction methods: :obj:`MKDAChi2.correct_fwe_permutation`,
+    Available correction methods: :obj:`MKDAChi2.correct_fwe_montecarlo`,
     :obj:`MKDAChi2.correct_fdr_bh`
 
     References
@@ -391,7 +391,7 @@ class MKDAChi2(Estimator):
         iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
         return iter_pAgF_chi2, iter_pFgA_chi2
 
-    def correct_fwe_permutation(self, result, n_iters=5000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -423,7 +423,7 @@ class MKDAChi2(Estimator):
         --------
         >>> meta = MKDAChi2()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='permutation', n_iters=5, n_cores=1)
+        >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
         null_ijk = np.vstack(np.where(self.mask.get_data())).T
@@ -576,7 +576,7 @@ class KDA(Estimator):
     -----
     Kernel density analysis was first introduced in [1]_ and [2]_.
 
-    Available correction methods: :obj:`KDA.correct_fwe_permutation`
+    Available correction methods: :obj:`KDA.correct_fwe_montecarlo`
 
     References
     ----------
@@ -630,7 +630,7 @@ class KDA(Estimator):
         iter_max_value = np.max(iter_of_map)
         return iter_max_value
 
-    def correct_fwe_permutation(self, result, n_iters=10000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -661,7 +661,7 @@ class KDA(Estimator):
         --------
         >>> meta = KDA()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='permutation', n_iters=5, n_cores=1)
+        >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
         of_values = result.get_map('of', return_type='array')
