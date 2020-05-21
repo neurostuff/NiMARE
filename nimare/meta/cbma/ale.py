@@ -49,7 +49,7 @@ class ALE(Estimator):
     The ALE algorithm was originally developed in [1]_, then updated in [2]_
     and [3]_.
 
-    Available correction methods: :obj:`ALE.correct_fwe_permutation`
+    Available correction methods: :obj:`ALE.correct_fwe_montecarlo`
 
     References
     ----------
@@ -228,7 +228,7 @@ class ALE(Estimator):
             iter_max_cluster = np.max(clust_sizes)
         return iter_max_value, iter_max_cluster
 
-    def correct_fwe_permutation(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -268,7 +268,7 @@ class ALE(Estimator):
         --------
         >>> meta = ALE()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='permutation', voxel_thresh=0.001,
+        >>> corrector = FWECorrector(method='montecarlo', voxel_thresh=0.001,
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
@@ -423,12 +423,12 @@ class ALESubtraction(Estimator):
             LGR.info('Performing subtraction analysis with cluster-level '
                      'FWE-corrected maps thresholded at p < 0.05.')
             image1 = ale1.results.get_map(
-                'logp_level-cluster_corr-FWE_method-permutation',
+                'logp_level-cluster_corr-FWE_method-montecarlo',
                 return_type='array') >= np.log(0.05)
 
         if image2 is None:
             image2 = ale2.results.get_map(
-                'logp_level-cluster_corr-FWE_method-permutation',
+                'logp_level-cluster_corr-FWE_method-montecarlo',
                 return_type='array') >= np.log(0.05)
 
         if not isinstance(image1, np.ndarray):
