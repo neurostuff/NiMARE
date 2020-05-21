@@ -253,6 +253,13 @@ class Estimator(NiMAREBase):
         -------
         :obj:`nimare.results.MetaResult`
             Results of Estimator fitting.
+
+        Notes
+        -----
+        The `fit` method is a light wrapper that runs input validation and
+        preprocessing before fitting the actual model. Estimators' individual
+        "fitting" methods are implemented as `_fit`, although users should
+        call `fit`.
         """
         self._validate_input(dataset)
         self._preprocess_input(dataset)
