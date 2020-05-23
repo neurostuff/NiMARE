@@ -1,4 +1,4 @@
-get_fdata"""
+"""
 CBMA methods from the activation likelihood estimation (ALE) family
 """
 import logging
