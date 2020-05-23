@@ -83,9 +83,9 @@ class ALEKernel(KernelTransformer):
             coordinates = dataset.coordinates
 
         if not masked:
-            mask_data = mask.get_data().astype(float)
+            mask_data = mask.get_fdata().astype(float)
         else:
-            mask_data = mask.get_data().astype(np.bool)
+            mask_data = mask.get_fdata().astype(np.bool)
 
         imgs = []
         kernels = {}  # retain kernels in dictionary to speed things up
@@ -170,9 +170,9 @@ class MKDAKernel(KernelTransformer):
             coordinates = dataset.coordinates
 
         if not masked:
-            mask_data = mask.get_data().astype(float)
+            mask_data = mask.get_fdata().astype(float)
         else:
-            mask_data = mask.get_data().astype(np.bool)
+            mask_data = mask.get_fdata().astype(np.bool)
 
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
@@ -247,9 +247,9 @@ class KDAKernel(KernelTransformer):
             coordinates = dataset.coordinates
 
         if not masked:
-            mask_data = mask.get_data().astype(float)
+            mask_data = mask.get_fdata().astype(float)
         else:
-            mask_data = mask.get_data().astype(np.bool)
+            mask_data = mask.get_fdata().astype(np.bool)
 
         dims = mask.shape
         vox_dims = mask.header.get_zooms()

@@ -67,7 +67,7 @@ def meta_cluster_workflow(dataset_file, output_dir=None, output_prefix=None,
         imgs = kern.transform(dset.ids)
     imgs_arr = []
     for i in np.arange(0, len(imgs)):
-        imgs_arr.append(np.ravel(imgs[i].get_data(), order='C'))
+        imgs_arr.append(np.ravel(imgs[i].get_fdata(), order='C'))
     labels = pd.DataFrame(index=dset.ids)
     k = np.arange(clust_range[0], (clust_range[1] + 1))
     for i in k:

@@ -53,7 +53,7 @@ rates. NeuroImage, 99, 559-570.
     # indices matching the dataset template, where the base rate for a given
     # voxel is reflected by the number of times that voxel appears in the array
     if not baseline:
-        ijk = np.vstack(np.where(dset.mask.get_data())).T
+        ijk = np.vstack(np.where(dset.mask.get_fdata())).T
     else:
         ijk = np.loadtxt(baseline)
 

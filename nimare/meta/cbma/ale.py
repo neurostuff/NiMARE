@@ -1,4 +1,4 @@
-"""
+get_fdata"""
 CBMA methods from the activation likelihood estimation (ALE) family
 """
 import logging
@@ -216,7 +216,7 @@ class ALE(Estimator):
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
         iter_z_map = unmask(z_values, self.mask)
-        vthresh_iter_z_map = iter_z_map.get_data()
+        vthresh_iter_z_map = iter_z_map.get_fdata()
         vthresh_iter_z_map[vthresh_iter_z_map < z_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(vthresh_iter_z_map, conn)[0]
@@ -274,7 +274,7 @@ class ALE(Estimator):
         """
         z_values = result.get_map('z', return_type='array')
         ale_values = result.get_map('ale', return_type='array')
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -324,7 +324,7 @@ class ALE(Estimator):
          self.null_distributions['fwe_level-cluster']) = zip(*perm_results)
 
         # Cluster-level FWE
-        vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
+        vthresh_z_map = unmask(vthresh_z_values, self.mask).get_fdata()
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
         logp_cfwe_map = np.zeros(self.mask.shape)
         for i_clust in range(1, n_clusters + 1):
@@ -672,7 +672,7 @@ class SCALE(Estimator):
             'ale': ale_values,
             'logp': logp_values,
             'z': z_values,
-            }
+        }
         return images
 
     def _compute_ale(self, df=None, ma_maps=None):

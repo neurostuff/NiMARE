@@ -516,7 +516,7 @@ class Dataset(NiMAREBase):
         if not np.array_equal(curr_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
             mask = resample_to_img(mask, curr_mask)
-        mask_ijk = np.vstack(np.where(mask.get_data())).T
+        mask_ijk = np.vstack(np.where(mask.get_fdata())).T
         distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
         distances = np.any(distances == 0, axis=0)
         found_ids = list(self.coordinates.loc[distances, 'id'].unique())

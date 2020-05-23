@@ -111,7 +111,7 @@ class MKDADensity(Estimator):
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = unmask(iter_of_map, self.mask)
-        vthresh_iter_of_map = iter_of_map.get_data().copy()
+        vthresh_iter_of_map = iter_of_map.get_fdata().copy()
         vthresh_iter_of_map[vthresh_iter_of_map < voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
@@ -161,7 +161,7 @@ class MKDADensity(Estimator):
         >>> cresult = corrector.transform(result)
         """
         of_map = result.get_map('of', return_type='image')
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -172,7 +172,7 @@ class MKDADensity(Estimator):
                                                           mp.cpu_count()))
             n_cores = mp.cpu_count()
 
-        vthresh_of_map = of_map.get_data().copy()
+        vthresh_of_map = of_map.get_fdata().copy()
         vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
 
         rand_idx = np.random.choice(
@@ -427,7 +427,7 @@ class MKDAChi2(Estimator):
         >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
         pAgF_chi2_vals = result.get_map('chi2_desc-consistency', return_type='array')
         pFgA_chi2_vals = result.get_map('chi2_desc-specificity', return_type='array')
         pAgF_z_vals = result.get_map('z_desc-consistency', return_type='array')
@@ -666,7 +666,7 @@ class KDA(Estimator):
         >>> cresult = corrector.transform(result)
         """
         of_values = result.get_map('of', return_type='array')
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()

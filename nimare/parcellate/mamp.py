@@ -115,7 +115,7 @@ class MAMP(Estimator):
             labels[:, i_parc] = labeled
 
             # Check contiguity of clusters
-            temp_mask = unmask(labels[:, i_parc], target_map).get_data()
+            temp_mask = unmask(labels[:, i_parc], target_map).get_fdata()
             labeled = meas.label(temp_mask, np.ones((3, 3, 3)))[0]
             n_contig = len(np.unique(labeled))
             metrics.loc[n_clusters, 'contiguous'] = int(n_contig > (n_clusters + 1))
