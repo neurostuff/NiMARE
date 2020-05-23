@@ -43,7 +43,7 @@ class FWECorrector(Corrector):
         p = result.maps['p']
         _, p_corr, _, _ = mc.multipletests(p, alpha=0.05, method=self.method,
                                            is_sorted=False)
-        corr_maps = {'p': p_corr}
+        corr_maps = {'p_level-voxel': p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps
 
@@ -87,6 +87,6 @@ class FDRCorrector(Corrector):
         p = result.maps['p']
         _, p_corr = mc.fdrcorrection(p, alpha=self.alpha, method=self.method,
                                      is_sorted=False)
-        corr_maps = {'p': p_corr}
+        corr_maps = {'p_level-voxel': p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps

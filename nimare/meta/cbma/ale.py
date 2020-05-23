@@ -545,7 +545,9 @@ class ALESubtraction(Estimator):
         # could overwrite some values. not a problem.
         diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
 
-        images = {'grp1-grp2_z': diff_z_map}
+        images = {
+            'z_desc-group1MinusGroup2': diff_z_map
+        }
         return images
 
 
@@ -655,24 +657,22 @@ class SCALE(Estimator):
                 perm_scale_values.append(self._run_permutation(pp))
         else:
             with mp.Pool(self.n_cores) as p:
-                perm_scale_values = list(tqdm(p.imap(self._run_permutation, params), total=self.n_iters))
+                perm_scale_values = list(tqdm(p.imap(self._run_permutation, params),
+                                              total=self.n_iters))
 
         perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(ale_values, perm_scale_values,
                                               hist_bins)
-
-        # Begin cluster-extent thresholding by thresholding matrix at cluster-
-        # defining voxel-level threshold
-        z_thresh = p_to_z(self.voxel_thresh, tail='one')
-        vthresh_z_values = z_values.copy()
-        vthresh_z_values[vthresh_z_values < z_thresh] = 0
+        logp_values = -np.log(p_values)
+        logp_values[np.isinf(logp_values)] = -np.log(np.finfo(float).eps)
 
         # Write out unthresholded value images
-        images = {'ale': ale_values,
-                  'p': p_values,
-                  'z': z_values,
-                  'z_vthresh': vthresh_z_values}
+        images = {
+            'ale': ale_values,
+            'logp': logp_values,
+            'z': z_values,
+            }
         return images
 
     def _compute_ale(self, df=None, ma_maps=None):

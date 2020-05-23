@@ -179,6 +179,7 @@ intersphinx_mapping = {
     'matplotlib': ('https://matplotlib.org/',
                    (None, 'https://matplotlib.org/objects.inv')),
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
+    'nibabel': ('https://nipy.org/nibabel/', None),
 }
 
 # -----------------------------------------------------------------------------

@@ -80,7 +80,7 @@ def get_masker(mask):
 
     Parameters
     ----------
-    mask : str, Nifti1nibabel.nifti1.Nifti1Image, or any nilearn Masker
+    mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
 
     Returns
     -------
