@@ -1,6 +1,7 @@
 """
 Base classes for correction
 """
+import inspect
 import logging
 from abc import ABCMeta, abstractmethod, abstractproperty
 
@@ -37,15 +38,33 @@ class Corrector(metaclass=ABCMeta):
                              "instance of class MetaResult, not {}."
                              .format(type(result)))
 
-        if self.method not in self._native_methods:
-            raise ValueError("Unsupported {} correction method: {}".format(
-                self._correction_method, self.method))
+        # Get Estimator correction methods
+        pattern = 'correct_' + self._correction_method + '_'
+        est_methods = inspect.getmembers(result.estimator, predicate=inspect.ismethod)
+        est_methods = [meth[0] for meth in est_methods]
+        est_methods = [meth for meth in est_methods if meth.startswith(pattern)]
+        est_methods = [meth.replace(pattern, '') for meth in est_methods]
 
+        # Check requested method against available methods
+        if self.method not in self._native_methods + est_methods:
+            raise ValueError(
+                'Unsupported {0} correction method "{1}"\n'
+                '\tAvailable native methods: {2}\n'
+                '\tAvailable estimator methods: {3}'.format(
+                    self._correction_method,
+                    self.method,
+                    ', '.join(self._native_methods),
+                    ', '.join(est_methods)
+                )
+            )
+
+        # Check required maps
         for rm in self._required_maps:
             if result.maps.get(rm) is None:
-                raise ValueError("{0} requires {1} maps to be present in the "
-                                 "MetaResult, but none were found."
-                                 .format(type(self), rm))
+                raise ValueError(
+                    '{0} requires "{1}" maps to be present in the MetaResult, '
+                    'but none were found.'.format(type(self), rm)
+                )
 
     def _generate_secondary_maps(self, result, corr_maps):
         # Generates corrected version of z and log-p maps if they exist
@@ -53,7 +72,7 @@ class Corrector(metaclass=ABCMeta):
         if 'z' in result.maps:
             corr_maps['z'] = p_to_z(p) * np.sign(result.maps['z'])
         if 'log_p' in result.maps:
-            corr_maps['log_p'] = -np.log10(p)
+            corr_maps['logp'] = -np.log10(p)
         return corr_maps
 
     def transform(self, result):
@@ -80,8 +99,8 @@ class Corrector(metaclass=ABCMeta):
         # If a correction method with the same name exists in the current
         # MetaEstimator, use it. Otherwise fall back on _transform.
         if (correction_method is not None and hasattr(est, correction_method)):
-            LGR.info('Using correction method implemented in Estimator: {}.'
-                     '{}.'.format(type(est), correction_method))
+            LGR.info('Using correction method implemented in Estimator: '
+                     '{}.{}.'.format(type(est), correction_method))
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._validate_input(result)
@@ -90,7 +109,6 @@ class Corrector(metaclass=ABCMeta):
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
         result.maps.update(corr_maps)
-
         return result
 
     @abstractmethod
