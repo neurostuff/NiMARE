@@ -11,9 +11,9 @@
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
 
-.. note::
-    This will likely change as we work to shift database querying to a remote
-    database, rather than handling it locally with NiMARE.
+.. caution::
+    Dataset querying will likely change as we work to shift database querying
+    to a remote database, rather than handling it locally with NiMARE.
 
 """
 import os

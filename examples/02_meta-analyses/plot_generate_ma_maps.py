@@ -7,6 +7,10 @@
 ========================================================
  Generate modeled activation maps
 ========================================================
+For coordinate-based data, individual studies' statistical maps are mimicked
+by generating "modeled activation" (MA) maps.
+These MA maps are used in the CBMA algorithms, although the specific method
+used to generate the MA maps differs by algorithm.
 
 """
 ###############################################################################
@@ -60,6 +64,12 @@ fig.show()
 ###############################################################################
 # There are several kernels available
 # --------------------------------------------------
+# MKDA kernels convolve coordinates with a sphere and take the union across
+# voxels.
+# KDA kernels convolve coordinates with a sphere as well, but take the *sum*
+# across voxels.
+# ALE kernels convolve with a 3D Gaussian, for which the FWHM is determined
+# by the sample size of each study.
 kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
 mkda_res = kernel.transform(dset)
 kernel = nimare.meta.cbma.kernel.KDAKernel(r=10)
