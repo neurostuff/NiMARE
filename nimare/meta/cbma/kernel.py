@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from nilearn.image import resample_to_img, math_img
+from nilearn.image import resample_to_img
+from nilearn.masking import apply_mask
 from .utils import compute_ma, get_ale_kernel, peaks2maps
 from ...utils import vox2mm, get_masker
 
@@ -87,7 +88,7 @@ class ALEKernel(KernelTransformer):
         elif return_type == 'array':
             mask_data = mask.get_fdata().astype(np.bool)
         else:
-            raise InputError('Argument "return_type" must be "image" or "array".')
+            raise ValueError('Argument "return_type" must be "image" or "array".')
 
         imgs = []
         kernels = {}  # retain kernels in dictionary to speed things up
@@ -179,7 +180,7 @@ class MKDAKernel(KernelTransformer):
         elif return_type == 'array':
             mask_data = mask.get_fdata().astype(np.bool)
         else:
-            raise InputError('Argument "return_type" must be "image" or "array".')
+            raise ValueError('Argument "return_type" must be "image" or "array".')
 
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
@@ -262,7 +263,7 @@ class KDAKernel(KernelTransformer):
         elif return_type == 'array':
             mask_data = mask.get_fdata().astype(np.bool)
         else:
-            raise InputError('Argument "return_type" must be "image" or "array".')
+            raise ValueError('Argument "return_type" must be "image" or "array".')
 
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
@@ -334,13 +335,6 @@ class Peaks2MapsKernel(KernelTransformer):
         else:
             mask = dataset.masker.mask_img
             coordinates = dataset.coordinates
-
-        if return_type == 'image':
-            mask_data = mask.get_fdata().astype(float)
-        elif return_type == 'array':
-            mask_data = mask.get_fdata().astype(np.bool)
-        else:
-            raise InputError('Argument "return_type" must be "image" or "array".')
 
         coordinates_list = []
         for id_, data in coordinates.groupby('id'):
