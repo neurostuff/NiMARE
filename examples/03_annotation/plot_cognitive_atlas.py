@@ -7,8 +7,7 @@
 ===============================
  Work with the Cognitive Atlas
 ===============================
-
-Cognitive Atlas
+We can download the Cognitive Atlas and extract CogAt terms from text.
 
 """
 import os
