@@ -91,7 +91,8 @@ class ALE(Estimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_transformer.transform(self.dataset, mask=self.mask, masked=False)
+        ma_maps = self.kernel_transformer.transform(self.dataset, mask=self.mask,
+                                                    return_type='image')
         ale_values = self._compute_ale(ma_maps)
         self._compute_null(ma_maps)
         p_values, z_values = self._ale_to_p(ale_values)
@@ -109,7 +110,8 @@ class ALE(Estimator):
         Returns masked array of ALE values.
         """
         if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_transformer.transform(data, mask=self.mask, masked=True)
+            ma_values = self.kernel_transformer.transform(data, mask=self.mask,
+                                                          return_type='array')
         elif isinstance(data, list):
             ma_values = apply_mask(data, self.mask)
         elif isinstance(data, np.ndarray):
@@ -334,38 +336,37 @@ class ALE(Estimator):
         # Cluster-level FWE
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_fdata()
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
-        logp_cfwe_map = np.zeros(self.mask.shape)
+        p_cfwe_map = np.zeros(self.mask.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
-            logp_cfwe_map[clust_idx] = -np.log(
-                null_to_p(
-                    clust_size,
-                    self.null_distributions_['fwe_level-cluster_method-montecarlo'],
-                    'upper'
-                )
+            p_cfwe_map[clust_idx] = null_to_p(
+                clust_size,
+                self.null_distributions_['fwe_level-cluster_method-montecarlo'],
+                'upper'
             )
-        logp_cfwe_map[np.isinf(logp_cfwe_map)] = -np.log(np.finfo(float).eps)
-        logp_cfwe_map = apply_mask(nib.Nifti1Image(logp_cfwe_map, self.mask.affine),
-                                   self.mask)
+        p_cfwe_values = apply_mask(nib.Nifti1Image(p_cfwe_map, self.mask.affine), self.mask)
+        logp_cfwe_values = -np.log(p_cfwe_values)
+        logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log(np.finfo(float).eps)
+        z_cfwe_values = p_to_z(p_cfwe_values, tail='one')
 
         # Voxel-level FWE
-        p_fwe_values = np.zeros(ale_values.shape)
+        p_vfwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
-            p_fwe_values[voxel] = null_to_p(
+            p_vfwe_values[voxel] = null_to_p(
                 ale_values[voxel], self.null_distributions_['fwe_level-voxel_method-montecarlo'],
                 tail='upper')
 
-        z_fwe_values = p_to_z(p_fwe_values, tail='one')
-
-        logp_vfwe_values = -np.log(p_fwe_values)
+        z_vfwe_values = p_to_z(p_vfwe_values, tail='one')
+        logp_vfwe_values = -np.log(p_vfwe_values)
         logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log(np.finfo(float).eps)
 
         # Write out unthresholded value images
         images = {
             'logp_level-voxel': logp_vfwe_values,
-            'z_level-voxel': z_fwe_values,
-            'logp_level-cluster': logp_cfwe_map,
+            'z_level-voxel': z_vfwe_values,
+            'logp_level-cluster': logp_cfwe_values,
+            'z_level-cluster': z_cfwe_values,
         }
         return images
 
@@ -450,10 +451,10 @@ class ALESubtraction(Estimator):
         grp2_voxel = image2 > 0
 
         if ma_maps1 is None:
-            ma_maps1 = ale1.kernel_transformer.transform(ale1.dataset, masked=False)
+            ma_maps1 = meta1.kernel_transformer.transform(meta1.dataset, return_type='image')
 
         if ma_maps2 is None:
-            ma_maps2 = ale2.kernel_transformer.transform(ale2.dataset, masked=False)
+            ma_maps2 = meta2.kernel_transformer.transform(meta2.dataset, return_type='image')
 
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
@@ -642,7 +643,7 @@ class SCALE(Estimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_transformer.transform(self.dataset, masked=False)
+        ma_maps = self.kernel_transformer.transform(self.dataset, return_type='image')
 
         max_poss_ale = 1.
         for ma_map in ma_maps:
@@ -695,7 +696,7 @@ class SCALE(Estimator):
         Returns masked array of ALE values and 1XnBins null distribution.
         """
         if df is not None:
-            ma_maps = self.kernel_transformer.transform(df, self.mask, masked=True)
+            ma_maps = self.kernel_transformer.transform(df, self.mask, return_type='array')
             ma_values = ma_maps
         else:
             assert ma_maps is not None
