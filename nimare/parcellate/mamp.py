@@ -29,15 +29,16 @@ class MAMP(Estimator):
     -----
     MAMP works similarly to CBP, but skips the step of performing a MACM for
     each voxel. Here are the steps:
-        1.  Create an MA map for each study in the dataset.
-        2.  Concatenate MA maps across studies to create a 4D dataset.
-        3.  Extract values across studies for voxels in mask, resulting in
-            n_voxels X n_studies array.
-        4.  Correlate "study series" between voxels to generate n_voxels X
-            n_voxels correlation matrix.
-        5.  Convert correlation coefficients to correlation distance (1 -r)
-            values.
-        6.  Perform clustering on correlation distance matrix.
+
+    1.  Create an MA map for each study in the dataset.
+    2.  Concatenate MA maps across studies to create a 4D dataset.
+    3.  Extract values across studies for voxels in mask, resulting in
+        n_voxels X n_studies array.
+    4.  Correlate "study series" between voxels to generate n_voxels X
+        n_voxels correlation matrix.
+    5.  Convert correlation coefficients to correlation distance (1 -r)
+        values.
+    6.  Perform clustering on correlation distance matrix.
 
     Warnings
     --------
@@ -49,6 +50,7 @@ class MAMP(Estimator):
         brain using meta-analytic activation modeling-based parcellation."
         Neuroimage 124 (2016): 300-309.
         https://doi.org/10.1016/j.neuroimage.2015.08.027
+
     """
     def __init__(self, dataset, ids):
         self.mask = dataset.mask

@@ -59,7 +59,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
 
     1.  Compute
         :math:`p(v|t)`.
-            - From :obj:`gclda.model.Model.get_spatial_probs()`
+            - From :func:`gclda.model.Model.get_spatial_probs()`
     2.  Compute topic weight vector (:math:`\\tau_{t}`) by adding across voxels
         within ROI.
             - :math:`\\tau_{t} = \sum_{i} {p(t|v_{i})}`

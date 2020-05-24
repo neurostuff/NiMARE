@@ -36,18 +36,19 @@ class MAPBOT(Estimator):
     MAPBOT uses both the reported foci for studies, as well as associated term
     weights.
     Here are the steps:
-        1.  For each voxel in the mask, identify studies in dataset
-            corresponding to that voxel. Selection criteria can be either
-            based on a distance threshold (e.g., all studies with foci
-            within 5mm of voxel) or based on a minimum number of studies
-            (e.g., the 50 studies reporting foci closest to the voxel).
-        2.  For each voxel, compute average frequency of each term across
-            selected studies. This results in an n_voxels X n_terms frequency
-            matrix F.
-        3.  Compute n_voxels X n_voxels value matrix V:
-            - D = (F.T * F) * ones(F)
-            - V = F * D^-.5
-        4.  Perform non-negative matrix factorization on value matrix.
+
+    1.  For each voxel in the mask, identify studies in dataset
+        corresponding to that voxel. Selection criteria can be either
+        based on a distance threshold (e.g., all studies with foci
+        within 5mm of voxel) or based on a minimum number of studies
+        (e.g., the 50 studies reporting foci closest to the voxel).
+    2.  For each voxel, compute average frequency of each term across
+        selected studies. This results in an n_voxels X n_terms frequency
+        matrix F.
+    3.  Compute n_voxels X n_voxels value matrix V:
+        - D = (F.T * F) * ones(F)
+        - V = F * D^-.5
+    4.  Perform non-negative matrix factorization on value matrix.
 
     Warnings
     --------

@@ -264,7 +264,7 @@ class ALE(Estimator):
         Notes
         -----
         This method also adds the following arrays to the Estimator's null
-        distributions attribute (null_distributions_):
+        distributions attribute (``null_distributions_``):
         'fwe_level-voxel_method-montecarlo' and
         'fwe_level-cluster_method-montecarlo'.
 
