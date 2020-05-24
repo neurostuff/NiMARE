@@ -91,7 +91,8 @@ class ALE(Estimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_transformer.transform(self.dataset, mask=self.mask, masked=False)
+        ma_maps = self.kernel_transformer.transform(self.dataset, mask=self.mask,
+                                                    return_type='image')
         ale_values = self._compute_ale(ma_maps)
         self._compute_null(ma_maps)
         p_values, z_values = self._ale_to_p(ale_values)
@@ -109,7 +110,8 @@ class ALE(Estimator):
         Returns masked array of ALE values.
         """
         if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_transformer.transform(data, mask=self.mask, masked=True)
+            ma_values = self.kernel_transformer.transform(data, mask=self.mask,
+                                                          return_type='array')
         elif isinstance(data, list):
             ma_values = apply_mask(data, self.mask)
         elif isinstance(data, np.ndarray):
@@ -334,38 +336,37 @@ class ALE(Estimator):
         # Cluster-level FWE
         vthresh_z_map = unmask(vthresh_z_values, self.mask).get_fdata()
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
-        logp_cfwe_map = np.zeros(self.mask.shape)
+        p_cfwe_map = np.zeros(self.mask.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
-            logp_cfwe_map[clust_idx] = -np.log(
-                null_to_p(
-                    clust_size,
-                    self.null_distributions_['fwe_level-cluster_method-montecarlo'],
-                    'upper'
-                )
+            p_cfwe_map[clust_idx] = null_to_p(
+                clust_size,
+                self.null_distributions_['fwe_level-cluster_method-montecarlo'],
+                'upper'
             )
-        logp_cfwe_map[np.isinf(logp_cfwe_map)] = -np.log(np.finfo(float).eps)
-        logp_cfwe_map = apply_mask(nib.Nifti1Image(logp_cfwe_map, self.mask.affine),
-                                   self.mask)
+        p_cfwe_values = apply_mask(nib.Nifti1Image(p_cfwe_map, self.mask.affine), self.mask)
+        logp_cfwe_values = -np.log(p_cfwe_values)
+        logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log(np.finfo(float).eps)
+        z_cfwe_values = p_to_z(p_cfwe_values, tail='one')
 
         # Voxel-level FWE
-        p_fwe_values = np.zeros(ale_values.shape)
+        p_vfwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
-            p_fwe_values[voxel] = null_to_p(
+            p_vfwe_values[voxel] = null_to_p(
                 ale_values[voxel], self.null_distributions_['fwe_level-voxel_method-montecarlo'],
                 tail='upper')
 
-        z_fwe_values = p_to_z(p_fwe_values, tail='one')
-
-        logp_vfwe_values = -np.log(p_fwe_values)
+        z_vfwe_values = p_to_z(p_vfwe_values, tail='one')
+        logp_vfwe_values = -np.log(p_vfwe_values)
         logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log(np.finfo(float).eps)
 
         # Write out unthresholded value images
         images = {
             'logp_level-voxel': logp_vfwe_values,
-            'z_level-voxel': z_fwe_values,
-            'logp_level-cluster': logp_cfwe_map,
+            'z_level-voxel': z_vfwe_values,
+            'logp_level-cluster': logp_cfwe_values,
+            'z_level-cluster': z_cfwe_values,
         }
         return images
 
@@ -396,64 +397,71 @@ class ALESubtraction(Estimator):
     def __init__(self, n_iters=10000):
         self.n_iters = n_iters
 
-    def fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
-            ma_maps2=None):
+    def fit(self, meta1, meta2,
+            image1='logp_level-cluster_corr-FWE_method-montecarlo',
+            image2='logp_level-cluster_corr-FWE_method-montecarlo',
+            ma_maps1=None, ma_maps2=None, threshold=3.):
         """
         Run a subtraction analysis comparing two groups of experiments from
         separate meta-analyses.
 
         Parameters
         ----------
-        ale1/ale2 : :obj:`nimare.meta.cbma.ale.ALE`
-            Fitted ALE models for datasets to compare.
-        image1/image2 : img_like or array_like
-            Cluster-level FWE-corrected z-statistic maps associated with the
-            respective models.
+        meta1/meta2 : :obj:`nimare.meta.cbma.ale.ALE`
+            Fitted ALE Estimators for datasets to compare.
+        image1/image2 : img_like or array_like or :obj:`str`, optional
+            Statistical maps associated with the respective models, to be used
+            to define significant clusters for each dataset.
+            These maps may be either an image, an array, or a string.
+            If a string is provided, then the associated map will be grabbed
+            from the Estimator's results object.
+            Default is 'logp_level-cluster_corr-FWE_method-montecarlo'.
         ma_maps1 : (E x V) array_like or None, optional
             Experiments by voxels array of modeled activation
             values. If not provided, MA maps will be generated from dataset1.
         ma_maps2 : (E x V) array_like or None, optional
             Experiments by voxels array of modeled activation
             values. If not provided, MA maps will be generated from dataset2.
+        threshold : :obj:`float`, optional
+            Threshold to apply to the images to define significant clusters
+            for analysis. Default is 3.0, which is roughly equal to
+            ``-np.log(0.05)``.
 
         Returns
         -------
         :obj:`nimare.results.MetaResult`
             Results of ALE subtraction analysis.
         """
-        maps = self._fit(ale1, ale2, image1, image2, ma_maps1, ma_maps2)
-        self.results = MetaResult(self, ale1.mask, maps)
+        maps = self._fit(meta1, meta2, image1, image2, ma_maps1, ma_maps2, threshold)
+        self.results = MetaResult(self, meta1.mask, maps)
         return self.results
 
-    def _fit(self, ale1, ale2, image1=None, image2=None, ma_maps1=None,
-             ma_maps2=None):
-        assert np.array_equal(ale1.dataset.masker.mask_img.affine,
-                              ale2.dataset.masker.mask_img.affine)
-        self.mask = ale1.dataset.masker.mask_img
+    def _fit(self, meta1, meta2,
+             image1='logp_level-cluster_corr-FWE_method-montecarlo',
+             image2='logp_level-cluster_corr-FWE_method-montecarlo',
+             ma_maps1=None, ma_maps2=None, threshold=3.):
+        assert np.array_equal(meta1.dataset.masker.mask_img.affine,
+                              meta2.dataset.masker.mask_img.affine)
+        self.mask = meta1.dataset.masker.mask_img
 
-        if image1 is None:
-            LGR.info('Performing subtraction analysis with cluster-level '
-                     'FWE-corrected maps thresholded at p < 0.05.')
-            image1 = ale1.results.get_map(
-                'logp_level-cluster_corr-FWE_method-montecarlo',
-                return_type='array') >= np.log(0.05)
+        if isinstance(image1, str):
+            image1 = meta1.results.get_map(image1, return_type='array')
 
-        if image2 is None:
-            image2 = ale2.results.get_map(
-                'logp_level-cluster_corr-FWE_method-montecarlo',
-                return_type='array') >= np.log(0.05)
+        if isinstance(image2, str):
+            image2 = meta2.results.get_map(image2, return_type='array')
 
         if not isinstance(image1, np.ndarray):
             image1 = apply_mask(image1, self.mask)
             image2 = apply_mask(image2, self.mask)
-        grp1_voxel = image1 > 0
-        grp2_voxel = image2 > 0
+
+        grp1_voxel = image1 >= threshold
+        grp2_voxel = image2 >= threshold
 
         if ma_maps1 is None:
-            ma_maps1 = ale1.kernel_transformer.transform(ale1.dataset, masked=False)
+            ma_maps1 = meta1.kernel_transformer.transform(meta1.dataset, return_type='image')
 
         if ma_maps2 is None:
-            ma_maps2 = ale2.kernel_transformer.transform(ale2.dataset, masked=False)
+            ma_maps2 = meta2.kernel_transformer.transform(meta2.dataset, return_type='image')
 
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
@@ -477,7 +485,7 @@ class ALESubtraction(Estimator):
             grp2_ale_values *= (1. - grp2_ma_arr[i_exp, :])
         grp2_ale_values = 1 - grp2_ale_values
 
-        # A > B contrast
+        # Group 1 > Group 2 contrast
         grp1_p_arr = np.ones(np.sum(grp1_voxel))
         grp1_z_map = np.zeros(image1.shape[0])
         grp1_z_map[:] = np.nan
@@ -513,7 +521,7 @@ class ALESubtraction(Estimator):
             grp1_z_map[:] = np.nan
             grp1_z_map[grp1_voxel] = grp1_z_arr
 
-        # B > A contrast
+        # Group 2 > Group 1 contrast
         grp2_p_arr = np.ones(np.sum(grp2_voxel))
         grp2_z_map = np.zeros(image2.shape[0])
         grp2_z_map[:] = np.nan
@@ -554,7 +562,8 @@ class ALESubtraction(Estimator):
         # Fill in output map
         diff_z_map = np.zeros(image1.shape[0])
         diff_z_map[grp2_voxel] = -1 * grp2_z_map[grp2_voxel]
-        # could overwrite some values. not a problem.
+        # Could overwrite some values where both maps have significant voxels.
+        # Shouldn't be a problem.
         diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
 
         images = {
@@ -642,7 +651,7 @@ class SCALE(Estimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_transformer.transform(self.dataset, masked=False)
+        ma_maps = self.kernel_transformer.transform(self.dataset, return_type='image')
 
         max_poss_ale = 1.
         for ma_map in ma_maps:
@@ -695,7 +704,7 @@ class SCALE(Estimator):
         Returns masked array of ALE values and 1XnBins null distribution.
         """
         if df is not None:
-            ma_maps = self.kernel_transformer.transform(df, self.mask, masked=True)
+            ma_maps = self.kernel_transformer.transform(df, self.mask, return_type='array')
             ma_values = ma_maps
         else:
             assert ma_maps is not None

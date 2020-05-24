@@ -77,7 +77,7 @@ class MKDADensity(Estimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_values = self.kernel_transformer.transform(dataset, masked=True)
+        ma_values = self.kernel_transformer.transform(dataset, return_type='array')
 
         # Weight each SCM by square root of sample size
         ids_df = self.dataset.coordinates.groupby('id').first()
@@ -98,7 +98,7 @@ class MKDADensity(Estimator):
         of_values = np.sum(ma_values, axis=0)
 
         images = {
-            'of': of_values
+            'of': of_values,
         }
         return images
 
@@ -106,7 +106,8 @@ class MKDADensity(Estimator):
         iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask, masked=True)
+        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask,
+                                                         return_type='array')
         iter_ma_maps *= self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
@@ -295,8 +296,10 @@ class MKDAChi2(Estimator):
         self.dataset2 = dataset2
         self.mask = dataset.masker.mask_img
 
-        ma_maps1 = self.kernel_transformer.transform(self.dataset, mask=self.mask, masked=True)
-        ma_maps2 = self.kernel_transformer.transform(self.dataset2, mask=self.mask, masked=True)
+        ma_maps1 = self.kernel_transformer.transform(self.dataset, mask=self.mask,
+                                                     return_type='array')
+        ma_maps2 = self.kernel_transformer.transform(self.dataset2, mask=self.mask,
+                                                     return_type='array')
 
         # Calculate different count variables
         n_selected = ma_maps1.shape[0]
@@ -365,8 +368,10 @@ class MKDAChi2(Estimator):
         iter_df1[['i', 'j', 'k']] = iter_ijk1
         iter_df2[['i', 'j', 'k']] = iter_ijk2
 
-        temp_ma_maps1 = self.kernel_transformer.transform(iter_df1, self.mask, masked=True)
-        temp_ma_maps2 = self.kernel_transformer.transform(iter_df2, self.mask, masked=True)
+        temp_ma_maps1 = self.kernel_transformer.transform(iter_df1, self.mask,
+                                                          return_type='array')
+        temp_ma_maps2 = self.kernel_transformer.transform(iter_df2, self.mask,
+                                                          return_type='array')
 
         n_selected = temp_ma_maps1.shape[0]
         n_unselected = temp_ma_maps2.shape[0]
@@ -466,7 +471,8 @@ class MKDAChi2(Estimator):
                 perm_results.append(self._run_fwe_permutation(pp))
         else:
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
+                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params),
+                                         total=n_iters))
         pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
         # pAgF_FWE
@@ -615,7 +621,7 @@ class KDA(Estimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_transformer.transform(dataset, masked=True)
+        ma_maps = self.kernel_transformer.transform(dataset, return_type='array')
         of_values = np.sum(ma_maps, axis=0)
         images = {
             'of': of_values
@@ -626,7 +632,8 @@ class KDA(Estimator):
         iter_ijk, iter_df = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask, masked=True)
+        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask,
+                                                         return_type='array')
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         return iter_max_value

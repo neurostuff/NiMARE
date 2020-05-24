@@ -1,8 +1,8 @@
 """
 Automated annotation of Cognitive Paradigm Ontology labels.
 """
-from ...due import due
-from ... import references
+from ..due import due
+from .. import references
 
 
 @due.dcite(references.COGNITIVE_PARADIGM_ONTOLOGY,

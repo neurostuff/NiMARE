@@ -1,5 +1,5 @@
 """
-Test nimare.annotate.ontology.cogat (Cognitive Atlas extraction methods).
+Test nimare.annotate.gclda (GCLDA).
 """
 import os.path as op
 
@@ -23,7 +23,7 @@ def test_gclda():
         op.join(get_test_data_path(), 'neurosynth_laird_studies.pkl.gz'))
     counts_df = annotate.text.generate_counts(
         dset.texts, text_column='abstract', tfidf=False, min_df=1, max_df=1.)
-    model = annotate.topic.GCLDAModel(
+    model = annotate.gclda.GCLDAModel(
         counts_df, dset.coordinates, mask=dset.masker.mask_img)
     model.fit(n_iters=5, loglikely_freq=5)
     arr = np.zeros(dset.masker.mask_img.shape, int)

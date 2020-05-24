@@ -69,6 +69,12 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     5.  The resulting vector (``word_weights``) reflects arbitrarily scaled
         term weights for the input image.
 
+    See Also
+    --------
+    :class:`nimare.annotate.gclda.GCLDAModel`
+    :func:`nimare.decode.discrete.gclda_decode_roi`
+    :func:`nimare.decode.encode.gclda_encode`
+
     References
     ----------
     .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a

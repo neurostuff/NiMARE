@@ -40,14 +40,14 @@ print(rel_df.head())
 ###############################################################################
 # Extract Cognitive Atlas terms from text
 # ---------------------------------------
-counts_df, rep_text_df = annotate.ontology.cogat.extract_cogat(
+counts_df, rep_text_df = annotate.cogat.extract_cogat(
     dset.texts, id_df, text_column='abstract')
 
 ###############################################################################
 # Expand counts
 # -------------
 weights = {'isKindOf': 1, 'isPartOf': 1, 'inCategory': 1}
-expanded_df = annotate.ontology.cogat.expand_counts(counts_df, rel_df, weights)
+expanded_df = annotate.cogat.expand_counts(counts_df, rel_df, weights)
 # Sort by total count and reduce for better visualization
 series = expanded_df.sum(axis=0)
 series = series.sort_values(ascending=False)

@@ -1,5 +1,5 @@
 """
-Test nimare.annotate.ontology.cogat (Cognitive Atlas extraction methods).
+Test nimare.annotate.cogat (Cognitive Atlas extraction methods).
 """
 import os.path as op
 
@@ -23,7 +23,7 @@ def test_cogat():
     id_df = pd.read_csv(cogat['ids'])
     rel_df = pd.read_csv(cogat['relationships'])
     weights = {'isKindOf': 1, 'isPartOf': 1, 'inCategory': 1}
-    counts_df, rep_text_df = annotate.ontology.cogat.extract_cogat(
+    counts_df, rep_text_df = annotate.cogat.extract_cogat(
         ns_dset_laird.texts, id_df, text_column='abstract')
-    expanded_df = annotate.ontology.cogat.expand_counts(counts_df, rel_df, weights)
+    expanded_df = annotate.cogat.expand_counts(counts_df, rel_df, weights)
     assert isinstance(expanded_df, pd.DataFrame)
