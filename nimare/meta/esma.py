@@ -51,7 +51,13 @@ def fishers(z_maps, two_sided=True):
     z_map = p_to_z(p_map, tail='two') * sign
     log_p_map = -np.log10(p_map)
 
-    return dict(ffx_stat=ffx_stat_map, p=p_map, z=z_map, log_p=log_p_map)
+    images = {
+        'stat_desc-ffx': ffx_stat_map,
+        'p': p_map,
+        'z': z_map,
+        'logp': log_p_map,
+    }
+    return images
 
 
 @due.dcite(references.STOUFFERS, description='Stouffers citation.')
@@ -130,7 +136,7 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
         images = {'t': t_map,
                   'p': p_map,
                   'z': z_map,
-                  'log_p': log_p_map}
+                  'logp': log_p_map}
     elif inference == 'ffx':
         if null == 'theoretical':
             k = z_maps.shape[0]
@@ -149,7 +155,7 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
             log_p_map = -np.log10(p_map)
             images = {'z': z_map,
                       'p': p_map,
-                      'log_p': log_p_map}
+                      'logp': log_p_map}
         else:
             raise ValueError('Only theoretical null distribution may be used '
                              'for FFX Stouffers.')
@@ -196,10 +202,10 @@ def weighted_stouffers(z_maps, sample_sizes, two_sided=True):
     sign[sign == 0] = 1
     z_map = p_to_z(p_map, tail='two') * sign
     log_p_map = -np.log10(p_map)
-    images = {'ffx_stat': ffx_stat_map,
+    images = {'stat_desc-ffx': ffx_stat_map,
               'p': p_map,
               'z': z_map,
-              'log_p': log_p_map}
+              'logp': log_p_map}
     return images
 
 
@@ -272,5 +278,5 @@ def rfx_glm(con_maps, null='theoretical', n_iters=None, two_sided=True):
     images = {'t': t_map,
               'z': z_map,
               'p': p_map,
-              'log_p': log_p_map}
+              'logp': log_p_map}
     return images

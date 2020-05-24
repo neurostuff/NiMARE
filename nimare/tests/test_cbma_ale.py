@@ -5,7 +5,7 @@ import pytest
 
 import nimare
 from nimare.meta.cbma import ale
-from nimare.correct import FWECorrector
+from nimare.correct import FWECorrector, FDRCorrector
 
 
 def test_ale():
@@ -20,6 +20,9 @@ def test_ale():
     assert isinstance(cres, nimare.base.MetaResult)
     corr = FWECorrector(method='montecarlo', voxel_thresh=0.001,
                         n_iters=5, n_cores=1)
+    cres = corr.transform(meta.results)
+    assert isinstance(cres, nimare.base.MetaResult)
+    corr = FDRCorrector(method='indep', alpha=0.05)
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.base.MetaResult)
 

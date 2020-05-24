@@ -58,7 +58,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     1.  Compute :math:`p(t|v)`
         (``p_topic_g_voxel``).
-            - From :obj:`gclda.model.Model.get_spatial_probs()`
+            - From :func:`gclda.model.Model.get_spatial_probs()`
     2.  Squeeze input image to 1d array :math:`\omega` (``input_values``).
     3.  Compute topic weight vector (:math:`\\tau_{t}`) by multiplying
         :math:`p(t|v)` by input image.

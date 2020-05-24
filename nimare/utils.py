@@ -54,7 +54,7 @@ def get_template(space='mni152_1mm', mask=None):
             # this approach seems to approximate the 0.2 thresholded
             # GM mask pretty well
             temp_img = datasets.load_mni152_template()
-            data = temp_img.get_data()
+            data = temp_img.get_fdata()
             data = data * -1
             data[data != 0] += np.abs(np.min(data))
             data = (data > 1200).astype(int)
@@ -80,7 +80,7 @@ def get_masker(mask):
 
     Parameters
     ----------
-    mask : str, Nifti1nibabel.nifti1.Nifti1Image, or any nilearn Masker
+    mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
 
     Returns
     -------

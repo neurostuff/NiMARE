@@ -99,6 +99,22 @@ default_role = "autolink"
 pygments_style = 'sphinx'
 
 # -----------------------------------------------------------------------------
+# Napoleon settings
+# -----------------------------------------------------------------------------
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = False
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+napoleon_use_admonition_for_examples = False
+napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_references = False
+napoleon_use_ivar = True
+napoleon_use_param = False
+napoleon_use_keyword = True
+napoleon_use_rtype = False
+
+# -----------------------------------------------------------------------------
 # HTML output
 # -----------------------------------------------------------------------------
 # The theme to use for HTML and HTML Help pages.  See the documentation for
@@ -115,18 +131,22 @@ html_theme = 'sphinx_rtd_theme'
 # documentation.
 #
 # html_theme_options = {}
-html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'searchbox.html', 'indexsidebar.html'] }
+html_sidebars = {
+    '**': ['globaltoc.html', 'relations.html', 'searchbox.html', 'indexsidebar.html']
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+
 # https://github.com/rtfd/sphinx_rtd_theme/issues/117
 def setup(app):
     app.add_stylesheet('theme_overrides.css')
     app.add_stylesheet('nimare.css')
     app.connect('autodoc-process-docstring', generate_example_rst)
+
 
 html_favicon = '_static/nimare_favicon.png'
 html_logo = '_static/nimare_banner.png'
@@ -159,6 +179,7 @@ intersphinx_mapping = {
     'matplotlib': ('https://matplotlib.org/',
                    (None, 'https://matplotlib.org/objects.inv')),
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
+    'nibabel': ('https://nipy.org/nibabel/', None),
 }
 
 # -----------------------------------------------------------------------------
@@ -166,21 +187,21 @@ intersphinx_mapping = {
 # -----------------------------------------------------------------------------
 sphinx_gallery_conf = {
     # path to your examples scripts
-    'examples_dirs'     : '../examples',
+    'examples_dirs': '../examples',
     # path where to save gallery generated examples
-    'gallery_dirs'      : 'auto_examples',
+    'gallery_dirs': 'auto_examples',
     'backreferences_dir': 'generated',
     # Modules for which function level galleries are created.  In
     # this case sphinx_gallery and numpy in a tuple of strings.
-    'doc_module'        : ('nimare'),
-    'ignore_patterns'   : ['utils/'],
+    'doc_module': ('nimare'),
+    'ignore_patterns': ['utils/'],
     'reference_url': {
-         # The module you locally document uses None
+        # The module you locally document uses None
         'nimare': None,
         'matplotlib': 'https://matplotlib.org/',
         'numpy': 'http://docs.scipy.org/doc/numpy/',
     },
-    }
+}
 
 # Generate the plots for the gallery
 plot_gallery = 'True'
@@ -196,6 +217,7 @@ texinfo_documents = [
    u'Vighnesh Birodkar', 'project-template', 'One line description of project.',
    'Miscellaneous'),
 ]
+
 
 def generate_example_rst(app, what, name, obj, options, lines):
     # generate empty examples files, so that we don't get

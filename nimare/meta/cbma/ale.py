@@ -44,6 +44,13 @@ class ALE(Estimator):
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
+    Attributes
+    ----------
+    null_distributions_ : :obj:`dict` or :class:`numpy.ndarray`
+        Null distributions for ALE and any multiple-comparisons correction
+        methods. Entries are added to this attribute if and when the
+        corresponding method is fit.
+
     Notes
     -----
     The ALE algorithm was originally developed in [1]_, then updated in [2]_
@@ -78,7 +85,7 @@ class ALE(Estimator):
 
         self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
-        self.null_distributions = {}
+        self.null_distributions_ = {}
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -133,11 +140,11 @@ class ALE(Estimator):
             max_poss_ale *= (1 - np.max(ma_values[i, :]))
         max_poss_ale = 1 - max_poss_ale
 
-        self.null_distributions['histogram_bins'] = np.round(
+        self.null_distributions_['histogram_bins'] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
 
         ma_hists = np.zeros((ma_values.shape[0],
-                             self.null_distributions['histogram_bins'].shape[0]))
+                             self.null_distributions_['histogram_bins'].shape[0]))
         for i in range(ma_values.shape[0]):
             # Remember that histogram uses bin edges (not centers), so it
             # returns a 1xhist_bins-1 array
@@ -145,11 +152,11 @@ class ALE(Estimator):
             reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
             ma_hists[i, 0] = n_zeros
             ma_hists[i, 1:] = np.histogram(a=reduced_ma_values,
-                                           bins=self.null_distributions['histogram_bins'],
+                                           bins=self.null_distributions_['histogram_bins'],
                                            density=False)[0]
 
         # Inverse of step size in histBins (0.0001) = 10000
-        step = 1 / np.mean(np.diff(self.null_distributions['histogram_bins']))
+        step = 1 / np.mean(np.diff(self.null_distributions_['histogram_bins']))
 
         # Null distribution to convert ALE to p-values.
         ale_hist = ma_hists[0, :]
@@ -166,15 +173,15 @@ class ALE(Estimator):
             ma_hist /= np.sum(ma_hist)
 
             # Perform weighted convolution of histograms.
-            ale_hist = np.zeros(self.null_distributions['histogram_bins'].shape[0])
+            ale_hist = np.zeros(self.null_distributions_['histogram_bins'].shape[0])
             for j_idx in exp_idx:
                 # Compute probabilities of observing each ALE value in histBins
                 # by randomly combining maps represented by maHist and aleHist.
                 # Add observed probabilities to corresponding bins in ALE
                 # histogram.
                 probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - self.null_distributions['histogram_bins'][j_idx]) *\
-                    (1 - self.null_distributions['histogram_bins'][ale_idx])
+                ale_scores = 1 - (1 - self.null_distributions_['histogram_bins'][j_idx]) *\
+                    (1 - self.null_distributions_['histogram_bins'][ale_idx])
                 score_idx = np.floor(ale_scores * step).astype(int)
                 np.add.at(ale_hist, score_idx, probabilities)
 
@@ -184,20 +191,20 @@ class ALE(Estimator):
         null_distribution = ale_hist / np.sum(ale_hist)
         null_distribution = np.cumsum(null_distribution[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
-        self.null_distributions['histogram_weights'] = null_distribution
+        self.null_distributions_['histogram_weights'] = null_distribution
 
     def _ale_to_p(self, ale_values):
         """
         Compute p- and z-values.
         """
-        step = 1 / np.mean(np.diff(self.null_distributions['histogram_bins']))
+        step = 1 / np.mean(np.diff(self.null_distributions_['histogram_bins']))
 
         # Determine p- and z-values from ALE values and null distribution.
         p_values = np.ones(ale_values.shape)
 
         idx = np.where(ale_values > 0)[0]
         ale_bins = round2(ale_values[idx] * step)
-        p_values[idx] = self.null_distributions['histogram_weights'][ale_bins]
+        p_values[idx] = self.null_distributions_['histogram_weights'][ale_bins]
         z_values = p_to_z(p_values, tail='one')
         return p_values, z_values
 
@@ -216,7 +223,7 @@ class ALE(Estimator):
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
         iter_z_map = unmask(z_values, self.mask)
-        vthresh_iter_z_map = iter_z_map.get_data()
+        vthresh_iter_z_map = iter_z_map.get_fdata()
         vthresh_iter_z_map[vthresh_iter_z_map < z_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(vthresh_iter_z_map, conn)[0]
@@ -257,8 +264,9 @@ class ALE(Estimator):
         Notes
         -----
         This method also adds the following arrays to the Estimator's null
-        distributions attribute (null_distributions):
-        'fwe_level-voxel' and 'fwe_level-cluster'.
+        distributions attribute (``null_distributions_``):
+        'fwe_level-voxel_method-montecarlo' and
+        'fwe_level-cluster_method-montecarlo'.
 
         See Also
         --------
@@ -274,7 +282,7 @@ class ALE(Estimator):
         """
         z_values = result.get_map('z', return_type='array')
         ale_values = result.get_map('ale', return_type='array')
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -320,18 +328,23 @@ class ALE(Estimator):
                 perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params),
                                          total=n_iters))
 
-        (self.null_distributions['fwe_level-voxel'],
-         self.null_distributions['fwe_level-cluster']) = zip(*perm_results)
+        (self.null_distributions_['fwe_level-voxel_method-montecarlo'],
+         self.null_distributions_['fwe_level-cluster_method-montecarlo']) = zip(*perm_results)
 
         # Cluster-level FWE
-        vthresh_z_map = unmask(vthresh_z_values, self.mask).get_data()
+        vthresh_z_map = unmask(vthresh_z_values, self.mask).get_fdata()
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
         logp_cfwe_map = np.zeros(self.mask.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
-            logp_cfwe_map[clust_idx] = -np.log(null_to_p(
-                clust_size, self.null_distributions['fwe_level-cluster'], 'upper'))
+            logp_cfwe_map[clust_idx] = -np.log(
+                null_to_p(
+                    clust_size,
+                    self.null_distributions_['fwe_level-cluster_method-montecarlo'],
+                    'upper'
+                )
+            )
         logp_cfwe_map[np.isinf(logp_cfwe_map)] = -np.log(np.finfo(float).eps)
         logp_cfwe_map = apply_mask(nib.Nifti1Image(logp_cfwe_map, self.mask.affine),
                                    self.mask)
@@ -340,7 +353,7 @@ class ALE(Estimator):
         p_fwe_values = np.zeros(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
             p_fwe_values[voxel] = null_to_p(
-                ale_values[voxel], self.null_distributions['fwe_level-voxel'],
+                ale_values[voxel], self.null_distributions_['fwe_level-voxel_method-montecarlo'],
                 tail='upper')
 
         z_fwe_values = p_to_z(p_fwe_values, tail='one')
@@ -350,7 +363,6 @@ class ALE(Estimator):
 
         # Write out unthresholded value images
         images = {
-            'z_vthresh': vthresh_z_values,
             'logp_level-voxel': logp_vfwe_values,
             'z_level-voxel': z_fwe_values,
             'logp_level-cluster': logp_cfwe_map,
@@ -545,7 +557,9 @@ class ALESubtraction(Estimator):
         # could overwrite some values. not a problem.
         diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
 
-        images = {'grp1-grp2_z': diff_z_map}
+        images = {
+            'z_desc-group1MinusGroup2': diff_z_map
+        }
         return images
 
 
@@ -655,24 +669,22 @@ class SCALE(Estimator):
                 perm_scale_values.append(self._run_permutation(pp))
         else:
             with mp.Pool(self.n_cores) as p:
-                perm_scale_values = list(tqdm(p.imap(self._run_permutation, params), total=self.n_iters))
+                perm_scale_values = list(tqdm(p.imap(self._run_permutation, params),
+                                              total=self.n_iters))
 
         perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(ale_values, perm_scale_values,
                                               hist_bins)
-
-        # Begin cluster-extent thresholding by thresholding matrix at cluster-
-        # defining voxel-level threshold
-        z_thresh = p_to_z(self.voxel_thresh, tail='one')
-        vthresh_z_values = z_values.copy()
-        vthresh_z_values[vthresh_z_values < z_thresh] = 0
+        logp_values = -np.log(p_values)
+        logp_values[np.isinf(logp_values)] = -np.log(np.finfo(float).eps)
 
         # Write out unthresholded value images
-        images = {'ale': ale_values,
-                  'p': p_values,
-                  'z': z_values,
-                  'z_vthresh': vthresh_z_values}
+        images = {
+            'ale': ale_values,
+            'logp': logp_values,
+            'z': z_values,
+        }
         return images
 
     def _compute_ale(self, df=None, ma_maps=None):
