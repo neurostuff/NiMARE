@@ -39,7 +39,6 @@ API
    meta.cbma.kernel
    meta.cbma.ale
    meta.cbma.mkda
-   meta.cbma.model
 
 .. _api_results_ref:
 

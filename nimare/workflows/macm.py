@@ -8,6 +8,7 @@ from shutil import copyfile
 
 from ..dataset import Dataset
 from ..meta.cbma import ALE
+from ..correct import FWECorrector
 
 LGR = logging.getLogger(__name__)
 
@@ -20,13 +21,12 @@ def macm_workflow(dataset_file, mask_file, output_dir=None, prefix=None,
     LGR.info('Loading coordinates...')
     dset = Dataset(dataset_file)
     sel_ids = dset.get_studies_by_mask(mask_file)
+    sel_dset = dset.slice(sel_ids)
 
     # override sample size
     n_subs_db = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
-    sel_coords = dset.coordinates.loc[dset.coordinates['id'].isin(sel_ids)]
-    n_subs_sel = sel_coords.drop_duplicates('id')['n'].astype(float).astype(int).sum()
-    LGR.info('{0} studies selected out of {1}.'.format(len(sel_ids),
-                                                       len(dset.ids)))
+    n_subs_sel = sel_dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
+    LGR.info('{0} studies selected out of {1}.'.format(len(sel_ids), len(dset.ids)))
 
     boilerplate = """
 Meta-analytic connectivity modeling (MACM; Laird et al., 2009; Robinson et al.,
@@ -98,19 +98,20 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
     """
 
-    ale = ALE(dset)
-
     LGR.info('Performing meta-analysis...')
-    ale.fit(n_iters=n_iters, ids=sel_ids, voxel_thresh=v_thr, corr='FWE',
-            n_cores=n_cores)
+    ale = ALE()
+    results = ale.fit(dset)
+    corr = FWECorrector(method='montecarlo', n_iters=n_iters,
+                        voxel_thresh=v_thr, n_cores=n_cores)
+    cres = corr.transform(results)
 
     boilerplate = boilerplate.format(
         n_exps_db=len(dset.ids),
         n_subs_db=n_subs_db,
         n_foci_db=dset.coordinates.shape[0],
-        n_exps_sel=len(sel_ids),
+        n_exps_sel=len(sel_dset.ids),
         n_subs_sel=n_subs_sel,
-        n_foci_sel=sel_coords.shape[0],
+        n_foci_sel=sel_dset.coordinates.shape[0],
         unc=v_thr,
         n_iters=n_iters)
 
@@ -125,7 +126,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         prefix += '_'
 
     LGR.info('Saving output maps...')
-    ale.results.save_maps(output_dir=output_dir, prefix=prefix)
+    cres.save_maps(output_dir=output_dir, prefix=prefix)
     copyfile(dataset_file, os.path.join(output_dir, prefix + 'input_dataset.json'))
     LGR.info('Workflow completed.')
     LGR.info(boilerplate)
