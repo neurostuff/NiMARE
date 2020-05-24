@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 
-from nilearn.image import resample_to_img
+from nilearn.image import resample_to_img, math_img
 from nilearn.masking import apply_mask
 from .utils import compute_ma, get_ale_kernel, peaks2maps
 from ...utils import vox2mm, get_masker
@@ -311,9 +311,8 @@ class Peaks2MapsKernel(KernelTransformer):
 
         Parameters
         ----------
-        ids : :obj:`list`
-            A list of Contrast IDs for which to generate modeled activation
-            images.
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset for which to make images.
         mask : img_like, optional
             Only used if dataset is a DataFrame.
         return_type : {'image', 'array'}, optional
@@ -346,18 +345,21 @@ class Peaks2MapsKernel(KernelTransformer):
         imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
 
         if self.resample_to_mask:
+            mask = dataset.masker.mask_img
             resampled_imgs = []
             for img in imgs:
-                resampled_imgs.append(resample_to_img(img, dataset.masker.mask_img))
+                resampled_imgs.append(resample_to_img(img, mask))
             imgs = resampled_imgs
+        else:
+            # Resample mask to data instead of data to mask
+            mask = resample_to_img(dataset.masker.mask_img,
+                                   imgs[0], interpolation='nearest')
 
         if return_type == 'array':
-            if not self.resample_to_mask:
-                mask = resample_to_img(dataset.masker.mask_img,
-                                       imgs[0], interpolation='nearest')
-            else:
-                mask = dataset.masker.mask_img
-
             imgs = apply_mask(imgs, mask)
-
+        else:
+            masked_images = []
+            for img in imgs:
+                masked_images.append(math_img('map*mask', map=img, mask=mask))
+            imgs = masked_images
         return imgs
