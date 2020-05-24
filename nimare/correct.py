@@ -121,7 +121,6 @@ class Corrector(metaclass=ABCMeta):
         pass
 
 
-
 class FWECorrector(Corrector):
     """
     Perform family-wise error rate correction on a meta-analysis.
