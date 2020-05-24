@@ -397,7 +397,7 @@ class ALESubtraction(Estimator):
     def __init__(self, n_iters=10000):
         self.n_iters = n_iters
 
-    def fit(self, meta1, meta2, ,
+    def fit(self, meta1, meta2,
             image1='logp_level-cluster_corr-FWE_method-montecarlo',
             image2='logp_level-cluster_corr-FWE_method-montecarlo',
             ma_maps1=None, ma_maps2=None, threshold=3.):
