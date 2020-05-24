@@ -198,8 +198,6 @@ sphinx_gallery_conf = {
     'reference_url': {
         # The module you locally document uses None
         'nimare': None,
-        'matplotlib': 'https://matplotlib.org/',
-        'numpy': 'http://docs.scipy.org/doc/numpy/',
     },
 }
 
