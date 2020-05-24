@@ -18,10 +18,19 @@ from ...utils import vox2mm, get_masker
 from ...base import Transformer
 
 
-__all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
+class KernelTransformer(Transformer):
+    """Base class for modeled activation-generating methods.
+
+    Coordinate-based meta-analyses leverage coordinates reported in
+    neuroimaging papers to simulate the thresholded statistical maps from the
+    original analyses. This generally involves convolving each coordinate with
+    a kernel (typically a Gaussian or binary sphere) that may be weighted based
+    on some additional measure, such as statistic value or sample size.
+    """
+    pass
 
 
-class ALEKernel(Transformer):
+class ALEKernel(KernelTransformer):
     """
     Generate ALE modeled activation images from coordinates and sample size.
 
@@ -112,7 +121,7 @@ class ALEKernel(Transformer):
         return imgs
 
 
-class MKDAKernel(Transformer):
+class MKDAKernel(KernelTransformer):
     """
     Generate MKDA modeled activation images from coordinates.
 
@@ -189,7 +198,7 @@ class MKDAKernel(Transformer):
         return imgs
 
 
-class KDAKernel(Transformer):
+class KDAKernel(KernelTransformer):
     """
     Generate KDA modeled activation images from coordinates.
 
@@ -265,7 +274,7 @@ class KDAKernel(Transformer):
         return imgs
 
 
-class Peaks2MapsKernel(Transformer):
+class Peaks2MapsKernel(KernelTransformer):
     """
     Generate peaks2maps modeled activation images from coordinates.
     """
