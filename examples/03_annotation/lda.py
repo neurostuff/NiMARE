@@ -37,7 +37,7 @@ mallet_dir = nimare.extract.download_mallet()
 # Run model
 # ---------
 # This may take some time, so we won't run it in the gallery.
-model = annotate.topic.LDAModel(dset.texts, text_column='abstract', n_iters=5)
+model = annotate.lda.LDAModel(dset.texts, text_column='abstract', n_iters=5)
 model.fit()
 model.save('lda_model.pkl.gz')
 

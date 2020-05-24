@@ -1,9 +1,9 @@
 """
 GloVe model-based annotation.
 """
-from ...base import NiMAREBase
-from ...due import due
-from ... import references
+from ..base import NiMAREBase
+from ..due import due
+from .. import references
 
 
 @due.dcite(references.WORD2BRAIN)

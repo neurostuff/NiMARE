@@ -53,7 +53,7 @@ counts_df = annotate.text.generate_counts(
 # 13 studies in the dataset.
 # If the number of topics is higher than the number of studies in the dataset,
 # errors can occur during training.
-model = annotate.topic.GCLDAModel(
+model = annotate.gclda.GCLDAModel(
     counts_df, dset.coordinates, mask=dset.masker.mask_img, n_topics=10)
 model.fit(n_iters=100, loglikely_freq=5)
 model.save('gclda_model.pkl.gz')

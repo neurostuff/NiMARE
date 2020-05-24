@@ -8,10 +8,10 @@ import numpy as np
 import pandas as pd
 
 from . import utils
-from ...utils import uk_to_us
-from ...due import due
-from ... import references
-from ...extract import download_cognitive_atlas
+from ..utils import uk_to_us
+from ..due import due
+from .. import references
+from ..extract import download_cognitive_atlas
 
 LGR = logging.getLogger(__name__)
 

@@ -10,10 +10,10 @@ import subprocess
 import numpy as np
 import pandas as pd
 
-from ...base import NiMAREBase
-from ...due import due
-from ... import references
-from ...extract import download_mallet, utils
+from ..base import NiMAREBase
+from ..due import due
+from .. import references
+from ..extract import download_mallet, utils
 
 LGR = logging.getLogger(__name__)
 

@@ -3,12 +3,11 @@ Automated annotation tools
 """
 import warnings
 
-from . import topic
-from . import vector
-from . import ontology
-from . import text
+from . import (boltzmann, cogat, cogpo, gclda, lda, text, text2brain, utils,
+               word2brain)
 
-__all__ = ['text', 'topic', 'vector', 'ontology']
+__all__ = ['boltzmann', 'cogat', 'cogpo', 'gclda', 'lda', 'text', 'text2brain',
+           'utils', 'word2brain']
 
 warnings.simplefilter('default')
 

@@ -1,9 +1,9 @@
 """
 Generate a Text2Brain vector model.
 """
-from ...base import NiMAREBase
-from ...due import due
-from ... import references
+from ..base import NiMAREBase
+from ..due import due
+from .. import references
 
 
 @due.dcite(references.TEXT2BRAIN)

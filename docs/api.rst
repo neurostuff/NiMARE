@@ -93,14 +93,14 @@ API
    :toctree: generated/
    :template: module.rst
 
-   annotate.ontology.cogat
-   annotate.ontology.cogpo
-   annotate.ontology.utils
-   annotate.topic.boltzmann
-   annotate.topic.gclda
-   annotate.topic.lda
-   annotate.vector.text2brain
-   annotate.vector.word2brain
+   annotate.cogat
+   annotate.cogpo
+   annotate.utils
+   annotate.boltzmann
+   annotate.gclda
+   annotate.lda
+   annotate.text2brain
+   annotate.word2brain
    annotate.text
 
 

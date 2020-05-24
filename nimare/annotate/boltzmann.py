@@ -1,9 +1,9 @@
 """
 Topic modeling with deep Boltzmann machines.
 """
-from ...base import NiMAREBase
-from ...due import due
-from ... import references
+from ..base import NiMAREBase
+from ..due import due
+from .. import references
 
 
 @due.dcite(references.BOLTZMANNMODEL)
