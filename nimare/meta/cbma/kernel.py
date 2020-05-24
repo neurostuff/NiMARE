@@ -21,19 +21,7 @@ from ...base import Transformer
 __all__ = ['ALEKernel', 'MKDAKernel', 'KDAKernel', 'Peaks2MapsKernel']
 
 
-class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods.
-
-    Coordinate-based meta-analyses leverage coordinates reported in
-    neuroimaging papers to simulate the thresholded statistical maps from the
-    original analyses. This generally involves convolving each coordinate with
-    a kernel (typically a Gaussian or binary sphere) that may be weighted based
-    on some additional measure, such as statistic value or sample size.
-    """
-    pass
-
-
-class ALEKernel(KernelTransformer):
+class ALEKernel(Transformer):
     """
     Generate ALE modeled activation images from coordinates and sample size.
 
@@ -124,7 +112,7 @@ class ALEKernel(KernelTransformer):
         return imgs
 
 
-class MKDAKernel(KernelTransformer):
+class MKDAKernel(Transformer):
     """
     Generate MKDA modeled activation images from coordinates.
 
@@ -201,7 +189,7 @@ class MKDAKernel(KernelTransformer):
         return imgs
 
 
-class KDAKernel(KernelTransformer):
+class KDAKernel(Transformer):
     """
     Generate KDA modeled activation images from coordinates.
 
@@ -277,7 +265,7 @@ class KDAKernel(KernelTransformer):
         return imgs
 
 
-class Peaks2MapsKernel(KernelTransformer):
+class Peaks2MapsKernel(Transformer):
     """
     Generate peaks2maps modeled activation images from coordinates.
     """
