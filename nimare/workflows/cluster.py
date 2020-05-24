@@ -10,6 +10,7 @@ from sklearn.metrics import silhouette_score
 
 from ..due import due
 from .. import references
+from ..dataset import Dataset
 from ..meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
 from ..io import convert_sleuth_to_dataset
 
@@ -43,18 +44,14 @@ def meta_cluster_workflow(dataset_file, output_dir=None, output_prefix=None,
                 if r > 0.0:
                     sigma += r * (log(r / p, 2) + log(r / q, 2))
         return abs(sigma)
-    # template_file = get_template(space='mni152_1mm', mask=None)
+
     if dataset_file.endswith('.json'):
-        db = dataset_file  # how do I read in a generic dataset_file file? do I need options for source type?
-        ids = db.ids
-        dset = db.get_dataset(ids, target='mni152_2mm')
+        dset = Dataset(dataset_file, target='mni152_2mm')
     elif dataset_file.endswith('.txt'):
-        db = convert_sleuth_to_dataset(dataset_file)
-        dset = db.get_dataset(target='mni152_2mm')
+        dset = convert_sleuth_to_dataset(dataset_file, target='mni152_2mm')
     else:
-        raise ValueError("You've provided a dataset file that metacluster "
-                         "can't read. :(")
-    # imgs = dset.images
+        dset = Dataset.load(dataset_file)
+
     if coord:
         if kernel == 'ALEKernel':
             kern = ALEKernel(dset.coordinates, 'template_img')

@@ -24,7 +24,7 @@ def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000
 
     LGR.info('Reconstructing unthresholded maps...')
     k = Peaks2MapsKernel(resample_to_mask=False)
-    imgs = k.transform(dset, masked=False)
+    imgs = k.transform(dset, return_type='image')
 
     mask_img = resample_to_img(dset.mask, imgs[0], interpolation='nearest')
     z_data = apply_mask(imgs, mask_img)
