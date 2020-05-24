@@ -93,6 +93,12 @@ def gclda_encode(model, text, out_file=None, topic_priors=None,
         voxel weights for the input text.
     9.  Unmask and reshape ``voxel_weights`` into brain image.
 
+    See Also
+    --------
+    :class:`nimare.annotate.gclda.GCLDAModel`
+    :func:`nimare.decode.continuous.gclda_decode_map`
+    :func:`nimare.decode.discrete.gclda_decode_roi`
+
     References
     ----------
     .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
