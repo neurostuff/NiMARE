@@ -193,7 +193,7 @@ class Dataset(NiMAREBase):
         Load coordinates in Dataset into DataFrame.
         """
         # Required columns
-        columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'n', 'space']
+        columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'space']
         core_columns = columns[:]  # Used in contrast for loop
 
         all_dfs = []
@@ -209,23 +209,12 @@ class Dataset(NiMAREBase):
                 n_coords = len(exp['coords']['x'])
                 rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
 
-                # collect sample size if available
-                sample_size = exp['metadata'].get('sample_sizes', np.nan)
-                if not isinstance(sample_size, list):
-                    sample_size = [sample_size]
-                sample_size = np.array([n for n in sample_size if n])
-                if len(sample_size):
-                    sample_size = np.mean(sample_size)
-                    sample_size = np.array([sample_size] * n_coords)
-                else:
-                    sample_size = np.array([np.nan] * n_coords)
                 space = exp['coords'].get('space')
                 space = np.array([space] * n_coords)
                 temp_data = np.vstack((rep_id,
                                        np.array(exp['coords']['x']),
                                        np.array(exp['coords']['y']),
                                        np.array(exp['coords']['z']),
-                                       sample_size,
                                        space))
 
                 # Optional information
