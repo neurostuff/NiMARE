@@ -7,13 +7,13 @@ from sklearn.decomposition import NMF
 from scipy.spatial.distance import cdist
 from nilearn.masking import apply_mask, unmask
 
-from .base import Parcellator
+from ..base import Estimator
 from ..due import due
 from .. import references
 
 
 @due.dcite(references.MAPBOT, description='Introduces the MAPBOT algorithm.')
-class MAPBOT(Parcellator):
+class MAPBOT(Estimator):
     """
     Meta-analytic parcellation based on text (MAPBOT) [1]_.
 
@@ -36,18 +36,19 @@ class MAPBOT(Parcellator):
     MAPBOT uses both the reported foci for studies, as well as associated term
     weights.
     Here are the steps:
-        1.  For each voxel in the mask, identify studies in dataset
-            corresponding to that voxel. Selection criteria can be either
-            based on a distance threshold (e.g., all studies with foci
-            within 5mm of voxel) or based on a minimum number of studies
-            (e.g., the 50 studies reporting foci closest to the voxel).
-        2.  For each voxel, compute average frequency of each term across
-            selected studies. This results in an n_voxels X n_terms frequency
-            matrix F.
-        3.  Compute n_voxels X n_voxels value matrix V:
-            - D = (F.T * F) * ones(F)
-            - V = F * D^-.5
-        4.  Perform non-negative matrix factorization on value matrix.
+
+    1.  For each voxel in the mask, identify studies in dataset
+        corresponding to that voxel. Selection criteria can be either
+        based on a distance threshold (e.g., all studies with foci
+        within 5mm of voxel) or based on a minimum number of studies
+        (e.g., the 50 studies reporting foci closest to the voxel).
+    2.  For each voxel, compute average frequency of each term across
+        selected studies. This results in an n_voxels X n_terms frequency
+        matrix F.
+    3.  Compute n_voxels X n_voxels value matrix V:
+        - D = (F.T * F) * ones(F)
+        - V = F * D^-.5
+    4.  Perform non-negative matrix factorization on value matrix.
 
     Warnings
     --------
@@ -84,7 +85,7 @@ class MAPBOT(Parcellator):
         # Step 1: Build correlation matrix
         target_data = apply_mask(target_mask, self.mask)
         target_map = unmask(target_data, self.mask)
-        target_data = target_map.get_data()
+        target_data = target_map.get_fdata()
         mask_idx = np.vstack(np.where(target_data))
         n_voxels = mask_idx.shape[1]
         voxel_arr = np.zeros((n_voxels, np.sum(self.mask)))

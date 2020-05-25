@@ -1,13 +1,13 @@
 """
 Topic modeling with deep Boltzmann machines.
 """
-from ..base import AnnotationModel
-from ...due import due
-from ... import references
+from ..base import NiMAREBase
+from ..due import due
+from .. import references
 
 
 @due.dcite(references.BOLTZMANNMODEL)
-class BoltzmannModel(AnnotationModel):
+class BoltzmannModel(NiMAREBase):
     """
     Generate a deep Boltzmann machine topic model [1]_.
 

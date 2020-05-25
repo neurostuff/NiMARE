@@ -83,7 +83,7 @@ class Dataset(NiMAREBase):
         Returns
         -------
         new_dset : :obj:`nimare.dataset.Dataset`
-            Redcued Dataset containing only requested studies.
+            Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
         new_dset.ids = ids
@@ -527,7 +527,7 @@ class Dataset(NiMAREBase):
         elif not isinstance(labels, list):
             raise ValueError('Argument "labels" cannot be {0}'.format(type(labels)))
 
-        found_labels = [l for l in labels if l in self.annotations.columns]
+        found_labels = [label for label in labels if label in self.annotations.columns]
         temp_annotations = self.annotations[self._id_cols + found_labels]
         found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
         if any(found_rows):
@@ -558,7 +558,7 @@ class Dataset(NiMAREBase):
         if not np.array_equal(curr_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
             mask = resample_to_img(mask, curr_mask)
-        mask_ijk = np.vstack(np.where(mask.get_data())).T
+        mask_ijk = np.vstack(np.where(mask.get_fdata())).T
         distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
         distances = np.any(distances == 0, axis=0)
         found_ids = list(self.coordinates.loc[distances, 'id'].unique())
@@ -583,6 +583,7 @@ class Dataset(NiMAREBase):
             radius r of requested coordinates.
         """
         from scipy.spatial.distance import cdist
+        xyz = np.array(xyz)
         assert xyz.shape[1] == 3 and xyz.ndim == 2
         distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
         distances = np.any(distances <= r, axis=0)

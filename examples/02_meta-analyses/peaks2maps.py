@@ -14,8 +14,6 @@
 # --------------------------------
 import os
 
-import numpy as np
-import matplotlib.pyplot as plt
 from nilearn.plotting import plot_glass_brain
 
 import nimare

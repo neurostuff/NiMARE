@@ -64,7 +64,8 @@ def model_fn(features, labels, mode, params):
 
     for out_channels, dropout in layer_specs:
         with tf.variable_scope("encoder_%d" % (len(layers) + 1)):
-            # [batch, in_height, in_width, in_channels] => [batch, in_height/2, in_width/2, out_channels]
+            # [batch, in_height, in_width, in_channels] => [batch, in_height/2, in_width/2,
+            # out_channels]
             convolved = pad_and_conv(layers[-1], out_channels, conv_args)
             output = tf.layers.batch_normalization(convolved, **batchnorm_args)
             if dropout > 0.0:

@@ -26,8 +26,10 @@ def scale_workflow(dataset_file, baseline, output_dir=None, prefix=None,
     """
     if dataset_file.endswith('.json'):
         dset = Dataset(dataset_file, target='mni152_2mm')
-    if dataset_file.endswith('.txt'):
+    elif dataset_file.endswith('.txt'):
         dset = convert_sleuth_to_dataset(dataset_file, target='mni152_2mm')
+    else:
+        dset = Dataset.load(dataset_file)
 
     boilerplate = """
 A specific coactivation likelihood estimation (SCALE; Langner et al., 2014)
@@ -53,12 +55,12 @@ rates. NeuroImage, 99, 559-570.
     # indices matching the dataset template, where the base rate for a given
     # voxel is reflected by the number of times that voxel appears in the array
     if not baseline:
-        ijk = np.vstack(np.where(dset.mask.get_data())).T
+        ijk = np.vstack(np.where(dset.mask.get_fdata())).T
     else:
         ijk = np.loadtxt(baseline)
 
-    estimator = SCALE(dset, ijk=ijk, n_iters=n_iters)
-    estimator.fit(dset.ids, voxel_thresh=v_thr, n_iters=n_iters, n_cores=2)
+    estimator = SCALE(ijk=ijk, n_iters=n_iters, n_cores=2)
+    estimator.fit(dset)
 
     if output_dir is None:
         output_dir = os.path.dirname(dataset_file)

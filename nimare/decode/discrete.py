@@ -59,7 +59,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
 
     1.  Compute
         :math:`p(v|t)`.
-            - From :obj:`gclda.model.Model.get_spatial_probs()`
+            - From :func:`gclda.model.Model.get_spatial_probs()`
     2.  Compute topic weight vector (:math:`\\tau_{t}`) by adding across voxels
         within ROI.
             - :math:`\\tau_{t} = \sum_{i} {p(t|v_{i})}`
@@ -68,6 +68,12 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
             - :math:`p(w|r) \propto \\tau_{t} \cdot p(w|t)`
     4.  The resulting vector (``word_weights``) reflects arbitrarily scaled
         term weights for the ROI.
+
+    See Also
+    --------
+    :class:`nimare.annotate.gclda.GCLDAModel`
+    :func:`nimare.decode.continuous.gclda_decode_map`
+    :func:`nimare.decode.encode.gclda_encode`
 
     References
     ----------
@@ -89,8 +95,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
                                              np.array2string(dset_aff)))
 
     # Load ROI file and get ROI voxels overlapping with brain mask
-    mask_vec = model.mask.get_data().ravel().astype(bool)
-    roi_vec = roi.get_data().astype(bool).ravel()
+    mask_vec = model.mask.get_fdata().ravel().astype(bool)
+    roi_vec = roi.get_fdata().astype(bool).ravel()
     roi_vec = roi_vec[mask_vec]
     roi_idx = np.where(roi_vec)[0]
     p_topic_g_roi = model.p_topic_g_voxel_[roi_idx, :]  # p(T|V) for voxels in ROI only

@@ -7,14 +7,14 @@ from sklearn.cluster import k_means
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from .base import Parcellator
+from ..base import Estimator
 from ..meta.cbma.kernel import ALEKernel
 from ..due import due
 from .. import references
 
 
 @due.dcite(references.MAMP, description='Introduces the MAMP algorithm.')
-class MAMP(Parcellator):
+class MAMP(Estimator):
     """
     Meta-analytic activation modeling-based parcellation (MAMP) [1]_.
 
@@ -29,15 +29,16 @@ class MAMP(Parcellator):
     -----
     MAMP works similarly to CBP, but skips the step of performing a MACM for
     each voxel. Here are the steps:
-        1.  Create an MA map for each study in the dataset.
-        2.  Concatenate MA maps across studies to create a 4D dataset.
-        3.  Extract values across studies for voxels in mask, resulting in
-            n_voxels X n_studies array.
-        4.  Correlate "study series" between voxels to generate n_voxels X
-            n_voxels correlation matrix.
-        5.  Convert correlation coefficients to correlation distance (1 -r)
-            values.
-        6.  Perform clustering on correlation distance matrix.
+
+    1.  Create an MA map for each study in the dataset.
+    2.  Concatenate MA maps across studies to create a 4D dataset.
+    3.  Extract values across studies for voxels in mask, resulting in
+        n_voxels X n_studies array.
+    4.  Correlate "study series" between voxels to generate n_voxels X
+        n_voxels correlation matrix.
+    5.  Convert correlation coefficients to correlation distance (1 -r)
+        values.
+    6.  Perform clustering on correlation distance matrix.
 
     Warnings
     --------
@@ -49,6 +50,7 @@ class MAMP(Parcellator):
         brain using meta-analytic activation modeling-based parcellation."
         Neuroimage 124 (2016): 300-309.
         https://doi.org/10.1016/j.neuroimage.2015.08.027
+
     """
     def __init__(self, dataset, ids):
         self.mask = dataset.mask
@@ -57,7 +59,7 @@ class MAMP(Parcellator):
         self.solutions = None
         self.metrics = None
 
-    def fit(self, target_mask, n_parcels=2, kernel_estimator=ALEKernel,
+    def fit(self, target_mask, n_parcels=2, kernel_transformer=ALEKernel,
             **kwargs):
         """
         Run MAMP parcellation.
@@ -87,7 +89,7 @@ class MAMP(Parcellator):
         if not isinstance(n_parcels, list):
             n_parcels = [n_parcels]
 
-        k_est = kernel_estimator(self.coordinates, self.mask)
+        k_est = kernel_transformer(self.coordinates, self.mask)
         ma_maps = k_est.transform(self.ids, **kernel_args)
 
         # Step 1: Build correlation matrix
@@ -115,7 +117,7 @@ class MAMP(Parcellator):
             labels[:, i_parc] = labeled
 
             # Check contiguity of clusters
-            temp_mask = unmask(labels[:, i_parc], target_map).get_data()
+            temp_mask = unmask(labels[:, i_parc], target_map).get_fdata()
             labeled = meas.label(temp_mask, np.ones((3, 3, 3)))[0]
             n_contig = len(np.unique(labeled))
             metrics.loc[n_clusters, 'contiguous'] = int(n_contig > (n_clusters + 1))

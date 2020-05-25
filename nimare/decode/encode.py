@@ -76,7 +76,7 @@ def gclda_encode(model, text, out_file=None, topic_priors=None,
 
     1.  Compute :math:`p(v|t)`
         (``p_voxel_g_topic``).
-            - From :obj:`gclda.model.Model.get_spatial_probs()`
+            - From :func:`gclda.model.Model.get_spatial_probs()`
     2.  Compute :math:`p(t|w)`
         (``p_topic_g_word``).
     3.  Vectorize input text according to model vocabulary.
@@ -92,6 +92,12 @@ def gclda_encode(model, text, out_file=None, topic_priors=None,
     8.  The resulting array (``voxel_weights``) reflects arbitrarily scaled
         voxel weights for the input text.
     9.  Unmask and reshape ``voxel_weights`` into brain image.
+
+    See Also
+    --------
+    :class:`nimare.annotate.gclda.GCLDAModel`
+    :func:`nimare.decode.continuous.gclda_decode_map`
+    :func:`nimare.decode.discrete.gclda_decode_roi`
 
     References
     ----------

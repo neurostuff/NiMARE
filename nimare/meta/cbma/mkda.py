@@ -13,7 +13,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
 from ...results import MetaResult
-from .base import CBMAEstimator
+from ...base import Estimator
 from .kernel import KernelTransformer
 from ...stats import null_to_p, p_to_z, one_way, two_way
 from ...due import due
@@ -23,22 +23,22 @@ LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDADensity(CBMAEstimator):
+class MKDADensity(Estimator):
     r"""
     Multilevel kernel density analysis- Density analysis [1]_.
 
     Parameters
     ----------
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
     -----
-    Available correction methods: :obj:`MKDADensity.correct_fwe_permutation`
+    Available correction methods: :obj:`MKDADensity.correct_fwe_montecarlo`
 
     References
     ----------
@@ -47,19 +47,19 @@ class MKDADensity(CBMAEstimator):
         cognitive and affective neuroscience 2.2 (2007): 150-158.
         https://doi.org/10.1093/scan/nsm015
     """
-    def __init__(self, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
         for k in kwargs.keys():
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
 
         self.mask = None
         self.dataset = None
@@ -77,7 +77,7 @@ class MKDADensity(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_values = self.kernel_estimator.transform(dataset, masked=True)
+        ma_values = self.kernel_transformer.transform(dataset, return_type='array')
 
         # Weight each SCM by square root of sample size
         ids_df = self.dataset.coordinates.groupby('id').first()
@@ -97,19 +97,22 @@ class MKDADensity(CBMAEstimator):
         ma_values *= self.weight_vec
         of_values = np.sum(ma_values, axis=0)
 
-        images = {'of': of_values}
+        images = {
+            'of': of_values,
+        }
         return images
 
     def _run_fwe_permutation(self, params):
         iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask, masked=True)
+        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask,
+                                                         return_type='array')
         iter_ma_maps *= self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = unmask(iter_of_map, self.mask)
-        vthresh_iter_of_map = iter_of_map.get_data().copy()
+        vthresh_iter_of_map = iter_of_map.get_fdata().copy()
         vthresh_iter_of_map[vthresh_iter_of_map < voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
@@ -121,8 +124,7 @@ class MKDADensity(CBMAEstimator):
             iter_max_cluster = 0
         return iter_max_value, iter_max_cluster
 
-    def correct_fwe_permutation(self, result, voxel_thresh=0.01, n_iters=1000,
-                                n_cores=-1):
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -155,12 +157,12 @@ class MKDADensity(CBMAEstimator):
         --------
         >>> meta = MKDADensity()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='permutation', voxel_thresh=0.01,
+        >>> corrector = FWECorrector(method='montecarlo', voxel_thresh=0.01,
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
         of_map = result.get_map('of', return_type='image')
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -171,7 +173,7 @@ class MKDADensity(CBMAEstimator):
                                                           mp.cpu_count()))
             n_cores = mp.cpu_count()
 
-        vthresh_of_map = of_map.get_data().copy()
+        vthresh_of_map = of_map.get_fdata().copy()
         vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
 
         rand_idx = np.random.choice(
@@ -217,17 +219,16 @@ class MKDADensity(CBMAEstimator):
         for i_vox, val in enumerate(vfwe_map):
             vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, 'upper'))
         vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
-        vthresh_of_map = apply_mask(nib.Nifti1Image(vthresh_of_map,
-                                                    of_map.affine),
-                                    self.mask)
-        images = {'vthresh': vthresh_of_map,
-                  'logp_level-cluster': cfwe_map,
-                  'logp_level-voxel': vfwe_map}
+
+        images = {
+            'logp_level-cluster': cfwe_map,
+            'logp_level-voxel': vfwe_map
+        }
         return images
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDAChi2(CBMAEstimator):
+class MKDAChi2(Estimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis [1]_.
 
@@ -236,16 +237,16 @@ class MKDAChi2(CBMAEstimator):
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         MKDAKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
     -----
-    Available correction methods: :obj:`MKDAChi2.correct_fwe_permutation`,
+    Available correction methods: :obj:`MKDAChi2.correct_fwe_montecarlo`,
     :obj:`MKDAChi2.correct_fdr_bh`
 
     References
@@ -255,19 +256,19 @@ class MKDAChi2(CBMAEstimator):
         cognitive and affective neuroscience 2.2 (2007): 150-158.
         https://doi.org/10.1093/scan/nsm015
     """
-    def __init__(self, prior=0.5, kernel_estimator=MKDAKernel, **kwargs):
+    def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
         for k in kwargs.keys():
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.prior = prior
 
     def fit(self, dataset, dataset2):
@@ -295,8 +296,10 @@ class MKDAChi2(CBMAEstimator):
         self.dataset2 = dataset2
         self.mask = dataset.masker.mask_img
 
-        ma_maps1 = self.kernel_estimator.transform(self.dataset, mask=self.mask, masked=True)
-        ma_maps2 = self.kernel_estimator.transform(self.dataset2, mask=self.mask, masked=True)
+        ma_maps1 = self.kernel_transformer.transform(self.dataset, mask=self.mask,
+                                                     return_type='array')
+        ma_maps2 = self.kernel_transformer.transform(self.dataset2, mask=self.mask,
+                                                     return_type='array')
 
         # Calculate different count variables
         n_selected = ma_maps1.shape[0]
@@ -344,17 +347,17 @@ class MKDAChi2(CBMAEstimator):
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = p_to_z(pFgA_p_vals, tail='two') * pFgA_sign
         images = {
-            'pA': pA,
-            'pAgF': pAgF,
-            'pFgA': pFgA,
-            ('pAgF_given_pF=%0.2f' % self.prior): pAgF_prior,
-            ('pFgA_given_pF=%0.2f' % self.prior): pFgA_prior,
-            'consistency_z': pAgF_z,
-            'specificity_z': pFgA_z,
-            'consistency_chi2': pAgF_chi2_vals,
-            'specificity_chi2': pFgA_chi2_vals,
-            'consistency_p': pAgF_p_vals,
-            'specificity_p': pFgA_p_vals,
+            'prob_desc-A': pA,
+            'prob_desc-AgF': pAgF,
+            'prob_desc-FgA': pFgA,
+            ('prob_desc-AgF_given_pF=%0.2f' % self.prior): pAgF_prior,
+            ('prob_desc-FgA_given_pF=%0.2f' % self.prior): pFgA_prior,
+            'z_desc-consistency': pAgF_z,
+            'z_desc-specificity': pFgA_z,
+            'chi2_desc-consistency': pAgF_chi2_vals,
+            'chi2_desc-specificity': pFgA_chi2_vals,
+            'p_desc-consistency': pAgF_p_vals,
+            'p_desc-specificity': pFgA_p_vals,
         }
         return images
 
@@ -365,8 +368,10 @@ class MKDAChi2(CBMAEstimator):
         iter_df1[['i', 'j', 'k']] = iter_ijk1
         iter_df2[['i', 'j', 'k']] = iter_ijk2
 
-        temp_ma_maps1 = self.kernel_estimator.transform(iter_df1, self.mask, masked=True)
-        temp_ma_maps2 = self.kernel_estimator.transform(iter_df2, self.mask, masked=True)
+        temp_ma_maps1 = self.kernel_transformer.transform(iter_df1, self.mask,
+                                                          return_type='array')
+        temp_ma_maps2 = self.kernel_transformer.transform(iter_df2, self.mask,
+                                                          return_type='array')
 
         n_selected = temp_ma_maps1.shape[0]
         n_unselected = temp_ma_maps2.shape[0]
@@ -391,7 +396,7 @@ class MKDAChi2(CBMAEstimator):
         iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
         return iter_pAgF_chi2, iter_pFgA_chi2
 
-    def correct_fwe_permutation(self, result, n_iters=5000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -412,8 +417,9 @@ class MKDAChi2(CBMAEstimator):
         images : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked images generated by
             the correction procedure. The following arrays are generated by
-            this method: 'consistency_p_FWE', 'consistency_z_FWE',
-            'specificity_p_FWE', and 'specificity_z_FWE'.
+            this method: 'p_desc-consistency_level-voxel',
+            'z_desc-consistency_level-voxel', 'p_desc-specificity_level-voxel',
+            and 'p_desc-specificity_level-voxel'.
 
         See Also
         --------
@@ -423,14 +429,14 @@ class MKDAChi2(CBMAEstimator):
         --------
         >>> meta = MKDAChi2()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='permutation', n_iters=5, n_cores=1)
+        >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
-        pAgF_chi2_vals = result.get_map('consistency_chi2', return_type='array')
-        pFgA_chi2_vals = result.get_map('specificity_chi2', return_type='array')
-        pAgF_z_vals = result.get_map('consistency_z', return_type='array')
-        pFgA_z_vals = result.get_map('specificity_z', return_type='array')
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
+        pAgF_chi2_vals = result.get_map('chi2_desc-consistency', return_type='array')
+        pFgA_chi2_vals = result.get_map('chi2_desc-specificity', return_type='array')
+        pAgF_z_vals = result.get_map('z_desc-consistency', return_type='array')
+        pFgA_z_vals = result.get_map('z_desc-specificity', return_type='array')
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
@@ -465,7 +471,8 @@ class MKDAChi2(CBMAEstimator):
                 perm_results.append(self._run_fwe_permutation(pp))
         else:
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
+                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params),
+                                         total=n_iters))
         pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
         # pAgF_FWE
@@ -495,10 +502,10 @@ class MKDAChi2(CBMAEstimator):
         pFgA_z_FWE = p_to_z(pFgA_p_FWE, tail='two') * pFgA_sign
 
         images = {
-            'consistency_p_FWE': pAgF_p_FWE,
-            'consistency_z_FWE': pAgF_z_FWE,
-            'specificity_p_FWE': pFgA_p_FWE,
-            'specificity_z_FWE': pFgA_z_FWE,
+            'p_desc-consistency_level-voxel': pAgF_p_FWE,
+            'z_desc-consistency_level-voxel': pAgF_z_FWE,
+            'p_desc-specificity_level-voxel': pFgA_p_FWE,
+            'z_desc-specificity_level-voxel': pFgA_z_FWE,
         }
         return images
 
@@ -532,10 +539,10 @@ class MKDAChi2(CBMAEstimator):
         >>> corrector = FDRCorrector(method='bh', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
-        pAgF_p_vals = result.get_map('consistency_p', return_type='array')
-        pFgA_p_vals = result.get_map('specificity_p', return_type='array')
-        pAgF_z_vals = result.get_map('consistency_z', return_type='array')
-        pFgA_z_vals = result.get_map('specificity_z', return_type='array')
+        pAgF_p_vals = result.get_map('p_desc-consistency', return_type='array')
+        pFgA_p_vals = result.get_map('p_desc-specificity', return_type='array')
+        pAgF_z_vals = result.get_map('z_desc-consistency', return_type='array')
+        pFgA_z_vals = result.get_map('z_desc-specificity', return_type='array')
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
         _, pAgF_p_FDR, _, _ = multipletests(pAgF_p_vals, alpha=alpha,
@@ -551,32 +558,32 @@ class MKDAChi2(CBMAEstimator):
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail='two') * pFgA_sign
 
         images = {
-            'consistency_z_FDR': pAgF_z_FDR,
-            'specificity_z_FDR': pFgA_z_FDR,
+            'z_desc-consistency_level-voxel': pAgF_z_FDR,
+            'z_desc-specificity_level-voxel': pFgA_z_FDR,
         }
         return images
 
 
 @due.dcite(references.KDA1, description='Introduces the KDA algorithm.')
 @due.dcite(references.KDA2, description='Also introduces the KDA algorithm.')
-class KDA(CBMAEstimator):
+class KDA(Estimator):
     r"""
     Kernel density analysis.
 
     Parameters
     ----------
-    kernel_estimator : :obj:`nimare.meta.cbma.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         KDAKernel.
     **kwargs
-        Keyword arguments. Arguments for the kernel_estimator can be assigned
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
     -----
     Kernel density analysis was first introduced in [1]_ and [2]_.
 
-    Available correction methods: :obj:`KDA.correct_fwe_permutation`
+    Available correction methods: :obj:`KDA.correct_fwe_montecarlo`
 
     References
     ----------
@@ -588,19 +595,19 @@ class KDA(CBMAEstimator):
         studies of shifting attention: a meta-analysis." Neuroimage 22.4
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
-    def __init__(self, kernel_estimator=KDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=KDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
-        if not issubclass(kernel_estimator, KernelTransformer):
-            raise ValueError('Argument "kernel_estimator" must be a '
+        if not issubclass(kernel_transformer, KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
         for k in kwargs.keys():
             LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
-        self.kernel_estimator = kernel_estimator(**kernel_args)
+        self.kernel_transformer = kernel_transformer(**kernel_args)
 
     def _fit(self, dataset):
         """
@@ -614,7 +621,7 @@ class KDA(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_estimator.transform(dataset, masked=True)
+        ma_maps = self.kernel_transformer.transform(dataset, return_type='array')
         of_values = np.sum(ma_maps, axis=0)
         images = {
             'of': of_values
@@ -625,12 +632,13 @@ class KDA(CBMAEstimator):
         iter_ijk, iter_df = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_estimator.transform(iter_df, mask=self.mask, masked=True)
+        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask,
+                                                         return_type='array')
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         return iter_max_value
 
-    def correct_fwe_permutation(self, result, n_iters=10000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -661,11 +669,11 @@ class KDA(CBMAEstimator):
         --------
         >>> meta = KDA()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='permutation', n_iters=5, n_cores=1)
+        >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
         of_values = result.get_map('of', return_type='array')
-        null_ijk = np.vstack(np.where(self.mask.get_data())).T
+        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -703,5 +711,7 @@ class KDA(CBMAEstimator):
             vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, 'upper'))
         vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
 
-        images = {'logp_level-voxel': vfwe_map}
+        images = {
+            'logp_level-voxel': vfwe_map
+        }
         return images

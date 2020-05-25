@@ -87,7 +87,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 
         LGR.info('Performing meta-analysis...')
         results = ale.fit(dset)
-        corr = FWECorrector(method='permutation', n_iters=n_iters,
+        corr = FWECorrector(method='montecarlo', n_iters=n_iters,
                             voxel_thresh=v_thr, n_cores=n_cores)
         cres = corr.transform(results)
 
@@ -163,18 +163,18 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         ale1 = ALE(kernel__fwhm=fwhm)
         ale2 = ALE(kernel__fwhm=fwhm)
 
-        LGR.info('Performing meta-analysis...')
+        LGR.info('Performing meta-analyses...')
         res1 = ale1.fit(dset1)
         res2 = ale2.fit(dset2)
-        corr = FWECorrector(method='permutation', n_iters=n_iters,
+        corr = FWECorrector(method='montecarlo', n_iters=n_iters,
                             voxel_thresh=v_thr, n_cores=n_cores)
         cres1 = corr.transform(res1)
         cres2 = corr.transform(res2)
         sub = ALESubtraction(n_iters=n_iters)
         sres = sub.fit(
             ale1, ale2,
-            image1=cres1.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'),
-            image2=cres2.get_map('logp_level-cluster_corr-FWE_method-permutation', return_type='image'))
+            image1='logp_level-cluster_corr-FWE_method-permutation',
+            image2='logp_level-cluster_corr-FWE_method-permutation')
 
         boilerplate = boilerplate.format(
             n_exps1=len(dset1.ids),

@@ -254,11 +254,11 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     res = flameo.run()
 
     temp_img = nib.load(res.outputs.zstats)
-    temp_img = nib.Nifti1Image(temp_img.get_data() * -1, temp_img.affine)
+    temp_img = nib.Nifti1Image(temp_img.get_fdata() * -1, temp_img.affine)
     temp_img.to_filename(op.join(work_dir, 'temp_zstat2.nii.gz'))
 
     temp_img2 = nib.load(res.outputs.copes)
-    temp_img2 = nib.Nifti1Image(temp_img2.get_data() * -1, temp_img2.affine)
+    temp_img2 = nib.Nifti1Image(temp_img2.get_fdata() * -1, temp_img2.affine)
     temp_img2.to_filename(op.join(work_dir, 'temp_copes2.nii.gz'))
 
     # FWE correction
@@ -324,10 +324,10 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     log_p_map = -np.log10(out_p_map)
     images = {'cope': out_cope_map,
               'z': out_z_map,
-              'thresh_z': thresh_z_map,
+              'z_level-cluster': thresh_z_map,
               't': out_t_map,
               'p': out_p_map,
-              'log_p': log_p_map}
+              'logp': log_p_map}
     return images
 
 

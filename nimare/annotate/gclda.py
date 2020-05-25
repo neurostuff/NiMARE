@@ -9,16 +9,16 @@ import pandas as pd
 import nibabel as nib
 from scipy.stats import multivariate_normal
 
-from ...due import due
-from ..base import AnnotationModel
-from ...utils import get_template
-from ... import references
+from ..due import due
+from ..base import NiMAREBase
+from ..utils import get_template
+from .. import references
 
 LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.GCLDAMODEL)
-class GCLDAModel(AnnotationModel):
+class GCLDAModel(NiMAREBase):
     """
     Generate a generalized correspondence latent Dirichlet allocation
     (GCLDA) [1]_ topic model.
@@ -35,7 +35,10 @@ class GCLDAModel(AnnotationModel):
         used for identifying studies. Additional columns include 'x', 'y' and
         'z' (foci in standard space).
     n_topics : :obj:`int`, optional
-        Number of topics to generate in model. The default is 100.
+        Number of topics to generate in model. As a good rule of thumb, the
+        number of topics should be less than the number of studies in the
+        dataset. Otherwise, there can be errors during model training.
+        The default is 100.
     n_regions : :obj:`int`, optional
         Number of subregions per topic (>=1). The default is 2.
     alpha : :obj:`float`, optional
@@ -847,7 +850,7 @@ class GCLDAModel(AnnotationModel):
             given topic i has already been selected.
         """
         affine = self.mask.affine
-        mask_ijk = np.vstack(np.where(self.mask.get_data())).T
+        mask_ijk = np.vstack(np.where(self.mask.get_fdata())).T
         mask_xyz = nib.affines.apply_affine(affine, mask_ijk)
 
         spatial_dists = np.zeros((mask_xyz.shape[0], self.params['n_topics']), float)

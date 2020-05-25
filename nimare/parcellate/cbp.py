@@ -8,14 +8,14 @@ from scipy.spatial.distance import cdist
 import scipy.ndimage.measurements as meas
 from nilearn.masking import apply_mask, unmask
 
-from .base import Parcellator
+from ..base import Estimator
 from ..meta.cbma.ale import SCALE
 from ..due import due
 from .. import references
 
 
 @due.dcite(references.CBP, description='Introduces CBP.')
-class CoordCBP(Parcellator):
+class CoordCBP(Estimator):
     """
     Coordinate-based coactivation-based parcellation [1]_.
 
@@ -89,7 +89,7 @@ class CoordCBP(Parcellator):
         # Step 1: Build correlation matrix
         target_data = apply_mask(target_mask, self.mask)
         target_map = unmask(target_data, self.mask)
-        target_data = target_map.get_data()
+        target_data = target_map.get_fdata()
         mask_idx = np.vstack(np.where(target_data))
         n_voxels = mask_idx.shape[1]
         voxel_arr = np.zeros((n_voxels, np.sum(self.mask)))
@@ -150,7 +150,7 @@ class CoordCBP(Parcellator):
         self.metrics = metrics
 
 
-class ImCBP(Parcellator):
+class ImCBP(Estimator):
     """
     Image-based coactivation-based parcellation
 

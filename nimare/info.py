@@ -60,6 +60,7 @@ REQUIRES = [
     'pyneurovault',
     'scikit-learn',
     'scipy',
+    'seaborn',
     'six',
     'statsmodels',
     'tqdm',
@@ -85,11 +86,13 @@ EXTRA_REQUIRES = {
         'appdirs'
     ],
     'doc': [
-        'sphinx>=1.5.3',
-        'sphinx_rtd_theme',
+        'sphinx~=2.4.2',
         'sphinx-argparse',
+        'sphinx_rtd_theme',
+        'sphinx_gallery',
         'numpydoc',
-        'm2r'
+        'm2r',
+        'pillow'
     ],
     'tests': TESTS_REQUIRES,
     'duecredit': ['duecredit'],

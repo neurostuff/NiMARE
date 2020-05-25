@@ -11,18 +11,14 @@
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
 
-.. note::
-    This will likely change as we work to shift database querying to a remote
-    database, rather than handling it locally with NiMARE.
+.. caution::
+    Dataset querying will likely change as we work to shift database querying
+    to a remote database, rather than handling it locally with NiMARE.
 
 """
-###############################################################################
-# Start with the necessary imports
-# --------------------------------
 import os
 
 import numpy as np
-import pandas as pd
 import nibabel as nib
 from nilearn.masking import apply_mask, unmask
 from nilearn.plotting import plot_stat_map
@@ -30,8 +26,7 @@ from nilearn.plotting import plot_stat_map
 import nimare
 from nimare.tests.utils import get_test_data_path
 from nimare.meta.esma import fishers
-from nimare.meta.ibma import (Fishers, Stouffers, WeightedStouffers,
-                              RFX_GLM, FFX_GLM, ffx_glm)
+from nimare.meta.ibma import (Fishers, Stouffers, WeightedStouffers, RFX_GLM)
 
 ###############################################################################
 # Download data

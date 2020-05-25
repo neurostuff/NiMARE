@@ -10,10 +10,10 @@ import subprocess
 import numpy as np
 import pandas as pd
 
-from ..base import AnnotationModel
-from ...due import due
-from ... import references
-from ...extract import download_mallet, utils
+from ..base import NiMAREBase
+from ..due import due
+from .. import references
+from ..extract import download_mallet, utils
 
 LGR = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ LGR = logging.getLogger(__name__)
 @due.dcite(references.LDAMODEL,
            description='First use of LDA for automated annotation of '
            'neuroimaging literature.')
-class LDAModel(AnnotationModel):
+class LDAModel(NiMAREBase):
     """
     Perform topic modeling using Latent Dirichlet Allocation [1]_ with the
     Java toolbox MALLET [2]_, as performed in [3]_.

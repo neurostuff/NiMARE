@@ -8,13 +8,10 @@
  Train an LDA model and use it
 ===============================
 
-This example trains a latent Dirichlet allocation with MALLET
+This example trains a latent Dirichlet allocation model with MALLET
 using abstracts from Neurosynth.
 
 """
-###############################################################################
-# Start with the necessary imports
-# --------------------------------
 import os
 
 import nimare
@@ -30,13 +27,19 @@ dset = nimare.dataset.Dataset.load(
 ###############################################################################
 # Download MALLET
 # ---------------
-# LDAModel will do this automatically.
+# MALLET is a Java toolbox for natural language processing.
+# While LDA is implemented in some Python libraries, like scikit-learn,
+# MALLET appears to do a better job at LDA than other tools.
+# LDAModel will download MALLET automatically, but it's included here for clarity.
 mallet_dir = nimare.extract.download_mallet()
 
 ###############################################################################
 # Run model
 # ---------
-# Five iterations will take ~10 minutes
-model = annotate.topic.LDAModel(dset.texts, text_column='abstract', n_iters=5)
+# This may take some time, so we won't run it in the gallery.
+model = annotate.lda.LDAModel(dset.texts, text_column='abstract', n_iters=5)
 model.fit()
 model.save('lda_model.pkl.gz')
+
+# Let's remove the model now that you know how to generate it.
+os.remove('lda_model.pkl.gz')

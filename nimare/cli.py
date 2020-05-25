@@ -23,6 +23,11 @@ def _is_valid_file(parser, arg):
 
 def _get_parser():
     """
+    Parses command line inputs for NiMARE
+
+    Returns
+    -------
+    parser.parse_args() : argparse dict
     """
     parser = argparse.ArgumentParser(prog='nimare')
     subparsers = parser.add_subparsers(help='NiMARE workflows')
@@ -88,6 +93,7 @@ def _get_parser():
         '--n_cores',
         dest='n_cores',
         type=int,
+        default=1,
         help=('Number of processes to use for meta-analysis. If -1, use '
               'all available cores.')
     )
@@ -225,6 +231,7 @@ def _get_parser():
         '--n_cores',
         dest='n_cores',
         type=int,
+        default=1,
         help=('Number of processes to use for meta-analysis. If -1, use '
               'all available cores.')
     )
@@ -282,6 +289,7 @@ def _get_parser():
         '--n_cores',
         dest='n_cores',
         type=int,
+        default=1,
         help=('Number of processes to use for meta-analysis. If -1, use '
               'all available cores.')
     )
