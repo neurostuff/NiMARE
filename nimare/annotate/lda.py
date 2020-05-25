@@ -25,8 +25,10 @@ LGR = logging.getLogger(__name__)
            'neuroimaging literature.')
 class LDAModel(NiMAREBase):
     """
-    Perform topic modeling using Latent Dirichlet Allocation [1]_ with the
-    Java toolbox MALLET [2]_, as performed in [3]_.
+    Perform topic modeling using Latent Dirichlet Allocation (LDA).
+
+    Build an LDA [1]_ topic model with the Java toolbox MALLET [2]_, as
+    performed in [3]_.
 
     Parameters
     ----------

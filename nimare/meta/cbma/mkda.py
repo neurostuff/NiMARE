@@ -25,7 +25,7 @@ LGR = logging.getLogger(__name__)
 @due.dcite(references.MKDA, description='Introduces MKDA.')
 class MKDADensity(Estimator):
     r"""
-    Multilevel kernel density analysis- Density analysis [1]_.
+    Multilevel kernel density analysis- Density analysis.
 
     Parameters
     ----------
@@ -42,10 +42,10 @@ class MKDADensity(Estimator):
 
     References
     ----------
-    .. [1] Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
-        of functional neuroimaging data: current and future directions." Social
-        cognitive and affective neuroscience 2.2 (2007): 150-158.
-        https://doi.org/10.1093/scan/nsm015
+    * Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
+      of functional neuroimaging data: current and future directions." Social
+      cognitive and affective neuroscience 2.2 (2007): 150-158.
+      https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, kernel_transformer=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -230,7 +230,7 @@ class MKDADensity(Estimator):
 @due.dcite(references.MKDA, description='Introduces MKDA.')
 class MKDAChi2(Estimator):
     r"""
-    Multilevel kernel density analysis- Chi-square analysis [1]_.
+    Multilevel kernel density analysis- Chi-square analysis.
 
     Parameters
     ----------
@@ -251,10 +251,10 @@ class MKDAChi2(Estimator):
 
     References
     ----------
-    .. [1] Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
-        of functional neuroimaging data: current and future directions." Social
-        cognitive and affective neuroscience 2.2 (2007): 150-158.
-        https://doi.org/10.1093/scan/nsm015
+    * Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
+      of functional neuroimaging data: current and future directions." Social
+      cognitive and affective neuroscience 2.2 (2007): 150-158.
+      https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()

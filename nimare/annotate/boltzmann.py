@@ -9,7 +9,7 @@ from .. import references
 @due.dcite(references.BOLTZMANNMODEL)
 class BoltzmannModel(NiMAREBase):
     """
-    Generate a deep Boltzmann machine topic model [1]_.
+    Generate a deep Boltzmann machine topic model.
 
     Warnings
     --------
@@ -17,10 +17,10 @@ class BoltzmannModel(NiMAREBase):
 
     References
     ----------
-    .. [1] Monti, Ricardo, et al. "Text-mining the NeuroSynth corpus using deep
-        Boltzmann machines." 2016 International Workshop on Pattern Recognition
-        in NeuroImaging (PRNI). IEEE, 2016.
-        https://doi.org/10.1109/PRNI.2016.7552329
+    * Monti, Ricardo, et al. "Text-mining the NeuroSynth corpus using deep
+      Boltzmann machines." 2016 International Workshop on Pattern Recognition
+      in NeuroImaging (PRNI). IEEE, 2016.
+      https://doi.org/10.1109/PRNI.2016.7552329
     """
     def __init__(self, text_df, coordinates_df):
         pass

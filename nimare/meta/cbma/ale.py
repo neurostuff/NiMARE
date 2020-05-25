@@ -577,7 +577,7 @@ class ALESubtraction(Estimator):
                        'estimation (SCALE) algorithm.')
 class SCALE(Estimator):
     r"""
-    Specific coactivation likelihood estimation [1]_.
+    Specific coactivation likelihood estimation.
 
     Parameters
     ----------
@@ -601,9 +601,9 @@ class SCALE(Estimator):
 
     References
     ----------
-    .. [1] Langner, Robert, et al. "Meta-analytic connectivity modeling
-        revisited: controlling for activation base rates." NeuroImage 99
-        (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
+    * Langner, Robert, et al. "Meta-analytic connectivity modeling
+      revisited: controlling for activation base rates." NeuroImage 99
+      (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
     def __init__(self, voxel_thresh=0.001, n_iters=10000, n_cores=-1, ijk=None,
                  kernel_transformer=ALEKernel, **kwargs):

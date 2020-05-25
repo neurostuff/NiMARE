@@ -51,6 +51,12 @@ class Fishers(IBMAEstimator):
     two_sided : :obj:`bool`, optional
         Whether to do a two- or one-sided test. Default is True.
 
+    References
+    ----------
+    * Fisher, R. A. (1934). Statistical methods for research workers.
+      Statistical methods for research workers., (5th Ed).
+      https://www.cabdirect.org/cabdirect/abstract/19351601205
+
     Notes
     -----
     Sum of -log P-values (from T/Zs converted to Ps)
@@ -85,6 +91,13 @@ class Stouffers(IBMAEstimator):
         Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
     two_sided : :obj:`bool`, optional
         Whether to do a two- or one-sided test. Default is True.
+
+    References
+    ----------
+    * Stouffer, S. A., Suchman, E. A., DeVinney, L. C., Star, S. A., &
+      Williams Jr, R. M. (1949). The American Soldier: Adjustment during
+      army life. Studies in social psychology in World War II, vol. 1.
+      https://psycnet.apa.org/record/1950-00790-000
     """
     _required_inputs = {
         'z_maps': ('image', 'z')
@@ -113,6 +126,13 @@ class WeightedStouffers(IBMAEstimator):
     ----------
     two_sided : :obj:`bool`, optional
         Whether to do a two- or one-sided test. Default is True.
+
+    References
+    ----------
+    * Zaykin, D. V. (2011). Optimally weighted Z‐test is a powerful method for
+      combining probabilities in meta‐analysis. Journal of evolutionary
+      biology, 24(8), 1836-1841.
+      https://doi.org/10.1111/j.1420-9101.2011.02297.x
     """
     _required_inputs = {
         'z_maps': ('image', 'z'),

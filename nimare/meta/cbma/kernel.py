@@ -24,6 +24,11 @@ class KernelTransformer(Transformer):
     original analyses. This generally involves convolving each coordinate with
     a kernel (typically a Gaussian or binary sphere) that may be weighted based
     on some additional measure, such as statistic value or sample size.
+
+    Notes
+    -----
+    This base class exists solely to allow CBMA algorithms to check the class
+    of their kernel_transformer parameters.
     """
     pass
 

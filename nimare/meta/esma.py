@@ -32,6 +32,12 @@ def fishers(z_maps, two_sided=True):
     result : :obj:`dict`
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
+
+    References
+    ----------
+    * Fisher, R. A. (1934). Statistical methods for research workers.
+      Statistical methods for research workers., (5th Ed).
+      https://www.cabdirect.org/cabdirect/abstract/19351601205
     """
     # Get test-value signs for p-to-z conversion
     sign = np.sign(np.mean(z_maps, axis=0))
@@ -88,6 +94,13 @@ def stouffers(z_maps, inference='ffx', null='theoretical', n_iters=None,
     result : :obj:`dict`
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
+
+    References
+    ----------
+    * Stouffer, S. A., Suchman, E. A., DeVinney, L. C., Star, S. A., &
+      Williams Jr, R. M. (1949). The American Soldier: Adjustment during
+      army life. Studies in social psychology in World War II, vol. 1.
+      https://psycnet.apa.org/record/1950-00790-000
     """
     sign = np.sign(np.mean(z_maps, axis=0))
     sign[sign == 0] = 1
@@ -184,6 +197,13 @@ def weighted_stouffers(z_maps, sample_sizes, two_sided=True):
     result : :obj:`dict`
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
+
+    References
+    ----------
+    * Zaykin, D. V. (2011). Optimally weighted Z‐test is a powerful method for
+      combining probabilities in meta‐analysis. Journal of evolutionary
+      biology, 24(8), 1836-1841.
+      https://doi.org/10.1111/j.1420-9101.2011.02297.x
     """
     assert z_maps.shape[0] == sample_sizes.shape[0]
 
