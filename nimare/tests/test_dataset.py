@@ -29,6 +29,6 @@ def test_dataset_smoke():
     assert isinstance(dset.get_studies_by_label('cogat_cognitive_control'), list)
     assert isinstance(dset.get_studies_by_coordinate(
         np.array([[20, 20, 20]])), list)
-    mask_img = nib.Nifti1Image(np.ones(dset.masker.mask_img.shape),
+    mask_img = nib.Nifti1Image(np.ones(dset.masker.mask_img.shape, int),
                                dset.masker.mask_img.affine)
     assert isinstance(dset.get_studies_by_mask(mask_img), list)
