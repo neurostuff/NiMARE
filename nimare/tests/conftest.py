@@ -40,7 +40,7 @@ def get_data(download_data):
     z_ids = [id_ for id_ in dset.ids if dset.get_images(id_, imtype='z') is not None]
     z_files = dset.get_images(z_ids, imtype='z')
     sample_sizes = dset.get_metadata(z_ids, 'sample_sizes')
-    sample_sizes = np.array([np.mean(n) for n in sample_sizes])
+    sample_sizes = np.array([np.mean(sample_size) for sample_size in sample_sizes])
 
     # Create reduced dataset for ibma
     pytest.dset_z = dset.slice(z_ids)
@@ -63,7 +63,7 @@ def get_data(download_data):
     con_files = dset.get_images(conse_ids, imtype='con')
     se_files = dset.get_images(conse_ids, imtype='se')
     sample_sizes = dset.get_metadata(conse_ids, 'sample_sizes')
-    sample_sizes = np.array([np.mean(n) for n in sample_sizes])
+    sample_sizes = np.array([np.mean(sample_size) for sample_size in sample_sizes])
     con_imgs = [nib.load(f) for f in con_files]
     se_imgs = [nib.load(f) for f in se_files]
     con_data = apply_mask(con_imgs, dset.masker.mask_img)
@@ -86,7 +86,7 @@ class DummyDataset(object):
 @pytest.fixture(scope='session', autouse=True)
 def cbma_testdata1():
     mask_img = get_template(space='mni152_2mm', mask='brain')
-    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
+    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'sample_size', 'space'],
                       data=[[1, -28, -20, -16, 100, 'mni'],
                             [2, -28, -20, -16, 100, 'mni'],
                             [3, -28, -20, -16, 100, 'mni'],
@@ -109,7 +109,7 @@ def cbma_testdata1():
 @pytest.fixture(scope='session', autouse=True)
 def cbma_testdata2():
     mask_img = get_template(space='mni152_2mm', mask='brain')
-    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
+    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'sample_size', 'space'],
                       data=[[1, -24, -20, -16, 100, 'mni'],
                             [2, -24, -20, -16, 100, 'mni'],
                             [3, -24, -20, -16, 100, 'mni'],
@@ -136,7 +136,7 @@ def cbma_testdata3():
     """
     mask_img = get_template(space='mni152_2mm', mask='brain')
     mask_img = nib.Nifti1Image(np.ones((10, 10, 10), int), mask_img.affine)
-    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
+    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'sample_size', 'space'],
                       data=[[1, -28, -20, -16, 100, 'mni'],
                             [2, -28, -20, -16, 100, 'mni'],
                             [3, -28, -20, -16, 100, 'mni']])
