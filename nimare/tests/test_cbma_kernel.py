@@ -72,7 +72,7 @@ def test_alekernel1(testdata1):
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = ijk.values.astype(int)
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     max_idx = np.where(kern_data == np.max(kern_data))
     max_ijk = np.array(max_idx).T
     assert np.array_equal(ijk, max_ijk)
@@ -91,7 +91,7 @@ def test_alekernel2(testdata2):
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     max_idx = np.array(np.where(kern_data == np.max(kern_data))).T
     max_ijk = np.squeeze(max_idx)
     assert np.array_equal(ijk, max_ijk)
@@ -121,7 +121,7 @@ def test_mkdakernel1(testdata1):
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
@@ -140,7 +140,7 @@ def test_mkdakernel2(testdata2):
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
@@ -170,7 +170,7 @@ def test_kdakernel1(testdata1):
     ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
@@ -189,7 +189,7 @@ def test_kdakernel2(testdata2):
     ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
                                     ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
