@@ -543,7 +543,6 @@ class Dataset(NiMAREBase):
         found_ids : list
             A list of IDs from the Dataset with at least one focus in the mask.
         """
-        from scipy.spatial.distance import cdist
         if isinstance(mask, str):
             mask = nib.load(mask)
 
