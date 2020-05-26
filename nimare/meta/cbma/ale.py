@@ -13,7 +13,7 @@ from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel, KernelTransformer
 from ...results import MetaResult
-from ...base import Estimator
+from ...base import CBMAEstimator
 from ...due import due
 from ... import references
 from ...stats import null_to_p, p_to_z
@@ -31,7 +31,7 @@ LGR = logging.getLogger(__name__)
            description='Modifies ALE algorithm to allow FWE correction and to '
                        'more quickly and accurately generate the null '
                        'distribution for significance testing.')
-class ALE(Estimator):
+class ALE(CBMAEstimator):
     r"""
     Activation likelihood estimation
 
@@ -70,6 +70,7 @@ class ALE(Estimator):
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
     def __init__(self, kernel_transformer=ALEKernel, **kwargs):
+        super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
@@ -265,7 +266,7 @@ class ALE(Estimator):
 
         Notes
         -----
-        This method also adds the following arrays to the Estimator's null
+        This method also adds the following arrays to the CBMAEstimator's null
         distributions attribute (``null_distributions_``):
         'fwe_level-voxel_method-montecarlo' and
         'fwe_level-cluster_method-montecarlo'.
@@ -371,7 +372,7 @@ class ALE(Estimator):
         return images
 
 
-class ALESubtraction(Estimator):
+class ALESubtraction(CBMAEstimator):
     """
     ALE subtraction analysis.
 
@@ -395,6 +396,7 @@ class ALESubtraction(Estimator):
         https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
     def __init__(self, n_iters=10000):
+        super().__init__()
         self.n_iters = n_iters
 
     def fit(self, meta1, meta2,
@@ -414,7 +416,7 @@ class ALESubtraction(Estimator):
             to define significant clusters for each dataset.
             These maps may be either an image, an array, or a string.
             If a string is provided, then the associated map will be grabbed
-            from the Estimator's results object.
+            from the CBMAEstimator's results object.
             Default is 'logp_level-cluster_corr-FWE_method-montecarlo'.
         ma_maps1 : (E x V) array_like or None, optional
             Experiments by voxels array of modeled activation
@@ -575,7 +577,7 @@ class ALESubtraction(Estimator):
 @due.dcite(references.SCALE,
            description='Introduces the specific co-activation likelihood '
                        'estimation (SCALE) algorithm.')
-class SCALE(Estimator):
+class SCALE(CBMAEstimator):
     r"""
     Specific coactivation likelihood estimation.
 
@@ -607,6 +609,7 @@ class SCALE(Estimator):
     """
     def __init__(self, voxel_thresh=0.001, n_iters=10000, n_cores=-1, ijk=None,
                  kernel_transformer=ALEKernel, **kwargs):
+        super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 

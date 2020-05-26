@@ -14,33 +14,14 @@ from scipy import stats
 from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 
-from ..utils import get_masker
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
-from ..base import Estimator
+from ..base import MetaEstimator
 from ..stats import p_to_z
 
 LGR = logging.getLogger(__name__)
 
 
-class IBMAEstimator(Estimator):
-    """Base class for image-based meta-analysis methods.
-    """
-    def __init__(self, *args, **kwargs):
-        mask = kwargs.get('mask')
-        if mask is not None:
-            mask = get_masker(mask)
-        self.masker = mask
-
-    def _preprocess_input(self, dataset):
-        """ Mask required input images using either the dataset's mask or the
-        estimator's. """
-        masker = self.masker or dataset.masker
-        for name, (type_, _) in self._required_inputs.items():
-            if type_ == 'image':
-                self.inputs_[name] = masker.transform(self.inputs_[name])
-
-
-class Fishers(IBMAEstimator):
+class Fishers(MetaEstimator):
     """
     An image-based meta-analytic test using t- or z-statistic images.
     Requires z-statistic images, but will be extended to work with t-statistic
@@ -73,7 +54,7 @@ class Fishers(IBMAEstimator):
         return fishers(self.inputs_['z_maps'], two_sided=self.two_sided)
 
 
-class Stouffers(IBMAEstimator):
+class Stouffers(MetaEstimator):
     """
     A t-test on z-statistic images. Requires z-statistic images.
 
@@ -117,7 +98,7 @@ class Stouffers(IBMAEstimator):
                          two_sided=self.two_sided)
 
 
-class WeightedStouffers(IBMAEstimator):
+class WeightedStouffers(MetaEstimator):
     """
     An image-based meta-analytic test using z-statistic images and
     sample sizes. Zs from bigger studies get bigger weights.
@@ -149,7 +130,7 @@ class WeightedStouffers(IBMAEstimator):
         return weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
 
 
-class RFX_GLM(IBMAEstimator):
+class RFX_GLM(MetaEstimator):
     """
     A t-test on contrast images. Requires contrast images.
 
@@ -389,7 +370,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     return result
 
 
-class FFX_GLM(IBMAEstimator):
+class FFX_GLM(MetaEstimator):
     """
     An image-based meta-analytic test using contrast and standard error images.
     Don't estimate variance, just take from first level.
@@ -463,7 +444,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     return result
 
 
-class MFX_GLM(IBMAEstimator):
+class MFX_GLM(MetaEstimator):
     """
     The gold standard image-based meta-analytic test. Uses contrast and
     standard error images.

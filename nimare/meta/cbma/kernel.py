@@ -41,18 +41,19 @@ class ALEKernel(KernelTransformer):
     ----------
     fwhm : :obj:`float`, optional
         Full-width half-max for Gaussian kernel, if you want to have a
-        constant kernel across Contrasts. Mutually exclusive with ``n``.
-    n : :obj:`int`, optional
+        constant kernel across Contrasts. Mutually exclusive with
+        ``sample_size``.
+    sample_size : :obj:`int`, optional
         Sample size, used to derive FWHM for Gaussian kernel based on
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
     """
-    def __init__(self, fwhm=None, n=None):
-        if fwhm is not None and n is not None:
-            raise ValueError('Only one of fwhm and n may be provided.')
+    def __init__(self, fwhm=None, sample_size=None):
+        if fwhm is not None and sample_size is not None:
+            raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
-        self.n = n
+        self.sample_size = sample_size
 
     def transform(self, dataset, mask=None, return_type='image'):
         """
@@ -70,7 +71,7 @@ class ALEKernel(KernelTransformer):
 
         Returns
         -------
-        imgs : :obj:`list` of :class:`nibabel.Nifti1Image` or :class:`numpy.ndarray`
+        imgs : :obj:`list` of :class:`nibabel.nifti1.Nifti1Image` or :class:`numpy.ndarray`
             If return_type is 'image', a list of modeled activation images
             (one for each of the Contrasts in the input dataset).
             If return_type is 'array', a 2D numpy array (C x V), where C is
@@ -96,10 +97,10 @@ class ALEKernel(KernelTransformer):
         kernels = {}  # retain kernels in dictionary to speed things up
         for id_, data in coordinates.groupby('id'):
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            if self.n is not None:
-                n_subjects = self.n
+            if self.sample_size is not None:
+                sample_size = self.sample_size
             elif self.fwhm is None:
-                n_subjects = data.n.astype(float).values[0]
+                sample_size = data.sample_size.astype(float).values[0]
 
             if self.fwhm is not None:
                 assert np.isfinite(self.fwhm), 'FWHM must be finite number'
@@ -109,12 +110,12 @@ class ALEKernel(KernelTransformer):
                 else:
                     kern = kernels[self.fwhm]
             else:
-                assert np.isfinite(n_subjects), 'Sample size must be finite number'
-                if n_subjects not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, n=n_subjects)
-                    kernels[n_subjects] = kern
+                assert np.isfinite(sample_size), 'Sample size must be finite number'
+                if sample_size not in kernels.keys():
+                    _, kern = get_ale_kernel(mask, sample_size=sample_size)
+                    kernels[sample_size] = kern
                 else:
-                    kern = kernels[n_subjects]
+                    kern = kernels[sample_size]
             kernel_data = compute_ma(mask.shape, ijk, kern)
             if return_type == 'image':
                 kernel_data *= mask_data

@@ -13,7 +13,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
 from ...results import MetaResult
-from ...base import Estimator
+from ...base import CBMAEstimator
 from .kernel import KernelTransformer
 from ...stats import null_to_p, p_to_z, one_way, two_way
 from ...due import due
@@ -23,7 +23,7 @@ LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDADensity(Estimator):
+class MKDADensity(CBMAEstimator):
     r"""
     Multilevel kernel density analysis- Density analysis.
 
@@ -48,6 +48,7 @@ class MKDADensity(Estimator):
       https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, kernel_transformer=MKDAKernel, **kwargs):
+        super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
@@ -228,7 +229,7 @@ class MKDADensity(Estimator):
 
 
 @due.dcite(references.MKDA, description='Introduces MKDA.')
-class MKDAChi2(Estimator):
+class MKDAChi2(CBMAEstimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis.
 
@@ -257,6 +258,7 @@ class MKDAChi2(Estimator):
       https://doi.org/10.1093/scan/nsm015
     """
     def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
+        super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 
@@ -273,7 +275,7 @@ class MKDAChi2(Estimator):
 
     def fit(self, dataset, dataset2):
         """
-        Fit Estimator to datasets.
+        Fit CBMAEstimator to datasets.
 
         Parameters
         ----------
@@ -283,7 +285,7 @@ class MKDAChi2(Estimator):
         Returns
         -------
         :obj:`nimare.results.MetaResult`
-            Results of Estimator fitting.
+            Results of CBMAEstimator fitting.
         """
         self._validate_input(dataset)
         self._validate_input(dataset2)
@@ -566,7 +568,7 @@ class MKDAChi2(Estimator):
 
 @due.dcite(references.KDA1, description='Introduces the KDA algorithm.')
 @due.dcite(references.KDA2, description='Also introduces the KDA algorithm.')
-class KDA(Estimator):
+class KDA(CBMAEstimator):
     r"""
     Kernel density analysis.
 
@@ -596,6 +598,7 @@ class KDA(Estimator):
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
     def __init__(self, kernel_transformer=KDAKernel, **kwargs):
+        super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
 

@@ -9,9 +9,12 @@ from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
 import inspect
+import numpy as np
+import pandas as pd
 from six import with_metaclass
 
 from .results import MetaResult
+from .utils import get_masker
 
 
 LGR = logging.getLogger(__name__)
@@ -24,7 +27,8 @@ class NiMAREBase(with_metaclass(ABCMeta)):
     def __init__(self):
         """
         TODO: Actually write/refactor class methods. They mostly come directly from sklearn
-        https://github.com/scikit-learn/scikit-learn/blob/2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
+        https://github.com/scikit-learn/scikit-learn/blob/
+        2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
         """
         pass
 
@@ -281,3 +285,55 @@ class Estimator(NiMAREBase):
         ndarrays.
         """
         pass
+
+
+class MetaEstimator(Estimator):
+    """Base class for meta-analysis methods.
+    """
+    def __init__(self, *args, **kwargs):
+        mask = kwargs.get('mask')
+        if mask is not None:
+            mask = get_masker(mask)
+        self.masker = mask
+
+    def _preprocess_input(self, dataset):
+        """Mask required input images using either the dataset's mask or the
+        estimator's.
+        """
+        masker = self.masker or dataset.masker
+        for name, (type_, _) in self._required_inputs.items():
+            if type_ == 'image':
+                self.inputs_[name] = masker.transform(self.inputs_[name])
+
+
+class CBMAEstimator(MetaEstimator):
+    """Base class for coordinate-based meta-analysis methods.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _preprocess_input(self, dataset):
+        """Mask required input images using either the dataset's mask or the
+        estimator's. Also, insert required metadata into coordinates DataFrame.
+        """
+        super()._preprocess_input(dataset)
+
+        # All extra (non-ijk) parameters for a kernel should be overrideable as
+        # parameters to __init__, so we can access them with get_params()
+        kt_args = list(self.kernel_transformer.get_params().keys())
+
+        # Integrate "sample_size" from metadata into DataFrame so that
+        # kernel_transformer can access it.
+        if 'sample_size' in kt_args:
+            # Extract sample sizes and make DataFrame
+            sample_sizes = dataset.get_metadata(field='sample_sizes', ids=dataset.ids)
+            # we need an extra layer of lists
+            sample_sizes = [[ss] for ss in sample_sizes]
+            sample_sizes = pd.DataFrame(index=dataset.ids, data=sample_sizes,
+                                        columns=['sample_sizes'])
+            sample_sizes['sample_size'] = sample_sizes['sample_sizes'].apply(np.mean)
+            # Merge sample sizes df into coordinates df
+            dataset.coordinates = dataset.coordinates.merge(
+                right=sample_sizes, left_on='id', right_index=True,
+                sort=False, validate='many_to_one', suffixes=(False, False),
+                how='left')
