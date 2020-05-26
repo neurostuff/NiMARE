@@ -12,7 +12,6 @@ import inspect
 import numpy as np
 import pandas as pd
 from six import with_metaclass
-from scipy.spatial.distance import cdist
 
 from .results import MetaResult
 from .utils import get_masker
