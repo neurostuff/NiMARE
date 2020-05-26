@@ -29,6 +29,10 @@ class KernelTransformer(Transformer):
     -----
     This base class exists solely to allow CBMA algorithms to check the class
     of their kernel_transformer parameters.
+
+    All extra (non-ijk) parameters for a given kernel should be overrideable as
+    parameters to __init__, so we can access them with get_params() and also
+    apply them to datasets with missing data.
     """
     pass
 
@@ -55,7 +59,7 @@ class ALEKernel(KernelTransformer):
         self.fwhm = fwhm
         self.sample_size = sample_size
 
-    def transform(self, dataset, mask=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type='image'):
         """
         Generate ALE modeled activation images for each Contrast in dataset.
 
@@ -63,7 +67,7 @@ class ALEKernel(KernelTransformer):
         ----------
         dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
-        mask : img_like, optional
+        masker : img_like, optional
             Only used if dataset is a DataFrame.
         return_type : {'image', 'array'}, optional
             Whether to return a niimg ('image') or a numpy array.
@@ -77,10 +81,9 @@ class ALEKernel(KernelTransformer):
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
         """
-
         if isinstance(dataset, pd.DataFrame):
-            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
-            mask = get_masker(mask).mask_img
+            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            mask = masker.mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img

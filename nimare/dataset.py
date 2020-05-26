@@ -291,6 +291,8 @@ class Dataset(NiMAREBase):
                 temp = self.get_images(imtype=vals[1])
             elif vals[0] == 'metadata':
                 temp = self.get_metadata(field=vals[1])
+            elif vals[0] == 'coordinates':
+                temp = [self.coordinates.loc[self.coordinates['id'] == id_] for id_ in self.ids]
             else:
                 raise ValueError('Input "{}" not understood.'.format(vals[0]))
             results[k] = temp
@@ -304,6 +306,8 @@ class Dataset(NiMAREBase):
 
         for k in results:
             results[k] = [results[k][i] for i in keep_idx]
+            if dict_.get(k, [None])[0] == 'coordinates':
+                results[k] = pd.concat(results[k])
         return results
 
     def get_labels(self, ids=None):

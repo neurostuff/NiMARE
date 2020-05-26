@@ -232,7 +232,9 @@ class Estimator(NiMAREBase):
             data = dataset.get(self._required_inputs)
             self.inputs_ = {}
             for k, v in data.items():
-                if not v:
+                print(k)
+                print(v)
+                if v is not None:
                     raise ValueError(
                         "Estimator {0} requires input dataset to contain {1}, but "
                         "none were found.".format(self.__class__.__name__, k))
@@ -240,7 +242,7 @@ class Estimator(NiMAREBase):
 
     def _preprocess_input(self, dataset):
         """
-        Perform any additional preprocessing steps on data in self.input_
+        Perform any additional preprocessing steps on data in self.inputs_
         """
         pass
 
@@ -297,13 +299,26 @@ class MetaEstimator(Estimator):
         self.masker = mask
 
     def _preprocess_input(self, dataset):
-        """Mask required input images using either the dataset's mask or the
-        estimator's.
+        """Preprocess inputs to the Estimator from the Dataset as needed.
         """
         masker = self.masker or dataset.masker
         for name, (type_, _) in self._required_inputs.items():
             if type_ == 'image':
+                # Mask required input images using either the dataset's mask or
+                # the estimator's.
                 self.inputs_[name] = masker.transform(self.inputs_[name])
+            elif type_ == 'coordinates':
+                # Limit coordinates to only those within mask.
+                self.inputs_[name] = dataset.coordinates.copy()
+                n_foci = self.inputs_[name].shape[0]
+                mask_data = masker.mask_img.get_fdata()
+                mask_ijk = np.vstack(np.where(mask_data)).T
+                distances = cdist(mask_ijk, self.inputs_[name][['i', 'j', 'k']].values)
+                distances = np.any(distances == 0, axis=0)
+                self.inputs_[name] = self.inputs_[name].iloc[distances].reset_index()
+                print('{}/{} coordinates outside of mask. Dropped.'.format(
+                    n_foci - self.inputs_['coordinates'].shape[0], n_foci
+                ))
 
 
 class CBMAEstimator(MetaEstimator):
@@ -333,7 +348,7 @@ class CBMAEstimator(MetaEstimator):
                                         columns=['sample_sizes'])
             sample_sizes['sample_size'] = sample_sizes['sample_sizes'].apply(np.mean)
             # Merge sample sizes df into coordinates df
-            dataset.coordinates = dataset.coordinates.merge(
+            self.inputs_['coordinates'] = self.inputs_['coordinates'].merge(
                 right=sample_sizes, left_on='id', right_index=True,
                 sort=False, validate='many_to_one', suffixes=(False, False),
                 how='left')

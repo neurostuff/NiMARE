@@ -43,9 +43,15 @@ class ALE(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
+        Another optional argument is ``mask``.
 
     Attributes
     ----------
+    masker
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key:
+        coordinates. This is an edited version of the dataset's coordinates
+        DataFrame.
     null_distributions_ : :obj:`dict` or :class:`numpy.ndarray`
         Null distributions for ALE and any multiple-comparisons correction
         methods. Entries are added to this attribute if and when the
@@ -69,31 +75,32 @@ class ALE(CBMAEstimator):
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
+    _required_inputs = {
+        'coordinates': ('coordinates', None),
+    }
+
     def __init__(self, kernel_transformer=ALEKernel, **kwargs):
         super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
-        for k in kwargs.keys():
-            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
 
         if not issubclass(kernel_transformer, KernelTransformer):
-            raise ValueError('Argument "kernel_transformer" must be a '
-                             'KernelTransformer')
+            raise ValueError('Argument "kernel_transformer" must be a KernelTransformer')
 
-        self.mask = None
         self.dataset = None
-
         self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
-        self.null_distributions_ = {}
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.mask = dataset.masker.mask_img
+        self.masker = self.masker or dataset.masker
 
-        ma_maps = self.kernel_transformer.transform(self.dataset, mask=self.mask,
-                                                    return_type='image')
+        ma_maps = self.kernel_transformer.transform(
+            self.inputs_['coordinates'],
+            masker=self.masker or dataset.masker,
+            return_type='image'
+        )
         ale_values = self._compute_ale(ma_maps)
         self._compute_null(ma_maps)
         p_values, z_values = self._ale_to_p(ale_values)
@@ -111,10 +118,11 @@ class ALE(CBMAEstimator):
         Returns masked array of ALE values.
         """
         if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_transformer.transform(data, mask=self.mask,
-                                                          return_type='array')
+            ma_values = self.kernel_transformer.transform(
+                data, masker=self.masker, return_type='array'
+            )
         elif isinstance(data, list):
-            ma_values = apply_mask(data, self.mask)
+            ma_values = self.masker.transform(data)
         elif isinstance(data, np.ndarray):
             ma_values = data.copy()
         else:
@@ -131,7 +139,7 @@ class ALE(CBMAEstimator):
         Compute uncorrected ALE-value null distribution from MA values.
         """
         if isinstance(ma_maps, list):
-            ma_values = apply_mask(ma_maps, self.mask)
+            ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
@@ -225,7 +233,7 @@ class ALE(CBMAEstimator):
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
-        iter_z_map = unmask(z_values, self.mask)
+        iter_z_map = self.masker.inverse_transform(z_values)
         vthresh_iter_z_map = iter_z_map.get_fdata()
         vthresh_iter_z_map[vthresh_iter_z_map < z_thresh] = 0
 
@@ -285,7 +293,7 @@ class ALE(CBMAEstimator):
         """
         z_values = result.get_map('z', return_type='array')
         ale_values = result.get_map('ale', return_type='array')
-        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
+        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -310,7 +318,7 @@ class ALE(CBMAEstimator):
         conn[1, :, :] = 1
 
         # Multiple comparisons correction
-        iter_df = self.dataset.coordinates.copy()
+        iter_df = self.inputs_['coordinates'].copy()
         rand_idx = np.random.choice(null_ijk.shape[0],
                                     size=(iter_df.shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
@@ -335,9 +343,9 @@ class ALE(CBMAEstimator):
          self.null_distributions_['fwe_level-cluster_method-montecarlo']) = zip(*perm_results)
 
         # Cluster-level FWE
-        vthresh_z_map = unmask(vthresh_z_values, self.mask).get_fdata()
+        vthresh_z_map = self.masker.inverse_transform(vthresh_z_values).get_fdata()
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
-        p_cfwe_map = np.zeros(self.mask.shape)
+        p_cfwe_map = np.zeros(self.masker.mask_img.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
@@ -346,7 +354,9 @@ class ALE(CBMAEstimator):
                 self.null_distributions_['fwe_level-cluster_method-montecarlo'],
                 'upper'
             )
-        p_cfwe_values = apply_mask(nib.Nifti1Image(p_cfwe_map, self.mask.affine), self.mask)
+        p_cfwe_values = self.masker.transform(
+            nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine)
+        )
         logp_cfwe_values = -np.log(p_cfwe_values)
         logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log(np.finfo(float).eps)
         z_cfwe_values = p_to_z(p_cfwe_values, tail='one')
@@ -395,6 +405,10 @@ class ALESubtraction(CBMAEstimator):
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
         https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
+    _required_inputs = {
+        'coordinates': ('coordinates', None),
+    }
+
     def __init__(self, n_iters=10000):
         super().__init__()
         self.n_iters = n_iters
@@ -607,6 +621,10 @@ class SCALE(CBMAEstimator):
       revisited: controlling for activation base rates." NeuroImage 99
       (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
+    _required_inputs = {
+        'coordinates': ('coordinates', None),
+    }
+
     def __init__(self, voxel_thresh=0.001, n_iters=10000, n_cores=-1, ijk=None,
                  kernel_transformer=ALEKernel, **kwargs):
         super().__init__(**kwargs)
@@ -654,7 +672,9 @@ class SCALE(CBMAEstimator):
         self.dataset = dataset
         self.mask = dataset.masker.mask_img
 
-        ma_maps = self.kernel_transformer.transform(self.dataset, return_type='image')
+        ma_maps = self.kernel_transformer.transform(
+            self.inputs_['coordinates'], return_type='image'
+        )
 
         max_poss_ale = 1.
         for ma_map in ma_maps:

@@ -47,6 +47,10 @@ class MKDADensity(CBMAEstimator):
       cognitive and affective neuroscience 2.2 (2007): 150-158.
       https://doi.org/10.1093/scan/nsm015
     """
+    _required_inputs = {
+        'coordinates': ('coordinates', None),
+    }
+
     def __init__(self, kernel_transformer=MKDAKernel, **kwargs):
         super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -257,6 +261,10 @@ class MKDAChi2(CBMAEstimator):
       cognitive and affective neuroscience 2.2 (2007): 150-158.
       https://doi.org/10.1093/scan/nsm015
     """
+    _required_inputs = {
+        'coordinates': ('coordinates', None),
+    }
+
     def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
         super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
@@ -597,6 +605,10 @@ class KDA(CBMAEstimator):
         studies of shifting attention: a meta-analysis." Neuroimage 22.4
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
+    _required_inputs = {
+        'coordinates': ('coordinates', None),
+    }
+
     def __init__(self, kernel_transformer=KDAKernel, **kwargs):
         super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
