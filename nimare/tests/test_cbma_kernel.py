@@ -16,17 +16,18 @@ def test_alekernel_smoke(testdata):
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
-    testdata['dset'].coordinates['sample_size'] = 20
+    coordinates = testdata['dset'].coordinates.copy()
+    coordinates['sample_size'] = 20
 
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(
-        testdata['dset'].coordinates,
+        coordinates,
         testdata['dset'].masker,
         return_type='image'
     )
     assert len(ma_maps) == len(testdata['dset'].ids)
     ma_maps = kern.transform(
-        testdata['dset'].coordinates,
+        coordinates,
         testdata['dset'].masker,
         return_type='array'
     )
@@ -42,16 +43,16 @@ def test_alekernel1(testdata):
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
-    testdata['dset'].coordinates['sample_size'] = 20
+    coordinates = testdata['dset'].coordinates.copy()
+    coordinates['sample_size'] = 20
 
     id_ = 'pain_01.nidm-1'
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(
-        testdata['dset'].coordinates,
+        coordinates,
         testdata['dset'].masker
     )
-    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
-                                           ['i', 'j', 'k']]
+    ijk = coordinates.loc[coordinates['id'] == id_, ['i', 'j', 'k']]
     ijk = ijk.values.astype(int)
     kern_data = ma_maps[0].get_fdata()
     max_idx = np.where(kern_data == np.max(kern_data))
@@ -68,14 +69,17 @@ def test_alekernel2(testdata):
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
-    testdata['dset'].coordinates['sample_size'] = 20
+    coordinates = testdata['dset'].coordinates.copy()
+    coordinates['sample_size'] = 20
 
     id_ = 'pain_01.nidm-1'
     kern = kernel.ALEKernel()
-    ma_maps = kern.transform(testdata['dset'].coordinates, masker=testdata['dset'].masker)
+    ma_maps = kern.transform(
+        coordinates,
+        masker=testdata['dset'].masker
+    )
 
-    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
-                                           ['i', 'j', 'k']]
+    ijk = coordinates.loc[coordinates['id'] == id_, ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
     kern_data = ma_maps[0].get_fdata()
     max_idx = np.array(np.where(kern_data == np.max(kern_data))).T
