@@ -307,17 +307,7 @@ class MetaEstimator(Estimator):
                 # the estimator's.
                 self.inputs_[name] = masker.transform(self.inputs_[name])
             elif type_ == 'coordinates':
-                # Limit coordinates to only those within mask.
                 self.inputs_[name] = dataset.coordinates.copy()
-                n_foci = self.inputs_[name].shape[0]
-                mask_data = masker.mask_img.get_fdata()
-                mask_ijk = np.vstack(np.where(mask_data)).T
-                distances = cdist(mask_ijk, self.inputs_[name][['i', 'j', 'k']].values)
-                distances = np.any(distances == 0, axis=0)
-                self.inputs_[name] = self.inputs_[name].iloc[distances].reset_index()
-                print('{}/{} coordinates outside of mask. Dropped.'.format(
-                    n_foci - self.inputs_['coordinates'].shape[0], n_foci
-                ))
 
 
 class CBMAEstimator(MetaEstimator):
