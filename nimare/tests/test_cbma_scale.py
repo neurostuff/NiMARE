@@ -11,7 +11,7 @@ def test_scale(testdata):
     """
     Smoke test for SCALE
     """
-    dset = testdata['dset'].slice(testdata.ids[:3])
+    dset = testdata['dset'].slice(testdata['dset'].ids[:3])
     ijk = np.vstack(np.where(testdata['dset'].masker.mask_img.get_fdata())).T
     ijk = ijk[:, :20]
     meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk)
