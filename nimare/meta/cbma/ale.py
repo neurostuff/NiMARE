@@ -95,6 +95,7 @@ class ALE(CBMAEstimator):
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
+        self.null_distributions_ = {}
 
         ma_maps = self.kernel_transformer.transform(
             self.inputs_['coordinates'],

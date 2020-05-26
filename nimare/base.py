@@ -12,6 +12,7 @@ import inspect
 import numpy as np
 import pandas as pd
 from six import with_metaclass
+from scipy.spatial.distance import cdist
 
 from .results import MetaResult
 from .utils import get_masker
@@ -232,9 +233,7 @@ class Estimator(NiMAREBase):
             data = dataset.get(self._required_inputs)
             self.inputs_ = {}
             for k, v in data.items():
-                print(k)
-                print(v)
-                if v is not None:
+                if v is None:
                     raise ValueError(
                         "Estimator {0} requires input dataset to contain {1}, but "
                         "none were found.".format(self.__class__.__name__, k))
