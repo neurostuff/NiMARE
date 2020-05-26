@@ -12,6 +12,7 @@ import inspect
 import numpy as np
 import pandas as pd
 from six import with_metaclass
+from scipy.spatial.distance import cdist
 
 from .results import MetaResult
 from .utils import get_masker
@@ -306,7 +307,19 @@ class MetaEstimator(Estimator):
                 # the estimator's.
                 self.inputs_[name] = masker.transform(self.inputs_[name])
             elif type_ == 'coordinates':
+                # Limit coordinates to only those within mask.
                 self.inputs_[name] = dataset.coordinates.copy()
+                n_foci = self.inputs_[name].shape[0]
+                mask_data = masker.mask_img.get_fdata()
+                mask_ijk = np.vstack(np.where(mask_data)).T
+                distances = cdist(mask_ijk, self.inputs_[name][['i', 'j', 'k']].values)
+                distances = np.any(distances == 0, axis=0)
+                self.inputs_[name] = self.inputs_[name].iloc[distances].reset_index()
+                if n_foci - self.inputs_['coordinates'].shape[0] > 0:
+                    LGR.warning('{}/{} coordinates outside of mask. '
+                                'Dropped.'.format(
+                                    n_foci - self.inputs_['coordinates'].shape[0],
+                                    n_foci))
 
 
 class CBMAEstimator(MetaEstimator):
