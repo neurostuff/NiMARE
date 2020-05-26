@@ -1,65 +1,63 @@
 """
 Test nimare.meta.esma (effect-size meta-analytic algorithms).
 """
-import pytest
-
 from nimare.meta import esma
 
 
-def test_z_perm():
+def test_z_perm(testdata):
     """
     Smoke test for z permutation.
     """
-    result = esma.stouffers(pytest.data_z, inference='rfx', null='empirical',
+    result = esma.stouffers(testdata['data_z'], inference='rfx', null='empirical',
                             n_iters=10)
     assert isinstance(result, dict)
 
 
-def test_stouffers_ffx():
+def test_stouffers_ffx(testdata):
     """
     Smoke test for Stouffer's FFX.
     """
-    result = esma.stouffers(pytest.data_z, inference='ffx', null='theoretical',
+    result = esma.stouffers(testdata['data_z'], inference='ffx', null='theoretical',
                             n_iters=None)
     assert isinstance(result, dict)
 
 
-def test_stouffers_rfx():
+def test_stouffers_rfx(testdata):
     """
     Smoke test for Weighted Stouffer's.
     """
-    result = esma.stouffers(pytest.data_z, inference='rfx', null='theoretical',
+    result = esma.stouffers(testdata['data_z'], inference='rfx', null='theoretical',
                             n_iters=None)
     assert isinstance(result, dict)
 
 
-def test_weighted_stouffers():
+def test_weighted_stouffers(testdata):
     """
     Smoke test for Stouffer's RFX.
     """
-    result = esma.weighted_stouffers(pytest.data_z, pytest.sample_sizes_z)
+    result = esma.weighted_stouffers(testdata['data_z'], testdata['sample_sizes_z'])
     assert isinstance(result, dict)
 
 
-def test_fishers():
+def test_fishers(testdata):
     """
     Smoke test for Fisher's.
     """
-    result = esma.fishers(pytest.data_z)
+    result = esma.fishers(testdata['data_z'])
     assert isinstance(result, dict)
 
 
-def test_con_perm():
+def test_con_perm(testdata):
     """
     Smoke test for contrast permutation.
     """
-    result = esma.rfx_glm(pytest.data_con, null='empirical', n_iters=10)
+    result = esma.rfx_glm(testdata['data_con'], null='empirical', n_iters=10)
     assert isinstance(result, dict)
 
 
-def test_rfx_glm():
+def test_rfx_glm(testdata):
     """
     Smoke test for RFX GLM.
     """
-    result = esma.rfx_glm(pytest.data_con, null='theoretical', n_iters=None)
+    result = esma.rfx_glm(testdata['data_con'], null='theoretical', n_iters=None)
     assert isinstance(result, dict)

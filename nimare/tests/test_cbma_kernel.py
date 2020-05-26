@@ -1,7 +1,6 @@
 """
 Test nimare.meta.cbma.kernel (CBMA kernel estimators).
 """
-import pytest
 import numpy as np
 import pandas as pd
 from scipy.ndimage.measurements import center_of_mass
