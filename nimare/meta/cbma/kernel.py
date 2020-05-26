@@ -9,9 +9,8 @@ import pandas as pd
 import nibabel as nib
 
 from nilearn.image import resample_to_img, math_img
-from nilearn.masking import apply_mask
 from .utils import compute_ma, get_ale_kernel, peaks2maps
-from ...utils import vox2mm, get_masker
+from ...utils import vox2mm
 
 from ...base import Transformer
 
@@ -148,7 +147,7 @@ class MKDAKernel(KernelTransformer):
         self.r = float(r)
         self.value = value
 
-    def transform(self, dataset, mask=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type='image'):
         """
         Generate MKDA modeled activation images for each Contrast in dataset.
         For each Contrast, a binary sphere of radius ``r`` is placed around
@@ -159,7 +158,7 @@ class MKDAKernel(KernelTransformer):
         ----------
         dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
-        mask : img_like, optional
+        masker : img_like, optional
             Only used if dataset is a DataFrame.
         return_type : {'image', 'array'}, optional
             Whether to return a niimg ('image') or a numpy array.
@@ -174,8 +173,8 @@ class MKDAKernel(KernelTransformer):
             contrast and V is voxel.
         """
         if isinstance(dataset, pd.DataFrame):
-            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
-            mask = get_masker(mask).mask_img
+            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            mask = masker.mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
@@ -231,7 +230,7 @@ class KDAKernel(KernelTransformer):
         self.r = float(r)
         self.value = value
 
-    def transform(self, dataset, mask=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type='image'):
         """
         Generate KDA modeled activation images for each Contrast in dataset.
         Differs from MKDA images in that binary spheres are summed together in
@@ -242,7 +241,7 @@ class KDAKernel(KernelTransformer):
         ----------
         dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
-        mask : img_like, optional
+        masker : img_like, optional
             Only used if dataset is a DataFrame.
         return_type : {'image', 'array'}, optional
             Whether to return a niimg ('image') or a numpy array.
@@ -257,8 +256,8 @@ class KDAKernel(KernelTransformer):
             contrast and V is voxel.
         """
         if isinstance(dataset, pd.DataFrame):
-            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
-            mask = get_masker(mask).mask_img
+            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            mask = masker.mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
@@ -311,7 +310,7 @@ class Peaks2MapsKernel(KernelTransformer):
     def __init__(self, resample_to_mask=True):
         self.resample_to_mask = resample_to_mask
 
-    def transform(self, dataset, mask=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type='image'):
         """
         Generate peaks2maps modeled activation images for each Contrast in dataset.
 
@@ -319,7 +318,7 @@ class Peaks2MapsKernel(KernelTransformer):
         ----------
         dataset : :obj:`nimare.dataset.Dataset`
             Dataset for which to make images.
-        mask : img_like, optional
+        masker : img_like, optional
             Only used if dataset is a DataFrame.
         return_type : {'image', 'array'}, optional
             Whether to return a niimg ('image') or a numpy array.
@@ -334,8 +333,8 @@ class Peaks2MapsKernel(KernelTransformer):
             contrast and V is voxel.
         """
         if isinstance(dataset, pd.DataFrame):
-            assert mask is not None, 'Argument "mask" must be provided if dataset is a DataFrame'
-            mask = get_masker(mask).mask_img
+            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            mask = masker.mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
@@ -362,7 +361,7 @@ class Peaks2MapsKernel(KernelTransformer):
                                    imgs[0], interpolation='nearest')
 
         if return_type == 'array':
-            imgs = apply_mask(imgs, mask)
+            imgs = masker.transform(imgs)
         else:
             masked_images = []
             for img in imgs:

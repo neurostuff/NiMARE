@@ -8,7 +8,6 @@ import numpy as np
 import nibabel as nib
 from tqdm.auto import tqdm
 from scipy import ndimage, special
-from nilearn.masking import apply_mask, unmask
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .kernel import MKDAKernel, KDAKernel
@@ -57,17 +56,10 @@ class MKDADensity(CBMAEstimator):
                        if k.startswith('kernel__')}
 
         if not issubclass(kernel_transformer, KernelTransformer):
-            raise ValueError('Argument "kernel_transformer" must be a '
-                             'KernelTransformer')
+            raise ValueError('Argument "kernel_transformer" must be a KernelTransformer')
 
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
-        for k in kwargs.keys():
-            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
-
-        self.kernel_transformer = kernel_transformer(**kernel_args)
-
-        self.mask = None
         self.dataset = None
+        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
 
     def _fit(self, dataset):
@@ -80,17 +72,26 @@ class MKDADensity(CBMAEstimator):
             Dataset to analyze.
         """
         self.dataset = dataset
-        self.mask = dataset.masker.mask_img
+        self.masker = self.masker or dataset.masker
+        self.null_distributions_ = {}
 
-        ma_values = self.kernel_transformer.transform(dataset, return_type='array')
+        ma_values = self.kernel_transformer.transform(
+            self.inputs_['coordinates'],
+            masker=self.masker,
+            return_type='array'
+        )
 
         # Weight each SCM by square root of sample size
-        ids_df = self.dataset.coordinates.groupby('id').first()
-        if 'n' in ids_df.columns and 'inference' not in ids_df.columns:
-            ids_n = ids_df['n'].astype(float).values
+        # TODO: Incorporate sample-size and inference metadata extraction and
+        # merging into df.
+        # This will need to be distinct from the kernel_transformer-based kind
+        # done in CBMAEstimator._preprocess_input
+        ids_df = self.inputs_['coordinates'].groupby('id').first()
+        if 'sample_size' in ids_df.columns and 'inference' not in ids_df.columns:
+            ids_n = ids_df['sample_size'].astype(float).values
             weight_vec = np.sqrt(ids_n)[:, None] / np.sum(np.sqrt(ids_n))
-        elif 'n' in ids_df.columns and 'inference' in ids_df.columns:
-            ids_n = ids_df['n'].astype(float).values
+        elif 'sample_size' in ids_df.columns and 'inference' in ids_df.columns:
+            ids_n = ids_df['sample_size'].astype(float).values
             ids_inf = ids_df['inference'].map({'ffx': 0.75,
                                                'rfx': 1.}).values
             weight_vec = ((np.sqrt(ids_n)[:, None] * ids_inf[:, None]) /
@@ -111,12 +112,15 @@ class MKDADensity(CBMAEstimator):
         iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask,
-                                                         return_type='array')
+        iter_ma_maps = self.kernel_transformer.transform(
+            iter_df,
+            masker=self.masker,
+            return_type='array'
+        )
         iter_ma_maps *= self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
-        iter_of_map = unmask(iter_of_map, self.mask)
+        iter_of_map = self.masker.inverse_transform(iter_of_map)
         vthresh_iter_of_map = iter_of_map.get_fdata().copy()
         vthresh_iter_of_map[vthresh_iter_of_map < voxel_thresh] = 0
 
@@ -167,7 +171,7 @@ class MKDADensity(CBMAEstimator):
         >>> cresult = corrector.transform(result)
         """
         of_map = result.get_map('of', return_type='image')
-        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
+        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -183,10 +187,10 @@ class MKDADensity(CBMAEstimator):
 
         rand_idx = np.random.choice(
             null_ijk.shape[0],
-            size=(self.dataset.coordinates.shape[0], n_iters))
+            size=(self.inputs_['coordinates'].shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = self.dataset.coordinates.copy()
+        iter_df = self.inputs_['coordinates'].copy()
 
         conn = np.ones((3, 3, 3))
 
@@ -209,18 +213,19 @@ class MKDADensity(CBMAEstimator):
 
         # Cluster-level FWE
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_of_map, conn)
-        cfwe_map = np.zeros(self.mask.shape)
+        cfwe_map = np.zeros(self.masker.mask_img.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
             cfwe_map[clust_idx] = -np.log(null_to_p(
                 clust_size, perm_clust_sizes, 'upper'))
         cfwe_map[np.isinf(cfwe_map)] = -np.log(np.finfo(float).eps)
-        cfwe_map = apply_mask(nib.Nifti1Image(cfwe_map, self.mask.affine),
-                              self.mask)
+        cfwe_map = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(cfwe_map, self.masker.mask_img.affine))
+        )
 
         # Voxel-level FWE
-        vfwe_map = apply_mask(of_map, self.mask)
+        vfwe_map = np.squeeze(self.masker.transform(of_map))
         for i_vox, val in enumerate(vfwe_map):
             vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, 'upper'))
         vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
@@ -274,20 +279,16 @@ class MKDAChi2(CBMAEstimator):
             raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
-        for k in kwargs.keys():
-            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
-
         self.kernel_transformer = kernel_transformer(**kernel_args)
         self.prior = prior
 
-    def fit(self, dataset, dataset2):
+    def fit(self, dataset1, dataset2):
         """
         Fit CBMAEstimator to datasets.
 
         Parameters
         ----------
-        dataset/dataset2 : :obj:`nimare.dataset.Dataset`
+        dataset1/dataset2 : :obj:`nimare.dataset.Dataset`
             Dataset objects to analyze.
 
         Returns
@@ -295,21 +296,33 @@ class MKDAChi2(CBMAEstimator):
         :obj:`nimare.results.MetaResult`
             Results of CBMAEstimator fitting.
         """
-        self._validate_input(dataset)
+        self._validate_input(dataset1)
         self._validate_input(dataset2)
-        maps = self._fit(dataset, dataset2)
-        self.results = MetaResult(self, dataset.masker.mask_img, maps)
+        self._preprocess_input(dataset1)
+        # override
+        self.inputs_['coordinates1'] = self.inputs_.pop('coordinates')
+        self._preprocess_input(dataset2)
+        # override
+        self.inputs_['coordinates2'] = self.inputs_.pop('coordinates')
+
+        maps = self._fit(dataset1, dataset2)
+        self.results = MetaResult(self, dataset1.masker.mask_img, maps)
         return self.results
 
-    def _fit(self, dataset, dataset2):
-        self.dataset = dataset
-        self.dataset2 = dataset2
-        self.mask = dataset.masker.mask_img
+    def _fit(self, dataset1, dataset2):
+        self.masker = self.masker or dataset1.masker
+        self.null_distributions_ = {}
 
-        ma_maps1 = self.kernel_transformer.transform(self.dataset, mask=self.mask,
-                                                     return_type='array')
-        ma_maps2 = self.kernel_transformer.transform(self.dataset2, mask=self.mask,
-                                                     return_type='array')
+        ma_maps1 = self.kernel_transformer.transform(
+            self.inputs_['coordinates1'],
+            masker=self.masker,
+            return_type='array'
+        )
+        ma_maps2 = self.kernel_transformer.transform(
+            self.inputs_['coordinates2'],
+            masker=self.masker,
+            return_type='array'
+        )
 
         # Calculate different count variables
         n_selected = ma_maps1.shape[0]
@@ -378,10 +391,16 @@ class MKDAChi2(CBMAEstimator):
         iter_df1[['i', 'j', 'k']] = iter_ijk1
         iter_df2[['i', 'j', 'k']] = iter_ijk2
 
-        temp_ma_maps1 = self.kernel_transformer.transform(iter_df1, self.mask,
-                                                          return_type='array')
-        temp_ma_maps2 = self.kernel_transformer.transform(iter_df2, self.mask,
-                                                          return_type='array')
+        temp_ma_maps1 = self.kernel_transformer.transform(
+            iter_df1,
+            self.masker,
+            return_type='array'
+        )
+        temp_ma_maps2 = self.kernel_transformer.transform(
+            iter_df2,
+            self.masker,
+            return_type='array'
+        )
 
         n_selected = temp_ma_maps1.shape[0]
         n_unselected = temp_ma_maps2.shape[0]
@@ -442,7 +461,7 @@ class MKDAChi2(CBMAEstimator):
         >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
+        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
         pAgF_chi2_vals = result.get_map('chi2_desc-consistency', return_type='array')
         pFgA_chi2_vals = result.get_map('chi2_desc-specificity', return_type='array')
         pAgF_z_vals = result.get_map('z_desc-consistency', return_type='array')
@@ -459,8 +478,8 @@ class MKDAChi2(CBMAEstimator):
                                                           mp.cpu_count()))
             n_cores = mp.cpu_count()
 
-        iter_df1 = self.dataset.coordinates.copy()
-        iter_df2 = self.dataset2.coordinates.copy()
+        iter_df1 = self.inputs_['coordinates1'].copy()
+        iter_df2 = self.inputs_['coordinates2'].copy()
         iter_dfs1 = [iter_df1] * n_iters
         iter_dfs2 = [iter_df2] * n_iters
         rand_idx1 = np.random.choice(null_ijk.shape[0],
@@ -618,11 +637,9 @@ class KDA(CBMAEstimator):
             raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
-        for k in kwargs.keys():
-            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
-
+        self.dataset = None
         self.kernel_transformer = kernel_transformer(**kernel_args)
+        self.results = None
 
     def _fit(self, dataset):
         """
@@ -634,9 +651,14 @@ class KDA(CBMAEstimator):
             Dataset to analyze.
         """
         self.dataset = dataset
-        self.mask = dataset.masker.mask_img
+        self.masker = self.masker or dataset.masker
+        self.null_distributions_ = {}
 
-        ma_maps = self.kernel_transformer.transform(dataset, return_type='array')
+        ma_maps = self.kernel_transformer.transform(
+            self.inputs_['coordinates'],
+            masker=self.masker,
+            return_type='array'
+        )
         of_values = np.sum(ma_maps, axis=0)
         images = {
             'of': of_values
@@ -647,8 +669,11 @@ class KDA(CBMAEstimator):
         iter_ijk, iter_df = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[['i', 'j', 'k']] = iter_ijk
-        iter_ma_maps = self.kernel_transformer.transform(iter_df, mask=self.mask,
-                                                         return_type='array')
+        iter_ma_maps = self.kernel_transformer.transform(
+            iter_df,
+            masker=self.masker,
+            return_type='array'
+        )
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         return iter_max_value
@@ -688,7 +713,7 @@ class KDA(CBMAEstimator):
         >>> cresult = corrector.transform(result)
         """
         of_values = result.get_map('of', return_type='array')
-        null_ijk = np.vstack(np.where(self.mask.get_fdata())).T
+        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         if n_cores <= 0:
             n_cores = mp.cpu_count()
@@ -701,10 +726,10 @@ class KDA(CBMAEstimator):
 
         rand_idx = np.random.choice(
             null_ijk.shape[0],
-            size=(self.dataset.coordinates.shape[0], n_iters))
+            size=(self.inputs_['coordinates'].shape[0], n_iters))
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = self.dataset.coordinates.copy()
+        iter_df = self.inputs_['coordinates'].copy()
 
         # Define parameters
         iter_dfs = [iter_df] * n_iters

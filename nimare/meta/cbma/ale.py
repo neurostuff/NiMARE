@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 from scipy import ndimage
-from nilearn.masking import apply_mask, unmask
 
 from .kernel import ALEKernel, KernelTransformer
 from ...results import MetaResult
@@ -83,7 +82,6 @@ class ALE(CBMAEstimator):
         super().__init__(**kwargs)
         kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
                        if k.startswith('kernel__')}
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
 
         if not issubclass(kernel_transformer, KernelTransformer):
             raise ValueError('Argument "kernel_transformer" must be a KernelTransformer')
@@ -99,7 +97,7 @@ class ALE(CBMAEstimator):
 
         ma_maps = self.kernel_transformer.transform(
             self.inputs_['coordinates'],
-            masker=self.masker or dataset.masker,
+            masker=self.masker,
             return_type='image'
         )
         ale_values = self._compute_ale(ma_maps)
@@ -355,9 +353,9 @@ class ALE(CBMAEstimator):
                 self.null_distributions_['fwe_level-cluster_method-montecarlo'],
                 'upper'
             )
-        p_cfwe_values = self.masker.transform(
+        p_cfwe_values = np.squeeze(self.masker.transform(
             nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine)
-        )
+        ))
         logp_cfwe_values = -np.log(p_cfwe_values)
         logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log(np.finfo(float).eps)
         z_cfwe_values = p_to_z(p_cfwe_values, tail='one')
@@ -450,7 +448,7 @@ class ALESubtraction(CBMAEstimator):
             Results of ALE subtraction analysis.
         """
         maps = self._fit(meta1, meta2, image1, image2, ma_maps1, ma_maps2, threshold)
-        self.results = MetaResult(self, meta1.mask, maps)
+        self.results = MetaResult(self, meta1.masker, maps)
         return self.results
 
     def _fit(self, meta1, meta2,
@@ -459,7 +457,7 @@ class ALESubtraction(CBMAEstimator):
              ma_maps1=None, ma_maps2=None, threshold=3.):
         assert np.array_equal(meta1.dataset.masker.mask_img.affine,
                               meta2.dataset.masker.mask_img.affine)
-        self.mask = meta1.dataset.masker.mask_img
+        self.masker = meta1.dataset.masker
 
         if isinstance(image1, str):
             image1 = meta1.results.get_map(image1, return_type='array')
@@ -468,17 +466,25 @@ class ALESubtraction(CBMAEstimator):
             image2 = meta2.results.get_map(image2, return_type='array')
 
         if not isinstance(image1, np.ndarray):
-            image1 = apply_mask(image1, self.mask)
-            image2 = apply_mask(image2, self.mask)
+            image1 = np.squeeze(self.masker.transform(image1))
+            image2 = np.squeeze(self.masker.transform(image2))
 
         grp1_voxel = image1 >= threshold
         grp2_voxel = image2 >= threshold
 
         if ma_maps1 is None:
-            ma_maps1 = meta1.kernel_transformer.transform(meta1.dataset, return_type='image')
+            ma_maps1 = meta1.kernel_transformer.transform(
+                meta1.inputs_['coordinates'],
+                masker=self.masker,
+                return_type='image'
+            )
 
         if ma_maps2 is None:
-            ma_maps2 = meta2.kernel_transformer.transform(meta2.dataset, return_type='image')
+            ma_maps2 = meta2.kernel_transformer.transform(
+                meta2.inputs_['coordinates'],
+                masker=self.masker,
+                return_type='image'
+            )
 
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
@@ -486,7 +492,7 @@ class ALESubtraction(CBMAEstimator):
         id_idx = np.arange(len(ma_maps))
 
         # Get MA values for both samples.
-        ma_arr = apply_mask(ma_maps, self.mask)
+        ma_arr = self.masker.transform(ma_maps)
 
         # Get ALE values for first group.
         grp1_ma_arr = ma_arr[:n_grp1, :]
@@ -636,18 +642,12 @@ class SCALE(CBMAEstimator):
             raise ValueError('Argument "kernel_transformer" must be a '
                              'KernelTransformer')
 
-        kwargs = {k: v for k, v in kwargs.items() if not k.startswith('kernel__')}
-        for k in kwargs.keys():
-            LGR.warning('Keyword argument "{0}" not recognized'.format(k))
-
-        self.mask = None
         self.dataset = None
-
         self.kernel_transformer = kernel_transformer(**kernel_args)
+        self.results = None
         self.voxel_thresh = voxel_thresh
         self.ijk = ijk
         self.n_iters = n_iters
-        self.results = None
 
         if n_cores <= 0:
             self.n_cores = mp.cpu_count()
@@ -671,10 +671,13 @@ class SCALE(CBMAEstimator):
             Dataset to analyze.
         """
         self.dataset = dataset
-        self.mask = dataset.masker.mask_img
+        self.masker = self.masker or dataset.masker
+        self.null_distributions_ = {}
 
         ma_maps = self.kernel_transformer.transform(
-            self.inputs_['coordinates'], return_type='image'
+            self.inputs_['coordinates'],
+            masker=self.masker,
+            return_type='image'
         )
 
         max_poss_ale = 1.
@@ -682,11 +685,14 @@ class SCALE(CBMAEstimator):
             max_poss_ale *= (1 - np.max(ma_map.get_data()))
         max_poss_ale = 1 - max_poss_ale
 
-        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, 0.0001), 4)
+        self.null_distributions_['histogram_bins'] = np.round(
+            np.arange(0, max_poss_ale + 0.001, 0.0001),
+            4
+        )
 
-        ale_values = self._compute_ale(df=None, ma_maps=ma_maps)
+        ale_values = self._compute_ale(ma_maps)
 
-        iter_df = self.dataset.coordinates.copy()
+        iter_df = self.inputs_['coordinates'].copy()
         rand_idx = np.random.choice(self.ijk.shape[0],
                                     size=(iter_df.shape[0], self.n_iters))
         rand_ijk = self.ijk[rand_idx, :]
@@ -707,8 +713,7 @@ class SCALE(CBMAEstimator):
 
         perm_scale_values = np.stack(perm_scale_values)
 
-        p_values, z_values = self._scale_to_p(ale_values, perm_scale_values,
-                                              hist_bins)
+        p_values, z_values = self._scale_to_p(ale_values, perm_scale_values)
         logp_values = -np.log(p_values)
         logp_values[np.isinf(logp_values)] = -np.log(np.finfo(float).eps)
 
@@ -720,19 +725,23 @@ class SCALE(CBMAEstimator):
         }
         return images
 
-    def _compute_ale(self, df=None, ma_maps=None):
+    def _compute_ale(self, data):
         """
         Generate ALE-value array and null distribution from list of contrasts.
         For ALEs on the original dataset, computes the null distribution.
         For permutation ALEs and all SCALEs, just computes ALE values.
         Returns masked array of ALE values and 1XnBins null distribution.
         """
-        if df is not None:
-            ma_maps = self.kernel_transformer.transform(df, self.mask, return_type='array')
-            ma_values = ma_maps
+        if isinstance(data, pd.DataFrame):
+            ma_values = self.kernel_transformer.transform(
+                data, masker=self.masker, return_type='array'
+            )
+        elif isinstance(data, list):
+            ma_values = self.masker.transform(data)
+        elif isinstance(data, np.ndarray):
+            ma_values = data.copy()
         else:
-            assert ma_maps is not None
-            ma_values = apply_mask(ma_maps, self.mask)
+            raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
         ale_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
@@ -741,29 +750,33 @@ class SCALE(CBMAEstimator):
         ale_values = 1 - ale_values
         return ale_values
 
-    def _scale_to_p(self, ale_values, scale_values, hist_bins):
+    def _scale_to_p(self, ale_values, scale_values):
         """
         Compute p- and z-values.
         """
-        step = 1 / np.mean(np.diff(hist_bins))
+        step = 1 / np.mean(np.diff(self.null_distributions_['histogram_bins']))
 
         scale_zeros = scale_values == 0
         n_zeros = np.sum(scale_zeros, axis=0)
         scale_values[scale_values == 0] = np.nan
-        scale_hists = np.zeros(((len(hist_bins),) + n_zeros.shape))
+        scale_hists = np.zeros(
+            ((len(self.null_distributions_['histogram_bins']),) + n_zeros.shape)
+        )
         scale_hists[0, :] = n_zeros
-        scale_hists[1:, :] = np.apply_along_axis(self._make_hist, 0,
-                                                 scale_values,
-                                                 hist_bins=hist_bins)
+        scale_hists[1:, :] = np.apply_along_axis(
+            self._make_hist,
+            0,
+            scale_values
+        )
 
         # Convert voxel-wise histograms to voxel-wise null distributions.
         null_distribution = scale_hists / np.sum(scale_hists, axis=0)
         null_distribution = np.cumsum(null_distribution[::-1, :], axis=0)[::-1, :]
         null_distribution /= np.max(null_distribution, axis=0)
 
-        # Get the hist_bins associated with each voxel's ale value, in order to
+        # Get the hist bins associated with each voxel's ale value, in order to
         # get the p-value from the associated bin in the null distribution.
-        n_bins = len(hist_bins)
+        n_bins = len(self.null_distributions_['histogram_bins'])
         ale_bins = round2(ale_values * step).astype(int)
         ale_bins[ale_bins > n_bins] = n_bins
 
@@ -776,14 +789,18 @@ class SCALE(CBMAEstimator):
         z_values = p_to_z(p_values, tail='one')
         return p_values, z_values
 
-    def _make_hist(self, oned_arr, hist_bins):
+    def _make_hist(self, oned_arr):
         """
-        Make a histogram from a 1d array and hist_bins. Meant to be applied
+        Make a histogram from a 1d array and histogram bins. Meant to be applied
         along an axis to a 2d array.
         """
-        hist_ = np.histogram(a=oned_arr, bins=hist_bins,
-                             range=(np.min(hist_bins), np.max(hist_bins)),
-                             density=False)[0]
+        hist_ = np.histogram(
+            a=oned_arr,
+            bins=self.null_distributions_['histogram_bins'],
+            range=(np.min(self.null_distributions_['histogram_bins']),
+                   np.max(self.null_distributions_['histogram_bins'])),
+            density=False
+        )[0]
         return hist_
 
     def _run_permutation(self, params):
