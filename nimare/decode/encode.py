@@ -14,7 +14,7 @@ from .. import references
            description='Introduced text2brain models for annotation.')
 def text2brain():
     """
-    Perform text-to-image encoding with the text2brain model [1]_.
+    Perform text-to-image encoding with the text2brain model.
 
     Warnings
     --------
@@ -22,11 +22,11 @@ def text2brain():
 
     References
     ----------
-    .. [1] Dockès, Jérôme, et al. "Text to brain: predicting the spatial
-        distribution of neuroimaging observations from text reports."
-        International Conference on Medical Image Computing and
-        Computer-Assisted Intervention. Springer, Cham, 2018.
-        https://doi.org/10.1007/978-3-030-00931-1_67
+    * Dockès, Jérôme, et al. "Text to brain: predicting the spatial
+      distribution of neuroimaging observations from text reports."
+      International Conference on Medical Image Computing and
+      Computer-Assisted Intervention. Springer, Cham, 2018.
+      https://doi.org/10.1007/978-3-030-00931-1_67
     """
     pass
 
@@ -35,7 +35,8 @@ def text2brain():
 def gclda_encode(model, text, out_file=None, topic_priors=None,
                  prior_weight=1.):
     r"""
-    Perform text-to-image encoding according to the method described in [1]_.
+    Perform text-to-image encoding according to the method described in
+    Rubin et al. (2017).
 
     Parameters
     ----------
@@ -101,10 +102,10 @@ def gclda_encode(model, text, out_file=None, topic_priors=None,
 
     References
     ----------
-    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
-        large-scale probabilistic functional-anatomical atlas of human
-        cognition." PLoS computational biology 13.10 (2017): e1005649.
-        https://doi.org/10.1371/journal.pcbi.1005649
+    * Rubin, Timothy N., et al. "Decoding brain activity using a
+      large-scale probabilistic functional-anatomical atlas of human
+      cognition." PLoS computational biology 13.10 (2017): e1005649.
+      https://doi.org/10.1371/journal.pcbi.1005649
     """
     if isinstance(text, list):
         text = ' '.join(text)

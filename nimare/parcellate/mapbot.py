@@ -15,7 +15,7 @@ from .. import references
 @due.dcite(references.MAPBOT, description='Introduces the MAPBOT algorithm.')
 class MAPBOT(Estimator):
     """
-    Meta-analytic parcellation based on text (MAPBOT) [1]_.
+    Meta-analytic parcellation based on text (MAPBOT).
 
     Parameters
     ----------
@@ -56,9 +56,9 @@ class MAPBOT(Estimator):
 
     References
     ----------
-    .. [1] Yuan, Rui, et al. "MAPBOT: Meta-analytic parcellation based on text,
-        and its application to the human thalamus." NeuroImage 157 (2017):
-        716-732. https://doi.org/10.1016/j.neuroimage.2017.06.032
+    * Yuan, Rui, et al. "MAPBOT: Meta-analytic parcellation based on text,
+      and its application to the human thalamus." NeuroImage 157 (2017):
+      716-732. https://doi.org/10.1016/j.neuroimage.2017.06.032
     """
     def __init__(self, tfidf_df, coordinates_df, mask):
         self.mask = mask

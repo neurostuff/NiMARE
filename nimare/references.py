@@ -125,7 +125,7 @@ FISHERS = BibTeX("""
 
 STOUFFERS = BibTeX("""
     @article{stouffer1949american,
-      title={The American soldier: Adjustment during army life.(Studies
+      title={The American soldier: Adjustment during army life. (Studies
              in social psychology in World War II), Vol. 1},
       author={Stouffer, Samuel A and Suchman, Edward A and DeVinney,
               Leland C and Star, Shirley A and Williams Jr, Robin M},

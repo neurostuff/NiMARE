@@ -10,8 +10,10 @@ from .. import references
 @due.dcite(references.ATHENA, description='Introduces ATHENA classifiers.')
 def extract_cogpo():
     """
-    Predict Cognitive Paradigm Ontology [1]_ labels with ATHENA classifiers
-    [2]_.
+    Predict Cognitive Paradigm Ontology labels.
+
+    This function utilizes ATHENA classifiers [2]_ to predict CogPO [1]_ labels
+    from text.
 
     Warnings
     --------

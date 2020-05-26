@@ -21,7 +21,7 @@ LGR = logging.getLogger(__name__)
 class GCLDAModel(NiMAREBase):
     """
     Generate a generalized correspondence latent Dirichlet allocation
-    (GCLDA) [1]_ topic model.
+    (GCLDA) topic model.
 
     Parameters
     ----------
@@ -77,10 +77,10 @@ class GCLDAModel(NiMAREBase):
 
     References
     ----------
-    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
-        large-scale probabilistic functional-anatomical atlas of human
-        cognition." PLoS computational biology 13.10 (2017): e1005649.
-        https://doi.org/10.1371/journal.pcbi.1005649
+    * Rubin, Timothy N., et al. "Decoding brain activity using a
+      large-scale probabilistic functional-anatomical atlas of human
+      cognition." PLoS computational biology 13.10 (2017): e1005649.
+      https://doi.org/10.1371/journal.pcbi.1005649
 
     See Also
     --------
@@ -649,10 +649,12 @@ class GCLDAModel(NiMAREBase):
                            'used in model.')
     def compute_log_likelihood(self, model=None, update_vectors=True):
         """
-        Compute log-likelihood [1]_ of a model object given current model.
+        Compute log-likelihood of a model object given current model.
+
         Computes the log-likelihood of data in any model object (either train
         or test) given the posterior predictive distributions over peaks and
-        word-types for the model. Note that this is not computing the joint
+        word-types for the model, using the method described in
+        Newman et al. (2009) [1]_. Note that this is not computing the joint
         log-likelihood of model parameters and data.
 
         Parameters

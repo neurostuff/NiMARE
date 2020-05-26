@@ -19,8 +19,7 @@ LGR = logging.getLogger(__name__)
 @due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
 class CogAtLemmatizer(object):
     """
-    Replace synonyms and abbreviations with Cognitive Atlas [1]_ identifiers in
-    text.
+    Replace synonyms and abbreviations with Cognitive Atlas identifiers in text.
 
     Parameters
     ----------
@@ -39,9 +38,9 @@ class CogAtLemmatizer(object):
 
     References
     ----------
-    .. [1] Poldrack, Russell A., et al. "The cognitive atlas: toward a
-        knowledge foundation for cognitive neuroscience." Frontiers in
-        neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+    * Poldrack, Russell A., et al. "The cognitive atlas: toward a
+      knowledge foundation for cognitive neuroscience." Frontiers in
+      neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
     """
     def __init__(self, ontology_df=None):
         if ontology_df is None:
@@ -94,7 +93,7 @@ class CogAtLemmatizer(object):
 @due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
 def extract_cogat(text_df, id_df=None, text_column='abstract'):
     """
-    Extract Cognitive Atlas [1]_ terms and count instances using regular
+    Extract Cognitive Atlas terms and count instances using regular
     expressions.
 
     Parameters
@@ -118,9 +117,9 @@ def extract_cogat(text_df, id_df=None, text_column='abstract'):
 
     References
     ----------
-    .. [1] Poldrack, Russell A., et al. "The cognitive atlas: toward a
-        knowledge foundation for cognitive neuroscience." Frontiers in
-        neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+    * Poldrack, Russell A., et al. "The cognitive atlas: toward a
+      knowledge foundation for cognitive neuroscience." Frontiers in
+      neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
     """
     if id_df is None:
         cogat = download_cognitive_atlas()

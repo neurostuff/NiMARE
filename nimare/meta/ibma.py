@@ -14,33 +14,14 @@ from scipy import stats
 from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 
-from ..utils import get_masker
 from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
-from ..base import Estimator
+from ..base import MetaEstimator
 from ..stats import p_to_z
 
 LGR = logging.getLogger(__name__)
 
 
-class IBMAEstimator(Estimator):
-    """Base class for image-based meta-analysis methods.
-    """
-    def __init__(self, *args, **kwargs):
-        mask = kwargs.get('mask')
-        if mask is not None:
-            mask = get_masker(mask)
-        self.masker = mask
-
-    def _preprocess_input(self, dataset):
-        """ Mask required input images using either the dataset's mask or the
-        estimator's. """
-        masker = self.masker or dataset.masker
-        for name, (type_, _) in self._required_inputs.items():
-            if type_ == 'image':
-                self.inputs_[name] = masker.transform(self.inputs_[name])
-
-
-class Fishers(IBMAEstimator):
+class Fishers(MetaEstimator):
     """
     An image-based meta-analytic test using t- or z-statistic images.
     Requires z-statistic images, but will be extended to work with t-statistic
@@ -50,6 +31,12 @@ class Fishers(IBMAEstimator):
     ----------
     two_sided : :obj:`bool`, optional
         Whether to do a two- or one-sided test. Default is True.
+
+    References
+    ----------
+    * Fisher, R. A. (1934). Statistical methods for research workers.
+      Statistical methods for research workers., (5th Ed).
+      https://www.cabdirect.org/cabdirect/abstract/19351601205
 
     Notes
     -----
@@ -67,7 +54,7 @@ class Fishers(IBMAEstimator):
         return fishers(self.inputs_['z_maps'], two_sided=self.two_sided)
 
 
-class Stouffers(IBMAEstimator):
+class Stouffers(MetaEstimator):
     """
     A t-test on z-statistic images. Requires z-statistic images.
 
@@ -85,6 +72,13 @@ class Stouffers(IBMAEstimator):
         Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
     two_sided : :obj:`bool`, optional
         Whether to do a two- or one-sided test. Default is True.
+
+    References
+    ----------
+    * Stouffer, S. A., Suchman, E. A., DeVinney, L. C., Star, S. A., &
+      Williams Jr, R. M. (1949). The American Soldier: Adjustment during
+      army life. Studies in social psychology in World War II, vol. 1.
+      https://psycnet.apa.org/record/1950-00790-000
     """
     _required_inputs = {
         'z_maps': ('image', 'z')
@@ -104,7 +98,7 @@ class Stouffers(IBMAEstimator):
                          two_sided=self.two_sided)
 
 
-class WeightedStouffers(IBMAEstimator):
+class WeightedStouffers(MetaEstimator):
     """
     An image-based meta-analytic test using z-statistic images and
     sample sizes. Zs from bigger studies get bigger weights.
@@ -113,6 +107,13 @@ class WeightedStouffers(IBMAEstimator):
     ----------
     two_sided : :obj:`bool`, optional
         Whether to do a two- or one-sided test. Default is True.
+
+    References
+    ----------
+    * Zaykin, D. V. (2011). Optimally weighted Z‐test is a powerful method for
+      combining probabilities in meta‐analysis. Journal of evolutionary
+      biology, 24(8), 1836-1841.
+      https://doi.org/10.1111/j.1420-9101.2011.02297.x
     """
     _required_inputs = {
         'z_maps': ('image', 'z'),
@@ -129,7 +130,7 @@ class WeightedStouffers(IBMAEstimator):
         return weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
 
 
-class RFX_GLM(IBMAEstimator):
+class RFX_GLM(MetaEstimator):
     """
     A t-test on contrast images. Requires contrast images.
 
@@ -369,7 +370,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     return result
 
 
-class FFX_GLM(IBMAEstimator):
+class FFX_GLM(MetaEstimator):
     """
     An image-based meta-analytic test using contrast and standard error images.
     Don't estimate variance, just take from first level.
@@ -443,7 +444,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     return result
 
 
-class MFX_GLM(IBMAEstimator):
+class MFX_GLM(MetaEstimator):
     """
     The gold standard image-based meta-analytic test. Uses contrast and
     standard error images.

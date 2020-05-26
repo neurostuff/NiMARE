@@ -1,19 +1,17 @@
 """
 Test nimare.meta.cbma.ale (ALE/SCALE meta-analytic algorithms).
 """
-import pytest
-
 import nimare
 from nimare.meta.cbma import ale
 from nimare.correct import FWECorrector, FDRCorrector
 
 
-def test_ale():
+def test_ale(testdata):
     """
     Smoke test for ALE
     """
     meta = ale.ALE()
-    res = meta.fit(pytest.cbma_testdata1)
+    res = meta.fit(testdata['dset'])
     assert 'ale' in res.maps.keys()
     assert 'p' in res.maps.keys()
     assert 'z' in res.maps.keys()
@@ -35,15 +33,15 @@ def test_ale():
     assert isinstance(cres, nimare.base.MetaResult)
 
 
-def test_ale_subtraction():
+def test_ale_subtraction(testdata):
     """
     Smoke test for ALE
     """
     meta1 = ale.ALE()
-    res1 = meta1.fit(pytest.cbma_testdata1)
+    res1 = meta1.fit(testdata['dset'])
 
     meta2 = ale.ALE()
-    res2 = meta2.fit(pytest.cbma_testdata1)
+    res2 = meta2.fit(testdata['dset'])
 
     corr = FWECorrector(method='montecarlo', voxel_thresh=0.001,
                         n_iters=5, n_cores=1)

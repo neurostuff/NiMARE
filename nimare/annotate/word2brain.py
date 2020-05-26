@@ -9,7 +9,7 @@ from .. import references
 @due.dcite(references.WORD2BRAIN)
 class Word2BrainModel(NiMAREBase):
     """
-    Generate a Word2Brain vector model [1]_.
+    Generate a Word2Brain vector model.
 
     Warnings
     --------
@@ -17,8 +17,8 @@ class Word2BrainModel(NiMAREBase):
 
     References
     ----------
-    .. [1] Nunes, Abraham. "word2brain." bioRxiv (2018): 299024.
-        https://doi.org/10.1101/299024
+    * Nunes, Abraham. "word2brain." bioRxiv (2018): 299024.
+      https://doi.org/10.1101/299024
     """
     def __init__(self, text_df, coordinates_df):
         pass

@@ -17,7 +17,8 @@ from .. import references
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""
     Perform image-to-text decoding for continuous inputs (e.g.,
-    unthresholded statistical maps), according to the method described in [1]_.
+    unthresholded statistical maps), according to the method described in
+    Rubin et al. (2017)[1]_.
 
     Parameters
     ----------
@@ -77,10 +78,10 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     References
     ----------
-    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a
-        large-scale probabilistic functional-anatomical atlas of human
-        cognition." PLoS computational biology 13.10 (2017): e1005649.
-        https://doi.org/10.1371/journal.pcbi.1005649
+    * Rubin, Timothy N., et al. "Decoding brain activity using a
+      large-scale probabilistic functional-anatomical atlas of human
+      cognition." PLoS computational biology 13.10 (2017): e1005649.
+      https://doi.org/10.1371/journal.pcbi.1005649
     """
     if isinstance(image, str):
         image = nib.load(image)

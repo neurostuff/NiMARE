@@ -1,7 +1,6 @@
 """
 Test nimare.meta.cbma.kernel (CBMA kernel estimators).
 """
-import pytest
 import numpy as np
 import pandas as pd
 from scipy.ndimage.measurements import center_of_mass
@@ -10,186 +9,188 @@ from nimare.meta.cbma import kernel
 from nimare.utils import get_template, mm2vox, get_masker
 
 
-# Fixtures used in the rest of the tests
-class DummyDataset(object):
-    def __init__(self, df, img):
-        self.coordinates = df
-        self.masker = get_masker(img)
-
-    def slice(self):
-        pass
-
-
-@pytest.fixture(scope='module')
-def testdata1():
-    mask_img = get_template(space='mni152_1mm', mask='brain')
-    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
-                      data=[[1, -28, -20, -16, 20, 'mni'],
-                            [2, -28, -20, -16, 5, 'mni']])
-    xyz = df[['x', 'y', 'z']].values
-    ijk = pd.DataFrame(mm2vox(xyz, mask_img.affine), columns=['i', 'j', 'k'])
-    df = pd.concat([df, ijk], axis=1)
-
-    dset = DummyDataset(df, mask_img)
-    return dset
-
-
-@pytest.fixture(scope='module')
-def testdata2():
-    mask_img = get_template(space='mni152_2mm', mask='brain')
-    df = pd.DataFrame(columns=['id', 'x', 'y', 'z', 'n', 'space'],
-                      data=[[1, -28, -20, -16, 20, 'mni'],
-                            [2, -28, -20, -16, 5, 'mni']])
-    xyz = df[['x', 'y', 'z']].values
-    ijk = pd.DataFrame(mm2vox(xyz, mask_img.affine), columns=['i', 'j', 'k'])
-    df = pd.concat([df, ijk], axis=1)
-
-    dset = DummyDataset(df, mask_img)
-    return dset
-
-
-def test_alekernel_smoke(testdata2):
+def test_alekernel_smoke(testdata):
     """
     Smoke test for nimare.meta.cbma.kernel.ALEKernel
     """
+    # Manually override dataset coordinates file sample sizes
+    # This column would be extracted from metadata and added to coordinates
+    # automatically by the Estimator
+    coordinates = testdata['dset'].coordinates.copy()
+    coordinates['sample_size'] = 20
+
     kern = kernel.ALEKernel()
-    ma_maps = kern.transform(testdata2.coordinates, testdata2.masker, return_type='image')
-    assert len(ma_maps) == 2
-    ma_maps = kern.transform(testdata2.coordinates, testdata2.masker, return_type='array')
-    assert ma_maps.shape[0] == 2
+    ma_maps = kern.transform(
+        coordinates,
+        testdata['dset'].masker,
+        return_type='image'
+    )
+    assert len(ma_maps) == len(testdata['dset'].ids)
+    ma_maps = kern.transform(
+        coordinates,
+        testdata['dset'].masker,
+        return_type='array'
+    )
+    assert ma_maps.shape[0] == len(testdata['dset'].ids)
 
 
-def test_alekernel1(testdata1):
+def test_alekernel1(testdata):
     """
     Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
     masked out).
     Test on 1mm template.
     """
-    id_ = 1
-    kern = kernel.ALEKernel()
-    ma_maps = kern.transform(testdata1.coordinates, testdata1.masker)
+    # Manually override dataset coordinates file sample sizes
+    # This column would be extracted from metadata and added to coordinates
+    # automatically by the Estimator
+    coordinates = testdata['dset'].coordinates.copy()
+    coordinates['sample_size'] = 20
 
-    ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
-                                    ['i', 'j', 'k']]
+    id_ = 'pain_01.nidm-1'
+    kern = kernel.ALEKernel()
+    ma_maps = kern.transform(
+        coordinates,
+        testdata['dset'].masker
+    )
+    ijk = coordinates.loc[coordinates['id'] == id_, ['i', 'j', 'k']]
     ijk = ijk.values.astype(int)
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     max_idx = np.where(kern_data == np.max(kern_data))
     max_ijk = np.array(max_idx).T
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel2(testdata2):
+def test_alekernel2(testdata):
     """
     Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
     masked out).
     Test on 2mm template.
     """
-    id_ = 1
-    kern = kernel.ALEKernel()
-    ma_maps = kern.transform(testdata2.coordinates, mask=testdata2.masker)
+    # Manually override dataset coordinates file sample sizes
+    # This column would be extracted from metadata and added to coordinates
+    # automatically by the Estimator
+    coordinates = testdata['dset'].coordinates.copy()
+    coordinates['sample_size'] = 20
 
-    ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
-                                    ['i', 'j', 'k']]
+    id_ = 'pain_01.nidm-1'
+    kern = kernel.ALEKernel()
+    ma_maps = kern.transform(
+        coordinates,
+        masker=testdata['dset'].masker
+    )
+
+    ijk = coordinates.loc[coordinates['id'] == id_, ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     max_idx = np.array(np.where(kern_data == np.max(kern_data))).T
     max_ijk = np.squeeze(max_idx)
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_mkdakernel_smoke(testdata1):
+def test_mkdakernel_smoke(testdata):
     """
     Smoke test for nimare.meta.cbma.kernel.MKDAKernel
     """
     kern = kernel.MKDAKernel()
-    ma_maps = kern.transform(testdata1)
-    assert len(ma_maps) == 2
-    ma_maps = kern.transform(testdata1.coordinates, testdata1.masker, return_type='array')
-    assert ma_maps.shape[0] == 2
+    ma_maps = kern.transform(testdata['dset'])
+    assert len(ma_maps) == len(testdata['dset'].ids)
+    ma_maps = kern.transform(
+        testdata['dset'].coordinates,
+        testdata['dset'].masker,
+        return_type='array'
+    )
+    assert ma_maps.shape[0] == len(testdata['dset'].ids)
 
 
-def test_mkdakernel1(testdata1):
+def test_mkdakernel1(testdata):
     """
     COMs of MKDA kernel maps should match the foci fed in (assuming focus isn't
     masked out and spheres don't overlap).
     Test on 1mm template.
     """
-    id_ = 1
+    id_ = 'pain_01.nidm-1'
     kern = kernel.MKDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata1.coordinates, testdata1.masker)
+    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
 
-    ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
-                                    ['i', 'j', 'k']]
+    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
+                                           ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
 
 
-def test_mkdakernel2(testdata2):
+def test_mkdakernel2(testdata):
     """
     COMs of MKDA kernel maps should match the foci fed in (assuming focus isn't
     masked out and spheres don't overlap).
     Test on 2mm template.
     """
-    id_ = 1
+    id_ = 'pain_01.nidm-1'
     kern = kernel.MKDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata2.coordinates, testdata2.masker)
+    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
 
-    ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
-                                    ['i', 'j', 'k']]
+    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
+                                           ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
 
 
-def test_kdakernel_smoke(testdata1):
+def test_kdakernel_smoke(testdata):
     """
     Smoke test for nimare.meta.cbma.kernel.KDAKernel
     """
     kern = kernel.KDAKernel()
-    ma_maps = kern.transform(testdata1.coordinates, testdata1.masker)
-    assert len(ma_maps) == 2
-    ma_maps = kern.transform(testdata1.coordinates, testdata1.masker, return_type='array')
-    assert ma_maps.shape[0] == 2
+    ma_maps = kern.transform(
+        testdata['dset'].coordinates,
+        testdata['dset'].masker
+    )
+    assert len(ma_maps) == len(testdata['dset'].ids)
+    ma_maps = kern.transform(
+        testdata['dset'].coordinates,
+        testdata['dset'].masker,
+        return_type='array'
+    )
+    assert ma_maps.shape[0] == len(testdata['dset'].ids)
 
 
-def test_kdakernel1(testdata1):
+def test_kdakernel1(testdata):
     """
     COMs of KDA kernel maps should match the foci fed in (assuming focus isn't
     masked out and spheres don't overlap).
     Test on 1mm template.
     """
-    id_ = 1
+    id_ = 'pain_01.nidm-1'
     kern = kernel.KDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata1.coordinates, testdata1.masker)
+    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
 
-    ijk = testdata1.coordinates.loc[testdata1.coordinates['id'] == id_,
-                                    ['i', 'j', 'k']]
+    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
+                                           ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
 
 
-def test_kdakernel2(testdata2):
+def test_kdakernel2(testdata):
     """
     COMs of KDA kernel maps should match the foci fed in (assuming focus isn't
     masked out and spheres don't overlap).
     Test on 2mm template.
     """
-    id_ = 1
+    id_ = 'pain_01.nidm-1'
     kern = kernel.KDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata2.coordinates, testdata2.masker)
+    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
 
-    ijk = testdata2.coordinates.loc[testdata2.coordinates['id'] == id_,
-                                    ['i', 'j', 'k']]
+    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
+                                           ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
-    kern_data = ma_maps[0].get_data()
+    kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
