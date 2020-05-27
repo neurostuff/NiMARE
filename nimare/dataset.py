@@ -10,6 +10,7 @@ import os.path as op
 import numpy as np
 import pandas as pd
 import nibabel as nib
+from scipy.spatial.distance import cdist
 
 from .base import NiMAREBase
 from .utils import (tal2mni, mni2tal, mm2vox, get_template, listify,
@@ -574,7 +575,6 @@ class Dataset(NiMAREBase):
             A list of IDs from the Dataset with at least one focus within
             radius r of requested coordinates.
         """
-        from scipy.spatial.distance import cdist
         xyz = np.array(xyz)
         assert xyz.shape[1] == 3 and xyz.ndim == 2
         distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
