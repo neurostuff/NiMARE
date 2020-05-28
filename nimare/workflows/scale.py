@@ -15,8 +15,8 @@ from ..meta.cbma.ale import SCALE
 LGR = logging.getLogger(__name__)
 
 
-def scale_workflow(dataset_file, baseline, output_dir=None, prefix=None,
-                   n_iters=2500, v_thr=0.001):
+def scale_workflow(dataset_file, baseline=None, output_dir=None, prefix=None,
+                   n_iters=2500, v_thr=0.001, n_cores=-1):
     """
     Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
 
@@ -55,11 +55,11 @@ rates. NeuroImage, 99, 559-570.
     # indices matching the dataset template, where the base rate for a given
     # voxel is reflected by the number of times that voxel appears in the array
     if not baseline:
-        ijk = np.vstack(np.where(dset.mask.get_fdata())).T
+        ijk = np.vstack(np.where(dset.masker.mask_img.get_fdata())).T
     else:
         ijk = np.loadtxt(baseline)
 
-    estimator = SCALE(ijk=ijk, n_iters=n_iters, n_cores=2)
+    estimator = SCALE(ijk=ijk, n_iters=n_iters, n_cores=n_cores)
     estimator.fit(dset)
 
     if output_dir is None:
@@ -71,6 +71,8 @@ rates. NeuroImage, 99, 559-570.
         base = os.path.basename(dataset_file)
         prefix, _ = os.path.splitext(base)
         prefix += '_'
+    elif not prefix.endswith('_'):
+        prefix = prefix + '_'
 
     estimator.results.save_maps(output_dir=output_dir, prefix=prefix)
     copyfile(dataset_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
