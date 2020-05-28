@@ -30,7 +30,7 @@ def ale_sleuth_workflow(sleuth_file, sleuth_file2=None, output_dir=None,
 
     if not sleuth_file2:
         dset = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
-        n_subs = dset.get_metadata(field='sample_sizes', ids=dset.coordinates['id'].unique())
+        n_subs = dset.get_metadata(field='sample_sizes')
         n_subs = np.sum(n_subs)
 
         boilerplate = """
@@ -104,8 +104,10 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
     else:
         dset1 = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
         dset2 = convert_sleuth_to_dataset(sleuth_file2, target='ale_2mm')
-        n_subs1 = dset1.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
-        n_subs2 = dset2.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
+        n_subs1 = dset1.get_metadata(field='sample_sizes')
+        n_subs1 = np.sum(n_subs1)
+        n_subs2 = dset2.get_metadata(field='sample_sizes')
+        n_subs2 = np.sum(n_subs2)
 
         boilerplate = """
 Activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
@@ -176,8 +178,9 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         sub = ALESubtraction(n_iters=n_iters)
         sres = sub.fit(
             ale1, ale2,
-            image1='logp_level-cluster_corr-FWE_method-permutation',
-            image2='logp_level-cluster_corr-FWE_method-permutation')
+            image1=cres1.get_map('logp_level-cluster_corr-FWE_method-montecarlo'),
+            image2=cres1.get_map('logp_level-cluster_corr-FWE_method-montecarlo')
+        )
 
         boilerplate = boilerplate.format(
             n_exps1=len(dset1.ids),
