@@ -6,6 +6,8 @@ import logging
 import pathlib
 from shutil import copyfile
 
+import numpy as np
+
 from ..io import convert_sleuth_to_dataset
 from ..meta.cbma import ALE, ALESubtraction
 from ..correct import FWECorrector
@@ -28,7 +30,8 @@ def ale_sleuth_workflow(sleuth_file, sleuth_file2=None, output_dir=None,
 
     if not sleuth_file2:
         dset = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
-        n_subs = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
+        n_subs = dset.get_metadata(field='sample_sizes', ids=dset.coordinates['id'].unique())
+        n_subs = np.sum(n_subs)
 
         boilerplate = """
 An activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
@@ -196,6 +199,8 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         base = os.path.basename(sleuth_file)
         prefix, _ = os.path.splitext(base)
         prefix += '_'
+    elif not prefix.endswith('_'):
+        prefix = prefix + '_'
 
     LGR.info('Saving output maps...')
     if not sleuth_file2:

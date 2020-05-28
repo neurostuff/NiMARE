@@ -78,6 +78,9 @@ class MetaResult(object):
         if prefix == '':
             prefix_sep = ''
 
+        if not prefix.endswith(prefix_sep):
+            prefix = prefix + prefix_sep
+
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -85,7 +88,7 @@ class MetaResult(object):
         maps = {k: self.get_map(k) for k in names}
 
         for imgtype, img in maps.items():
-            filename = prefix + prefix_sep + imgtype + '.nii.gz'
+            filename = prefix + imgtype + '.nii.gz'
             outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)
 
