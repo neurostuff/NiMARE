@@ -83,8 +83,8 @@ def generate_cooccurrence(text_df, text_column='abstract', vocabulary=None,
 
     Returns
     -------
-    df : (V, V, D) :obj:`pandas.Panel`
-        One cooccurrence matrix per document in text_df.
+    df : multi-indexed :obj:`pandas.DataFrame`
+        A DataFrame with three indices: id, first_term, and second_term.
     """
     if text_column not in text_df.columns:
         raise ValueError('Column "{0}" not found in DataFrame'.format(text_column))
@@ -114,6 +114,7 @@ def generate_cooccurrence(text_df, text_column='abstract', vocabulary=None,
                         cooc = np.sum(np.abs(distances) <= window)
                         cooc_arr[i, j, k] = cooc
 
-    df = pd.Panel(items=ids, major_axis=vocabulary, minor_axis=vocabulary,
-                  data=cooc_arr)
+    names = ['id', 'first_term', 'second_term']
+    index = pd.MultiIndex.from_product([ids, vocabulary, vocabulary], names=names)
+    df = pd.DataFrame({'cooc_arr': cooc_arr.flatten()}, index=index)['cooc_arr']
     return df
