@@ -85,7 +85,7 @@ jobs:
           command:  |
             apt-get install -yqq curl
             source activate testenv
-            py.test --cov-report xml:coverage.xml --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py nimare
+            py.test --cov-report xml:coverage.xml --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py,nimare/tests/test_annotate_text.py nimare
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
 
