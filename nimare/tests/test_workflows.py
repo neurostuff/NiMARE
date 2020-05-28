@@ -57,7 +57,7 @@ def test_ale_workflow_smoke_2():
     shutil.rmtree(out_dir)
 
 
-def test_scale_workflow_smoke_1():
+def test_scale_workflow_smoke():
     """
     """
     sleuth_file = op.join(get_test_data_path(), 'test_sleuth_file.txt')
@@ -79,4 +79,25 @@ def test_scale_workflow_smoke_1():
             sleuth_file]
     cli._main(args)
     assert op.isfile(op.join(out_dir, '{}_input_coordinates.txt'.format(prefix)))
+    shutil.rmtree(out_dir)
+
+
+def test_conperm_workflow_smoke(testdata):
+    dset = testdata['dset_conse']
+    files = dset.get_images(imtype='con')
+    out_dir = op.join(os.getcwd(), 'TEST')
+    prefix = 'test'
+
+    # The same test is run with both workflow function and CLI
+    workflows.conperm_workflow(
+        files,
+        output_dir=out_dir, prefix=prefix,
+        n_iters=5)
+    assert op.isfile(op.join(out_dir, '{}_logp.nii.gz'.format(prefix)))
+    shutil.rmtree(out_dir)
+
+    args = ['conperm', '--output_dir', out_dir, '--prefix', prefix,
+            '--n_iters', '5'] + files
+    cli._main(args)
+    assert op.isfile(op.join(out_dir, '{}_logp.nii.gz'.format(prefix)))
     shutil.rmtree(out_dir)

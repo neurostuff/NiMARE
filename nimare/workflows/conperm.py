@@ -6,6 +6,7 @@ import logging
 import pathlib
 from nilearn.masking import apply_mask
 
+from ..results import MetaResult
 from ..utils import get_template
 from ..meta.ibma import rfx_glm
 
@@ -43,7 +44,9 @@ Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
     """
 
     LGR.info('Performing meta-analysis.')
-    res = rfx_glm(z_data, mask_img, null='empirical', n_iters=n_iters)
+    res = rfx_glm(z_data, null='empirical', n_iters=n_iters)
+    # The rfx_glm function will stand in for the Estimator in the results object
+    res = MetaResult(rfx_glm, mask_img, maps=res)
 
     boilerplate = boilerplate.format(
         n_studies=n_studies,
