@@ -13,9 +13,10 @@ coverage:
       default:
         target: 0
         threshold: null
-  ignore:
-    - 'nimare/tests/'
-    - 'nimare/due.py'
-    - 'nimare/_version.py'
-    - 'nimare/info.py'
-    - 'nimare/references.py'
+
+ignore:
+  - 'nimare/tests/'
+  - 'nimare/due.py'
+  - 'nimare/_version.py'
+  - 'nimare/info.py'
+  - 'nimare/references.py'
