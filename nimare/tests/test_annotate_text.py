@@ -21,4 +21,4 @@ def test_generate_cooccurrence():
     df = annotate.text.generate_cooccurrence(
         ns_dset_laird.texts, text_column='abstract',
         vocabulary=['science', 'math'], window=2)
-    assert isinstance(expanded_df, pd.DataFrame)
+    assert isinstance(df, pd.DataFrame)

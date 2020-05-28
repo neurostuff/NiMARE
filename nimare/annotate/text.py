@@ -84,7 +84,8 @@ def generate_cooccurrence(text_df, text_column='abstract', vocabulary=None,
     Returns
     -------
     df : multi-indexed :obj:`pandas.DataFrame`
-        A DataFrame with three indices: id, first_term, and second_term.
+        A DataFrame with three indices (id, first_term, and second_term) and
+        one column (cooccurrence_count).
     """
     if text_column not in text_df.columns:
         raise ValueError('Column "{0}" not found in DataFrame'.format(text_column))
@@ -116,5 +117,5 @@ def generate_cooccurrence(text_df, text_column='abstract', vocabulary=None,
 
     names = ['id', 'first_term', 'second_term']
     index = pd.MultiIndex.from_product([ids, vocabulary, vocabulary], names=names)
-    df = pd.DataFrame({'cooc_arr': cooc_arr.flatten()}, index=index)['cooc_arr']
+    df = pd.DataFrame({'cooccurrence_count': cooc_arr.flatten()}, index=index)
     return df
