@@ -682,7 +682,7 @@ class SCALE(CBMAEstimator):
 
         max_poss_ale = 1.
         for ma_map in ma_maps:
-            max_poss_ale *= (1 - np.max(ma_map.get_data()))
+            max_poss_ale *= (1 - np.max(ma_map.get_fdata()))
         max_poss_ale = 1 - max_poss_ale
 
         self.null_distributions_['histogram_bins'] = np.round(
