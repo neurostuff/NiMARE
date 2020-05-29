@@ -8,11 +8,11 @@ coverage:
       default:
         # basic
         target: 0
-        threshold: null
+        threshold: 0
     patch:
       default:
         target: 0
-        threshold: null
+        threshold: 0
 
 ignore:
   - 'nimare/tests/'
