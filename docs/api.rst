@@ -203,8 +203,11 @@ API
    :toctree: generated/
    :template: function.rst
 
-   stats.p_to_z
-   stats.t_to_z
+   stats.one_way
+   stats.two_way
+   stats.pearson
+   stats.null_to_p
+   stats.fdr
 
 
 .. _api_transforms_ref:
@@ -228,6 +231,10 @@ API
    transforms.svar_to_var
    transforms.t_to_beta
    transforms.t_to_z
+   transforms.vox2mm
+   transforms.mm2vox
+   transforms.tal2mni
+   transforms.mni2tal
 
 
 .. _api_utils_ref:
@@ -246,13 +253,12 @@ API
    :template: function.rst
 
    utils.get_template
+   utils.get_masker
    utils.listify
    utils.round2
-   utils.vox2mm
-   utils.mm2vox
-   utils.tal2mni
-   utils.mni2tal
    utils.get_resource_path
+   utils.find_stem
+   utils.uk_to_us
 
 
 .. _api_workflows_ref:
