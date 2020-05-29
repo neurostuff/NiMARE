@@ -12,7 +12,8 @@ from nilearn.masking import apply_mask
 
 import nimare
 from nimare.extract import download_nidm_pain
-from nimare.utils import get_template, mm2vox, get_masker
+from nimare.transforms import mm2vox
+from nimare.utils import get_template, get_masker
 from nimare.tests.utils import get_test_data_path
 
 
