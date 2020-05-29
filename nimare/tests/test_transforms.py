@@ -16,9 +16,6 @@ def test_t_to_z():
     t_arr = np.random.random(100)
     z_arr = transforms.t_to_z(t_arr, dof=20)
     assert z_arr.shape == t_arr.shape
-    t = 4
-    z = transforms.t_to_z(t, dof=20)
-    assert isinstance(z, float)
 
 
 def test_tal2mni():
