@@ -8,7 +8,8 @@ import logging
 import numpy as np
 from scipy import stats
 
-from ..stats import null_to_p, p_to_z
+from ..stats import null_to_p
+from ..transforms import p_to_z
 from ..due import due
 from .. import references
 

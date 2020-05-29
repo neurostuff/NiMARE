@@ -10,7 +10,8 @@ from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .utils import weight_priors
-from ..stats import p_to_z, one_way, two_way
+from ..stats import one_way, two_way
+from ..transforms import p_to_z
 from ..due import due
 from .. import references
 

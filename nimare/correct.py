@@ -9,7 +9,7 @@ import statsmodels.stats.multitest as mc
 import numpy as np
 
 from .results import MetaResult
-from .stats import p_to_z
+from .transforms import p_to_z
 
 LGR = logging.getLogger(__name__)
 
