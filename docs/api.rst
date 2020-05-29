@@ -203,13 +203,31 @@ API
    :toctree: generated/
    :template: function.rst
 
-   stats.one_way
-   stats.two_way
-   stats.pearson
-   stats.null_to_p
    stats.p_to_z
    stats.t_to_z
-   stats.fdr
+
+
+.. _api_transforms_ref:
+
+:mod:`nimare.transforms`: Data transforms
+-----------------------------------------------------
+
+.. automodule:: nimare.transforms
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   transforms.p_to_z
+   transforms.sd_to_var
+   transforms.se_to_var
+   transforms.svar_to_var
+   transforms.t_to_beta
+   transforms.t_to_z
 
 
 .. _api_utils_ref:

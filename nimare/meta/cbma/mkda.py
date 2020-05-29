@@ -14,7 +14,8 @@ from .kernel import MKDAKernel, KDAKernel
 from ...results import MetaResult
 from ...base import CBMAEstimator
 from .kernel import KernelTransformer
-from ...stats import null_to_p, p_to_z, one_way, two_way
+from ...stats import null_to_p, one_way, two_way
+from ...transforms import p_to_z
 from ...due import due
 from ... import references
 

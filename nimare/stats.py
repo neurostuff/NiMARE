@@ -1,16 +1,14 @@
-"""Various statistical helper functions"""
+"""Various statistical helper functions
+"""
 import warnings
 
 import numpy as np
 from scipy import stats
-from scipy.special import ndtri
-
-from .due import due
-from . import references
 
 
 def one_way(data, n):
-    """ One-way chi-square test of independence.
+    """One-way chi-square test of independence.
+
     Takes a 1D array as input and compares activation at each voxel to
     proportion expected under a uniform distribution throughout the array.
     Note that if you're testing activation with this, make sure that only
@@ -33,7 +31,8 @@ def one_way(data, n):
 
 
 def two_way(cells):
-    """ Two-way chi-square test of independence.
+    """Two-way chi-square test of independence.
+
     Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
     dimensions are the contingency table for each of N voxels. Returns an
     array of chi2 values.
@@ -57,8 +56,7 @@ def two_way(cells):
 
 
 def pearson(x, y):
-    """
-    Correlates row vector x with each row vector in 2D array y.
+    """Correlate row vector x with each row vector in 2D array y.
 
     Parameters
     ----------
@@ -90,68 +88,8 @@ def null_to_p(test_value, null_array, tail='two'):
     return p_value
 
 
-def p_to_z(p, tail='two'):
-    """Convert p-values to z-values.
-    """
-    eps = np.spacing(1)
-    p = np.array(p)
-    p[p < eps] = eps
-    if tail == 'two':
-        z = ndtri(1 - (p / 2))
-        z = np.array(z)
-    elif tail == 'one':
-        z = ndtri(1 - p)
-        z = np.array(z)
-        z[z < 0] = 0
-    else:
-        raise ValueError('Argument "tail" must be one of ["one", "two"]')
-
-    if z.shape == ():
-        z = z[()]
-    return z
-
-
-@due.dcite(references.T2Z_TRANSFORM,
-           description='Introduces T-to-Z transform.')
-@due.dcite(references.T2Z_IMPLEMENTATION,
-           description='Python implementation of T-to-Z transform.')
-def t_to_z(t_values, dof):
-    """
-    From Vanessa Sochat's TtoZ package.
-    """
-    # Select just the nonzero voxels
-    nonzero = t_values[t_values != 0]
-
-    # We will store our results here
-    z_values = np.zeros(len(nonzero))
-
-    # Select values less than or == 0, and greater than zero
-    c = np.zeros(len(nonzero))
-    k1 = (nonzero <= c)
-    k2 = (nonzero > c)
-
-    # Subset the data into two sets
-    t1 = nonzero[k1]
-    t2 = nonzero[k2]
-
-    # Calculate p values for <=0
-    p_values_t1 = stats.t.cdf(t1, df=dof)
-    z_values_t1 = stats.norm.ppf(p_values_t1)
-
-    # Calculate p values for > 0
-    p_values_t2 = stats.t.cdf(-t2, df=dof)
-    z_values_t2 = -stats.norm.ppf(p_values_t2)
-    z_values[k1] = z_values_t1
-    z_values[k2] = z_values_t2
-
-    # Write new image to file
-    out = np.zeros(t_values.shape)
-    out[t_values != 0] = z_values
-    return out
-
-
 def fdr(p, q=.05):
-    """ Determine FDR threshold given a p value array and desired false
+    """Determine FDR threshold given a p value array and desired false
     discovery rate q. """
     s = np.sort(p)
     nvox = p.shape[0]
