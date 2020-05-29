@@ -13,9 +13,6 @@ import nibabel as nib
 from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
-from .due import due
-from . import references
-
 LGR = logging.getLogger(__name__)
 
 

@@ -1,9 +1,12 @@
 """Various statistical helper functions
 """
+import logging
 import warnings
 
 import numpy as np
 from scipy import stats
+
+LGR = logging.getLogger(__name__)
 
 
 def one_way(data, n):

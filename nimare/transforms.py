@@ -1,11 +1,16 @@
 """Miscellaneous spatial and statistical transforms
 """
+import logging
+
 import numpy as np
+import nibabel as nib
 from scipy import stats
 from scipy.special import ndtri
 
 from .due import due
 from . import references
+
+LGR = logging.getLogger(__name__)
 
 
 def sd_to_var(sd, n):
