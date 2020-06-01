@@ -51,7 +51,7 @@ REQUIRES = [
     'cognitiveatlas',
     'fuzzywuzzy',
     'matplotlib',
-    'nibabel',
+    'nibabel>=3.0.0',
     'nilearn',
     'nipype',
     'nltk',
