@@ -49,8 +49,5 @@ def test_ale_subtraction(testdata):
     cres2 = corr.transform(res2)
 
     sub_meta = ale.ALESubtraction(n_iters=10)
-    sub_meta.fit(
-        meta1, meta2,
-        image1=cres1.get_map('logp_level-cluster_corr-FWE_method-montecarlo', return_type='image'),
-        image2=cres2.get_map('logp_level-cluster_corr-FWE_method-montecarlo', return_type='image'))
+    sub_meta.fit(meta1, meta2)
     assert isinstance(sub_meta.results, nimare.base.MetaResult)
