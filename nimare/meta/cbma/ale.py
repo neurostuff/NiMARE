@@ -417,12 +417,12 @@ class ALESubtraction(CBMAEstimator):
 
     def __init__(self, n_iters=10000):
         super().__init__()
+        self.meta1 = None
+        self.meta2 = None
+        self.results = None
         self.n_iters = n_iters
 
-    def fit(self, meta1, meta2,
-            image1='logp_level-cluster_corr-FWE_method-montecarlo',
-            image2='logp_level-cluster_corr-FWE_method-montecarlo',
-            ma_maps1=None, ma_maps2=None, threshold=3.):
+    def fit(self, meta1, meta2):
         """
         Run a subtraction analysis comparing two groups of experiments from
         separate meta-analyses.
@@ -431,68 +431,33 @@ class ALESubtraction(CBMAEstimator):
         ----------
         meta1/meta2 : :obj:`nimare.meta.cbma.ale.ALE`
             Fitted ALE Estimators for datasets to compare.
-        image1/image2 : img_like or array_like or :obj:`str`, optional
-            Statistical maps associated with the respective models, to be used
-            to define significant clusters for each dataset.
-            These maps may be either an image, an array, or a string.
-            If a string is provided, then the associated map will be grabbed
-            from the CBMAEstimator's results object.
-            Default is 'logp_level-cluster_corr-FWE_method-montecarlo'.
-        ma_maps1 : (E x V) array_like or None, optional
-            Experiments by voxels array of modeled activation
-            values. If not provided, MA maps will be generated from dataset1.
-        ma_maps2 : (E x V) array_like or None, optional
-            Experiments by voxels array of modeled activation
-            values. If not provided, MA maps will be generated from dataset2.
-        threshold : :obj:`float`, optional
-            Threshold to apply to the images to define significant clusters
-            for analysis. Default is 3.0, which is roughly equal to
-            ``-np.log(0.05)``.
 
         Returns
         -------
         :obj:`nimare.results.MetaResult`
-            Results of ALE subtraction analysis.
+            Results of ALE subtraction analysis, with one map:
+            'z_desc-group1MinusGroup2'.
         """
-        maps = self._fit(meta1, meta2, image1, image2, ma_maps1, ma_maps2, threshold)
-        self.results = MetaResult(self, meta1.masker, maps)
+        maps = self._fit(meta1, meta2)
+        self.results = MetaResult(self, meta1.dataset.masker, maps)
         return self.results
 
-    def _fit(self, meta1, meta2,
-             image1='logp_level-cluster_corr-FWE_method-montecarlo',
-             image2='logp_level-cluster_corr-FWE_method-montecarlo',
-             ma_maps1=None, ma_maps2=None, threshold=3.):
+    def _fit(self, meta1, meta2):
         assert np.array_equal(meta1.dataset.masker.mask_img.affine,
                               meta2.dataset.masker.mask_img.affine)
         self.masker = meta1.dataset.masker
 
-        if isinstance(image1, str):
-            image1 = meta1.results.get_map(image1, return_type='array')
+        ma_maps1 = meta1.kernel_transformer.transform(
+            meta1.inputs_['coordinates'],
+            masker=self.masker,
+            return_type='image'
+        )
 
-        if isinstance(image2, str):
-            image2 = meta2.results.get_map(image2, return_type='array')
-
-        if not isinstance(image1, np.ndarray):
-            image1 = np.squeeze(self.masker.transform(image1))
-            image2 = np.squeeze(self.masker.transform(image2))
-
-        grp1_voxel = image1 >= threshold
-        grp2_voxel = image2 >= threshold
-        contrast_voxels = np.logical_or(grp1_voxel, grp2_voxel)
-
-        if ma_maps1 is None:
-            ma_maps1 = meta1.kernel_transformer.transform(
-                meta1.inputs_['coordinates'],
-                masker=self.masker,
-                return_type='image'
-            )
-
-        if ma_maps2 is None:
-            ma_maps2 = meta2.kernel_transformer.transform(
-                meta2.inputs_['coordinates'],
-                masker=self.masker,
-                return_type='image'
-            )
+        ma_maps2 = meta2.kernel_transformer.transform(
+            meta2.inputs_['coordinates'],
+            masker=self.masker,
+            return_type='image'
+        )
 
         n_grp1 = len(ma_maps1)
         ma_maps = ma_maps1 + ma_maps2
@@ -501,55 +466,51 @@ class ALESubtraction(CBMAEstimator):
 
         # Get MA values for both samples.
         ma_arr = self.masker.transform(ma_maps)
+        n_voxels = ma_arr.shape[1]
 
         # Get ALE values for first group.
         grp1_ma_arr = ma_arr[:n_grp1, :]
-        grp1_ale_values = np.ones(ma_arr.shape[1])
+        grp1_ale_values = np.ones(n_voxels)
         for i_exp in range(grp1_ma_arr.shape[0]):
             grp1_ale_values *= (1. - grp1_ma_arr[i_exp, :])
         grp1_ale_values = 1 - grp1_ale_values
 
         # Get ALE values for second group.
         grp2_ma_arr = ma_arr[n_grp1:, :]
-        grp2_ale_values = np.ones(ma_arr.shape[1])
+        grp2_ale_values = np.ones(n_voxels)
         for i_exp in range(grp2_ma_arr.shape[0]):
             grp2_ale_values *= (1. - grp2_ma_arr[i_exp, :])
         grp2_ale_values = 1 - grp2_ale_values
 
-        p_arr = np.ones(np.sum(contrast_voxels))
+        p_arr = np.ones(n_voxels)
 
         diff_ale_values = grp1_ale_values - grp2_ale_values
-        diff_ale_values = diff_ale_values[contrast_voxels]
 
-        red_ma_arr = ma_arr[:, contrast_voxels]
-        iter_diff_values = np.zeros((self.n_iters, np.sum(contrast_voxels)))
+        iter_diff_values = np.zeros((self.n_iters, n_voxels))
 
         for i_iter in range(self.n_iters):
             np.random.shuffle(id_idx)
-            iter_grp1_ale_values = np.ones(np.sum(contrast_voxels))
+            iter_grp1_ale_values = np.ones(n_voxels)
             for j_exp in id_idx[:n_grp1]:
-                iter_grp1_ale_values *= (1. - red_ma_arr[j_exp, :])
+                iter_grp1_ale_values *= (1. - ma_arr[j_exp, :])
             iter_grp1_ale_values = 1 - iter_grp1_ale_values
 
-            iter_grp2_ale_values = np.ones(np.sum(contrast_voxels))
+            iter_grp2_ale_values = np.ones(n_voxels)
             for j_exp in id_idx[n_grp1:]:
-                iter_grp2_ale_values *= (1. - red_ma_arr[j_exp, :])
+                iter_grp2_ale_values *= (1. - ma_arr[j_exp, :])
             iter_grp2_ale_values = 1 - iter_grp2_ale_values
 
             iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
 
-        for voxel in range(np.sum(contrast_voxels)):
+        for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(diff_ale_values[voxel],
                                      iter_diff_values[:, voxel],
                                      tail='two')
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
         z_arr = p_to_z(p_arr, tail='two') * diff_signs
-        # Unmask
-        z_map = np.full(image1.shape[0], np.nan)
-        z_map[contrast_voxels] = z_arr
 
         images = {
-            'z_desc-group1MinusGroup2': z_map
+            'z_desc-group1MinusGroup2': z_arr
         }
         return images
 
