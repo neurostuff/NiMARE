@@ -395,6 +395,12 @@ class ALESubtraction(CBMAEstimator):
     -----
     This method was originally developed in [1]_ and refined in [2]_.
 
+    Warnings
+    --------
+    ALE contrast analysis is performed only on voxels that were significant in
+    at least one of the two input meta-analyses. Thus, not every voxel in the
+    mask is actually analyzed.
+
     References
     ----------
     .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
@@ -472,6 +478,7 @@ class ALESubtraction(CBMAEstimator):
 
         grp1_voxel = image1 >= threshold
         grp2_voxel = image2 >= threshold
+        contrast_voxels = np.logical_or(grp1_voxel, grp2_voxel)
 
         if ma_maps1 is None:
             ma_maps1 = meta1.kernel_transformer.transform(
@@ -502,96 +509,47 @@ class ALESubtraction(CBMAEstimator):
             grp1_ale_values *= (1. - grp1_ma_arr[i_exp, :])
         grp1_ale_values = 1 - grp1_ale_values
 
-        # Get ALE values for first group.
+        # Get ALE values for second group.
         grp2_ma_arr = ma_arr[n_grp1:, :]
         grp2_ale_values = np.ones(ma_arr.shape[1])
         for i_exp in range(grp2_ma_arr.shape[0]):
             grp2_ale_values *= (1. - grp2_ma_arr[i_exp, :])
         grp2_ale_values = 1 - grp2_ale_values
 
-        # Group 1 > Group 2 contrast
-        grp1_p_arr = np.ones(np.sum(grp1_voxel))
-        grp1_z_map = np.zeros(image1.shape[0])
-        grp1_z_map[:] = np.nan
-        if np.sum(grp1_voxel) > 0:
+        p_arr = np.ones(np.sum(contrast_voxels))
+        if np.sum(contrast_voxels) > 0:
             diff_ale_values = grp1_ale_values - grp2_ale_values
-            diff_ale_values = diff_ale_values[grp1_voxel]
+            diff_ale_values = diff_ale_values[contrast_voxels]
 
-            red_ma_arr = ma_arr[:, grp1_voxel]
-            iter_diff_values = np.zeros((self.n_iters, np.sum(grp1_voxel)))
+            red_ma_arr = ma_arr[:, contrast_voxels]
+            iter_diff_values = np.zeros((self.n_iters, np.sum(contrast_voxels)))
 
             for i_iter in range(self.n_iters):
                 np.random.shuffle(id_idx)
-                iter_grp1_ale_values = np.ones(np.sum(grp1_voxel))
+                iter_grp1_ale_values = np.ones(np.sum(contrast_voxels))
                 for j_exp in id_idx[:n_grp1]:
                     iter_grp1_ale_values *= (1. - red_ma_arr[j_exp, :])
                 iter_grp1_ale_values = 1 - iter_grp1_ale_values
 
-                iter_grp2_ale_values = np.ones(np.sum(grp1_voxel))
+                iter_grp2_ale_values = np.ones(np.sum(contrast_voxels))
                 for j_exp in id_idx[n_grp1:]:
                     iter_grp2_ale_values *= (1. - red_ma_arr[j_exp, :])
                 iter_grp2_ale_values = 1 - iter_grp2_ale_values
 
                 iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
 
-            for voxel in range(np.sum(grp1_voxel)):
-                # TODO: Check that upper is appropriate
-                grp1_p_arr[voxel] = null_to_p(diff_ale_values[voxel],
-                                              iter_diff_values[:, voxel],
-                                              tail='upper')
-            grp1_z_arr = p_to_z(grp1_p_arr, tail='one')
+            for voxel in range(np.sum(contrast_voxels)):
+                p_arr[voxel] = null_to_p(diff_ale_values[voxel],
+                                         iter_diff_values[:, voxel],
+                                         tail='two')
+            diff_signs = np.sign(diff_ale_values - np.mean(iter_diff_values, axis=0))
+            z_arr = p_to_z(p_arr, tail='two') * diff_signs
             # Unmask
-            grp1_z_map = np.zeros(image1.shape[0])
-            grp1_z_map[:] = np.nan
-            grp1_z_map[grp1_voxel] = grp1_z_arr
-
-        # Group 2 > Group 1 contrast
-        grp2_p_arr = np.ones(np.sum(grp2_voxel))
-        grp2_z_map = np.zeros(image2.shape[0])
-        grp2_z_map[:] = np.nan
-        if np.sum(grp2_voxel) > 0:
-            # Get MA values for second sample only for voxels significant in
-            # second sample's meta-analysis.
-            diff_ale_values = grp2_ale_values - grp1_ale_values
-            diff_ale_values = diff_ale_values[grp2_voxel]
-
-            red_ma_arr = ma_arr[:, grp2_voxel]
-            iter_diff_values = np.zeros((self.n_iters, np.sum(grp2_voxel)))
-
-            for i_iter in range(self.n_iters):
-                np.random.shuffle(id_idx)
-                iter_grp1_ale_values = np.ones(np.sum(grp2_voxel))
-                for j_exp in id_idx[:n_grp1]:
-                    iter_grp1_ale_values *= (1. - red_ma_arr[j_exp, :])
-                iter_grp1_ale_values = 1 - iter_grp1_ale_values
-
-                iter_grp2_ale_values = np.ones(np.sum(grp2_voxel))
-                for j_exp in id_idx[n_grp1:]:
-                    iter_grp2_ale_values *= (1. - red_ma_arr[j_exp, :])
-                iter_grp2_ale_values = 1 - iter_grp2_ale_values
-
-                iter_diff_values[i_iter, :] = iter_grp2_ale_values - iter_grp1_ale_values
-
-            for voxel in range(np.sum(grp2_voxel)):
-                # TODO: Check that upper is appropriate
-                grp2_p_arr[voxel] = null_to_p(diff_ale_values[voxel],
-                                              iter_diff_values[:, voxel],
-                                              tail='upper')
-            grp2_z_arr = p_to_z(grp2_p_arr, tail='one')
-            # Unmask
-            grp2_z_map = np.zeros(grp2_voxel.shape[0])
-            grp2_z_map[:] = np.nan
-            grp2_z_map[grp2_voxel] = grp2_z_arr
-
-        # Fill in output map
-        diff_z_map = np.zeros(image1.shape[0])
-        diff_z_map[grp2_voxel] = -1 * grp2_z_map[grp2_voxel]
-        # Could overwrite some values where both maps have significant voxels.
-        # Shouldn't be a problem.
-        diff_z_map[grp1_voxel] = grp1_z_map[grp1_voxel]
+            z_map = np.full(image1.shape[0], np.nan)
+            z_map[contrast_voxels] = z_arr
 
         images = {
-            'z_desc-group1MinusGroup2': diff_z_map
+            'z_desc-group1MinusGroup2': z_map
         }
         return images
 
