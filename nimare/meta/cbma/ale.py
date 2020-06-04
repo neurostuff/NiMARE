@@ -542,7 +542,7 @@ class ALESubtraction(CBMAEstimator):
                 p_arr[voxel] = null_to_p(diff_ale_values[voxel],
                                          iter_diff_values[:, voxel],
                                          tail='two')
-            diff_signs = np.sign(diff_ale_values - np.mean(iter_diff_values, axis=0))
+            diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
             z_arr = p_to_z(p_arr, tail='two') * diff_signs
             # Unmask
             z_map = np.full(image1.shape[0], np.nan)
