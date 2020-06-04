@@ -517,36 +517,36 @@ class ALESubtraction(CBMAEstimator):
         grp2_ale_values = 1 - grp2_ale_values
 
         p_arr = np.ones(np.sum(contrast_voxels))
-        if np.sum(contrast_voxels) > 0:
-            diff_ale_values = grp1_ale_values - grp2_ale_values
-            diff_ale_values = diff_ale_values[contrast_voxels]
 
-            red_ma_arr = ma_arr[:, contrast_voxels]
-            iter_diff_values = np.zeros((self.n_iters, np.sum(contrast_voxels)))
+        diff_ale_values = grp1_ale_values - grp2_ale_values
+        diff_ale_values = diff_ale_values[contrast_voxels]
 
-            for i_iter in range(self.n_iters):
-                np.random.shuffle(id_idx)
-                iter_grp1_ale_values = np.ones(np.sum(contrast_voxels))
-                for j_exp in id_idx[:n_grp1]:
-                    iter_grp1_ale_values *= (1. - red_ma_arr[j_exp, :])
-                iter_grp1_ale_values = 1 - iter_grp1_ale_values
+        red_ma_arr = ma_arr[:, contrast_voxels]
+        iter_diff_values = np.zeros((self.n_iters, np.sum(contrast_voxels)))
 
-                iter_grp2_ale_values = np.ones(np.sum(contrast_voxels))
-                for j_exp in id_idx[n_grp1:]:
-                    iter_grp2_ale_values *= (1. - red_ma_arr[j_exp, :])
-                iter_grp2_ale_values = 1 - iter_grp2_ale_values
+        for i_iter in range(self.n_iters):
+            np.random.shuffle(id_idx)
+            iter_grp1_ale_values = np.ones(np.sum(contrast_voxels))
+            for j_exp in id_idx[:n_grp1]:
+                iter_grp1_ale_values *= (1. - red_ma_arr[j_exp, :])
+            iter_grp1_ale_values = 1 - iter_grp1_ale_values
 
-                iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+            iter_grp2_ale_values = np.ones(np.sum(contrast_voxels))
+            for j_exp in id_idx[n_grp1:]:
+                iter_grp2_ale_values *= (1. - red_ma_arr[j_exp, :])
+            iter_grp2_ale_values = 1 - iter_grp2_ale_values
 
-            for voxel in range(np.sum(contrast_voxels)):
-                p_arr[voxel] = null_to_p(diff_ale_values[voxel],
-                                         iter_diff_values[:, voxel],
-                                         tail='two')
-            diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
-            z_arr = p_to_z(p_arr, tail='two') * diff_signs
-            # Unmask
-            z_map = np.full(image1.shape[0], np.nan)
-            z_map[contrast_voxels] = z_arr
+            iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+
+        for voxel in range(np.sum(contrast_voxels)):
+            p_arr[voxel] = null_to_p(diff_ale_values[voxel],
+                                     iter_diff_values[:, voxel],
+                                     tail='two')
+        diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
+        z_arr = p_to_z(p_arr, tail='two') * diff_signs
+        # Unmask
+        z_map = np.full(image1.shape[0], np.nan)
+        z_map[contrast_voxels] = z_arr
 
         images = {
             'z_desc-group1MinusGroup2': z_map
