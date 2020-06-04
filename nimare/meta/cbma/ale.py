@@ -395,12 +395,6 @@ class ALESubtraction(CBMAEstimator):
     -----
     This method was originally developed in [1]_ and refined in [2]_.
 
-    Warnings
-    --------
-    ALE contrast analysis is performed only on voxels that were significant in
-    at least one of the two input meta-analyses. Thus, not every voxel in the
-    mask is actually analyzed.
-
     References
     ----------
     .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
