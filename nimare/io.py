@@ -34,8 +34,8 @@ def convert_neurosynth_to_dict(text_file, annotations_file=None):
         label_df = pd.read_csv(annotations_file, sep='\t', index_col='pmid')
         label_df.index = label_df.index.astype(str)
         labels = label_df.columns
-        if not all(label.startswith('Neurosynth') for label in labels):
-            labels = {label: 'Neurosynth_tfidf__'+label for label in labels}
+        if not all('__' in label for label in labels):
+            labels = {label: 'Neurosynth_TFIDF__'+label for label in labels}
         label_df = label_df.rename(columns=labels)
     else:
         label_df = None
