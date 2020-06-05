@@ -39,9 +39,9 @@ class Dataset(NiMAREBase):
     def __init__(self, source, target='mni152_2mm', mask=None):
         if isinstance(source, str):
             with open(source, 'r') as f_obj:
-                self.data = json.load(f_obj)
+                data = json.load(f_obj)
         elif isinstance(source, dict):
-            self.data = source
+            data = source
         else:
             raise Exception("`source` needs to be a file path or a dictionary")
 
@@ -50,8 +50,8 @@ class Dataset(NiMAREBase):
         # build list of ids
         id_columns = ['id', 'study_id', 'contrast_id']
         all_ids = []
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
+        for pid in data.keys():
+            for expid in data[pid]['contrasts'].keys():
                 id_ = '{0}-{1}'.format(pid, expid)
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
@@ -64,12 +64,12 @@ class Dataset(NiMAREBase):
         self.masker = get_masker(mask)
         self.space = target
 
-        self.annotations = self._load_data(id_df, key='labels')
-        self.metadata = self._load_data(id_df, key='metadata')
-        self.texts = self._load_data(id_df, key='text')
-        raw_image_df = self._load_data(id_df, key='images')
+        self.annotations = self._load_data(id_df, data, key='labels')
+        self.metadata = self._load_data(id_df, data, key='metadata')
+        self.texts = self._load_data(id_df, data, key='text')
+        raw_image_df = self._load_data(id_df, data, key='images')
         self.images = self._validate_images(raw_image_df)
-        self.coordinates = self._load_coordinates()
+        self.coordinates = self._load_coordinates(data)
 
     def slice(self, ids):
         """
@@ -91,14 +91,6 @@ class Dataset(NiMAREBase):
         new_dset.images = new_dset.images.loc[new_dset.images['id'].isin(ids)]
         new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
         new_dset.texts = new_dset.texts.loc[new_dset.texts['id'].isin(ids)]
-        temp_data = {}
-        for id_ in ids:
-            pid, expid = id_.split('-')
-            if pid not in temp_data.keys():
-                temp_data[pid] = self.data[pid].copy()  # make sure to copy
-                temp_data[pid]['contrasts'] = {}
-            temp_data[pid]['contrasts'][expid] = self.data[pid]['contrasts'][expid]
-        new_dset.data = temp_data
         return new_dset
 
     def update_path(self, new_path):
@@ -118,7 +110,7 @@ class Dataset(NiMAREBase):
                 LGR.info('Overwriting images column {}'.format(abs_col))
             self.images[abs_col] = self.images[col].apply(try_prepend, prefix=new_path)
 
-    def _load_data(self, id_df, key='labels'):
+    def _load_data(self, id_df, data, key='labels'):
         """
         Load a given data type in Dataset into DataFrame.
 
@@ -126,6 +118,9 @@ class Dataset(NiMAREBase):
         ----------
         id_df : :obj:`pandas.DataFrame`
             DataFrame with columns for identifiers. Index is [studyid]-[expid].
+        data : :obj:`dict`
+            NIMADS-format dictionary storing the raw dataset, from which
+            relevant data are loaded into DataFrames.
         key : {'labels', 'metadata', 'text', 'images'}
             Which data type to load.
 
@@ -136,12 +131,12 @@ class Dataset(NiMAREBase):
             requested data type.
         """
         exp_dict = {}
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                exp = self.data[pid]['contrasts'][expid]
+        for pid in data.keys():
+            for expid in data[pid]['contrasts'].keys():
+                exp = data[pid]['contrasts'][expid]
                 id_ = '{0}-{1}'.format(pid, expid)
 
-                if key not in self.data[pid]['contrasts'][expid].keys():
+                if key not in data[pid]['contrasts'][expid].keys():
                     continue
                 exp_dict[id_] = exp[key]
 
@@ -188,7 +183,7 @@ class Dataset(NiMAREBase):
                     lambda x: x.split(shared_path)[1] if isinstance(x, str) else x)
         return image_df
 
-    def _load_coordinates(self):
+    def _load_coordinates(self, data):
         """
         Load coordinates in Dataset into DataFrame.
         """
@@ -197,13 +192,13 @@ class Dataset(NiMAREBase):
         core_columns = columns[:]  # Used in contrast for loop
 
         all_dfs = []
-        for pid in self.data.keys():
-            for expid in self.data[pid]['contrasts'].keys():
-                if 'coords' not in self.data[pid]['contrasts'][expid].keys():
+        for pid in data.keys():
+            for expid in data[pid]['contrasts'].keys():
+                if 'coords' not in data[pid]['contrasts'][expid].keys():
                     continue
 
                 exp_columns = core_columns[:]
-                exp = self.data[pid]['contrasts'][expid]
+                exp = data[pid]['contrasts'][expid]
 
                 # Required info (ids, x, y, z, space)
                 n_coords = len(exp['coords']['x'])
