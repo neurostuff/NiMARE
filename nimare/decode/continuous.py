@@ -18,7 +18,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""
     Perform image-to-text decoding for continuous inputs (e.g.,
     unthresholded statistical maps), according to the method described in
-    Rubin et al. (2017)[1]_.
+    Rubin et al. (2017).
 
     Parameters
     ----------
@@ -114,6 +114,8 @@ def corr_decode(dataset, img, feature_group=None, features=None,
                 frequency_threshold=0.001,
                 meta_estimator=None, target_image='specificity_z'):
     """
+    Neurosynth's correlation-based decoding method.
+
     Parameters
     ----------
     dataset : :obj:`nimare.dataset.Dataset`
@@ -150,6 +152,7 @@ def corr_decode(dataset, img, feature_group=None, features=None,
         A DataFrame with two columns: 'feature' (label) and 'r' (correlation
         coefficient). There will be one row for each feature.
     """
+    id_cols = ['id', 'study_id', 'contrast_id']
     # Check that input image is compatible with dataset
     assert np.array_equal(img.affine, dataset.mask.affine)
 
@@ -171,6 +174,7 @@ def corr_decode(dataset, img, feature_group=None, features=None,
     else:
         if features is None:
             features = dataset.annotations.columns.values
+    features = [f for f in features if f not in id_cols]
 
     out_df = pd.DataFrame(index=features, columns=['r'],
                           data=np.zeros(len(features)))
@@ -234,6 +238,7 @@ def corr_dist_decode(dataset, img, feature_group=None, features=None,
         columns: mean and std. Values describe the distributions of
         correlation coefficients (in terms of Fisher-transformed z-values).
     """
+    id_cols = ['id', 'study_id', 'contrast_id']
     # Check that input image is compatible with dataset
     assert np.array_equal(img.affine, dataset.mask.affine)
 
@@ -252,6 +257,7 @@ def corr_dist_decode(dataset, img, feature_group=None, features=None,
     else:
         if features is None:
             features = dataset.annotations.columns.values
+    features = [f for f in features if f not in id_cols]
 
     out_df = pd.DataFrame(index=features, columns=['mean', 'std'],
                           data=np.zeros(len(features), 2))

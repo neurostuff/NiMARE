@@ -9,6 +9,7 @@ from scipy.stats import binom
 from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 
+from ..base import NiMAREBase
 from .utils import weight_priors
 from ..stats import one_way, two_way
 from ..transforms import p_to_z
@@ -120,11 +121,155 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
 
 @due.dcite(references.BRAINMAP_DECODING,
            description='Citation for BrainMap-style decoding.')
-def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
+class BrainMapDecoder(NiMAREBase):
+    """
+    Perform image-to-text decoding for discrete image inputs (e.g., regions
+    of interest, significant clusters) according to the BrainMap method.
+
+    Parameters
+    ----------
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
+    features : :obj:`list`, optional
+        List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the
+        feature group prefix.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
+        Default is None, which uses all features available.
+    frequency_threshold : :obj:`float`, optional
+        Threshold to apply to dataset annotations. Values greater than or
+        equal to the threshold as assigned as label+, while values below
+        the threshold are considered label-. Default is 0.001.
+    u : :obj:`float`, optional
+        Alpha level for multiple comparisons correction. Default is 0.05.
+    correction : :obj:`str` or None, optional
+        Multiple comparisons correction method to apply. Corresponds to
+        available options for :func:`statsmodels.stats.multitest.multipletests`.
+        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+
+    See Also
+    --------
+    :func:`nimare.decode.discrete.brainmap_decode`: The associated function
+    for this method.
+
+    References
+    ----------
+    * Amft, Maren, et al. "Definition and characterization of an extended
+      social-affective default network." Brain Structure and Function 220.2
+      (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
+    """
+
+    def __init__(self, feature_group=None, features=None,
+                 frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
+        self.feature_group = feature_group
+        self.features = features
+        self.frequency_threshold = frequency_threshold
+        self.u = u
+        self.correction = correction
+        self.results = None
+
+    def transform(self, dataset, ids, ids2=None):
+        """
+        Apply the decoding method to a Dataset.
+
+        Parameters
+        ----------
+        dataset : :class:`nimare.dataset.Dataset`
+            Dataset with annotations and coordinates attributes.
+        ids : :obj:`list`
+            Subset of studies in coordinates/annotations dataframes indicating
+            target for decoding. Examples include studies reporting at least one
+            peak in an ROI, or studies selected from a clustering analysis.
+        ids2 : :obj:`list` or None, optional
+            Second subset of studies, representing "unselected" studies. If None,
+            then all studies in coordinates/annotations dataframes **not** in
+            ``ids`` will be used.
+
+        Returns
+        -------
+        results : :class:`pandas.DataFrame`
+            Table with each label and the following values associated with each
+            label: 'pForward', 'zForward', 'likelihoodForward', 'pReverse',
+            'zReverse', and 'probReverse'.
+        """
+        results = brainmap_decode(
+            dataset.coordinates, dataset.annotations, ids=ids, ids2=ids2,
+            feature_group=self.feature_group, features=self.features,
+            frequency_threshold=self.frequency_threshold,
+            u=self.u, correction=self.correction)
+        self.results = results
+        return results
+
+
+@due.dcite(references.BRAINMAP_DECODING,
+           description='Citation for BrainMap-style decoding.')
+def brainmap_decode(coordinates, annotations, ids, ids2=None,
+                    feature_group=None, features=None,
                     frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
     """
     Perform image-to-text decoding for discrete image inputs (e.g., regions
     of interest, significant clusters) according to the BrainMap method.
+
+    Parameters
+    ----------
+    coordinates : :class:`pandas.DataFrame`
+        DataFrame containing coordinates. Must include a column named 'id' and
+        must have a separate row for each reported peak coordinate for each
+        study (i.e., there are multiple rows per ID).
+        IDs from ``coordinates`` must match those from ``annotations``.
+    annotations : :class:`pandas.DataFrame`
+        DataFrame containing labels. Must include a column named 'id' and each
+        row must correspond to a study. Other columns may correspond to
+        individual labels.
+        IDs from ``annotations`` must match those from ``coordinates``.
+    ids : :obj:`list`
+        Subset of studies in coordinates/annotations dataframes indicating
+        target for decoding. Examples include studies reporting at least one
+        peak in an ROI, or studies selected from a clustering analysis.
+    ids2 : :obj:`list` or None, optional
+        Second subset of studies, representing "unselected" studies. If None,
+        then all studies in coordinates/annotations dataframes **not** in
+        ``ids`` will be used.
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
+    features : :obj:`list`, optional
+        List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the
+        feature group prefix.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
+        Default is None, which uses all features available.
+    frequency_threshold : :obj:`float`, optional
+        Threshold to apply to dataset annotations. Values greater than or
+        equal to the threshold as assigned as label+, while values below
+        the threshold are considered label-. Default is 0.001.
+    u : :obj:`float`, optional
+        Alpha level for multiple comparisons correction. Default is 0.05.
+    correction : :obj:`str` or None, optional
+        Multiple comparisons correction method to apply. Corresponds to
+        available options for :func:`statsmodels.stats.multitest.multipletests`.
+        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+
+    Returns
+    -------
+    out_df : :class:`pandas.DataFrame`
+        Table with each label and the following values associated with each
+        label: 'pForward', 'zForward', 'likelihoodForward', 'pReverse',
+        'zReverse', and 'probReverse'.
+
+    See Also
+    --------
+    :func:`nimare.decode.discrete.BrainMapDecoder`: The associated class
+    for this method.
 
     References
     ----------
@@ -139,9 +284,19 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
     else:
         unselected = ids2[:]
 
-    if features is None:
-        features = annotations.columns.values
-        features = [f for f in features if f not in id_cols]
+    if feature_group is not None:
+        if not feature_group.endswith('__'):
+            feature_group += '__'
+        feature_names = annotations.columns.values
+        feature_names = [f for f in feature_names if f.startswith(feature_group)]
+        if features is not None:
+            features = [f.split('__')[-1] for f in feature_names if f in features]
+        else:
+            features = feature_names
+    else:
+        if features is None:
+            features = annotations.columns.values
+    features = [f for f in features if f not in id_cols]
 
     # Binarize with frequency threshold
     features_df = annotations.set_index('id', drop=True)
@@ -227,6 +382,103 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None, features=None,
 
 
 @due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
+class NeurosynthDecoder(NiMAREBase):
+    """
+    Perform discrete functional decoding according to Neurosynth's
+    meta-analytic method.
+
+    This does not employ correlations between unthresholded maps, which are the
+    method of choice for decoding within Neurosynth and Neurovault.
+    Metadata (i.e., feature labels) for studies within the selected sample
+    (`ids`) are compared to the unselected studies remaining in the database
+    (`dataset`).
+
+    Parameters
+    ----------
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
+    features : :obj:`list`, optional
+        List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the
+        feature group prefix.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
+        Default is None, which uses all features available.
+    frequency_threshold : :obj:`float`, optional
+        Threshold to apply to dataset annotations. Values greater than or
+        equal to the threshold as assigned as label+, while values below
+        the threshold are considered label-. Default is 0.001.
+    prior : :obj:`float`, optional
+        Uniform prior probability of each label being active in a study in
+        the absence of evidence (labels or selection) from the study.
+        Default is 0.5 (50%).
+    u : :obj:`float`, optional
+        Alpha level for multiple comparisons correction. Default is 0.05.
+    correction : :obj:`str` or None, optional
+        Multiple comparisons correction method to apply. Corresponds to
+        available options for :func:`statsmodels.stats.multitest.multipletests`.
+        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+
+    See Also
+    --------
+    :func:`nimare.decode.discrete.neurosynth_decode`: The associated function
+    for this method.
+
+    References
+    ----------
+    * Yarkoni, Tal, et al. "Large-scale automated synthesis of human
+      functional neuroimaging data." Nature methods 8.8 (2011): 665.
+      https://doi.org/10.1038/nmeth.1635
+    """
+    def __init__(self, feature_group=None, features=None,
+                 frequency_threshold=0.001, prior=0.5,
+                 u=0.05, correction='fdr_bh'):
+        self.feature_group = feature_group
+        self.features = features
+        self.frequency_threshold = frequency_threshold
+        self.prior = prior
+        self.u = u
+        self.correction = correction
+        self.results = None
+
+    def transform(self, dataset, ids, ids2=None):
+        """
+        Apply the decoding method to a Dataset.
+
+        Parameters
+        ----------
+        dataset : :class:`nimare.dataset.Dataset`
+            Dataset with annotations and coordinates attributes.
+        ids : :obj:`list`
+            Subset of studies in coordinates/annotations dataframes indicating
+            target for decoding. Examples include studies reporting at least one
+            peak in an ROI, or studies selected from a clustering analysis.
+        ids2 : :obj:`list` or None, optional
+            Second subset of studies, representing "unselected" studies. If None,
+            then all studies in Dataset **not** in
+            ``ids`` will be used.
+
+        Returns
+        -------
+        results : :class:`pandas.DataFrame`
+            Table with each label and the following values associated with each
+            label: 'pForward', 'zForward', 'probForward', 'pReverse', 'zReverse',
+            and 'probReverse'.
+        """
+        results = neurosynth_decode(
+            dataset.coordinates, dataset.annotations, ids=ids, ids2=ids2,
+            feature_group=self.feature_group, features=self.features,
+            frequency_threshold=self.frequency_threshold, prior=self.prior,
+            u=self.u, correction=self.correction)
+        self.results = results
+        return results
+
+
+@due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
 def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
                       frequency_threshold=0.001, prior=0.5, u=0.05,
                       correction='fdr_bh'):
@@ -239,6 +491,68 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
     Metadata (i.e., feature labels) for studies within the selected sample
     (`ids`) are compared to the unselected studies remaining in the database
     (`dataset`).
+
+    Parameters
+    ----------
+    coordinates : :class:`pandas.DataFrame`
+        DataFrame containing coordinates. Must include a column named 'id' and
+        must have a separate row for each reported peak coordinate for each
+        study (i.e., there are multiple rows per ID).
+        IDs from ``coordinates`` must match those from ``annotations``.
+    annotations : :class:`pandas.DataFrame`
+        DataFrame containing labels. Must include a column named 'id' and each
+        row must correspond to a study. Other columns may correspond to
+        individual labels.
+        IDs from ``annotations`` must match those from ``coordinates``.
+    ids : :obj:`list`
+        Subset of studies in coordinates/annotations dataframes indicating
+        target for decoding. Examples include studies reporting at least one
+        peak in an ROI, or studies selected from a clustering analysis.
+    ids2 : :obj:`list` or None, optional
+        Second subset of studies, representing "unselected" studies. If None,
+        then all studies in coordinates/annotations dataframes **not** in
+        ``ids`` will be used.
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
+    features : :obj:`list`, optional
+        List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the
+        feature group prefix.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
+        Default is None, which uses all features available.
+    frequency_threshold : :obj:`float`, optional
+        Threshold to apply to dataset annotations. Values greater than or
+        equal to the threshold as assigned as label+, while values below
+        the threshold are considered label-. Default is 0.001.
+    prior : :obj:`float`, optional
+        Uniform prior probability of each label being active in a study in
+        the absence of evidence (labels or selection) from the study.
+        Default is 0.5 (50%).
+    u : :obj:`float`, optional
+        Alpha level for multiple comparisons correction. Default is 0.05.
+    correction : :obj:`str` or None, optional
+        Multiple comparisons correction method to apply. Corresponds to
+        available options for :func:`statsmodels.stats.multitest.multipletests`.
+        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+
+    Returns
+    -------
+    out_df : :class:`pandas.DataFrame`
+        Table with each label and the following values associated with each
+        label: 'pForward', 'zForward', 'probForward', 'pReverse', 'zReverse',
+        and 'probReverse'.
+
+    See Also
+    --------
+    :class:`nimare.decode.discrete.NeurosynthDecoder`: The associated class for
+    this method.
+    :func:`nimare.decode.continuous.corr_decode`: The correlation-based decoding
+    method employed in Neurosynth and NeuroVault.
 
     References
     ----------
@@ -253,9 +567,19 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
     else:
         unselected = ids2[:]
 
-    if features is None:
-        features = annotations.columns.values
-        features = [f for f in features if f not in id_cols]
+    if feature_group is not None:
+        if not feature_group.endswith('__'):
+            feature_group += '__'
+        feature_names = annotations.columns.values
+        feature_names = [f for f in feature_names if f.startswith(feature_group)]
+        if features is not None:
+            features = [f.split('__')[-1] for f in feature_names if f in features]
+        else:
+            features = feature_names
+    else:
+        if features is None:
+            features = annotations.columns.values
+    features = [f for f in features if f not in id_cols]
 
     # Binarize with frequency threshold
     features_df = annotations.set_index('id', drop=True)
