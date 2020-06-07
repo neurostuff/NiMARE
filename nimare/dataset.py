@@ -33,6 +33,26 @@ class Dataset(NiMAREBase):
     mask : `str`, `Nifti1Image`, or any nilearn `Masker`
         Mask(er) to use. If None, uses the target space image, with all
         non-zero voxels included in the mask.
+
+    Attributes
+    ----------
+    ids : 1D array_like
+        A list of identifiers for all studies in the Dataset.
+    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        Masker object defining the space and location of the area of interest
+        (e.g., 'brain').
+    space : :obj:`str`
+        Standard space. Same as ``target`` parameter.
+    annotations : :class:`pandas.DataFrame`
+        DataFrame with labels describing studies in the dataset.
+    metadata : :class:`pandas.DataFrame`
+        DataFrame with metadata describing studies in the Dataset.
+    texts : :class:`pandas.DataFrame`
+        DataFrame with texts associated with studies in the Dataset.
+    images : :class:`pandas.DataFrame`
+        DataFrame with **paths** to statistical images for studies in the Dataset.
+    coordinates : :class:`pandas.DataFrame`
+        DataFrame with suprathreshold peak coordinates from studies in the Dataset.
     """
     _id_cols = ['id', 'study_id', 'contrast_id']
 
@@ -316,13 +336,13 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        ids : list, optional
+        ids : :obj:`list`, optional
             A list of IDs in the Dataset for which to find labels. Default is
             None, in which case all labels are returned.
 
         Returns
         -------
-        labels : list
+        labels : :obj:`list`
             List of labels for which there are annotations in the Dataset.
         """
         if not isinstance(ids, list) and ids is not None:
@@ -342,16 +362,16 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        ids : list, optional
+        ids : :obj:`list`, optional
             A list of IDs in the Dataset for which to find texts. Default is
             None, in which case all texts of requested type are returned.
-        text_type : str, optional
+        text_type : :obj:`str`, optional
             Type of text to extract. Corresponds to column name in
             Dataset.texts DataFrame. Default is None.
 
         Returns
         -------
-        texts : list
+        texts : :obj:`list`
             List of texts of requested type for selected IDs.
         """
         # Rename variables
@@ -395,16 +415,16 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        ids : list, optional
+        ids : :obj:`list`, optional
             A list of IDs in the Dataset for which to find texts. Default is
             None, in which case all texts of requested type are returned.
-        field : str, optional
+        field : :obj:`str`, optional
             Metadata field to extract. Corresponds to column name in
             Dataset.metadata DataFrame. Default is None.
 
         Returns
         -------
-        metadata : list
+        metadata : :obj:`list`
             List of values of requested type for selected IDs.
         """
         # Rename variables
@@ -446,16 +466,16 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        ids : list, optional
+        ids : :obj:`list`, optional
             A list of IDs in the Dataset for which to find texts. Default is
             None, in which case all texts of requested type are returned.
-        imtype : str, optional
+        imtype : :obj:`str`, optional
             Type of image to extract. Corresponds to column name in
             Dataset.images DataFrame. Default is None.
 
         Returns
         -------
-        images : list
+        images : :obj:`list`
             List of images of requested type for selected IDs.
         """
         # Rename variables
@@ -500,16 +520,16 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        labels : list, optional
+        labels : :obj:`list`, optional
             List of labels to use to search Dataset. If a contrast has all of
             the labels above the threshold, it will be returned.
             Default is None.
-        label_threshold : float, optional
+        label_threshold : :obj:`float`, optional
             Default is 0.5.
 
         Returns
         -------
-        found_ids : list
+        found_ids : :obj:`list`
             A list of IDs from the Dataset found by the search criteria.
         """
         if isinstance(labels, str):
@@ -540,7 +560,7 @@ class Dataset(NiMAREBase):
 
         Returns
         -------
-        found_ids : list
+        found_ids : :obj:`list`
             A list of IDs from the Dataset with at least one focus in the mask.
         """
         from scipy.spatial.distance import cdist
@@ -566,12 +586,12 @@ class Dataset(NiMAREBase):
         ----------
         xyz : (X x 3) array_like
             List of coordinates against which to find studies.
-        r : float, optional
+        r : :obj:`float`, optional
             Radius (in mm) within which to find studies. Default is 20mm.
 
         Returns
         -------
-        found_ids : list
+        found_ids : :obj:`list`
             A list of IDs from the Dataset with at least one focus within
             radius r of requested coordinates.
         """

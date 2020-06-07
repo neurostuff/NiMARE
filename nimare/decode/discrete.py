@@ -154,8 +154,7 @@ class BrainMapDecoder(NiMAREBase):
 
     See Also
     --------
-    :func:`nimare.decode.discrete.brainmap_decode`: The associated function
-    for this method.
+    :func:`nimare.decode.discrete.brainmap_decode`: The associated function for this method.
 
     References
     ----------
@@ -268,8 +267,7 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
 
     See Also
     --------
-    :func:`nimare.decode.discrete.BrainMapDecoder`: The associated class
-    for this method.
+    :func:`nimare.decode.discrete.BrainMapDecoder`: The associated class for this method.
 
     References
     ----------
@@ -425,8 +423,7 @@ class NeurosynthDecoder(NiMAREBase):
 
     See Also
     --------
-    :func:`nimare.decode.discrete.neurosynth_decode`: The associated function
-    for this method.
+    :func:`nimare.decode.discrete.neurosynth_decode`: The associated function for this method.
 
     References
     ----------
@@ -549,10 +546,9 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
 
     See Also
     --------
-    :class:`nimare.decode.discrete.NeurosynthDecoder`: The associated class for
-    this method.
+    :class:`nimare.decode.discrete.NeurosynthDecoder`: The associated class for this method.
     :func:`nimare.decode.continuous.corr_decode`: The correlation-based decoding
-    method employed in Neurosynth and NeuroVault.
+        method employed in Neurosynth and NeuroVault.
 
     References
     ----------

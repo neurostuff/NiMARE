@@ -260,6 +260,12 @@ def download_abstracts(dataset, email):
     Returns
     -------
     dataset : :obj:`nimare.dataset.Dataset`
+
+    Warning
+    -------
+    This function assumes that the dataset uses identifiers in the format
+    [PMID-EXPID]. Thus, the ``study_id`` column of the dataset.texts DataFrame
+    should correspond to PMID.
     """
     try:
         from Bio import Entrez, Medline
@@ -271,8 +277,7 @@ def download_abstracts(dataset, email):
     Entrez.email = email
 
     if isinstance(dataset, Dataset):
-        pmids = dataset.coordinates['id'].astype(str).tolist()
-        pmids = [pmid.split('-')[0] for pmid in pmids]
+        pmids = dataset.texts['study_id'].astype(str).tolist()
         pmids = sorted(list(set(pmids)))
     elif isinstance(dataset, list):
         pmids = [str(pmid) for pmid in dataset]
@@ -292,20 +297,12 @@ def download_abstracts(dataset, email):
     # Pull data for studies with abstracts
     data = [[study['PMID'], study['AB']]
             for study in records if study.get('AB', None)]
-    df = pd.DataFrame(columns=['id', 'text'], data=data)
-
-    for pmid in dataset.data.keys():
-        if pmid in df['id'].tolist():
-            abstract = df.loc[df['id'] == pmid, 'text'].values[0]
-        else:
-            abstract = ""
-
-        for expid in dataset.data[pmid]['contrasts'].keys():
-            if 'texts' not in dataset.data[pmid]['contrasts'][expid].keys():
-                dataset.data[pmid]['contrasts'][expid]['texts'] = {}
-            dataset.data[pmid]['contrasts'][expid]['texts']['abstract'] = abstract
-
-    dataset.texts = dataset._load_data(dataset.texts, key='text')
+    df = pd.DataFrame(columns=['study_id', 'abstract'], data=data)
+    dataset.texts = pd.merge(
+        dataset.texts, df,
+        left_on='study_id', right_on='study_id',
+        how='left'
+    )
     return dataset
 
 
