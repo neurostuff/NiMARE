@@ -40,8 +40,6 @@ dset_file = os.path.join(get_test_data_path(), 'nidm_pain_dset.json')
 dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 
-mask_img = dset.masker.mask_img
-
 logp_thresh = -np.log(.05)
 
 ###############################################################################
@@ -50,12 +48,11 @@ logp_thresh = -np.log(.05)
 # Get images for analysis
 files = dset.get_images(imtype='z')
 files = [f for f in files if f]
-z_imgs = [nib.load(f) for f in files]
-z_data = apply_mask(z_imgs, mask_img)
+z_data = dset.masker.transform(files)
 print('{0} studies found.'.format(z_data.shape[0]))
 
-result = fishers(z_data, mask_img)
-fishers_result = unmask(result['z'], mask_img)
+result = fishers(z_data)
+fishers_result = dset.masker.inverse_transform(result['z'])
 plot_stat_map(fishers_result, cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
