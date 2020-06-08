@@ -34,3 +34,4 @@ def test_gclda():
     decoded_df, _ = decode.continuous.gclda_decode_map(model, mask_img)
     assert isinstance(decoded_df, pd.DataFrame)
     encoded_img, _ = decode.encode.gclda_encode(model, 'fmri activation')
+    assert isinstance(encoded_img, nib.Nifti1Image)

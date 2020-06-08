@@ -18,7 +18,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""
     Perform image-to-text decoding for continuous inputs (e.g.,
     unthresholded statistical maps), according to the method described in
-    Rubin et al. (2017)[1]_.
+    Rubin et al. (2017).
 
     Parameters
     ----------
@@ -110,9 +110,12 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
 
 @due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
-def corr_decode(dataset, img, features=None, frequency_threshold=0.001,
+def corr_decode(dataset, img, feature_group=None, features=None,
+                frequency_threshold=0.001,
                 meta_estimator=None, target_image='specificity_z'):
     """
+    Neurosynth's correlation-based decoding method.
+
     Parameters
     ----------
     dataset : :obj:`nimare.dataset.Dataset`
@@ -120,8 +123,18 @@ def corr_decode(dataset, img, features=None, frequency_threshold=0.001,
     img : :obj:`nibabel.Nifti1.Nifti1Image`
         Input image to decode. Must have same affine/dimensions as dataset
         mask.
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the
+        feature group prefix.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
         Default is None, which uses all features available.
     frequency_threshold : :obj:`float`, optional
         Threshold to apply to dataset annotations. Values greater than or
@@ -139,6 +152,7 @@ def corr_decode(dataset, img, features=None, frequency_threshold=0.001,
         A DataFrame with two columns: 'feature' (label) and 'r' (correlation
         coefficient). There will be one row for each feature.
     """
+    id_cols = ['id', 'study_id', 'contrast_id']
     # Check that input image is compatible with dataset
     assert np.array_equal(img.affine, dataset.mask.affine)
 
@@ -146,10 +160,21 @@ def corr_decode(dataset, img, features=None, frequency_threshold=0.001,
     input_data = apply_mask(img, dataset.mask)
 
     if meta_estimator is None:
-        meta_estimator = MKDAChi2(dataset)
+        meta_estimator = MKDAChi2()
 
-    if features is None:
-        features = dataset.annotations.columns.values
+    if feature_group is not None:
+        if not feature_group.endswith('__'):
+            feature_group += '__'
+        feature_names = dataset.annotations.columns.values
+        feature_names = [f for f in feature_names if f.startswith(feature_group)]
+        if features is not None:
+            features = [f.split('__')[-1] for f in feature_names if f in features]
+        else:
+            features = feature_names
+    else:
+        if features is None:
+            features = dataset.annotations.columns.values
+    features = [f for f in features if f not in id_cols]
 
     out_df = pd.DataFrame(index=features, columns=['r'],
                           data=np.zeros(len(features)))
@@ -158,19 +183,23 @@ def corr_decode(dataset, img, features=None, frequency_threshold=0.001,
     for feature in features:
         # TODO: Search for !feature to get ids2, if possible. Will compare
         # between label+ and label- without analyzing unlabeled studies.
-        ids = dataset.get(features=[feature],
-                          frequency_threshold=frequency_threshold)
-        meta_estimator.fit(ids, corr='FDR')
-        feature_data = apply_mask(meta_estimator.results[target_image],
-                                  dataset.mask)
+        feature_ids = dataset.get_studies_by_label(
+            labels=[feature],
+            label_threshold=frequency_threshold,
+        )
+        feature_dset = dataset.slice(feature_ids)
+        meta_estimator.fit(feature_dset)
+        feature_data = dataset.masker.transform(
+            meta_estimator.results.get_map(target_image, return_type='image')
+        )
         corr = np.corrcoef(feature_data, input_data)[0, 1]
         out_df.loc[feature, 'r'] = corr
 
     return out_df
 
 
-def corr_dist_decode(dataset, img, features=None, frequency_threshold=0.001,
-                     target_image='z'):
+def corr_dist_decode(dataset, img, feature_group=None, features=None,
+                     frequency_threshold=0.001, target_image='z'):
     """
     Builds feature-specific distributions of correlations with input image
     for image-based meta-analytic functional decoding.
@@ -182,8 +211,18 @@ def corr_dist_decode(dataset, img, features=None, frequency_threshold=0.001,
     img : :obj:`nibabel.Nifti1.Nifti1Image`
         Input image to decode. Must have same affine/dimensions as dataset
         mask.
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the
+        feature group prefix.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
         Default is None, which uses all features available.
     frequency_threshold : :obj:`float`, optional
         Threshold to apply to dataset annotations. Values greater than or
@@ -199,29 +238,48 @@ def corr_dist_decode(dataset, img, features=None, frequency_threshold=0.001,
         columns: mean and std. Values describe the distributions of
         correlation coefficients (in terms of Fisher-transformed z-values).
     """
+    id_cols = ['id', 'study_id', 'contrast_id']
     # Check that input image is compatible with dataset
     assert np.array_equal(img.affine, dataset.mask.affine)
 
     # Load input data
     input_data = apply_mask(img, dataset.mask)
 
-    if features is None:
-        features = dataset.annotations.columns.values
+    if feature_group is not None:
+        if not feature_group.endswith('__'):
+            feature_group += '__'
+        feature_names = dataset.annotations.columns.values
+        feature_names = [f for f in feature_names if f.startswith(feature_group)]
+        if features is not None:
+            features = [f.split('__')[-1] for f in feature_names if f in features]
+        else:
+            features = feature_names
+    else:
+        if features is None:
+            features = dataset.annotations.columns.values
+    features = [f for f in features if f not in id_cols]
 
     out_df = pd.DataFrame(index=features, columns=['mean', 'std'],
                           data=np.zeros(len(features), 2))
     out_df.index.name = 'feature'
 
     for feature in features:
-        test_imgs = dataset.get_images(features=[feature],
-                                       frequency_threshold=frequency_threshold,
-                                       image_types=[target_image])
-        feature_z_dist = np.zeros(len(test_imgs))
-        for i, test_img in enumerate(test_imgs):
-            feature_data = apply_mask(test_img, dataset.mask)
-            corr = np.corrcoef(feature_data, input_data)[0, 1]
-            feature_z_dist[i] = np.arctanh(corr)  # transform to z for normality
-        out_df.loc[feature, 'mean'] = np.mean(feature_z_dist)
-        out_df.loc[feature, 'std'] = np.std(feature_z_dist)
+        feature_ids = dataset.get_studies_by_label(
+            labels=[feature],
+            label_threshold=frequency_threshold,
+        )
+        test_imgs = dataset.get_images(ids=feature_ids, imtype=target_image)
+        test_imgs = [ti for ti in test_imgs if ti is not None]
+        if len(test_imgs):
+            feature_z_dist = np.zeros(len(test_imgs))
+            for i, test_img in enumerate(test_imgs):
+                feature_data = dataset.masker.transform(test_img)
+                corr = np.corrcoef(feature_data, input_data)[0, 1]
+                feature_z_dist[i] = np.arctanh(corr)  # transform to z for normality
+            out_df.loc[feature, 'mean'] = np.mean(feature_z_dist)
+            out_df.loc[feature, 'std'] = np.std(feature_z_dist)
+        else:
+            out_df.loc[feature, 'mean'] = np.nan
+            out_df.loc[feature, 'std'] = np.nan
 
     return out_df

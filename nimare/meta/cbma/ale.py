@@ -395,6 +395,15 @@ class ALESubtraction(CBMAEstimator):
     -----
     This method was originally developed in [1]_ and refined in [2]_.
 
+    Warning
+    -------
+    This implementation contains one key difference from the original version.
+    In the original version, group 1 > group 2 difference values are only
+    evaluated for voxels significant in the group 1 meta-analysis, and group 2
+    > group 1 difference values are only evaluated for voxels significant in
+    the group 2 meta-analysis. In NiMARE's implementation, the analysis is run
+    in a two-sided manner for *all* voxels in the mask.
+
     References
     ----------
     .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
@@ -425,6 +434,7 @@ class ALESubtraction(CBMAEstimator):
         ----------
         meta1/meta2 : :obj:`nimare.meta.cbma.ale.ALE`
             Fitted ALE Estimators for datasets to compare.
+            These Estimators do not require multiple comparisons correction.
 
         Returns
         -------

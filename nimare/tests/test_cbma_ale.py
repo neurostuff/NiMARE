@@ -35,7 +35,7 @@ def test_ale(testdata):
 
 def test_ale_subtraction(testdata):
     """
-    Smoke test for ALE
+    Smoke test for ALESubtraction
     """
     meta1 = ale.ALE()
     res1 = meta1.fit(testdata['dset'])
@@ -43,11 +43,7 @@ def test_ale_subtraction(testdata):
     meta2 = ale.ALE()
     res2 = meta2.fit(testdata['dset'])
 
-    corr = FWECorrector(method='montecarlo', voxel_thresh=0.001,
-                        n_iters=5, n_cores=1)
-    cres1 = corr.transform(res1)
-    cres2 = corr.transform(res2)
-
     sub_meta = ale.ALESubtraction(n_iters=10)
     sub_meta.fit(meta1, meta2)
     assert isinstance(sub_meta.results, nimare.base.MetaResult)
+    assert 'z_desc-group1MinusGroup2' in sub_meta.results.maps.keys()
