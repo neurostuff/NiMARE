@@ -298,6 +298,9 @@ def download_abstracts(dataset, email):
     data = [[study['PMID'], study['AB']]
             for study in records if study.get('AB', None)]
     df = pd.DataFrame(columns=['study_id', 'abstract'], data=data)
+    if not isinstance(dataset, Dataset):
+        return df
+
     dataset.texts = pd.merge(
         dataset.texts, df,
         left_on='study_id', right_on='study_id',

@@ -99,9 +99,10 @@ def extract_cogat(text_df, id_df=None, text_column='abstract'):
     Parameters
     ----------
     text_df : (D x 2) :obj:`pandas.DataFrame`
-        Pandas dataframe with two columns: 'id' and the text. D = document.
+        Pandas dataframe with at least two columns: 'id' and the text.
+        D = document.
     id_df : (T x 3) :obj:`pandas.DataFrame`
-        Cognitive Atlas ontology dataframe with three columns:
+        Cognitive Atlas ontology dataframe with at least three columns:
         'id' (unique identifier for term), 'alias' (natural language expression
         of term), and 'name' (preferred name of term; currently unused).
         T = term.
@@ -128,6 +129,10 @@ def extract_cogat(text_df, id_df=None, text_column='abstract'):
     if 'id' in text_df.columns:
         text_df.set_index('id', inplace=True)
 
+    text_df = text_df.copy()
+    text_df[text_column] = text_df[text_column].fillna('')
+    text_df[text_column] = text_df[text_column].apply(uk_to_us)
+
     # Create regex dictionary
     regex_dict = {}
     for term in id_df['alias'].values:
@@ -137,30 +142,19 @@ def extract_cogat(text_df, id_df=None, text_column='abstract'):
         regex_dict[term] = pattern
 
     # Count
-    count_arr = np.zeros((text_df.shape[0], len(gazetteer)))
-    rep_text_df = text_df.copy()
-    c = 0
-    for i, row in text_df.iterrows():
-        text = row[text_column]
-        text = uk_to_us(text)
-        for term_idx in id_df.index:
-            term = id_df['alias'].loc[term_idx]
-            term_id = id_df['id'].loc[term_idx]
+    count_arr = np.zeros((text_df.shape[0], len(gazetteer)), int)
+    counts_df = pd.DataFrame(columns=gazetteer, index=text_df.index, data=count_arr)
+    for term_idx in id_df.index:
+        term = id_df['alias'].loc[term_idx]
+        term_id = id_df['id'].loc[term_idx]
+        pattern = regex_dict[term]
+        counts_df[term_id] += text_df[text_column].str.count(pattern).astype(int)
+        text_df[text_column] = text_df[text_column].str.replace(pattern, term_id)
 
-            col_idx = gazetteer.index(term_id)
-
-            pattern = regex_dict[term]
-            count_arr[c, col_idx] += len(re.findall(pattern, text))
-            text = re.sub(pattern, term_id, text)
-            rep_text_df.loc[i, text_column] = text
-        c += 1
-
-    counts_df = pd.DataFrame(columns=gazetteer, index=text_df.index,
-                             data=count_arr)
-    return counts_df, rep_text_df
+    return counts_df, text_df
 
 
-def expand_counts(counts_df, rel_df, weights=None):
+def expand_counts(counts_df, rel_df=None, weights=None):
     """
     Perform hierarchical expansion of counts across labels.
 
@@ -169,7 +163,7 @@ def expand_counts(counts_df, rel_df, weights=None):
     counts_df : (D x T) :obj:`pandas.DataFrame`
         Term counts for a corpus. T = term, D = document.
     rel_df : :obj:`pandas.DataFrame`
-        Long-form DataFrame of term-term relationships with three columns:
+        Long-form DataFrame of term-term relationships with at least three columns:
         'input', 'output', and 'rel_type'.
     weights : :obj:`dict`
         Dictionary of weights per relationship type. E.g., {'isKind': 1}.
@@ -180,9 +174,12 @@ def expand_counts(counts_df, rel_df, weights=None):
     weighted_df : (D x T) :obj:`pandas.DataFrame`
         Term counts for a corpus after hierarchical expansion.
     """
+    if rel_df is None:
+        cogat = download_cognitive_atlas()
+        rel_df = pd.read_csv(cogat['relationships'])
     weights_df = utils._generate_weights(rel_df, weights=weights)
 
-    # First reorg count_df so it has the same columns in the same order as
+    # First reorg counts_df so it has the same columns in the same order as
     # weight_df
     counts_columns = counts_df.columns.tolist()
     weights_columns = weights_df.columns.tolist()
