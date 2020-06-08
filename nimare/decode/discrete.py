@@ -476,7 +476,8 @@ class NeurosynthDecoder(NiMAREBase):
 
 
 @due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
-def neurosynth_decode(coordinates, annotations, ids, ids2=None, features=None,
+def neurosynth_decode(coordinates, annotations, ids, ids2=None,
+                      feature_group=None, features=None,
                       frequency_threshold=0.001, prior=0.5, u=0.05,
                       correction='fdr_bh'):
     """
