@@ -87,7 +87,7 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
 ###############################################################################
 # Stouffer's with random-effects inference using empirical null distribution
 # -----------------------------------------------------------------------------
-meta = Stouffers(inference='rfx', null='empirical', n_iters=1000)
+meta = Stouffers(inference='rfx', null='empirical', n_iters=100)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
@@ -111,7 +111,7 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
 ###############################################################################
 # RFX GLM with empirical null distribution
 # ------------------------------------------
-meta = RFX_GLM(null='empirical', n_iters=1000)
+meta = RFX_GLM(null='empirical', n_iters=100)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
