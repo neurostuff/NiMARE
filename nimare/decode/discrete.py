@@ -336,7 +336,7 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
     p_selected_g_noterm = n_selected_noterm / n_noterm_foci
 
     p_term_g_selected = p_selected_g_term * p_term / p_selected  # probReverse
-    p_term_g_selected = p_term_g_selected / np.sum(p_term_g_selected)  # Normalize
+    p_term_g_selected = p_term_g_selected / np.nansum(p_term_g_selected)  # Normalize
 
     # Significance testing
     # Forward inference significance is determined with a binomial distribution
