@@ -83,3 +83,13 @@ def testdata(download_data):
         'sample_sizes_con': sample_sizes_con
     }
     return testdata
+
+
+@pytest.fixture(scope='session')
+def testdata_laird():
+    """
+    Load data from dataset into global variables.
+    """
+    testdata_laird = nimare.dataset.Dataset.load(
+        op.join(get_test_data_path(), 'neurosynth_laird_studies.pkl.gz'))
+    return testdata_laird
