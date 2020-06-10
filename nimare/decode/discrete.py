@@ -267,7 +267,6 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
       social-affective default network." Brain Structure and Function 220.2
       (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
     """
-    id_cols = ['id', 'study_id', 'contrast_id']
     dataset_ids = sorted(list(set(coordinates['id'].values)))
     if ids2 is None:
         unselected = sorted(list(set(dataset_ids) - set(ids)))
@@ -527,7 +526,6 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None,
       functional neuroimaging data." Nature methods 8.8 (2011): 665.
       https://doi.org/10.1038/nmeth.1635
     """
-    id_cols = ['id', 'study_id', 'contrast_id']
     dataset_ids = sorted(list(set(coordinates['id'].values)))
     if ids2 is None:
         unselected = sorted(list(set(dataset_ids) - set(ids)))

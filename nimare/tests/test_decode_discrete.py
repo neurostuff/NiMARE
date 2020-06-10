@@ -7,7 +7,7 @@ import pandas as pd
 from nimare.decode import discrete
 
 
-def test_discrete_neurosynth_decode(testdata_laird):
+def test_neurosynth_decode(testdata_laird):
     """
     Smoke test for discrete.neurosynth_decode
     """
@@ -17,7 +17,7 @@ def test_discrete_neurosynth_decode(testdata_laird):
     assert isinstance(decoded_df, pd.DataFrame)
 
 
-def test_discrete_brainmap_decode(testdata_laird):
+def test_brainmap_decode(testdata_laird):
     """
     Smoke test for discrete.brainmap_decode
     """
@@ -27,7 +27,7 @@ def test_discrete_brainmap_decode(testdata_laird):
     assert isinstance(decoded_df, pd.DataFrame)
 
 
-def test_discrete_NeurosynthDecoder(testdata_laird):
+def test_NeurosynthDecoder(testdata_laird):
     """
     Smoke test for discrete.NeurosynthDecoder
     """
@@ -37,7 +37,7 @@ def test_discrete_NeurosynthDecoder(testdata_laird):
     assert isinstance(decoded_df, pd.DataFrame)
 
 
-def test_discrete_BrainMapDecoder(testdata_laird):
+def test_BrainMapDecoder(testdata_laird):
     """
     Smoke test for discrete.BrainMapDecoder
     """

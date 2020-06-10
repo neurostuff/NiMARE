@@ -2,6 +2,7 @@
 Methods for decoding unthresholded brain maps into text.
 """
 import inspect
+import logging
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,8 @@ from ..meta.cbma import MKDAChi2
 from ..stats import pearson
 from ..due import due
 from .. import references
+
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.GCLDA_DECODING,
@@ -268,12 +271,12 @@ class CorrelationDistributionDecoder(Decoder):
         for feature in self.features_:
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature],
-                label_threshold=frequency_threshold,
+                label_threshold=self.frequency_threshold,
             )
-            test_imgs = dataset.get_images(ids=feature_ids, imtype=target_image)
+            test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
             test_imgs = list(filter(None, test_imgs))
             if len(test_imgs):
-                feature_arr = self.masker.transform(img)
+                feature_arr = self.masker.transform(test_imgs)
                 images_[feature] = feature_arr
             else:
                 LGR.info('Skipping feature "{}". No images found.'.format(feature))
@@ -296,8 +299,8 @@ class CorrelationDistributionDecoder(Decoder):
             "feature" and "r".
         """
         img_vec = self.masker.transform(img)
-        out_df = pd.DataFrame(index=features, columns=['mean', 'std'],
-                              data=np.zeros(len(features), 2))
+        out_df = pd.DataFrame(index=self.features_, columns=['mean', 'std'],
+                              data=np.zeros(len(self.features_), 2))
         out_df.index.name = 'feature'
         for feature, feature_arr in self.images_.items():
             corrs = pearson(img_vec, feature_arr)
