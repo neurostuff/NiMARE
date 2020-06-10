@@ -9,8 +9,8 @@ from scipy.stats import binom
 from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from ..base import NiMAREBase
 from .utils import weight_priors
+from ..base import Decoder
 from ..stats import one_way, two_way
 from ..transforms import p_to_z
 from ..due import due
@@ -121,7 +121,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
 
 @due.dcite(references.BRAINMAP_DECODING,
            description='Citation for BrainMap-style decoding.')
-class BrainMapDecoder(NiMAREBase):
+class BrainMapDecoder(Decoder):
     """
     Perform image-to-text decoding for discrete image inputs (e.g., regions
     of interest, significant clusters) according to the BrainMap method.
@@ -172,14 +172,16 @@ class BrainMapDecoder(NiMAREBase):
         self.correction = correction
         self.results = None
 
-    def transform(self, dataset, ids, ids2=None):
+    def _fit(self, dataset):
+        self.inputs_ = {'coordinates': dataset.coordinates,
+                        'annotations': dataset.annotations}
+
+    def transform(self, ids, ids2=None):
         """
         Apply the decoding method to a Dataset.
 
         Parameters
         ----------
-        dataset : :class:`nimare.dataset.Dataset`
-            Dataset with annotations and coordinates attributes.
         ids : :obj:`list`
             Subset of studies in coordinates/annotations dataframes indicating
             target for decoding. Examples include studies reporting at least one
@@ -197,8 +199,8 @@ class BrainMapDecoder(NiMAREBase):
             'zReverse', and 'probReverse'.
         """
         results = brainmap_decode(
-            dataset.coordinates, dataset.annotations, ids=ids, ids2=ids2,
-            feature_group=self.feature_group, features=self.features,
+            self.inputs_['coordinates'], self.inputs_['annotations'],
+            ids=ids, ids2=ids2, features=self.features_,
             frequency_threshold=self.frequency_threshold,
             u=self.u, correction=self.correction)
         self.results = results
@@ -208,7 +210,7 @@ class BrainMapDecoder(NiMAREBase):
 @due.dcite(references.BRAINMAP_DECODING,
            description='Citation for BrainMap-style decoding.')
 def brainmap_decode(coordinates, annotations, ids, ids2=None,
-                    feature_group=None, features=None,
+                    features=None,
                     frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
     """
     Perform image-to-text decoding for discrete image inputs (e.g., regions
@@ -234,18 +236,8 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
         Second subset of studies, representing "unselected" studies. If None,
         then all studies in coordinates/annotations dataframes **not** in
         ``ids`` will be used.
-    feature_group : :obj:`str`, optional
-        Feature group name used to select labels from a specific source.
-        Feature groups are stored as prefixes to feature name columns in
-        Dataset.annotations, with the format ``[source]_[valuetype]__``.
-        Input may or may not include the trailing underscore.
-        Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the
-        feature group prefix.
-        If feature_group is *not* provided, then features *should* include the
-        prefix.
         Default is None, which uses all features available.
     frequency_threshold : :obj:`float`, optional
         Threshold to apply to dataset annotations. Values greater than or
@@ -281,20 +273,6 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
         unselected = sorted(list(set(dataset_ids) - set(ids)))
     else:
         unselected = ids2[:]
-
-    if feature_group is not None:
-        if not feature_group.endswith('__'):
-            feature_group += '__'
-        feature_names = annotations.columns.values
-        feature_names = [f for f in feature_names if f.startswith(feature_group)]
-        if features is not None:
-            features = [f.split('__')[-1] for f in feature_names if f in features]
-        else:
-            features = feature_names
-    else:
-        if features is None:
-            features = annotations.columns.values
-    features = [f for f in features if f not in id_cols]
 
     # Binarize with frequency threshold
     features_df = annotations.set_index('id', drop=True)
@@ -380,7 +358,7 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
 
 
 @due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
-class NeurosynthDecoder(NiMAREBase):
+class NeurosynthDecoder(Decoder):
     """
     Perform discrete functional decoding according to Neurosynth's
     meta-analytic method.
@@ -442,14 +420,16 @@ class NeurosynthDecoder(NiMAREBase):
         self.correction = correction
         self.results = None
 
-    def transform(self, dataset, ids, ids2=None):
+    def _fit(self, dataset):
+        self.inputs_ = {'coordinates': dataset.coordinates,
+                        'annotations': dataset.annotations}
+
+    def transform(self, ids, ids2=None):
         """
         Apply the decoding method to a Dataset.
 
         Parameters
         ----------
-        dataset : :class:`nimare.dataset.Dataset`
-            Dataset with annotations and coordinates attributes.
         ids : :obj:`list`
             Subset of studies in coordinates/annotations dataframes indicating
             target for decoding. Examples include studies reporting at least one
@@ -467,8 +447,8 @@ class NeurosynthDecoder(NiMAREBase):
             and 'probReverse'.
         """
         results = neurosynth_decode(
-            dataset.coordinates, dataset.annotations, ids=ids, ids2=ids2,
-            feature_group=self.feature_group, features=self.features,
+            self.inputs_['coordinates'], self.inputs_['annotations'],
+            ids=ids, ids2=ids2, features=self.features_,
             frequency_threshold=self.frequency_threshold, prior=self.prior,
             u=self.u, correction=self.correction)
         self.results = results
@@ -510,18 +490,8 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None,
         Second subset of studies, representing "unselected" studies. If None,
         then all studies in coordinates/annotations dataframes **not** in
         ``ids`` will be used.
-    feature_group : :obj:`str`, optional
-        Feature group name used to select labels from a specific source.
-        Feature groups are stored as prefixes to feature name columns in
-        Dataset.annotations, with the format ``[source]_[valuetype]__``.
-        Input may or may not include the trailing underscore.
-        Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the
-        feature group prefix.
-        If feature_group is *not* provided, then features *should* include the
-        prefix.
         Default is None, which uses all features available.
     frequency_threshold : :obj:`float`, optional
         Threshold to apply to dataset annotations. Values greater than or
@@ -563,20 +533,6 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None,
         unselected = sorted(list(set(dataset_ids) - set(ids)))
     else:
         unselected = ids2[:]
-
-    if feature_group is not None:
-        if not feature_group.endswith('__'):
-            feature_group += '__'
-        feature_names = annotations.columns.values
-        feature_names = [f for f in feature_names if f.startswith(feature_group)]
-        if features is not None:
-            features = [f.split('__')[-1] for f in feature_names if f in features]
-        else:
-            features = feature_names
-    else:
-        if features is None:
-            features = annotations.columns.values
-    features = [f for f in features if f not in id_cols]
 
     # Binarize with frequency threshold
     features_df = annotations.set_index('id', drop=True)
