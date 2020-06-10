@@ -12,8 +12,9 @@ def test_neurosynth_decode(testdata_laird):
     Smoke test for discrete.neurosynth_decode
     """
     ids = testdata_laird.ids[:5]
+    features = testdata_laird.annotations.columns.tolist()[5:10]
     decoded_df = discrete.neurosynth_decode(testdata_laird.coordinates, testdata_laird.annotations,
-                                            ids=ids, correction=None)
+                                            ids=ids, features=features, correction=None)
     assert isinstance(decoded_df, pd.DataFrame)
 
 
@@ -22,8 +23,9 @@ def test_brainmap_decode(testdata_laird):
     Smoke test for discrete.brainmap_decode
     """
     ids = testdata_laird.ids[:5]
+    features = testdata_laird.annotations.columns.tolist()[5:10]
     decoded_df = discrete.brainmap_decode(testdata_laird.coordinates, testdata_laird.annotations,
-                                          ids=ids, correction=None)
+                                          ids=ids, features=features, correction=None)
     assert isinstance(decoded_df, pd.DataFrame)
 
 
@@ -33,7 +35,8 @@ def test_NeurosynthDecoder(testdata_laird):
     """
     ids = testdata_laird.ids[:5]
     decoder = discrete.NeurosynthDecoder()
-    decoded_df = decoder.transform(testdata_laird, ids=ids)
+    decoder.fit(testdata_laird)
+    decoded_df = decoder.transform(ids=ids)
     assert isinstance(decoded_df, pd.DataFrame)
 
 
@@ -43,5 +46,6 @@ def test_BrainMapDecoder(testdata_laird):
     """
     ids = testdata_laird.ids[:5]
     decoder = discrete.BrainMapDecoder()
-    decoded_df = decoder.transform(testdata_laird, ids=ids)
+    decoder.fit(testdata_laird)
+    decoded_df = decoder.transform(ids=ids)
     assert isinstance(decoded_df, pd.DataFrame)
