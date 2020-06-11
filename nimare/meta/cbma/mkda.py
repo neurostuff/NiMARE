@@ -294,7 +294,12 @@ class MKDAChi2(CBMAEstimator):
         Returns
         -------
         :obj:`nimare.results.MetaResult`
-            Results of CBMAEstimator fitting.
+            Results of CBMAEstimator fitting, with the following maps:
+            'prob_desc-A', 'prob_desc-AgF', 'prob_desc-FgA',
+            'prob_desc-AgF_given_pF=XX', 'prob_desc-FgA_given_pF=XX',
+            'z_desc-consistency', 'z_desc-specificity',
+            'chi2_desc-consistency', 'chi2_desc-specificity',
+            'p_desc-consistency', and 'p_desc-specificity'
         """
         self._validate_input(dataset1)
         self._validate_input(dataset2)

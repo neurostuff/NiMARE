@@ -328,15 +328,82 @@ class CBMAEstimator(MetaEstimator):
         # Integrate "sample_size" from metadata into DataFrame so that
         # kernel_transformer can access it.
         if 'sample_size' in kt_args:
-            # Extract sample sizes and make DataFrame
-            sample_sizes = dataset.get_metadata(field='sample_sizes', ids=dataset.ids)
-            # we need an extra layer of lists
-            sample_sizes = [[ss] for ss in sample_sizes]
-            sample_sizes = pd.DataFrame(index=dataset.ids, data=sample_sizes,
-                                        columns=['sample_sizes'])
-            sample_sizes['sample_size'] = sample_sizes['sample_sizes'].apply(np.mean)
-            # Merge sample sizes df into coordinates df
-            self.inputs_['coordinates'] = self.inputs_['coordinates'].merge(
-                right=sample_sizes, left_on='id', right_index=True,
-                sort=False, validate='many_to_one', suffixes=(False, False),
-                how='left')
+            if 'sample_sizes' in dataset.get_metadata():
+                # Extract sample sizes and make DataFrame
+                sample_sizes = dataset.get_metadata(field='sample_sizes', ids=dataset.ids)
+                # we need an extra layer of lists
+                sample_sizes = [[ss] for ss in sample_sizes]
+                sample_sizes = pd.DataFrame(index=dataset.ids, data=sample_sizes,
+                                            columns=['sample_sizes'])
+                sample_sizes['sample_size'] = sample_sizes['sample_sizes'].apply(np.mean)
+                # Merge sample sizes df into coordinates df
+                self.inputs_['coordinates'] = self.inputs_['coordinates'].merge(
+                    right=sample_sizes, left_on='id', right_index=True,
+                    sort=False, validate='many_to_one', suffixes=(False, False),
+                    how='left')
+            else:
+                LGR.warning('Metadata field "sample_sizes" not found. '
+                            'Set a constant sample size as a kernel transformer '
+                            'argument, if possible.')
+
+
+class Decoder(NiMAREBase):
+    __id_cols = ['id', 'study_id', 'contrast_id']
+
+    def _preprocess_input(self, dataset):
+        """
+        Perform any additional preprocessing steps on data in self.inputs_
+        """
+        # Reduce feature list as desired
+        if self.feature_group is not None:
+            if not self.feature_group.endswith('__'):
+                self.feature_group += '__'
+            feature_names = dataset.annotations.columns.values
+            feature_names = [f for f in feature_names if f.startswith(self.feature_group)]
+            if self.features is not None:
+                features = [f.split('__')[-1] for f in feature_names if f in self.features]
+            else:
+                features = feature_names
+        else:
+            if self.features is None:
+                features = dataset.annotations.columns.values
+            else:
+                features = self.features
+        features = [f for f in features if f not in self.__id_cols]
+        # At least one study in the dataset much have each label
+        counts = (dataset.annotations[features] > self.frequency_threshold).sum(0)
+        features = counts[counts > 0].index.tolist()
+        self.features_ = features
+
+    def fit(self, dataset):
+        """
+        Fit Estimator to Dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset object to analyze.
+
+        Returns
+        -------
+        :obj:`nimare.results.MetaResult`
+            Results of Estimator fitting.
+
+        Notes
+        -----
+        The `fit` method is a light wrapper that runs input validation and
+        preprocessing before fitting the actual model. Estimators' individual
+        "fitting" methods are implemented as `_fit`, although users should
+        call `fit`.
+        """
+        self._preprocess_input(dataset)
+        self._fit(dataset)
+
+    @abstractmethod
+    def _fit(self, dataset):
+        """
+        Apply estimation to dataset and output results. Must return a
+        dictionary of results, where keys are names of images and values are
+        ndarrays.
+        """
+        pass

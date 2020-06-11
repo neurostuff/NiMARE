@@ -1,15 +1,22 @@
 """
 Methods for decoding unthresholded brain maps into text.
 """
+import inspect
+import logging
+
 import numpy as np
 import pandas as pd
 import nibabel as nib
 from nilearn.masking import apply_mask
 
 from .utils import weight_priors
+from ..base import Decoder
 from ..meta.cbma import MKDAChi2
+from ..stats import pearson
 from ..due import due
 from .. import references
+
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.GCLDA_DECODING,
@@ -110,176 +117,196 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
 
 @due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
-def corr_decode(dataset, img, feature_group=None, features=None,
-                frequency_threshold=0.001,
-                meta_estimator=None, target_image='specificity_z'):
-    """
-    Neurosynth's correlation-based decoding method.
+class CorrelationDecoder(Decoder):
+    """Decode an unthresholded image by correlating the image with
+    meta-analytic maps corresponding to specific features.
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        A dataset with coordinates.
-    img : :obj:`nibabel.Nifti1.Nifti1Image`
-        Input image to decode. Must have same affine/dimensions as dataset
-        mask.
-    feature_group : :obj:`str`, optional
-        Feature group name used to select labels from a specific source.
-        Feature groups are stored as prefixes to feature name columns in
-        Dataset.annotations, with the format ``[source]_[valuetype]__``.
-        Input may or may not include the trailing underscore.
-        Default is None, which uses all feature groups available.
-    features : :obj:`list`, optional
-        List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the
-        feature group prefix.
-        If feature_group is *not* provided, then features *should* include the
-        prefix.
-        Default is None, which uses all features available.
-    frequency_threshold : :obj:`float`, optional
-        Threshold to apply to dataset annotations. Values greater than or
-        equal to the threshold as assigned as label+, while values below
-        the threshold are considered label-. Default is 0.001.
-    meta_estimator : initialized :obj:`nimare.meta.cbma.base.CBMAEstimator`, optional
-        Defaults to MKDAChi2.
-    target_image : :obj:`str`, optional
-        Image from ``meta_estimator``'s results to use for decoding.
-        Dependent on estimator.
+    feature_group : str
+        Feature group
+    features : list
+        Features
+    frequency_threshold : float
+        Frequency threshold
+    meta_estimator : MKDAChi2
+        Meta-analysis estimator
+    target_image : str
+        Name of meta-analysis results image to use for decoding
 
-    Returns
+    Warning
     -------
-    out_df : :obj:`pandas.DataFrame`
-        A DataFrame with two columns: 'feature' (label) and 'r' (correlation
-        coefficient). There will be one row for each feature.
+    Coefficients from correlating two maps have very large degrees of freedom,
+    so almost all results will be statistically significant. Do not attempt to
+    evaluate results based on significance.
     """
-    id_cols = ['id', 'study_id', 'contrast_id']
-    # Check that input image is compatible with dataset
-    assert np.array_equal(img.affine, dataset.mask.affine)
+    def __init__(self, feature_group=None, features=None,
+                 frequency_threshold=0.001, meta_estimator=None,
+                 target_image='z_desc-specificity'):
 
-    # Load input data
-    input_data = apply_mask(img, dataset.mask)
+        if meta_estimator is None:
+            meta_estimator = MKDAChi2()
 
-    if meta_estimator is None:
-        meta_estimator = MKDAChi2()
+        self.feature_group = feature_group
+        self.features = features
+        self.frequency_threshold = frequency_threshold
+        self.meta_estimator = meta_estimator
+        self.target_image = target_image
+        self.results = None
 
-    if feature_group is not None:
-        if not feature_group.endswith('__'):
-            feature_group += '__'
-        feature_names = dataset.annotations.columns.values
-        feature_names = [f for f in feature_names if f.startswith(feature_group)]
-        if features is not None:
-            features = [f.split('__')[-1] for f in feature_names if f in features]
-        else:
-            features = feature_names
-    else:
-        if features is None:
-            features = dataset.annotations.columns.values
-    features = [f for f in features if f not in id_cols]
+    def _fit(self, dataset):
+        """
+        Generate feature-specific meta-analytic maps for dataset.
 
-    out_df = pd.DataFrame(index=features, columns=['r'],
-                          data=np.zeros(len(features)))
-    out_df.index.name = 'feature'
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset for which to run meta-analyses to generate maps.
 
-    for feature in features:
-        # TODO: Search for !feature to get ids2, if possible. Will compare
-        # between label+ and label- without analyzing unlabeled studies.
-        feature_ids = dataset.get_studies_by_label(
-            labels=[feature],
-            label_threshold=frequency_threshold,
-        )
-        feature_dset = dataset.slice(feature_ids)
-        meta_estimator.fit(feature_dset)
-        feature_data = dataset.masker.transform(
-            meta_estimator.results.get_map(target_image, return_type='image')
-        )
-        corr = np.corrcoef(feature_data, input_data)[0, 1]
-        out_df.loc[feature, 'r'] = corr
+        Attributes
+        ----------
+        masker : NiftiMasker
+            Masker from dataset
+        features_ : list
+            Reduced list of features
+        images_ : array
+            Masked meta-analytic maps
+        """
+        self.masker = dataset.masker
 
-    return out_df
+        for i, feature in enumerate(self.features_):
+            feature_ids = dataset.get_studies_by_label(
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
+            )
+            feature_dset = dataset.slice(feature_ids)
+            # This seems like a somewhat inelegant solution
+            if 'dataset2' in inspect.getfullargspec(self.meta_estimator.fit).args:
+                nonfeature_ids = sorted(list(set(dataset.ids) - set(feature_ids)))
+                nonfeature_dset = dataset.slice(nonfeature_ids)
+                self.meta_estimator.fit(feature_dset, nonfeature_dset)
+            else:
+                self.meta_estimator.fit(feature_dset)
+
+            feature_data = self.meta_estimator.results.get_map(
+                self.target_image, return_type='array')
+            if i == 0:
+                images_ = np.zeros((len(self.features_), len(feature_data)))
+            images_[i, :] = feature_data
+        self.images_ = images_
+
+    def transform(self, img):
+        """Correlate target image with each feature-specific meta-analytic map.
+
+        Parameters
+        ----------
+        img : :obj:`nibabel.nifti1.Nifti1Image`
+            Image to decode. Must be in same space as ``dataset``.
+
+        Returns
+        -------
+        out_df : :obj:`pandas.DataFrame`
+            DataFrame with one row for each feature and two columns:
+            "feature" and "r".
+        """
+        img_vec = self.masker.transform(img)
+        corrs = pearson(img_vec, self.images_)
+        out_df = pd.DataFrame(index=self.features_, columns=['r'],
+                              data=corrs)
+        out_df.index.name = 'feature'
+        self.results = out_df
+        return out_df
 
 
-def corr_dist_decode(dataset, img, feature_group=None, features=None,
-                     frequency_threshold=0.001, target_image='z'):
-    """
-    Builds feature-specific distributions of correlations with input image
-    for image-based meta-analytic functional decoding.
+class CorrelationDistributionDecoder(Decoder):
+    """Decode an unthresholded image by correlating the image with
+    images from all studies labeled with specific features.
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
-        A dataset with images.
-    img : :obj:`nibabel.Nifti1.Nifti1Image`
-        Input image to decode. Must have same affine/dimensions as dataset
-        mask.
-    feature_group : :obj:`str`, optional
-        Feature group name used to select labels from a specific source.
-        Feature groups are stored as prefixes to feature name columns in
-        Dataset.annotations, with the format ``[source]_[valuetype]__``.
-        Input may or may not include the trailing underscore.
-        Default is None, which uses all feature groups available.
-    features : :obj:`list`, optional
-        List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the
-        feature group prefix.
-        If feature_group is *not* provided, then features *should* include the
-        prefix.
-        Default is None, which uses all features available.
-    frequency_threshold : :obj:`float`, optional
-        Threshold to apply to dataset annotations. Values greater than or
-        equal to the threshold as assigned as label+, while values below
-        the threshold are considered label-. Default is 0.001.
-    target_image : {'z', 'con'}, optional
-        Image type from database to use for decoding.
+    feature_group : str
+        Feature group
+    features : list
+        Features
+    frequency_threshold : float
+        Frequency threshold
+    target_image : {'z', 'con'}
+        Name of meta-analysis results image to use for decoding
 
-    Returns
+    Warning
     -------
-    out_df : :obj:`pandas.DataFrame`
-        DataFrame with a row for each feature used for decoding and two
-        columns: mean and std. Values describe the distributions of
-        correlation coefficients (in terms of Fisher-transformed z-values).
+    Coefficients from correlating two maps have very large degrees of freedom,
+    so almost all results will be statistically significant. Do not attempt to
+    evaluate results based on significance.
     """
-    id_cols = ['id', 'study_id', 'contrast_id']
-    # Check that input image is compatible with dataset
-    assert np.array_equal(img.affine, dataset.mask.affine)
+    def __init__(self, feature_group=None, features=None,
+                 frequency_threshold=0.001, target_image='z'):
+        self.feature_group = feature_group
+        self.features = features
+        self.frequency_threshold = frequency_threshold
+        self.target_image = target_image
+        self.results = None
 
-    # Load input data
-    input_data = apply_mask(img, dataset.mask)
+    def _fit(self, dataset):
+        """
+        Collect sets of maps from the Dataset corresponding to each requested
+        feature.
 
-    if feature_group is not None:
-        if not feature_group.endswith('__'):
-            feature_group += '__'
-        feature_names = dataset.annotations.columns.values
-        feature_names = [f for f in feature_names if f.startswith(feature_group)]
-        if features is not None:
-            features = [f.split('__')[-1] for f in feature_names if f in features]
-        else:
-            features = feature_names
-    else:
-        if features is None:
-            features = dataset.annotations.columns.values
-    features = [f for f in features if f not in id_cols]
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset for which to run meta-analyses to generate maps.
 
-    out_df = pd.DataFrame(index=features, columns=['mean', 'std'],
-                          data=np.zeros(len(features), 2))
-    out_df.index.name = 'feature'
+        Attributes
+        ----------
+        masker : NiftiMasker
+            Masker from dataset
+        features_ : list
+            Reduced list of features
+        images_ : array
+            Masked meta-analytic maps
+        """
+        self.masker = dataset.masker
 
-    for feature in features:
-        feature_ids = dataset.get_studies_by_label(
-            labels=[feature],
-            label_threshold=frequency_threshold,
-        )
-        test_imgs = dataset.get_images(ids=feature_ids, imtype=target_image)
-        test_imgs = [ti for ti in test_imgs if ti is not None]
-        if len(test_imgs):
-            feature_z_dist = np.zeros(len(test_imgs))
-            for i, test_img in enumerate(test_imgs):
-                feature_data = dataset.masker.transform(test_img)
-                corr = np.corrcoef(feature_data, input_data)[0, 1]
-                feature_z_dist[i] = np.arctanh(corr)  # transform to z for normality
-            out_df.loc[feature, 'mean'] = np.mean(feature_z_dist)
-            out_df.loc[feature, 'std'] = np.std(feature_z_dist)
-        else:
-            out_df.loc[feature, 'mean'] = np.nan
-            out_df.loc[feature, 'std'] = np.nan
+        images_ = {}
+        for feature in self.features_:
+            feature_ids = dataset.get_studies_by_label(
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
+            )
+            test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
+            test_imgs = list(filter(None, test_imgs))
+            if len(test_imgs):
+                feature_arr = self.masker.transform(test_imgs)
+                images_[feature] = feature_arr
+            else:
+                LGR.info('Skipping feature "{}". No images found.'.format(feature))
+        # reduce features again
+        self.features_ = [f for f in self.features_ if f in images_.keys()]
+        self.images_ = images_
 
-    return out_df
+    def transform(self, img):
+        """Correlate target image with each map associated with each feature.
+
+        Parameters
+        ----------
+        img : :obj:`nibabel.nifti1.Nifti1Image`
+            Image to decode. Must be in same space as ``dataset``.
+
+        Returns
+        -------
+        out_df : :obj:`pandas.DataFrame`
+            DataFrame with one row for each feature and two columns:
+            "feature" and "r".
+        """
+        img_vec = self.masker.transform(img)
+        out_df = pd.DataFrame(index=self.features_, columns=['mean', 'std'],
+                              data=np.zeros(len(self.features_), 2))
+        out_df.index.name = 'feature'
+        for feature, feature_arr in self.images_.items():
+            corrs = pearson(img_vec, feature_arr)
+            corrs_z = np.arctanh(corrs)
+            out_df.loc[feature, 'mean'] = np.mean(corrs_z)
+            out_df.loc[feature, 'std'] = np.std(corrs_z)
+        self.results = out_df
+        return out_df

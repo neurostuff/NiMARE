@@ -517,11 +517,10 @@ class GCLDAModel(NiMAREBase):
             topic = int(np.floor(sample_idx / self.params['n_regions']))  # Topic sampled (y)
 
             # Update the indices and the count matrices using the sampled y/r assignments
-            self.topics['n_peak_tokens_region_by_topic'][region, topic] += 1  # Increment count in
-                                                                    # Subregion x Topic count
-                                                                    # matrix
-            self.topics['n_peak_tokens_doc_by_topic'][doc, topic] += 1  # Increment count in
-                                                              # Document x Topic count matrix
+            # Increment count in Subregion x Topic count matrix
+            self.topics['n_peak_tokens_region_by_topic'][region, topic] += 1
+            # Increment count in Document x Topic count matrix
+            self.topics['n_peak_tokens_doc_by_topic'][doc, topic] += 1
             self.topics['peak_topic_idx'][i_ptoken] = topic  # Update y->topic assignment
             self.topics['peak_region_idx'][i_ptoken] = region  # Update y->subregion assignment
 

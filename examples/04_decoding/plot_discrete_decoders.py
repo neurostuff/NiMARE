@@ -48,7 +48,8 @@ ids = dset.get_studies_by_mask(mask_img)
 
 # Run the decoder
 decoder = discrete.NeurosynthDecoder(correction=None)
-decoded_df = decoder.transform(dset, ids=ids)
+decoder.fit(dset)
+decoded_df = decoder.transform(ids=ids)
 print(decoded_df.sort_values(by='probReverse', ascending=False).head(10))
 
 ###############################################################################
@@ -57,5 +58,6 @@ print(decoded_df.sort_values(by='probReverse', ascending=False).head(10))
 
 # Run the decoder
 decoder = discrete.BrainMapDecoder(correction=None)
-decoded_df = decoder.transform(dset, ids=ids)
+decoder.fit(dset)
+decoded_df = decoder.transform(ids=ids)
 print(decoded_df.sort_values(by='probReverse', ascending=False).head(10))
