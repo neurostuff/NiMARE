@@ -220,7 +220,7 @@ class CorrelationDecoder(Decoder):
 
 class CorrelationDistributionDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with
-    meta-analytic maps corresponding to specific features.
+    images from all studies labeled with specific features.
 
     Parameters
     ----------
@@ -249,7 +249,8 @@ class CorrelationDistributionDecoder(Decoder):
 
     def _fit(self, dataset):
         """
-        Generate feature-specific meta-analytic maps for dataset.
+        Collect sets of maps from the Dataset corresponding to each requested
+        feature.
 
         Parameters
         ----------
@@ -285,7 +286,7 @@ class CorrelationDistributionDecoder(Decoder):
         self.images_ = images_
 
     def transform(self, img):
-        """Correlate target image with each feature-specific meta-analytic map.
+        """Correlate target image with each map associated with each feature.
 
         Parameters
         ----------
