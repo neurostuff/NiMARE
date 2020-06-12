@@ -39,7 +39,7 @@ def se_to_var(se):
     Parameters
     ----------
     se : array_like
-        Standard error of the parameter
+        Standard error of the sample parameter
 
     Returns
     -------

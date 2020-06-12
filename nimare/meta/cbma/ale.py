@@ -345,7 +345,7 @@ class ALE(CBMAEstimator):
         # Cluster-level FWE
         vthresh_z_map = self.masker.inverse_transform(vthresh_z_values).get_fdata()
         labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
-        p_cfwe_map = np.zeros(self.masker.mask_img.shape)
+        p_cfwe_map = np.ones(self.masker.mask_img.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
@@ -362,7 +362,7 @@ class ALE(CBMAEstimator):
         z_cfwe_values = p_to_z(p_cfwe_values, tail='one')
 
         # Voxel-level FWE
-        p_vfwe_values = np.zeros(ale_values.shape)
+        p_vfwe_values = np.ones(ale_values.shape)
         for voxel in range(ale_values.shape[0]):
             p_vfwe_values[voxel] = null_to_p(
                 ale_values[voxel], self.null_distributions_['fwe_level-voxel_method-montecarlo'],
