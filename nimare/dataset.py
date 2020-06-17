@@ -562,10 +562,10 @@ class Dataset(NiMAREBase):
         if isinstance(mask, str):
             mask = nib.load(mask)
 
-        curr_mask = self.masker.mask_img
-        if not np.array_equal(curr_mask.affine, mask.affine):
+        dset_mask = self.masker.mask_img
+        if not np.array_equal(dset_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
-            mask = resample_to_img(mask, curr_mask)
+            mask = resample_to_img(mask, dset_mask, interpolation='nearest')
         mask_ijk = np.vstack(np.where(mask.get_fdata())).T
         distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
         distances = np.any(distances == 0, axis=0)
