@@ -1,18 +1,11 @@
 """
 Automated annotation tools
 """
-import warnings
 
-from . import (boltzmann, cogat, cogpo, gclda, lda, text, text2brain, utils,
-               word2brain)
+from . import cogat
+from . import gclda
+from . import lda
+from . import text
+from . import utils
 
-__all__ = ['boltzmann', 'cogat', 'cogpo', 'gclda', 'lda', 'text', 'text2brain',
-           'utils', 'word2brain']
-
-warnings.simplefilter('default')
-
-warnings.warn(
-    "{} is an experimental module under active development; use it at your "
-    "own risk.".format(__name__),
-    ImportWarning
-)
+__all__ = ['cogat', 'gclda', 'lda', 'text', 'utils']
