@@ -14,6 +14,8 @@ with warnings.catch_warnings(record=True) as w:
     from . import dataset
     from . import meta
     from . import correct
+    from . import annotate
+    from . import decode
     from . import resources
     from . import io
     from . import stats
