@@ -123,26 +123,6 @@ API
    decode.encode
 
 
-.. _api_parcellate_ref:
-
-:mod:`nimare.parcellate`: Meta-analytic parcellation
-----------------------------------------------------
-
-.. automodule:: nimare.parcellate
-   :no-members:
-   :no-inherited-members:
-
-.. currentmodule:: nimare
-
-.. autosummary::
-   :toctree: generated/
-   :template: module.rst
-
-   parcellate.cbp
-   parcellate.mamp
-   parcellate.mapbot
-
-
 .. _api_io_ref:
 
 :mod:`nimare.io`: Input/Output
