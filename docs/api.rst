@@ -93,14 +93,10 @@ API
    :template: module.rst
 
    annotate.cogat
-   annotate.cogpo
-   annotate.utils
-   annotate.boltzmann
    annotate.gclda
    annotate.lda
-   annotate.text2brain
-   annotate.word2brain
    annotate.text
+   annotate.utils
 
 
 .. _api_decode_ref:
