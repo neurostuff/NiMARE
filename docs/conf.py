@@ -19,6 +19,8 @@
 import os
 import sys
 from datetime import datetime
+from m2r import MdInclude
+
 sys.path.insert(0, os.path.abspath('sphinxext'))
 sys.path.insert(0, os.path.abspath(os.path.pardir))
 
@@ -47,7 +49,7 @@ extensions = ['sphinx.ext.autodoc',  # standard
               'sphinx.ext.napoleon',  # alternative to numpydoc
               'sphinx_gallery.gen_gallery',  # example gallery
               'sphinxarg.ext',  # argparse
-              'm2r',  # convert markdown to rst
+              'recommonmark',  # markdown parser
               ]
 
 import sphinx
@@ -143,9 +145,17 @@ html_static_path = ['_static']
 
 # https://github.com/rtfd/sphinx_rtd_theme/issues/117
 def setup(app):
-    app.add_stylesheet('theme_overrides.css')
-    app.add_stylesheet('nimare.css')
+    app.add_css_file('theme_overrides.css')
+    app.add_css_file('nimare.css')
     app.connect('autodoc-process-docstring', generate_example_rst)
+    # Fix to https://github.com/sphinx-doc/sphinx/issues/7420
+    # from https://github.com/life4/deal/commit/7f33cbc595ed31519cefdfaaf6f415dada5acd94
+    # from m2r to make `mdinclude` work
+    app.add_config_value('no_underscore_emphasis', False, 'env')
+    app.add_config_value('m2r_parse_relative_links', False, 'env')
+    app.add_config_value('m2r_anonymous_references', False, 'env')
+    app.add_config_value('m2r_disable_inline_math', False, 'env')
+    app.add_directive('mdinclude', MdInclude)
 
 
 html_favicon = '_static/nimare_favicon.png'
@@ -180,6 +190,7 @@ intersphinx_mapping = {
                    (None, 'https://matplotlib.org/objects.inv')),
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
     'nibabel': ('https://nipy.org/nibabel/', None),
+    'nilearn': ('http://nilearn.github.io/', None),
 }
 
 # -----------------------------------------------------------------------------

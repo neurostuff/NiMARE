@@ -14,12 +14,15 @@ characterization analysis to regions of interest or subsets of the Dataset.
 import os
 
 import numpy as np
+import pandas as pd
 import nibabel as nib
 from nilearn.plotting import plot_stat_map, plot_roi
 
 import nimare
 from nimare.decode import discrete
 from nimare.tests.utils import get_test_data_path
+
+pd.set_option('display.max_colwidth', -1)
 
 ###############################################################################
 # Load dataset with abstracts

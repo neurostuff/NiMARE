@@ -28,16 +28,16 @@ class MKDADensity(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        MKDAKernel.
+        :class:`nimare.meta.cbma.kernel.MKDAKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
     -----
-    Available correction methods: :obj:`MKDADensity.correct_fwe_montecarlo`
+    Available correction methods: :func:`MKDADensity.correct_fwe_montecarlo`
 
     References
     ----------
@@ -247,16 +247,16 @@ class MKDAChi2(CBMAEstimator):
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
-    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        MKDAKernel.
+        :class:`nimare.meta.cbma.kernel.MKDAKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
     -----
-    Available correction methods: :obj:`MKDAChi2.correct_fwe_montecarlo`,
+    Available correction methods: :func:`MKDAChi2.correct_fwe_montecarlo`,
     :obj:`MKDAChi2.correct_fdr_bh`
 
     References
@@ -606,9 +606,9 @@ class KDA(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        KDAKernel.
+        :class:`nimare.meta.cbma.kernel.KDAKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -617,7 +617,7 @@ class KDA(CBMAEstimator):
     -----
     Kernel density analysis was first introduced in [1]_ and [2]_.
 
-    Available correction methods: :obj:`KDA.correct_fwe_montecarlo`
+    Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
     References
     ----------

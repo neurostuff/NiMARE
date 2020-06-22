@@ -55,7 +55,7 @@ counts_df = annotate.text.generate_counts(
 # errors can occur during training.
 model = annotate.gclda.GCLDAModel(
     counts_df, dset.coordinates, mask=dset.masker.mask_img, n_topics=10)
-model.fit(n_iters=100, loglikely_freq=5)
+model.fit(n_iters=100, loglikely_freq=20)
 model.save('gclda_model.pkl.gz')
 
 # Let's remove the model now that you know how to generate it.

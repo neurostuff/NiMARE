@@ -30,7 +30,7 @@ class GCLDAModel(NiMAREBase):
         used for identifying studies. Other columns are features (e.g.,
         unigrams and bigrams from Neurosynth), where each value is the number
         of times the feature is found in a given article.
-    coordinates_df : :obj:`pandas.DataFrame`, optional
+    coordinates_df : :obj:`pandas.DataFrame`
         A DataFrame with a list of foci in the dataset. The index is 'id',
         used for identifying studies. Additional columns include 'x', 'y' and
         'z' (foci in standard space).
@@ -123,7 +123,7 @@ class GCLDAModel(NiMAREBase):
         # Initialize sampling parameters
         self.iter = 0  # Tracks the global sampling iteration of the model
         self.seed = 0  # Tracks current random seed to use (gets incremented
-                       # after initialization and each sampling update)
+        # after initialization and each sampling update)
 
         # Set up model hyperparameters
         # Pseudo-count hyperparams need to be floats so that when sampling

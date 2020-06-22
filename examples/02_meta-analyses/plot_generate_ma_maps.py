@@ -7,6 +7,7 @@
 ========================================================
  Generate modeled activation maps
 ========================================================
+
 For coordinate-based data, individual studies' statistical maps are mimicked
 by generating "modeled activation" (MA) maps.
 These MA maps are used in the CBMA algorithms, although the specific method
@@ -34,29 +35,29 @@ dset = nimare.dataset.Dataset(dset_file)
 ###############################################################################
 # Each kernel can taken certain parameters that control behavior
 # --------------------------------------------------------------
-# For example, the MKDA kernel accepts an `r` argument to control the radius
-# of the kernel.
+# For example, :class:`nimare.meta.cbma.kernel.MKDAKernel` kernel accepts an `r`
+# argument to control the radius of the kernel.
 
 kernel = nimare.meta.cbma.kernel.MKDAKernel(r=2)
-mkda_r08 = kernel.transform(dset)
+mkda_r02 = kernel.transform(dset)
 kernel = nimare.meta.cbma.kernel.MKDAKernel(r=6)
-mkda_r09 = kernel.transform(dset)
+mkda_r06 = kernel.transform(dset)
 kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
 mkda_r10 = kernel.transform(dset)
 kernel = nimare.meta.cbma.kernel.MKDAKernel(r=14)
-mkda_r11 = kernel.transform(dset)
+mkda_r14 = kernel.transform(dset)
 
 fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 10))
-plot_stat_map(mkda_r08[2], cut_coords=[-2, -10, -4],
+plot_stat_map(mkda_r02[2], cut_coords=[-2, -10, -4],
               title='r=2mm', vmax=2, axes=axes[0, 0],
               draw_cross=False)
-plot_stat_map(mkda_r09[2], cut_coords=[-2, -10, -4],
+plot_stat_map(mkda_r06[2], cut_coords=[-2, -10, -4],
               title='r=6mm', vmax=2, axes=axes[0, 1],
               draw_cross=False)
 plot_stat_map(mkda_r10[2], cut_coords=[-2, -10, -4],
               title='r=10mm', vmax=2, axes=axes[1, 0],
               draw_cross=False)
-plot_stat_map(mkda_r11[2], cut_coords=[-2, -10, -4],
+plot_stat_map(mkda_r14[2], cut_coords=[-2, -10, -4],
               title='r=14mm', vmax=2, axes=axes[1, 1],
               draw_cross=False)
 fig.show()
@@ -64,12 +65,14 @@ fig.show()
 ###############################################################################
 # There are several kernels available
 # --------------------------------------------------
-# MKDA kernels convolve coordinates with a sphere and take the union across
-# voxels.
-# KDA kernels convolve coordinates with a sphere as well, but take the *sum*
-# across voxels.
-# ALE kernels convolve with a 3D Gaussian, for which the FWHM is determined
-# by the sample size of each study.
+# :class:`nimare.meta.cbma.kernel.MKDAKernel` convolves coordinates with a
+# sphere and take the union across voxels.
+#
+# :class:`nimare.meta.cbma.kernel.KDAKernel` convolves coordinates with a
+# sphere as well, but take the *sum* across voxels.
+#
+# :class:`nimare.meta.cbma.kernel.ALEKernel` convolves coordinates with a 3D
+# Gaussian, for which the FWHM is determined by the sample size of each study.
 kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
 mkda_res = kernel.transform(dset)
 kernel = nimare.meta.cbma.kernel.KDAKernel(r=10)
@@ -77,6 +80,6 @@ kda_res = kernel.transform(dset)
 kernel = nimare.meta.cbma.kernel.ALEKernel(sample_size=20)
 ale_res = kernel.transform(dset)
 max_conv = np.max(kda_res[2].get_fdata())
-plot_stat_map(ale_res[2], cut_coords=[-2, -10, -4], title='ALE')
 plot_stat_map(mkda_res[2], cut_coords=[-2, -10, -4], title='MKDA', vmax=max_conv)
 plot_stat_map(kda_res[2], cut_coords=[-2, -10, -4], title='KDA', vmax=max_conv)
+plot_stat_map(ale_res[2], cut_coords=[-2, -10, -4], title='ALE')

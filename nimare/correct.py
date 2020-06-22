@@ -16,7 +16,7 @@ LGR = logging.getLogger(__name__)
 
 class Corrector(metaclass=ABCMeta):
     """
-    Base class for multiple comparison correction methods.
+    Base class for multiple comparison correction methods in :mod:`nimare.correct`.
     """
 
     # The name of the method that must be implemented in an Estimator class
@@ -140,7 +140,7 @@ class FWECorrector(Corrector):
     To determine what methods are available for the Estimator you're using,
     check the Estimator's documentation. Estimators have special methods
     following the naming convention correct_[correction-type]_[method]
-    (e.g., :obj:`nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`).
+    (e.g., :func:`nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`).
     """
 
     _correction_method = 'fwe'
@@ -183,7 +183,7 @@ class FDRCorrector(Corrector):
     To determine what methods are available for the Estimator you're using,
     check the Estimator's documentation. Estimators have special methods
     following the naming convention correct_[correction-type]_[method]
-    (e.g., :obj:`nimare.meta.cbma.mkda.MKDAChi2.correct_fdr_bh`).
+    (e.g., :class:`nimare.meta.cbma.mkda.MKDAChi2.correct_fdr_bh`).
     """
 
     _correction_method = 'fdr'

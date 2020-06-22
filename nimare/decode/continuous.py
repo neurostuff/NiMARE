@@ -123,16 +123,16 @@ class CorrelationDecoder(Decoder):
 
     Parameters
     ----------
-    feature_group : str
+    feature_group : :obj:`str`
         Feature group
-    features : list
+    features : :obj:`list`
         Features
-    frequency_threshold : float
+    frequency_threshold : :obj:`float`
         Frequency threshold
-    meta_estimator : MKDAChi2
-        Meta-analysis estimator
-    target_image : str
-        Name of meta-analysis results image to use for decoding
+    meta_estimator : :class:`nimare.base.CBMAEstimator`, optional
+        Meta-analysis estimator. Default is :class:`nimare.meta.cbma.mkda.MKDAChi2`.
+    target_image : :obj:`str`
+        Name of meta-analysis results image to use for decoding.
 
     Warning
     -------
@@ -165,11 +165,11 @@ class CorrelationDecoder(Decoder):
 
         Attributes
         ----------
-        masker : NiftiMasker
+        masker : :class:`nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
-        features_ : list
+        features_ : :obj:`list`
             Reduced list of features
-        images_ : array
+        images_ : array_like
             Masked meta-analytic maps
         """
         self.masker = dataset.masker
@@ -224,14 +224,14 @@ class CorrelationDistributionDecoder(Decoder):
 
     Parameters
     ----------
-    feature_group : str
-        Feature group
-    features : list
-        Features
-    frequency_threshold : float
-        Frequency threshold
-    target_image : {'z', 'con'}
-        Name of meta-analysis results image to use for decoding
+    feature_group : :obj:`str`, optional
+        Feature group. Default is None, which uses all available features.
+    features : :obj:`list`, optional
+        Features. Default is None, which uses all available features.
+    frequency_threshold : :obj:`float`, optional
+        Frequency threshold. Default is 0.001.
+    target_image : {'z', 'con'}, optional
+        Name of meta-analysis results image to use for decoding. Default is 'z'.
 
     Warning
     -------
@@ -259,11 +259,11 @@ class CorrelationDistributionDecoder(Decoder):
 
         Attributes
         ----------
-        masker : NiftiMasker
+        masker : :class:`nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
-        features_ : list
+        features_ : :obj:`list`
             Reduced list of features
-        images_ : array
+        images_ : array_like
             Masked meta-analytic maps
         """
         self.masker = dataset.masker

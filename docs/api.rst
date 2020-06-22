@@ -228,6 +228,10 @@ API
    :toctree: generated/
    :template: function.rst
 
+   utils.dict_to_df
+   utils.dict_to_coordinates
+   utils.validate_df
+   utils.validate_images_df
    utils.get_template
    utils.get_masker
    utils.listify
@@ -250,13 +254,13 @@ API
 
 .. autosummary::
    :toctree: generated/
-   :template: module.rst
+   :template: function.rst
 
-   workflows.ale
-   workflows.conperm
-   workflows.macm
-   workflows.peaks2maps
-   workflows.scale
+   workflows.ale_sleuth_workflow
+   workflows.conperm_workflow
+   workflows.macm_workflow
+   workflows.peaks2maps_workflow
+   workflows.scale_workflow
 
 
 .. _api_base_ref:
@@ -275,4 +279,8 @@ API
 
    base.NiMAREBase
    base.Estimator
+   base.MetaEstimator
+   base.CBMAEstimator
    base.Transformer
+   base.KernelTransformer
+   base.Decoder

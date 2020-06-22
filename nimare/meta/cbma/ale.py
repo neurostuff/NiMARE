@@ -37,7 +37,7 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     **kwargs
@@ -62,7 +62,7 @@ class ALE(CBMAEstimator):
     The ALE algorithm was originally developed in [1]_, then updated in [2]_
     and [3]_.
 
-    Available correction methods: :obj:`ALE.correct_fwe_montecarlo`
+    Available correction methods: :func:`ALE.correct_fwe_montecarlo`
 
     References
     ----------
@@ -539,9 +539,9 @@ class SCALE(CBMAEstimator):
         Tab-delimited file of coordinates from database or numpy array with ijk
         coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
         are the three columnns.
-    kernel_transformer : :obj:`nimare.meta.cbma.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        ALEKernel.
+        :class:`nimare.meta.cbma.kernel.ALEKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
