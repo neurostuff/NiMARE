@@ -90,9 +90,9 @@ EXTRA_REQUIRES = {
         'sphinx-argparse',
         'sphinx_rtd_theme',
         'sphinx_gallery',
-        'numpydoc',
         'm2r',
-        'pillow'
+        'pillow',
+        'recommonmark',
     ],
     'tests': TESTS_REQUIRES,
     'duecredit': ['duecredit'],
