@@ -1,8 +1,6 @@
 """
 Utilities
 """
-from __future__ import division
-
 import re
 import logging
 import os.path as op
@@ -13,7 +11,172 @@ import nibabel as nib
 from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
+from .transforms import tal2mni, mni2tal, mm2vox
+
 LGR = logging.getLogger(__name__)
+
+
+def dict_to_df(id_df, data, key='labels'):
+    """
+    Load a given data type in NIMADS-format dictionary into DataFrame.
+
+    Parameters
+    ----------
+    id_df : :obj:`pandas.DataFrame`
+        DataFrame with columns for identifiers. Index is [studyid]-[expid].
+    data : :obj:`dict`
+        NIMADS-format dictionary storing the raw dataset, from which
+        relevant data are loaded into DataFrames.
+    key : {'labels', 'metadata', 'text', 'images'}
+        Which data type to load.
+
+    Returns
+    -------
+    df : :obj:`pandas.DataFrame`
+        DataFrame with id columns from id_df and new columns for the
+        requested data type.
+    """
+    exp_dict = {}
+    for pid in data.keys():
+        for expid in data[pid]['contrasts'].keys():
+            exp = data[pid]['contrasts'][expid]
+            id_ = '{0}-{1}'.format(pid, expid)
+
+            if key not in data[pid]['contrasts'][expid].keys():
+                continue
+            exp_dict[id_] = exp[key]
+
+    temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
+    df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
+    df = df.reset_index(drop=True)
+    df = df.replace(to_replace='None', value=np.nan)
+    return df
+
+
+def dict_to_coordinates(data, masker, space):
+    """
+    Load coordinates in NIMADS-format dictionary into DataFrame.
+    """
+    # Required columns
+    columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'space']
+    core_columns = columns[:]  # Used in contrast for loop
+
+    all_dfs = []
+    for pid in data.keys():
+        for expid in data[pid]['contrasts'].keys():
+            if 'coords' not in data[pid]['contrasts'][expid].keys():
+                continue
+
+            exp_columns = core_columns[:]
+            exp = data[pid]['contrasts'][expid]
+
+            # Required info (ids, x, y, z, space)
+            n_coords = len(exp['coords']['x'])
+            rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
+
+            space_arr = exp['coords'].get('space')
+            space_arr = np.array([space_arr] * n_coords)
+            temp_data = np.vstack((rep_id,
+                                   np.array(exp['coords']['x']),
+                                   np.array(exp['coords']['y']),
+                                   np.array(exp['coords']['z']),
+                                   space_arr))
+
+            # Optional information
+            for k in list(set(exp['coords'].keys()) - set(columns)):
+                k_data = exp['coords'][k]
+                if not isinstance(k_data, list):
+                    k_data = np.array([k_data] * n_coords)
+                exp_columns.append(k)
+
+                if k not in columns:
+                    columns.append(k)
+                temp_data = np.vstack((temp_data, k_data))
+
+            # Place data in list of dataframes to merge
+            con_df = pd.DataFrame(temp_data.T, columns=exp_columns)
+            all_dfs.append(con_df)
+
+    df = pd.concat(all_dfs, axis=0, join='outer', sort=False)
+    df = df[columns].reset_index(drop=True)
+    df = df.replace(to_replace='None', value=np.nan)
+    df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
+
+    # Now to apply transformations!
+    if 'mni' in space.lower() or 'ale' in space.lower():
+        transform = {'MNI': None,
+                     'TAL': tal2mni,
+                     'Talairach': tal2mni,
+                     }
+    elif 'tal' in space.lower():
+        transform = {'MNI': mni2tal,
+                     'TAL': None,
+                     'Talairach': None,
+                     }
+    else:
+        raise ValueError('Unrecognized space: {0}'.format(space))
+
+    found_spaces = df['space'].unique()
+    for found_space in found_spaces:
+        if found_space not in transform.keys():
+            LGR.warning('Not applying transforms to coordinates in '
+                        'unrecognized space "{0}"'.format(found_space))
+        alg = transform.get(found_space, None)
+        idx = df['space'] == found_space
+        if alg:
+            df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
+        df.loc[idx, 'space'] = space
+
+    xyz = df[['x', 'y', 'z']].values
+    ijk = pd.DataFrame(mm2vox(xyz, masker.mask_img.affine),
+                       columns=['i', 'j', 'k'])
+    df = pd.concat([df, ijk], axis=1)
+    return df
+
+
+def validate_df(df):
+    """Check that an input is a DataFrame and has a column for 'id'.
+    """
+    assert isinstance(df, pd.DataFrame)
+    assert 'id' in df.columns
+
+
+def validate_images_df(image_df):
+    """
+    Check and update image paths in DataFrame.
+    """
+    valid_suffixes = ['.brik', '.head', '.nii', '.img', '.hed']
+    file_cols = []
+    for col in image_df.columns:
+        vals = [v for v in image_df[col].values if isinstance(v, str)]
+        fc = any([any([vs in v for vs in valid_suffixes]) for v in vals])
+        if fc:
+            file_cols.append(col)
+
+    # Clean up image_df
+    # Find out which columns have full paths and which have relative paths
+    abs_cols = []
+    for col in file_cols:
+        files = image_df[col].tolist()
+        abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
+        if all(abspaths):
+            abs_cols.append(col)
+        elif not any(abspaths):
+            image_df = image_df.rename(columns={col: col + '__relative'})
+        else:
+            raise ValueError('Mix of absolute and relative paths detected '
+                             'for "{0}" images'.format(col))
+
+    # Set relative paths from absolute ones
+    if len(abs_cols):
+        all_files = list(np.ravel(image_df[abs_cols].values))
+        all_files = [f for f in all_files if isinstance(f, str)]
+        shared_path = find_stem(all_files)
+        LGR.info('Shared path detected: "{0}"'.format(shared_path))
+        for abs_col in abs_cols:
+            image_df[abs_col + '__relative'] = image_df[abs_col].apply(
+                lambda x: x.split(shared_path)[1] if isinstance(x, str) else x)
+    return image_df
 
 
 def get_template(space='mni152_1mm', mask=None):
@@ -90,8 +253,7 @@ def get_masker(mask):
     if isinstance(mask, nib.nifti1.Nifti1Image):
         mask = NiftiMasker(mask)
 
-    if not (hasattr(mask, 'transform') and
-            hasattr(mask, 'inverse_transform')):
+    if not (hasattr(mask, 'transform') and hasattr(mask, 'inverse_transform')):
         raise ValueError("mask argument must be a string, a nibabel image,"
                          " or a Nilearn Masker instance.")
 
@@ -136,6 +298,10 @@ def get_resource_path():
 
 
 def try_prepend(value, prefix):
+    """
+    Try to prepend a value to a string with a separator ('/'). If not a string,
+    will just return the original value.
+    """
     if isinstance(value, str):
         return op.join(prefix, value)
     else:
@@ -144,6 +310,8 @@ def try_prepend(value, prefix):
 
 def find_stem(arr):
     """
+    Find longest common substring in array of strings.
+
     From https://www.geeksforgeeks.org/longest-common-substring-array-strings/
     """
     # Determine size of the array

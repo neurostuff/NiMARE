@@ -1,19 +1,18 @@
 """
 Classes for representing datasets of images and/or coordinates.
 """
-from __future__ import print_function
 import json
 import copy
 import logging
-import os.path as op
 
 import numpy as np
 import pandas as pd
 import nibabel as nib
 
 from .base import NiMAREBase
-from .transforms import tal2mni, mni2tal, mm2vox
-from .utils import get_template, listify, try_prepend, find_stem, get_masker
+from .utils import (get_template, listify, try_prepend, get_masker,
+                    dict_to_df, dict_to_coordinates,
+                    validate_df, validate_images_df)
 
 LGR = logging.getLogger(__name__)
 
@@ -84,16 +83,65 @@ class Dataset(NiMAREBase):
         self.masker = get_masker(mask)
         self.space = target
 
-        self.annotations = self._load_data(id_df, data, key='labels')
-        self.metadata = self._load_data(id_df, data, key='metadata')
-        self.texts = self._load_data(id_df, data, key='text')
-        raw_image_df = self._load_data(id_df, data, key='images')
-        self.images = self._validate_images(raw_image_df)
-        self.coordinates = self._load_coordinates(data)
+        self.annotations = dict_to_df(id_df, data, key='labels')
+        self.metadata = dict_to_df(id_df, data, key='metadata')
+        self.texts = dict_to_df(id_df, data, key='text')
+        self.images = dict_to_df(id_df, data, key='images')
+        self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
+
+    @property
+    def annotations(self):
+        """DataFrame with labels describing studies in the dataset."""
+        return self.__annotations
+
+    @annotations.setter
+    def annotations(self, df):
+        validate_df(df)
+        self.__annotations = df
+
+    @property
+    def images(self):
+        """DataFrame with labels describing studies in the dataset."""
+        return self.__images
+
+    @images.setter
+    def images(self, df):
+        validate_df(df)
+        self.__images = validate_images_df(df)
+
+    @property
+    def metadata(self):
+        """DataFrame with labels describing studies in the dataset."""
+        return self.__metadata
+
+    @metadata.setter
+    def metadata(self, df):
+        validate_df(df)
+        self.__metadata = df
+
+    @property
+    def texts(self):
+        """DataFrame with texts in the dataset."""
+        return self.__texts
+
+    @texts.setter
+    def texts(self, df):
+        validate_df(df)
+        self.__texts = df
+
+    @property
+    def coordinates(self):
+        """DataFrame with coordinates in the dataset."""
+        return self.__coordinates
+
+    @coordinates.setter
+    def coordinates(self, df):
+        validate_df(df)
+        self.__coordinates = df
 
     def slice(self, ids):
         """
-        Return a reduced dataset with only requested IDs.
+        Create a new dataset with only requested IDs.
 
         Parameters
         ----------
@@ -130,159 +178,6 @@ class Dataset(NiMAREBase):
                 LGR.info('Overwriting images column {}'.format(abs_col))
             self.images[abs_col] = self.images[col].apply(try_prepend, prefix=new_path)
 
-    def _load_data(self, id_df, data, key='labels'):
-        """
-        Load a given data type in Dataset into DataFrame.
-
-        Parameters
-        ----------
-        id_df : :obj:`pandas.DataFrame`
-            DataFrame with columns for identifiers. Index is [studyid]-[expid].
-        data : :obj:`dict`
-            NIMADS-format dictionary storing the raw dataset, from which
-            relevant data are loaded into DataFrames.
-        key : {'labels', 'metadata', 'text', 'images'}
-            Which data type to load.
-
-        Returns
-        -------
-        df : :obj:`pandas.DataFrame`
-            DataFrame with id columns from id_df and new columns for the
-            requested data type.
-        """
-        exp_dict = {}
-        for pid in data.keys():
-            for expid in data[pid]['contrasts'].keys():
-                exp = data[pid]['contrasts'][expid]
-                id_ = '{0}-{1}'.format(pid, expid)
-
-                if key not in data[pid]['contrasts'][expid].keys():
-                    continue
-                exp_dict[id_] = exp[key]
-
-        temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
-        df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
-        df = df.reset_index(drop=True)
-        df = df.replace(to_replace='None', value=np.nan)
-        return df
-
-    def _validate_images(self, image_df):
-        """
-        Check and update image paths in DataFrame.
-        """
-        valid_suffices = ['.brik', '.head', '.nii', '.img', '.hed']
-        file_cols = []
-        for col in image_df.columns:
-            vals = [v for v in image_df[col].values if isinstance(v, str)]
-            fc = any([any([vs in v for vs in valid_suffices]) for v in vals])
-            if fc:
-                file_cols.append(col)
-
-        # Clean up image_df
-        # Find out which columns have full paths and which have relative paths
-        abs_cols = []
-        for col in file_cols:
-            files = image_df[col].tolist()
-            abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
-            if all(abspaths):
-                abs_cols.append(col)
-            elif not any(abspaths):
-                image_df = image_df.rename(columns={col: col + '__relative'})
-            else:
-                raise ValueError('Mix of absolute and relative paths detected '
-                                 'for "{0}" images'.format(col))
-
-        # Set relative paths from absolute ones
-        if len(abs_cols):
-            all_files = list(np.ravel(image_df[abs_cols].values))
-            all_files = [f for f in all_files if isinstance(f, str)]
-            shared_path = find_stem(all_files)
-            LGR.info('Shared path detected: "{0}"'.format(shared_path))
-            for abs_col in abs_cols:
-                image_df[abs_col + '__relative'] = image_df[abs_col].apply(
-                    lambda x: x.split(shared_path)[1] if isinstance(x, str) else x)
-        return image_df
-
-    def _load_coordinates(self, data):
-        """
-        Load coordinates in Dataset into DataFrame.
-        """
-        # Required columns
-        columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'space']
-        core_columns = columns[:]  # Used in contrast for loop
-
-        all_dfs = []
-        for pid in data.keys():
-            for expid in data[pid]['contrasts'].keys():
-                if 'coords' not in data[pid]['contrasts'][expid].keys():
-                    continue
-
-                exp_columns = core_columns[:]
-                exp = data[pid]['contrasts'][expid]
-
-                # Required info (ids, x, y, z, space)
-                n_coords = len(exp['coords']['x'])
-                rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
-
-                space = exp['coords'].get('space')
-                space = np.array([space] * n_coords)
-                temp_data = np.vstack((rep_id,
-                                       np.array(exp['coords']['x']),
-                                       np.array(exp['coords']['y']),
-                                       np.array(exp['coords']['z']),
-                                       space))
-
-                # Optional information
-                for k in list(set(exp['coords'].keys()) - set(columns)):
-                    k_data = exp['coords'][k]
-                    if not isinstance(k_data, list):
-                        k_data = np.array([k_data] * n_coords)
-                    exp_columns.append(k)
-
-                    if k not in columns:
-                        columns.append(k)
-                    temp_data = np.vstack((temp_data, k_data))
-
-                # Place data in list of dataframes to merge
-                con_df = pd.DataFrame(temp_data.T, columns=exp_columns)
-                all_dfs.append(con_df)
-
-        df = pd.concat(all_dfs, axis=0, join='outer', sort=False)
-        df = df[columns].reset_index(drop=True)
-        df = df.replace(to_replace='None', value=np.nan)
-        df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
-
-        # Now to apply transformations!
-        if 'mni' in self.space.lower() or 'ale' in self.space.lower():
-            transform = {'MNI': None,
-                         'TAL': tal2mni,
-                         'Talairach': tal2mni,
-                         }
-        elif 'tal' in self.space.lower():
-            transform = {'MNI': mni2tal,
-                         'TAL': None,
-                         'Talairach': None,
-                         }
-        else:
-            raise ValueError('Unrecognized space: {0}'.format(self.space))
-
-        found_spaces = df['space'].unique()
-        for found_space in found_spaces:
-            if found_space not in transform.keys():
-                LGR.warning('Not applying transforms to coordinates in '
-                            'unrecognized space "{0}"'.format(found_space))
-            alg = transform.get(found_space, None)
-            idx = df['space'] == found_space
-            if alg:
-                df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
-            df.loc[idx, 'space'] = self.space
-
-        xyz = df[['x', 'y', 'z']].values
-        ijk = pd.DataFrame(mm2vox(xyz, self.masker.mask_img.affine),
-                           columns=['i', 'j', 'k'])
-        df = pd.concat([df, ijk], axis=1)
-        return df
-
     def get(self, dict_):
         """
         Retrieve files and/or metadata from the current Dataset.
@@ -290,12 +185,20 @@ class Dataset(NiMAREBase):
         Parameters
         ----------
         dict_ : :obj:`dict`
-            Dictionary specifying images or metadata to collect
+            Dictionary specifying images or metadata to collect.
+            Keys should be variables to be used as keys for results dictionary.
+            Values should be tuples with two values:
+            type (e.g., 'image' or 'metadata') and specific field corresponding
+            to column of type-specific DataFrame (e.g., 'z' or 'sample_sizes').
 
         Returns
         -------
         results : :obj:`dict`
             A dictionary of lists of requested data.
+
+        Examples
+        --------
+        >>> dset.get({'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')})
         """
         results = {}
         results['id'] = self.ids

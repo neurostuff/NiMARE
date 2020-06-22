@@ -228,6 +228,10 @@ API
    :toctree: generated/
    :template: function.rst
 
+   utils.dict_to_df
+   utils.dict_to_coordinates
+   utils.validate_df
+   utils.validate_images_df
    utils.get_template
    utils.get_masker
    utils.listify
