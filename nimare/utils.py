@@ -144,6 +144,12 @@ def validate_df(df):
 def validate_images_df(image_df):
     """
     Check and update image paths in DataFrame.
+
+    Parameters
+    ----------
+    image_df : :class:`pandas.DataFrame`
+        DataFrame with one row for each study and one column for each image
+        type. Cells contain paths to image files.
     """
     valid_suffixes = ['.brik', '.head', '.nii', '.img', '.hed']
     file_cols = []
@@ -162,7 +168,8 @@ def validate_images_df(image_df):
         if all(abspaths):
             abs_cols.append(col)
         elif not any(abspaths):
-            image_df = image_df.rename(columns={col: col + '__relative'})
+            if not col.endswith('__relative'):
+                image_df = image_df.rename(columns={col: col + '__relative'})
         else:
             raise ValueError('Mix of absolute and relative paths detected '
                              'for "{0}" images'.format(col))
