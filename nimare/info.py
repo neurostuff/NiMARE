@@ -86,7 +86,7 @@ EXTRA_REQUIRES = {
         'appdirs'
     ],
     'doc': [
-        'sphinx~=2.4.2',
+        'sphinx>=4.0.0',
         'sphinx-argparse',
         'sphinx_rtd_theme',
         'sphinx_gallery',
