@@ -16,7 +16,7 @@ LGR = logging.getLogger(__name__)
 
 class Corrector(metaclass=ABCMeta):
     """
-    Base class for multiple comparison correction methods.
+    Base class for multiple comparison correction methods in :mod:`nimare.correct`.
     """
 
     # The name of the method that must be implemented in an Estimator class

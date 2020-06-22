@@ -12,28 +12,7 @@ from nilearn.image import resample_to_img, math_img
 from .utils import compute_ma, get_ale_kernel, peaks2maps
 from ...transforms import vox2mm
 
-from ...base import Transformer
-
-
-class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods.
-
-    Coordinate-based meta-analyses leverage coordinates reported in
-    neuroimaging papers to simulate the thresholded statistical maps from the
-    original analyses. This generally involves convolving each coordinate with
-    a kernel (typically a Gaussian or binary sphere) that may be weighted based
-    on some additional measure, such as statistic value or sample size.
-
-    Notes
-    -----
-    This base class exists solely to allow CBMA algorithms to check the class
-    of their kernel_transformer parameters.
-
-    All extra (non-ijk) parameters for a given kernel should be overrideable as
-    parameters to __init__, so we can access them with get_params() and also
-    apply them to datasets with missing data.
-    """
-    pass
+from ...base import KernelTransformer
 
 
 class ALEKernel(KernelTransformer):

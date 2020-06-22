@@ -145,8 +145,8 @@ html_static_path = ['_static']
 
 # https://github.com/rtfd/sphinx_rtd_theme/issues/117
 def setup(app):
-    app.add_stylesheet('theme_overrides.css')
-    app.add_stylesheet('nimare.css')
+    app.add_css_file('theme_overrides.css')
+    app.add_css_file('nimare.css')
     app.connect('autodoc-process-docstring', generate_example_rst)
     # Fix to https://github.com/sphinx-doc/sphinx/issues/7420
     # from https://github.com/life4/deal/commit/7f33cbc595ed31519cefdfaaf6f415dada5acd94
@@ -190,6 +190,7 @@ intersphinx_mapping = {
                    (None, 'https://matplotlib.org/objects.inv')),
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
     'nibabel': ('https://nipy.org/nibabel/', None),
+    'nilearn': ('http://nilearn.github.io/', None),
 }
 
 # -----------------------------------------------------------------------------

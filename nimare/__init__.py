@@ -20,10 +20,11 @@ with warnings.catch_warnings(record=True) as w:
     from . import io
     from . import stats
     from . import utils
+    from . import workflows
 
     __version__ = get_versions()['version']
 
     __all__ = ['base', 'dataset', 'meta', 'correct', 'annotate', 'decode',
-               'resources', 'io', 'stats', 'utils', '__version__']
+               'resources', 'io', 'stats', 'utils', 'workflows', '__version__']
 
 del get_versions

@@ -24,34 +24,36 @@ class Dataset(NiMAREBase):
 
     Parameters
     ----------
-    source : :obj:`str`
+    source : :obj:`str` or :obj:`dict`
         JSON file containing dictionary with database information or the dict()
         object
-    target : :obj:`str`
+    target : :obj:`str`, optional
         Desired coordinate space for coordinates. Names follow NIDM convention.
-    mask : `str`, `Nifti1Image`, or any nilearn `Masker`
+        Default is 'mni152_2mm' (MNI space with 2x2x2 voxels).
+    mask : :obj:`str`, :class:`nibabel.nifti1.Nifti1Image`, \
+    :class:`nilearn.input_data.NiftiMasker` or similar, or None, optional
         Mask(er) to use. If None, uses the target space image, with all
         non-zero voxels included in the mask.
 
     Attributes
     ----------
-    ids : 1D array_like
-        A list of identifiers for all studies in the Dataset.
+    ids : 1D :class:`numpy.ndarray`
+        Identifiers
     masker : :class:`nilearn.input_data.NiftiMasker` or similar
         Masker object defining the space and location of the area of interest
         (e.g., 'brain').
     space : :obj:`str`
         Standard space. Same as ``target`` parameter.
     annotations : :class:`pandas.DataFrame`
-        DataFrame with labels describing studies in the dataset.
+        Labels describing studies
     metadata : :class:`pandas.DataFrame`
-        DataFrame with metadata describing studies in the Dataset.
+        Metadata describing studies
     texts : :class:`pandas.DataFrame`
-        DataFrame with texts associated with studies in the Dataset.
+        Texts associated with studies
     images : :class:`pandas.DataFrame`
-        DataFrame with **paths** to statistical images for studies in the Dataset.
+        Images from studies
     coordinates : :class:`pandas.DataFrame`
-        DataFrame with suprathreshold peak coordinates from studies in the Dataset.
+        Peak coordinates from studies
     """
     _id_cols = ['id', 'study_id', 'contrast_id']
 
@@ -91,12 +93,21 @@ class Dataset(NiMAREBase):
 
     @property
     def ids(self):
-        """Array of IDs in Dataset."""
+        """array_like: 1D array of IDs in Dataset.
+
+        There is no setter for this property, as Dataset.ids is immutable.
+        """
         return self.__ids
 
     @property
     def annotations(self):
-        """DataFrame with labels describing studies in the dataset."""
+        """:class:`pandas.DataFrame`: Labels describing studies in the dataset.
+
+        Each study/experiment has its own row.
+        Columns correspond to individual labels (e.g., 'emotion'), and may
+        be prefixed with a feature group including two underscores
+        (e.g., 'Neurosynth_TFIDF__emotion').
+        """
         return self.__annotations
 
     @annotations.setter
@@ -106,7 +117,13 @@ class Dataset(NiMAREBase):
 
     @property
     def coordinates(self):
-        """DataFrame with coordinates in the dataset."""
+        """:class:`pandas.DataFrame`: Coordinates in the dataset.
+
+        Each study has one row for each peak.
+        Columns include ['x', 'y', 'z'] (peak locations in mm),
+        ['i', 'j', 'k'] (peak locations in voxel index based on Dataset's space),
+        and 'space' (Dataset's space).
+        """
         return self.__coordinates
 
     @coordinates.setter
@@ -116,7 +133,13 @@ class Dataset(NiMAREBase):
 
     @property
     def images(self):
-        """DataFrame with labels describing studies in the dataset."""
+        """:class:`pandas.DataFrame`: Images in the dataset.
+
+        Each image type has its own column (e.g., 'z') with absolute paths to
+        files and each study has its own row.
+        Additionally, relative paths to image files are stored in columns with
+        the suffix '__relative' (e.g., 'z__relative').
+        """
         return self.__images
 
     @images.setter
@@ -126,7 +149,11 @@ class Dataset(NiMAREBase):
 
     @property
     def metadata(self):
-        """DataFrame with labels describing studies in the dataset."""
+        """:class:`pandas.DataFrame`: Metadata describing studies in the dataset.
+
+        Each metadata field has its own column (e.g., 'sample_sizes') and each study
+        has its own row.
+        """
         return self.__metadata
 
     @metadata.setter
@@ -136,7 +163,11 @@ class Dataset(NiMAREBase):
 
     @property
     def texts(self):
-        """DataFrame with texts in the dataset."""
+        """:class:`pandas.DataFrame`: Texts in the dataset.
+
+        Each text type has its own column (e.g., 'abstract') and each study
+        has its own row.
+        """
         return self.__texts
 
     @texts.setter

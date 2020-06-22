@@ -264,12 +264,12 @@ def download_abstracts(dataset, email):
     Warning
     -------
     This function assumes that the dataset uses identifiers in the format
-    [PMID-EXPID]. Thus, the ``study_id`` column of the dataset.texts DataFrame
-    should correspond to PMID.
+    [PMID-EXPID]. Thus, the ``study_id`` column of the
+    :obj:`nimare.dataset.Dataset.texts` DataFrame should correspond to PMID.
     """
     try:
         from Bio import Entrez, Medline
-    except:
+    except ImportError:
         raise Exception(
             'Module biopython is required for downloading abstracts from '
             'PubMed.')

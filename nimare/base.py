@@ -78,13 +78,13 @@ class NiMAREBase(with_metaclass(ABCMeta)):
 
         Parameters
         ----------
-        deep : boolean, optional
+        deep : :obj:`bool`, optional
             If True, will return the parameters for this estimator and
             contained subobjects that are estimators.
 
         Returns
         -------
-        params : mapping of string to any
+        params : :obj:`dict`
             Parameter names mapped to their values.
         """
         out = dict()
@@ -195,23 +195,6 @@ class NiMAREBase(with_metaclass(ABCMeta)):
         return obj
 
 
-class Transformer(NiMAREBase):
-    """Transformers take in Datasets and return Datasets
-
-    Initialize with hyperparameters.
-    """
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def transform(self, dataset):
-        """Add stuff to transformer.
-        """
-        if not hasattr(dataset, 'slice'):
-            raise ValueError('Argument "dataset" must be a valid Dataset '
-                             'object, not a {0}'.format(type(dataset)))
-
-
 class Estimator(NiMAREBase):
     """Estimators take in Datasets and return MetaResults
     """
@@ -288,7 +271,7 @@ class Estimator(NiMAREBase):
 
 
 class MetaEstimator(Estimator):
-    """Base class for meta-analysis methods.
+    """Base class for meta-analysis methods in :mod:`nimare.meta`.
     """
     def __init__(self, *args, **kwargs):
         mask = kwargs.get('mask')
@@ -347,7 +330,49 @@ class CBMAEstimator(MetaEstimator):
                             'argument, if possible.')
 
 
+class Transformer(NiMAREBase):
+    """Transformers take in Datasets and return Datasets
+
+    Initialize with hyperparameters.
+    """
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def transform(self, dataset):
+        """Add stuff to transformer.
+        """
+        if not hasattr(dataset, 'slice'):
+            raise ValueError('Argument "dataset" must be a valid Dataset '
+                             'object, not a {0}'.format(type(dataset)))
+
+
+class KernelTransformer(Transformer):
+    """Base class for modeled activation-generating methods in
+    :mod:`nimare.meta.cbma.kernel`.
+
+    Coordinate-based meta-analyses leverage coordinates reported in
+    neuroimaging papers to simulate the thresholded statistical maps from the
+    original analyses. This generally involves convolving each coordinate with
+    a kernel (typically a Gaussian or binary sphere) that may be weighted based
+    on some additional measure, such as statistic value or sample size.
+
+    Notes
+    -----
+    This base class exists solely to allow CBMA algorithms to check the class
+    of their kernel_transformer parameters.
+
+    All extra (non-ijk) parameters for a given kernel should be overrideable as
+    parameters to __init__, so we can access them with get_params() and also
+    apply them to datasets with missing data.
+    """
+    def __init__(self):
+        pass
+
+
 class Decoder(NiMAREBase):
+    """Base class for decoders in :mod:`nimare.decode`.
+    """
     __id_cols = ['id', 'study_id', 'contrast_id']
 
     def _preprocess_input(self, dataset):
