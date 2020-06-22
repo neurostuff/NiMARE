@@ -172,6 +172,9 @@ def validate_images_df(image_df):
         all_files = list(np.ravel(image_df[abs_cols].values))
         all_files = [f for f in all_files if isinstance(f, str)]
         shared_path = find_stem(all_files)
+        # Get parent *directory* if shared path includes common prefix.
+        if not shared_path.endswith(op.sep):
+            shared_path = op.dirname(shared_path)
         LGR.info('Shared path detected: "{0}"'.format(shared_path))
         for abs_col in abs_cols:
             image_df[abs_col + '__relative'] = image_df[abs_col].apply(

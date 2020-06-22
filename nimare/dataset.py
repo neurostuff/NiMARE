@@ -75,7 +75,7 @@ class Dataset(NiMAREBase):
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
         id_df = id_df.set_index('id', drop=False)
-        self.ids = id_df.index.values
+        self.__ids = id_df.index.values
 
         # Set up Masker
         if mask is None:
@@ -84,10 +84,15 @@ class Dataset(NiMAREBase):
         self.space = target
 
         self.annotations = dict_to_df(id_df, data, key='labels')
+        self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
+        self.images = dict_to_df(id_df, data, key='images')
         self.metadata = dict_to_df(id_df, data, key='metadata')
         self.texts = dict_to_df(id_df, data, key='text')
-        self.images = dict_to_df(id_df, data, key='images')
-        self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
+
+    @property
+    def ids(self):
+        """Array of IDs in Dataset."""
+        return self.__ids
 
     @property
     def annotations(self):
@@ -98,6 +103,16 @@ class Dataset(NiMAREBase):
     def annotations(self, df):
         validate_df(df)
         self.__annotations = df
+
+    @property
+    def coordinates(self):
+        """DataFrame with coordinates in the dataset."""
+        return self.__coordinates
+
+    @coordinates.setter
+    def coordinates(self, df):
+        validate_df(df)
+        self.__coordinates = df
 
     @property
     def images(self):
@@ -129,16 +144,6 @@ class Dataset(NiMAREBase):
         validate_df(df)
         self.__texts = df
 
-    @property
-    def coordinates(self):
-        """DataFrame with coordinates in the dataset."""
-        return self.__coordinates
-
-    @coordinates.setter
-    def coordinates(self, df):
-        validate_df(df)
-        self.__coordinates = df
-
     def slice(self, ids):
         """
         Create a new dataset with only requested IDs.
@@ -154,10 +159,11 @@ class Dataset(NiMAREBase):
             Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
-        new_dset.ids = ids
+        new_dset.__ids = ids
+        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
         new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates['id'].isin(ids)]
         new_dset.images = new_dset.images.loc[new_dset.images['id'].isin(ids)]
-        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
+        new_dset.metadata = new_dset.metadata.loc[new_dset.metadata['id'].isin(ids)]
         new_dset.texts = new_dset.texts.loc[new_dset.texts['id'].isin(ids)]
         return new_dset
 
