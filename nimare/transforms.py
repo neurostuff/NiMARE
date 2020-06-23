@@ -81,7 +81,7 @@ def resolve_transforms(target, available_data, masker):
         if ('t' in available_data.keys()) and ('varcope' in available_data.keys()):
             t = masker.transform(available_data['t'])
             varcope = masker.transform(available_data['varcope'])
-            beta = t_to_beta(t, varcope)
+            beta = t_and_varcope_to_beta(t, varcope)
             beta = masker.inverse_transform(beta)
             return beta
         else:
@@ -101,6 +101,11 @@ def resolve_transforms(target, available_data, masker):
             sample_size = sample_sizes_to_sample_size(available_data['sample_sizes'])
             sd = masker.transform(available_data['sd'])
             varcope = sd_to_varcope(sd, sample_size)
+            varcope = masker.inverse_transform(varcope)
+        elif ('t' in available_data.keys()) and ('beta' in available_data.keys()):
+            t = masker.transform(available_data['t'])
+            beta = masker.transform(available_data['beta'])
+            varcope = t_and_beta_to_varcope(t, beta)
             varcope = masker.inverse_transform(varcope)
         else:
             return None
@@ -244,7 +249,7 @@ def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
     return varcope
 
 
-def t_to_beta(t, varcope):
+def t_and_varcope_to_beta(t, varcope):
     """Convert t-statistic to parameter estimate using sampling variance.
 
     Parameters
@@ -261,6 +266,25 @@ def t_to_beta(t, varcope):
     """
     beta = t * np.sqrt(varcope)
     return beta
+
+
+def t_and_beta_to_varcope(t, beta):
+    """Convert t-statistic to sampling variance using parameter estimate.
+
+    Parameters
+    ----------
+    t : array_like
+        T-statistics of the parameter
+    beta : array_like
+        Parameter estimates
+
+    Returns
+    -------
+    varcope : array_like
+        Sampling variance of the parameter
+    """
+    varcope = (beta / t) ** 2
+    return varcope
 
 
 def p_to_z(p, tail='two'):
