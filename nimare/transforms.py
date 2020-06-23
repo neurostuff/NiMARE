@@ -1,6 +1,7 @@
 """Miscellaneous spatial and statistical transforms
 """
 import logging
+import os.path as op
 
 import numpy as np
 import nibabel as nib
@@ -8,9 +9,65 @@ from scipy import stats
 from scipy.special import ndtri
 
 from .due import due
-from . import references
+from . import references, utils
 
 LGR = logging.getLogger(__name__)
+
+
+def resolve_transforms(target, available_data, masker):
+    available_types = list(available_data.keys())
+    if target == 'z':
+        if ('t' in available_types) and ('sample_sizes' in available_data):
+            dof = np.sum(available_data['sample_sizes']) - len(available_data['sample_sizes'])
+            t = masker.transform(available_data['t'])
+            z = t_to_z(t, dof)
+        elif ('p' in available_types):
+            p = masker.transform(available_data['p'])
+            z = p_to_z(p)
+        else:
+            return None
+        z = masker.inverse_transform(z)
+        return z
+    else:
+        return None
+
+
+def transform_images(df, target, masker, metadata_df=None, out_dir=None):
+    mask_img = masker.mask_img
+    new_mask = np.ones(mask_img.shape, int)
+    new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)
+    new_masker = utils.get_masker(new_mask)
+    res = masker.mask_img.header.get_zooms()
+    res = 'x'.join([str(r) for r in res])
+    target_ids = df.loc[df[target].isnull(), 'id']
+    for id_ in target_ids:
+        row = df.loc[df['id'] == id_].iloc[0]
+
+        # Determine output filename, if file can be generated
+        if out_dir is None:
+            options = [r for r in row.values if isinstance(r, str) and op.isfile(r)]
+            id_out_dir = op.dirname(options[0])
+        else:
+            id_out_dir = out_dir
+        new_file = op.join(id_out_dir, f'{id_}_{res}_{target}.nii.gz')
+
+        # Grab columns with actual values
+        available_data = row[~row.isnull()].to_dict()
+        if metadata_df is not None:
+            metadata_row = metadata_df.loc[metadata_df['id'] == id_].iloc[0]
+            metadata = metadata_row[~metadata_row.isnull()].to_dict()
+            for k, v in metadata.items():
+                if k not in available_data.keys():
+                    available_data[k] = v
+
+        # Get converted data
+        img = resolve_transforms(target, available_data, new_masker)
+        if img is not None:
+            img.to_filename(new_file)
+            df.loc[df['id'] == id_, target] = new_file
+        else:
+            df.loc[df['id'] == id_, target] = None
+    return df
 
 
 def sd_to_var(sd, n):

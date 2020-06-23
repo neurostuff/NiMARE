@@ -189,7 +189,7 @@ def validate_images_df(image_df):
     return image_df
 
 
-def get_template(space='mni152_1mm', mask=None):
+def get_template(space='mni152_2mm', mask=None):
     """
     Load template file.
 
