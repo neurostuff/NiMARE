@@ -142,6 +142,39 @@ API
    io.convert_sleuth_to_dataset
 
 
+.. _api_transforms_ref:
+
+:mod:`nimare.transforms`: Data transforms
+-----------------------------------------------------
+
+.. automodule:: nimare.transforms
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   transforms.transform_images
+   transforms.resolve_transforms
+   transforms.sample_sizes_to_dof
+   transforms.sample_sizes_to_sample_size
+   transforms.sd_to_varcope
+   transforms.se_to_varcope
+   transforms.samplevar_dataset_to_varcope
+   transforms.t_and_varcope_to_beta
+   transforms.t_and_beta_to_varcope
+   transforms.p_to_z
+   transforms.t_to_z
+   transforms.z_to_t
+   transforms.vox2mm
+   transforms.mm2vox
+   transforms.tal2mni
+   transforms.mni2tal
+
+
 .. _api_extract_ref:
 
 :mod:`nimare.extract`: Dataset and model fetching
@@ -184,33 +217,6 @@ API
    stats.pearson
    stats.null_to_p
    stats.fdr
-
-
-.. _api_transforms_ref:
-
-:mod:`nimare.transforms`: Data transforms
------------------------------------------------------
-
-.. automodule:: nimare.transforms
-   :no-members:
-   :no-inherited-members:
-
-.. currentmodule:: nimare
-
-.. autosummary::
-   :toctree: generated/
-   :template: function.rst
-
-   transforms.p_to_z
-   transforms.sd_to_var
-   transforms.se_to_var
-   transforms.svar_to_var
-   transforms.t_to_beta
-   transforms.t_to_z
-   transforms.vox2mm
-   transforms.mm2vox
-   transforms.tal2mni
-   transforms.mni2tal
 
 
 .. _api_utils_ref:

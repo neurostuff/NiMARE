@@ -60,10 +60,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_01.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_01.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_01.nidm/TStatistic.nii.gz",
+                    "beta": "pain_01.nidm/Contrast.nii.gz",
+                    "se": "pain_01.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_01.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -109,10 +108,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_02.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_02.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_02.nidm/TStatistic.nii.gz",
+                    "beta": "pain_02.nidm/Contrast.nii.gz",
+                    "se": "pain_02.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_02.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -182,10 +180,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_03.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_03.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_03.nidm/TStatistic.nii.gz",
+                    "beta": "pain_03.nidm/Contrast.nii.gz",
+                    "se": "pain_03.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_03.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -279,10 +276,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_04.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_04.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_04.nidm/TStatistic.nii.gz",
+                    "beta": "pain_04.nidm/Contrast.nii.gz",
+                    "se": "pain_04.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_04.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -340,10 +336,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_05.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_05.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_05.nidm/TStatistic.nii.gz",
+                    "beta": "pain_05.nidm/Contrast.nii.gz",
+                    "se": "pain_05.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_05.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -377,10 +372,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_06.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_06.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_06.nidm/TStatistic.nii.gz",
+                    "beta": "pain_06.nidm/Contrast.nii.gz",
+                    "se": "pain_06.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_06.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -426,10 +420,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_07.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_07.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_07.nidm/TStatistic.nii.gz",
+                    "beta": "pain_07.nidm/Contrast.nii.gz",
+                    "se": "pain_07.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_07.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -511,10 +504,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_08.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_08.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_08.nidm/TStatistic.nii.gz",
+                    "beta": "pain_08.nidm/Contrast.nii.gz",
+                    "se": "pain_08.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_08.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -596,10 +588,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_09.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_09.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_09.nidm/TStatistic.nii.gz",
+                    "beta": "pain_09.nidm/Contrast.nii.gz",
+                    "se": "pain_09.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_09.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -681,10 +672,9 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_10.nidm/Contrast.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_10.nidm/ContrastStandardError.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_10.nidm/TStatistic.nii.gz",
+                    "beta": "pain_10.nidm/Contrast.nii.gz",
+                    "se": "pain_10.nidm/ContrastStandardError.nii.gz",
+                    "t": "pain_10.nidm/TStatistic.nii.gz",
                     "z": null
                 },
                 "sample_sizes": [
@@ -718,11 +708,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_11.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_11.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_11.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_11.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_11.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_11.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_11.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_11.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     12
@@ -779,11 +768,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_12.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_12.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_12.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_12.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_12.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_12.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_12.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_12.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     13
@@ -828,11 +816,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_13.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_13.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_13.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_13.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_13.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_13.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_13.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_13.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     32
@@ -877,11 +864,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_14.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_14.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_14.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_14.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_14.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_14.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_14.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_14.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     24
@@ -914,11 +900,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_15.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_15.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_15.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_15.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_15.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_15.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_15.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_15.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     14
@@ -999,11 +984,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_16.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_16.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_16.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_16.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_16.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_16.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_16.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_16.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     14
@@ -1072,11 +1056,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_17.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_17.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_17.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_17.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_17.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_17.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_17.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_17.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     12
@@ -1121,11 +1104,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_18.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_18.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_18.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_18.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_18.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_18.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_18.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_18.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     12
@@ -1206,11 +1188,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_19.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_19.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_19.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_19.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_19.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_19.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_19.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_19.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     16
@@ -1255,11 +1236,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_20.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_20.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_20.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_20.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_20.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_20.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_20.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_20.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     16
@@ -1316,11 +1296,10 @@
                     ]
                 },
                 "images": {
-                    "con": "data/neurovault-data/collection-1425/pain_21.nidm/Contrast_T001.nii.gz",
-                    "se": "data/neurovault-data/collection-1425/pain_21.nidm/ContrastStandardError_T001.nii.gz",
-                    "space": "MNI_2mm",
-                    "t": "data/neurovault-data/collection-1425/pain_21.nidm/TStatistic_T001.nii.gz",
-                    "z": "data/neurovault-data/collection-1425/pain_21.nidm/ZStatistic_T001.nii.gz"
+                    "beta": "pain_21.nidm/Contrast_T001.nii.gz",
+                    "se": "pain_21.nidm/ContrastStandardError_T001.nii.gz",
+                    "t": "pain_21.nidm/TStatistic_T001.nii.gz",
+                    "z": "pain_21.nidm/ZStatistic_T001.nii.gz"
                 },
                 "sample_sizes": [
                     16

@@ -14,6 +14,77 @@ from . import references, utils
 LGR = logging.getLogger(__name__)
 
 
+def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
+    """
+    Generate images of a given type, depending on compatible images of other
+    types, and write out to files.
+
+    Parameters
+    ----------
+    images_df : :class:`pandas.DataFrame`
+        DataFrame with paths to images for studies in Dataset.
+    target : {'z', 'beta', 'varcope'}
+        Target data type.
+    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        Masker used to define orientation and resolution of images.
+        Specific voxels defined in mask will not be used, and a new masker
+        with _all_ voxels in acquisition matrix selected will be created.
+    metadata_df : :class:`pandas.DataFrame` or :obj:`None`, optional
+        DataFrame with metadata. Rows in this DataFrame must match those in
+        ``images_df``, including the ``'id'`` column.
+    out_dir : :obj:`str` or :obj:`None`, optional
+        Path to output directory. If None, use folder containing first image
+        for each study in ``images_df``.
+
+    Returns
+    -------
+    images_df : :class:`pandas.DataFrame`
+        DataFrame with paths to new images added.
+    """
+    valid_targets = ['z', 'beta', 'varcope']
+    if target not in valid_targets:
+        raise ValueError('Target type must be one of: {}'.format(', '.join(valid_targets)))
+    mask_img = masker.mask_img
+    new_mask = np.ones(mask_img.shape, int)
+    new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)
+    new_masker = utils.get_masker(new_mask)
+    res = masker.mask_img.header.get_zooms()
+    res = 'x'.join([str(r) for r in res])
+    if target not in images_df.columns:
+        target_ids = images_df['id'].values
+    else:
+        target_ids = images_df.loc[images_df[target].isnull(), 'id']
+
+    for id_ in target_ids:
+        row = images_df.loc[images_df['id'] == id_].iloc[0]
+
+        # Determine output filename, if file can be generated
+        if out_dir is None:
+            options = [r for r in row.values if isinstance(r, str) and op.isfile(r)]
+            id_out_dir = op.dirname(options[0])
+        else:
+            id_out_dir = out_dir
+        new_file = op.join(id_out_dir, f'{id_}_{res}_{target}.nii.gz')
+
+        # Grab columns with actual values
+        available_data = row[~row.isnull()].to_dict()
+        if metadata_df is not None:
+            metadata_row = metadata_df.loc[metadata_df['id'] == id_].iloc[0]
+            metadata = metadata_row[~metadata_row.isnull()].to_dict()
+            for k, v in metadata.items():
+                if k not in available_data.keys():
+                    available_data[k] = v
+
+        # Get converted data
+        img = resolve_transforms(target, available_data, new_masker)
+        if img is not None:
+            img.to_filename(new_file)
+            images_df.loc[images_df['id'] == id_, target] = new_file
+        else:
+            images_df.loc[images_df['id'] == id_, target] = None
+    return images_df
+
+
 def resolve_transforms(target, available_data, masker):
     """Figure out the appropriate set of transforms for given available data
     to a target image type, and apply them.
@@ -112,63 +183,6 @@ def resolve_transforms(target, available_data, masker):
         return varcope
     else:
         return None
-
-
-def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
-    """
-    Generate images of a given type, depending on compatible images of other
-    types, and write out to files.
-
-    Parameters
-    ----------
-    images_df
-    target
-    masker
-    metadata_df
-    out_dir
-    """
-    valid_targets = ['z', 'beta', 'varcope']
-    if target not in valid_targets:
-        raise ValueError('Target type must be one of: {}'.format(', '.join(valid_targets)))
-    mask_img = masker.mask_img
-    new_mask = np.ones(mask_img.shape, int)
-    new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)
-    new_masker = utils.get_masker(new_mask)
-    res = masker.mask_img.header.get_zooms()
-    res = 'x'.join([str(r) for r in res])
-    if target not in images_df.columns:
-        target_ids = images_df['id'].values
-    else:
-        target_ids = images_df.loc[images_df[target].isnull(), 'id']
-
-    for id_ in target_ids:
-        row = images_df.loc[images_df['id'] == id_].iloc[0]
-
-        # Determine output filename, if file can be generated
-        if out_dir is None:
-            options = [r for r in row.values if isinstance(r, str) and op.isfile(r)]
-            id_out_dir = op.dirname(options[0])
-        else:
-            id_out_dir = out_dir
-        new_file = op.join(id_out_dir, f'{id_}_{res}_{target}.nii.gz')
-
-        # Grab columns with actual values
-        available_data = row[~row.isnull()].to_dict()
-        if metadata_df is not None:
-            metadata_row = metadata_df.loc[metadata_df['id'] == id_].iloc[0]
-            metadata = metadata_row[~metadata_row.isnull()].to_dict()
-            for k, v in metadata.items():
-                if k not in available_data.keys():
-                    available_data[k] = v
-
-        # Get converted data
-        img = resolve_transforms(target, available_data, new_masker)
-        if img is not None:
-            img.to_filename(new_file)
-            images_df.loc[images_df['id'] == id_, target] = new_file
-        else:
-            images_df.loc[images_df['id'] == id_, target] = None
-    return images_df
 
 
 def sample_sizes_to_dof(sample_sizes):
