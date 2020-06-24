@@ -42,7 +42,6 @@ ENTRYPOINT ["/neurodocker/startup.sh"]
 
 RUN apt-get update -qq \
     && apt-get install -y -q --no-install-recommends \
-           fsl \
            gcc \
            g++ \
            software-properties-common \
@@ -51,8 +50,6 @@ RUN apt-get update -qq \
 
 RUN useradd --no-user-group --create-home --shell /bin/bash neuro
 USER neuro
-
-RUN sed -i '$isource /etc/fsl/fsl.sh' $ND_ENTRYPOINT
 
 COPY [".", "/src/NiMARE/"]
 
@@ -109,7 +106,6 @@ RUN echo '{ \
     \n    [ \
     \n      "install", \
     \n      [ \
-    \n        "fsl", \
     \n        "gcc", \
     \n        "g++", \
     \n        "software-properties-common" \
@@ -118,10 +114,6 @@ RUN echo '{ \
     \n    [ \
     \n      "user", \
     \n      "neuro" \
-    \n    ], \
-    \n    [ \
-    \n      "add_to_entrypoint", \
-    \n      "source /etc/fsl/fsl.sh" \
     \n    ], \
     \n    [ \
     \n      "copy", \

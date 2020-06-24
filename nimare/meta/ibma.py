@@ -207,14 +207,16 @@ class Something(MetaEstimator):
         self.estimator = estimator
 
     def _fit(self, dataset):
-        if self.estimator = 'DerSimonianLaird':
+        if self.estimator == 'DerSimonianLaird':
             est = pymare.estimators.DerSimonianLaird()
-        elif self.estimator = 'Hedges':
+        elif self.estimator == 'Hedges':
             est = pymare.estimators.Hedges()
         else:
             est = pymare.estimators.VarianceBasedLikelihoodEstimator()
 
-        est.fit(y=self.inputs_['beta_maps'], v=self.inputs_['varcope_maps'])
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
+                                     v=self.inputs_['varcope_maps'])
+        est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
             'z': est_summary.z,

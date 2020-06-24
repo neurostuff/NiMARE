@@ -57,6 +57,7 @@ REQUIRES = [
     'nltk',
     'numpy',
     'pandas',
+    'pymare',
     'pyneurovault',
     'scikit-learn',
     'scipy',
