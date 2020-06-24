@@ -50,8 +50,9 @@ class Fishers(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
         est = pymare.estimators.Fishers(input='z')
-        est.fit(y=self.inputs_['z_maps'])
+        est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
             'z': est_summary.z,
@@ -66,18 +67,9 @@ class Stouffers(MetaEstimator):
 
     Parameters
     ----------
-    inference : {'ffx', 'rfx'}, optional
-        Whether to use fixed-effects inference (default) or random-effects
-        inference.
-    null : {'theoretical', 'empirical'}, optional
-        Whether to use a theoretical null T distribution or an empirically-
-        derived null distribution determined via sign flipping. Empirical null
-        is only possible if ``inference = 'rfx'``.
-    n_iters : :obj:`int` or :obj:`None`, optional
-        The number of iterations to run in estimating the null distribution.
-        Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
-    two_sided : :obj:`bool`, optional
-        Whether to do a two- or one-sided test. Default is True.
+    use_sample_size : :obj:`bool`, optional
+        Whether to use sample sizes for weights (i.e., "weighted Stouffer's")
+        or not. Default is False.
 
     References
     ----------
@@ -85,42 +77,6 @@ class Stouffers(MetaEstimator):
       Williams Jr, R. M. (1949). The American Soldier: Adjustment during
       army life. Studies in social psychology in World War II, vol. 1.
       https://psycnet.apa.org/record/1950-00790-000
-    """
-    _required_inputs = {
-        'z_maps': ('image', 'z')
-    }
-
-    def __init__(self, inference='ffx', null='theoretical', n_iters=None,
-                 two_sided=True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.inference = inference
-        self.null = null
-        self.n_iters = n_iters
-        self.two_sided = two_sided
-
-    def _fit(self, dataset):
-        est = pymare.estimators.Stouffers(input='z')
-        est.fit(y=self.inputs_['z_maps'])
-        est_summary = est.summary()
-        results = {
-            'z': est_summary.z,
-            'p': est_summary.p,
-        }
-        return results
-
-
-class WeightedStouffers(MetaEstimator):
-    """
-    An image-based meta-analytic test using z-statistic images and
-    sample sizes. Zs from bigger studies get bigger weights.
-
-    Parameters
-    ----------
-    two_sided : :obj:`bool`, optional
-        Whether to do a two- or one-sided test. Default is True.
-
-    References
-    ----------
     * Zaykin, D. V. (2011). Optimally weighted Z‐test is a powerful method for
       combining probabilities in meta‐analysis. Journal of evolutionary
       biology, 24(8), 1836-1841.
@@ -128,19 +84,25 @@ class WeightedStouffers(MetaEstimator):
     """
     _required_inputs = {
         'z_maps': ('image', 'z'),
-        'sample_sizes': ('metadata', 'sample_sizes')
     }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, use_sample_size=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.use_sample_size = use_sample_size
+        if self.use_sample_size:
+            self._required_inputs['sample_sizes'] = ('metadata', 'sample_sizes')
 
     def _fit(self, dataset):
-        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        weights = np.sqrt(sample_sizes)
-        weight_maps = np.ones(self.inputs_['z_maps'].shape) * weights
+        if self.use_sample_size:
+            sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+            weights = np.sqrt(sample_sizes)
+            weight_maps = np.ones(self.inputs_['z_maps'].shape) * weights
+            pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'], v=weight_maps)
+        else:
+            pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
 
         est = pymare.estimators.Stouffers(input='z')
-        est.fit(y=self.inputs_['z_maps'], v=weight_maps)
+        est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
             'z': est_summary.z,
@@ -163,8 +125,9 @@ class SampleSizeBased(MetaEstimator):
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
         n_maps = np.fill(self.inputs_['beta_maps'].shape) * sample_sizes
 
+        pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'], n=n_maps)
         est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
-        est.fit(y=self.inputs_['z_maps'], n=n_maps)
+        est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
             'z': est_summary.z,
@@ -196,6 +159,30 @@ class WeightedLeastSquares(MetaEstimator):
         return results
 
 
+class VarianceBasedLikelihood(MetaEstimator):
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
+        'varcope_maps': ('image', 'varcope'),
+    }
+
+    def __init__(self, method='ml', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.method = method
+
+    def _fit(self, dataset):
+        est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
+
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
+                                     v=self.inputs_['varcope_maps'])
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'z': est_summary.z,
+            'p': est_summary.p,
+        }
+        return results
+
+
 class Something(MetaEstimator):
     _required_inputs = {
         'beta_maps': ('image', 'beta'),
@@ -212,7 +199,8 @@ class Something(MetaEstimator):
         elif self.estimator == 'Hedges':
             est = pymare.estimators.Hedges()
         else:
-            est = pymare.estimators.VarianceBasedLikelihoodEstimator()
+            raise ValueError('Argument "estimator" must be one of '
+                             '("DerSimonianLaird", "Hedges")')
 
         pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
                                      v=self.inputs_['varcope_maps'])
