@@ -56,7 +56,7 @@ def testdata(download_data):
     data_z = apply_mask(imgs_z, dset.masker.mask_img)
 
     # Ugly searching until better methods are implemented.
-    beta_ids = [id_ for id_ in dset.ids if dset.get_images(id_, imtype='con') is not None]
+    beta_ids = [id_ for id_ in dset.ids if dset.get_images(id_, imtype='beta') is not None]
     se_ids = [id_ for id_ in dset.ids if dset.get_images(id_, imtype='se') is not None]
     betase_ids = sorted(list(set(beta_ids).intersection(se_ids)))
 
@@ -64,10 +64,10 @@ def testdata(download_data):
     dset_betase = dset.slice(betase_ids)
 
     # Now get the actual data for esma
-    beta_files = dset.get_images(betase_ids, imtype='con')
+    beta_files = dset.get_images(betase_ids, imtype='beta')
     se_files = dset.get_images(betase_ids, imtype='se')
-    sample_sizes_con = dset.get_metadata(betase_ids, 'sample_sizes')
-    sample_sizes_con = np.array([np.mean(sample_size) for sample_size in sample_sizes_con])
+    sample_sizes_beta = dset.get_metadata(betase_ids, 'sample_sizes')
+    sample_sizes_beta = np.array([np.mean(sample_size) for sample_size in sample_sizes_beta])
     beta_imgs = [nib.load(f) for f in beta_files]
     se_imgs = [nib.load(f) for f in se_files]
     data_beta = apply_mask(beta_imgs, dset.masker.mask_img)
@@ -80,7 +80,7 @@ def testdata(download_data):
         'dset_betase': dset_betase,
         'data_beta': data_beta,
         'data_se': data_se,
-        'sample_sizes_con': sample_sizes_con
+        'sample_sizes_beta': sample_sizes_beta
     }
     return testdata
 
