@@ -188,6 +188,17 @@ def resolve_transforms(target, available_data, masker):
 def sample_sizes_to_dof(sample_sizes):
     """A simple heuristic for calculating degrees of freedom from a list of
     sample sizes.
+
+    Parameters
+    ----------
+    sample_sizes : array_like
+        A list of sample sizes for different groups in the study.
+
+    Returns
+    -------
+    dof : int
+        An estimate of degrees of freedom. Number of participants minus number
+        of groups.
     """
     dof = np.sum(sample_sizes) - len(sample_sizes)
     return dof
@@ -196,6 +207,16 @@ def sample_sizes_to_dof(sample_sizes):
 def sample_sizes_to_sample_size(sample_sizes):
     """A simple heuristic for appropriate sample size from a list of sample
     sizes.
+
+    Parameters
+    ----------
+    sample_sizes : array_like
+        A list of sample sizes for different groups in the study.
+
+    Returns
+    -------
+    sample_size : int
+        Total (sum) sample size.
     """
     sample_size = np.sum(sample_sizes)
     return sample_size
