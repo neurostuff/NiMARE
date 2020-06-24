@@ -15,7 +15,6 @@ from nipype.interfaces import fsl
 from nilearn.masking import unmask, apply_mask
 import pymare
 
-from .esma import rfx_glm
 from ..base import MetaEstimator
 from ..transforms import p_to_z
 
