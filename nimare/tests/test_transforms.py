@@ -48,7 +48,7 @@ def test_sample_sizes_to_sample_size():
     sample_size = 60
     assert transforms.sample_sizes_to_sample_size(sample_sizes) == sample_size
     sample_sizes = [20]
-    dof = 20
+    sample_size = 20
     assert transforms.sample_sizes_to_sample_size(sample_sizes) == sample_size
 
 
