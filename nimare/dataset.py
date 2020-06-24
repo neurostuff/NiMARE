@@ -12,7 +12,8 @@ import nibabel as nib
 from .base import NiMAREBase
 from .utils import (get_template, listify, try_prepend, get_masker,
                     dict_to_df, dict_to_coordinates,
-                    validate_df, validate_images_df)
+                    validate_df, validate_images_df,
+                    mm2vox)
 
 LGR = logging.getLogger(__name__)
 
@@ -46,14 +47,21 @@ class Dataset(NiMAREBase):
         Standard space. Same as ``target`` parameter.
     annotations : :class:`pandas.DataFrame`
         Labels describing studies
+    coordinates : :class:`pandas.DataFrame`
+        Peak coordinates from studies
+    images : :class:`pandas.DataFrame`
+        Images from studies
     metadata : :class:`pandas.DataFrame`
         Metadata describing studies
     texts : :class:`pandas.DataFrame`
         Texts associated with studies
-    images : :class:`pandas.DataFrame`
-        Images from studies
-    coordinates : :class:`pandas.DataFrame`
-        Peak coordinates from studies
+
+    Notes
+    -----
+    Images loaded into a Dataset are assumed to be in the same space.
+    If images have different resolutions or affines from the Dataset's masker,
+    then they will be resampled automatically, at the point where they're used,
+    by :obj:`Dataset.masker`.
     """
     _id_cols = ['id', 'study_id', 'contrast_id']
 
@@ -82,7 +90,7 @@ class Dataset(NiMAREBase):
         # Set up Masker
         if mask is None:
             mask = get_template(target, mask='brain')
-        self.masker = get_masker(mask)
+        self.masker = mask
         self.space = target
 
         self.annotations = dict_to_df(id_df, data, key='labels')
@@ -93,11 +101,32 @@ class Dataset(NiMAREBase):
 
     @property
     def ids(self):
-        """array_like: 1D array of IDs in Dataset.
+        """array_like: 1D array of identifiers in Dataset.
 
-        There is no setter for this property, as Dataset.ids is immutable.
+        There is no setter for this property, as ``Dataset.ids`` is immutable.
         """
         return self.__ids
+
+    @property
+    def masker(self):
+        """:class:`nilearn.input_data.NiftiMasker` or similar: Masker object
+        defining the space and location of the area of interest (e.g., 'brain').
+        """
+        return self.__masker
+
+    @masker.setter
+    def masker(self, mask):
+        mask = get_masker(mask)
+        if hasattr(self, 'masker') and not np.array_equal(
+                self.masker.mask_img.affine, mask.mask_img.affine):
+            LGR.info('New masker does not match old masker. '
+                     'Space is assumed to be the same, but coordinates will '
+                     'be transformed to new matrix.')
+            coords = self.coordinates
+            coords[['i', 'j', 'k']] = mm2vox(coords[['x', 'y', 'z']],
+                                             mask.mask_img.affine)
+            self.coordinates = coords
+        self.__masker = mask
 
     @property
     def annotations(self):
@@ -139,6 +168,12 @@ class Dataset(NiMAREBase):
         files and each study has its own row.
         Additionally, relative paths to image files are stored in columns with
         the suffix '__relative' (e.g., 'z__relative').
+
+        Warnings
+        --------
+        Images are assumed to be in the same space, although they may have
+        different resolutions and affines. Images will be resampled as needed
+        at the point where they are used, via :obj:`Dataset.masker`.
         """
         return self.__images
 
@@ -208,12 +243,14 @@ class Dataset(NiMAREBase):
         new_path : :obj:`str`
             Path to prepend to relative paths of files in Dataset.images.
         """
-        relative_path_cols = [c for c in self.images if c.endswith('__relative')]
+        df = self.images
+        relative_path_cols = [c for c in df if c.endswith('__relative')]
         for col in relative_path_cols:
             abs_col = col.replace('__relative', '')
-            if abs_col in self.images.columns:
+            if abs_col in df.columns:
                 LGR.info('Overwriting images column {}'.format(abs_col))
-            self.images[abs_col] = self.images[col].apply(try_prepend, prefix=new_path)
+            df[abs_col] = df[col].apply(try_prepend, prefix=new_path)
+        self.images = df
 
     def get(self, dict_):
         """

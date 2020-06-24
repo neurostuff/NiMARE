@@ -10,12 +10,56 @@ import nibabel as nib
 from nimare import transforms, utils
 
 
+def test_transform_images(testdata):
+    """Smoke test on transforms.transform_images
+    """
+    dset = testdata['dset_betase']
+    z_files = dset.images['z'].tolist()
+    new_images = transforms.transform_images(
+        dset.images, target='z', masker=dset.masker, metadata_df=dset.metadata
+    )
+    new_z_files = new_images['z'].tolist()
+    assert z_files[10:] == new_z_files[10:]
+    assert all([nzf is not None for nzf in new_z_files])
+
+    new_images = transforms.transform_images(
+        dset.images, target='varcope', masker=dset.masker, metadata_df=dset.metadata
+    )
+    varcope_files = new_images['varcope'].tolist()
+    assert 'varcope' not in dset.images.columns
+    assert all([vf is not None for vf in varcope_files])
+
+
+def test_sample_sizes_to_dof():
+    """Unit tests for transforms.sample_sizes_to_dof
+    """
+    sample_sizes = [20, 20, 20]
+    dof = 57
+    assert transforms.sample_sizes_to_dof(sample_sizes) == dof
+    sample_sizes = [20]
+    dof = 19
+    assert transforms.sample_sizes_to_dof(sample_sizes) == dof
+
+
+def test_sample_sizes_to_sample_size():
+    """Unit tests for transforms.sample_sizes_to_sample_size
+    """
+    sample_sizes = [20, 20, 20]
+    sample_size = 60
+    assert transforms.sample_sizes_to_sample_size(sample_sizes) == sample_size
+    sample_sizes = [20]
+    sample_size = 20
+    assert transforms.sample_sizes_to_sample_size(sample_sizes) == sample_size
+
+
 def test_t_to_z():
     """Smoke test
     """
     t_arr = np.random.random(100)
     z_arr = transforms.t_to_z(t_arr, dof=20)
     assert z_arr.shape == t_arr.shape
+    t_arr2 = transforms.z_to_t(z_arr, dof=20)
+    assert np.allclose(t_arr, t_arr2)
 
 
 def test_tal2mni():

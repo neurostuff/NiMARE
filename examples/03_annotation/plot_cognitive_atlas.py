@@ -32,10 +32,14 @@ cogatlas = extract.download_cognitive_atlas(
     data_dir=get_test_data_path(), overwrite=False)
 id_df = pd.read_csv(cogatlas['ids'])
 rel_df = pd.read_csv(cogatlas['relationships'])
-print('id_df:')
-print(id_df.head())
-print('rel_df:')
-print(rel_df.head())
+
+###############################################################################
+# ID DataFrame
+id_df.head()
+
+###############################################################################
+# Relationships DataFrame
+rel_df.head()
 
 ###############################################################################
 # Extract Cognitive Atlas terms from text

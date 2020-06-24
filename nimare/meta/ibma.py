@@ -240,7 +240,7 @@ class RandomEffectsGLM(MetaEstimator):
         Whether to do a two- or one-sided test. Default is True.
     """
     _required_inputs = {
-        'con_maps': ('image', 'con'),
+        'beta_maps': ('image', 'beta'),
     }
 
     def __init__(self, null='theoretical', n_iters=None, two_sided=True, *args,
@@ -252,17 +252,17 @@ class RandomEffectsGLM(MetaEstimator):
         self.results = None
 
     def _fit(self, dataset):
-        return rfx_glm(self.inputs_['con_maps'], null=self.null,
+        return rfx_glm(self.inputs_['beta_maps'], null=self.null,
                        n_iters=self.n_iters, two_sided=self.two_sided)
 
 
-def rfx_glm(con_maps, null='theoretical', n_iters=None, two_sided=True):
+def rfx_glm(beta_maps, null='theoretical', n_iters=None, two_sided=True):
     """
     Run a random-effects (RFX) GLM on contrast maps.
 
     Parameters
     ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+    beta_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
     null : {'theoretical', 'empirical'}, optional
         Whether to use a theoretical null T distribution or an empirically-
@@ -281,29 +281,29 @@ def rfx_glm(con_maps, null='theoretical', n_iters=None, two_sided=True):
         negative log(p) values.
     """
     # Normalize contrast maps to have unit variance
-    con_maps = con_maps / np.std(con_maps, axis=1)[:, None]
-    t_map, p_map = stats.ttest_1samp(con_maps, popmean=0, axis=0)
+    beta_maps = beta_maps / np.std(beta_maps, axis=1)[:, None]
+    t_map, p_map = stats.ttest_1samp(beta_maps, popmean=0, axis=0)
     t_map[np.isnan(t_map)] = 0
     p_map[np.isnan(p_map)] = 1
 
     if not two_sided:
         # MATLAB one-tailed method
-        p_map = stats.t.cdf(-t_map, df=con_maps.shape[0] - 1)
+        p_map = stats.t.cdf(-t_map, df=beta_maps.shape[0] - 1)
 
     if null == 'empirical':
-        k = con_maps.shape[0]
+        k = beta_maps.shape[0]
         p_map = np.ones(t_map.shape)
         iter_t_maps = np.zeros((n_iters, t_map.shape[0]))
 
-        data_signs = np.sign(con_maps[con_maps != 0])
+        data_signs = np.sign(beta_maps[beta_maps != 0])
         data_signs[data_signs < 0] = 0
         posprop = np.mean(data_signs)
         for i in range(n_iters):
-            iter_con_maps = np.copy(con_maps)
+            iter_beta_maps = np.copy(beta_maps)
             signs = np.random.choice(a=2, size=k, p=[1 - posprop, posprop])
             signs[signs == 0] = -1
-            iter_con_maps *= signs[:, None]
-            iter_t_maps[i, :], _ = stats.ttest_1samp(iter_con_maps, popmean=0,
+            iter_beta_maps *= signs[:, None]
+            iter_t_maps[i, :], _ = stats.ttest_1samp(iter_beta_maps, popmean=0,
                                                      axis=0)
         iter_t_maps[np.isnan(iter_t_maps)] = 0
 
