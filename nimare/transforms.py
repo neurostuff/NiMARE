@@ -41,6 +41,8 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to new images added.
     """
+    images_df = images_df.copy()
+
     valid_targets = ['z', 'beta', 'varcope']
     if target not in valid_targets:
         raise ValueError('Target type must be one of: {}'.format(', '.join(valid_targets)))
