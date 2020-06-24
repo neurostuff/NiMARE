@@ -65,7 +65,7 @@ def test_con_perm(testdata):
     Smoke test for contrast permutation.
     """
     meta = ibma.RFX_GLM(null='empirical', n_iters=10)
-    meta.fit(testdata['dset_conse'])
+    meta.fit(testdata['dset_betase'])
     assert isinstance(meta.results, nimare.base.MetaResult)
 
 
@@ -74,7 +74,7 @@ def test_rfx_glm(testdata):
     Smoke test for RFX GLM.
     """
     meta = ibma.RFX_GLM(null='theoretical', n_iters=None)
-    meta.fit(testdata['dset_conse'])
+    meta.fit(testdata['dset_betase'])
     assert isinstance(meta.results, nimare.base.MetaResult)
 
 

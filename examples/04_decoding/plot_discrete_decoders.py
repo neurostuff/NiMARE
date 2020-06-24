@@ -22,8 +22,6 @@ import nimare
 from nimare.decode import discrete
 from nimare.tests.utils import get_test_data_path
 
-pd.set_option('display.max_colwidth', -1)
-
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
@@ -31,6 +29,7 @@ pd.set_option('display.max_colwidth', -1)
 # Angela Laird as a coauthor, for the sake of speed.
 dset = nimare.dataset.Dataset.load(
     os.path.join(get_test_data_path(), 'neurosynth_laird_studies.pkl.gz'))
+dset.annotations.head(5)
 
 ###############################################################################
 # Create a region of interest
@@ -53,7 +52,7 @@ ids = dset.get_studies_by_mask(mask_img)
 decoder = discrete.NeurosynthDecoder(correction=None)
 decoder.fit(dset)
 decoded_df = decoder.transform(ids=ids)
-print(decoded_df.sort_values(by='probReverse', ascending=False).head(10))
+decoded_df.sort_values(by='probReverse', ascending=False).head()
 
 ###############################################################################
 # Decode an ROI image using the BrainMap method
@@ -63,4 +62,4 @@ print(decoded_df.sort_values(by='probReverse', ascending=False).head(10))
 decoder = discrete.BrainMapDecoder(correction=None)
 decoder.fit(dset)
 decoded_df = decoder.transform(ids=ids)
-print(decoded_df.sort_values(by='probReverse', ascending=False).head(10))
+decoded_df.sort_values(by='probReverse', ascending=False).head()

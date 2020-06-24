@@ -35,6 +35,7 @@ from nimare.tests.utils import get_test_data_path
 # Angela Laird as a coauthor, for the sake of speed.
 dset = nimare.dataset.Dataset.load(
     os.path.join(get_test_data_path(), 'neurosynth_laird_studies.pkl.gz'))
+dset.texts.head(2)
 
 ###############################################################################
 # Generate term counts
@@ -43,6 +44,7 @@ dset = nimare.dataset.Dataset.load(
 # Neurosynth.
 counts_df = annotate.text.generate_counts(
     dset.texts, text_column='abstract', tfidf=False, max_df=0.99, min_df=0)
+counts_df.head(5)
 
 ###############################################################################
 # Run model
@@ -82,12 +84,14 @@ decoded_df.sort_values(by='Weight', ascending=False).head(10)
 # Decode an ROI image
 # -------------------
 
+###############################################################################
 # First we'll make an ROI
 arr = np.zeros(dset.masker.mask_img.shape, int)
 arr[65:75, 50:60, 50:60] = 1
 mask_img = nib.Nifti1Image(arr, dset.masker.mask_img.affine)
 plot_roi(mask_img, draw_cross=False)
 
+###############################################################################
 # Run the decoder
 decoded_df, _ = decode.discrete.gclda_decode_roi(model, mask_img)
-print(decoded_df.sort_values(by='Weight', ascending=False).head(10))
+decoded_df.sort_values(by='Weight', ascending=False).head(10)
