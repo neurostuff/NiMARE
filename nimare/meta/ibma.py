@@ -164,12 +164,12 @@ class RFX_GLM(MetaEstimator):
                        two_sided=self.two_sided)
 
 
-def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
-            work_dir='fsl_glm', two_sided=True):
+def fsl_glm(con_maps, varcope_maps, sample_sizes, mask, inference,
+            cdt=0.01, q=0.05, work_dir='fsl_glm', two_sided=True):
     """
     Run a GLM with FSL.
     """
-    assert con_maps.shape == se_maps.shape
+    assert con_maps.shape == varcope_maps.shape
     assert con_maps.shape[0] == sample_sizes.shape[0]
 
     if inference == 'mfx':
@@ -202,9 +202,8 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
 
     con_maps[np.isnan(con_maps)] = 0
     cope_4d_img = unmask(con_maps, mask)
-    se_maps[np.isnan(se_maps)] = 0
-    se_maps = se_maps ** 2  # square SE to get var
-    varcope_4d_img = unmask(se_maps, mask)
+    varcope_maps[np.isnan(varcope_maps)] = 0
+    varcope_4d_img = unmask(varcope_maps, mask)
     dof_maps = np.ones(con_maps.shape)
     for i in range(len(dofs)):
         dof_maps[i, :] = dofs[i]
@@ -332,7 +331,7 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     return images
 
 
-def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
+def ffx_glm(con_maps, varcope_maps, sample_sizes, mask, cdt=0.01, q=0.05,
             work_dir='ffx_glm', two_sided=True):
     """
     Run a fixed-effects GLM on contrast and standard error images.
@@ -341,13 +340,13 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     ----------
     con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+    varcope_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast standard error maps in the same space, after
         masking. Must match shape and order of ``con_maps``.
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
         A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
-        ``var_maps``.
+        and ``varcope_maps``. Must be in same order as rows in ``con_maps`` and
+        ``varcope_maps``.
     mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     cdt : :obj:`float`, optional
@@ -365,7 +364,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
+    result = fsl_glm(con_maps, varcope_maps, sample_sizes, mask, inference='ffx',
                      cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
@@ -386,7 +385,7 @@ class FFX_GLM(MetaEstimator):
     """
     _required_inputs = {
         'con_maps': ('image', 'con'),
-        'se_maps': ('image', 'se'),
+        'varcope_maps': ('image', 'varcope'),
         'sample_sizes': ('metadata', 'sample_sizes')
     }
 
@@ -398,15 +397,15 @@ class FFX_GLM(MetaEstimator):
 
     def _fit(self, dataset):
         con_maps = self.inputs_['con_maps']
-        var_maps = self.inputs_['se_maps']
+        varcope_maps = self.inputs_['varcope_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = ffx_glm(con_maps, var_maps, sample_sizes,
+        images = ffx_glm(con_maps, varcope_maps, sample_sizes,
                          dataset.masker.mask_img, cdt=self.cdt, q=self.q,
                          two_sided=self.two_sided)
         return images
 
 
-def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
+def mfx_glm(con_maps, varcope_maps, sample_sizes, mask, cdt=0.01, q=0.05,
             work_dir='mfx_glm', two_sided=True):
     """
     Run a mixed-effects GLM on contrast and standard error images.
@@ -415,13 +414,13 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
     ----------
     con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+    varcope_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast standard error maps in the same space, after
         masking. Must match shape and order of ``con_maps``.
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
         A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
-        ``var_maps``.
+        and ``varcope_maps``. Must be in same order as rows in ``con_maps`` and
+        ``varcope_maps``.
     mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
     cdt : :obj:`float`, optional
@@ -439,7 +438,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
+    result = fsl_glm(con_maps, varcope_maps, sample_sizes, mask, inference='mfx',
                      cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
@@ -460,7 +459,7 @@ class MFX_GLM(MetaEstimator):
     """
     _required_inputs = {
         'con_maps': ('image', 'con'),
-        'se_maps': ('image', 'se'),
+        'varcope_maps': ('image', 'varcope'),
         'sample_sizes': ('metadata', 'sample_sizes')
     }
 
@@ -472,9 +471,9 @@ class MFX_GLM(MetaEstimator):
 
     def _fit(self, dataset):
         con_maps = self.inputs_['con_maps']
-        var_maps = self.inputs_['se_maps']
+        varcope_maps = self.inputs_['varcope_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = mfx_glm(con_maps, var_maps, sample_sizes,
+        images = mfx_glm(con_maps, varcope_maps, sample_sizes,
                          dataset.masker.mask_img, cdt=self.cdt, q=self.q,
                          two_sided=self.two_sided)
         return images
