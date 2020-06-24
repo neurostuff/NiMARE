@@ -147,7 +147,7 @@ class RFX_GLM(MetaEstimator):
         Whether to do a two- or one-sided test. Default is True.
     """
     _required_inputs = {
-        'con_maps': ('image', 'con'),
+        'beta_maps': ('image', 'beta'),
     }
 
     def __init__(self, null='theoretical', n_iters=None, two_sided=True, *args,
@@ -159,18 +159,18 @@ class RFX_GLM(MetaEstimator):
         self.results = None
 
     def _fit(self, dataset):
-        con_maps = self.inputs_['con_maps']
-        return rfx_glm(con_maps, null=self.null, n_iters=self.n_iters,
+        beta_maps = self.inputs_['beta_maps']
+        return rfx_glm(beta_maps, null=self.null, n_iters=self.n_iters,
                        two_sided=self.two_sided)
 
 
-def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
+def fsl_glm(beta_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
             work_dir='fsl_glm', two_sided=True):
     """
     Run a GLM with FSL.
     """
-    assert con_maps.shape == se_maps.shape
-    assert con_maps.shape[0] == sample_sizes.shape[0]
+    assert beta_maps.shape == se_maps.shape
+    assert beta_maps.shape[0] == sample_sizes.shape[0]
 
     if inference == 'mfx':
         run_mode = 'flame1'
@@ -194,28 +194,28 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     varcope_file = op.join(work_dir, 'varcope.nii.gz')
     mask_file = op.join(work_dir, 'mask.nii.gz')
     design_file = op.join(work_dir, 'design.mat')
-    tcon_file = op.join(work_dir, 'design.con')
+    tcon_file = op.join(work_dir, 'design.beta')
     cov_split_file = op.join(work_dir, 'cov_split.mat')
     dof_file = op.join(work_dir, 'dof.nii.gz')
 
     dofs = (np.array(sample_sizes) - 1).astype(str)
 
-    con_maps[np.isnan(con_maps)] = 0
-    cope_4d_img = unmask(con_maps, mask)
+    beta_maps[np.isnan(beta_maps)] = 0
+    cope_4d_img = unmask(beta_maps, mask)
     se_maps[np.isnan(se_maps)] = 0
     se_maps = se_maps ** 2  # square SE to get var
     varcope_4d_img = unmask(se_maps, mask)
-    dof_maps = np.ones(con_maps.shape)
+    dof_maps = np.ones(beta_maps.shape)
     for i in range(len(dofs)):
         dof_maps[i, :] = dofs[i]
     dof_4d_img = unmask(dof_maps, mask)
 
     # Covariance splitting file
     cov_data = ['/NumWaves\t1',
-                '/NumPoints\t{0}'.format(con_maps.shape[0]),
+                '/NumPoints\t{0}'.format(beta_maps.shape[0]),
                 '',
                 '/Matrix']
-    cov_data += ['1'] * con_maps.shape[0]
+    cov_data += ['1'] * beta_maps.shape[0]
     with open(cov_split_file, 'w') as fo:
         fo.write('\n'.join(cov_data))
 
@@ -235,11 +235,11 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     mask.to_filename(mask_file)
 
     design_matrix = ['/NumWaves\t1',
-                     '/NumPoints\t{0}'.format(con_maps.shape[0]),
+                     '/NumPoints\t{0}'.format(beta_maps.shape[0]),
                      '/PPheights\t1',
                      '',
                      '/Matrix']
-    design_matrix += ['1'] * con_maps.shape[0]
+    design_matrix += ['1'] * beta_maps.shape[0]
     with open(design_file, 'w') as fo:
         fo.write('\n'.join(design_matrix))
 
@@ -265,7 +265,7 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     # FWE correction
     # Estimate smoothness
     est = fsl.model.SmoothEstimate()
-    est.inputs.dof = con_maps.shape[0] - 1
+    est.inputs.dof = beta_maps.shape[0] - 1
     est.inputs.mask_file = mask_file
     est.inputs.residual_fit_file = res.outputs.res4d
     est_res = est.run()
@@ -332,21 +332,21 @@ def fsl_glm(con_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
     return images
 
 
-def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
+def ffx_glm(beta_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
             work_dir='ffx_glm', two_sided=True):
     """
     Run a fixed-effects GLM on contrast and standard error images.
 
     Parameters
     ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+    beta_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
     var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``con_maps``.
+        masking. Must match shape and order of ``beta_maps``.
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
+        A 1D array of sample sizes associated with contrasts in ``beta_maps``
+        and ``var_maps``. Must be in same order as rows in ``beta_maps`` and
         ``var_maps``.
     mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
@@ -365,7 +365,7 @@ def ffx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='ffx',
+    result = fsl_glm(beta_maps, se_maps, sample_sizes, mask, inference='ffx',
                      cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
@@ -385,7 +385,7 @@ class FFX_GLM(MetaEstimator):
         Whether analysis should be two-sided (True) or one-sided (False).
     """
     _required_inputs = {
-        'con_maps': ('image', 'con'),
+        'beta_maps': ('image', 'beta'),
         'se_maps': ('image', 'se'),
         'sample_sizes': ('metadata', 'sample_sizes')
     }
@@ -397,30 +397,30 @@ class FFX_GLM(MetaEstimator):
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        con_maps = self.inputs_['con_maps']
+        beta_maps = self.inputs_['beta_maps']
         var_maps = self.inputs_['se_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = ffx_glm(con_maps, var_maps, sample_sizes,
+        images = ffx_glm(beta_maps, var_maps, sample_sizes,
                          dataset.masker.mask_img, cdt=self.cdt, q=self.q,
                          two_sided=self.two_sided)
         return images
 
 
-def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
+def mfx_glm(beta_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
             work_dir='mfx_glm', two_sided=True):
     """
     Run a mixed-effects GLM on contrast and standard error images.
 
     Parameters
     ----------
-    con_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+    beta_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast maps in the same space, after masking.
     var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
         A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``con_maps``.
+        masking. Must match shape and order of ``beta_maps``.
     sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``con_maps``
-        and ``var_maps``. Must be in same order as rows in ``con_maps`` and
+        A 1D array of sample sizes associated with contrasts in ``beta_maps``
+        and ``var_maps``. Must be in same order as rows in ``beta_maps`` and
         ``var_maps``.
     mask : :obj:`nibabel.Nifti1Image`
         Mask image, used to unmask results maps in compiling output.
@@ -439,7 +439,7 @@ def mfx_glm(con_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
         Dictionary containing maps for test statistics, p-values, and
         negative log(p) values.
     """
-    result = fsl_glm(con_maps, se_maps, sample_sizes, mask, inference='mfx',
+    result = fsl_glm(beta_maps, se_maps, sample_sizes, mask, inference='mfx',
                      cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
     return result
 
@@ -459,7 +459,7 @@ class MFX_GLM(MetaEstimator):
         Whether analysis should be two-sided (True) or one-sided (False).
     """
     _required_inputs = {
-        'con_maps': ('image', 'con'),
+        'beta_maps': ('image', 'beta'),
         'se_maps': ('image', 'se'),
         'sample_sizes': ('metadata', 'sample_sizes')
     }
@@ -471,10 +471,10 @@ class MFX_GLM(MetaEstimator):
         self.two_sided = two_sided
 
     def _fit(self, dataset):
-        con_maps = self.inputs_['con_maps']
+        beta_maps = self.inputs_['beta_maps']
         var_maps = self.inputs_['se_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = mfx_glm(con_maps, var_maps, sample_sizes,
+        images = mfx_glm(beta_maps, var_maps, sample_sizes,
                          dataset.masker.mask_img, cdt=self.cdt, q=self.q,
                          two_sided=self.two_sided)
         return images

@@ -51,14 +51,14 @@ os.remove('pain_dset.pkl')  # cleanup
 # Columns include the standard identifiers and any labels.
 # The labels may be grouped together based on label source, in which case they
 # should be prefixed with some string followed by two underscores.
-dset.annotations.iloc[:10]
+dset.annotations.head()
 
 ###############################################################################
 # ``Dataset.coordinates`` contains reported peaks
 # `````````````````````````````````````````````````````````````````````````````
 # Columns include the standard identifiers, as well as mm coordinates (x, y, z)
 # and voxel indices (i, j, k) specific to the Dataset's masker's space.
-dset.coordinates.iloc[:10]
+dset.coordinates.head()
 
 ###############################################################################
 # ``Dataset.images`` contains images from studies
@@ -68,20 +68,20 @@ dset.coordinates.iloc[:10]
 
 # Here we'll only show a subset of these image types to fit in the window.
 columns_to_show = ['id', 'study_id', 'contrast_id', 'beta__relative', 'z__relative']
-dset.images[columns_to_show].iloc[:10]
+dset.images[columns_to_show].head()
 
 ###############################################################################
 # ``Dataset.metadata`` contains metadata describing studies
 # `````````````````````````````````````````````````````````````````````````````
 # Columns include the standard identifiers, as well as one column for each
 # metadata field.
-dset.metadata.iloc[:10]
+dset.metadata.head()
 
 ###############################################################################
 # ``Dataset.texts`` contains texts associated with studies
 # `````````````````````````````````````````````````````````````````````````````
 # Columns include the standard identifiers, as well as one for each text type.
-dset.texts.iloc[:10]
+dset.texts.head()
 
 ###############################################################################
 # There are a handful of other important Dataset attributes
@@ -109,7 +109,7 @@ print('Template space: {}'.format(dset.space))
 # To do this, you can use :func:`nimare.dataset.Dataset.update_path`.
 dset.update_path(dset_dir)
 columns_to_show = ['id', 'study_id', 'contrast_id', 'beta', 'beta__relative']
-dset.images[columns_to_show].iloc[:10]
+dset.images[columns_to_show].head()
 
 ###############################################################################
 # Images can also be calculated based on available files
@@ -125,7 +125,7 @@ dset.images[columns_to_show].iloc[:10]
 dset.images = nimare.transforms.transform_images(
     dset.images, 'varcope', dset.masker, dset.metadata, out_dir=None
 )
-dset.images[['id', 'varcope']].iloc[:10]
+dset.images[['id', 'varcope']].head()
 
 ###############################################################################
 # Datasets support many search methods

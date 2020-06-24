@@ -56,29 +56,29 @@ def testdata(download_data):
     data_z = apply_mask(imgs_z, dset.masker.mask_img)
 
     # Ugly searching until better methods are implemented.
-    con_ids = [id_ for id_ in dset.ids if dset.get_images(id_, imtype='con') is not None]
+    beta_ids = [id_ for id_ in dset.ids if dset.get_images(id_, imtype='con') is not None]
     se_ids = [id_ for id_ in dset.ids if dset.get_images(id_, imtype='se') is not None]
-    conse_ids = sorted(list(set(con_ids).intersection(se_ids)))
+    betase_ids = sorted(list(set(beta_ids).intersection(se_ids)))
 
     # Create reduced dataset for ibma
-    dset_conse = dset.slice(conse_ids)
+    dset_betase = dset.slice(betase_ids)
 
     # Now get the actual data for esma
-    con_files = dset.get_images(conse_ids, imtype='con')
-    se_files = dset.get_images(conse_ids, imtype='se')
-    sample_sizes_con = dset.get_metadata(conse_ids, 'sample_sizes')
+    beta_files = dset.get_images(betase_ids, imtype='con')
+    se_files = dset.get_images(betase_ids, imtype='se')
+    sample_sizes_con = dset.get_metadata(betase_ids, 'sample_sizes')
     sample_sizes_con = np.array([np.mean(sample_size) for sample_size in sample_sizes_con])
-    con_imgs = [nib.load(f) for f in con_files]
+    beta_imgs = [nib.load(f) for f in beta_files]
     se_imgs = [nib.load(f) for f in se_files]
-    data_con = apply_mask(con_imgs, dset.masker.mask_img)
+    data_beta = apply_mask(beta_imgs, dset.masker.mask_img)
     data_se = apply_mask(se_imgs, dset.masker.mask_img)
     testdata = {
         'dset': dset,
         'dset_z': dset_z,
         'data_z': data_z,
         'sample_sizes_z': sample_sizes_z,
-        'dset_conse': dset_conse,
-        'data_con': data_con,
+        'dset_betase': dset_betase,
+        'data_beta': data_beta,
         'data_se': data_se,
         'sample_sizes_con': sample_sizes_con
     }

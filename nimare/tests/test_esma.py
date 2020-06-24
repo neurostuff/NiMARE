@@ -51,7 +51,7 @@ def test_con_perm(testdata):
     """
     Smoke test for contrast permutation.
     """
-    result = esma.rfx_glm(testdata['data_con'], null='empirical', n_iters=10)
+    result = esma.rfx_glm(testdata['data_beta'], null='empirical', n_iters=10)
     assert isinstance(result, dict)
 
 
@@ -59,5 +59,5 @@ def test_rfx_glm(testdata):
     """
     Smoke test for RFX GLM.
     """
-    result = esma.rfx_glm(testdata['data_con'], null='theoretical', n_iters=None)
+    result = esma.rfx_glm(testdata['data_beta'], null='theoretical', n_iters=None)
     assert isinstance(result, dict)
