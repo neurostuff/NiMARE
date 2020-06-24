@@ -136,7 +136,11 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     new_masker = utils.get_masker(new_mask)
     res = masker.mask_img.header.get_zooms()
     res = 'x'.join([str(r) for r in res])
-    target_ids = images_df.loc[images_df[target].isnull(), 'id']
+    if target not in images_df.columns:
+        target_ids = images_df['id'].values
+    else:
+        target_ids = images_df.loc[images_df[target].isnull(), 'id']
+
     for id_ in target_ids:
         row = images_df.loc[images_df['id'] == id_].iloc[0]
 

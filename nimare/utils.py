@@ -150,6 +150,11 @@ def validate_images_df(image_df):
     image_df : :class:`pandas.DataFrame`
         DataFrame with one row for each study and one column for each image
         type. Cells contain paths to image files.
+
+    Returns
+    -------
+    image_df : :class:`pandas.DataFrame`
+        DataFrame with updated paths and columns.
     """
     valid_suffixes = ['.brik', '.head', '.nii', '.img', '.hed']
     file_cols = []
@@ -172,7 +177,7 @@ def validate_images_df(image_df):
                 image_df = image_df.rename(columns={col: col + '__relative'})
         else:
             raise ValueError('Mix of absolute and relative paths detected '
-                             'for "{0}" images'.format(col))
+                             'for images in column "{}"'.format(col))
 
     # Set relative paths from absolute ones
     if len(abs_cols):
@@ -181,7 +186,7 @@ def validate_images_df(image_df):
         shared_path = find_stem(all_files)
         # Get parent *directory* if shared path includes common prefix.
         if not shared_path.endswith(op.sep):
-            shared_path = op.dirname(shared_path)
+            shared_path = op.dirname(shared_path) + op.sep
         LGR.info('Shared path detected: "{0}"'.format(shared_path))
         for abs_col in abs_cols:
             image_df[abs_col + '__relative'] = image_df[abs_col].apply(
