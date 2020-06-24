@@ -10,12 +10,25 @@ import nibabel as nib
 from nimare import transforms, utils
 
 
+def test_transform_images(testdata):
+    dset = testdata['dset_betase']
+    z_files = dset.images['z'].tolist()
+    new_images = transforms.transform_images(
+        dset.images, target='z', masker=dset.masker, metadata_df=dset.metadata
+    )
+    new_z_files = new_images['z'].tolist()
+    assert z_files[10:] == new_z_files[10:]
+    assert all([nzf is not None for nzf in new_z_files])
+
+
 def test_t_to_z():
     """Smoke test
     """
     t_arr = np.random.random(100)
     z_arr = transforms.t_to_z(t_arr, dof=20)
     assert z_arr.shape == t_arr.shape
+    t_arr2 = transforms.z_to_t(z_arr, dof=20)
+    assert np.allclose(t_arr, t_arr2)
 
 
 def test_tal2mni():
