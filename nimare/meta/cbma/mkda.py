@@ -51,15 +51,10 @@ class MKDADensity(CBMAEstimator):
     }
 
     def __init__(self, kernel_transformer=MKDAKernel, **kwargs):
-        super().__init__(**kwargs)
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
-                       if k.startswith('kernel__')}
-
-        if not issubclass(kernel_transformer, KernelTransformer):
-            raise ValueError('Argument "kernel_transformer" must be a KernelTransformer')
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
         self.dataset = None
-        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
 
     def _fit(self, dataset):
@@ -271,15 +266,9 @@ class MKDAChi2(CBMAEstimator):
     }
 
     def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
-        super().__init__(**kwargs)
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
-                       if k.startswith('kernel__')}
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
-        if not issubclass(kernel_transformer, KernelTransformer):
-            raise ValueError('Argument "kernel_transformer" must be a '
-                             'KernelTransformer')
-
-        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.prior = prior
 
     def fit(self, dataset1, dataset2):
@@ -634,16 +623,10 @@ class KDA(CBMAEstimator):
     }
 
     def __init__(self, kernel_transformer=KDAKernel, **kwargs):
-        super().__init__(**kwargs)
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
-                       if k.startswith('kernel__')}
-
-        if not issubclass(kernel_transformer, KernelTransformer):
-            raise ValueError('Argument "kernel_transformer" must be a '
-                             'KernelTransformer')
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
         self.dataset = None
-        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
 
     def _fit(self, dataset):
