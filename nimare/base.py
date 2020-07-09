@@ -294,6 +294,18 @@ class MetaEstimator(Estimator):
 
 class CBMAEstimator(MetaEstimator):
     """Base class for coordinate-based meta-analysis methods.
+
+    Parameters
+    ----------
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    *args
+        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        (called automatically).
+    **kwargs
+        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        __init__ (called automatically).
     """
     def __init__(self, kernel_transformer, *args, **kwargs):
         super().__init__(*args, **kwargs)
