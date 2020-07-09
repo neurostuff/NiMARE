@@ -10,7 +10,7 @@ import pandas as pd
 import nibabel as nib
 from scipy import ndimage
 
-from .kernel import ALEKernel, KernelTransformer
+from .kernel import ALEKernel
 from ...results import MetaResult
 from ...base import CBMAEstimator
 from ...due import due

@@ -3,12 +3,12 @@ Base classes for datasets.
 """
 import gzip
 import pickle
+import inspect
 import logging
 import multiprocessing as mp
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
-import inspect
 import numpy as np
 import pandas as pd
 from six import with_metaclass
@@ -307,7 +307,7 @@ class CBMAEstimator(MetaEstimator):
                 not issubclass(type(kernel_transformer), KernelTransformer):
             raise ValueError('Argument "kernel_transformer" must be a kind of '
                              'KernelTransformer')
-        elif not isclass(kernel_transformer) and kernel_args:
+        elif not inspect.isclass(kernel_transformer) and kernel_args:
             LGR.warning('Argument "kernel_transformer" has already been '
                         'initialized, so kernel arguments will be ignored: '
                         '{}'.format(', '.join(kernel_args.keys())))
