@@ -311,7 +311,7 @@ class CBMAEstimator(MetaEstimator):
             LGR.warning('Argument "kernel_transformer" has already been '
                         'initialized, so kernel arguments will be ignored: '
                         '{}'.format(', '.join(kernel_args.keys())))
-        else:
+        elif inspect.isclass(kernel_transformer):
             kernel_transformer = kernel_transformer(**kernel_args)
         self.kernel_transformer = kernel_transformer
 
