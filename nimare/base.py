@@ -3,12 +3,12 @@ Base classes for datasets.
 """
 import gzip
 import pickle
+import inspect
 import logging
 import multiprocessing as mp
 from collections import defaultdict
 from abc import ABCMeta, abstractmethod
 
-import inspect
 import numpy as np
 import pandas as pd
 from six import with_metaclass
@@ -294,9 +294,38 @@ class MetaEstimator(Estimator):
 
 class CBMAEstimator(MetaEstimator):
     """Base class for coordinate-based meta-analysis methods.
+
+    Parameters
+    ----------
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    *args
+        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        (called automatically).
+    **kwargs
+        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        __init__ (called automatically).
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, kernel_transformer, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Get kernel transformer
+        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
+                       if k.startswith('kernel__')}
+
+        # Allow both instances and classes for the kernel transformer input.
+        if not issubclass(kernel_transformer, KernelTransformer) and \
+                not issubclass(type(kernel_transformer), KernelTransformer):
+            raise ValueError('Argument "kernel_transformer" must be a kind of '
+                             'KernelTransformer')
+        elif not inspect.isclass(kernel_transformer) and kernel_args:
+            LGR.warning('Argument "kernel_transformer" has already been '
+                        'initialized, so kernel arguments will be ignored: '
+                        '{}'.format(', '.join(kernel_args.keys())))
+        elif inspect.isclass(kernel_transformer):
+            kernel_transformer = kernel_transformer(**kernel_args)
+        self.kernel_transformer = kernel_transformer
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the dataset's mask or the
