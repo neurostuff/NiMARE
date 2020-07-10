@@ -10,10 +10,10 @@ import nibabel as nib
 from nimare import transforms, utils
 
 
-def test_transform_images(testdata):
+def test_transform_images(testdata_ibma):
     """Smoke test on transforms.transform_images
     """
-    dset = testdata
+    dset = testdata_ibma
     z_files = dset.images['z'].tolist()
     new_images = transforms.transform_images(
         dset.images, target='z', masker=dset.masker, metadata_df=dset.metadata

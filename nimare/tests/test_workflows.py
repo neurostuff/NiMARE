@@ -82,8 +82,8 @@ def test_scale_workflow_smoke():
     shutil.rmtree(out_dir)
 
 
-def test_conperm_workflow_smoke(testdata):
-    dset = testdata
+def test_conperm_workflow_smoke(testdata_ibma):
+    dset = testdata_ibma
     files = dset.get_images(imtype='beta')
     mask_image = op.join(get_test_data_path(), 'test_pain_dataset', 'mask.nii.gz')
     out_dir = op.join(os.getcwd(), 'TEST')
