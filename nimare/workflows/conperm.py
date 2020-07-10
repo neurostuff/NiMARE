@@ -13,12 +13,16 @@ from ..meta.ibma import rfx_glm
 LGR = logging.getLogger(__name__)
 
 
-def conperm_workflow(contrast_images, output_dir=None, prefix='', n_iters=10000):
+def conperm_workflow(contrast_images, mask_image=None, output_dir=None,
+                     prefix='', n_iters=10000):
     """
     Contrast permutation workflow.
     """
-    target = 'mni152_2mm'
-    mask_img = get_template(target, mask='brain')
+    if mask_image is None:
+        target = 'mni152_2mm'
+        mask_img = get_template(target, mask='brain')
+    else:
+        mask_img = nib.load(mask_image)
     n_studies = len(contrast_images)
     LGR.info('Loading contrast maps...')
     z_data = apply_mask(contrast_images, mask_img)

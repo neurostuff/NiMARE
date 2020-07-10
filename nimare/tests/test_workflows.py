@@ -85,12 +85,14 @@ def test_scale_workflow_smoke():
 def test_conperm_workflow_smoke(testdata):
     dset = testdata
     files = dset.get_images(imtype='beta')
+    mask_image = op.join(get_test_data_path(), 'test_pain_dataset', 'mask.nii.gz')
     out_dir = op.join(os.getcwd(), 'TEST')
     prefix = 'test'
 
     # The same test is run with both workflow function and CLI
     workflows.conperm_workflow(
         files,
+        mask_image=mask_image,
         output_dir=out_dir, prefix=prefix,
         n_iters=5)
     assert op.isfile(op.join(out_dir, '{}_logp.nii.gz'.format(prefix)))
