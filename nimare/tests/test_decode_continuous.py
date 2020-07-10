@@ -15,7 +15,7 @@ def test_CorrelationDecoder(testdata_laird, testdata):
     decoder = continuous.CorrelationDecoder(features=features)
     decoder.fit(testdata_laird)
 
-    imgs = testdata['dset'].get_images(imtype='z')
+    imgs = testdata.get_images(imtype='z')
     img = list(filter(None, imgs))[0]
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)

@@ -11,7 +11,7 @@ def test_ale(testdata):
     Smoke test for ALE
     """
     meta = ale.ALE()
-    res = meta.fit(testdata['dset'])
+    res = meta.fit(testdata)
     assert 'ale' in res.maps.keys()
     assert 'p' in res.maps.keys()
     assert 'z' in res.maps.keys()
@@ -38,10 +38,10 @@ def test_ale_subtraction(testdata):
     Smoke test for ALESubtraction
     """
     meta1 = ale.ALE()
-    res1 = meta1.fit(testdata['dset'])
+    res1 = meta1.fit(testdata)
 
     meta2 = ale.ALE()
-    res2 = meta2.fit(testdata['dset'])
+    res2 = meta2.fit(testdata)
 
     sub_meta = ale.ALESubtraction(n_iters=10)
     sub_meta.fit(meta1, meta2)

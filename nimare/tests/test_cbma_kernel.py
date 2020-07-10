@@ -16,22 +16,22 @@ def test_alekernel_smoke(testdata):
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
-    coordinates = testdata['dset'].coordinates.copy()
+    coordinates = testdata.coordinates.copy()
     coordinates['sample_size'] = 20
 
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(
         coordinates,
-        testdata['dset'].masker,
+        testdata.masker,
         return_type='image'
     )
-    assert len(ma_maps) == len(testdata['dset'].ids)
+    assert len(ma_maps) == len(testdata.ids)
     ma_maps = kern.transform(
         coordinates,
-        testdata['dset'].masker,
+        testdata.masker,
         return_type='array'
     )
-    assert ma_maps.shape[0] == len(testdata['dset'].ids)
+    assert ma_maps.shape[0] == len(testdata.ids)
 
 
 def test_alekernel1(testdata):
@@ -43,14 +43,14 @@ def test_alekernel1(testdata):
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
-    coordinates = testdata['dset'].coordinates.copy()
+    coordinates = testdata.coordinates.copy()
     coordinates['sample_size'] = 20
 
     id_ = 'pain_01.nidm-1'
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(
         coordinates,
-        testdata['dset'].masker
+        testdata.masker
     )
     ijk = coordinates.loc[coordinates['id'] == id_, ['i', 'j', 'k']]
     ijk = ijk.values.astype(int)
@@ -69,14 +69,14 @@ def test_alekernel2(testdata):
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
-    coordinates = testdata['dset'].coordinates.copy()
+    coordinates = testdata.coordinates.copy()
     coordinates['sample_size'] = 20
 
     id_ = 'pain_01.nidm-1'
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(
         coordinates,
-        masker=testdata['dset'].masker
+        masker=testdata.masker
     )
 
     ijk = coordinates.loc[coordinates['id'] == id_, ['i', 'j', 'k']]
@@ -92,14 +92,14 @@ def test_mkdakernel_smoke(testdata):
     Smoke test for nimare.meta.cbma.kernel.MKDAKernel
     """
     kern = kernel.MKDAKernel()
-    ma_maps = kern.transform(testdata['dset'])
-    assert len(ma_maps) == len(testdata['dset'].ids)
+    ma_maps = kern.transform(testdata)
+    assert len(ma_maps) == len(testdata.ids)
     ma_maps = kern.transform(
-        testdata['dset'].coordinates,
-        testdata['dset'].masker,
+        testdata.coordinates,
+        testdata.masker,
         return_type='array'
     )
-    assert ma_maps.shape[0] == len(testdata['dset'].ids)
+    assert ma_maps.shape[0] == len(testdata.ids)
 
 
 def test_mkdakernel1(testdata):
@@ -110,10 +110,10 @@ def test_mkdakernel1(testdata):
     """
     id_ = 'pain_01.nidm-1'
     kern = kernel.MKDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
+    ma_maps = kern.transform(testdata.coordinates, testdata.masker)
 
-    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
-                                           ['i', 'j', 'k']]
+    ijk = testdata.coordinates.loc[testdata.coordinates['id'] == id_,
+                                   ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
     kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
@@ -129,10 +129,10 @@ def test_mkdakernel2(testdata):
     """
     id_ = 'pain_01.nidm-1'
     kern = kernel.MKDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
+    ma_maps = kern.transform(testdata.coordinates, testdata.masker)
 
-    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
-                                           ['i', 'j', 'k']]
+    ijk = testdata.coordinates.loc[testdata.coordinates['id'] == id_,
+                                   ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
     kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
@@ -146,16 +146,16 @@ def test_kdakernel_smoke(testdata):
     """
     kern = kernel.KDAKernel()
     ma_maps = kern.transform(
-        testdata['dset'].coordinates,
-        testdata['dset'].masker
+        testdata.coordinates,
+        testdata.masker
     )
-    assert len(ma_maps) == len(testdata['dset'].ids)
+    assert len(ma_maps) == len(testdata.ids)
     ma_maps = kern.transform(
-        testdata['dset'].coordinates,
-        testdata['dset'].masker,
+        testdata.coordinates,
+        testdata.masker,
         return_type='array'
     )
-    assert ma_maps.shape[0] == len(testdata['dset'].ids)
+    assert ma_maps.shape[0] == len(testdata.ids)
 
 
 def test_kdakernel1(testdata):
@@ -166,10 +166,10 @@ def test_kdakernel1(testdata):
     """
     id_ = 'pain_01.nidm-1'
     kern = kernel.KDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
+    ma_maps = kern.transform(testdata.coordinates, testdata.masker)
 
-    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
-                                           ['i', 'j', 'k']]
+    ijk = testdata.coordinates.loc[testdata.coordinates['id'] == id_,
+                                   ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
     kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T
@@ -185,10 +185,10 @@ def test_kdakernel2(testdata):
     """
     id_ = 'pain_01.nidm-1'
     kern = kernel.KDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata['dset'].coordinates, testdata['dset'].masker)
+    ma_maps = kern.transform(testdata.coordinates, testdata.masker)
 
-    ijk = testdata['dset'].coordinates.loc[testdata['dset'].coordinates['id'] == id_,
-                                           ['i', 'j', 'k']]
+    ijk = testdata.coordinates.loc[testdata.coordinates['id'] == id_,
+                                   ['i', 'j', 'k']]
     ijk = np.squeeze(ijk.values.astype(int))
     kern_data = ma_maps[0].get_fdata()
     com = np.array(center_of_mass(kern_data)).astype(int).T

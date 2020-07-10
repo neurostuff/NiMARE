@@ -83,7 +83,7 @@ def test_scale_workflow_smoke():
 
 
 def test_conperm_workflow_smoke(testdata):
-    dset = testdata['dset_betase']
+    dset = testdata
     files = dset.get_images(imtype='beta')
     out_dir = op.join(os.getcwd(), 'TEST')
     prefix = 'test'
