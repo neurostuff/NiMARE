@@ -98,8 +98,8 @@ def test_conperm_workflow_smoke(testdata_ibma):
     assert op.isfile(op.join(out_dir, '{}_logp.nii.gz'.format(prefix)))
     shutil.rmtree(out_dir)
 
-    args = ['conperm', '--output_dir', out_dir, '--prefix', prefix,
-            '--n_iters', '5'] + files
+    args = ['conperm', '--output_dir', out_dir, '--mask', mask_image,
+            '--prefix', prefix, '--n_iters', '5'] + files
     cli._main(args)
     assert op.isfile(op.join(out_dir, '{}_logp.nii.gz'.format(prefix)))
     shutil.rmtree(out_dir)
