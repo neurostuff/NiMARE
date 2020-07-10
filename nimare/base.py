@@ -287,7 +287,15 @@ class MetaEstimator(Estimator):
             if type_ == 'image':
                 # Mask required input images using either the dataset's mask or
                 # the estimator's.
-                self.inputs_[name] = masker.transform(self.inputs_[name])
+                temp_arr = masker.transform(self.inputs_[name])
+
+                # An intermediate step to mask out bad voxels. Can be dropped
+                # once PyMARE is able to handle masked arrays or missing data.
+                bad_voxel_idx = np.where(temp_arr == 0)[1]
+                bad_voxel_idx = np.unique(bad_voxel_idx)
+                temp_arr[:, bad_voxel_idx] = 0
+
+                self.inputs_[name] = temp_arr
             elif type_ == 'coordinates':
                 self.inputs_[name] = dataset.coordinates.copy()
 

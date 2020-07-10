@@ -5,9 +5,10 @@ Tests for nimare.decode.discrete.gclda_decode_roi are in test_annotate_gclda.
 """
 import pandas as pd
 from nimare.decode import continuous
+from nimare.meta.cbma import mkda
 
 
-def test_CorrelationDecoder(testdata_laird, testdata):
+def test_CorrelationDecoder(testdata_laird):
     """
     Smoke test for discrete.neurosynth_decode
     """
@@ -15,7 +16,8 @@ def test_CorrelationDecoder(testdata_laird, testdata):
     decoder = continuous.CorrelationDecoder(features=features)
     decoder.fit(testdata_laird)
 
-    imgs = testdata['dset'].get_images(imtype='z')
-    img = list(filter(None, imgs))[0]
+    meta = mkda.KDA()
+    res = meta.fit(testdata_laird)
+    img = res.get_map('of')
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)

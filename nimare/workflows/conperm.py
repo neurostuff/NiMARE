@@ -13,15 +13,18 @@ from ..meta.ibma import rfx_glm
 LGR = logging.getLogger(__name__)
 
 
-def conperm_workflow(contrast_images, output_dir=None, prefix='', n_iters=10000):
+def conperm_workflow(contrast_images, mask_image=None, output_dir=None,
+                     prefix='', n_iters=10000):
     """
     Contrast permutation workflow.
     """
-    target = 'mni152_2mm'
-    mask_img = get_template(target, mask='brain')
+    if mask_image is None:
+        target = 'mni152_2mm'
+        mask_image = get_template(target, mask='brain')
+
     n_studies = len(contrast_images)
     LGR.info('Loading contrast maps...')
-    z_data = apply_mask(contrast_images, mask_img)
+    z_data = apply_mask(contrast_images, mask_image)
 
     boilerplate = """
 A contrast permutation analysis was performed on a sample of {n_studies}
@@ -46,7 +49,7 @@ Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
     LGR.info('Performing meta-analysis.')
     res = rfx_glm(z_data, null='empirical', n_iters=n_iters)
     # The rfx_glm function will stand in for the Estimator in the results object
-    res = MetaResult(rfx_glm, mask_img, maps=res)
+    res = MetaResult(rfx_glm, mask_image, maps=res)
 
     boilerplate = boilerplate.format(
         n_studies=n_studies,

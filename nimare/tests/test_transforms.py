@@ -10,24 +10,25 @@ import nibabel as nib
 from nimare import transforms, utils
 
 
-def test_transform_images(testdata):
+def test_transform_images(testdata_ibma):
     """Smoke test on transforms.transform_images
     """
-    dset = testdata['dset_betase']
+    dset = testdata_ibma
     z_files = dset.images['z'].tolist()
     new_images = transforms.transform_images(
         dset.images, target='z', masker=dset.masker, metadata_df=dset.metadata
     )
     new_z_files = new_images['z'].tolist()
-    assert z_files[10:] == new_z_files[10:]
+    assert z_files[:-1] == new_z_files[:-1]
     assert all([nzf is not None for nzf in new_z_files])
 
+    varcope_files = dset.images['varcope'].tolist()
     new_images = transforms.transform_images(
         dset.images, target='varcope', masker=dset.masker, metadata_df=dset.metadata
     )
-    varcope_files = new_images['varcope'].tolist()
-    assert 'varcope' not in dset.images.columns
-    assert all([vf is not None for vf in varcope_files])
+    new_varcope_files = new_images['varcope'].tolist()
+    assert not all([isinstance(vf, str) for vf in varcope_files])
+    assert all([isinstance(vf, str) for vf in new_varcope_files])
 
 
 def test_sample_sizes_to_dof():

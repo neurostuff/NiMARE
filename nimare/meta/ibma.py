@@ -4,19 +4,14 @@ Image-based meta-analysis estimators
 from __future__ import division
 
 import logging
-from os import mkdir
-import os.path as op
-from shutil import rmtree
 
 import numpy as np
-import nibabel as nib
 from scipy import stats
-from nipype.interfaces import fsl
-from nilearn.masking import unmask, apply_mask
+import pymare
 
-from .esma import fishers, stouffers, weighted_stouffers, rfx_glm
 from ..base import MetaEstimator
 from ..transforms import p_to_z
+from ..stats import null_to_p
 
 LGR = logging.getLogger(__name__)
 
@@ -46,12 +41,19 @@ class Fishers(MetaEstimator):
         'z_maps': ('image', 'z')
     }
 
-    def __init__(self, two_sided=True, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.two_sided = two_sided
 
     def _fit(self, dataset):
-        return fishers(self.inputs_['z_maps'], two_sided=self.two_sided)
+        pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
+        est = pymare.estimators.Fishers(input='z')
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'z': est_summary.z,
+            'p': est_summary.p,
+        }
+        return results
 
 
 class Stouffers(MetaEstimator):
@@ -60,18 +62,9 @@ class Stouffers(MetaEstimator):
 
     Parameters
     ----------
-    inference : {'ffx', 'rfx'}, optional
-        Whether to use fixed-effects inference (default) or random-effects
-        inference.
-    null : {'theoretical', 'empirical'}, optional
-        Whether to use a theoretical null T distribution or an empirically-
-        derived null distribution determined via sign flipping. Empirical null
-        is only possible if ``inference = 'rfx'``.
-    n_iters : :obj:`int` or :obj:`None`, optional
-        The number of iterations to run in estimating the null distribution.
-        Only used if ``inference = 'rfx'`` and ``null = 'empirical'``.
-    two_sided : :obj:`bool`, optional
-        Whether to do a two- or one-sided test. Default is True.
+    use_sample_size : :obj:`bool`, optional
+        Whether to use sample sizes for weights (i.e., "weighted Stouffer's")
+        or not. Default is False.
 
     References
     ----------
@@ -79,37 +72,6 @@ class Stouffers(MetaEstimator):
       Williams Jr, R. M. (1949). The American Soldier: Adjustment during
       army life. Studies in social psychology in World War II, vol. 1.
       https://psycnet.apa.org/record/1950-00790-000
-    """
-    _required_inputs = {
-        'z_maps': ('image', 'z')
-    }
-
-    def __init__(self, inference='ffx', null='theoretical', n_iters=None,
-                 two_sided=True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.inference = inference
-        self.null = null
-        self.n_iters = n_iters
-        self.two_sided = two_sided
-
-    def _fit(self, dataset):
-        return stouffers(self.inputs_['z_maps'], inference=self.inference,
-                         null=self.null, n_iters=self.n_iters,
-                         two_sided=self.two_sided)
-
-
-class WeightedStouffers(MetaEstimator):
-    """
-    An image-based meta-analytic test using z-statistic images and
-    sample sizes. Zs from bigger studies get bigger weights.
-
-    Parameters
-    ----------
-    two_sided : :obj:`bool`, optional
-        Whether to do a two- or one-sided test. Default is True.
-
-    References
-    ----------
     * Zaykin, D. V. (2011). Optimally weighted Z‐test is a powerful method for
       combining probabilities in meta‐analysis. Journal of evolutionary
       biology, 24(8), 1836-1841.
@@ -117,20 +79,143 @@ class WeightedStouffers(MetaEstimator):
     """
     _required_inputs = {
         'z_maps': ('image', 'z'),
+    }
+
+    def __init__(self, use_sample_size=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_sample_size = use_sample_size
+        if self.use_sample_size:
+            self._required_inputs['sample_sizes'] = ('metadata', 'sample_sizes')
+
+    def _fit(self, dataset):
+        if self.use_sample_size:
+            sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+            weights = np.sqrt(sample_sizes)
+            weight_maps = np.tile(weights, (self.inputs_['z_maps'].shape[1], 1)).T
+            pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'], v=weight_maps)
+        else:
+            pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
+
+        est = pymare.estimators.Stouffers(input='z')
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'z': est_summary.z,
+            'p': est_summary.p,
+        }
+        return results
+
+
+class SampleSizeBased(MetaEstimator):
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
         'sample_sizes': ('metadata', 'sample_sizes')
     }
 
-    def __init__(self, two_sided=True, *args, **kwargs):
+    def __init__(self, method='ml', *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.two_sided = two_sided
+        self.method = method
 
     def _fit(self, dataset):
-        z_maps = self.inputs_['z_maps']
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        return weighted_stouffers(z_maps, sample_sizes, two_sided=self.two_sided)
+        n_maps = np.tile(sample_sizes, (self.inputs_['beta_maps'].shape[1], 1)).T
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'], n=n_maps)
+        est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
+        }
+        return results
 
 
-class RFX_GLM(MetaEstimator):
+class WeightedLeastSquares(MetaEstimator):
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
+        'varcope_maps': ('image', 'varcope'),
+    }
+
+    def __init__(self, tau2=0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tau2 = tau2
+
+    def _fit(self, dataset):
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
+                                     v=self.inputs_['varcope_maps'])
+        est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
+        }
+        return results
+
+
+class VarianceBasedLikelihood(MetaEstimator):
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
+        'varcope_maps': ('image', 'varcope'),
+    }
+
+    def __init__(self, method='ml', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.method = method
+
+    def _fit(self, dataset):
+        est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
+
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
+                                     v=self.inputs_['varcope_maps'])
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
+        }
+        return results
+
+
+class Something(MetaEstimator):
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
+        'varcope_maps': ('image', 'varcope'),
+    }
+
+    def __init__(self, estimator='DerSimonianLaird', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.estimator = estimator
+
+    def _fit(self, dataset):
+        if self.estimator == 'DerSimonianLaird':
+            est = pymare.estimators.DerSimonianLaird()
+        elif self.estimator == 'Hedges':
+            est = pymare.estimators.Hedges()
+        else:
+            raise ValueError('Argument "estimator" must be one of '
+                             '("DerSimonianLaird", "Hedges")')
+
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
+                                     v=self.inputs_['varcope_maps'])
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
+        }
+        return results
+
+
+class RandomEffectsGLM(MetaEstimator):
     """
     A t-test on contrast images. Requires contrast images.
 
@@ -159,322 +244,78 @@ class RFX_GLM(MetaEstimator):
         self.results = None
 
     def _fit(self, dataset):
-        beta_maps = self.inputs_['beta_maps']
-        return rfx_glm(beta_maps, null=self.null, n_iters=self.n_iters,
-                       two_sided=self.two_sided)
+        return rfx_glm(self.inputs_['beta_maps'], null=self.null,
+                       n_iters=self.n_iters, two_sided=self.two_sided)
 
 
-def fsl_glm(beta_maps, se_maps, sample_sizes, mask, inference, cdt=0.01, q=0.05,
-            work_dir='fsl_glm', two_sided=True):
+def rfx_glm(beta_maps, null='theoretical', n_iters=None, two_sided=True):
     """
-    Run a GLM with FSL.
+    Run a random-effects (RFX) GLM on contrast maps.
+
+    Parameters
+    ----------
+    beta_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
+        A 2D array of contrast maps in the same space, after masking.
+    null : {'theoretical', 'empirical'}, optional
+        Whether to use a theoretical null T distribution or an empirically-
+        derived null distribution determined via sign flipping.
+        Default is 'theoretical'.
+    n_iters : :obj:`int` or :obj:`None`, optional
+        The number of iterations to run in estimating the null distribution.
+        Only used if ``null = 'empirical'``.
+    two_sided : :obj:`bool`, optional
+        Whether to do a two- or one-sided test. Default is True.
+
+    Returns
+    -------
+    result : :obj:`dict`
+        Dictionary object containing maps for test statistics, p-values, and
+        negative log(p) values.
     """
-    assert beta_maps.shape == se_maps.shape
-    assert beta_maps.shape[0] == sample_sizes.shape[0]
+    # Normalize contrast maps to have unit variance
+    beta_maps = beta_maps / np.std(beta_maps, axis=1)[:, None]
+    t_map, p_map = stats.ttest_1samp(beta_maps, popmean=0, axis=0)
+    t_map[np.isnan(t_map)] = 0
+    p_map[np.isnan(p_map)] = 1
 
-    if inference == 'mfx':
-        run_mode = 'flame1'
-    elif inference == 'ffx':
-        run_mode = 'fe'
-    else:
-        raise ValueError('Input "inference" must be "mfx" or "ffx".')
+    if not two_sided:
+        # MATLAB one-tailed method
+        p_map = stats.t.cdf(-t_map, df=beta_maps.shape[0] - 1)
 
-    if 0 < cdt < 1:
-        cdt_z = p_to_z(cdt, tail='two')
-    else:
-        cdt_z = cdt
+    if null == 'empirical':
+        k = beta_maps.shape[0]
+        p_map = np.ones(t_map.shape)
+        iter_t_maps = np.zeros((n_iters, t_map.shape[0]))
 
-    work_dir = op.abspath(work_dir)
-    if op.isdir(work_dir):
-        raise ValueError('Working directory already '
-                         'exists: "{0}"'.format(work_dir))
+        data_signs = np.sign(beta_maps[beta_maps != 0])
+        data_signs[data_signs < 0] = 0
+        posprop = np.mean(data_signs)
+        for i in range(n_iters):
+            iter_beta_maps = np.copy(beta_maps)
+            signs = np.random.choice(a=2, size=k, p=[1 - posprop, posprop])
+            signs[signs == 0] = -1
+            iter_beta_maps *= signs[:, None]
+            iter_t_maps[i, :], _ = stats.ttest_1samp(iter_beta_maps, popmean=0,
+                                                     axis=0)
+        iter_t_maps[np.isnan(iter_t_maps)] = 0
 
-    mkdir(work_dir)
-    cope_file = op.join(work_dir, 'cope.nii.gz')
-    varcope_file = op.join(work_dir, 'varcope.nii.gz')
-    mask_file = op.join(work_dir, 'mask.nii.gz')
-    design_file = op.join(work_dir, 'design.mat')
-    tcon_file = op.join(work_dir, 'design.beta')
-    cov_split_file = op.join(work_dir, 'cov_split.mat')
-    dof_file = op.join(work_dir, 'dof.nii.gz')
+        for voxel in range(iter_t_maps.shape[1]):
+            p_map[voxel] = null_to_p(t_map[voxel], iter_t_maps[:, voxel])
 
-    dofs = (np.array(sample_sizes) - 1).astype(str)
+        # Crop p-values of 0 or 1 to nearest values that won't evaluate to
+        # 0 or 1. Prevents inf z-values.
+        p_map[p_map < 1e-16] = 1e-16
+        p_map[p_map > (1. - 1e-16)] = 1. - 1e-16
+    elif null != 'theoretical':
+        raise ValueError('Input null must be "theoretical" or "empirical".')
 
-    beta_maps[np.isnan(beta_maps)] = 0
-    cope_4d_img = unmask(beta_maps, mask)
-    se_maps[np.isnan(se_maps)] = 0
-    se_maps = se_maps ** 2  # square SE to get var
-    varcope_4d_img = unmask(se_maps, mask)
-    dof_maps = np.ones(beta_maps.shape)
-    for i in range(len(dofs)):
-        dof_maps[i, :] = dofs[i]
-    dof_4d_img = unmask(dof_maps, mask)
-
-    # Covariance splitting file
-    cov_data = ['/NumWaves\t1',
-                '/NumPoints\t{0}'.format(beta_maps.shape[0]),
-                '',
-                '/Matrix']
-    cov_data += ['1'] * beta_maps.shape[0]
-    with open(cov_split_file, 'w') as fo:
-        fo.write('\n'.join(cov_data))
-
-    # T contrast file
-    tcon_data = ['/ContrastName1 MFX-GLM',
-                 '/NumWaves\t1',
-                 '/NumPoints\t1',
-                 '',
-                 '/Matrix',
-                 '1']
-    with open(tcon_file, 'w') as fo:
-        fo.write('\n'.join(tcon_data))
-
-    cope_4d_img.to_filename(cope_file)
-    varcope_4d_img.to_filename(varcope_file)
-    dof_4d_img.to_filename(dof_file)
-    mask.to_filename(mask_file)
-
-    design_matrix = ['/NumWaves\t1',
-                     '/NumPoints\t{0}'.format(beta_maps.shape[0]),
-                     '/PPheights\t1',
-                     '',
-                     '/Matrix']
-    design_matrix += ['1'] * beta_maps.shape[0]
-    with open(design_file, 'w') as fo:
-        fo.write('\n'.join(design_matrix))
-
-    flameo = fsl.FLAMEO()
-    flameo.inputs.cope_file = cope_file
-    flameo.inputs.var_cope_file = varcope_file
-    flameo.inputs.cov_split_file = cov_split_file
-    flameo.inputs.design_file = design_file
-    flameo.inputs.t_con_file = tcon_file
-    flameo.inputs.mask_file = mask_file
-    flameo.inputs.run_mode = run_mode
-    flameo.inputs.dof_var_cope_file = dof_file
-    res = flameo.run()
-
-    temp_img = nib.load(res.outputs.zstats)
-    temp_img = nib.Nifti1Image(temp_img.get_fdata() * -1, temp_img.affine)
-    temp_img.to_filename(op.join(work_dir, 'temp_zstat2.nii.gz'))
-
-    temp_img2 = nib.load(res.outputs.copes)
-    temp_img2 = nib.Nifti1Image(temp_img2.get_fdata() * -1, temp_img2.affine)
-    temp_img2.to_filename(op.join(work_dir, 'temp_copes2.nii.gz'))
-
-    # FWE correction
-    # Estimate smoothness
-    est = fsl.model.SmoothEstimate()
-    est.inputs.dof = beta_maps.shape[0] - 1
-    est.inputs.mask_file = mask_file
-    est.inputs.residual_fit_file = res.outputs.res4d
-    est_res = est.run()
-
-    # Positive clusters
-    cl = fsl.model.Cluster()
-    cl.inputs.threshold = cdt_z
-    cl.inputs.pthreshold = q
-    cl.inputs.in_file = res.outputs.zstats
-    cl.inputs.cope_file = res.outputs.copes
-    cl.inputs.use_mm = True
-    cl.inputs.find_min = False
-    cl.inputs.dlh = est_res.outputs.dlh
-    cl.inputs.volume = est_res.outputs.volume
-    cl.inputs.out_threshold_file = op.join(work_dir, 'thresh_zstat1.nii.gz')
-    cl.inputs.connectivity = 26
-    cl.inputs.out_localmax_txt_file = op.join(work_dir, 'lmax_zstat1_tal.txt')
-    cl_res = cl.run()
-
-    out_cope_img = nib.load(res.outputs.copes)
-    out_t_img = nib.load(res.outputs.tstats)
-    out_z_img = nib.load(res.outputs.zstats)
-    out_cope_map = apply_mask(out_cope_img, mask)
-    out_t_map = apply_mask(out_t_img, mask)
-    out_z_map = apply_mask(out_z_img, mask)
-    pos_z_map = apply_mask(nib.load(cl_res.outputs.threshold_file), mask)
-
-    if two_sided:
-        # Negative clusters
-        cl2 = fsl.model.Cluster()
-        cl2.inputs.threshold = cdt_z
-        cl2.inputs.pthreshold = q
-        cl2.inputs.in_file = op.join(work_dir, 'temp_zstat2.nii.gz')
-        cl2.inputs.cope_file = op.join(work_dir, 'temp_copes2.nii.gz')
-        cl2.inputs.use_mm = True
-        cl2.inputs.find_min = False
-        cl2.inputs.dlh = est_res.outputs.dlh
-        cl2.inputs.volume = est_res.outputs.volume
-        cl2.inputs.out_threshold_file = op.join(work_dir,
-                                                'thresh_zstat2.nii.gz')
-        cl2.inputs.connectivity = 26
-        cl2.inputs.out_localmax_txt_file = op.join(work_dir,
-                                                   'lmax_zstat2_tal.txt')
-        cl2_res = cl2.run()
-
-        neg_z_map = apply_mask(nib.load(cl2_res.outputs.threshold_file), mask)
-        thresh_z_map = pos_z_map - neg_z_map
-    else:
-        thresh_z_map = pos_z_map
-
-    LGR.info('Cleaning up...')
-    rmtree(work_dir)
-    rmtree(res.outputs.stats_dir)
-
-    # Compile outputs
-    out_p_map = stats.norm.sf(abs(out_z_map)) * 2
-    log_p_map = -np.log10(out_p_map)
-    images = {'cope': out_cope_map,
-              'z': out_z_map,
-              'z_level-cluster': thresh_z_map,
-              't': out_t_map,
-              'p': out_p_map,
+    # Convert p to z, preserving signs
+    sign = np.sign(t_map)
+    sign[sign == 0] = 1
+    z_map = p_to_z(p_map, tail='two') * sign
+    log_p_map = -np.log10(p_map)
+    images = {'t': t_map,
+              'z': z_map,
+              'p': p_map,
               'logp': log_p_map}
     return images
-
-
-def ffx_glm(beta_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
-            work_dir='ffx_glm', two_sided=True):
-    """
-    Run a fixed-effects GLM on contrast and standard error images.
-
-    Parameters
-    ----------
-    beta_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``beta_maps``.
-    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``beta_maps``
-        and ``var_maps``. Must be in same order as rows in ``beta_maps`` and
-        ``var_maps``.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
-    cdt : :obj:`float`, optional
-        Cluster-defining p-value threshold.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
-    work_dir : :obj:`str`, optional
-        Working directory for FSL flameo outputs.
-    two_sided : :obj:`bool`, optional
-        Whether analysis should be two-sided (True) or one-sided (False).
-
-    Returns
-    -------
-    result : :obj:`dict`
-        Dictionary containing maps for test statistics, p-values, and
-        negative log(p) values.
-    """
-    result = fsl_glm(beta_maps, se_maps, sample_sizes, mask, inference='ffx',
-                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
-    return result
-
-
-class FFX_GLM(MetaEstimator):
-    """
-    An image-based meta-analytic test using contrast and standard error images.
-    Don't estimate variance, just take from first level.
-
-    Parameters
-    ----------
-    cdt : :obj:`float`, optional
-        Cluster-defining p-value threshold.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
-    two_sided : :obj:`bool`, optional
-        Whether analysis should be two-sided (True) or one-sided (False).
-    """
-    _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'se_maps': ('image', 'se'),
-        'sample_sizes': ('metadata', 'sample_sizes')
-    }
-
-    def __init__(self, cdt=0.01, q=0.05, two_sided=True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.cdt = cdt
-        self.q = q
-        self.two_sided = two_sided
-
-    def _fit(self, dataset):
-        beta_maps = self.inputs_['beta_maps']
-        var_maps = self.inputs_['se_maps']
-        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = ffx_glm(beta_maps, var_maps, sample_sizes,
-                         dataset.masker.mask_img, cdt=self.cdt, q=self.q,
-                         two_sided=self.two_sided)
-        return images
-
-
-def mfx_glm(beta_maps, se_maps, sample_sizes, mask, cdt=0.01, q=0.05,
-            work_dir='mfx_glm', two_sided=True):
-    """
-    Run a mixed-effects GLM on contrast and standard error images.
-
-    Parameters
-    ----------
-    beta_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast maps in the same space, after masking.
-    var_maps : (n_contrasts, n_voxels) :obj:`numpy.ndarray`
-        A 2D array of contrast standard error maps in the same space, after
-        masking. Must match shape and order of ``beta_maps``.
-    sample_sizes : (n_contrasts,) :obj:`numpy.ndarray`
-        A 1D array of sample sizes associated with contrasts in ``beta_maps``
-        and ``var_maps``. Must be in same order as rows in ``beta_maps`` and
-        ``var_maps``.
-    mask : :obj:`nibabel.Nifti1Image`
-        Mask image, used to unmask results maps in compiling output.
-    cdt : :obj:`float`, optional
-        Cluster-defining p-value threshold.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
-    work_dir : :obj:`str`, optional
-        Working directory for FSL flameo outputs.
-    two_sided : :obj:`bool`, optional
-        Whether analysis should be two-sided (True) or one-sided (False).
-
-    Returns
-    -------
-    result : :obj:`dict`
-        Dictionary containing maps for test statistics, p-values, and
-        negative log(p) values.
-    """
-    result = fsl_glm(beta_maps, se_maps, sample_sizes, mask, inference='mfx',
-                     cdt=cdt, q=q, work_dir=work_dir, two_sided=two_sided)
-    return result
-
-
-class MFX_GLM(MetaEstimator):
-    """
-    The gold standard image-based meta-analytic test. Uses contrast and
-    standard error images.
-
-    Parameters
-    ----------
-    cdt : :obj:`float`, optional
-        Cluster-defining p-value threshold.
-    q : :obj:`float`, optional
-        Alpha for multiple comparisons correction.
-    two_sided : :obj:`bool`, optional
-        Whether analysis should be two-sided (True) or one-sided (False).
-    """
-    _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'se_maps': ('image', 'se'),
-        'sample_sizes': ('metadata', 'sample_sizes')
-    }
-
-    def __init__(self, cdt=0.01, q=0.05, two_sided=True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.cdt = cdt
-        self.q = q
-        self.two_sided = two_sided
-
-    def _fit(self, dataset):
-        beta_maps = self.inputs_['beta_maps']
-        var_maps = self.inputs_['se_maps']
-        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        images = mfx_glm(beta_maps, var_maps, sample_sizes,
-                         dataset.masker.mask_img, cdt=self.cdt, q=self.q,
-                         two_sided=self.two_sided)
-        return images

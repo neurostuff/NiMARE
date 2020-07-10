@@ -117,6 +117,14 @@ def _get_parser():
               'files.'),
     )
     conperm_parser.add_argument(
+        '--mask',
+        dest='mask_image',
+        metavar='FILE',
+        type=lambda x: _is_valid_file(parser, x),
+        help=('Mask file.'),
+        default=None,
+    )
+    conperm_parser.add_argument(
         '--output_dir',
         dest='output_dir',
         metavar='PATH',
