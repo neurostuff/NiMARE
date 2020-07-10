@@ -34,7 +34,6 @@ API
    :toctree: generated/
    :template: module.rst
 
-   meta.esma
    meta.ibma
    meta.cbma.kernel
    meta.cbma.ale
