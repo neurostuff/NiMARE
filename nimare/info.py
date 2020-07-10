@@ -53,7 +53,6 @@ REQUIRES = [
     'matplotlib',
     'nibabel>=3.0.0',
     'nilearn',
-    'nipype',
     'nltk',
     'numpy',
     'pandas',

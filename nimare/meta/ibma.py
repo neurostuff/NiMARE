@@ -4,15 +4,9 @@ Image-based meta-analysis estimators
 from __future__ import division
 
 import logging
-from os import mkdir
-import os.path as op
-from shutil import rmtree
 
 import numpy as np
-import nibabel as nib
 from scipy import stats
-from nipype.interfaces import fsl
-from nilearn.masking import unmask, apply_mask
 import pymare
 
 from ..base import MetaEstimator
@@ -97,7 +91,7 @@ class Stouffers(MetaEstimator):
         if self.use_sample_size:
             sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
             weights = np.sqrt(sample_sizes)
-            weight_maps = np.tile(sample_sizes, (self.inputs_['z_maps'].shape[1], 1)).T
+            weight_maps = np.tile(weights, (self.inputs_['z_maps'].shape[1], 1)).T
             pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'], v=weight_maps)
         else:
             pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
