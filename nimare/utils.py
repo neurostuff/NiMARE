@@ -50,6 +50,8 @@ def dict_to_df(id_df, data, key='labels'):
     df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
     df = df.reset_index(drop=True)
     df = df.replace(to_replace='None', value=np.nan)
+    # replace nan with none
+    df = df.where(pd.notnull(df), None)
     return df
 
 
@@ -100,6 +102,8 @@ def dict_to_coordinates(data, masker, space):
     df = pd.concat(all_dfs, axis=0, join='outer', sort=False)
     df = df[columns].reset_index(drop=True)
     df = df.replace(to_replace='None', value=np.nan)
+    # replace nan with none
+    df = df.where(pd.notnull(df), None)
     df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
 
     # Now to apply transformations!
