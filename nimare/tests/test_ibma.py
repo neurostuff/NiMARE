@@ -11,12 +11,96 @@ from nimare.correct import FDRCorrector
 from ..utils import get_resource_path
 
 
-def test_fishers(testdata):
+def test_Something_DerSimonianLaird(testdata):
+    """
+    Smoke test for DerSimonianLaird.
+    """
+    meta = ibma.Something(estimator='DerSimonianLaird')
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_Something_Hedges(testdata):
+    """
+    Smoke test for Hedges.
+    """
+    meta = ibma.Something(estimator='Hedges')
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_VarianceBasedLikelihood_ml(testdata):
+    """
+    Smoke test for VarianceBasedLikelihood with ML.
+    """
+    meta = ibma.VarianceBasedLikelihood(method='ml')
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_VarianceBasedLikelihood_reml(testdata):
+    """
+    Smoke test for VarianceBasedLikelihood with REML.
+    """
+    meta = ibma.VarianceBasedLikelihood(method='reml')
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_WeightedLeastSquares(testdata):
+    """
+    Smoke test for WeightedLeastSquares.
+    """
+    meta = ibma.WeightedLeastSquares(tau2=0)
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_SampleSizeBased_ml(testdata):
+    """
+    Smoke test for SampleSizeBased with ML.
+    """
+    meta = ibma.SampleSizeBased(method='ml')
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_SampleSizeBased_reml(testdata):
+    """
+    Smoke test for SampleSizeBased with REML.
+    """
+    meta = ibma.SampleSizeBased(method='reml')
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_Stouffers(testdata):
+    meta = ibma.Stouffers(use_sample_size=False)
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_Stouffers_weighted(testdata):
+    meta = ibma.Stouffers(use_sample_size=True)
+    res = meta.fit(testdata)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_Fishers(testdata):
     """
     Smoke test for Fisher's.
     """
     meta = ibma.Fishers()
-    res = meta.fit(testdata['dset_z'])
+    res = meta.fit(testdata)
     corr = FDRCorrector(method='indep', alpha=0.001)
     cres = corr.transform(res)
     assert isinstance(meta.results, nimare.base.MetaResult)
@@ -24,57 +108,21 @@ def test_fishers(testdata):
     assert isinstance(cres, nimare.base.MetaResult)
 
 
-def test_z_perm(testdata):
+def test_RandomEffectsGLM_theoretical(testdata):
     """
-    Smoke test for z permutation.
+    Smoke test for RandomEffectsGLM with theoretical null (i.e., t-test).
     """
-    meta = ibma.Stouffers(inference='rfx', null='empirical', n_iters=10)
-    meta.fit(testdata['dset_z'])
+    meta = ibma.RFX_GLM(null='theoretical')
+    meta.fit(testdata)
     assert isinstance(meta.results, nimare.base.MetaResult)
 
 
-def test_stouffers_ffx(testdata):
+def test_RandomEffectsGLM_empirical(testdata):
     """
-    Smoke test for Stouffer's FFX.
-    """
-    meta = ibma.Stouffers(inference='ffx', null='theoretical', n_iters=None)
-    meta.fit(testdata['dset_z'])
-    assert isinstance(meta.results, nimare.base.MetaResult)
-
-
-def test_stouffers_rfx(testdata):
-    """
-    Smoke test for Stouffer's RFX.
-    """
-    meta = ibma.Stouffers(inference='rfx', null='theoretical', n_iters=None)
-    meta.fit(testdata['dset_z'])
-    assert isinstance(meta.results, nimare.base.MetaResult)
-
-
-def test_weighted_stouffers(testdata):
-    """
-    Smoke test for Weighted Stouffer's.
-    """
-    meta = ibma.WeightedStouffers()
-    meta.fit(testdata['dset_z'])
-    assert isinstance(meta.results, nimare.base.MetaResult)
-
-
-def test_con_perm(testdata):
-    """
-    Smoke test for contrast permutation.
+    Smoke test for RandomEffectsGLM with empirical null (i.e., con permutation).
     """
     meta = ibma.RFX_GLM(null='empirical', n_iters=10)
-    meta.fit(testdata['dset_betase'])
-    assert isinstance(meta.results, nimare.base.MetaResult)
-
-
-def test_rfx_glm(testdata):
-    """
-    Smoke test for RFX GLM.
-    """
-    meta = ibma.RFX_GLM(null='theoretical', n_iters=None)
-    meta.fit(testdata['dset_betase'])
+    meta.fit(testdata)
     assert isinstance(meta.results, nimare.base.MetaResult)
 
 
@@ -84,6 +132,6 @@ def test_ibma_with_custom_masker(testdata):
                     'HarvardOxford-cort-maxprob-thr25-2mm.nii.gz')
     masker = NiftiLabelsMasker(atlas)
     meta = ibma.Fishers(mask=masker)
-    meta.fit(testdata['dset_z'])
+    meta.fit(testdata)
     assert isinstance(meta.results, nimare.base.MetaResult)
     assert meta.results.maps['z'].shape == (48, )

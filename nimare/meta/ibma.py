@@ -207,8 +207,10 @@ class Something(MetaEstimator):
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'z': est_summary.z,
-            'p': est_summary.p,
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
         }
         return results
 
