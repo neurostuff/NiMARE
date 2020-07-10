@@ -17,6 +17,7 @@ import pymare
 
 from ..base import MetaEstimator
 from ..transforms import p_to_z
+from ..stats import null_to_p
 
 LGR = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class Stouffers(MetaEstimator):
         if self.use_sample_size:
             sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
             weights = np.sqrt(sample_sizes)
-            weight_maps = np.ones(self.inputs_['z_maps'].shape) * weights
+            weight_maps = np.tile(sample_sizes, (self.inputs_['z_maps'].shape[1], 1)).T
             pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'], v=weight_maps)
         else:
             pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
@@ -123,15 +124,16 @@ class SampleSizeBased(MetaEstimator):
 
     def _fit(self, dataset):
         sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        n_maps = np.fill(self.inputs_['beta_maps'].shape) * sample_sizes
-
-        pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'], n=n_maps)
+        n_maps = np.tile(sample_sizes, (self.inputs_['beta_maps'].shape[1], 1)).T
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'], n=n_maps)
         est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'z': est_summary.z,
-            'p': est_summary.p,
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
         }
         return results
 
@@ -153,8 +155,10 @@ class WeightedLeastSquares(MetaEstimator):
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'z': est_summary.z,
-            'p': est_summary.p,
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
         }
         return results
 
@@ -177,8 +181,10 @@ class VarianceBasedLikelihood(MetaEstimator):
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'z': est_summary.z,
-            'p': est_summary.p,
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
         }
         return results
 

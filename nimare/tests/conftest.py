@@ -18,24 +18,15 @@ from nimare.tests.utils import get_test_data_path
 
 
 @pytest.fixture(scope='session')
-def download_data():
-    """
-    Download and save 21 pain studies from NeuroVault to test IBMA functions.
-    """
-    nidm_path = download_nidm_pain()
-    pytest.dset_dir = nidm_path
-    return nidm_path
-
-
-@pytest.fixture(scope='session')
-def testdata(download_data):
+def testdata():
     """
     Load data from dataset into global variables.
     """
     # Load dataset
     dset_file = op.join(get_test_data_path(), 'test_pain_dataset.json')
     dset_dir = op.join(get_test_data_path(), 'test_pain_dataset')
-    dset = nimare.dataset.Dataset(dset_file)
+    mask_file = op.join(dset_dir, 'mask.nii.gz')
+    dset = nimare.dataset.Dataset(dset_file, mask=mask_file)
     dset.update_path(dset_dir)
 
     # Only retain one peak in each study in coordinates
