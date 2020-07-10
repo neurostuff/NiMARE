@@ -10,7 +10,7 @@ import pandas as pd
 import nibabel as nib
 from scipy import ndimage
 
-from .kernel import ALEKernel, KernelTransformer
+from .kernel import ALEKernel
 from ...results import MetaResult
 from ...base import CBMAEstimator
 from ...due import due
@@ -80,15 +80,9 @@ class ALE(CBMAEstimator):
     }
 
     def __init__(self, kernel_transformer=ALEKernel, **kwargs):
-        super().__init__(**kwargs)
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
-                       if k.startswith('kernel__')}
-
-        if not issubclass(kernel_transformer, KernelTransformer):
-            raise ValueError('Argument "kernel_transformer" must be a KernelTransformer')
-
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.dataset = None
-        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
 
     def _fit(self, dataset):
@@ -419,7 +413,6 @@ class ALESubtraction(CBMAEstimator):
     }
 
     def __init__(self, n_iters=10000):
-        super().__init__()
         self.meta1 = None
         self.meta2 = None
         self.results = None
@@ -558,16 +551,10 @@ class SCALE(CBMAEstimator):
 
     def __init__(self, voxel_thresh=0.001, n_iters=10000, n_cores=-1, ijk=None,
                  kernel_transformer=ALEKernel, **kwargs):
-        super().__init__(**kwargs)
-        kernel_args = {k.split('kernel__')[1]: v for k, v in kwargs.items()
-                       if k.startswith('kernel__')}
-
-        if not issubclass(kernel_transformer, KernelTransformer):
-            raise ValueError('Argument "kernel_transformer" must be a '
-                             'KernelTransformer')
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
         self.dataset = None
-        self.kernel_transformer = kernel_transformer(**kernel_args)
         self.results = None
         self.voxel_thresh = voxel_thresh
         self.ijk = ijk
