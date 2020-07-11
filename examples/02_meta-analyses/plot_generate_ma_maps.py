@@ -66,10 +66,10 @@ fig.show()
 # There are several kernels available
 # --------------------------------------------------
 # :class:`nimare.meta.cbma.kernel.MKDAKernel` convolves coordinates with a
-# sphere and take the union across voxels.
+# sphere and takes the union across voxels.
 #
 # :class:`nimare.meta.cbma.kernel.KDAKernel` convolves coordinates with a
-# sphere as well, but take the *sum* across voxels.
+# sphere as well, but takes the *sum* across voxels.
 #
 # :class:`nimare.meta.cbma.kernel.ALEKernel` convolves coordinates with a 3D
 # Gaussian, for which the FWHM is determined by the sample size of each study.
