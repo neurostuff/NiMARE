@@ -49,9 +49,8 @@ dset.images = nimare.transforms.transform_images(
 )
 
 ###############################################################################
-# Fisher's (using Estimators)
+# Fisher's
 # --------------------------------------------------
-# Here is the object-oriented approach
 meta = ibma.Fishers()
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
@@ -98,7 +97,7 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# DerSimonianLaird
+# DerSimonian-Laird
 # ------------------------------------------
 meta = ibma.Something(method='DerSimonianLaird')
 meta.fit(dset)
