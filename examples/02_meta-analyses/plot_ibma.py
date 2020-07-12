@@ -73,17 +73,17 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# RFX GLM with theoretical null distribution
+# Standard T-Test
 # -----------------------------------------------------------------------------
-meta = ibma.RandomEffectsGLM(null='theoretical', n_iters=None)
+meta = ibma.TTest(null='theoretical', n_iters=None)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# RFX GLM with empirical null distribution
+# T-Test with empirical null distribution
 # -----------------------------------------------------------------------------
-meta = ibma.RandomEffectsGLM(null='empirical', n_iters=100)
+meta = ibma.TTest(null='empirical', n_iters=100)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')

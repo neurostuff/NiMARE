@@ -131,66 +131,6 @@ class Stouffers(MetaEstimator):
         return results
 
 
-class SampleSizeBased(MetaEstimator):
-    """
-    Likelihood-based estimator for estimates with known sample sizes but
-    unknown sampling variances.
-
-    Iteratively estimates the between-subject variance tau^2 and fixed effect
-    betas using the specified likelihood-based estimator (ML or REML).
-
-    Parameters
-    ----------
-    method : {'ml', 'reml'}, optional
-        The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml'
-        (restricted maximum-likelihood). Default is 'ml'.
-
-    Notes
-    -----
-    Requires ``beta`` images and sample size from metadata.
-
-    Homogeneity of sigma^2 across studies is assumed.
-    The ML and REML solutions are obtained via SciPy’s scalar function
-    minimizer (:func:`scipy.optimize.minimize`).
-    Parameters to ``minimize()`` can be passed in as keyword arguments.
-
-    Warning
-    -------
-    All image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
-
-    See also
-    --------
-    :class:`pymare.estimators.SampleSizeBasedLikelihoodEstimator`:
-        The PyMARE estimator called by this class.
-    """
-    _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'sample_sizes': ('metadata', 'sample_sizes')
-    }
-
-    def __init__(self, method='ml', *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.method = method
-
-    def _fit(self, dataset):
-        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        n_maps = np.tile(sample_sizes, (self.inputs_['beta_maps'].shape[1], 1)).T
-        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'], n=n_maps)
-        est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
-        est.fit(pymare_dset)
-        est_summary = est.summary()
-        results = {
-            'tau2': est_summary.tau2,
-            'z': est_summary.get_fe_stats()['z'],
-            'p': est_summary.get_fe_stats()['p'],
-            'est': est_summary.get_fe_stats()['est'],
-        }
-        return results
-
-
 class WeightedLeastSquares(MetaEstimator):
     """
     Weighted least-squares meta-regression.
@@ -239,72 +179,6 @@ class WeightedLeastSquares(MetaEstimator):
         pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
                                      v=self.inputs_['varcope_maps'])
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
-        est.fit(pymare_dset)
-        est_summary = est.summary()
-        results = {
-            'tau2': est_summary.tau2,
-            'z': est_summary.get_fe_stats()['z'],
-            'p': est_summary.get_fe_stats()['p'],
-            'est': est_summary.get_fe_stats()['est'],
-        }
-        return results
-
-
-class VarianceBasedLikelihood(MetaEstimator):
-    """
-    A likelihood-based meta-analysis method for estimates with known variances.
-
-    Iteratively estimates the between-subject variance tau^2 and fixed effect
-    coefficients using the specified likelihood-based estimator (ML or REML).
-
-    Parameters
-    ----------
-    method : {'ml', 'reml'}, optional
-        The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml'
-        (restricted maximum-likelihood). Default is 'ml'.
-
-    Notes
-    -----
-    Requires ``beta`` and ``varcope`` images.
-
-    The ML and REML solutions are obtained via SciPy’s scalar function
-    minimizer (:func:`scipy.optimize.minimize`).
-    Parameters to ``minimize()`` can be passed in as keyword arguments.
-
-    Warning
-    -------
-    All image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
-
-    References
-    ----------
-    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
-      Controlled clinical trials, 7(3), 177-188.
-    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
-      likelihood-based inference in meta-analysis and meta-regression.
-      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
-
-    See also
-    --------
-    :class:`pymare.estimators.VarianceBasedLikelihoodEstimator`:
-        The PyMARE estimator called by this class.
-    """
-    _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'varcope_maps': ('image', 'varcope'),
-    }
-
-    def __init__(self, method='ml', *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.method = method
-
-    def _fit(self, dataset):
-        est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
-
-        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
-                                     v=self.inputs_['varcope_maps'])
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
@@ -418,9 +292,136 @@ class Hedges(MetaEstimator):
         return results
 
 
-class RandomEffectsGLM(MetaEstimator):
+class SampleSizeBasedLikelihood(MetaEstimator):
     """
-    A t-test on contrast images. Requires contrast images.
+    Likelihood-based estimator for estimates with known sample sizes but
+    unknown sampling variances.
+
+    Iteratively estimates the between-subject variance tau^2 and fixed effect
+    betas using the specified likelihood-based estimator (ML or REML).
+
+    Parameters
+    ----------
+    method : {'ml', 'reml'}, optional
+        The estimation method to use.
+        Either 'ml' (for maximum-likelihood) or 'reml'
+        (restricted maximum-likelihood). Default is 'ml'.
+
+    Notes
+    -----
+    Requires ``beta`` images and sample size from metadata.
+
+    Homogeneity of sigma^2 across studies is assumed.
+    The ML and REML solutions are obtained via SciPy’s scalar function
+    minimizer (:func:`scipy.optimize.minimize`).
+    Parameters to ``minimize()`` can be passed in as keyword arguments.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
+    See also
+    --------
+    :class:`pymare.estimators.SampleSizeBasedLikelihoodEstimator`:
+        The PyMARE estimator called by this class.
+    """
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
+        'sample_sizes': ('metadata', 'sample_sizes')
+    }
+
+    def __init__(self, method='ml', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.method = method
+
+    def _fit(self, dataset):
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+        n_maps = np.tile(sample_sizes, (self.inputs_['beta_maps'].shape[1], 1)).T
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'], n=n_maps)
+        est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
+        }
+        return results
+
+
+class VarianceBasedLikelihood(MetaEstimator):
+    """
+    A likelihood-based meta-analysis method for estimates with known variances.
+
+    Iteratively estimates the between-subject variance tau^2 and fixed effect
+    coefficients using the specified likelihood-based estimator (ML or REML).
+
+    Parameters
+    ----------
+    method : {'ml', 'reml'}, optional
+        The estimation method to use.
+        Either 'ml' (for maximum-likelihood) or 'reml'
+        (restricted maximum-likelihood). Default is 'ml'.
+
+    Notes
+    -----
+    Requires ``beta`` and ``varcope`` images.
+
+    The ML and REML solutions are obtained via SciPy’s scalar function
+    minimizer (:func:`scipy.optimize.minimize`).
+    Parameters to ``minimize()`` can be passed in as keyword arguments.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
+    References
+    ----------
+    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
+      Controlled clinical trials, 7(3), 177-188.
+    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
+      likelihood-based inference in meta-analysis and meta-regression.
+      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
+
+    See also
+    --------
+    :class:`pymare.estimators.VarianceBasedLikelihoodEstimator`:
+        The PyMARE estimator called by this class.
+    """
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
+        'varcope_maps': ('image', 'varcope'),
+    }
+
+    def __init__(self, method='ml', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.method = method
+
+    def _fit(self, dataset):
+        est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
+
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
+                                     v=self.inputs_['varcope_maps'])
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
+        }
+        return results
+
+
+class TTest(MetaEstimator):
+    """
+    A t-test on contrast images, with optional empirical null distribution.
+    Requires contrast images.
 
     Parameters
     ----------
@@ -457,11 +458,11 @@ class RandomEffectsGLM(MetaEstimator):
         self.results = None
 
     def _fit(self, dataset):
-        return rfx_glm(self.inputs_['beta_maps'], null=self.null,
-                       n_iters=self.n_iters, two_sided=self.two_sided)
+        return t_test(self.inputs_['beta_maps'], null=self.null,
+                      n_iters=self.n_iters, two_sided=self.two_sided)
 
 
-def rfx_glm(beta_maps, null='theoretical', n_iters=None, two_sided=True):
+def t_test(beta_maps, null='theoretical', n_iters=None, two_sided=True):
     """
     Run a random-effects (RFX) GLM on contrast maps.
 
