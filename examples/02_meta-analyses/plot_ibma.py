@@ -99,15 +99,15 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
 ###############################################################################
 # DerSimonian-Laird
 # ------------------------------------------
-meta = ibma.Something(method='DerSimonianLaird')
+meta = ibma.DerSimonianLaird()
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# Hedge's
+# Hedges
 # ------------------------------------------
-meta = ibma.Something(method='Hedges')
+meta = ibma.Hedges()
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')

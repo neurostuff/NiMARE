@@ -22,10 +22,17 @@ class Fishers(MetaEstimator):
     Requires z-statistic images, but will be extended to work with t-statistic
     images as well.
 
-    Parameters
-    ----------
-    two_sided : :obj:`bool`, optional
-        Whether to do a two- or one-sided test. Default is True.
+    Notes
+    -----
+    Requires ``z`` images.
+
+    Warning
+    -------
+    This method does not currently calculate p-values correctly. Do not use.
+
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
 
     References
     ----------
@@ -33,9 +40,10 @@ class Fishers(MetaEstimator):
       Statistical methods for research workers., (5th Ed).
       https://www.cabdirect.org/cabdirect/abstract/19351601205
 
-    Notes
-    -----
-    Sum of -log P-values (from T/Zs converted to Ps)
+    See also
+    --------
+    :class:`pymare.estimators.Fishers`:
+        The PyMARE estimator called by this class.
     """
     _required_inputs = {
         'z_maps': ('image', 'z')
@@ -66,6 +74,18 @@ class Stouffers(MetaEstimator):
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's")
         or not. Default is False.
 
+    Notes
+    -----
+    Requires ``z`` images and optionally the sample size metadata field.
+
+    Warning
+    -------
+    This method does not currently calculate p-values correctly. Do not use.
+
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
     References
     ----------
     * Stouffer, S. A., Suchman, E. A., DeVinney, L. C., Star, S. A., &
@@ -76,6 +96,11 @@ class Stouffers(MetaEstimator):
       combining probabilities in meta‐analysis. Journal of evolutionary
       biology, 24(8), 1836-1841.
       https://doi.org/10.1111/j.1420-9101.2011.02297.x
+
+    See also
+    --------
+    :class:`pymare.estimators.Stouffers`:
+        The PyMARE estimator called by this class.
     """
     _required_inputs = {
         'z_maps': ('image', 'z'),
@@ -107,6 +132,40 @@ class Stouffers(MetaEstimator):
 
 
 class SampleSizeBased(MetaEstimator):
+    """
+    Likelihood-based estimator for estimates with known sample sizes but
+    unknown sampling variances.
+
+    Iteratively estimates the between-subject variance tau^2 and fixed effect
+    betas using the specified likelihood-based estimator (ML or REML).
+
+    Parameters
+    ----------
+    method : {'ml', 'reml'}, optional
+        The estimation method to use.
+        Either 'ml' (for maximum-likelihood) or 'reml'
+        (restricted maximum-likelihood). Default is 'ml'.
+
+    Notes
+    -----
+    Requires ``beta`` images and sample size from metadata.
+
+    Homogeneity of sigma^2 across studies is assumed.
+    The ML and REML solutions are obtained via SciPy’s scalar function
+    minimizer (:func:`scipy.optimize.minimize`).
+    Parameters to ``minimize()`` can be passed in as keyword arguments.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
+    See also
+    --------
+    :class:`pymare.estimators.SampleSizeBasedLikelihoodEstimator`:
+        The PyMARE estimator called by this class.
+    """
     _required_inputs = {
         'beta_maps': ('image', 'beta'),
         'sample_sizes': ('metadata', 'sample_sizes')
@@ -133,6 +192,40 @@ class SampleSizeBased(MetaEstimator):
 
 
 class WeightedLeastSquares(MetaEstimator):
+    """
+    Weighted least-squares meta-regression.
+
+    Provides the weighted least-squares estimate of the fixed effects given
+    known/assumed between-study variance tau^2.
+    When tau^2 = 0 (default), the model is the standard inverse-weighted
+    fixed-effects meta-regression.
+
+    Parameters
+    ----------
+    tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
+        Assumed/known value of tau^2. Must be >= 0. Default is 0.
+
+    Notes
+    -----
+    Requires ``beta`` and ``varcope`` images.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
+    References
+    ----------
+    * Brockwell, S. E., & Gordon, I. R. (2001). A comparison of statistical
+      methods for meta-analysis. Statistics in Medicine, 20(6), 825–840.
+      https://doi.org/10.1002/sim.650
+
+    See also
+    --------
+    :class:`pymare.estimators.WeightedLeastSquares`:
+        The PyMARE estimator called by this class.
+    """
     _required_inputs = {
         'beta_maps': ('image', 'beta'),
         'varcope_maps': ('image', 'varcope'),
@@ -158,6 +251,46 @@ class WeightedLeastSquares(MetaEstimator):
 
 
 class VarianceBasedLikelihood(MetaEstimator):
+    """
+    A likelihood-based meta-analysis method for estimates with known variances.
+
+    Iteratively estimates the between-subject variance tau^2 and fixed effect
+    coefficients using the specified likelihood-based estimator (ML or REML).
+
+    Parameters
+    ----------
+    method : {'ml', 'reml'}, optional
+        The estimation method to use.
+        Either 'ml' (for maximum-likelihood) or 'reml'
+        (restricted maximum-likelihood). Default is 'ml'.
+
+    Notes
+    -----
+    Requires ``beta`` and ``varcope`` images.
+
+    The ML and REML solutions are obtained via SciPy’s scalar function
+    minimizer (:func:`scipy.optimize.minimize`).
+    Parameters to ``minimize()`` can be passed in as keyword arguments.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
+    References
+    ----------
+    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
+      Controlled clinical trials, 7(3), 177-188.
+    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
+      likelihood-based inference in meta-analysis and meta-regression.
+      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
+
+    See also
+    --------
+    :class:`pymare.estimators.VarianceBasedLikelihoodEstimator`:
+        The PyMARE estimator called by this class.
+    """
     _required_inputs = {
         'beta_maps': ('image', 'beta'),
         'varcope_maps': ('image', 'varcope'),
@@ -183,25 +316,95 @@ class VarianceBasedLikelihood(MetaEstimator):
         return results
 
 
-class Something(MetaEstimator):
+class DerSimonianLaird(MetaEstimator):
+    """
+    DerSimonian-Laird meta-regression estimator.
+
+    Estimates the between-subject variance tau^2 using the DerSimonian-Laird
+    (1986) method-of-moments approach.
+
+    Notes
+    -----
+    Requires ``beta`` and ``varcope`` images.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
+    References
+    ----------
+    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
+      Controlled clinical trials, 7(3), 177-188.
+    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
+      likelihood-based inference in meta-analysis and meta-regression.
+      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
+
+    See also
+    --------
+    :class:`pymare.estimators.DerSimonianLaird`:
+        The PyMARE estimator called by this class.
+    """
     _required_inputs = {
         'beta_maps': ('image', 'beta'),
         'varcope_maps': ('image', 'varcope'),
     }
 
-    def __init__(self, estimator='DerSimonianLaird', *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.estimator = estimator
 
     def _fit(self, dataset):
-        if self.estimator == 'DerSimonianLaird':
-            est = pymare.estimators.DerSimonianLaird()
-        elif self.estimator == 'Hedges':
-            est = pymare.estimators.Hedges()
-        else:
-            raise ValueError('Argument "estimator" must be one of '
-                             '("DerSimonianLaird", "Hedges")')
+        est = pymare.estimators.DerSimonianLaird()
+        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
+                                     v=self.inputs_['varcope_maps'])
+        est.fit(pymare_dset)
+        est_summary = est.summary()
+        results = {
+            'tau2': est_summary.tau2,
+            'z': est_summary.get_fe_stats()['z'],
+            'p': est_summary.get_fe_stats()['p'],
+            'est': est_summary.get_fe_stats()['est'],
+        }
+        return results
 
+
+class Hedges(MetaEstimator):
+    """
+    Hedges meta-regression estimator.
+
+    Estimates the between-subject variance tau^2 using the Hedges & Olkin (1985)
+    approach.
+
+    Notes
+    -----
+    Requires ``beta`` and ``varcope`` images.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
+
+    References
+    ----------
+    * Hedges LV, Olkin I. 1985. Statistical Methods for Meta‐Analysis.
+
+    See also
+    --------
+    :class:`pymare.estimators.Hedges`:
+        The PyMARE estimator called by this class.
+    """
+    _required_inputs = {
+        'beta_maps': ('image', 'beta'),
+        'varcope_maps': ('image', 'varcope'),
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _fit(self, dataset):
+        est = pymare.estimators.Hedges()
         pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
                                      v=self.inputs_['varcope_maps'])
         est.fit(pymare_dset)
@@ -230,6 +433,16 @@ class RandomEffectsGLM(MetaEstimator):
         Only used if ``null = 'empirical'``.
     two_sided : :obj:`bool`, optional
         Whether to do a two- or one-sided test. Default is True.
+
+    Notes
+    -----
+    Requires ``beta`` images.
+
+    Warning
+    -------
+    All image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis.
     """
     _required_inputs = {
         'beta_maps': ('image', 'beta'),
