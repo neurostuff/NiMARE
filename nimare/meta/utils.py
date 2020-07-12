@@ -10,9 +10,9 @@ import nibabel as nb
 from scipy import ndimage
 
 from .peaks2maps import model_fn
-from ...due import due
-from ... import references
-from ...extract import download_peaks2maps_model
+from ..due import due
+from .. import references
+from ..extract import download_peaks2maps_model
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 LGR = logging.getLogger(__name__)

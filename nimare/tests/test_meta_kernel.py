@@ -1,17 +1,17 @@
 """
-Test nimare.meta.cbma.kernel (CBMA kernel estimators).
+Test nimare.meta.kernel (CBMA kernel estimators).
 """
 import numpy as np
 import pandas as pd
 from scipy.ndimage.measurements import center_of_mass
 
-from nimare.meta.cbma import kernel
+from nimare.meta import kernel
 from nimare.utils import get_template, get_masker
 
 
 def test_alekernel_smoke(testdata_cbma):
     """
-    Smoke test for nimare.meta.cbma.kernel.ALEKernel
+    Smoke test for nimare.meta.kernel.ALEKernel
     """
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
@@ -163,7 +163,7 @@ def test_alekernel_sample_size(testdata_cbma):
 
 def test_mkdakernel_smoke(testdata_cbma):
     """
-    Smoke test for nimare.meta.cbma.kernel.MKDAKernel, using Dataset object.
+    Smoke test for nimare.meta.kernel.MKDAKernel, using Dataset object.
     """
     kern = kernel.MKDAKernel()
     ma_maps = kern.transform(testdata_cbma)
@@ -216,7 +216,7 @@ def test_mkdakernel_2mm(testdata_cbma):
 
 def test_kdakernel_smoke(testdata_cbma):
     """
-    Smoke test for nimare.meta.cbma.kernel.KDAKernel
+    Smoke test for nimare.meta.kernel.KDAKernel
     """
     kern = kernel.KDAKernel()
     ma_maps = kern.transform(

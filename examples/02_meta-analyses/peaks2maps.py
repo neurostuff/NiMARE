@@ -28,7 +28,7 @@ dset = nimare.dataset.Dataset(dset_file)
 ###############################################################################
 # Run peaks2maps
 # --------------------------------------------------
-k = nimare.meta.cbma.kernel.Peaks2MapsKernel()
+k = nimare.meta.kernel.Peaks2MapsKernel()
 imgs = k.transform(dset, masked=True)
 
 ###############################################################################

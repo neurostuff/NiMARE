@@ -318,6 +318,10 @@ class SampleSizeBasedLikelihood(MetaEstimator):
 
     Warning
     -------
+    Likelihood-based estimators are not parallelized across voxels, so this
+    method should not be used on full brains, unless you can submit your code
+    to a job scheduler.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -376,6 +380,10 @@ class VarianceBasedLikelihood(MetaEstimator):
 
     Warning
     -------
+    Likelihood-based estimators are not parallelized across voxels, so this
+    method should not be used on full brains, unless you can submit your code
+    to a job scheduler.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.

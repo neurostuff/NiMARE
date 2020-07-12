@@ -1,8 +1,8 @@
 """
-Test nimare.meta.cbma.ale (ALE/SCALE meta-analytic algorithms).
+Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms).
 """
 import nimare
-from nimare.meta.cbma import ale
+from nimare.meta import ale
 from nimare.correct import FWECorrector, FDRCorrector
 
 

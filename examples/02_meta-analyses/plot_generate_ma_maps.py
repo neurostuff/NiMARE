@@ -35,16 +35,16 @@ dset = nimare.dataset.Dataset(dset_file)
 ###############################################################################
 # Each kernel can taken certain parameters that control behavior
 # --------------------------------------------------------------
-# For example, :class:`nimare.meta.cbma.kernel.MKDAKernel` kernel accepts an `r`
+# For example, :class:`nimare.meta.kernel.MKDAKernel` kernel accepts an `r`
 # argument to control the radius of the kernel.
 
-kernel = nimare.meta.cbma.kernel.MKDAKernel(r=2)
+kernel = nimare.meta.kernel.MKDAKernel(r=2)
 mkda_r02 = kernel.transform(dset)
-kernel = nimare.meta.cbma.kernel.MKDAKernel(r=6)
+kernel = nimare.meta.kernel.MKDAKernel(r=6)
 mkda_r06 = kernel.transform(dset)
-kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
+kernel = nimare.meta.kernel.MKDAKernel(r=10)
 mkda_r10 = kernel.transform(dset)
-kernel = nimare.meta.cbma.kernel.MKDAKernel(r=14)
+kernel = nimare.meta.kernel.MKDAKernel(r=14)
 mkda_r14 = kernel.transform(dset)
 
 fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 10))
@@ -65,19 +65,19 @@ fig.show()
 ###############################################################################
 # There are several kernels available
 # --------------------------------------------------
-# :class:`nimare.meta.cbma.kernel.MKDAKernel` convolves coordinates with a
+# :class:`nimare.meta.kernel.MKDAKernel` convolves coordinates with a
 # sphere and takes the union across voxels.
 #
-# :class:`nimare.meta.cbma.kernel.KDAKernel` convolves coordinates with a
+# :class:`nimare.meta.kernel.KDAKernel` convolves coordinates with a
 # sphere as well, but takes the *sum* across voxels.
 #
-# :class:`nimare.meta.cbma.kernel.ALEKernel` convolves coordinates with a 3D
+# :class:`nimare.meta.kernel.ALEKernel` convolves coordinates with a 3D
 # Gaussian, for which the FWHM is determined by the sample size of each study.
-kernel = nimare.meta.cbma.kernel.MKDAKernel(r=10)
+kernel = nimare.meta.kernel.MKDAKernel(r=10)
 mkda_res = kernel.transform(dset)
-kernel = nimare.meta.cbma.kernel.KDAKernel(r=10)
+kernel = nimare.meta.kernel.KDAKernel(r=10)
 kda_res = kernel.transform(dset)
-kernel = nimare.meta.cbma.kernel.ALEKernel(sample_size=20)
+kernel = nimare.meta.kernel.ALEKernel(sample_size=20)
 ale_res = kernel.transform(dset)
 max_conv = np.max(kda_res[2].get_fdata())
 plot_stat_map(mkda_res[2], cut_coords=[-2, -10, -4], title='MKDA', vmax=max_conv)

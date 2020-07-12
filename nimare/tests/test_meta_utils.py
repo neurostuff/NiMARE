@@ -1,5 +1,5 @@
 """
-Test nimare.meta.cbma.utils (KDA-based meta-analytic algorithms).
+Test nimare.meta.utils (utility functions for meta-analysis).
 """
 
 

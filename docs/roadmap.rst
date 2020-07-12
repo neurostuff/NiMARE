@@ -18,25 +18,18 @@ never make it from publication to useable code.
 
 Ultimately, we plan to support all (or most) of the methods listed below in NiMARE:
 
-- Coordinate-based methods (`nimare.meta.cbma`)
+- Coordinate-based methods (`nimare.meta`)
     - Kernel-based methods
         - Activation likelihood estimation (ALE)
         - Specific coactivation likelihood estimation (SCALE)
         - Multilevel kernel density analysis (MKDA)
         - Kernel density analysis (KDA)
-    - Model-based methods (`nimare.meta.cbma.model`)
+    - Model-based methods (`nimare.meta.model`)
         - Bayesian hierarchical cluster process model (BHICP)
         - Hierarchical Poisson/Gamma random field model (HPGRF)
         - Spatial Bayesian latent factor regression (SBLFR)
         - Spatial binary regression (SBR)
 - Image-based methods (`nimare.meta.ibma`)
-    - Mixed effects general linear model (MFX-GLM)
-    - Random effects general linear model (RFX-GLM)
-    - Fixed effects general linear model (FFX-GLM)
-    - Stouffer's meta-analysis
-    - Random effects Stouffer's meta-analysis
-    - Weighted Stouffer's meta-analysis
-    - Fisher's meta-analysis
 - Automated annotation (`nimare.annotate`)
     - TF-IDF vectorization of text (`nimare.annotate.tfidf`)
     - Ontology-based annotation (`nimare.annotate.ontology`)

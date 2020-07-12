@@ -11,13 +11,13 @@ import nibabel as nib
 from scipy import ndimage
 
 from .kernel import ALEKernel
-from ...results import MetaResult
-from ...base import CBMAEstimator
-from ...due import due
-from ... import references
-from ...stats import null_to_p
-from ...transforms import p_to_z
-from ...utils import round2
+from ..results import MetaResult
+from ..base import CBMAEstimator
+from ..due import due
+from .. import references
+from ..stats import null_to_p
+from ..transforms import p_to_z
+from ..utils import round2
 
 LGR = logging.getLogger(__name__)
 
@@ -425,7 +425,7 @@ class ALESubtraction(CBMAEstimator):
 
         Parameters
         ----------
-        meta1/meta2 : :obj:`nimare.meta.cbma.ale.ALE`
+        meta1/meta2 : :obj:`nimare.meta.ale.ALE`
             Fitted ALE Estimators for datasets to compare.
             These Estimators do not require multiple comparisons correction.
 
@@ -534,7 +534,7 @@ class SCALE(CBMAEstimator):
         are the three columnns.
     kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.cbma.kernel.ALEKernel`.
+        :class:`nimare.meta.kernel.ALEKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.

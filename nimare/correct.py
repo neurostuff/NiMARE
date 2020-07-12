@@ -140,7 +140,7 @@ class FWECorrector(Corrector):
     To determine what methods are available for the Estimator you're using,
     check the Estimator's documentation. Estimators have special methods
     following the naming convention correct_[correction-type]_[method]
-    (e.g., :func:`nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`).
+    (e.g., :func:`nimare.meta.ale.ALE.correct_fwe_montecarlo`).
     """
 
     _correction_method = 'fwe'
@@ -183,7 +183,7 @@ class FDRCorrector(Corrector):
     To determine what methods are available for the Estimator you're using,
     check the Estimator's documentation. Estimators have special methods
     following the naming convention correct_[correction-type]_[method]
-    (e.g., :class:`nimare.meta.cbma.mkda.MKDAChi2.correct_fdr_bh`).
+    (e.g., :class:`nimare.meta.mkda.MKDAChi2.correct_fdr_bh`).
     """
 
     _correction_method = 'fdr'

@@ -1,10 +1,10 @@
 """
-Test nimare.meta.cbma.ale (SCALE meta-analytic algorithm).
+Test nimare.meta.ale (SCALE meta-analytic algorithm).
 """
 import numpy as np
 
 import nimare
-from nimare.meta.cbma import ale
+from nimare.meta import ale
 
 
 def test_scale(testdata_cbma):
