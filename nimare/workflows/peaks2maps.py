@@ -9,7 +9,7 @@ from nilearn.image import resample_to_img
 from nilearn.masking import apply_mask
 
 from ..base import MetaResult
-from ..meta.ibma import rfx_glm
+from ..meta.ibma import t_test
 from ..meta.cbma.kernel import Peaks2MapsKernel
 from ..io import convert_sleuth_to_dataset
 
@@ -30,8 +30,8 @@ def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000
     z_data = apply_mask(imgs, mask_img)
 
     LGR.info('Estimating the null distribution...')
-    res = rfx_glm(z_data, null='empirical', n_iters=n_iters)
-    res = MetaResult('rfx_glm', maps=res, mask=mask_img)
+    res = t_test(z_data, null='empirical', n_iters=n_iters)
+    res = MetaResult('t_test', maps=res, mask=mask_img)
 
     if output_dir is None:
         output_dir = os.path.dirname(os.path.abspath(sleuth_file))
