@@ -11,7 +11,7 @@ from sklearn.metrics import silhouette_score
 from ..due import due
 from .. import references
 from ..dataset import Dataset
-from ..meta.cbma.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
+from ..meta.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
 from ..io import convert_sleuth_to_dataset
 
 

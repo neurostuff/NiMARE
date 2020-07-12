@@ -10,7 +10,7 @@ import numpy as np
 
 from ..dataset import Dataset
 from ..io import convert_sleuth_to_dataset
-from ..meta.cbma.ale import SCALE
+from ..meta.ale import SCALE
 
 LGR = logging.getLogger(__name__)
 

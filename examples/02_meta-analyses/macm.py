@@ -61,7 +61,7 @@ print('{}/{} studies report zero coordinates in the '
 ###############################################################################
 # MKDA Chi2 with FWE correction
 # --------------------------------------------------
-mkda = nimare.meta.cbma.mkda.MKDAChi2(kernel__r=10)
+mkda = nimare.meta.mkda.MKDAChi2(kernel__r=10)
 mkda.fit(dset_sel, dset_unsel)
 
 corr = nimare.correct.FWECorrector(method='montecarlo', n_iters=10000)
@@ -83,7 +83,7 @@ plotting.plot_stat_map(
 # First, we must define our null model of reported coordinates in the literature.
 # We will use the IJK coordinates in Neurosynth
 ijk = dset.coordinates[['i', 'j', 'k']].values
-scale = nimare.meta.cbma.ale.SCALE(ijk=ijk, n_iters=10000, kernel__n=20)
+scale = nimare.meta.ale.SCALE(ijk=ijk, n_iters=10000, kernel__n=20)
 scale.fit(dset_sel)
 plotting.plot_stat_map(
     scale.results.get_map('z_vthresh'),

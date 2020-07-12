@@ -35,9 +35,9 @@ API
    :template: module.rst
 
    meta.ibma
-   meta.cbma.kernel
-   meta.cbma.ale
-   meta.cbma.mkda
+   meta.kernel
+   meta.ale
+   meta.mkda
 
 .. _api_results_ref:
 

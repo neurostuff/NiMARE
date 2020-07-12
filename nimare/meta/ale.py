@@ -11,13 +11,13 @@ import nibabel as nib
 from scipy import ndimage
 
 from .kernel import ALEKernel
-from ...results import MetaResult
-from ...base import CBMAEstimator
-from ...due import due
-from ... import references
-from ...stats import null_to_p
-from ...transforms import p_to_z
-from ...utils import round2
+from ..results import MetaResult
+from ..base import CBMAEstimator
+from ..due import due
+from .. import references
+from ..stats import null_to_p
+from ..transforms import p_to_z
+from ..utils import round2
 
 LGR = logging.getLogger(__name__)
 

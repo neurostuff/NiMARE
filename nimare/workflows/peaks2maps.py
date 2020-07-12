@@ -10,7 +10,7 @@ from nilearn.masking import apply_mask
 
 from ..base import MetaResult
 from ..meta.ibma import t_test
-from ..meta.cbma.kernel import Peaks2MapsKernel
+from ..meta.kernel import Peaks2MapsKernel
 from ..io import convert_sleuth_to_dataset
 
 LGR = logging.getLogger(__name__)

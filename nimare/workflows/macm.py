@@ -7,7 +7,7 @@ import pathlib
 from shutil import copyfile
 
 from ..dataset import Dataset
-from ..meta.cbma import ALE
+from ..meta.ale import ALE
 from ..correct import FWECorrector
 
 LGR = logging.getLogger(__name__)

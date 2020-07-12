@@ -9,7 +9,7 @@ from shutil import copyfile
 import numpy as np
 
 from ..io import convert_sleuth_to_dataset
-from ..meta.cbma import ALE, ALESubtraction
+from ..meta.ale import ALE, ALESubtraction
 from ..correct import FWECorrector
 
 LGR = logging.getLogger(__name__)
