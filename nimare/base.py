@@ -386,7 +386,7 @@ class Transformer(NiMAREBase):
 
 class KernelTransformer(Transformer):
     """Base class for modeled activation-generating methods in
-    :mod:`nimare.meta.cbma.kernel`.
+    :mod:`nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the

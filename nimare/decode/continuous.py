@@ -130,7 +130,7 @@ class CorrelationDecoder(Decoder):
     frequency_threshold : :obj:`float`
         Frequency threshold
     meta_estimator : :class:`nimare.base.CBMAEstimator`, optional
-        Meta-analysis estimator. Default is :class:`nimare.meta.cbma.mkda.MKDAChi2`.
+        Meta-analysis estimator. Default is :class:`nimare.meta.mkda.MKDAChi2`.
     target_image : :obj:`str`
         Name of meta-analysis results image to use for decoding.
 
