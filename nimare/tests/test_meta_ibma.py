@@ -77,9 +77,9 @@ def test_Hedges(testdata_ibma):
 
 def test_SampleSizeBasedLikelihood_ml(testdata_ibma):
     """
-    Smoke test for SampleSizeBased with ML.
+    Smoke test for SampleSizeBasedLikelihood with ML.
     """
-    meta = ibma.SampleSizeBased(method='ml')
+    meta = ibma.SampleSizeBasedLikelihood(method='ml')
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.base.MetaResult)
     assert isinstance(res, nimare.base.MetaResult)
