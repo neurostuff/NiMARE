@@ -5,7 +5,7 @@ Tests for nimare.decode.discrete.gclda_decode_roi are in test_annotate_gclda.
 """
 import pandas as pd
 from nimare.decode import continuous
-from nimare.meta.cbma import mkda
+from nimare.meta import mkda
 
 
 def test_CorrelationDecoder(testdata_laird):

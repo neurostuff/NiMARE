@@ -30,7 +30,7 @@ class MKDADensity(CBMAEstimator):
     ----------
     kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.cbma.kernel.MKDAKernel`.
+        :class:`nimare.meta.kernel.MKDAKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -244,7 +244,7 @@ class MKDAChi2(CBMAEstimator):
         the absence of evidence from the map. Default: 0.5
     kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.cbma.kernel.MKDAKernel`.
+        :class:`nimare.meta.kernel.MKDAKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -597,7 +597,7 @@ class KDA(CBMAEstimator):
     ----------
     kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.cbma.kernel.KDAKernel`.
+        :class:`nimare.meta.kernel.KDAKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
