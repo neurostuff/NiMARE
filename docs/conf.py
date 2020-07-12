@@ -191,6 +191,7 @@ intersphinx_mapping = {
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
     'nibabel': ('https://nipy.org/nibabel/', None),
     'nilearn': ('http://nilearn.github.io/', None),
+    'pymare': ('https://pymare.readthedocs.io/en/latest/', None),
 }
 
 # -----------------------------------------------------------------------------
