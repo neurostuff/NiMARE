@@ -97,14 +97,6 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# Sample Size-Based Likelihood Estimation
-# -----------------------------------------------------------------------------
-meta = ibma.SampleSizeBased(method='ml')
-meta.fit(dset)
-plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
-              draw_cross=False, cmap='RdBu_r')
-
-###############################################################################
 # DerSimonian-Laird
 # -----------------------------------------------------------------------------
 meta = ibma.DerSimonianLaird()
