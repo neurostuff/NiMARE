@@ -49,14 +49,6 @@ dset.images = nimare.transforms.transform_images(
 )
 
 ###############################################################################
-# Fisher's
-# --------------------------------------------------
-meta = ibma.Fishers()
-meta.fit(dset)
-plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
-              draw_cross=False, cmap='RdBu_r')
-
-###############################################################################
 # Stouffer's
 # --------------------------------------------------
 meta = ibma.Stouffers(use_sample_size=False)
@@ -73,8 +65,16 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
+# Fisher's
+# -----------------------------------------------------------------------------
+meta = ibma.Fishers()
+meta.fit(dset)
+plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
+              draw_cross=False, cmap='RdBu_r')
+
+###############################################################################
 # RFX GLM with theoretical null distribution
-# ------------------------------------------
+# -----------------------------------------------------------------------------
 meta = ibma.RandomEffectsGLM(null='theoretical', n_iters=None)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
@@ -82,7 +82,7 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
 
 ###############################################################################
 # RFX GLM with empirical null distribution
-# ------------------------------------------
+# -----------------------------------------------------------------------------
 meta = ibma.RandomEffectsGLM(null='empirical', n_iters=100)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
@@ -90,24 +90,24 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
 
 ###############################################################################
 # Weighted Least Squares
-# ------------------------------------------
-meta = ibma.WeightedLeastSquares(method='reml')
+# -----------------------------------------------------------------------------
+meta = ibma.WeightedLeastSquares(tau2=0)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
 # DerSimonian-Laird
-# ------------------------------------------
-meta = ibma.Something(method='DerSimonianLaird')
+# -----------------------------------------------------------------------------
+meta = ibma.DerSimonianLaird()
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# Hedge's
-# ------------------------------------------
-meta = ibma.Something(method='Hedges')
+# Hedges
+# -----------------------------------------------------------------------------
+meta = ibma.Hedges()
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')

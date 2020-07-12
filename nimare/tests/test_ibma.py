@@ -75,21 +75,21 @@ def test_WeightedLeastSquares(testdata_ibma):
     assert isinstance(res, nimare.base.MetaResult)
 
 
-def test_Something_DerSimonianLaird(testdata_ibma):
+def test_DerSimonianLaird(testdata_ibma):
     """
     Smoke test for DerSimonianLaird.
     """
-    meta = ibma.Something(estimator='DerSimonianLaird')
+    meta = ibma.DerSimonianLaird()
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.base.MetaResult)
     assert isinstance(res, nimare.base.MetaResult)
 
 
-def test_Something_Hedges(testdata_ibma):
+def test_Hedges(testdata_ibma):
     """
     Smoke test for Hedges.
     """
-    meta = ibma.Something(estimator='Hedges')
+    meta = ibma.Hedges()
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.base.MetaResult)
     assert isinstance(res, nimare.base.MetaResult)
