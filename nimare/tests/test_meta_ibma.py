@@ -45,26 +45,6 @@ def test_Stouffers_weighted(testdata_ibma):
     assert isinstance(res, nimare.base.MetaResult)
 
 
-def test_SampleSizeBased_ml(testdata_ibma):
-    """
-    Smoke test for SampleSizeBased with ML.
-    """
-    meta = ibma.SampleSizeBased(method='ml')
-    res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
-
-
-def test_SampleSizeBased_reml(testdata_ibma):
-    """
-    Smoke test for SampleSizeBased with REML.
-    """
-    meta = ibma.SampleSizeBased(method='reml')
-    res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
-
-
 def test_WeightedLeastSquares(testdata_ibma):
     """
     Smoke test for WeightedLeastSquares.
@@ -95,6 +75,26 @@ def test_Hedges(testdata_ibma):
     assert isinstance(res, nimare.base.MetaResult)
 
 
+def test_SampleSizeBasedLikelihood_ml(testdata_ibma):
+    """
+    Smoke test for SampleSizeBasedLikelihood with ML.
+    """
+    meta = ibma.SampleSizeBasedLikelihood(method='ml')
+    res = meta.fit(testdata_ibma)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
+def test_SampleSizeBasedLikelihood_reml(testdata_ibma):
+    """
+    Smoke test for SampleSizeBasedLikelihood with REML.
+    """
+    meta = ibma.SampleSizeBasedLikelihood(method='reml')
+    res = meta.fit(testdata_ibma)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(res, nimare.base.MetaResult)
+
+
 def test_VarianceBasedLikelihood_ml(testdata_ibma):
     """
     Smoke test for VarianceBasedLikelihood with ML.
@@ -115,20 +115,20 @@ def test_VarianceBasedLikelihood_reml(testdata_ibma):
     assert isinstance(res, nimare.base.MetaResult)
 
 
-def test_RandomEffectsGLM_theoretical(testdata_ibma):
+def test_TTest_theoretical(testdata_ibma):
     """
-    Smoke test for RandomEffectsGLM with theoretical null (i.e., t-test).
+    Smoke test for TTest with theoretical null (i.e., t-test).
     """
-    meta = ibma.RandomEffectsGLM(null='theoretical')
+    meta = ibma.TTest(null='theoretical')
     meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.base.MetaResult)
 
 
-def test_RandomEffectsGLM_empirical(testdata_ibma):
+def test_TTest_empirical(testdata_ibma):
     """
-    Smoke test for RandomEffectsGLM with empirical null (i.e., con permutation).
+    Smoke test for TTest with empirical null (i.e., contrast permutation).
     """
-    meta = ibma.RandomEffectsGLM(null='empirical', n_iters=10)
+    meta = ibma.TTest(null='empirical', n_iters=10)
     meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.base.MetaResult)
 
