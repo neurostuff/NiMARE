@@ -3,6 +3,8 @@ Test nimare.decode.discrete.
 
 Tests for nimare.decode.discrete.gclda_decode_roi are in test_annotate_gclda.
 """
+import pytest
+
 import pandas as pd
 from nimare.decode import discrete
 
@@ -49,3 +51,13 @@ def test_BrainMapDecoder(testdata_laird):
     decoder.fit(testdata_laird)
     decoded_df = decoder.transform(ids=ids)
     assert isinstance(decoded_df, pd.DataFrame)
+
+
+def test_BrainMapDecoder_failure(testdata_laird):
+    """
+    Smoke test for discrete.BrainMapDecoder where there are no features left.
+    """
+    ids = testdata_laird.ids[:5]
+    decoder = discrete.BrainMapDecoder(features=['doggy'])
+    with pytest.raises(Exception):
+        decoder.fit(testdata_laird)
