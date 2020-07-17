@@ -82,17 +82,21 @@ def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True,
             raise
 
     if tf_verbosity_level is None:
-        tf_verbosity_level = tf.logging.FATAL
+        tf_verbosity_level = tf.compat.v1.logging.FATAL
     target_shape = (32, 32, 32)
     affine, _ = _get_resize_arg(target_shape)
-    tf.logging.set_verbosity(tf_verbosity_level)
+    tf.compat.v1.logging.set_verbosity(tf_verbosity_level)
 
     def generate_input_fn():
-        dataset = tf.data.Dataset.from_generator(_get_generator(contrasts_coordinates,
-                                                                target_shape, affine,
-                                                                skip_out_of_bounds=skip_out_of_bounds),
-                                                 (tf.float32, tf.float32),
-                                                 (tf.TensorShape(target_shape), tf.TensorShape(target_shape)))
+        dataset = tf.compat.v1.data.Dataset.from_generator(
+            _get_generator(
+                contrasts_coordinates,
+                target_shape, affine,
+                skip_out_of_bounds=skip_out_of_bounds
+            ),
+            (tf.float32, tf.float32),
+            (tf.TensorShape(target_shape), tf.TensorShape(target_shape))
+        )
         dataset = dataset.batch(1)
         iterator = dataset.make_one_shot_iterator()
         return iterator.get_next()

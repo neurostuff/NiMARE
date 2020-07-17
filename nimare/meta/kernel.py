@@ -13,6 +13,7 @@ from .utils import compute_ma, get_ale_kernel, peaks2maps
 from ..transforms import vox2mm
 
 from ..base import KernelTransformer
+from ..utils import get_masker
 
 
 class ALEKernel(KernelTransformer):
@@ -337,13 +338,13 @@ class Peaks2MapsKernel(KernelTransformer):
         else:
             # Resample mask to data instead of data to mask
             mask = resample_to_img(mask, imgs[0], interpolation='nearest')
-            # doesn't work with masker below
+            masker = get_masker(mask)
 
-        if return_type == 'array':
-            imgs = masker.transform(imgs)
-        else:
+        if return_type == 'image':
             masked_images = []
             for img in imgs:
                 masked_images.append(math_img('map*mask', map=img, mask=mask))
             imgs = masked_images
+        else:
+            imgs = masker.transform(imgs)
         return imgs

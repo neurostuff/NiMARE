@@ -78,11 +78,11 @@ TESTS_REQUIRES = [
 
 EXTRA_REQUIRES = {
     'peaks2maps-cpu': [
-        'tensorflow>=1.0.0',
+        'tensorflow>=2.0.0',
         'appdirs'
     ],
     'peaks2maps-gpu': [
-        'tensorflow-gpu>=1.0.0',
+        'tensorflow-gpu>=2.0.0',
         'appdirs'
     ],
     'doc': [
