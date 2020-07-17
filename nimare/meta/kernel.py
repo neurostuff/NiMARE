@@ -316,7 +316,8 @@ class Peaks2MapsKernel(KernelTransformer):
             mask = masker.mask_img
             coordinates = dataset.copy()
         else:
-            mask = dataset.masker.mask_img
+            masker = dataset.masker
+            mask = masker.mask_img
             coordinates = dataset.coordinates
 
         coordinates_list = []
@@ -329,15 +330,14 @@ class Peaks2MapsKernel(KernelTransformer):
         imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
 
         if self.resample_to_mask:
-            mask = dataset.masker.mask_img
             resampled_imgs = []
             for img in imgs:
                 resampled_imgs.append(resample_to_img(img, mask))
             imgs = resampled_imgs
         else:
             # Resample mask to data instead of data to mask
-            mask = resample_to_img(dataset.masker.mask_img,
-                                   imgs[0], interpolation='nearest')
+            mask = resample_to_img(mask, imgs[0], interpolation='nearest')
+            # doesn't work with masker below
 
         if return_type == 'array':
             imgs = masker.transform(imgs)
