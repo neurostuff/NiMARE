@@ -29,7 +29,7 @@ dset = nimare.dataset.Dataset(dset_file)
 # Run peaks2maps
 # --------------------------------------------------
 k = nimare.meta.kernel.Peaks2MapsKernel()
-imgs = k.transform(dset, masked=True)
+imgs = k.transform(dset, return_type='image')
 
 ###############################################################################
 # Plot modeled activation maps
