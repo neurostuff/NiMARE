@@ -57,7 +57,7 @@ jobs:
             else
                 conda create -n py35_env python=3.5 numpy traits -yq
                 source activate py35_env
-                pip install pip --update
+                pip install pip -U
                 pip install -e .[tests,doc]
             fi
             python setup.py install --user
