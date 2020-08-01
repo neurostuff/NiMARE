@@ -45,7 +45,8 @@ Copyright (c) 2018--, NiMARE developers
 
 DOWNLOAD_URL = (
     'https://github.com/neurostuff/{name}/archive/{ver}.tar.gz'.format(
-        name=PACKAGENAME, ver=VERSION))
+        name=PACKAGENAME, ver=VERSION)
+)
 
 REQUIRES = [
     'cognitiveatlas',
@@ -53,11 +54,9 @@ REQUIRES = [
     'matplotlib',
     'nibabel>=3.0.0',
     'nilearn',
-    'nltk',
     'numpy',
     'pandas',
     'pymare @ git+https://github.com/neurostuff/PyMARE.git@5be8c79f11456ef87be04fcccb20d746c543e1f4',
-    'pyneurovault',
     'scikit-learn',
     'scipy',
     'seaborn',
@@ -85,6 +84,9 @@ EXTRA_REQUIRES = {
         'tensorflow-gpu>=2.0.0',
         'appdirs'
     ],
+    'text': [
+        'nltk'
+    ],
     'doc': [
         'sphinx>=3.1.1',
         'sphinx-argparse',
@@ -111,8 +113,8 @@ CLASSIFIERS = [
     'Intended Audience :: Science/Research',
     'License :: OSI Approved :: MIT License',
     'Operating System :: OS Independent',
-    'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',
     'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
     'Topic :: Scientific/Engineering'
 ]

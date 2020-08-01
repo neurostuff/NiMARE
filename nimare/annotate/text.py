@@ -4,7 +4,6 @@ Text extraction tools.
 import logging
 import os.path as op
 
-import nltk
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
@@ -87,6 +86,8 @@ def generate_cooccurrence(text_df, text_column='abstract', vocabulary=None,
         A DataFrame with three indices (id, first_term, and second_term) and
         one column (cooccurrence_count).
     """
+    import nltk
+
     if text_column not in text_df.columns:
         raise ValueError('Column "{0}" not found in DataFrame'.format(text_column))
 

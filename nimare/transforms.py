@@ -66,7 +66,10 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
             id_out_dir = op.dirname(options[0])
         else:
             id_out_dir = out_dir
-        new_file = op.join(id_out_dir, f'{id_}_{res}_{target}.nii.gz')
+        new_file = op.join(
+            id_out_dir,
+            '{id_}_{res}_{target}.nii.gz'.format(id_=id_, res=res, target=target)
+        )
 
         # Grab columns with actual values
         available_data = row[~row.isnull()].to_dict()
