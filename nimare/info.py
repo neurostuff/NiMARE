@@ -59,7 +59,6 @@ REQUIRES = [
     'numpy',
     'pandas',
     'pymare @ git+https://github.com/neurostuff/PyMARE.git@5be8c79f11456ef87be04fcccb20d746c543e1f4',
-    'pyneurovault',
     'scikit-learn',
     'scipy',
     'seaborn',
