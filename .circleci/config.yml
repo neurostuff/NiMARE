@@ -216,9 +216,9 @@ workflows:
               only: /.*/
       - deploy:
           requires:
-            - test_py35
             - test_py36_and_coverage
             - test_py37
+            - test_py38
           filters:
             tags:
               only: /[0-9]+(\.[0-9]+)*/
