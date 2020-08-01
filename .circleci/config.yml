@@ -46,8 +46,6 @@ jobs:
           root: /tmp
           paths:
               - src/NiMARE
-      - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ checksum "nimare/info.py" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -61,10 +59,6 @@ jobs:
                 pip install -e .[tests,doc]
             fi
             python setup.py install --user
-      - save_cache:  # environment cache tied to requirements
-          key: deps9-{{ checksum "nimare/info.py" }}
-          paths:
-            - "/opt/conda/envs/py38_env"
       - run:
           name: Run tests
           command:  |
@@ -81,8 +75,6 @@ jobs:
           root: /tmp
           paths:
               - src/NiMARE
-      - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ checksum "nimare/info.py" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -95,10 +87,6 @@ jobs:
                 pip install -e .[tests,doc]
             fi
             python setup.py install --user
-      - save_cache:  # environment cache tied to requirements
-          key: deps9-{{ checksum "nimare/info.py" }}
-          paths:
-            - "/opt/conda/envs/py37_env"
       - run:
           name: Run tests
           command:  |
@@ -117,8 +105,8 @@ jobs:
       - run:
           name: Build documentation
           command: |
-            apt-get install -yqq make
             source activate py36_env
+            apt-get install -yqq make
             make -C docs html
       - store_artifacts:
           path: /tmp/src/NiMARE/docs/_build/html
