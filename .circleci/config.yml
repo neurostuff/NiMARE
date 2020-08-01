@@ -26,7 +26,7 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py36_env
             else
-                conda create -n py36_env python=3.6 numpy scipy scikit-learn traits -yq
+                conda create -n py36_env python=3.6 numpy traits -yq
                 source activate py36_env
                 pip install -e .[tests,doc]
             fi
@@ -55,7 +55,7 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py35_env
             else
-                conda create -n py35_env python=3.5 -yq
+                conda create -n py35_env python=3.5 numpy traits -yq
                 source activate py35_env
                 pip install -e .[tests,doc]
             fi
@@ -89,7 +89,7 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py37_env
             else
-                conda create -n py37_env python=3.7 -yq
+                conda create -n py37_env python=3.7 numpy traits -yq
                 source activate py37_env
                 pip install -e .[tests,doc]
             fi
