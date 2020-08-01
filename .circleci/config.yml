@@ -7,7 +7,7 @@ orbs:
   codecov: codecov/codecov@1.0.5
 jobs:
 
-  build:
+  build_py36:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -22,19 +22,87 @@ jobs:
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
-            if [[ -e /opt/conda/envs/testenv ]]; then
+            if [[ -e /opt/conda/envs/py36_env ]]; then
                 echo "Restoring environment from cache"
-                source activate testenv
+                source activate py36_env
             else
-                conda create -n testenv python=3.6 numpy scipy scikit-learn traits -yq
-                source activate testenv
+                conda create -n py36_env python=3.6 numpy scipy scikit-learn traits -yq
+                source activate py36_env
                 pip install -e .[tests,doc]
             fi
             python setup.py install --user
       - save_cache:  # environment cache tied to requirements
           key: deps9-{{ checksum "nimare/info.py" }}
           paths:
-            - "/opt/conda/envs/testenv"
+            - "/opt/conda/envs/py36_env"
+
+  test_py35:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/NiMARE
+      - restore_cache:  # ensure this step occurs *before* installing dependencies
+          key: deps9-{{ checksum "nimare/info.py" }}
+      - run:  # will overwrite NiMARE installation each time
+          name: Generate environment
+          command:  |
+            if [[ -e /opt/conda/envs/py35_env ]]; then
+                echo "Restoring environment from cache"
+                source activate py35_env
+            else
+                conda create -n py35_env python=3.5 -yq
+                source activate py35_env
+                pip install -e .[tests,doc]
+            fi
+            python setup.py install --user
+      - save_cache:  # environment cache tied to requirements
+          key: deps9-{{ checksum "nimare/info.py" }}
+          paths:
+            - "/opt/conda/envs/py35_env"
+      - run:
+          name: Run tests
+          command:  |
+            source activate py35_env
+            py.test --ignore=nimare/tests/test_annotate_text.py nimare
+
+  test_py37:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/NiMARE
+      - restore_cache:  # ensure this step occurs *before* installing dependencies
+          key: deps9-{{ checksum "nimare/info.py" }}
+      - run:  # will overwrite NiMARE installation each time
+          name: Generate environment
+          command:  |
+            if [[ -e /opt/conda/envs/py37_env ]]; then
+                echo "Restoring environment from cache"
+                source activate py37_env
+            else
+                conda create -n py37_env python=3.7 -yq
+                source activate py37_env
+                pip install -e .[tests,doc]
+            fi
+            python setup.py install --user
+      - save_cache:  # environment cache tied to requirements
+          key: deps9-{{ checksum "nimare/info.py" }}
+          paths:
+            - "/opt/conda/envs/py37_env"
+      - run:
+          name: Run tests
+          command:  |
+            source activate py37_env
+            py.test --ignore=nimare/tests/test_annotate_text.py nimare
 
   build_docs:
     working_directory: /tmp/src/NiMARE
@@ -49,7 +117,7 @@ jobs:
           name: Build documentation
           command: |
             apt-get install -yqq make
-            source activate testenv
+            source activate py36_env
             make -C docs html
       - store_artifacts:
           path: /tmp/src/NiMARE/docs/_build/html
@@ -66,12 +134,12 @@ jobs:
       - run:
           name: Linting
           command:  |
-            source activate testenv
+            source activate py36_env
             flake8 --ignore=E501,E722,E114,E116,W503,W504 /tmp/src/NiMARE/nimare
       - store_artifacts:
           path: /tmp/data/lint
 
-  coverage_and_tests:
+  test_py36_and_coverage:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -81,11 +149,11 @@ jobs:
       - restore_cache:  # load environment
           key: deps9-{{ checksum "nimare/info.py" }}
       - run:
-          name: Coverage
+          name: Run tests and compile coverage
           command:  |
             apt-get install -yqq curl
-            source activate testenv
-            py.test --cov-report xml:coverage.xml --cov=nimare --ignore=nimare/tests/test_ibma_fsl.py --ignore=nimare/tests/test_annotate_text.py nimare
+            source activate py36_env
+            py.test --cov-report xml:coverage.xml --cov=nimare --ignore=nimare/tests/test_annotate_text.py nimare
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
 
@@ -119,6 +187,20 @@ workflows:
           filters:
             tags:
               only: /.*/
+      - test_py35:
+          filters:
+            tags:
+              only: /.*/
+      - test_py36_and_coverage:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /.*/
+      - test_py37:
+          filters:
+            tags:
+              only: /.*/
       - build_docs:
           requires:
             - build
@@ -131,15 +213,11 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - coverage_and_tests:
-          requires:
-            - build
-          filters:
-            tags:
-              only: /.*/
       - deploy:
           requires:
-            - coverage_and_tests
+            - test_py35
+            - test_py36_and_coverage
+            - test_py37
           filters:
             tags:
               only: /[0-9]+(\.[0-9]+)*/
