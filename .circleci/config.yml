@@ -36,7 +36,7 @@ jobs:
           paths:
             - "/opt/conda/envs/py36_env"
 
-  test_py35:
+  test_py38:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -51,12 +51,12 @@ jobs:
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
-            if [[ -e /opt/conda/envs/py35_env ]]; then
+            if [[ -e /opt/conda/envs/py38_env ]]; then
                 echo "Restoring environment from cache"
-                source activate py35_env
+                source activate py38_env
             else
-                conda create -n py35_env python=3.5 numpy traits -yq
-                source activate py35_env
+                conda create -n py38_env python=3.8 numpy traits -yq
+                source activate py38_env
                 pip install pip -U
                 pip install -e .[tests,doc]
             fi
@@ -64,11 +64,11 @@ jobs:
       - save_cache:  # environment cache tied to requirements
           key: deps9-{{ checksum "nimare/info.py" }}
           paths:
-            - "/opt/conda/envs/py35_env"
+            - "/opt/conda/envs/py38_env"
       - run:
           name: Run tests
           command:  |
-            source activate py35_env
+            source activate py38_env
             py.test --ignore=nimare/tests/test_annotate_text.py nimare
 
   test_py37:
@@ -188,10 +188,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - test_py35:
-          filters:
-            tags:
-              only: /.*/
       - test_py36_and_coverage:
           requires:
             - build_py36
@@ -199,6 +195,10 @@ workflows:
             tags:
               only: /.*/
       - test_py37:
+          filters:
+            tags:
+              only: /.*/
+      - test_py38:
           filters:
             tags:
               only: /.*/
