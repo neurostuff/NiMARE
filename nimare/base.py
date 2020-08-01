@@ -323,8 +323,8 @@ class CBMAEstimator(MetaEstimator):
                        if k.startswith('kernel__')}
 
         # Allow both instances and classes for the kernel transformer input.
-        if not issubclass(kernel_transformer, KernelTransformer) and \
-                not issubclass(type(kernel_transformer), KernelTransformer):
+        if not issubclass(type(kernel_transformer), KernelTransformer) and \
+                not issubclass(kernel_transformer, KernelTransformer):
             raise ValueError('Argument "kernel_transformer" must be a kind of '
                              'KernelTransformer')
         elif not inspect.isclass(kernel_transformer) and kernel_args:
