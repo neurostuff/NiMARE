@@ -55,7 +55,6 @@ REQUIRES = [
     'matplotlib',
     'nibabel>=3.0.0',
     'nilearn',
-    'nltk',
     'numpy',
     'pandas',
     'pymare @ git+https://github.com/neurostuff/PyMARE.git@5be8c79f11456ef87be04fcccb20d746c543e1f4',
@@ -85,6 +84,9 @@ EXTRA_REQUIRES = {
     'peaks2maps-gpu': [
         'tensorflow-gpu>=2.0.0',
         'appdirs'
+    ],
+    'text': [
+        'nltk'
     ],
     'doc': [
         'sphinx>=3.1.1',
