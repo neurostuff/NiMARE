@@ -45,8 +45,7 @@ Copyright (c) 2018--, NiMARE developers
 
 DOWNLOAD_URL = (
     'https://github.com/neurostuff/{name}/archive/{ver}.tar.gz'.format(
-        name=PACKAGENAME, ver=VERSION
-    )
+        name=PACKAGENAME, ver=VERSION)
 )
 
 REQUIRES = [
