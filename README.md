@@ -32,7 +32,6 @@ If you have [TensorFlow configured to take advantage of your local GPU](https://
 pip install git+https://github.com/neurostuff/NiMARE.git#egg=nimare[peaks2maps-gpu]
 ```
 
-
 ## Contributing
 
 Please see our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md)
