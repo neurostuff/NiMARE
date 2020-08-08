@@ -67,7 +67,6 @@ def test_BrainMapDecoder_failure(testdata_laird):
     """
     Smoke test for discrete.BrainMapDecoder where there are no features left.
     """
-    ids = testdata_laird.ids[:5]
     decoder = discrete.BrainMapDecoder(features=["doggy"])
     with pytest.raises(Exception):
         decoder.fit(testdata_laird)

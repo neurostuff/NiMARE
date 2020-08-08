@@ -8,7 +8,6 @@ from nilearn.input_data import NiftiLabelsMasker
 import nimare
 from nimare.meta import ibma
 from nimare.correct import FDRCorrector
-from ..utils import get_resource_path
 from .utils import get_test_data_path
 
 

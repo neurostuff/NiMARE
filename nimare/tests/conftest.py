@@ -2,18 +2,10 @@
 Runs before tests
 """
 import os.path as op
-from glob import glob
 
 import pytest
-import numpy as np
-import pandas as pd
-import nibabel as nib
-from nilearn.masking import apply_mask
 
 import nimare
-from nimare.extract import download_nidm_pain
-from nimare.transforms import mm2vox
-from nimare.utils import get_template, get_masker
 from nimare.tests.utils import get_test_data_path
 
 

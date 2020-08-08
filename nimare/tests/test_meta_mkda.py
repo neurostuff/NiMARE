@@ -1,8 +1,6 @@
 """
 Test nimare.meta.mkda (KDA-based meta-analytic algorithms).
 """
-import pytest
-
 import nimare
 from nimare.meta import mkda, kernel
 from nimare.correct import FWECorrector, FDRCorrector

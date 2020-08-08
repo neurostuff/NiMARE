@@ -1,11 +1,7 @@
 """
 Test nimare.transforms
 """
-import os.path as op
-import math
-
 import numpy as np
-import nibabel as nib
 
 from nimare import transforms, utils
 

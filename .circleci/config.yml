@@ -124,7 +124,7 @@ jobs:
           name: Linting
           command:  |
             source activate py36_env
-            flake8 --ignore=E203,E402,E722,W503 --exclude=info.py /tmp/src/NiMARE/nimare
+            flake8 /tmp/src/NiMARE/nimare
       - store_artifacts:
           path: /tmp/data/lint
 

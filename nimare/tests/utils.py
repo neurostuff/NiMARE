@@ -1,7 +1,6 @@
 """
 Utility functions for testing nimare.
 """
-import os
 import os.path as op
 
 

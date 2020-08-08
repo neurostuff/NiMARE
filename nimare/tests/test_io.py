@@ -3,10 +3,7 @@ Test nimare.dataset (Dataset IO/transformations).
 """
 import os.path as op
 
-import numpy as np
-
 import nimare
-from nimare import dataset
 from nimare import io
 from nimare.tests.utils import get_test_data_path
 

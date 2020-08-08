@@ -2,11 +2,9 @@
 Test nimare.meta.kernel (CBMA kernel estimators).
 """
 import numpy as np
-import pandas as pd
 from scipy.ndimage.measurements import center_of_mass
 
 from nimare.meta import kernel
-from nimare.utils import get_template, get_masker
 
 
 def test_alekernel_smoke(testdata_cbma):

@@ -37,10 +37,10 @@ def test_ale_subtraction(testdata_cbma):
     Smoke test for ALESubtraction
     """
     meta1 = ale.ALE()
-    res1 = meta1.fit(testdata_cbma)
+    meta1.fit(testdata_cbma)
 
     meta2 = ale.ALE()
-    res2 = meta2.fit(testdata_cbma)
+    meta2.fit(testdata_cbma)
 
     sub_meta = ale.ALESubtraction(n_iters=10)
     sub_meta.fit(meta1, meta2)

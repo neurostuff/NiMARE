@@ -1,13 +1,11 @@
 """
 Test nimare.stats
 """
-import os.path as op
 import math
 
 import numpy as np
-import nibabel as nib
 
-from nimare import stats, utils
+from nimare import stats
 
 
 def test_null_to_p():

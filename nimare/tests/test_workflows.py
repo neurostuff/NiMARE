@@ -5,10 +5,7 @@ import os
 import os.path as op
 import shutil
 
-import numpy as np
-
-import nimare
-from nimare import cli, dataset, io, workflows
+from nimare import cli, workflows
 from nimare.tests.utils import get_test_data_path
 
 

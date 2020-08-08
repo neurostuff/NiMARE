@@ -3,7 +3,6 @@ Test nimare.annotate.gclda (GCLDA).
 """
 import os.path as op
 
-import pytest
 import numpy as np
 import pandas as pd
 import nibabel as nib

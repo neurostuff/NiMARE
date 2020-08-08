@@ -3,7 +3,6 @@ Test nimare.annotate.cogat (Cognitive Atlas extraction methods).
 """
 import os.path as op
 
-import pytest
 import pandas as pd
 
 import nimare

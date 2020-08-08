@@ -2,9 +2,7 @@
 Test nimare.utils
 """
 import os.path as op
-import math
 
-import numpy as np
 import nibabel as nib
 
 from nimare import utils

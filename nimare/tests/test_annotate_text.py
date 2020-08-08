@@ -3,7 +3,6 @@ Test nimare.annotate.text (misc. text-based annotation methods).
 """
 import os.path as op
 
-import pytest
 import pandas as pd
 
 import nimare
