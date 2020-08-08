@@ -22,16 +22,13 @@ from datetime import datetime
 from distutils.version import LooseVersion
 
 import sphinx
-import sphinx_rtd_theme
 from m2r import MdInclude
+
+sys.path.insert(0, os.path.abspath(os.path.pardir))
+sys.path.insert(0, os.path.abspath('sphinxext'))
 
 import nimare
 from github_link import make_linkcode_resolve
-
-sys.path.insert(0, os.path.abspath('sphinxext'))
-sys.path.insert(0, os.path.abspath(os.path.pardir))
-
-
 
 # -- General configuration ------------------------------------------------
 
@@ -46,16 +43,17 @@ add_module_names = False
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.autodoc',  # standard
-              'sphinx.ext.autosummary',  # standard
-              'sphinx.ext.doctest',  # runs doctests
-              'sphinx.ext.intersphinx',  # links code to other packages
-              'sphinx.ext.linkcode',  # links to code from api
-              'sphinx.ext.napoleon',  # alternative to numpydoc
-              'sphinx_gallery.gen_gallery',  # example gallery
-              'sphinxarg.ext',  # argparse
-              'recommonmark',  # markdown parser
-              ]
+extensions = [
+    'sphinx.ext.autodoc',  # standard
+    'sphinx.ext.autosummary',  # standard
+    'sphinx.ext.doctest',  # runs doctests
+    'sphinx.ext.intersphinx',  # links code to other packages
+    'sphinx.ext.linkcode',  # links to code from api
+    'sphinx.ext.napoleon',  # alternative to numpydoc
+    'sphinx_gallery.gen_gallery',  # example gallery
+    'sphinxarg.ext',  # argparse
+    'recommonmark',  # markdown parser
+]
 
 if LooseVersion(sphinx.__version__) < LooseVersion('1.4'):
     extensions.append('sphinx.ext.pngmath')
@@ -126,8 +124,6 @@ napoleon_use_rtype = False
 # a list of builtin themes.
 #
 # installing theme package
-
-
 html_theme = 'sphinx_rtd_theme'
 
 # Theme options are theme-specific and customize the look and feel of a theme
@@ -143,22 +139,6 @@ html_sidebars = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
-
-# https://github.com/rtfd/sphinx_rtd_theme/issues/117
-def setup(app):
-    app.add_css_file('theme_overrides.css')
-    app.add_css_file('nimare.css')
-    app.connect('autodoc-process-docstring', generate_example_rst)
-    # Fix to https://github.com/sphinx-doc/sphinx/issues/7420
-    # from https://github.com/life4/deal/commit/7f33cbc595ed31519cefdfaaf6f415dada5acd94
-    # from m2r to make `mdinclude` work
-    app.add_config_value('no_underscore_emphasis', False, 'env')
-    app.add_config_value('m2r_parse_relative_links', False, 'env')
-    app.add_config_value('m2r_anonymous_references', False, 'env')
-    app.add_config_value('m2r_disable_inline_math', False, 'env')
-    app.add_directive('mdinclude', MdInclude)
-
 
 html_favicon = '_static/nimare_favicon.png'
 html_logo = '_static/nimare_banner.png'
@@ -225,10 +205,25 @@ plot_gallery = 'True'
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'project-template', u'project-template Documentation',
-   u'Vighnesh Birodkar', 'project-template', 'One line description of project.',
-   'Miscellaneous'),
+    ('index', 'project-template', u'project-template Documentation',
+     u'Vighnesh Birodkar', 'project-template', 'One line description of project.',
+     'Miscellaneous'),
 ]
+
+
+# https://github.com/rtfd/sphinx_rtd_theme/issues/117
+def setup(app):
+    app.add_css_file('theme_overrides.css')
+    app.add_css_file('nimare.css')
+    app.connect('autodoc-process-docstring', generate_example_rst)
+    # Fix to https://github.com/sphinx-doc/sphinx/issues/7420
+    # from https://github.com/life4/deal/commit/7f33cbc595ed31519cefdfaaf6f415dada5acd94
+    # from m2r to make `mdinclude` work
+    app.add_config_value('no_underscore_emphasis', False, 'env')
+    app.add_config_value('m2r_parse_relative_links', False, 'env')
+    app.add_config_value('m2r_anonymous_references', False, 'env')
+    app.add_config_value('m2r_disable_inline_math', False, 'env')
+    app.add_directive('mdinclude', MdInclude)
 
 
 def generate_example_rst(app, what, name, obj, options, lines):
