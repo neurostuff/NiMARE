@@ -2,12 +2,12 @@
 Base classes for datasets.
 """
 import gzip
-import pickle
 import inspect
 import logging
 import multiprocessing as mp
-from collections import defaultdict
+import pickle
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,6 @@ from six import with_metaclass
 
 from .results import MetaResult
 from .utils import get_masker
-
 
 LGR = logging.getLogger(__name__)
 

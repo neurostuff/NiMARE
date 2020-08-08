@@ -121,11 +121,7 @@ def model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
-            export_outputs={
-                temp.DEFAULT_SERVING_SIGNATURE_DEF_KEY: PredictOutput(
-                    predictions
-                )
-            },
+            export_outputs={temp.DEFAULT_SERVING_SIGNATURE_DEF_KEY: PredictOutput(predictions)},
         )
     else:
         labels, filenames = labels

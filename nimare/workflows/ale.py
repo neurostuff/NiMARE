@@ -1,16 +1,16 @@
 """
 Workflow for running an ALE meta-analysis from a Sleuth text file.
 """
-import os
 import logging
+import os
 import pathlib
 from shutil import copyfile
 
 import numpy as np
 
+from ..correct import FWECorrector
 from ..io import convert_sleuth_to_dataset
 from ..meta.ale import ALE, ALESubtraction
-from ..correct import FWECorrector
 
 LGR = logging.getLogger(__name__)
 

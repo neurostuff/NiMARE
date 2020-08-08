@@ -1,6 +1,6 @@
+import importlib.util
 import json
 import os.path as op
-import importlib.util
 
 spec = importlib.util.spec_from_file_location(
     "_version", op.join(op.dirname(__file__), "nimare/_version.py")

@@ -1,12 +1,11 @@
 """
 Base classes for datasets.
 """
-import os
 import copy
 import logging
+import os
 
 from .utils import get_masker
-
 
 LGR = logging.getLogger(__name__)
 

@@ -1,14 +1,15 @@
 """
 Workflow for running a contrast permutation meta-analysis on a set of images.
 """
-import os
 import logging
+import os
 import pathlib
+
 from nilearn.masking import apply_mask
 
+from ..meta.ibma import t_test
 from ..results import MetaResult
 from ..utils import get_template
-from ..meta.ibma import t_test
 
 LGR = logging.getLogger(__name__)
 

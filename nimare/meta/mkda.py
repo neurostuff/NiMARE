@@ -4,19 +4,19 @@ CBMA methods from the multilevel kernel density analysis (MKDA) family
 import logging
 import multiprocessing as mp
 
-import numpy as np
 import nibabel as nib
-from tqdm.auto import tqdm
+import numpy as np
 from scipy import ndimage, special
 from statsmodels.sandbox.stats.multicomp import multipletests
+from tqdm.auto import tqdm
 
-from .kernel import MKDAKernel, KDAKernel
-from ..results import MetaResult
+from .. import references
 from ..base import CBMAEstimator
+from ..due import due
+from ..results import MetaResult
 from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
-from ..due import due
-from .. import references
+from .kernel import KDAKernel, MKDAKernel
 
 LGR = logging.getLogger(__name__)
 

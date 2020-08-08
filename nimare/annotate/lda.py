@@ -1,18 +1,18 @@
 """
 Topic modeling with latent Dirichlet allocation via MALLET.
 """
+import logging
 import os
 import os.path as op
 import shutil
-import logging
 import subprocess
 
 import numpy as np
 import pandas as pd
 
+from .. import references
 from ..base import NiMAREBase
 from ..due import due
-from .. import references
 from ..extract import download_mallet, utils
 
 LGR = logging.getLogger(__name__)

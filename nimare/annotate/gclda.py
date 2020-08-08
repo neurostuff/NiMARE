@@ -4,15 +4,15 @@ Topic modeling with generalized correspondence latent Dirichlet allocation.
 import logging
 import os.path as op
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
 from scipy.stats import multivariate_normal
 
-from ..due import due
-from ..base import NiMAREBase
-from ..utils import get_template
 from .. import references
+from ..base import NiMAREBase
+from ..due import due
+from ..utils import get_template
 
 LGR = logging.getLogger(__name__)
 

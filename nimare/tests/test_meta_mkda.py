@@ -2,8 +2,8 @@
 Test nimare.meta.mkda (KDA-based meta-analytic algorithms).
 """
 import nimare
-from nimare.meta import mkda, kernel
-from nimare.correct import FWECorrector, FDRCorrector
+from nimare.correct import FDRCorrector, FWECorrector
+from nimare.meta import kernel, mkda
 
 
 def test_mkda_density_kernel_instance_with_kwargs(testdata_cbma):
