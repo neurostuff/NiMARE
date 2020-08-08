@@ -117,11 +117,12 @@ def model_fn(features, labels, mode, params):
     predictions = tf.squeeze(layers[-1], -1)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
+        temp = tf.compat.v1.saved_model.signature_constants
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
             export_outputs={
-                tf.compat.v1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: PredictOutput(
+                temp.DEFAULT_SERVING_SIGNATURE_DEF_KEY: PredictOutput(
                     predictions
                 )
             },
