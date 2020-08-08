@@ -10,9 +10,17 @@ import numpy as np
 import pandas as pd
 
 from .base import NiMAREBase
-from .utils import (dict_to_coordinates, dict_to_df, get_masker, get_template,
-                    listify, mm2vox, try_prepend, validate_df,
-                    validate_images_df)
+from .utils import (
+    dict_to_coordinates,
+    dict_to_df,
+    get_masker,
+    get_template,
+    listify,
+    mm2vox,
+    try_prepend,
+    validate_df,
+    validate_images_df,
+)
 
 LGR = logging.getLogger(__name__)
 
