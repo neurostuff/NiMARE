@@ -7,8 +7,8 @@
 # @Edited: jdkent
 # @Date: 2019-01-15 20:25:43
 
-import sys
 import os.path as op
+import sys
 
 
 def main():

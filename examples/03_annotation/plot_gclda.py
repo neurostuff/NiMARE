@@ -20,9 +20,9 @@ model using abstracts from Neurosynth and then uses it for decoding.
 """
 import os
 
-import numpy as np
 import nibabel as nib
-from nilearn.plotting import plot_stat_map, plot_roi
+import numpy as np
+from nilearn.plotting import plot_roi, plot_stat_map
 
 import nimare
 from nimare import annotate, decode

@@ -2,19 +2,19 @@
 Methods for decoding subsets of voxels (e.g., ROIs) or experiments (e.g., from
 meta-analytic clustering on a database) into text.
 """
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
-from scipy.stats import binom
 from scipy import special
+from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .utils import weight_priors
+from .. import references
 from ..base import Decoder
+from ..due import due
 from ..stats import one_way, two_way
 from ..transforms import p_to_z
-from ..due import due
-from .. import references
+from .utils import weight_priors
 
 
 @due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA decoding.")

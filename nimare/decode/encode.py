@@ -5,9 +5,9 @@ import numpy as np
 from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
 
-from .utils import weight_priors
-from ..due import due
 from .. import references
+from ..due import due
+from .utils import weight_priors
 
 
 @due.dcite(references.TEXT2BRAIN, description="Introduced text2brain models for annotation.")

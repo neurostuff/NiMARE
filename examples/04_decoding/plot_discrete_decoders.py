@@ -13,10 +13,10 @@ characterization analysis to regions of interest or subsets of the Dataset.
 """
 import os
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
-from nilearn.plotting import plot_stat_map, plot_roi
+from nilearn.plotting import plot_roi, plot_stat_map
 
 import nimare
 from nimare.decode import discrete

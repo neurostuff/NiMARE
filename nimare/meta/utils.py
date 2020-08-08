@@ -1,18 +1,18 @@
 """
 Utilities for coordinate-based meta-analysis estimators
 """
-import os
 import logging
+import os
 
+import nibabel as nb
 import numpy as np
 import numpy.linalg as npl
-import nibabel as nb
 from scipy import ndimage
 
-from .peaks2maps import model_fn
-from ..due import due
 from .. import references
+from ..due import due
 from ..extract import download_peaks2maps_model
+from .peaks2maps import model_fn
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)

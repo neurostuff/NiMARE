@@ -3,9 +3,9 @@ Test nimare.annotate.gclda (GCLDA).
 """
 import os.path as op
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
 
 import nimare
 from nimare import annotate, decode

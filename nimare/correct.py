@@ -5,8 +5,8 @@ import inspect
 import logging
 from abc import ABCMeta, abstractmethod, abstractproperty
 
-import statsmodels.stats.multitest as mc
 import numpy as np
+import statsmodels.stats.multitest as mc
 
 from .results import MetaResult
 from .transforms import p_to_z

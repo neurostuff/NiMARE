@@ -3,13 +3,13 @@
 import logging
 import os.path as op
 
-import numpy as np
 import nibabel as nib
+import numpy as np
 from scipy import stats
 from scipy.special import ndtri
 
-from .due import due
 from . import references, utils
+from .due import due
 
 LGR = logging.getLogger(__name__)
 

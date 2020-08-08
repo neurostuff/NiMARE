@@ -19,8 +19,8 @@ used to generate the MA maps differs by algorithm.
 # --------------------------------
 import os
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from nilearn.plotting import plot_stat_map
 
 import nimare

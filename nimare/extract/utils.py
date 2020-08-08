@@ -3,13 +3,13 @@ Utilities
 """
 from __future__ import division
 
+import logging
 import os
 import os.path as op
-import logging
-import requests
 
 import numpy as np
 import pandas as pd
+import requests
 from fuzzywuzzy import fuzz
 
 from ..utils import uk_to_us

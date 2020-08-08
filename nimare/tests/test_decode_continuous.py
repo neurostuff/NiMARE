@@ -4,6 +4,7 @@ Test nimare.decode.discrete.
 Tests for nimare.decode.discrete.gclda_decode_roi are in test_annotate_gclda.
 """
 import pandas as pd
+
 from nimare.decode import continuous
 from nimare.meta import mkda
 

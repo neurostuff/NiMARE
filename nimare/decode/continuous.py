@@ -4,17 +4,17 @@ Methods for decoding unthresholded brain maps into text.
 import inspect
 import logging
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
 from nilearn.masking import apply_mask
 
-from .utils import weight_priors
+from .. import references
 from ..base import Decoder
+from ..due import due
 from ..meta.mkda import MKDAChi2
 from ..stats import pearson
-from ..due import due
-from .. import references
+from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
 

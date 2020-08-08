@@ -18,14 +18,14 @@ uploaded by Dr. Camille Maumet.
 """
 import os
 
-import numpy as np
 import nibabel as nib
+import numpy as np
 from nilearn.masking import apply_mask, unmask
 from nilearn.plotting import plot_stat_map
 
 import nimare
-from nimare.tests.utils import get_test_data_path
 from nimare.meta import ibma
+from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Download data

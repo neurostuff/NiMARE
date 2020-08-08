@@ -7,6 +7,7 @@ import pandas as pd
 
 import nimare
 from nimare import annotate, extract
+
 from .utils import get_test_data_path
 
 

@@ -19,14 +19,19 @@
 import os
 import sys
 from datetime import datetime
+from distutils.version import LooseVersion
+
+import sphinx
+import sphinx_rtd_theme
 from m2r import MdInclude
+
+import nimare
+from github_link import make_linkcode_resolve
 
 sys.path.insert(0, os.path.abspath('sphinxext'))
 sys.path.insert(0, os.path.abspath(os.path.pardir))
 
-from github_link import make_linkcode_resolve
 
-import nimare
 
 # -- General configuration ------------------------------------------------
 
@@ -52,8 +57,6 @@ extensions = ['sphinx.ext.autodoc',  # standard
               'recommonmark',  # markdown parser
               ]
 
-import sphinx
-from distutils.version import LooseVersion
 if LooseVersion(sphinx.__version__) < LooseVersion('1.4'):
     extensions.append('sphinx.ext.pngmath')
 else:
@@ -124,7 +127,6 @@ napoleon_use_rtype = False
 #
 # installing theme package
 
-import sphinx_rtd_theme
 
 html_theme = 'sphinx_rtd_theme'
 

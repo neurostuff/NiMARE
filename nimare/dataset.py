@@ -1,26 +1,18 @@
 """
 Classes for representing datasets of images and/or coordinates.
 """
-import json
 import copy
+import json
 import logging
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
 
 from .base import NiMAREBase
-from .utils import (
-    get_template,
-    listify,
-    try_prepend,
-    get_masker,
-    dict_to_df,
-    dict_to_coordinates,
-    validate_df,
-    validate_images_df,
-    mm2vox,
-)
+from .utils import (dict_to_coordinates, dict_to_df, get_masker, get_template,
+                    listify, mm2vox, try_prepend, validate_df,
+                    validate_images_df)
 
 LGR = logging.getLogger(__name__)
 

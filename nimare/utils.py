@@ -1,17 +1,17 @@
 """
 Utilities
 """
-import re
 import logging
 import os.path as op
+import re
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
 from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
-from .transforms import tal2mni, mni2tal, mm2vox
+from .transforms import mm2vox, mni2tal, tal2mni
 
 LGR = logging.getLogger(__name__)
 
