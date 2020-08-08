@@ -15,8 +15,15 @@ from ..meta.ale import SCALE
 LGR = logging.getLogger(__name__)
 
 
-def scale_workflow(dataset_file, baseline=None, output_dir=None, prefix=None,
-                   n_iters=2500, v_thr=0.001, n_cores=-1):
+def scale_workflow(
+    dataset_file,
+    baseline=None,
+    output_dir=None,
+    prefix=None,
+    n_iters=2500,
+    v_thr=0.001,
+    n_cores=-1,
+):
     """
     Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
 
@@ -24,10 +31,10 @@ def scale_workflow(dataset_file, baseline=None, output_dir=None, prefix=None,
     --------
     This method is not yet implemented.
     """
-    if dataset_file.endswith('.json'):
-        dset = Dataset(dataset_file, target='mni152_2mm')
-    elif dataset_file.endswith('.txt'):
-        dset = convert_sleuth_to_dataset(dataset_file, target='mni152_2mm')
+    if dataset_file.endswith(".json"):
+        dset = Dataset(dataset_file, target="mni152_2mm")
+    elif dataset_file.endswith(".txt"):
+        dset = convert_sleuth_to_dataset(dataset_file, target="mni152_2mm")
     else:
         dset = Dataset.load(dataset_file)
 
@@ -48,8 +55,9 @@ rates. NeuroImage, 99, 559-570.
     boilerplate = boilerplate.format(
         n=len(dset.ids),
         thr=v_thr,
-        bl=baseline if baseline else 'a gray matter template',
-        n_iters=n_iters)
+        bl=baseline if baseline else "a gray matter template",
+        n_iters=n_iters,
+    )
 
     # At the moment, the baseline file should be an n_coords X 3 list of matrix
     # indices matching the dataset template, where the base rate for a given
@@ -70,12 +78,12 @@ rates. NeuroImage, 99, 559-570.
     if prefix is None:
         base = os.path.basename(dataset_file)
         prefix, _ = os.path.splitext(base)
-        prefix += '_'
-    elif not prefix.endswith('_'):
-        prefix = prefix + '_'
+        prefix += "_"
+    elif not prefix.endswith("_"):
+        prefix = prefix + "_"
 
     estimator.results.save_maps(output_dir=output_dir, prefix=prefix)
-    copyfile(dataset_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
+    copyfile(dataset_file, os.path.join(output_dir, prefix + "input_coordinates.txt"))
 
-    LGR.info('Workflow completed.')
+    LGR.info("Workflow completed.")
     LGR.info(boilerplate)

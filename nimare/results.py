@@ -33,12 +33,13 @@ class MetaResult(object):
     maps : :obj:`dict`
         Keys are map names and values are arrays.
     """
+
     def __init__(self, estimator, mask, maps=None):
         self.estimator = estimator
         self.masker = get_masker(mask)
         self.maps = maps or {}
 
-    def get_map(self, name, return_type='image'):
+    def get_map(self, name, return_type="image"):
         """
         Get stored map as image or array.
 
@@ -53,10 +54,9 @@ class MetaResult(object):
         m = self.maps.get(name)
         if m is None:
             raise ValueError("No map with name '{}' found.".format(name))
-        return self.masker.inverse_transform(m) if return_type == 'image' else m
+        return self.masker.inverse_transform(m) if return_type == "image" else m
 
-    def save_maps(self, output_dir='.', prefix='', prefix_sep='_',
-                  names=None):
+    def save_maps(self, output_dir=".", prefix="", prefix_sep="_", names=None):
         """
         Save results to files.
 
@@ -75,8 +75,8 @@ class MetaResult(object):
             Names of specific maps to write out. If None, save all maps.
             Default is None.
         """
-        if prefix == '':
-            prefix_sep = ''
+        if prefix == "":
+            prefix_sep = ""
 
         if not prefix.endswith(prefix_sep):
             prefix = prefix + prefix_sep
@@ -88,7 +88,7 @@ class MetaResult(object):
         maps = {k: self.get_map(k) for k in names}
 
         for imgtype, img in maps.items():
-            filename = prefix + imgtype + '.nii.gz'
+            filename = prefix + imgtype + ".nii.gz"
             outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)
 
@@ -96,7 +96,5 @@ class MetaResult(object):
         """
         Returns copy of result object.
         """
-        new = MetaResult(self.estimator,
-                         self.masker,
-                         copy.deepcopy(self.maps))
+        new = MetaResult(self.estimator, self.masker, copy.deepcopy(self.maps))
         return new

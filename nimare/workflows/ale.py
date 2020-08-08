@@ -15,22 +15,29 @@ from ..correct import FWECorrector
 LGR = logging.getLogger(__name__)
 
 
-def ale_sleuth_workflow(sleuth_file, sleuth_file2=None, output_dir=None,
-                        prefix=None, n_iters=10000, v_thr=0.001,
-                        fwhm=None, n_cores=-1):
+def ale_sleuth_workflow(
+    sleuth_file,
+    sleuth_file2=None,
+    output_dir=None,
+    prefix=None,
+    n_iters=10000,
+    v_thr=0.001,
+    fwhm=None,
+    n_cores=-1,
+):
     """
     Perform ALE meta-analysis from Sleuth text file.
     """
-    LGR.info('Loading coordinates...')
+    LGR.info("Loading coordinates...")
 
     if fwhm:
-        fwhm_str = 'of {0} mm'.format(fwhm)
+        fwhm_str = "of {0} mm".format(fwhm)
     else:
-        fwhm_str = 'determined by sample size'
+        fwhm_str = "determined by sample size"
 
     if not sleuth_file2:
-        dset = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
-        n_subs = dset.get_metadata(field='sample_sizes')
+        dset = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
+        n_subs = dset.get_metadata(field="sample_sizes")
         n_subs = np.sum(n_subs)
 
         boilerplate = """
@@ -88,10 +95,11 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 
         ale = ALE(kernel__fwhm=fwhm)
 
-        LGR.info('Performing meta-analysis...')
+        LGR.info("Performing meta-analysis...")
         results = ale.fit(dset)
-        corr = FWECorrector(method='montecarlo', n_iters=n_iters,
-                            voxel_thresh=v_thr, n_cores=n_cores)
+        corr = FWECorrector(
+            method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
+        )
         cres = corr.transform(results)
 
         boilerplate = boilerplate.format(
@@ -100,13 +108,14 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
             n_foci=dset.coordinates.shape[0],
             unc=v_thr,
             n_iters=n_iters,
-            fwhm_str=fwhm_str)
+            fwhm_str=fwhm_str,
+        )
     else:
-        dset1 = convert_sleuth_to_dataset(sleuth_file, target='ale_2mm')
-        dset2 = convert_sleuth_to_dataset(sleuth_file2, target='ale_2mm')
-        n_subs1 = dset1.get_metadata(field='sample_sizes')
+        dset1 = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
+        dset2 = convert_sleuth_to_dataset(sleuth_file2, target="ale_2mm")
+        n_subs1 = dset1.get_metadata(field="sample_sizes")
         n_subs1 = np.sum(n_subs1)
-        n_subs2 = dset2.get_metadata(field='sample_sizes')
+        n_subs2 = dset2.get_metadata(field="sample_sizes")
         n_subs2 = np.sum(n_subs2)
 
         boilerplate = """
@@ -168,11 +177,12 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         ale1 = ALE(kernel__fwhm=fwhm)
         ale2 = ALE(kernel__fwhm=fwhm)
 
-        LGR.info('Performing meta-analyses...')
+        LGR.info("Performing meta-analyses...")
         res1 = ale1.fit(dset1)
         res2 = ale2.fit(dset2)
-        corr = FWECorrector(method='montecarlo', n_iters=n_iters,
-                            voxel_thresh=v_thr, n_cores=n_cores)
+        corr = FWECorrector(
+            method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
+        )
         cres1 = corr.transform(res1)
         cres2 = corr.transform(res2)
         sub = ALESubtraction(n_iters=n_iters)
@@ -187,7 +197,8 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
             n_foci2=dset2.coordinates.shape[0],
             unc=v_thr,
             n_iters=n_iters,
-            fwhm_str=fwhm_str)
+            fwhm_str=fwhm_str,
+        )
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(sleuth_file))
@@ -197,23 +208,23 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
     if prefix is None:
         base = os.path.basename(sleuth_file)
         prefix, _ = os.path.splitext(base)
-        prefix += '_'
-    elif not prefix.endswith('_'):
-        prefix = prefix + '_'
+        prefix += "_"
+    elif not prefix.endswith("_"):
+        prefix = prefix + "_"
 
-    LGR.info('Saving output maps...')
+    LGR.info("Saving output maps...")
     if not sleuth_file2:
         cres.save_maps(output_dir=output_dir, prefix=prefix)
-        copyfile(sleuth_file, os.path.join(output_dir, prefix + 'input_coordinates.txt'))
+        copyfile(sleuth_file, os.path.join(output_dir, prefix + "input_coordinates.txt"))
     else:
-        prefix1 = os.path.splitext(os.path.basename(sleuth_file))[0] + '_'
-        prefix2 = os.path.splitext(os.path.basename(sleuth_file2))[0] + '_'
-        prefix3 = prefix + 'subtraction_'
+        prefix1 = os.path.splitext(os.path.basename(sleuth_file))[0] + "_"
+        prefix2 = os.path.splitext(os.path.basename(sleuth_file2))[0] + "_"
+        prefix3 = prefix + "subtraction_"
         cres1.save_maps(output_dir=output_dir, prefix=prefix1)
         cres2.save_maps(output_dir=output_dir, prefix=prefix2)
         sres.save_maps(output_dir=output_dir, prefix=prefix3)
-        copyfile(sleuth_file, os.path.join(output_dir, prefix + 'group1_input_coordinates.txt'))
-        copyfile(sleuth_file2, os.path.join(output_dir, prefix + 'group2_input_coordinates.txt'))
+        copyfile(sleuth_file, os.path.join(output_dir, prefix + "group1_input_coordinates.txt"))
+        copyfile(sleuth_file2, os.path.join(output_dir, prefix + "group2_input_coordinates.txt"))
 
-    LGR.info('Workflow completed.')
+    LGR.info("Workflow completed.")
     LGR.info(boilerplate)

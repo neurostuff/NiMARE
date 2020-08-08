@@ -18,11 +18,12 @@ from ..extract import download_mallet, utils
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.LDA, description='Introduces LDA.')
-@due.dcite(references.MALLET, description='Citation for MALLET toolbox')
-@due.dcite(references.LDAMODEL,
-           description='First use of LDA for automated annotation of '
-           'neuroimaging literature.')
+@due.dcite(references.LDA, description="Introduces LDA.")
+@due.dcite(references.MALLET, description="Citation for MALLET toolbox")
+@due.dcite(
+    references.LDAMODEL,
+    description="First use of LDA for automated annotation of " "neuroimaging literature.",
+)
 class LDAModel(NiMAREBase):
     """
     Perform topic modeling using Latent Dirichlet Allocation (LDA).
@@ -66,63 +67,70 @@ class LDAModel(NiMAREBase):
         biology 8.10 (2012): e1002707.
         https://doi.org/10.1371/journal.pcbi.1002707
     """
-    def __init__(self, text_df, text_column='abstract', n_topics=50,
-                 n_iters=1000, alpha='auto', beta=0.001):
-        mallet_dir = download_mallet()
-        mallet_bin = op.join(mallet_dir, 'bin/mallet')
 
-        model_dir = utils._get_dataset_dir('mallet_model')
-        text_dir = op.join(model_dir, 'texts')
+    def __init__(
+        self, text_df, text_column="abstract", n_topics=50, n_iters=1000, alpha="auto", beta=0.001
+    ):
+        mallet_dir = download_mallet()
+        mallet_bin = op.join(mallet_dir, "bin/mallet")
+
+        model_dir = utils._get_dataset_dir("mallet_model")
+        text_dir = op.join(model_dir, "texts")
 
         if not op.isdir(model_dir):
             os.mkdir(model_dir)
 
-        if alpha == 'auto':
-            alpha = 50. / n_topics
+        if alpha == "auto":
+            alpha = 50.0 / n_topics
         elif not isinstance(alpha, float):
             raise ValueError('Argument alpha must be float or "auto"')
 
         self.params = {
-            'n_topics': n_topics,
-            'n_iters': n_iters,
-            'alpha': alpha,
-            'beta': beta,
+            "n_topics": n_topics,
+            "n_iters": n_iters,
+            "alpha": alpha,
+            "beta": beta,
         }
         self.model_dir = model_dir
 
         # Check for presence of text files and convert if necessary
         if not op.isdir(text_dir):
-            LGR.info('Texts folder not found. Creating text files...')
+            LGR.info("Texts folder not found. Creating text files...")
             os.mkdir(text_dir)
-            for id_ in text_df['id'].values:
-                text = text_df.loc[text_df['id'] == id_, text_column].values[0]
-                with open(op.join(text_dir, str(id_) + '.txt'), 'w') as fo:
+            for id_ in text_df["id"].values:
+                text = text_df.loc[text_df["id"] == id_, text_column].values[0]
+                with open(op.join(text_dir, str(id_) + ".txt"), "w") as fo:
                     fo.write(text)
 
         # Run MALLET topic modeling
-        LGR.info('Generating topics...')
-        import_str = ('{mallet} import-dir '
-                      '--input {text_dir} '
-                      '--output {outdir}/topic-input.mallet '
-                      '--keep-sequence '
-                      '--remove-stopwords').format(mallet=mallet_bin,
-                                                   text_dir=text_dir,
-                                                   outdir=model_dir)
+        LGR.info("Generating topics...")
+        import_str = (
+            "{mallet} import-dir "
+            "--input {text_dir} "
+            "--output {outdir}/topic-input.mallet "
+            "--keep-sequence "
+            "--remove-stopwords"
+        ).format(mallet=mallet_bin, text_dir=text_dir, outdir=model_dir)
 
-        train_str = ('{mallet} train-topics '
-                     '--input {out}/topic-input.mallet '
-                     '--num-topics {n_topics} '
-                     '--output-doc-topics {out}/doc_topics.txt '
-                     '--topic-word-weights-file {out}/topic_word_weights.txt '
-                     '--num-iterations {n_iters} '
-                     '--output-model {out}/saved_model.mallet '
-                     '--random-seed 1 '
-                     '--alpha {alpha} '
-                     '--beta {beta}').format(mallet=mallet_bin, out=model_dir,
-                                             n_topics=self.params['n_topics'],
-                                             n_iters=self.params['n_iters'],
-                                             alpha=self.params['alpha'],
-                                             beta=self.params['beta'])
+        train_str = (
+            "{mallet} train-topics "
+            "--input {out}/topic-input.mallet "
+            "--num-topics {n_topics} "
+            "--output-doc-topics {out}/doc_topics.txt "
+            "--topic-word-weights-file {out}/topic_word_weights.txt "
+            "--num-iterations {n_iters} "
+            "--output-model {out}/saved_model.mallet "
+            "--random-seed 1 "
+            "--alpha {alpha} "
+            "--beta {beta}"
+        ).format(
+            mallet=mallet_bin,
+            out=model_dir,
+            n_topics=self.params["n_topics"],
+            n_iters=self.params["n_iters"],
+            alpha=self.params["alpha"],
+            beta=self.params["beta"],
+        )
         self.commands_ = [import_str, train_str]
 
     def fit(self):
@@ -140,7 +148,7 @@ class LDAModel(NiMAREBase):
         subprocess.call(self.commands_[1], shell=True)
 
         # Read in and convert doc_topics and topic_keys.
-        topic_names = ['topic_{0:03d}'.format(i) for i in range(self.params['n_topics'])]
+        topic_names = ["topic_{0:03d}".format(i) for i in range(self.params["n_topics"])]
 
         # doc_topics: Topic weights for each paper.
         # The conversion here is pretty ugly at the moment.
@@ -150,10 +158,14 @@ class LDAModel(NiMAREBase):
         # After that, odd columns are topic numbers and even columns are the
         # weights for the topics in the preceding column. These columns are sorted
         # on an individual id basis by the weights.
-        n_cols = (2 * self.params['n_topics']) + 1
-        dt_df = pd.read_csv(op.join(self.model_dir, 'doc_topics.txt'),
-                            delimiter='\t', skiprows=1, header=None,
-                            index_col=0)
+        n_cols = (2 * self.params["n_topics"]) + 1
+        dt_df = pd.read_csv(
+            op.join(self.model_dir, "doc_topics.txt"),
+            delimiter="\t",
+            skiprows=1,
+            header=None,
+            index_col=0,
+        )
         dt_df = dt_df[dt_df.columns[:n_cols]]
 
         # Get ids from filenames
@@ -162,11 +174,11 @@ class LDAModel(NiMAREBase):
         # Put weights (even cols) and topics (odd cols) into separate dfs.
         weights_df = dt_df[dt_df.columns[2::2]]
         weights_df.index = dt_df[1]
-        weights_df.columns = range(self.params['n_topics'])
+        weights_df.columns = range(self.params["n_topics"])
 
         topics_df = dt_df[dt_df.columns[1:-1:2]]
         topics_df.index = dt_df[1]
-        topics_df.columns = range(self.params['n_topics'])
+        topics_df.columns = range(self.params["n_topics"])
 
         # Sort columns in weights_df separately for each row using topics_df.
         sorters_df = topics_df.apply(self._get_sort, axis=1)
@@ -177,24 +189,25 @@ class LDAModel(NiMAREBase):
             weights[i, :] = weights[i, sorters[i, :]]
 
         # Define topic names (e.g., topic_000)
-        p_topic_g_doc_df = pd.DataFrame(columns=topic_names, data=weights,
-                                        index=dt_df[1])
-        p_topic_g_doc_df.index.name = 'id'
+        p_topic_g_doc_df = pd.DataFrame(columns=topic_names, data=weights, index=dt_df[1])
+        p_topic_g_doc_df.index.name = "id"
         self.p_topic_g_doc_ = p_topic_g_doc_df.values
         self.p_topic_g_doc_df_ = p_topic_g_doc_df
 
         # Topic word weights
-        p_word_g_topic_df = pd.read_csv(op.join(self.model_dir, 'topic_word_weights.txt'),
-                                        dtype=str, keep_default_na=False,
-                                        na_values=[], sep='\t', header=None,
-                                        names=['topic', 'word', 'weight'])
-        p_word_g_topic_df['weight'] = p_word_g_topic_df['weight'].astype(float)
-        p_word_g_topic_df['topic'] = p_word_g_topic_df['topic'].astype(int)
-        p_word_g_topic_df = p_word_g_topic_df.pivot(index='topic',
-                                                    columns='word',
-                                                    values='weight')
-        p_word_g_topic_df = p_word_g_topic_df.div(p_word_g_topic_df.sum(axis=1),
-                                                  axis=0)
+        p_word_g_topic_df = pd.read_csv(
+            op.join(self.model_dir, "topic_word_weights.txt"),
+            dtype=str,
+            keep_default_na=False,
+            na_values=[],
+            sep="\t",
+            header=None,
+            names=["topic", "word", "weight"],
+        )
+        p_word_g_topic_df["weight"] = p_word_g_topic_df["weight"].astype(float)
+        p_word_g_topic_df["topic"] = p_word_g_topic_df["topic"].astype(int)
+        p_word_g_topic_df = p_word_g_topic_df.pivot(index="topic", columns="word", values="weight")
+        p_word_g_topic_df = p_word_g_topic_df.div(p_word_g_topic_df.sum(axis=1), axis=0)
         self.p_word_g_topic_ = p_word_g_topic_df.values
         self.p_word_g_topic_df_ = p_word_g_topic_df
 

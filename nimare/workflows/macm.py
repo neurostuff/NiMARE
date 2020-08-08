@@ -13,20 +13,21 @@ from ..correct import FWECorrector
 LGR = logging.getLogger(__name__)
 
 
-def macm_workflow(dataset_file, mask_file, output_dir=None, prefix=None,
-                  n_iters=10000, v_thr=0.001, n_cores=-1):
+def macm_workflow(
+    dataset_file, mask_file, output_dir=None, prefix=None, n_iters=10000, v_thr=0.001, n_cores=-1
+):
     """
     Perform MACM with ALE algorithm.
     """
-    LGR.info('Loading coordinates...')
+    LGR.info("Loading coordinates...")
     dset = Dataset(dataset_file)
     sel_ids = dset.get_studies_by_mask(mask_file)
     sel_dset = dset.slice(sel_ids)
 
     # override sample size
-    n_subs_db = dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
-    n_subs_sel = sel_dset.coordinates.drop_duplicates('id')['n'].astype(float).astype(int).sum()
-    LGR.info('{0} studies selected out of {1}.'.format(len(sel_ids), len(dset.ids)))
+    n_subs_db = dset.coordinates.drop_duplicates("id")["n"].astype(float).astype(int).sum()
+    n_subs_sel = sel_dset.coordinates.drop_duplicates("id")["n"].astype(float).astype(int).sum()
+    LGR.info("{0} studies selected out of {1}.".format(len(sel_ids), len(dset.ids)))
 
     boilerplate = """
 Meta-analytic connectivity modeling (MACM; Laird et al., 2009; Robinson et al.,
@@ -98,11 +99,10 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
 33(1), 1–13.
     """
 
-    LGR.info('Performing meta-analysis...')
+    LGR.info("Performing meta-analysis...")
     ale = ALE()
     results = ale.fit(dset)
-    corr = FWECorrector(method='montecarlo', n_iters=n_iters,
-                        voxel_thresh=v_thr, n_cores=n_cores)
+    corr = FWECorrector(method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores)
     cres = corr.transform(results)
 
     boilerplate = boilerplate.format(
@@ -113,7 +113,8 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         n_subs_sel=n_subs_sel,
         n_foci_sel=sel_dset.coordinates.shape[0],
         unc=v_thr,
-        n_iters=n_iters)
+        n_iters=n_iters,
+    )
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(dataset_file))
@@ -123,10 +124,10 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
     if prefix is None:
         base = os.path.basename(dataset_file)
         prefix, _ = os.path.splitext(base)
-        prefix += '_'
+        prefix += "_"
 
-    LGR.info('Saving output maps...')
+    LGR.info("Saving output maps...")
     cres.save_maps(output_dir=output_dir, prefix=prefix)
-    copyfile(dataset_file, os.path.join(output_dir, prefix + 'input_dataset.json'))
-    LGR.info('Workflow completed.')
+    copyfile(dataset_file, os.path.join(output_dir, prefix + "input_dataset.json"))
+    LGR.info("Workflow completed.")
     LGR.info(boilerplate)

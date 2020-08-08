@@ -9,6 +9,7 @@ def model_fn(features, labels, mode, params):
     """
     import tensorflow as tf
     from tensorflow.python.estimator.export.export_output import PredictOutput
+
     ngf = 64
     layers = []
 
@@ -16,31 +17,32 @@ def model_fn(features, labels, mode, params):
 
     input_images_placeholder = tf.expand_dims(features, -1)
 
-    conv_args = {"strides": 2,
-                 "kernel_size": 4,
-                 "padding": "valid",
-                 "activation": tf.nn.leaky_relu,
-                 "kernel_initializer": tf.random_normal_initializer(0, 0.02),
-                 "name": "conv",
-                 "use_bias": False}
+    conv_args = {
+        "strides": 2,
+        "kernel_size": 4,
+        "padding": "valid",
+        "activation": tf.nn.leaky_relu,
+        "kernel_initializer": tf.random_normal_initializer(0, 0.02),
+        "name": "conv",
+        "use_bias": False,
+    }
 
     deconv_args = conv_args.copy()
     deconv_args["padding"] = "same"
     deconv_args["name"] = "deconv"
 
-    batchnorm_args = {"scale": True,
-                      "gamma_initializer": tf.random_normal_initializer(1.0, 0.02),
-                      "center": True,
-                      "beta_initializer": tf.zeros_initializer(),
-                      "name": "batchnorm",
-                      "training": training_flag}
+    batchnorm_args = {
+        "scale": True,
+        "gamma_initializer": tf.random_normal_initializer(1.0, 0.02),
+        "center": True,
+        "beta_initializer": tf.zeros_initializer(),
+        "name": "batchnorm",
+        "training": training_flag,
+    }
 
     def pad_and_conv(input, out_channels, conv_args):
-        padded_input = tf.pad(input,
-                              [[0, 0], [1, 1], [1, 1], [1, 1], [0, 0]],
-                              mode="CONSTANT")
-        convolved = tf.compat.v1.layers.conv3d(padded_input, out_channels,
-                                               **conv_args)
+        padded_input = tf.pad(input, [[0, 0], [1, 1], [1, 1], [1, 1], [0, 0]], mode="CONSTANT")
+        convolved = tf.compat.v1.layers.conv3d(padded_input, out_channels, **conv_args)
         return convolved
 
     # encoder_1: [batch, 256, 256, in_channels] => [batch, 128, 128, ngf]
@@ -69,8 +71,7 @@ def model_fn(features, labels, mode, params):
             convolved = pad_and_conv(layers[-1], out_channels, conv_args)
             output = tf.compat.v1.layers.batch_normalization(convolved, **batchnorm_args)
             if dropout > 0.0:
-                output = tf.compat.v1.layers.dropout(output, rate=dropout,
-                                                     training=training_flag)
+                output = tf.compat.v1.layers.dropout(output, rate=dropout, training=training_flag)
             layers.append(output)
 
     layer_specs = [
@@ -97,14 +98,11 @@ def model_fn(features, labels, mode, params):
             else:
                 input = tf.concat([layers[-1], layers[skip_layer]], axis=4)
 
-            output = tf.compat.v1.layers.conv3d_transpose(input, out_channels,
-                                                          **deconv_args)
-            output = tf.compat.v1.layers.batch_normalization(output,
-                                                             **batchnorm_args)
+            output = tf.compat.v1.layers.conv3d_transpose(input, out_channels, **deconv_args)
+            output = tf.compat.v1.layers.batch_normalization(output, **batchnorm_args)
 
             if dropout > 0.0:
-                output = tf.compat.v1.layers.dropout(output, rate=dropout,
-                                                     training=training_flag)
+                output = tf.compat.v1.layers.dropout(output, rate=dropout, training=training_flag)
 
             layers.append(output)
 
@@ -112,19 +110,22 @@ def model_fn(features, labels, mode, params):
     with tf.compat.v1.variable_scope("decoder_1"):
         input = tf.concat([layers[-1], layers[0]], axis=4)
         this_args = deconv_args.copy()
-        this_args['activation'] = None
+        this_args["activation"] = None
         output = tf.compat.v1.layers.conv3d_transpose(input, 1, **this_args)
         layers.append(output)
 
     predictions = tf.squeeze(layers[-1], -1)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
+        temp = tf.compat.v1.saved_model.signature_constants
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
             export_outputs={
-                tf.compat.v1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: PredictOutput(predictions)
-            }
+                temp.DEFAULT_SERVING_SIGNATURE_DEF_KEY: PredictOutput(
+                    predictions
+                )
+            },
         )
     else:
         labels, filenames = labels
@@ -137,13 +138,12 @@ def model_fn(features, labels, mode, params):
         # (and also increment the global step counter) as a single training step.
         extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(extra_update_ops):
-            train_op = optimizer.minimize(loss,
-                                          global_step=tf.train.get_global_step())
+            train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
             loss=loss,
             train_op=train_op,
-            export_outputs={"output": predictions}
+            export_outputs={"output": predictions},
         )

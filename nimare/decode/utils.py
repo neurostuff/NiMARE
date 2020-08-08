@@ -22,9 +22,9 @@ def weight_priors(topic_priors, prior_weight):
         Updated prior weights for topics.
     """
     if not isinstance(prior_weight, (float, int)):
-        raise IOError('Input prior_weight must be a float in range (0, 1)')
-    elif not 0. <= prior_weight <= 1:
-        raise ValueError('Input prior_weight must be in range (0, 1)')
+        raise IOError("Input prior_weight must be a float in range (0, 1)")
+    elif not 0.0 <= prior_weight <= 1:
+        raise ValueError("Input prior_weight must be in range (0, 1)")
 
     # Enforce compatible types
     topic_priors = topic_priors.astype(float)
@@ -39,7 +39,7 @@ def weight_priors(topic_priors, prior_weight):
     # Create uniform distribution to combine with priors
     uniform = np.ones(topic_priors.shape)
     uniform /= np.sum(uniform)
-    uniform *= (1 - prior_weight)
+    uniform *= 1 - prior_weight
 
     # Weight priors with uniform base
     weighted_priors = topic_priors + uniform

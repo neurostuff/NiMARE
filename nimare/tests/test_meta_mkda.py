@@ -1,8 +1,6 @@
 """
 Test nimare.meta.mkda (KDA-based meta-analytic algorithms).
 """
-import pytest
-
 import nimare
 from nimare.meta import mkda, kernel
 from nimare.correct import FWECorrector, FDRCorrector
@@ -17,7 +15,7 @@ def test_mkda_density_kernel_instance_with_kwargs(testdata_cbma):
     kern = kernel.MKDAKernel(r=2)
     meta = mkda.MKDADensity(kern, kernel__r=6)
 
-    assert meta.kernel_transformer.get_params().get('r') == 2
+    assert meta.kernel_transformer.get_params().get("r") == 2
 
 
 def test_mkda_density_kernel_class(testdata_cbma):
@@ -45,8 +43,7 @@ def test_mkda_density(testdata_cbma):
     """
     meta = mkda.MKDADensity()
     res = meta.fit(testdata_cbma)
-    corr = FWECorrector(method='montecarlo', voxel_thresh=0.001,
-                        n_iters=5, n_cores=1)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.base.MetaResult)
     assert isinstance(cres, nimare.base.MetaResult)
@@ -58,7 +55,7 @@ def test_mkda_chi2_fdr(testdata_cbma):
     """
     meta = mkda.MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
-    corr = FDRCorrector(method='bh', alpha=0.001)
+    corr = FDRCorrector(method="bh", alpha=0.001)
     cres = corr.transform(res)
     assert isinstance(res, nimare.base.MetaResult)
     assert isinstance(cres, nimare.base.MetaResult)
@@ -70,7 +67,7 @@ def test_mkda_chi2_fwe(testdata_cbma):
     """
     meta = mkda.MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
-    corr = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.base.MetaResult)
     assert isinstance(cres, nimare.base.MetaResult)
@@ -82,7 +79,7 @@ def test_kda_density(testdata_cbma):
     """
     meta = mkda.KDA()
     res = meta.fit(testdata_cbma)
-    corr = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.base.MetaResult)
     assert isinstance(cres, nimare.base.MetaResult)

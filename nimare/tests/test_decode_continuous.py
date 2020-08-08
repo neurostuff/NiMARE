@@ -18,6 +18,6 @@ def test_CorrelationDecoder(testdata_laird):
 
     meta = mkda.KDA()
     res = meta.fit(testdata_laird)
-    img = res.get_map('of')
+    img = res.get_map("of")
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)

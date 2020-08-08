@@ -13,17 +13,16 @@ from ..meta.ibma import t_test
 LGR = logging.getLogger(__name__)
 
 
-def conperm_workflow(contrast_images, mask_image=None, output_dir=None,
-                     prefix='', n_iters=10000):
+def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="", n_iters=10000):
     """
     Contrast permutation workflow.
     """
     if mask_image is None:
-        target = 'mni152_2mm'
-        mask_image = get_template(target, mask='brain')
+        target = "mni152_2mm"
+        mask_image = get_template(target, mask="brain")
 
     n_studies = len(contrast_images)
-    LGR.info('Loading contrast maps...')
+    LGR.info("Loading contrast maps...")
     z_data = apply_mask(contrast_images, mask_image)
 
     boilerplate = """
@@ -46,21 +45,19 @@ to adulthood. NeuroImage, (47), S102.
 Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
     """
 
-    LGR.info('Performing meta-analysis.')
-    res = t_test(z_data, null='empirical', n_iters=n_iters)
+    LGR.info("Performing meta-analysis.")
+    res = t_test(z_data, null="empirical", n_iters=n_iters)
     # The t_test function will stand in for the Estimator in the results object
     res = MetaResult(t_test, mask_image, maps=res)
 
-    boilerplate = boilerplate.format(
-        n_studies=n_studies,
-        n_iters=n_iters)
+    boilerplate = boilerplate.format(n_studies=n_studies, n_iters=n_iters)
 
     if output_dir is None:
         output_dir = os.getcwd()
     else:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    LGR.info('Saving output maps...')
+    LGR.info("Saving output maps...")
     res.save_maps(output_dir=output_dir, prefix=prefix)
-    LGR.info('Workflow completed.')
+    LGR.info("Workflow completed.")
     LGR.info(boilerplate)

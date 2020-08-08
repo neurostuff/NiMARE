@@ -8,4 +8,4 @@ from . import lda
 from . import text
 from . import utils
 
-__all__ = ['cogat', 'gclda', 'lda', 'text', 'utils']
+__all__ = ["cogat", "gclda", "lda", "text", "utils"]

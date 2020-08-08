@@ -9,7 +9,7 @@ from ._version import get_versions
 logging.basicConfig(level=logging.INFO)
 
 with warnings.catch_warnings(record=True) as w:
-    warnings.simplefilter('ignore')
+    warnings.simplefilter("ignore")
     from . import base
     from . import dataset
     from . import meta
@@ -22,9 +22,21 @@ with warnings.catch_warnings(record=True) as w:
     from . import utils
     from . import workflows
 
-    __version__ = get_versions()['version']
+    __version__ = get_versions()["version"]
 
-    __all__ = ['base', 'dataset', 'meta', 'correct', 'annotate', 'decode',
-               'resources', 'io', 'stats', 'utils', 'workflows', '__version__']
+    __all__ = [
+        "base",
+        "dataset",
+        "meta",
+        "correct",
+        "annotate",
+        "decode",
+        "resources",
+        "io",
+        "stats",
+        "utils",
+        "workflows",
+        "__version__",
+    ]
 
 del get_versions
