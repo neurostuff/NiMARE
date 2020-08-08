@@ -66,8 +66,6 @@ REQUIRES = [
     "traits",
 ]
 
-TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8", "pytest", "pytest-cov"]
-
 EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
@@ -81,12 +79,21 @@ EXTRA_REQUIRES = {
         "pillow",
         "recommonmark",
     ],
-    "tests": TESTS_REQUIRES,
+    "tests": [
+        "codecov",
+        "coverage",
+        "coveralls",
+        "flake8",
+        "pytest",
+        "pytest-cov"
+    ],
     "duecredit": ["duecredit"],
 }
 
 # Enable a handle to install all extra dependencies at once
-EXTRA_REQUIRES["all"] = list(set([v for deps in EXTRA_REQUIRES.values() for v in deps]))
+temp_extra_requires = EXTRA_REQUIRES.copy()
+del temp_extra_requires["peaks2maps-gpu"]  # ignore contradictory imports
+EXTRA_REQUIRES["all"] = list(set([v for deps in temp_extra_requires.values() for v in deps]))
 
 ENTRY_POINTS = {"console_scripts": ["nimare=nimare.cli:_main"]}
 
