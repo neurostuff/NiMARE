@@ -1,66 +1,28 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-""" NiMARE setup script """
+# emacs: -*- mode: python-mode; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# vi: set ft=python sts=4 ts=4 sw=4 et:
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
+#
+#   See COPYING file distributed along with the NiBabel package for the
+#   copyright and license terms.
+#
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
+"""Build helper."""
 
+import sys
 
-def main():
-    """ Install entry-point """
-    import pprint
-    import versioneer
-    from io import open
-    import os.path as op
-    from inspect import getfile, currentframe
-    from setuptools import setup, find_packages
+from setuptools import setup
+import versioneer
 
-    ver_file = op.join('nimare', 'info.py')
-    with open(ver_file) as f:
-        exec(f.read())
-    vars = locals()
+# Give setuptools a hint to complain if it's too old a version
+# 30.3.0 allows us to put most metadata in setup.cfg
+# Should match pyproject.toml
+SETUP_REQUIRES = ["setuptools >= 40.8"]
+# This enables setuptools to install wheel on-the-fly
+SETUP_REQUIRES += ["wheel"] if "bdist_wheel" in sys.argv else []
 
-    pkg_data = {
-        'nimare': [
-            'tests/data/*',
-            'resources/*'
-        ]
-    }
-
-    root_dir = op.dirname(op.abspath(getfile(currentframe())))
-
-    version = None
-    cmdclass = {}
-    if op.isfile(op.join(root_dir, 'nimare', 'VERSION')):
-        with open(op.join(root_dir, 'nimare', 'VERSION')) as vfile:
-            version = vfile.readline().strip()
-        pkg_data['nimare'].insert(0, 'VERSION')
-
-    if version is None:
-        version = versioneer.get_version()
-        cmdclass = versioneer.get_cmdclass()
-
-    setup(
-        name=vars['PACKAGENAME'],
-        version=vars['VERSION'],
-        description=vars['DESCRIPTION'],
-        long_description=vars['LONGDESC'],
-        author=vars['AUTHOR'],
-        author_email=vars['EMAIL'],
-        maintainer=vars['MAINTAINER'],
-        maintainer_email=vars['EMAIL'],
-        url=vars['URL'],
-        license=vars['LICENSE'],
-        classifiers=vars['CLASSIFIERS'],
-        download_url=vars['DOWNLOAD_URL'],
-        # Dependencies handling
-        install_requires=vars['REQUIRES'],
-        tests_require=vars['TESTS_REQUIRES'],
-        extras_require=vars['EXTRA_REQUIRES'],
-        entry_points=vars['ENTRY_POINTS'],
-        packages=find_packages(exclude=("tests",)),
-        package_data=pkg_data,
-        zip_safe=False,
-        cmdclass=cmdclass
-    )
-
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    setup(name="NiMARE",
+          setup_requires=SETUP_REQUIRES,
+          version=versioneer.get_version(),
+          cmdclass=versioneer.get_cmdclass())
