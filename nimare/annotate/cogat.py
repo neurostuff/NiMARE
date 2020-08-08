@@ -16,7 +16,7 @@ from ..extract import download_cognitive_atlas
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
+@due.dcite(references.COGNITIVE_ATLAS, description="Introduces the Cognitive Atlas.")
 class CogAtLemmatizer(object):
     """
     Replace synonyms and abbreviations with Cognitive Atlas identifiers in text.
@@ -42,22 +42,23 @@ class CogAtLemmatizer(object):
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
     """
+
     def __init__(self, ontology_df=None):
         if ontology_df is None:
             cogat = download_cognitive_atlas()
-            self.ontology_ = pd.read_csv(cogat['ids'])
+            self.ontology_ = pd.read_csv(cogat["ids"])
         else:
             assert isinstance(ontology_df, pd.DataFrame)
             self.ontology_ = ontology_df
-        assert 'id' in self.ontology_.columns
-        assert 'name' in self.ontology_.columns
-        assert 'alias' in self.ontology_.columns
+        assert "id" in self.ontology_.columns
+        assert "name" in self.ontology_.columns
+        assert "alias" in self.ontology_.columns
 
         # Create regex dictionary
         regex_dict = {}
-        for term in ontology_df['alias'].values:
-            term_for_regex = term.replace('(', r'\(').replace(')', r'\)')
-            regex = '\\b' + term_for_regex + '\\b'
+        for term in ontology_df["alias"].values:
+            term_for_regex = term.replace("(", r"\(").replace(")", r"\)")
+            regex = "\\b" + term_for_regex + "\\b"
             pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
             regex_dict[term] = pattern
         self.regex_ = regex_dict
@@ -84,14 +85,14 @@ class CogAtLemmatizer(object):
             text = uk_to_us(text)
 
         for term_idx in self.ontology_.index:
-            term = self.ontology_['alias'].loc[term_idx]
-            term_id = self.ontology_['id'].loc[term_idx]
+            term = self.ontology_["alias"].loc[term_idx]
+            term_id = self.ontology_["id"].loc[term_idx]
             text = re.sub(self.regex_[term], term_id, text)
         return text
 
 
-@due.dcite(references.COGNITIVE_ATLAS, description='Introduces the Cognitive Atlas.')
-def extract_cogat(text_df, id_df=None, text_column='abstract'):
+@due.dcite(references.COGNITIVE_ATLAS, description="Introduces the Cognitive Atlas.")
+def extract_cogat(text_df, id_df=None, text_column="abstract"):
     """
     Extract Cognitive Atlas terms and count instances using regular
     expressions.
@@ -124,20 +125,20 @@ def extract_cogat(text_df, id_df=None, text_column='abstract'):
     """
     if id_df is None:
         cogat = download_cognitive_atlas()
-        id_df = pd.read_csv(cogat['ids'])
-    gazetteer = sorted(id_df['id'].unique().tolist())
-    if 'id' in text_df.columns:
-        text_df.set_index('id', inplace=True)
+        id_df = pd.read_csv(cogat["ids"])
+    gazetteer = sorted(id_df["id"].unique().tolist())
+    if "id" in text_df.columns:
+        text_df.set_index("id", inplace=True)
 
     text_df = text_df.copy()
-    text_df[text_column] = text_df[text_column].fillna('')
+    text_df[text_column] = text_df[text_column].fillna("")
     text_df[text_column] = text_df[text_column].apply(uk_to_us)
 
     # Create regex dictionary
     regex_dict = {}
-    for term in id_df['alias'].values:
-        term_for_regex = term.replace('(', r'\(').replace(')', r'\)')
-        regex = '\\b' + term_for_regex + '\\b'
+    for term in id_df["alias"].values:
+        term_for_regex = term.replace("(", r"\(").replace(")", r"\)")
+        regex = "\\b" + term_for_regex + "\\b"
         pattern = re.compile(regex, re.MULTILINE | re.IGNORECASE)
         regex_dict[term] = pattern
 
@@ -145,8 +146,8 @@ def extract_cogat(text_df, id_df=None, text_column='abstract'):
     count_arr = np.zeros((text_df.shape[0], len(gazetteer)), int)
     counts_df = pd.DataFrame(columns=gazetteer, index=text_df.index, data=count_arr)
     for term_idx in id_df.index:
-        term = id_df['alias'].loc[term_idx]
-        term_id = id_df['id'].loc[term_idx]
+        term = id_df["alias"].loc[term_idx]
+        term_id = id_df["id"].loc[term_idx]
         pattern = regex_dict[term]
         counts_df[term_id] += text_df[text_column].str.count(pattern).astype(int)
         text_df[text_column] = text_df[text_column].str.replace(pattern, term_id)
@@ -176,7 +177,7 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     """
     if rel_df is None:
         cogat = download_cognitive_atlas()
-        rel_df = pd.read_csv(cogat['relationships'])
+        rel_df = pd.read_csv(cogat["relationships"])
     weights_df = utils._generate_weights(rel_df, weights=weights)
 
     # First reorg counts_df so it has the same columns in the same order as
@@ -186,8 +187,9 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     w_not_c = set(weights_columns) - set(counts_columns)
     c_not_w = set(counts_columns) - set(weights_columns)
     if c_not_w:
-        raise Exception('Columns found in counts but not weights: '
-                        '{0}'.format(', '.join(c_not_w)))
+        raise Exception(
+            "Columns found in counts but not weights: " "{0}".format(", ".join(c_not_w))
+        )
 
     for col in w_not_c:
         counts_df[col] = 0
@@ -198,7 +200,5 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     counts = counts_df.values
     weights = weights_df.values
     weighted = np.dot(counts, weights)
-    weighted_df = pd.DataFrame(index=counts_df.index,
-                               columns=counts_df.columns,
-                               data=weighted)
+    weighted_df = pd.DataFrame(index=counts_df.index, columns=counts_df.columns, data=weighted)
     return weighted_df

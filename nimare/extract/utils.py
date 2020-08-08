@@ -55,20 +55,19 @@ def get_data_dirs(data_dir=None):
 
     # If data_dir has not been specified, then we crawl default locations
     if data_dir is None:
-        global_data = os.getenv('NIMARE_SHARED_DATA')
+        global_data = os.getenv("NIMARE_SHARED_DATA")
         if global_data is not None:
             paths.extend(global_data.split(os.pathsep))
 
-        local_data = os.getenv('NIMARE_DATA')
+        local_data = os.getenv("NIMARE_DATA")
         if local_data is not None:
             paths.extend(local_data.split(os.pathsep))
 
-        paths.append(os.path.expanduser('~/.nimare'))
+        paths.append(os.path.expanduser("~/.nimare"))
     return paths
 
 
-def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None,
-                     verbose=1):
+def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1):
     """ Create if necessary and returns data directory of given dataset.
 
     Parameters
@@ -109,7 +108,7 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None,
     paths.extend([(d, False) for d in get_data_dirs(data_dir=data_dir)])
 
     if verbose > 2:
-        print('Dataset search paths: %s' % paths)
+        print("Dataset search paths: %s" % paths)
 
     # Check if the dataset exists somewhere
     for path, is_pre_dir in paths:
@@ -120,7 +119,7 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None,
             path = readlinkabs(path)
         if os.path.exists(path) and os.path.isdir(path):
             if verbose > 1:
-                print('\nDataset found in %s\n' % path)
+                print("\nDataset found in %s\n" % path)
             return path
 
     # If not, create a folder in the first writeable directory
@@ -132,15 +131,15 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None,
             try:
                 os.makedirs(path)
                 if verbose > 0:
-                    print('\nDataset created in %s\n' % path)
+                    print("\nDataset created in %s\n" % path)
                 return path
             except Exception as exc:
-                short_error_message = getattr(exc, 'strerror', str(exc))
-                errors.append('\n -{0} ({1})'.format(
-                    path, short_error_message))
+                short_error_message = getattr(exc, "strerror", str(exc))
+                errors.append("\n -{0} ({1})".format(path, short_error_message))
 
-    raise OSError('NiMARE tried to store the dataset in the following '
-                  'directories, but:' + ''.join(errors))
+    raise OSError(
+        "NiMARE tried to store the dataset in the following " "directories, but:" + "".join(errors)
+    )
 
 
 def readlinkabs(link):
@@ -160,10 +159,10 @@ def _download_zipped_file(url, filename=None):
     """
     if filename is None:
         data_dir = op.abspath(op.getcwd())
-        filename = op.join(data_dir, url.split('/')[-1])
+        filename = op.join(data_dir, url.split("/")[-1])
     # NOTE the stream=True parameter
     req = requests.get(url, stream=True)
-    with open(filename, 'wb') as f_obj:
+    with open(filename, "wb") as f_obj:
         for chunk in req.iter_content(chunk_size=1024):
             if chunk:  # filter out keep-alive new chunks
                 f_obj.write(chunk)
@@ -174,19 +173,18 @@ def _longify(df):
     """
     Expand comma-separated lists of aliases in DataFrame into separate rows.
     """
-    reduced = df[['id', 'name', 'alias']]
+    reduced = df[["id", "name", "alias"]]
     rows = []
     for index, row in reduced.iterrows():
-        if isinstance(row['alias'], str) and ',' in row['alias']:
-            aliases = row['alias'].split(', ') + [row['name']]
+        if isinstance(row["alias"], str) and "," in row["alias"]:
+            aliases = row["alias"].split(", ") + [row["name"]]
         else:
-            aliases = [row['name']]
+            aliases = [row["name"]]
 
         for alias in aliases:
-            rows.append([row['id'], row['name'].lower(),
-                         alias.lower()])
-    out_df = pd.DataFrame(columns=['id', 'name', 'alias'], data=rows)
-    out_df = out_df.replace('', np.nan)
+            rows.append([row["id"], row["name"].lower(), alias.lower()])
+    out_df = pd.DataFrame(columns=["id", "name", "alias"], data=rows)
+    out_df = out_df.replace("", np.nan)
     return out_df
 
 
@@ -209,13 +207,13 @@ def _gen_alt_forms(term):
 
     alt_forms = []
     # For one alternate form, put contents of parentheses at beginning of term
-    if '(' in term:
-        prefix = term[term.find('(') + 1:term.find(')')]
-        temp_term = term.replace('({0})'.format(prefix), '').replace('  ', ' ')
+    if "(" in term:
+        prefix = term[term.find("(") + 1 : term.find(")")]
+        temp_term = term.replace("({0})".format(prefix), "").replace("  ", " ")
         alt_forms.append(temp_term)
-        alt_forms.append('{0} {1}'.format(prefix, temp_term))
+        alt_forms.append("{0} {1}".format(prefix, temp_term))
     else:
-        prefix = ''
+        prefix = ""
 
     # Remove extra spaces
     alt_forms = [s.strip() for s in alt_forms]
@@ -226,8 +224,8 @@ def _gen_alt_forms(term):
     # alt_forms += temp
 
     # Remove words "task" and/or "paradigm"
-    alt_forms += [term.replace(' task', '') for term in alt_forms]
-    alt_forms += [term.replace(' paradigm', '') for term in alt_forms]
+    alt_forms += [term.replace(" task", "") for term in alt_forms]
+    alt_forms += [term.replace(" paradigm", "") for term in alt_forms]
 
     # Remove duplicates
     alt_forms = list(set(alt_forms))
@@ -240,16 +238,16 @@ def _get_concept_reltype(relationship, direction):
     more parsimonious representation.
     """
     new_rel = None
-    if relationship == 'PARTOF':
-        if direction == 'child':
-            new_rel = 'hasPart'
-        elif direction == 'parent':
-            new_rel = 'isPartOf'
-    elif relationship == 'KINDOF':
-        if direction == 'child':
-            new_rel = 'hasKind'
-        elif direction == 'parent':
-            new_rel = 'isKindOf'
+    if relationship == "PARTOF":
+        if direction == "child":
+            new_rel = "hasPart"
+        elif direction == "parent":
+            new_rel = "isPartOf"
+    elif relationship == "KINDOF":
+        if direction == "child":
+            new_rel = "hasKind"
+        elif direction == "parent":
+            new_rel = "isKindOf"
     return new_rel
 
 
@@ -260,21 +258,21 @@ def _expand_df(df):
     order to select most appropriate term to associate with alias).
     """
     df = df.copy()
-    df['alias'] = df['alias'].apply(uk_to_us)
+    df["alias"] = df["alias"].apply(uk_to_us)
     new_rows = []
     for index, row in df.iterrows():
-        alias = row['alias']
+        alias = row["alias"]
         alt_forms = _gen_alt_forms(alias)
         for alt_form in alt_forms:
             temp_row = row.copy()
-            temp_row['alias'] = alt_form
+            temp_row["alias"] = alt_form
             new_rows.append(temp_row.tolist())
     alt_df = pd.DataFrame(columns=df.columns, data=new_rows)
     df = pd.concat((df, alt_df), axis=0)
     # Sort by name length and similarity of alternate form to preferred term
     # For example, "task switching" the concept should take priority over the
     # "task switching" version of the "task-switching" task.
-    df['length'] = df['alias'].str.len()
-    df['ratio'] = df[['alias', 'name']].apply(_get_ratio, axis=1)
-    df = df.sort_values(by=['length', 'ratio'], ascending=[False, False])
+    df["length"] = df["alias"].str.len()
+    df["ratio"] = df[["alias", "name"]].apply(_get_ratio, axis=1)
+    df = df.sort_values(by=["length", "ratio"], ascending=[False, False])
     return df

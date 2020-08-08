@@ -19,8 +19,7 @@ from .. import references
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.GCLDA_DECODING,
-           description='Describes decoding methods using GC-LDA.')
+@due.dcite(references.GCLDA_DECODING, description="Describes decoding methods using GC-LDA.")
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""
     Perform image-to-text decoding for continuous inputs (e.g.,
@@ -93,13 +92,13 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     if isinstance(image, str):
         image = nib.load(image)
     elif not isinstance(image, nib.Nifti1Image):
-        raise IOError('Input image must be either a nifti image '
-                      '(nibabel.Nifti1Image) or a path to one.')
+        raise IOError(
+            "Input image must be either a nifti image " "(nibabel.Nifti1Image) or a path to one."
+        )
 
     # Load image file and get voxel values
     input_values = apply_mask(image, model.mask)
-    topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel_.T,
-                                      input_values[:, None]))
+    topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel_.T, input_values[:, None]))
     if topic_priors is not None:
         weighted_priors = weight_priors(topic_priors, prior_weight)
         topic_weights *= weighted_priors
@@ -110,13 +109,12 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
     word_weights = np.dot(model.p_word_g_topic_, topic_weights)
 
-    decoded_df = pd.DataFrame(index=model.vocabulary,
-                              columns=['Weight'], data=word_weights)
-    decoded_df.index.name = 'Term'
+    decoded_df = pd.DataFrame(index=model.vocabulary, columns=["Weight"], data=word_weights)
+    decoded_df.index.name = "Term"
     return decoded_df, topic_weights
 
 
-@due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
+@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class CorrelationDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with
     meta-analytic maps corresponding to specific features.
@@ -140,9 +138,15 @@ class CorrelationDecoder(Decoder):
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.
     """
-    def __init__(self, feature_group=None, features=None,
-                 frequency_threshold=0.001, meta_estimator=None,
-                 target_image='z_desc-specificity'):
+
+    def __init__(
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        meta_estimator=None,
+        target_image="z_desc-specificity",
+    ):
 
         if meta_estimator is None:
             meta_estimator = MKDAChi2()
@@ -176,12 +180,11 @@ class CorrelationDecoder(Decoder):
 
         for i, feature in enumerate(self.features_):
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature],
-                label_threshold=self.frequency_threshold,
+                labels=[feature], label_threshold=self.frequency_threshold,
             )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
-            if 'dataset2' in inspect.getfullargspec(self.meta_estimator.fit).args:
+            if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(dataset.ids) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
                 self.meta_estimator.fit(feature_dset, nonfeature_dset)
@@ -189,7 +192,8 @@ class CorrelationDecoder(Decoder):
                 self.meta_estimator.fit(feature_dset)
 
             feature_data = self.meta_estimator.results.get_map(
-                self.target_image, return_type='array')
+                self.target_image, return_type="array"
+            )
             if i == 0:
                 images_ = np.zeros((len(self.features_), len(feature_data)))
             images_[i, :] = feature_data
@@ -211,9 +215,8 @@ class CorrelationDecoder(Decoder):
         """
         img_vec = self.masker.transform(img)
         corrs = pearson(img_vec, self.images_)
-        out_df = pd.DataFrame(index=self.features_, columns=['r'],
-                              data=corrs)
-        out_df.index.name = 'feature'
+        out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
+        out_df.index.name = "feature"
         self.results = out_df
         return out_df
 
@@ -239,8 +242,10 @@ class CorrelationDistributionDecoder(Decoder):
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.
     """
-    def __init__(self, feature_group=None, features=None,
-                 frequency_threshold=0.001, target_image='z'):
+
+    def __init__(
+        self, feature_group=None, features=None, frequency_threshold=0.001, target_image="z"
+    ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
@@ -271,8 +276,7 @@ class CorrelationDistributionDecoder(Decoder):
         images_ = {}
         for feature in self.features_:
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature],
-                label_threshold=self.frequency_threshold,
+                labels=[feature], label_threshold=self.frequency_threshold,
             )
             test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
             test_imgs = list(filter(None, test_imgs))
@@ -300,13 +304,14 @@ class CorrelationDistributionDecoder(Decoder):
             "feature" and "r".
         """
         img_vec = self.masker.transform(img)
-        out_df = pd.DataFrame(index=self.features_, columns=['mean', 'std'],
-                              data=np.zeros(len(self.features_), 2))
-        out_df.index.name = 'feature'
+        out_df = pd.DataFrame(
+            index=self.features_, columns=["mean", "std"], data=np.zeros(len(self.features_), 2)
+        )
+        out_df.index.name = "feature"
         for feature, feature_arr in self.images_.items():
             corrs = pearson(img_vec, feature_arr)
             corrs_z = np.arctanh(corrs)
-            out_df.loc[feature, 'mean'] = np.mean(corrs_z)
-            out_df.loc[feature, 'std'] = np.std(corrs_z)
+            out_df.loc[feature, "mean"] = np.mean(corrs_z)
+            out_df.loc[feature, "std"] = np.std(corrs_z)
         self.results = out_df
         return out_df

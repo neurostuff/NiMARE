@@ -32,13 +32,14 @@ class ALEKernel(KernelTransformer):
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
     """
+
     def __init__(self, fwhm=None, sample_size=None):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
 
-    def transform(self, dataset, masker=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type="image"):
         """
         Generate ALE modeled activation images for each Contrast in dataset.
 
@@ -61,23 +62,25 @@ class ALEKernel(KernelTransformer):
             contrast and V is voxel.
         """
         if isinstance(dataset, pd.DataFrame):
-            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            assert (
+                masker is not None
+            ), 'Argument "masker" must be provided if dataset is a DataFrame'
             mask = masker.mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
             coordinates = dataset.coordinates
 
-        if return_type == 'image':
+        if return_type == "image":
             mask_data = mask.get_fdata().astype(float)
-        elif return_type == 'array':
+        elif return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         else:
             raise ValueError('Argument "return_type" must be "image" or "array".')
 
         imgs = []
         kernels = {}  # retain kernels in dictionary to speed things up
-        for id_, data in coordinates.groupby('id'):
+        for id_, data in coordinates.groupby("id"):
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if self.sample_size is not None:
                 sample_size = self.sample_size
@@ -85,28 +88,28 @@ class ALEKernel(KernelTransformer):
                 sample_size = data.sample_size.astype(float).values[0]
 
             if self.fwhm is not None:
-                assert np.isfinite(self.fwhm), 'FWHM must be finite number'
+                assert np.isfinite(self.fwhm), "FWHM must be finite number"
                 if self.fwhm not in kernels.keys():
                     _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
                     kernels[self.fwhm] = kern
                 else:
                     kern = kernels[self.fwhm]
             else:
-                assert np.isfinite(sample_size), 'Sample size must be finite number'
+                assert np.isfinite(sample_size), "Sample size must be finite number"
                 if sample_size not in kernels.keys():
                     _, kern = get_ale_kernel(mask, sample_size=sample_size)
                     kernels[sample_size] = kern
                 else:
                     kern = kernels[sample_size]
             kernel_data = compute_ma(mask.shape, ijk, kern)
-            if return_type == 'image':
+            if return_type == "image":
                 kernel_data *= mask_data
                 img = nib.Nifti1Image(kernel_data, mask.affine)
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
 
-        if return_type == 'array':
+        if return_type == "array":
             imgs = np.vstack(imgs)
 
         return imgs
@@ -123,11 +126,12 @@ class MKDAKernel(KernelTransformer):
     value : :obj:`int`, optional
         Value for sphere.
     """
+
     def __init__(self, r=10, value=1):
         self.r = float(r)
         self.value = value
 
-    def transform(self, dataset, masker=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type="image"):
         """
         Generate MKDA modeled activation images for each Contrast in dataset.
         For each Contrast, a binary sphere of radius ``r`` is placed around
@@ -153,16 +157,18 @@ class MKDAKernel(KernelTransformer):
             contrast and V is voxel.
         """
         if isinstance(dataset, pd.DataFrame):
-            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            assert (
+                masker is not None
+            ), 'Argument "masker" must be provided if dataset is a DataFrame'
             mask = masker.mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
             coordinates = dataset.coordinates
 
-        if return_type == 'image':
+        if return_type == "image":
             mask_data = mask.get_fdata().astype(float)
-        elif return_type == 'array':
+        elif return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         else:
             raise ValueError('Argument "return_type" must be "image" or "array".')
@@ -171,26 +177,28 @@ class MKDAKernel(KernelTransformer):
         vox_dims = mask.header.get_zooms()
 
         imgs = []
-        for id_, data in coordinates.groupby('id'):
+        for id_, data in coordinates.groupby("id"):
             kernel_data = np.zeros(dims)
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                xx, yy, zz = [slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
-                              for i in range(len(ijk))]
+                xx, yy, zz = [
+                    slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
+                    for i in range(len(ijk))
+                ]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= self.r]
+                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= self.r]
                 sphere = np.round(sphere.T + ijk)
                 idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
                 sphere = sphere[idx, :].astype(int)
                 kernel_data[tuple(sphere.T)] = self.value
 
-            if return_type == 'image':
+            if return_type == "image":
                 kernel_data *= mask_data
                 img = nib.Nifti1Image(kernel_data, mask.affine)
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
 
-        if return_type == 'array':
+        if return_type == "array":
             imgs = np.vstack(imgs)
         return imgs
 
@@ -206,11 +214,12 @@ class KDAKernel(KernelTransformer):
     value : :obj:`int`, optional
         Value for sphere.
     """
+
     def __init__(self, r=6, value=1):
         self.r = float(r)
         self.value = value
 
-    def transform(self, dataset, masker=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type="image"):
         """
         Generate KDA modeled activation images for each Contrast in dataset.
         Differs from MKDA images in that binary spheres are summed together in
@@ -236,16 +245,18 @@ class KDAKernel(KernelTransformer):
             contrast and V is voxel.
         """
         if isinstance(dataset, pd.DataFrame):
-            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            assert (
+                masker is not None
+            ), 'Argument "masker" must be provided if dataset is a DataFrame'
             mask = masker.mask_img
             coordinates = dataset.copy()
         else:
             mask = dataset.masker.mask_img
             coordinates = dataset.coordinates
 
-        if return_type == 'image':
+        if return_type == "image":
             mask_data = mask.get_fdata().astype(float)
-        elif return_type == 'array':
+        elif return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         else:
             raise ValueError('Argument "return_type" must be "image" or "array".')
@@ -254,25 +265,27 @@ class KDAKernel(KernelTransformer):
         vox_dims = mask.header.get_zooms()
 
         imgs = []
-        for id_, data in coordinates.groupby('id'):
+        for id_, data in coordinates.groupby("id"):
             kernel_data = np.zeros(dims)
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                xx, yy, zz = [slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
-                              for i in range(len(ijk))]
+                xx, yy, zz = [
+                    slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
+                    for i in range(len(ijk))
+                ]
                 cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** .5 <= self.r]
+                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= self.r]
                 sphere = np.round(sphere.T + ijk)
                 idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
                 sphere = sphere[idx, :].astype(int)
                 kernel_data[tuple(sphere.T)] += self.value
 
-            if return_type == 'image':
+            if return_type == "image":
                 kernel_data *= mask_data
                 img = nib.Nifti1Image(kernel_data, mask.affine)
             else:
                 img = kernel_data[mask_data]
             imgs.append(img)
-        if return_type == 'array':
+        if return_type == "array":
             imgs = np.vstack(imgs)
         return imgs
 
@@ -287,10 +300,11 @@ class Peaks2MapsKernel(KernelTransformer):
         If True, will resample the MA maps to the mask's header.
         Default is True.
     """
+
     def __init__(self, resample_to_mask=True):
         self.resample_to_mask = resample_to_mask
 
-    def transform(self, dataset, masker=None, return_type='image'):
+    def transform(self, dataset, masker=None, return_type="image"):
         """
         Generate peaks2maps modeled activation images for each Contrast in dataset.
 
@@ -313,7 +327,9 @@ class Peaks2MapsKernel(KernelTransformer):
             contrast and V is voxel.
         """
         if isinstance(dataset, pd.DataFrame):
-            assert masker is not None, 'Argument "masker" must be provided if dataset is a DataFrame'
+            assert (
+                masker is not None
+            ), 'Argument "masker" must be provided if dataset is a DataFrame'
             mask = masker.mask_img
             coordinates = dataset.copy()
         else:
@@ -322,7 +338,7 @@ class Peaks2MapsKernel(KernelTransformer):
             coordinates = dataset.coordinates
 
         coordinates_list = []
-        for id_, data in coordinates.groupby('id'):
+        for id_, data in coordinates.groupby("id"):
             mm_coords = []
             for coord in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 mm_coords.append(vox2mm(coord, dataset.masker.mask_img.affine))
@@ -337,13 +353,13 @@ class Peaks2MapsKernel(KernelTransformer):
             imgs = resampled_imgs
         else:
             # Resample mask to data instead of data to mask
-            mask = resample_to_img(mask, imgs[0], interpolation='nearest')
+            mask = resample_to_img(mask, imgs[0], interpolation="nearest")
             masker = get_masker(mask)
 
-        if return_type == 'image':
+        if return_type == "image":
             masked_images = []
             for img in imgs:
-                masked_images.append(math_img('map*mask', map=img, mask=mask))
+                masked_images.append(math_img("map*mask", map=img, mask=mask))
             imgs = masked_images
         else:
             imgs = masker.transform(imgs)

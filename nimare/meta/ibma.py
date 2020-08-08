@@ -45,21 +45,20 @@ class Fishers(MetaEstimator):
     :class:`pymare.estimators.Fishers`:
         The PyMARE estimator called by this class.
     """
-    _required_inputs = {
-        'z_maps': ('image', 'z')
-    }
+
+    _required_inputs = {"z_maps": ("image", "z")}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
-        pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
-        est = pymare.estimators.Fishers(input='z')
+        pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
+        est = pymare.estimators.Fishers(input="z")
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'z': est_summary.z,
-            'p': est_summary.p,
+            "z": est_summary.z,
+            "p": est_summary.p,
         }
         return results
 
@@ -102,31 +101,32 @@ class Stouffers(MetaEstimator):
     :class:`pymare.estimators.Stouffers`:
         The PyMARE estimator called by this class.
     """
+
     _required_inputs = {
-        'z_maps': ('image', 'z'),
+        "z_maps": ("image", "z"),
     }
 
     def __init__(self, use_sample_size=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
-            self._required_inputs['sample_sizes'] = ('metadata', 'sample_sizes')
+            self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
     def _fit(self, dataset):
         if self.use_sample_size:
-            sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
+            sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
             weights = np.sqrt(sample_sizes)
-            weight_maps = np.tile(weights, (self.inputs_['z_maps'].shape[1], 1)).T
-            pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'], v=weight_maps)
+            weight_maps = np.tile(weights, (self.inputs_["z_maps"].shape[1], 1)).T
+            pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=weight_maps)
         else:
-            pymare_dset = pymare.Dataset(y=self.inputs_['z_maps'])
+            pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
 
-        est = pymare.estimators.Stouffers(input='z')
+        est = pymare.estimators.Stouffers(input="z")
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'z': est_summary.z,
-            'p': est_summary.p,
+            "z": est_summary.z,
+            "p": est_summary.p,
         }
         return results
 
@@ -166,9 +166,10 @@ class WeightedLeastSquares(MetaEstimator):
     :class:`pymare.estimators.WeightedLeastSquares`:
         The PyMARE estimator called by this class.
     """
+
     _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'varcope_maps': ('image', 'varcope'),
+        "beta_maps": ("image", "beta"),
+        "varcope_maps": ("image", "varcope"),
     }
 
     def __init__(self, tau2=0, *args, **kwargs):
@@ -176,16 +177,15 @@ class WeightedLeastSquares(MetaEstimator):
         self.tau2 = tau2
 
     def _fit(self, dataset):
-        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
-                                     v=self.inputs_['varcope_maps'])
+        pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'tau2': est_summary.tau2,
-            'z': est_summary.get_fe_stats()['z'],
-            'p': est_summary.get_fe_stats()['p'],
-            'est': est_summary.get_fe_stats()['est'],
+            "tau2": est_summary.tau2,
+            "z": est_summary.get_fe_stats()["z"],
+            "p": est_summary.get_fe_stats()["p"],
+            "est": est_summary.get_fe_stats()["est"],
         }
         return results
 
@@ -220,9 +220,10 @@ class DerSimonianLaird(MetaEstimator):
     :class:`pymare.estimators.DerSimonianLaird`:
         The PyMARE estimator called by this class.
     """
+
     _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'varcope_maps': ('image', 'varcope'),
+        "beta_maps": ("image", "beta"),
+        "varcope_maps": ("image", "varcope"),
     }
 
     def __init__(self, *args, **kwargs):
@@ -230,15 +231,14 @@ class DerSimonianLaird(MetaEstimator):
 
     def _fit(self, dataset):
         est = pymare.estimators.DerSimonianLaird()
-        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
-                                     v=self.inputs_['varcope_maps'])
+        pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'tau2': est_summary.tau2,
-            'z': est_summary.get_fe_stats()['z'],
-            'p': est_summary.get_fe_stats()['p'],
-            'est': est_summary.get_fe_stats()['est'],
+            "tau2": est_summary.tau2,
+            "z": est_summary.get_fe_stats()["z"],
+            "p": est_summary.get_fe_stats()["p"],
+            "est": est_summary.get_fe_stats()["est"],
         }
         return results
 
@@ -269,9 +269,10 @@ class Hedges(MetaEstimator):
     :class:`pymare.estimators.Hedges`:
         The PyMARE estimator called by this class.
     """
+
     _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'varcope_maps': ('image', 'varcope'),
+        "beta_maps": ("image", "beta"),
+        "varcope_maps": ("image", "varcope"),
     }
 
     def __init__(self, *args, **kwargs):
@@ -279,15 +280,14 @@ class Hedges(MetaEstimator):
 
     def _fit(self, dataset):
         est = pymare.estimators.Hedges()
-        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
-                                     v=self.inputs_['varcope_maps'])
+        pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'tau2': est_summary.tau2,
-            'z': est_summary.get_fe_stats()['z'],
-            'p': est_summary.get_fe_stats()['p'],
-            'est': est_summary.get_fe_stats()['est'],
+            "tau2": est_summary.tau2,
+            "z": est_summary.get_fe_stats()["z"],
+            "p": est_summary.get_fe_stats()["p"],
+            "est": est_summary.get_fe_stats()["est"],
         }
         return results
 
@@ -331,27 +331,28 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     :class:`pymare.estimators.SampleSizeBasedLikelihoodEstimator`:
         The PyMARE estimator called by this class.
     """
+
     _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'sample_sizes': ('metadata', 'sample_sizes')
+        "beta_maps": ("image", "beta"),
+        "sample_sizes": ("metadata", "sample_sizes"),
     }
 
-    def __init__(self, method='ml', *args, **kwargs):
+    def __init__(self, method="ml", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.method = method
 
     def _fit(self, dataset):
-        sample_sizes = np.array([np.mean(n) for n in self.inputs_['sample_sizes']])
-        n_maps = np.tile(sample_sizes, (self.inputs_['beta_maps'].shape[1], 1)).T
-        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'], n=n_maps)
+        sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
+        n_maps = np.tile(sample_sizes, (self.inputs_["beta_maps"].shape[1], 1)).T
+        pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], n=n_maps)
         est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'tau2': est_summary.tau2,
-            'z': est_summary.get_fe_stats()['z'],
-            'p': est_summary.get_fe_stats()['p'],
-            'est': est_summary.get_fe_stats()['est'],
+            "tau2": est_summary.tau2,
+            "z": est_summary.get_fe_stats()["z"],
+            "p": est_summary.get_fe_stats()["p"],
+            "est": est_summary.get_fe_stats()["est"],
         }
         return results
 
@@ -401,27 +402,27 @@ class VarianceBasedLikelihood(MetaEstimator):
     :class:`pymare.estimators.VarianceBasedLikelihoodEstimator`:
         The PyMARE estimator called by this class.
     """
+
     _required_inputs = {
-        'beta_maps': ('image', 'beta'),
-        'varcope_maps': ('image', 'varcope'),
+        "beta_maps": ("image", "beta"),
+        "varcope_maps": ("image", "varcope"),
     }
 
-    def __init__(self, method='ml', *args, **kwargs):
+    def __init__(self, method="ml", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.method = method
 
     def _fit(self, dataset):
         est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
 
-        pymare_dset = pymare.Dataset(y=self.inputs_['beta_maps'],
-                                     v=self.inputs_['varcope_maps'])
+        pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit(pymare_dset)
         est_summary = est.summary()
         results = {
-            'tau2': est_summary.tau2,
-            'z': est_summary.get_fe_stats()['z'],
-            'p': est_summary.get_fe_stats()['p'],
-            'est': est_summary.get_fe_stats()['est'],
+            "tau2": est_summary.tau2,
+            "z": est_summary.get_fe_stats()["z"],
+            "p": est_summary.get_fe_stats()["p"],
+            "est": est_summary.get_fe_stats()["est"],
         }
         return results
 
@@ -453,12 +454,12 @@ class TTest(MetaEstimator):
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
     """
+
     _required_inputs = {
-        'beta_maps': ('image', 'beta'),
+        "beta_maps": ("image", "beta"),
     }
 
-    def __init__(self, null='theoretical', n_iters=None, two_sided=True, *args,
-                 **kwargs):
+    def __init__(self, null="theoretical", n_iters=None, two_sided=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.null = null
         self.n_iters = n_iters
@@ -466,11 +467,15 @@ class TTest(MetaEstimator):
         self.results = None
 
     def _fit(self, dataset):
-        return t_test(self.inputs_['beta_maps'], null=self.null,
-                      n_iters=self.n_iters, two_sided=self.two_sided)
+        return t_test(
+            self.inputs_["beta_maps"],
+            null=self.null,
+            n_iters=self.n_iters,
+            two_sided=self.two_sided,
+        )
 
 
-def t_test(beta_maps, null='theoretical', n_iters=None, two_sided=True):
+def t_test(beta_maps, null="theoretical", n_iters=None, two_sided=True):
     """
     Run a random-effects (RFX) GLM on contrast maps.
 
@@ -504,7 +509,7 @@ def t_test(beta_maps, null='theoretical', n_iters=None, two_sided=True):
         # MATLAB one-tailed method
         p_map = stats.t.cdf(-t_map, df=beta_maps.shape[0] - 1)
 
-    if null == 'empirical':
+    if null == "empirical":
         k = beta_maps.shape[0]
         p_map = np.ones(t_map.shape)
         iter_t_maps = np.zeros((n_iters, t_map.shape[0]))
@@ -517,8 +522,7 @@ def t_test(beta_maps, null='theoretical', n_iters=None, two_sided=True):
             signs = np.random.choice(a=2, size=k, p=[1 - posprop, posprop])
             signs[signs == 0] = -1
             iter_beta_maps *= signs[:, None]
-            iter_t_maps[i, :], _ = stats.ttest_1samp(iter_beta_maps, popmean=0,
-                                                     axis=0)
+            iter_t_maps[i, :], _ = stats.ttest_1samp(iter_beta_maps, popmean=0, axis=0)
         iter_t_maps[np.isnan(iter_t_maps)] = 0
 
         for voxel in range(iter_t_maps.shape[1]):
@@ -527,17 +531,14 @@ def t_test(beta_maps, null='theoretical', n_iters=None, two_sided=True):
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to
         # 0 or 1. Prevents inf z-values.
         p_map[p_map < 1e-16] = 1e-16
-        p_map[p_map > (1. - 1e-16)] = 1. - 1e-16
-    elif null != 'theoretical':
+        p_map[p_map > (1.0 - 1e-16)] = 1.0 - 1e-16
+    elif null != "theoretical":
         raise ValueError('Input null must be "theoretical" or "empirical".')
 
     # Convert p to z, preserving signs
     sign = np.sign(t_map)
     sign[sign == 0] = 1
-    z_map = p_to_z(p_map, tail='two') * sign
+    z_map = p_to_z(p_map, tail="two") * sign
     log_p_map = -np.log10(p_map)
-    images = {'t': t_map,
-              'z': z_map,
-              'p': p_map,
-              'logp': log_p_map}
+    images = {"t": t_map, "z": z_map, "p": p_map, "logp": log_p_map}
     return images

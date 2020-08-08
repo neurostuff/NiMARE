@@ -16,7 +16,7 @@ from .transforms import tal2mni, mni2tal, mm2vox
 LGR = logging.getLogger(__name__)
 
 
-def dict_to_df(id_df, data, key='labels'):
+def dict_to_df(id_df, data, key="labels"):
     """
     Load a given data type in NIMADS-format dictionary into DataFrame.
 
@@ -38,18 +38,18 @@ def dict_to_df(id_df, data, key='labels'):
     """
     exp_dict = {}
     for pid in data.keys():
-        for expid in data[pid]['contrasts'].keys():
-            exp = data[pid]['contrasts'][expid]
-            id_ = '{0}-{1}'.format(pid, expid)
+        for expid in data[pid]["contrasts"].keys():
+            exp = data[pid]["contrasts"][expid]
+            id_ = "{0}-{1}".format(pid, expid)
 
-            if key not in data[pid]['contrasts'][expid].keys():
+            if key not in data[pid]["contrasts"][expid].keys():
                 continue
             exp_dict[id_] = exp[key]
 
-    temp_df = pd.DataFrame.from_dict(exp_dict, orient='index')
-    df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how='outer')
+    temp_df = pd.DataFrame.from_dict(exp_dict, orient="index")
+    df = pd.merge(id_df, temp_df, left_index=True, right_index=True, how="outer")
     df = df.reset_index(drop=True)
-    df = df.replace(to_replace='None', value=np.nan)
+    df = df.replace(to_replace="None", value=np.nan)
     # replace nan with none
     df = df.where(pd.notnull(df), None)
     return df
@@ -60,33 +60,37 @@ def dict_to_coordinates(data, masker, space):
     Load coordinates in NIMADS-format dictionary into DataFrame.
     """
     # Required columns
-    columns = ['id', 'study_id', 'contrast_id', 'x', 'y', 'z', 'space']
+    columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]
     core_columns = columns[:]  # Used in contrast for loop
 
     all_dfs = []
     for pid in data.keys():
-        for expid in data[pid]['contrasts'].keys():
-            if 'coords' not in data[pid]['contrasts'][expid].keys():
+        for expid in data[pid]["contrasts"].keys():
+            if "coords" not in data[pid]["contrasts"][expid].keys():
                 continue
 
             exp_columns = core_columns[:]
-            exp = data[pid]['contrasts'][expid]
+            exp = data[pid]["contrasts"][expid]
 
             # Required info (ids, x, y, z, space)
-            n_coords = len(exp['coords']['x'])
-            rep_id = np.array([['{0}-{1}'.format(pid, expid), pid, expid]] * n_coords).T
+            n_coords = len(exp["coords"]["x"])
+            rep_id = np.array([["{0}-{1}".format(pid, expid), pid, expid]] * n_coords).T
 
-            space_arr = exp['coords'].get('space')
+            space_arr = exp["coords"].get("space")
             space_arr = np.array([space_arr] * n_coords)
-            temp_data = np.vstack((rep_id,
-                                   np.array(exp['coords']['x']),
-                                   np.array(exp['coords']['y']),
-                                   np.array(exp['coords']['z']),
-                                   space_arr))
+            temp_data = np.vstack(
+                (
+                    rep_id,
+                    np.array(exp["coords"]["x"]),
+                    np.array(exp["coords"]["y"]),
+                    np.array(exp["coords"]["z"]),
+                    space_arr,
+                )
+            )
 
             # Optional information
-            for k in list(set(exp['coords'].keys()) - set(columns)):
-                k_data = exp['coords'][k]
+            for k in list(set(exp["coords"].keys()) - set(columns)):
+                k_data = exp["coords"][k]
                 if not isinstance(k_data, list):
                     k_data = np.array([k_data] * n_coords)
                 exp_columns.append(k)
@@ -99,41 +103,44 @@ def dict_to_coordinates(data, masker, space):
             con_df = pd.DataFrame(temp_data.T, columns=exp_columns)
             all_dfs.append(con_df)
 
-    df = pd.concat(all_dfs, axis=0, join='outer', sort=False)
+    df = pd.concat(all_dfs, axis=0, join="outer", sort=False)
     df = df[columns].reset_index(drop=True)
-    df = df.replace(to_replace='None', value=np.nan)
+    df = df.replace(to_replace="None", value=np.nan)
     # replace nan with none
     df = df.where(pd.notnull(df), None)
-    df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
+    df[["x", "y", "z"]] = df[["x", "y", "z"]].astype(float)
 
     # Now to apply transformations!
-    if 'mni' in space.lower() or 'ale' in space.lower():
-        transform = {'MNI': None,
-                     'TAL': tal2mni,
-                     'Talairach': tal2mni,
-                     }
-    elif 'tal' in space.lower():
-        transform = {'MNI': mni2tal,
-                     'TAL': None,
-                     'Talairach': None,
-                     }
+    if "mni" in space.lower() or "ale" in space.lower():
+        transform = {
+            "MNI": None,
+            "TAL": tal2mni,
+            "Talairach": tal2mni,
+        }
+    elif "tal" in space.lower():
+        transform = {
+            "MNI": mni2tal,
+            "TAL": None,
+            "Talairach": None,
+        }
     else:
-        raise ValueError('Unrecognized space: {0}'.format(space))
+        raise ValueError("Unrecognized space: {0}".format(space))
 
-    found_spaces = df['space'].unique()
+    found_spaces = df["space"].unique()
     for found_space in found_spaces:
         if found_space not in transform.keys():
-            LGR.warning('Not applying transforms to coordinates in '
-                        'unrecognized space "{0}"'.format(found_space))
+            LGR.warning(
+                "Not applying transforms to coordinates in "
+                'unrecognized space "{0}"'.format(found_space)
+            )
         alg = transform.get(found_space, None)
-        idx = df['space'] == found_space
+        idx = df["space"] == found_space
         if alg:
-            df.loc[idx, ['x', 'y', 'z']] = alg(df.loc[idx, ['x', 'y', 'z']].values)
-        df.loc[idx, 'space'] = space
+            df.loc[idx, ["x", "y", "z"]] = alg(df.loc[idx, ["x", "y", "z"]].values)
+        df.loc[idx, "space"] = space
 
-    xyz = df[['x', 'y', 'z']].values
-    ijk = pd.DataFrame(mm2vox(xyz, masker.mask_img.affine),
-                       columns=['i', 'j', 'k'])
+    xyz = df[["x", "y", "z"]].values
+    ijk = pd.DataFrame(mm2vox(xyz, masker.mask_img.affine), columns=["i", "j", "k"])
     df = pd.concat([df, ijk], axis=1)
     return df
 
@@ -142,7 +149,7 @@ def validate_df(df):
     """Check that an input is a DataFrame and has a column for 'id'.
     """
     assert isinstance(df, pd.DataFrame)
-    assert 'id' in df.columns
+    assert "id" in df.columns
 
 
 def validate_images_df(image_df):
@@ -160,7 +167,7 @@ def validate_images_df(image_df):
     image_df : :class:`pandas.DataFrame`
         DataFrame with updated paths and columns.
     """
-    valid_suffixes = ['.brik', '.head', '.nii', '.img', '.hed']
+    valid_suffixes = [".brik", ".head", ".nii", ".img", ".hed"]
     file_cols = []
     for col in image_df.columns:
         vals = [v for v in image_df[col].values if isinstance(v, str)]
@@ -177,11 +184,13 @@ def validate_images_df(image_df):
         if all(abspaths):
             abs_cols.append(col)
         elif not any(abspaths):
-            if not col.endswith('__relative'):
-                image_df = image_df.rename(columns={col: col + '__relative'})
+            if not col.endswith("__relative"):
+                image_df = image_df.rename(columns={col: col + "__relative"})
         else:
-            raise ValueError('Mix of absolute and relative paths detected '
-                             'for images in column "{}"'.format(col))
+            raise ValueError(
+                "Mix of absolute and relative paths detected "
+                'for images in column "{}"'.format(col)
+            )
 
     # Set relative paths from absolute ones
     if len(abs_cols):
@@ -193,12 +202,13 @@ def validate_images_df(image_df):
             shared_path = op.dirname(shared_path) + op.sep
         LGR.info('Shared path detected: "{0}"'.format(shared_path))
         for abs_col in abs_cols:
-            image_df[abs_col + '__relative'] = image_df[abs_col].apply(
-                lambda x: x.split(shared_path)[1] if isinstance(x, str) else x)
+            image_df[abs_col + "__relative"] = image_df[abs_col].apply(
+                lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
+            )
     return image_df
 
 
-def get_template(space='mni152_2mm', mask=None):
+def get_template(space="mni152_2mm", mask=None):
     """
     Load template file.
 
@@ -215,21 +225,21 @@ def get_template(space='mni152_2mm', mask=None):
     img : :obj:`nibabel.nifti1.Nifti1Image`
         Template image object.
     """
-    if space == 'mni152_1mm':
+    if space == "mni152_1mm":
         if mask is None:
-            img = nib.load(datasets.fetch_icbm152_2009()['t1'])
-        elif mask == 'brain':
-            img = nib.load(datasets.fetch_icbm152_2009()['mask'])
-        elif mask == 'gm':
+            img = nib.load(datasets.fetch_icbm152_2009()["t1"])
+        elif mask == "brain":
+            img = nib.load(datasets.fetch_icbm152_2009()["mask"])
+        elif mask == "gm":
             img = datasets.fetch_icbm152_brain_gm_mask(threshold=0.2)
         else:
-            raise ValueError('Mask {0} not supported'.format(mask))
-    elif space == 'mni152_2mm':
+            raise ValueError("Mask {0} not supported".format(mask))
+    elif space == "mni152_2mm":
         if mask is None:
             img = datasets.load_mni152_template()
-        elif mask == 'brain':
+        elif mask == "brain":
             img = datasets.load_mni152_brain_mask()
-        elif mask == 'gm':
+        elif mask == "gm":
             # this approach seems to approximate the 0.2 thresholded
             # GM mask pretty well
             temp_img = datasets.load_mni152_template()
@@ -239,17 +249,16 @@ def get_template(space='mni152_2mm', mask=None):
             data = (data > 1200).astype(int)
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
-            raise ValueError('Mask {0} not supported'.format(mask))
-    elif space == 'ale_2mm':
+            raise ValueError("Mask {0} not supported".format(mask))
+    elif space == "ale_2mm":
         if mask is None:
             img = datasets.load_mni152_template()
         else:
             # Not the same as the nilearn brain mask, but should correspond to
             # the default "more conservative" MNI152 mask in GingerALE.
-            img = nib.load(op.join(get_resource_path(),
-                           'templates/MNI152_2x2x2_brainmask.nii.gz'))
+            img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii.gz"))
     else:
-        raise ValueError('Space {0} not supported'.format(space))
+        raise ValueError("Space {0} not supported".format(space))
     return img
 
 
@@ -272,12 +281,13 @@ def get_masker(mask):
     if isinstance(mask, nib.nifti1.Nifti1Image):
         mask = NiftiMasker(mask)
 
-    if not (hasattr(mask, 'transform') and hasattr(mask, 'inverse_transform')):
-        raise ValueError("mask argument must be a string, a nibabel image,"
-                         " or a Nilearn Masker instance.")
+    if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
+        raise ValueError(
+            "mask argument must be a string, a nibabel image," " or a Nilearn Masker instance."
+        )
 
     # Fit the masker if needed
-    if not hasattr(mask, 'mask_img_'):
+    if not hasattr(mask, "mask_img_"):
         mask.fit()
 
     return mask
@@ -313,7 +323,7 @@ def get_resource_path():
     are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
-    return op.abspath(op.join(op.dirname(__file__), 'resources') + op.sep)
+    return op.abspath(op.join(op.dirname(__file__), "resources") + op.sep)
 
 
 def try_prepend(value, prefix):
@@ -354,7 +364,7 @@ def find_stem(arr):
 
             # If current substring is present in all strings and its length is
             # greater than current result
-            if (k + 1 == n and len(res) < len(stem)):
+            if k + 1 == n and len(res) < len(stem):
                 res = stem
 
     return res
@@ -374,12 +384,11 @@ def uk_to_us(text):
     -------
     text : :obj:`str`
     """
-    SPELL_DF = pd.read_csv(op.join(get_resource_path(), 'english_spellings.csv'),
-                           index_col='UK')
-    SPELL_DICT = SPELL_DF['US'].to_dict()
+    SPELL_DF = pd.read_csv(op.join(get_resource_path(), "english_spellings.csv"), index_col="UK")
+    SPELL_DICT = SPELL_DF["US"].to_dict()
 
     if isinstance(text, str):
         # Convert British to American English
-        pattern = re.compile(r'\b(' + '|'.join(SPELL_DICT.keys()) + r')\b')
+        pattern = re.compile(r"\b(" + "|".join(SPELL_DICT.keys()) + r")\b")
         text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
     return text

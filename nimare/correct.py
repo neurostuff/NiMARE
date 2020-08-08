@@ -24,7 +24,7 @@ class Corrector(metaclass=ABCMeta):
     _correction_method = None
 
     # Maps that must be available in the MetaResult instance
-    _required_maps = ('p',)
+    _required_maps = ("p",)
 
     def __init__(self):
         pass
@@ -35,27 +35,28 @@ class Corrector(metaclass=ABCMeta):
 
     def _validate_input(self, result):
         if not isinstance(result, MetaResult):
-            raise ValueError("First argument to transform() must be an "
-                             "instance of class MetaResult, not {}."
-                             .format(type(result)))
+            raise ValueError(
+                "First argument to transform() must be an "
+                "instance of class MetaResult, not {}.".format(type(result))
+            )
 
         # Get Estimator correction methods
-        pattern = 'correct_' + self._correction_method + '_'
+        pattern = "correct_" + self._correction_method + "_"
         est_methods = inspect.getmembers(result.estimator, predicate=inspect.ismethod)
         est_methods = [meth[0] for meth in est_methods]
         est_methods = [meth for meth in est_methods if meth.startswith(pattern)]
-        est_methods = [meth.replace(pattern, '') for meth in est_methods]
+        est_methods = [meth.replace(pattern, "") for meth in est_methods]
 
         # Check requested method against available methods
         if self.method not in self._native_methods + est_methods:
             raise ValueError(
                 'Unsupported {0} correction method "{1}"\n'
-                '\tAvailable native methods: {2}\n'
-                '\tAvailable estimator methods: {3}'.format(
+                "\tAvailable native methods: {2}\n"
+                "\tAvailable estimator methods: {3}".format(
                     self._correction_method,
                     self.method,
-                    ', '.join(self._native_methods),
-                    ', '.join(est_methods)
+                    ", ".join(self._native_methods),
+                    ", ".join(est_methods),
                 )
             )
 
@@ -64,16 +65,16 @@ class Corrector(metaclass=ABCMeta):
             if result.maps.get(rm) is None:
                 raise ValueError(
                     '{0} requires "{1}" maps to be present in the MetaResult, '
-                    'but none were found.'.format(type(self), rm)
+                    "but none were found.".format(type(self), rm)
                 )
 
     def _generate_secondary_maps(self, result, corr_maps):
         # Generates corrected version of z and log-p maps if they exist
-        p = corr_maps['p']
-        if 'z' in result.maps:
-            corr_maps['z'] = p_to_z(p) * np.sign(result.maps['z'])
-        if 'log_p' in result.maps:
-            corr_maps['logp'] = -np.log10(p)
+        p = corr_maps["p"]
+        if "z" in result.maps:
+            corr_maps["z"] = p_to_z(p) * np.sign(result.maps["z"])
+        if "log_p" in result.maps:
+            corr_maps["logp"] = -np.log10(p)
         return corr_maps
 
     def transform(self, result):
@@ -92,16 +93,18 @@ class Corrector(metaclass=ABCMeta):
             MetaResult with new corrected maps added.
         """
         est = result.estimator
-        correction_method = 'correct_' + self._correction_method + '_' + self.method
+        correction_method = "correct_" + self._correction_method + "_" + self.method
 
         # Make sure we return a copy of the MetaResult
         result = result.copy()
 
         # If a correction method with the same name exists in the current
         # MetaEstimator, use it. Otherwise fall back on _transform.
-        if (correction_method is not None and hasattr(est, correction_method)):
-            LGR.info('Using correction method implemented in Estimator: '
-                     '{}.{}.'.format(type(est), correction_method))
+        if correction_method is not None and hasattr(est, correction_method):
+            LGR.info(
+                "Using correction method implemented in Estimator: "
+                "{}.{}.".format(type(est), correction_method)
+            )
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._validate_input(result)
@@ -143,22 +146,21 @@ class FWECorrector(Corrector):
     (e.g., :func:`nimare.meta.ale.ALE.correct_fwe_montecarlo`).
     """
 
-    _correction_method = 'fwe'
+    _correction_method = "fwe"
 
-    def __init__(self, method='bonferroni', **kwargs):
+    def __init__(self, method="bonferroni", **kwargs):
         self.method = method
         self.parameters = kwargs
-        self._native_methods = ['bonferroni']
+        self._native_methods = ["bonferroni"]
 
     @property
     def _name_suffix(self):
-        return '_corr-FWE_method-{}'.format(self.method)
+        return "_corr-FWE_method-{}".format(self.method)
 
     def _transform(self, result):
-        p = result.maps['p']
-        _, p_corr, _, _ = mc.multipletests(p, alpha=0.05, method=self.method,
-                                           is_sorted=False)
-        corr_maps = {'p': p_corr}
+        p = result.maps["p"]
+        _, p_corr, _, _ = mc.multipletests(p, alpha=0.05, method=self.method, is_sorted=False)
+        corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps
 
@@ -186,22 +188,21 @@ class FDRCorrector(Corrector):
     (e.g., :class:`nimare.meta.mkda.MKDAChi2.correct_fdr_bh`).
     """
 
-    _correction_method = 'fdr'
+    _correction_method = "fdr"
 
-    def __init__(self, alpha=0.05, method='indep', **kwargs):
+    def __init__(self, alpha=0.05, method="indep", **kwargs):
         self.alpha = alpha
         self.method = method
         self.parameters = kwargs
-        self._native_methods = ['indep', 'negcorr']
+        self._native_methods = ["indep", "negcorr"]
 
     @property
     def _name_suffix(self):
-        return '_corr-FDR_method-{}'.format(self.method)
+        return "_corr-FDR_method-{}".format(self.method)
 
     def _transform(self, result):
-        p = result.maps['p']
-        _, p_corr = mc.fdrcorrection(p, alpha=self.alpha, method=self.method,
-                                     is_sorted=False)
-        corr_maps = {'p': p_corr}
+        p = result.maps["p"]
+        _, p_corr = mc.fdrcorrection(p, alpha=self.alpha, method=self.method, is_sorted=False)
+        corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps

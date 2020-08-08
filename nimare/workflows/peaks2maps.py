@@ -19,19 +19,19 @@ LGR = logging.getLogger(__name__)
 def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000):
     """
     """
-    LGR.info('Loading coordinates...')
+    LGR.info("Loading coordinates...")
     dset = convert_sleuth_to_dataset(sleuth_file)
 
-    LGR.info('Reconstructing unthresholded maps...')
+    LGR.info("Reconstructing unthresholded maps...")
     k = Peaks2MapsKernel(resample_to_mask=False)
-    imgs = k.transform(dset, return_type='image')
+    imgs = k.transform(dset, return_type="image")
 
-    mask_img = resample_to_img(dset.mask, imgs[0], interpolation='nearest')
+    mask_img = resample_to_img(dset.mask, imgs[0], interpolation="nearest")
     z_data = apply_mask(imgs, mask_img)
 
-    LGR.info('Estimating the null distribution...')
-    res = t_test(z_data, null='empirical', n_iters=n_iters)
-    res = MetaResult('t_test', maps=res, mask=mask_img)
+    LGR.info("Estimating the null distribution...")
+    res = t_test(z_data, null="empirical", n_iters=n_iters)
+    res = MetaResult("t_test", maps=res, mask=mask_img)
 
     if output_dir is None:
         output_dir = os.path.dirname(os.path.abspath(sleuth_file))
@@ -41,7 +41,7 @@ def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000
     if prefix is None:
         base = os.path.basename(sleuth_file)
         prefix, _ = os.path.splitext(base)
-        prefix += '_'
+        prefix += "_"
 
-    LGR.info('Saving output maps...')
+    LGR.info("Saving output maps...")
     res.save_maps(output_dir=output_dir, prefix=prefix)

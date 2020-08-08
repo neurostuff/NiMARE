@@ -17,8 +17,8 @@ from ..due import due
 from .. import references
 
 
-@due.dcite(references.GCLDA_DECODING, description='Citation for GCLDA decoding.')
-def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
+@due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA decoding.")
+def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     r"""
     Perform image-to-text decoding for discrete image inputs (e.g., regions
     of interest, significant clusters) according to the method described in
@@ -87,14 +87,16 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     if isinstance(roi, str):
         roi = nib.load(roi)
     elif not isinstance(roi, nib.Nifti1Image):
-        raise IOError('Input roi must be either a nifti image '
-                      '(nibabel.Nifti1Image) or a path to one.')
+        raise IOError(
+            "Input roi must be either a nifti image " "(nibabel.Nifti1Image) or a path to one."
+        )
 
     dset_aff = model.mask.affine
     if not np.array_equal(roi.affine, dset_aff):
-        raise ValueError('Input roi must have same affine as mask img:'
-                         '\n{0}\n{1}'.format(np.array2string(roi.affine),
-                                             np.array2string(dset_aff)))
+        raise ValueError(
+            "Input roi must have same affine as mask img:"
+            "\n{0}\n{1}".format(np.array2string(roi.affine), np.array2string(dset_aff))
+        )
 
     # Load ROI file and get ROI voxels overlapping with brain mask
     mask_vec = model.mask.get_fdata().ravel().astype(bool)
@@ -113,14 +115,12 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.):
     # p_word_g_topic = np.nan_to_num(p_word_g_topic, 0)
     word_weights = np.dot(model.p_word_g_topic_, topic_weights)
 
-    decoded_df = pd.DataFrame(index=model.vocabulary,
-                              columns=['Weight'], data=word_weights)
-    decoded_df.index.name = 'Term'
+    decoded_df = pd.DataFrame(index=model.vocabulary, columns=["Weight"], data=word_weights)
+    decoded_df.index.name = "Term"
     return decoded_df, topic_weights
 
 
-@due.dcite(references.BRAINMAP_DECODING,
-           description='Citation for BrainMap-style decoding.')
+@due.dcite(references.BRAINMAP_DECODING, description="Citation for BrainMap-style decoding.")
 class BrainMapDecoder(Decoder):
     """
     Perform image-to-text decoding for discrete image inputs (e.g., regions
@@ -163,8 +163,14 @@ class BrainMapDecoder(Decoder):
       (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
     """
 
-    def __init__(self, feature_group=None, features=None,
-                 frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
+    def __init__(
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        u=0.05,
+        correction="fdr_bh",
+    ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
@@ -173,8 +179,7 @@ class BrainMapDecoder(Decoder):
         self.results = None
 
     def _fit(self, dataset):
-        self.inputs_ = {'coordinates': dataset.coordinates,
-                        'annotations': dataset.annotations}
+        self.inputs_ = {"coordinates": dataset.coordinates, "annotations": dataset.annotations}
 
     def transform(self, ids, ids2=None):
         """
@@ -199,19 +204,30 @@ class BrainMapDecoder(Decoder):
             'zReverse', and 'probReverse'.
         """
         results = brainmap_decode(
-            self.inputs_['coordinates'], self.inputs_['annotations'],
-            ids=ids, ids2=ids2, features=self.features_,
+            self.inputs_["coordinates"],
+            self.inputs_["annotations"],
+            ids=ids,
+            ids2=ids2,
+            features=self.features_,
             frequency_threshold=self.frequency_threshold,
-            u=self.u, correction=self.correction)
+            u=self.u,
+            correction=self.correction,
+        )
         self.results = results
         return results
 
 
-@due.dcite(references.BRAINMAP_DECODING,
-           description='Citation for BrainMap-style decoding.')
-def brainmap_decode(coordinates, annotations, ids, ids2=None,
-                    features=None,
-                    frequency_threshold=0.001, u=0.05, correction='fdr_bh'):
+@due.dcite(references.BRAINMAP_DECODING, description="Citation for BrainMap-style decoding.")
+def brainmap_decode(
+    coordinates,
+    annotations,
+    ids,
+    ids2=None,
+    features=None,
+    frequency_threshold=0.001,
+    u=0.05,
+    correction="fdr_bh",
+):
     """
     Perform image-to-text decoding for discrete image inputs (e.g., regions
     of interest, significant clusters) according to the BrainMap method.
@@ -267,14 +283,14 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
       social-affective default network." Brain Structure and Function 220.2
       (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
     """
-    dataset_ids = sorted(list(set(coordinates['id'].values)))
+    dataset_ids = sorted(list(set(coordinates["id"].values)))
     if ids2 is None:
         unselected = sorted(list(set(dataset_ids) - set(ids)))
     else:
         unselected = ids2[:]
 
     # Binarize with frequency threshold
-    features_df = annotations.set_index('id', drop=True)
+    features_df = annotations.set_index("id", drop=True)
     features_df = features_df[features].ge(frequency_threshold)
 
     sel_array = features_df.loc[ids].values
@@ -305,8 +321,8 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
     for i, term in enumerate(features):
         term_ids = features_df.loc[features_df[term] == 1].index.values
         noterm_ids = features_df.loc[features_df[term] == 0].index.values
-        n_term_foci[i] = coordinates['id'].isin(term_ids).sum()
-        n_noterm_foci[i] = coordinates['id'].isin(noterm_ids).sum()
+        n_term_foci[i] = coordinates["id"].isin(term_ids).sum()
+        n_noterm_foci[i] = coordinates["id"].isin(noterm_ids).sum()
 
     p_selected_g_term = n_selected_term / n_term_foci  # probForward
     l_selected_g_term = p_selected_g_term / p_selected  # likelihoodForward
@@ -318,45 +334,66 @@ def brainmap_decode(coordinates, annotations, ids, ids2=None,
     # Significance testing
     # Forward inference significance is determined with a binomial distribution
     p_fi = 1 - binom.cdf(k=n_selected_term, n=n_term_foci, p=p_selected)
-    sign_fi = np.sign(n_selected_term - np.mean(n_selected_term)).ravel()  # pylint: disable=no-member
+    sign_fi = np.sign(
+        n_selected_term - np.mean(n_selected_term)
+    ).ravel()  # pylint: disable=no-member
 
     # Two-way chi-square test for specificity of activation
-    cells = np.array([[n_selected_term, n_selected_noterm],  # pylint: disable=no-member
-                      [n_unselected_term, n_unselected_noterm]]).T
+    cells = np.array(
+        [
+            [n_selected_term, n_selected_noterm],  # pylint: disable=no-member
+            [n_unselected_term, n_unselected_noterm],
+        ]
+    ).T
     chi2_ri = two_way(cells)
     p_ri = special.chdtrc(1, chi2_ri)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Ignore rare features
-    p_fi[n_selected_term < 5] = 1.
-    p_ri[n_selected_term < 5] = 1.
+    p_fi[n_selected_term < 5] = 1.0
+    p_ri[n_selected_term < 5] = 1.0
 
     # Multiple comparisons correction across features. Separately done for FI and RI.
     if correction is not None:
-        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction,
-                                           returnsorted=False)
-        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction,
-                                           returnsorted=False)
+        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction, returnsorted=False)
+        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction, returnsorted=False)
     else:
         p_corr_fi = p_fi
         p_corr_ri = p_ri
 
     # Compute z-values
-    z_corr_fi = p_to_z(p_corr_fi, 'two') * sign_fi
-    z_corr_ri = p_to_z(p_corr_ri, 'two') * sign_ri
+    z_corr_fi = p_to_z(p_corr_fi, "two") * sign_fi
+    z_corr_ri = p_to_z(p_corr_ri, "two") * sign_ri
 
     # Effect size
-    arr = np.array([p_corr_fi, z_corr_fi, l_selected_g_term,  # pylint: disable=no-member
-                    p_corr_ri, z_corr_ri, p_term_g_selected]).T
+    arr = np.array(
+        [
+            p_corr_fi,
+            z_corr_fi,
+            l_selected_g_term,  # pylint: disable=no-member
+            p_corr_ri,
+            z_corr_ri,
+            p_term_g_selected,
+        ]
+    ).T
 
-    out_df = pd.DataFrame(data=arr, index=features,
-                          columns=['pForward', 'zForward', 'likelihoodForward',
-                                   'pReverse', 'zReverse', 'probReverse'])
-    out_df.index.name = 'Term'
+    out_df = pd.DataFrame(
+        data=arr,
+        index=features,
+        columns=[
+            "pForward",
+            "zForward",
+            "likelihoodForward",
+            "pReverse",
+            "zReverse",
+            "probReverse",
+        ],
+    )
+    out_df.index.name = "Term"
     return out_df
 
 
-@due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
+@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class NeurosynthDecoder(Decoder):
     """
     Perform discrete functional decoding according to Neurosynth's
@@ -408,9 +445,16 @@ class NeurosynthDecoder(Decoder):
       functional neuroimaging data." Nature methods 8.8 (2011): 665.
       https://doi.org/10.1038/nmeth.1635
     """
-    def __init__(self, feature_group=None, features=None,
-                 frequency_threshold=0.001, prior=0.5,
-                 u=0.05, correction='fdr_bh'):
+
+    def __init__(
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        prior=0.5,
+        u=0.05,
+        correction="fdr_bh",
+    ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
@@ -420,8 +464,7 @@ class NeurosynthDecoder(Decoder):
         self.results = None
 
     def _fit(self, dataset):
-        self.inputs_ = {'coordinates': dataset.coordinates,
-                        'annotations': dataset.annotations}
+        self.inputs_ = {"coordinates": dataset.coordinates, "annotations": dataset.annotations}
 
     def transform(self, ids, ids2=None):
         """
@@ -446,19 +489,33 @@ class NeurosynthDecoder(Decoder):
             and 'probReverse'.
         """
         results = neurosynth_decode(
-            self.inputs_['coordinates'], self.inputs_['annotations'],
-            ids=ids, ids2=ids2, features=self.features_,
-            frequency_threshold=self.frequency_threshold, prior=self.prior,
-            u=self.u, correction=self.correction)
+            self.inputs_["coordinates"],
+            self.inputs_["annotations"],
+            ids=ids,
+            ids2=ids2,
+            features=self.features_,
+            frequency_threshold=self.frequency_threshold,
+            prior=self.prior,
+            u=self.u,
+            correction=self.correction,
+        )
         self.results = results
         return results
 
 
-@due.dcite(references.NEUROSYNTH, description='Introduces Neurosynth.')
-def neurosynth_decode(coordinates, annotations, ids, ids2=None,
-                      feature_group=None, features=None,
-                      frequency_threshold=0.001, prior=0.5, u=0.05,
-                      correction='fdr_bh'):
+@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
+def neurosynth_decode(
+    coordinates,
+    annotations,
+    ids,
+    ids2=None,
+    feature_group=None,
+    features=None,
+    frequency_threshold=0.001,
+    prior=0.5,
+    u=0.05,
+    correction="fdr_bh",
+):
     """
     Perform discrete functional decoding according to Neurosynth's
     meta-analytic method.
@@ -526,14 +583,14 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None,
       functional neuroimaging data." Nature methods 8.8 (2011): 665.
       https://doi.org/10.1038/nmeth.1635
     """
-    dataset_ids = sorted(list(set(coordinates['id'].values)))
+    dataset_ids = sorted(list(set(coordinates["id"].values)))
     if ids2 is None:
         unselected = sorted(list(set(dataset_ids) - set(ids)))
     else:
         unselected = ids2[:]
 
     # Binarize with frequency threshold
-    features_df = annotations.set_index('id', drop=True)
+    features_df = annotations.set_index("id", drop=True)
     features_df = features_df[features].ge(frequency_threshold)
 
     sel_array = features_df.loc[ids].values
@@ -565,28 +622,32 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None,
     # One-way chi-square test for consistency of term frequency across terms
     chi2_fi = one_way(n_selected_term, n_term)
     p_fi = special.chdtrc(1, chi2_fi)
-    sign_fi = np.sign(n_selected_term - np.mean(n_selected_term)).ravel()  # pylint: disable=no-member
+    sign_fi = np.sign(
+        n_selected_term - np.mean(n_selected_term)
+    ).ravel()  # pylint: disable=no-member
 
     # Two-way chi-square test for specificity of activation
-    cells = np.array([[n_selected_term, n_selected_noterm],  # pylint: disable=no-member
-                      [n_unselected_term, n_unselected_noterm]]).T
+    cells = np.array(
+        [
+            [n_selected_term, n_selected_noterm],  # pylint: disable=no-member
+            [n_unselected_term, n_unselected_noterm],
+        ]
+    ).T
     chi2_ri = two_way(cells)
     p_ri = special.chdtrc(1, chi2_ri)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.
     if correction is not None:
-        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction,
-                                           returnsorted=False)
-        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction,
-                                           returnsorted=False)
+        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction, returnsorted=False)
+        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction, returnsorted=False)
     else:
         p_corr_fi = p_fi
         p_corr_ri = p_ri
 
     # Compute z-values
-    z_corr_fi = p_to_z(p_corr_fi, 'two') * sign_fi
-    z_corr_ri = p_to_z(p_corr_ri, 'two') * sign_ri
+    z_corr_fi = p_to_z(p_corr_fi, "two") * sign_fi
+    z_corr_ri = p_to_z(p_corr_ri, "two") * sign_ri
 
     # Effect size
     # est. prob. of brain state described by term finding activation in ROI
@@ -595,11 +656,21 @@ def neurosynth_decode(coordinates, annotations, ids, ids2=None,
     # est. prob. of activation in ROI reflecting brain state described by term
     p_term_g_selected_g_prior = p_selected_g_term * prior / p_selected_g_term_g_prior
 
-    arr = np.array([p_corr_fi, z_corr_fi, p_selected_g_term_g_prior,  # pylint: disable=no-member
-                    p_corr_ri, z_corr_ri, p_term_g_selected_g_prior]).T
+    arr = np.array(
+        [
+            p_corr_fi,
+            z_corr_fi,
+            p_selected_g_term_g_prior,  # pylint: disable=no-member
+            p_corr_ri,
+            z_corr_ri,
+            p_term_g_selected_g_prior,
+        ]
+    ).T
 
-    out_df = pd.DataFrame(data=arr, index=features,
-                          columns=['pForward', 'zForward', 'probForward',
-                                   'pReverse', 'zReverse', 'probReverse'])
-    out_df.index.name = 'Term'
+    out_df = pd.DataFrame(
+        data=arr,
+        index=features,
+        columns=["pForward", "zForward", "probForward", "pReverse", "zReverse", "probReverse"],
+    )
+    out_df.index.name = "Term"
     return out_df

@@ -10,10 +10,17 @@ import pandas as pd
 import nibabel as nib
 
 from .base import NiMAREBase
-from .utils import (get_template, listify, try_prepend, get_masker,
-                    dict_to_df, dict_to_coordinates,
-                    validate_df, validate_images_df,
-                    mm2vox)
+from .utils import (
+    get_template,
+    listify,
+    try_prepend,
+    get_masker,
+    dict_to_df,
+    dict_to_coordinates,
+    validate_df,
+    validate_images_df,
+    mm2vox,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -63,11 +70,12 @@ class Dataset(NiMAREBase):
     then they will be resampled automatically, at the point where they're used,
     by :obj:`Dataset.masker`.
     """
-    _id_cols = ['id', 'study_id', 'contrast_id']
 
-    def __init__(self, source, target='mni152_2mm', mask=None):
+    _id_cols = ["id", "study_id", "contrast_id"]
+
+    def __init__(self, source, target="mni152_2mm", mask=None):
         if isinstance(source, str):
-            with open(source, 'r') as f_obj:
+            with open(source, "r") as f_obj:
                 data = json.load(f_obj)
         elif isinstance(source, dict):
             data = source
@@ -77,27 +85,27 @@ class Dataset(NiMAREBase):
         # Datasets are organized by study, then experiment
         # To generate unique IDs, we combine study ID with experiment ID
         # build list of ids
-        id_columns = ['id', 'study_id', 'contrast_id']
+        id_columns = ["id", "study_id", "contrast_id"]
         all_ids = []
         for pid in data.keys():
-            for expid in data[pid]['contrasts'].keys():
-                id_ = '{0}-{1}'.format(pid, expid)
+            for expid in data[pid]["contrasts"].keys():
+                id_ = "{0}-{1}".format(pid, expid)
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
-        id_df = id_df.set_index('id', drop=False)
+        id_df = id_df.set_index("id", drop=False)
         self.__ids = id_df.index.values
 
         # Set up Masker
         if mask is None:
-            mask = get_template(target, mask='brain')
+            mask = get_template(target, mask="brain")
         self.masker = mask
         self.space = target
 
-        self.annotations = dict_to_df(id_df, data, key='labels')
+        self.annotations = dict_to_df(id_df, data, key="labels")
         self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
-        self.images = dict_to_df(id_df, data, key='images')
-        self.metadata = dict_to_df(id_df, data, key='metadata')
-        self.texts = dict_to_df(id_df, data, key='text')
+        self.images = dict_to_df(id_df, data, key="images")
+        self.metadata = dict_to_df(id_df, data, key="metadata")
+        self.texts = dict_to_df(id_df, data, key="text")
 
     @property
     def ids(self):
@@ -117,14 +125,16 @@ class Dataset(NiMAREBase):
     @masker.setter
     def masker(self, mask):
         mask = get_masker(mask)
-        if hasattr(self, 'masker') and not np.array_equal(
-                self.masker.mask_img.affine, mask.mask_img.affine):
-            LGR.info('New masker does not match old masker. '
-                     'Space is assumed to be the same, but coordinates will '
-                     'be transformed to new matrix.')
+        if hasattr(self, "masker") and not np.array_equal(
+            self.masker.mask_img.affine, mask.mask_img.affine
+        ):
+            LGR.info(
+                "New masker does not match old masker. "
+                "Space is assumed to be the same, but coordinates will "
+                "be transformed to new matrix."
+            )
             coords = self.coordinates
-            coords[['i', 'j', 'k']] = mm2vox(coords[['x', 'y', 'z']],
-                                             mask.mask_img.affine)
+            coords[["i", "j", "k"]] = mm2vox(coords[["x", "y", "z"]], mask.mask_img.affine)
             self.coordinates = coords
         self.__masker = mask
 
@@ -226,11 +236,11 @@ class Dataset(NiMAREBase):
         """
         new_dset = copy.deepcopy(self)
         new_dset.__ids = ids
-        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations['id'].isin(ids)]
-        new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates['id'].isin(ids)]
-        new_dset.images = new_dset.images.loc[new_dset.images['id'].isin(ids)]
-        new_dset.metadata = new_dset.metadata.loc[new_dset.metadata['id'].isin(ids)]
-        new_dset.texts = new_dset.texts.loc[new_dset.texts['id'].isin(ids)]
+        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations["id"].isin(ids)]
+        new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates["id"].isin(ids)]
+        new_dset.images = new_dset.images.loc[new_dset.images["id"].isin(ids)]
+        new_dset.metadata = new_dset.metadata.loc[new_dset.metadata["id"].isin(ids)]
+        new_dset.texts = new_dset.texts.loc[new_dset.texts["id"].isin(ids)]
         return new_dset
 
     def update_path(self, new_path):
@@ -244,11 +254,11 @@ class Dataset(NiMAREBase):
             Path to prepend to relative paths of files in Dataset.images.
         """
         df = self.images
-        relative_path_cols = [c for c in df if c.endswith('__relative')]
+        relative_path_cols = [c for c in df if c.endswith("__relative")]
         for col in relative_path_cols:
-            abs_col = col.replace('__relative', '')
+            abs_col = col.replace("__relative", "")
             if abs_col in df.columns:
-                LGR.info('Overwriting images column {}'.format(abs_col))
+                LGR.info("Overwriting images column {}".format(abs_col))
             df[abs_col] = df[col].apply(try_prepend, prefix=new_path)
         self.images = df
 
@@ -275,16 +285,16 @@ class Dataset(NiMAREBase):
         >>> dset.get({'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')})
         """
         results = {}
-        results['id'] = self.ids
+        results["id"] = self.ids
         keep_idx = np.arange(len(self.ids), dtype=int)
         for k in dict_:
             vals = dict_[k]
-            if vals[0] == 'image':
+            if vals[0] == "image":
                 temp = self.get_images(imtype=vals[1])
-            elif vals[0] == 'metadata':
+            elif vals[0] == "metadata":
                 temp = self.get_metadata(field=vals[1])
-            elif vals[0] == 'coordinates':
-                temp = [self.coordinates.loc[self.coordinates['id'] == id_] for id_ in self.ids]
+            elif vals[0] == "coordinates":
+                temp = [self.coordinates.loc[self.coordinates["id"] == id_] for id_ in self.ids]
             else:
                 raise ValueError('Input "{}" not understood.'.format(vals[0]))
             results[k] = temp
@@ -293,12 +303,11 @@ class Dataset(NiMAREBase):
 
         # reduce
         if len(keep_idx) != len(self.ids):
-            LGR.info('Retaining {0}/{1} studies'.format(len(keep_idx),
-                                                        len(self.ids)))
+            LGR.info("Retaining {0}/{1} studies".format(len(keep_idx), len(self.ids)))
 
         for k in results:
             results[k] = [results[k][i] for i in keep_idx]
-            if dict_.get(k, [None])[0] == 'coordinates':
+            if dict_.get(k, [None])[0] == "coordinates":
                 results[k] = pd.concat(results[k])
         return results
 
@@ -322,7 +331,7 @@ class Dataset(NiMAREBase):
 
         result = [c for c in self.annotations.columns if c not in self._id_cols]
         if ids is not None:
-            temp_annotations = self.annotations.loc[self.annotations['id'].isin(ids)]
+            temp_annotations = self.annotations.loc[self.annotations["id"].isin(ids)]
             res = temp_annotations[result].any(axis=0)
             result = res.loc[res].index.tolist()
 
@@ -357,18 +366,20 @@ class Dataset(NiMAREBase):
 
         available_types = [c for c in df.columns if c not in self._id_cols]
         if (value is not None) and (value not in available_types):
-            raise ValueError('Text type "{0}" not found.\n'
-                             'Available types: '
-                             '{1}'.format(value, ', '.join(available_types)))
+            raise ValueError(
+                'Text type "{0}" not found.\n'
+                "Available types: "
+                "{1}".format(value, ", ".join(available_types))
+            )
 
         if value is not None:
             if ids is not None:
-                result = df[value].loc[df['id'].isin(ids)].tolist()
+                result = df[value].loc[df["id"].isin(ids)].tolist()
             else:
                 result = df[value].tolist()
         else:
             if ids is not None:
-                result = {v: df[v].loc[df['id'].isin(ids)].tolist() for v in available_types}
+                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
                 result = {k: v for k, v in result.items() if any(v)}
             else:
                 result = {v: df[v].tolist() for v in available_types}
@@ -410,18 +421,20 @@ class Dataset(NiMAREBase):
 
         available_types = [c for c in df.columns if c not in self._id_cols]
         if (value is not None) and (value not in available_types):
-            raise ValueError('Metadata field "{0}" not found.\n'
-                             'Available fields: '
-                             '{1}'.format(field, ', '.join(available_types)))
+            raise ValueError(
+                'Metadata field "{0}" not found.\n'
+                "Available fields: "
+                "{1}".format(field, ", ".join(available_types))
+            )
 
         if value is not None:
             if ids is not None:
-                result = df[value].loc[df['id'].isin(ids)].tolist()
+                result = df[value].loc[df["id"].isin(ids)].tolist()
             else:
                 result = df[value].tolist()
         else:
             if ids is not None:
-                result = {v: df[v].loc[df['id'].isin(ids)].tolist() for v in available_types}
+                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
                 result = {k: v for k, v in result.items() if any(v)}
             else:
                 result = {v: df[v].tolist() for v in available_types}
@@ -459,23 +472,25 @@ class Dataset(NiMAREBase):
             return_first = True
         ids = listify(ids)
 
-        metadata_fields = ['space']
+        metadata_fields = ["space"]
         available_types = [c for c in df.columns if c not in self._id_cols]
-        available_types = [c for c in available_types if not c.endswith('__relative')]
+        available_types = [c for c in available_types if not c.endswith("__relative")]
         available_types = [c for c in available_types if c not in metadata_fields]
         if (value is not None) and (value not in available_types):
-            raise ValueError('Image type "{0}" not found.\n'
-                             'Available types: '
-                             '{1}'.format(value, ', '.join(available_types)))
+            raise ValueError(
+                'Image type "{0}" not found.\n'
+                "Available types: "
+                "{1}".format(value, ", ".join(available_types))
+            )
 
         if value is not None:
             if ids is not None:
-                result = self.images[value].loc[self.images['id'].isin(ids)].tolist()
+                result = self.images[value].loc[self.images["id"].isin(ids)].tolist()
             else:
                 result = self.images[value].tolist()
         else:
             if ids is not None:
-                result = {v: df[v].loc[df['id'].isin(ids)].tolist() for v in available_types}
+                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
                 result = {k: v for k, v in result.items() if any(v)}
             else:
                 result = {v: df[v].tolist() for v in available_types}
@@ -516,7 +531,7 @@ class Dataset(NiMAREBase):
         temp_annotations = self.annotations[self._id_cols + found_labels]
         found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
         if any(found_rows):
-            found_ids = temp_annotations.loc[found_rows, 'id'].tolist()
+            found_ids = temp_annotations.loc[found_rows, "id"].tolist()
         else:
             found_ids = []
         return found_ids
@@ -536,17 +551,19 @@ class Dataset(NiMAREBase):
             A list of IDs from the Dataset with at least one focus in the mask.
         """
         from scipy.spatial.distance import cdist
+
         if isinstance(mask, str):
             mask = nib.load(mask)
 
         dset_mask = self.masker.mask_img
         if not np.array_equal(dset_mask.affine, mask.affine):
             from nilearn.image import resample_to_img
-            mask = resample_to_img(mask, dset_mask, interpolation='nearest')
+
+            mask = resample_to_img(mask, dset_mask, interpolation="nearest")
         mask_ijk = np.vstack(np.where(mask.get_fdata())).T
-        distances = cdist(mask_ijk, self.coordinates[['i', 'j', 'k']].values)
+        distances = cdist(mask_ijk, self.coordinates[["i", "j", "k"]].values)
         distances = np.any(distances == 0, axis=0)
-        found_ids = list(self.coordinates.loc[distances, 'id'].unique())
+        found_ids = list(self.coordinates.loc[distances, "id"].unique())
         return found_ids
 
     def get_studies_by_coordinate(self, xyz, r=20):
@@ -568,9 +585,10 @@ class Dataset(NiMAREBase):
             radius r of requested coordinates.
         """
         from scipy.spatial.distance import cdist
+
         xyz = np.array(xyz)
         assert xyz.shape[1] == 3 and xyz.ndim == 2
-        distances = cdist(xyz, self.coordinates[['x', 'y', 'z']].values)
+        distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
         distances = np.any(distances <= r, axis=0)
-        found_ids = list(self.coordinates.loc[distances, 'id'].unique())
+        found_ids = list(self.coordinates.loc[distances, "id"].unique())
         return found_ids

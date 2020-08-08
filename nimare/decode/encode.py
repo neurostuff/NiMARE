@@ -10,8 +10,7 @@ from ..due import due
 from .. import references
 
 
-@due.dcite(references.TEXT2BRAIN,
-           description='Introduced text2brain models for annotation.')
+@due.dcite(references.TEXT2BRAIN, description="Introduced text2brain models for annotation.")
 def text2brain():
     """
     Perform text-to-image encoding with the text2brain model.
@@ -31,9 +30,8 @@ def text2brain():
     pass
 
 
-@due.dcite(references.GCLDA_DECODING, description='Citation for GCLDA encoding.')
-def gclda_encode(model, text, out_file=None, topic_priors=None,
-                 prior_weight=1.):
+@due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA encoding.")
+def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0):
     r"""
     Perform text-to-image encoding according to the method described in
     Rubin et al. (2017).
@@ -108,14 +106,13 @@ def gclda_encode(model, text, out_file=None, topic_priors=None,
       https://doi.org/10.1371/journal.pcbi.1005649
     """
     if isinstance(text, list):
-        text = ' '.join(text)
+        text = " ".join(text)
 
     # Assume that words in vocabulary are underscore-separated.
     # Convert to space-separation for vectorization of input string.
-    vocabulary = [term.replace('_', ' ') for term in model.vocabulary]
-    max_len = max([len(term.split(' ')) for term in vocabulary])
-    vectorizer = CountVectorizer(vocabulary=model.vocabulary,
-                                 ngram_range=(1, max_len))
+    vocabulary = [term.replace("_", " ") for term in model.vocabulary]
+    max_len = max([len(term.split(" ")) for term in vocabulary])
+    vectorizer = CountVectorizer(vocabulary=model.vocabulary, ngram_range=(1, max_len))
     word_counts = np.squeeze(vectorizer.fit_transform([text]).toarray())
     keep_idx = np.where(word_counts > 0)[0]
     text_counts = word_counts[keep_idx]

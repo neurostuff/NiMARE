@@ -16,20 +16,31 @@ def test_ale_workflow_smoke():
     """
     Smoke test for Sleuth ALE workflow.
     """
-    sleuth_file = op.join(get_test_data_path(), 'test_sleuth_file.txt')
-    out_dir = op.join(os.getcwd(), 'TEST')
-    prefix = 'test'
+    sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
+    out_dir = op.join(os.getcwd(), "TEST")
+    prefix = "test"
 
     # The same test is run with both workflow function and CLI
     workflows.ale_sleuth_workflow(
-        sleuth_file, output_dir=out_dir, prefix=prefix, n_iters=10, n_cores=1)
-    assert op.isfile(op.join(out_dir, '{}_input_coordinates.txt'.format(prefix)))
+        sleuth_file, output_dir=out_dir, prefix=prefix, n_iters=10, n_cores=1
+    )
+    assert op.isfile(op.join(out_dir, "{}_input_coordinates.txt".format(prefix)))
     shutil.rmtree(out_dir)
 
-    args = ['ale', '--output_dir', out_dir, '--prefix', prefix,
-            '--n_iters', '10', '--n_cores', '1', sleuth_file]
+    args = [
+        "ale",
+        "--output_dir",
+        out_dir,
+        "--prefix",
+        prefix,
+        "--n_iters",
+        "10",
+        "--n_cores",
+        "1",
+        sleuth_file,
+    ]
     cli._main(args)
-    assert op.isfile(op.join(out_dir, '{}_input_coordinates.txt'.format(prefix)))
+    assert op.isfile(op.join(out_dir, "{}_input_coordinates.txt".format(prefix)))
     shutil.rmtree(out_dir)
 
 
@@ -37,69 +48,100 @@ def test_ale_workflow_smoke_2():
     """
     Smoke test for Sleuth ALE workflow with subtraction analysis
     """
-    sleuth_file = op.join(get_test_data_path(), 'test_sleuth_file.txt')
-    out_dir = op.join(os.getcwd(), 'TEST')
-    prefix = 'test'
+    sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
+    out_dir = op.join(os.getcwd(), "TEST")
+    prefix = "test"
 
     # The same test is run with both workflow function and CLI
     workflows.ale_sleuth_workflow(
-        sleuth_file, sleuth_file2=sleuth_file,
-        output_dir=out_dir, prefix=prefix,
-        n_iters=10, n_cores=1)
-    assert op.isfile(op.join(out_dir, '{}_group2_input_coordinates.txt'.format(prefix)))
+        sleuth_file,
+        sleuth_file2=sleuth_file,
+        output_dir=out_dir,
+        prefix=prefix,
+        n_iters=10,
+        n_cores=1,
+    )
+    assert op.isfile(op.join(out_dir, "{}_group2_input_coordinates.txt".format(prefix)))
     shutil.rmtree(out_dir)
 
-    args = ['ale', '--output_dir', out_dir, '--prefix', prefix,
-            '--n_iters', '10', '--n_cores', '1',
-            '--file2', sleuth_file, sleuth_file]
+    args = [
+        "ale",
+        "--output_dir",
+        out_dir,
+        "--prefix",
+        prefix,
+        "--n_iters",
+        "10",
+        "--n_cores",
+        "1",
+        "--file2",
+        sleuth_file,
+        sleuth_file,
+    ]
     cli._main(args)
-    assert op.isfile(op.join(out_dir, '{}_group2_input_coordinates.txt'.format(prefix)))
+    assert op.isfile(op.join(out_dir, "{}_group2_input_coordinates.txt".format(prefix)))
     shutil.rmtree(out_dir)
 
 
 def test_scale_workflow_smoke():
     """
     """
-    sleuth_file = op.join(get_test_data_path(), 'test_sleuth_file.txt')
-    out_dir = op.join(os.getcwd(), 'TEST')
-    prefix = 'test'
-    baseline = op.join(get_test_data_path(), 'test_baseline.txt')
+    sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
+    out_dir = op.join(os.getcwd(), "TEST")
+    prefix = "test"
+    baseline = op.join(get_test_data_path(), "test_baseline.txt")
 
     # The same test is run with both workflow function and CLI
     workflows.scale_workflow(
-        sleuth_file, baseline=baseline,
-        output_dir=out_dir, prefix=prefix,
-        n_iters=5, n_cores=1)
-    assert op.isfile(op.join(out_dir, '{}_input_coordinates.txt'.format(prefix)))
+        sleuth_file, baseline=baseline, output_dir=out_dir, prefix=prefix, n_iters=5, n_cores=1
+    )
+    assert op.isfile(op.join(out_dir, "{}_input_coordinates.txt".format(prefix)))
     shutil.rmtree(out_dir)
 
-    args = ['scale', '--baseline', baseline,
-            '--output_dir', out_dir, '--prefix', prefix,
-            '--n_iters', '5', '--n_cores', '1',
-            sleuth_file]
+    args = [
+        "scale",
+        "--baseline",
+        baseline,
+        "--output_dir",
+        out_dir,
+        "--prefix",
+        prefix,
+        "--n_iters",
+        "5",
+        "--n_cores",
+        "1",
+        sleuth_file,
+    ]
     cli._main(args)
-    assert op.isfile(op.join(out_dir, '{}_input_coordinates.txt'.format(prefix)))
+    assert op.isfile(op.join(out_dir, "{}_input_coordinates.txt".format(prefix)))
     shutil.rmtree(out_dir)
 
 
 def test_conperm_workflow_smoke(testdata_ibma):
     dset = testdata_ibma
-    files = dset.get_images(imtype='beta')
-    mask_image = op.join(get_test_data_path(), 'test_pain_dataset', 'mask.nii.gz')
-    out_dir = op.join(os.getcwd(), 'TEST')
-    prefix = 'test'
+    files = dset.get_images(imtype="beta")
+    mask_image = op.join(get_test_data_path(), "test_pain_dataset", "mask.nii.gz")
+    out_dir = op.join(os.getcwd(), "TEST")
+    prefix = "test"
 
     # The same test is run with both workflow function and CLI
     workflows.conperm_workflow(
-        files,
-        mask_image=mask_image,
-        output_dir=out_dir, prefix=prefix,
-        n_iters=5)
-    assert op.isfile(op.join(out_dir, '{}_logp.nii.gz'.format(prefix)))
+        files, mask_image=mask_image, output_dir=out_dir, prefix=prefix, n_iters=5
+    )
+    assert op.isfile(op.join(out_dir, "{}_logp.nii.gz".format(prefix)))
     shutil.rmtree(out_dir)
 
-    args = ['conperm', '--output_dir', out_dir, '--mask', mask_image,
-            '--prefix', prefix, '--n_iters', '5'] + files
+    args = [
+        "conperm",
+        "--output_dir",
+        out_dir,
+        "--mask",
+        mask_image,
+        "--prefix",
+        prefix,
+        "--n_iters",
+        "5",
+    ] + files
     cli._main(args)
-    assert op.isfile(op.join(out_dir, '{}_logp.nii.gz'.format(prefix)))
+    assert op.isfile(op.join(out_dir, "{}_logp.nii.gz".format(prefix)))
     shutil.rmtree(out_dir)

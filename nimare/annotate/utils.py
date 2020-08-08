@@ -35,7 +35,7 @@ def _generate_weights(rel_df, weights):
     output item (column), and will have zeroes for all other cells.
     """
     # Override isSelf weight
-    weights['isSelf'] = 1
+    weights["isSelf"] = 1
 
     # Hierarchical expansion
     def get_weight(rel_type):
@@ -43,22 +43,25 @@ def _generate_weights(rel_df, weights):
         return weight
 
     t_df = rel_df.copy()
-    t_df['rel_type'] = t_df['rel_type'].apply(get_weight)
-    weights_df = t_df.pivot_table(index='input', columns='output',
-                                  values='rel_type', aggfunc=np.max)
+    t_df["rel_type"] = t_df["rel_type"].apply(get_weight)
+    weights_df = t_df.pivot_table(
+        index="input", columns="output", values="rel_type", aggfunc=np.max
+    )
     weights_df = weights_df.fillna(0)
-    out_not_in = list(set(t_df['output'].values) - set(t_df['input'].values))
-    in_not_out = list(set(t_df['input'].values) - set(t_df['output'].values))
+    out_not_in = list(set(t_df["output"].values) - set(t_df["input"].values))
+    in_not_out = list(set(t_df["input"].values) - set(t_df["output"].values))
 
-    new_cols = pd.DataFrame(columns=in_not_out,
-                            index=weights_df.index,
-                            data=np.zeros((weights_df.shape[0],
-                                           len(in_not_out))))
+    new_cols = pd.DataFrame(
+        columns=in_not_out,
+        index=weights_df.index,
+        data=np.zeros((weights_df.shape[0], len(in_not_out))),
+    )
     weights_df = pd.concat((weights_df, new_cols), axis=1)
-    new_rows = pd.DataFrame(columns=weights_df.columns,
-                            index=out_not_in,
-                            data=np.zeros((len(out_not_in),
-                                           weights_df.shape[1])))
+    new_rows = pd.DataFrame(
+        columns=weights_df.columns,
+        index=out_not_in,
+        data=np.zeros((len(out_not_in), weights_df.shape[1])),
+    )
     weights_df = pd.concat((weights_df, new_rows), axis=0)
     all_cols = sorted(weights_df.columns.tolist())
     weights_df = weights_df.loc[all_cols, :]
