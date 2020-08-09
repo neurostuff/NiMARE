@@ -7,12 +7,10 @@ import logging
 
 from nilearn.mass_univariate import permuted_ols
 import numpy as np
-from scipy import stats
 
 import pymare
 
 from ..base import MetaEstimator
-from ..stats import null_to_p
 from ..transforms import p_to_z, t_to_z
 
 LGR = logging.getLogger(__name__)
