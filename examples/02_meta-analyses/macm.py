@@ -14,9 +14,9 @@ studies within a larger database based on locations of report coordinates.
 """
 import os
 
-import numpy as np
 import nibabel as nib
-from nilearn import plotting, image, datasets
+import numpy as np
+from nilearn import datasets, image, plotting
 
 import nimare
 from nimare.tests.utils import get_test_data_path

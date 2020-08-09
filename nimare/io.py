@@ -1,9 +1,9 @@
 """
 Input/Output operations.
 """
-import re
 import json
 import os.path as op
+import re
 
 import numpy as np
 import pandas as pd

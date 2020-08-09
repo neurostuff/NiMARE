@@ -3,21 +3,21 @@ CBMA methods from the activation likelihood estimation (ALE) family
 """
 import logging
 import multiprocessing as mp
-from tqdm.auto import tqdm
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
 from scipy import ndimage
+from tqdm.auto import tqdm
 
-from .kernel import ALEKernel
-from ..results import MetaResult
+from .. import references
 from ..base import CBMAEstimator
 from ..due import due
-from .. import references
+from ..results import MetaResult
 from ..stats import null_to_p
 from ..transforms import p_to_z
 from ..utils import round2
+from .kernel import ALEKernel
 
 LGR = logging.getLogger(__name__)
 

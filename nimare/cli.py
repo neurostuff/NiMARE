@@ -1,14 +1,13 @@
+import argparse
 import os.path as op
 
-import argparse
-
-from nimare.workflows.macm import macm_workflow
-from nimare.workflows.scale import scale_workflow
+from nimare.io import convert_neurosynth_to_json, convert_sleuth_to_json
 from nimare.workflows.ale import ale_sleuth_workflow
-from nimare.workflows.conperm import conperm_workflow
-from nimare.workflows.peaks2maps import peaks2maps_workflow
 from nimare.workflows.cluster import meta_cluster_workflow
-from nimare.io import convert_sleuth_to_json, convert_neurosynth_to_json
+from nimare.workflows.conperm import conperm_workflow
+from nimare.workflows.macm import macm_workflow
+from nimare.workflows.peaks2maps import peaks2maps_workflow
+from nimare.workflows.scale import scale_workflow
 
 
 def _is_valid_file(parser, arg):

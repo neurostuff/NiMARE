@@ -1,6 +1,6 @@
 # Contributing to NiMARE
 
-Welcome to the NiMARE repository! We're excited you're here and want to contribute.  
+Welcome to the NiMARE repository! We're excited you're here and want to contribute.
 
 These guidelines are designed to make it as easy as possible to get involved. If you have any questions that aren't discussed below, please let us know by opening an [issue][link_issues]!
 
@@ -18,7 +18,7 @@ By starting the governance structure early in our development, we hope to welcom
 We are committed to continuing to update the governance structures as necessary.
 Every member of the ``NiMARE`` community is encouraged to comment on these processes and suggest improvements.
 
-As the first interim [Benevolent Dictator for Life (BDFL)](https://en.wikipedia.org/wiki/Benevolent_dictator_for_life), Taylor Salo is ultimately responsible for any major decisions pertaining to ``NiMARE`` development.
+As the first project leader, Taylor Salo is ultimately responsible for any major decisions pertaining to ``NiMARE`` development.
 However, all potential changes are explicitly and openly discussed in the described channels of communication, and we strive for consensus amongst all community members.
 
 ## Code of conduct

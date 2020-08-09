@@ -1,8 +1,8 @@
 """
 Workflow for running a SCALE meta-analysis from a Sleuth text file.
 """
-import os
 import logging
+import os
 import pathlib
 from shutil import copyfile
 

@@ -1,18 +1,18 @@
 """
 Meta-analytic clustering workflow
 """
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans, SpectralClustering, DBSCAN
+from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
 from sklearn.metrics import silhouette_score
 
-from ..due import due
 from .. import references
 from ..dataset import Dataset
-from ..meta.kernel import ALEKernel, MKDAKernel, KDAKernel, Peaks2MapsKernel
+from ..due import due
 from ..io import convert_sleuth_to_dataset
+from ..meta.kernel import ALEKernel, KDAKernel, MKDAKernel, Peaks2MapsKernel
 
 
 @due.dcite(

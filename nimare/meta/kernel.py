@@ -4,16 +4,16 @@ Methods for estimating thresholded cluster maps from neuroimaging contrasts
 size and test statistic values).
 """
 from __future__ import division
+
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
-
-from nilearn.image import resample_to_img, math_img
-from .utils import compute_ma, get_ale_kernel, peaks2maps
-from ..transforms import vox2mm
+from nilearn.image import math_img, resample_to_img
 
 from ..base import KernelTransformer
+from ..transforms import vox2mm
 from ..utils import get_masker
+from .utils import compute_ma, get_ale_kernel, peaks2maps
 
 
 class ALEKernel(KernelTransformer):

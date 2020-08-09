@@ -2,8 +2,8 @@
 Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms).
 """
 import nimare
+from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
-from nimare.correct import FWECorrector, FDRCorrector
 
 
 def test_ale(testdata_cbma):

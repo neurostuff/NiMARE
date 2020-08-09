@@ -1,31 +1,31 @@
 """
 Tools for downloading datasets.
 """
+import logging
+import math
 import os
 import os.path as op
-import math
-import time
 import shutil
 import tarfile
+import time
 import zipfile
-import logging
-import requests
 from glob import glob
 from io import BytesIO
+from lzma import LZMAFile
 from tarfile import TarFile
 
 import numpy as np
 import pandas as pd
-from lzma import LZMAFile
+import requests
 from tqdm.auto import tqdm
 
 from ..dataset import Dataset
 from .utils import (
-    _get_dataset_dir,
     _download_zipped_file,
-    _longify,
     _expand_df,
     _get_concept_reltype,
+    _get_dataset_dir,
+    _longify,
 )
 
 LGR = logging.getLogger(__name__)

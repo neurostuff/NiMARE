@@ -3,8 +3,8 @@ Test nimare.dataset (Dataset IO/transformations).
 """
 import os.path as op
 
-import numpy as np
 import nibabel as nib
+import numpy as np
 
 import nimare
 from nimare import dataset

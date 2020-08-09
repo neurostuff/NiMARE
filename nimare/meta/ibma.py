@@ -7,11 +7,12 @@ import logging
 
 import numpy as np
 from scipy import stats
+
 import pymare
 
 from ..base import MetaEstimator
-from ..transforms import p_to_z
 from ..stats import null_to_p
+from ..transforms import p_to_z
 
 LGR = logging.getLogger(__name__)
 

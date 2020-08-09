@@ -1,14 +1,14 @@
 """
 Perform MACM with ALE algorithm.
 """
-import os
 import logging
+import os
 import pathlib
 from shutil import copyfile
 
+from ..correct import FWECorrector
 from ..dataset import Dataset
 from ..meta.ale import ALE
-from ..correct import FWECorrector
 
 LGR = logging.getLogger(__name__)
 
