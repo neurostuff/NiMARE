@@ -3,31 +3,30 @@
 # Comment to be posted to on PRs from first time contributors in your repository
 newPRWelcomeComment: >
   Thanks for opening this pull request!
-  We have detected this is the first time for you to contribute
-  to *fMRIPrep*.
+  We have detected this is the first time you have contributed
+  to *NiMARE*.
   Please check out our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md).
 
-  We invite you to list yourself as a *fMRIPrep* contributor, so if your name
+  We invite you to list yourself as a *NiMARE* contributor, so if your name
   is not already mentioned, please modify the
   [``.zenodo.json``](https://github.com/neurostuff/NiMARE/blob/master/.zenodo.json)
-  file with your data right above Russ' entry. Example:
+  file with your data right above Angie's entry. Example:
 
   ```
 
   {
-     "name": "Contributor, New NiMARE",
-     "affiliation": "Department of Psychology, Some University",
-     "orcid": "<your id>"
+    "name": "Contributor, New",
+    "affiliation": "Department of Psychology, Some University",
+    "orcid": "<your id>"
   },
 
   {
-     "name": "Salo, Taylor P.",
-     "affiliation": "Department of Psychology, Florida International University",
-     "orcid": "0000-0001-9813-3167"
+    "name": "Laird, Angela R.",
+    "affiliation": "Florida International University",
+    "orcid": "0000-0003-3379-8744"
   },
 
   ```
-
 
   Of course, if you want to opt out this time there is no
   problem at all with adding your name later.
