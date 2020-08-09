@@ -18,12 +18,10 @@ uploaded by Dr. Camille Maumet.
 """
 import os
 
-import nibabel as nib
-import numpy as np
-from nilearn.masking import apply_mask, unmask
 from nilearn.plotting import plot_stat_map
 
 import nimare
+from nimare.correct import FWECorrector
 from nimare.meta import ibma
 from nimare.tests.utils import get_test_data_path
 
@@ -73,19 +71,23 @@ plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# Standard T-Test
+# Permuted OLS
 # -----------------------------------------------------------------------------
-meta = ibma.TTest(null='theoretical', n_iters=None)
+meta = ibma.PermutedOLS(two_sided=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################
-# T-Test with empirical null distribution
+# Permuted OLS with FWE Correction
 # -----------------------------------------------------------------------------
-meta = ibma.TTest(null='empirical', n_iters=100)
+meta = ibma.PermutedOLS(two_sided=True)
 meta.fit(dset)
-plot_stat_map(meta.results.get_map('z'), cut_coords=[0, 0, -8],
+corrector = FWECorrector(method='montecarlo',
+                         n_iters=100, n_cores=1)
+cresult = corrector.transform(meta.results)
+plot_stat_map(cresult.get_map('z_level-voxel_corr-FWE_method-montecarlo'),
+              cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
 
 ###############################################################################

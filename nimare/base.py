@@ -301,6 +301,7 @@ class MetaEstimator(Estimator):
                 # once PyMARE is able to handle masked arrays or missing data.
                 bad_voxel_idx = np.where(temp_arr == 0)[1]
                 bad_voxel_idx = np.unique(bad_voxel_idx)
+                LGR.debug('Masking out {} "bad" voxels'.format(len(bad_voxel_idx)))
                 temp_arr[:, bad_voxel_idx] = 0
 
                 self.inputs_[name] = temp_arr

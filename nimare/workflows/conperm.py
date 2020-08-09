@@ -6,8 +6,9 @@ import os
 import pathlib
 
 from nilearn.masking import apply_mask
+from nilearn.mass_univariate import permuted_ols
+import numpy as np
 
-from ..meta.ibma import t_test
 from ..results import MetaResult
 from ..utils import get_template
 
@@ -47,9 +48,23 @@ Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
     """
 
     LGR.info("Performing meta-analysis.")
-    res = t_test(z_data, null="empirical", n_iters=n_iters)
+    log_p_map, t_map, _ = permuted_ols(
+        np.ones((z_data.shape[0], 1)),
+        z_data,
+        confounding_vars=None,
+        model_intercept=False,  # modeled by tested_vars
+        n_perm=n_iters,
+        two_sided_test=True,
+        random_state=42,
+        n_jobs=1,
+        verbose=0,
+    )
+    res = {
+        'logp': log_p_map,
+        't': t_map,
+    }
     # The t_test function will stand in for the Estimator in the results object
-    res = MetaResult(t_test, mask_image, maps=res)
+    res = MetaResult(permuted_ols, mask_image, maps=res)
 
     boilerplate = boilerplate.format(n_studies=n_studies, n_iters=n_iters)
 

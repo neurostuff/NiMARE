@@ -103,7 +103,11 @@ class Corrector(metaclass=ABCMeta):
         if correction_method is not None and hasattr(est, correction_method):
             LGR.info(
                 "Using correction method implemented in Estimator: "
-                "{}.{}.".format(type(est), correction_method)
+                "{}.{}.{}.".format(
+                    est.__class__.__module__,
+                    est.__class__.__name__,
+                    correction_method
+                )
             )
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
