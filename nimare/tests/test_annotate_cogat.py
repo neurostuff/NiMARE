@@ -26,6 +26,7 @@ def test_cogat():
     counts_df, rep_text_df = annotate.cogat.extract_cogat(
         ns_dset_laird.texts, id_df, text_column="abstract"
     )
+    assert 'id' in ns_dset_laird.texts.columns
     expanded_df = annotate.cogat.expand_counts(counts_df, rel_df, weights)
     assert isinstance(expanded_df, pd.DataFrame)
 
