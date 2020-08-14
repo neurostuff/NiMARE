@@ -123,6 +123,7 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
     """
+    text_df = text_df.copy()
     if id_df is None:
         cogat = download_cognitive_atlas()
         id_df = pd.read_csv(cogat["ids"])
@@ -130,7 +131,6 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
     if "id" in text_df.columns:
         text_df.set_index("id", inplace=True)
 
-    text_df = text_df.copy()
     text_df[text_column] = text_df[text_column].fillna("")
     text_df[text_column] = text_df[text_column].apply(uk_to_us)
 
