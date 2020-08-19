@@ -15,6 +15,8 @@ def test_convert_sleuth_to_dataset_smoke():
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     dset = io.convert_sleuth_to_dataset(sleuth_file)
     assert isinstance(dset, nimare.dataset.Dataset)
+    assert dset.coordinates.shape[0] == 7
+    assert len(dset.ids) == 3
 
 
 def test_convert_neurosynth_to_dataset_smoke():
