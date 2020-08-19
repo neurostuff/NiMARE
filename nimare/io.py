@@ -4,6 +4,8 @@ Input/Output operations.
 import json
 import os.path as op
 import re
+from itertools import groupby
+from operator import itemgetter
 
 import numpy as np
 import pandas as pd
@@ -149,22 +151,14 @@ def convert_sleuth_to_dict(text_file):
     # Split into experiments
     data = data[1:]
     exp_idx = []
-    for i in np.arange(0, len(data)):
-        if (
-            data[i].startswith("//")
-            and data[i + 1].startswith("// Subjects")
-            and not data[i - 1].startswith("//")
-        ):
-            exp_idx.append(i)
-        elif (
-            data[i].startswith("//")
-            and i + 2 < len(data)
-            and data[i + 2].startswith("// Subjects")
-        ):
-            exp_idx.append(i)
-        else:
-            pass
-    start_idx = exp_idx
+    header_lines = [i for i in range(len(data)) if data[i].startswith("//")]
+
+    # Get contiguous header lines to define contrasts
+    ranges = []
+    for k, g in groupby(enumerate(header_lines), lambda x : x[0] - x[1]):
+        group = list(map(itemgetter(1), g))
+        ranges.append((group[0], group[-1]))
+    start_idx = [r[0] for r in ranges]
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
 
