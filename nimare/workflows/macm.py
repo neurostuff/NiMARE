@@ -124,7 +124,10 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
     if prefix is None:
         base = os.path.basename(dataset_file)
         prefix, _ = os.path.splitext(base)
-        prefix += "_"
+        prefix = (
+            prefix +
+            "_"
+        )
 
     LGR.info("Saving output maps...")
     cres.save_maps(output_dir=output_dir, prefix=prefix)
