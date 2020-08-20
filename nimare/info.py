@@ -66,7 +66,7 @@ REQUIRES = [
     "traits",
 ]
 
-TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8", "pytest", "pytest-cov"]
+TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8-black", "pytest", "pytest-cov"]
 
 EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
