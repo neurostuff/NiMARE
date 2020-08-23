@@ -63,7 +63,7 @@ jobs:
           name: Run tests
           command:  |
             source activate py38_env
-            py.test --ignore=nimare/tests/test_annotate_text.py nimare
+            py.test nimare
 
   test_py37:
     working_directory: /tmp/src/NiMARE
@@ -91,7 +91,7 @@ jobs:
           name: Run tests
           command:  |
             source activate py37_env
-            py.test --ignore=nimare/tests/test_annotate_text.py nimare
+            py.test nimare
 
   build_docs:
     working_directory: /tmp/src/NiMARE
@@ -142,7 +142,7 @@ jobs:
           command:  |
             apt-get install -yqq curl
             source activate py36_env
-            py.test --cov-report xml:coverage.xml --cov=nimare --ignore=nimare/tests/test_annotate_text.py nimare
+            py.test --cov-report xml:coverage.xml --cov=nimare nimare
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
 
