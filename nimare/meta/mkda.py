@@ -164,14 +164,7 @@ class MKDADensity(CBMAEstimator):
         of_map = result.get_map("of", return_type="image")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            n_cores = mp.cpu_count()
+        n_cores = self._check_ncores()
 
         vthresh_of_map = of_map.get_fdata().copy()
         vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
@@ -457,14 +450,7 @@ class MKDAChi2(CBMAEstimator):
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            n_cores = mp.cpu_count()
+        n_cores = self._check_ncores()
 
         iter_df1 = self.inputs_["coordinates1"].copy()
         iter_df2 = self.inputs_["coordinates2"].copy()
@@ -682,14 +668,7 @@ class KDA(CBMAEstimator):
         of_values = result.get_map("of", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            n_cores = mp.cpu_count()
+        n_cores = self._check_ncores()
 
         rand_idx = np.random.choice(
             null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
