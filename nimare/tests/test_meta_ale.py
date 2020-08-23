@@ -17,7 +17,7 @@ def test_ale(testdata_cbma):
     assert "z" in res.maps.keys()
     assert isinstance(res, nimare.base.MetaResult)
     # Test MCC methods
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.base.MetaResult)
     assert "z_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
