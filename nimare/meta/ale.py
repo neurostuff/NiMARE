@@ -294,7 +294,7 @@ class ALE(CBMAEstimator):
         ale_values = result.get_map("ale", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        n_cores = self._check_ncores()
+        n_cores = self._check_ncores(n_cores)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
@@ -560,7 +560,7 @@ class SCALE(CBMAEstimator):
         self.voxel_thresh = voxel_thresh
         self.ijk = ijk
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores()
+        self.n_cores = self._check_ncores(n_cores)
 
     def _fit(self, dataset):
         """
