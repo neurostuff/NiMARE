@@ -155,12 +155,12 @@ def convert_sleuth_to_dict(text_file):
 
     # Get contiguous header lines to define contrasts
     ranges = []
-    for k, g in groupby(enumerate(header_lines), lambda x : x[0] - x[1]):
+    for k, g in groupby(enumerate(header_lines), lambda x: x[0] - x[1]):
         group = list(map(itemgetter(1), g))
         ranges.append((group[0], group[-1]))
         if "Subjects" not in data[group[-1]]:
-            raise ValueError('Sample size line missing for {}'.format(
-                data[group[0]:group[-1] + 1])
+            raise ValueError(
+                "Sample size line missing for {}".format(data[group[0] : group[-1] + 1])
             )
     start_idx = [r[0] for r in ranges]
     end_idx = start_idx[1:] + [len(data) + 1]
