@@ -71,7 +71,6 @@ TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8-black", "pytest", 
 EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
-    "text": ["nltk"],
     "doc": [
         "sphinx>=3.1.1",
         "sphinx-argparse",
