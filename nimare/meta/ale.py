@@ -294,14 +294,7 @@ class ALE(CBMAEstimator):
         ale_values = result.get_map("ale", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            n_cores = mp.cpu_count()
+        n_cores = self._check_ncores(n_cores)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
@@ -567,17 +560,7 @@ class SCALE(CBMAEstimator):
         self.voxel_thresh = voxel_thresh
         self.ijk = ijk
         self.n_iters = n_iters
-
-        if n_cores <= 0:
-            self.n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            self.n_cores = mp.cpu_count()
-        else:
-            self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
 
     def _fit(self, dataset):
         """
