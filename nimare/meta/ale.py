@@ -454,20 +454,16 @@ class ALESubtraction(CBMAEstimator):
         self.masker = meta1.dataset.masker
 
         ma_maps1 = meta1.kernel_transformer.transform(
-            meta1.inputs_["coordinates"], masker=self.masker, return_type="image"
+            meta1.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
 
         ma_maps2 = meta2.kernel_transformer.transform(
-            meta2.inputs_["coordinates"], masker=self.masker, return_type="image"
+            meta2.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
 
-        n_grp1 = len(ma_maps1)
-        ma_maps = ma_maps1 + ma_maps2
-
-        id_idx = np.arange(len(ma_maps))
-
-        # Get MA values for both samples.
-        ma_arr = self.masker.transform(ma_maps)
+        n_grp1 = ma_maps1.shape[0]
+        ma_arr = np.vstack((ma_maps1, ma_maps2))
+        id_idx = np.arange(ma_arr.shape[0])
         n_voxels = ma_arr.shape[1]
 
         # Get ALE values for first group.
