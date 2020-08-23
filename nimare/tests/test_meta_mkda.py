@@ -67,7 +67,7 @@ def test_mkda_chi2_fwe(testdata_cbma):
     """
     meta = mkda.MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
-    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=2)
     cres = corr.transform(res)
     assert isinstance(res, nimare.base.MetaResult)
     assert isinstance(cres, nimare.base.MetaResult)
@@ -79,7 +79,7 @@ def test_kda_density(testdata_cbma):
     """
     meta = mkda.KDA()
     res = meta.fit(testdata_cbma)
-    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=0)
     cres = corr.transform(res)
     assert isinstance(res, nimare.base.MetaResult)
     assert isinstance(cres, nimare.base.MetaResult)
