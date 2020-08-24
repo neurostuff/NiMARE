@@ -424,6 +424,32 @@ def t_to_z(t_values, dof):
 
 
 def z_to_t(z_values, dof):
+    """
+    Convert z-statistics to t-statistics.
+
+    An inversion of the t_to_z implementation of [1]_ from Vanessa Sochat's
+    TtoZ package [2]_.
+
+    Parameters
+    ----------
+    z_values : array_like
+        Z-statistics
+    dof : int
+        Degrees of freedom
+
+    Returns
+    -------
+    t_values : array_like
+        T-statistics
+
+    References
+    ----------
+    .. [1] Hughett, P. (2007). Accurate Computation of the F-to-z and t-to-z
+           Transforms for Large Arguments. Journal of Statistical Software,
+           23(1), 1-5.
+    .. [2] Sochat, V. (2015, October 21). TtoZ Original Release. Zenodo.
+           http://doi.org/10.5281/zenodo.32508
+    """
     # Select just the nonzero voxels
     nonzero = z_values[z_values != 0]
 
@@ -457,6 +483,22 @@ def z_to_t(z_values, dof):
 def vox2mm(ijk, affine):
     """
     Convert matrix subscripts to coordinates.
+
+    Parameters
+    ----------
+    ijk : (X, 3) :obj:`numpy.ndarray`
+        Matrix subscripts for coordinates being transformed.
+        One row for each coordinate, with three columns: i, j, and k.
+    affine : (4, 4) :obj:`numpy.ndarray`
+        Affine matrix from image.
+
+    Returns
+    -------
+    xyz : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in image-space.
+
+    Notes
+    -----
     From here:
     http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
     """
@@ -467,6 +509,22 @@ def vox2mm(ijk, affine):
 def mm2vox(xyz, affine):
     """
     Convert coordinates to matrix subscripts.
+
+    Parameters
+    ----------
+    xyz : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in image-space.
+        One row for each coordinate, with three columns: x, y, and z.
+    affine : (4, 4) :obj:`numpy.ndarray`
+        Affine matrix from image.
+
+    Returns
+    -------
+    ijk : (X, 3) :obj:`numpy.ndarray`
+        Matrix subscripts for coordinates being transformed.
+
+    Notes
+    -----
     From here:
     http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
     """
@@ -486,17 +544,30 @@ def mm2vox(xyz, affine):
 )
 def tal2mni(coords):
     """
+    Convert coordinates from Talairach space to MNI space.
+
+    Parameters
+    ----------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in Talairach space to convert.
+        Each row is a coordinate, with three columns.
+
+    Returns
+    -------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in MNI space.
+        Each row is a coordinate, with three columns.
+
+    Notes
+    -----
     Python version of BrainMap's tal2icbm_other.m.
+
     This function converts coordinates from Talairach space to MNI
     space (normalized using templates other than those contained
     in SPM and FSL) using the tal2icbm transform developed and
     validated by Jack Lancaster at the Research Imaging Center in
     San Antonio, Texas.
     http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
-    FORMAT outpoints = tal2icbm_other(inpoints)
-    Where inpoints is N by 3 or 3 by N matrix of coordinates
-    (N being the number of points)
-    ric.uthscsa.edu 3/14/07
     """
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
@@ -548,16 +619,28 @@ def tal2mni(coords):
 )
 def mni2tal(coords):
     """
+    Convert coordinates from MNI space Talairach space.
+
+    Parameters
+    ----------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in MNI space to convert.
+        Each row is a coordinate, with three columns.
+
+    Returns
+    -------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in Talairach space.
+        Each row is a coordinate, with three columns.
+
+    Notes
+    -----
     Python version of BrainMap's icbm_other2tal.m.
     This function converts coordinates from MNI space (normalized using
     templates other than those contained in SPM and FSL) to Talairach space
     using the icbm2tal transform developed and validated by Jack Lancaster at
     the Research Imaging Center in San Antonio, Texas.
     http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
-    FORMAT outpoints = icbm_other2tal(inpoints)
-    Where inpoints is N by 3 or 3 by N matrix of coordinates
-    (N being the number of points)
-    ric.uthscsa.edu 3/14/07
     """
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)

@@ -2,7 +2,6 @@
 Input/Output operations.
 """
 import json
-import os.path as op
 import re
 from itertools import groupby
 from operator import itemgetter
