@@ -190,13 +190,13 @@ def convert_sleuth_to_dict(text_file):
             contrast_name = ":".join(study_info.split(":")[1:]).strip()
             sample_size = int(exp_data[n_idx].replace(" ", "").replace("//Subjects=", ""))
             xyz = exp_data[n_idx + 1 :]  # Coords are everything after study info and n
-            xyz = [row.split("\t") for row in xyz]
+            xyz = [row.split() for row in xyz]
             correct_shape = np.all([len(coord) == 3 for coord in xyz])
             if not correct_shape:
                 all_shapes = np.unique([len(coord) for coord in xyz]).astype(
                     str
                 )  # pylint: disable=no-member
-                raise Exception(
+                raise ValueError(
                     'Coordinates for study "{0}" are not all '
                     "correct length. Lengths detected: "
                     "{1}.".format(study_info, ", ".join(all_shapes))
@@ -205,12 +205,12 @@ def convert_sleuth_to_dict(text_file):
             try:
                 xyz = np.array(xyz, dtype=float)
             except:
-                # Prettify xyz
+                # Prettify xyz before reporting error
                 strs = [[str(e) for e in row] for row in xyz]
                 lens = [max(map(len, col)) for col in zip(*strs)]
                 fmt = "\t".join("{{:{}}}".format(x) for x in lens)
                 table = "\n".join([fmt.format(*row) for row in strs])
-                raise Exception(
+                raise ValueError(
                     "Conversion to numpy array failed for study "
                     '"{0}". Coords:\n{1}'.format(study_info, table)
                 )

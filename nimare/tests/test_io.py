@@ -16,6 +16,8 @@ def test_convert_sleuth_to_dataset_smoke():
     """
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
     sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
+    sleuth_file3 = os.path.join(get_test_data_path(), "test_sleuth_file3.txt")
+    sleuth_file4 = os.path.join(get_test_data_path(), "test_sleuth_file4.txt")
     # Use one input file
     dset = io.convert_sleuth_to_dataset(sleuth_file)
     assert isinstance(dset, nimare.dataset.Dataset)
@@ -29,6 +31,12 @@ def test_convert_sleuth_to_dataset_smoke():
     # Use invalid input
     with pytest.raises(ValueError):
         io.convert_sleuth_to_dataset(5)
+    # Use invalid input (one coordinate is a str instead of a number)
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_dataset(sleuth_file3)
+    # Use invalid input (one has x & y, but not z)
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_dataset(sleuth_file4)
 
 
 def test_convert_sleuth_to_json_smoke():
@@ -38,6 +46,8 @@ def test_convert_sleuth_to_json_smoke():
     out_file = os.path.abspath("temp.json")
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
     sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
+    sleuth_file3 = os.path.join(get_test_data_path(), "test_sleuth_file3.txt")
+    sleuth_file4 = os.path.join(get_test_data_path(), "test_sleuth_file4.txt")
     # Use one input file
     io.convert_sleuth_to_json(sleuth_file, out_file)
     dset = nimare.dataset.Dataset(out_file)
@@ -52,9 +62,15 @@ def test_convert_sleuth_to_json_smoke():
     assert isinstance(dset2, nimare.dataset.Dataset)
     assert dset2.coordinates.shape[0] == 11
     assert len(dset2.ids) == 5
-    # Use invalid input
+    # Use invalid input (number instead of file)
     with pytest.raises(ValueError):
         io.convert_sleuth_to_json(5, out_file)
+    # Use invalid input (one coordinate is a str instead of a number)
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_json(sleuth_file3, out_file)
+    # Use invalid input (one has x & y, but not z)
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_dataset(sleuth_file4)
 
 
 def test_convert_neurosynth_to_dataset_smoke():
