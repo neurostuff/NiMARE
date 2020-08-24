@@ -1,0 +1,6 @@
+// Reference = Talairach
+// StudyName4: ExperimentName2
+// Subjects = 20
+-18	-58	-24
+26	-64	-50
+12	-70	-42

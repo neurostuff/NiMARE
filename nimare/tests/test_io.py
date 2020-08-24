@@ -13,10 +13,15 @@ def test_convert_sleuth_to_dataset_smoke():
     Smoke test for Sleuth text file conversion.
     """
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
+    sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
     dset = io.convert_sleuth_to_dataset(sleuth_file)
     assert isinstance(dset, nimare.dataset.Dataset)
     assert dset.coordinates.shape[0] == 7
     assert len(dset.ids) == 3
+    dset2 = io.convert_sleuth_to_dataset([sleuth_file, sleuth_file2])
+    assert isinstance(dset2, nimare.dataset.Dataset)
+    assert dset2.coordinates.shape[0] == 10
+    assert len(dset2.ids) == 4
 
 
 def test_convert_sleuth_to_json_smoke():

@@ -131,8 +131,19 @@ def convert_sleuth_to_dict(text_file):
         NiMARE-organized dictionary containing experiment information from text
         file.
     """
-    filename = op.basename(text_file)
-    study_name, _ = op.splitext(filename)
+    if isinstance(text_file, list):
+        dict_ = {}
+        for tf in text_file:
+            temp_dict = convert_sleuth_to_dict(tf)
+            for sid in temp_dict.keys():
+                if sid in dict_.keys():
+                    dict_[sid]["contrasts"] = {
+                        **dict_[sid]["contrasts"],
+                        **temp_dict[sid]["contrasts"],
+                    }
+                else:
+                    dict_[sid] = temp_dict[sid]
+        return dict_
 
     with open(text_file, "r") as file_object:
         data = file_object.read()
@@ -228,30 +239,17 @@ def convert_sleuth_to_json(text_file, out_file):
 
     Parameters
     ----------
-    text_file : :obj:`str`
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
+        More than one text file may be provided.
     out_file : :obj:`str`
         Path to output json file.
     """
-    if isinstance(text_file, str):
-        text_files = [text_file]
-    elif isinstance(text_file, list):
-        text_files = text_file
-    else:
+    if not isinstance(text_file, str) and not isinstance(text_file, list):
         raise ValueError(
             'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
         )
-    dict_ = {}
-    for text_file in text_files:
-        temp_dict = convert_sleuth_to_dict(text_file)
-        for sid in temp_dict.keys():
-            if sid in dict_.keys():
-                dict_[sid]["contrasts"] = {
-                    **dict_[sid]["contrasts"],
-                    **temp_dict[sid]["contrasts"],
-                }
-            else:
-                dict_[sid] = temp_dict[sid]
+    dict_ = convert_sleuth_to_dict(text_file)
 
     with open(out_file, "w") as fo:
         json.dump(dict_, fo, indent=4, sort_keys=True)
@@ -264,8 +262,9 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
 
     Parameters
     ----------
-    text_file : :obj:`str`
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
+        More than one text file may be provided.
     target : {'ale_2mm', 'mni152_2mm'}, optional
         Target template space for coordinates. Default is 'ale_2mm'
         (ALE-specific brainmask in MNI152 2mm space).
@@ -283,8 +282,5 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
         raise ValueError(
             'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
         )
-    dict_ = {}
-    for text_file in text_files:
-        temp_dict = convert_sleuth_to_dict(text_file)
-        dict_ = {**dict_, **temp_dict}
+    dict_ = convert_sleuth_to_dict(text_files)
     return Dataset(dict_, target=target)
