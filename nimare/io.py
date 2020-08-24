@@ -2,7 +2,6 @@
 Input/Output operations.
 """
 import json
-import os.path as op
 import re
 from itertools import groupby
 from operator import itemgetter
@@ -122,8 +121,9 @@ def convert_sleuth_to_dict(text_file):
 
     Parameters
     ----------
-    text_file : :obj:`str`
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
+        More than one text file may be provided.
 
     Returns
     -------
@@ -131,8 +131,19 @@ def convert_sleuth_to_dict(text_file):
         NiMARE-organized dictionary containing experiment information from text
         file.
     """
-    filename = op.basename(text_file)
-    study_name, _ = op.splitext(filename)
+    if isinstance(text_file, list):
+        dict_ = {}
+        for tf in text_file:
+            temp_dict = convert_sleuth_to_dict(tf)
+            for sid in temp_dict.keys():
+                if sid in dict_.keys():
+                    dict_[sid]["contrasts"] = {
+                        **dict_[sid]["contrasts"],
+                        **temp_dict[sid]["contrasts"],
+                    }
+                else:
+                    dict_[sid] = temp_dict[sid]
+        return dict_
 
     with open(text_file, "r") as file_object:
         data = file_object.read()
@@ -144,7 +155,7 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ["MNI", "TAL", "Talairach"]
     if space not in SPACE_OPTS:
-        raise Exception(
+        raise ValueError(
             "Space {0} unknown. Options supported: {1}.".format(space, ", ".join(SPACE_OPTS))
         )
 
@@ -179,13 +190,11 @@ def convert_sleuth_to_dict(text_file):
             contrast_name = ":".join(study_info.split(":")[1:]).strip()
             sample_size = int(exp_data[n_idx].replace(" ", "").replace("//Subjects=", ""))
             xyz = exp_data[n_idx + 1 :]  # Coords are everything after study info and n
-            xyz = [row.split("\t") for row in xyz]
+            xyz = [row.split() for row in xyz]
             correct_shape = np.all([len(coord) == 3 for coord in xyz])
             if not correct_shape:
-                all_shapes = np.unique([len(coord) for coord in xyz]).astype(
-                    str
-                )  # pylint: disable=no-member
-                raise Exception(
+                all_shapes = np.unique([len(coord) for coord in xyz]).astype(str)
+                raise ValueError(
                     'Coordinates for study "{0}" are not all '
                     "correct length. Lengths detected: "
                     "{1}.".format(study_info, ", ".join(all_shapes))
@@ -194,12 +203,12 @@ def convert_sleuth_to_dict(text_file):
             try:
                 xyz = np.array(xyz, dtype=float)
             except:
-                # Prettify xyz
+                # Prettify xyz before reporting error
                 strs = [[str(e) for e in row] for row in xyz]
                 lens = [max(map(len, col)) for col in zip(*strs)]
                 fmt = "\t".join("{{:{}}}".format(x) for x in lens)
                 table = "\n".join([fmt.format(*row) for row in strs])
-                raise Exception(
+                raise ValueError(
                     "Conversion to numpy array failed for study "
                     '"{0}". Coords:\n{1}'.format(study_info, table)
                 )
@@ -228,30 +237,17 @@ def convert_sleuth_to_json(text_file, out_file):
 
     Parameters
     ----------
-    text_file : :obj:`str`
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
+        More than one text file may be provided.
     out_file : :obj:`str`
         Path to output json file.
     """
-    if isinstance(text_file, str):
-        text_files = [text_file]
-    elif isinstance(text_file, list):
-        text_files = text_file
-    else:
+    if not isinstance(text_file, str) and not isinstance(text_file, list):
         raise ValueError(
             'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
         )
-    dict_ = {}
-    for text_file in text_files:
-        temp_dict = convert_sleuth_to_dict(text_file)
-        for sid in temp_dict.keys():
-            if sid in dict_.keys():
-                dict_[sid]["contrasts"] = {
-                    **dict_[sid]["contrasts"],
-                    **temp_dict[sid]["contrasts"],
-                }
-            else:
-                dict_[sid] = temp_dict[sid]
+    dict_ = convert_sleuth_to_dict(text_file)
 
     with open(out_file, "w") as fo:
         json.dump(dict_, fo, indent=4, sort_keys=True)
@@ -264,8 +260,9 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
 
     Parameters
     ----------
-    text_file : :obj:`str`
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
+        More than one text file may be provided.
     target : {'ale_2mm', 'mni152_2mm'}, optional
         Target template space for coordinates. Default is 'ale_2mm'
         (ALE-specific brainmask in MNI152 2mm space).
@@ -275,16 +272,9 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
     """
-    if isinstance(text_file, str):
-        text_files = [text_file]
-    elif isinstance(text_file, list):
-        text_files = text_file
-    else:
+    if not isinstance(text_file, str) and not isinstance(text_file, list):
         raise ValueError(
             'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
         )
-    dict_ = {}
-    for text_file in text_files:
-        temp_dict = convert_sleuth_to_dict(text_file)
-        dict_ = {**dict_, **temp_dict}
+    dict_ = convert_sleuth_to_dict(text_file)
     return Dataset(dict_, target=target)
