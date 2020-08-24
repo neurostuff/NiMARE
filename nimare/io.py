@@ -155,7 +155,7 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ["MNI", "TAL", "Talairach"]
     if space not in SPACE_OPTS:
-        raise Exception(
+        raise ValueError(
             "Space {0} unknown. Options supported: {1}.".format(space, ", ".join(SPACE_OPTS))
         )
 
@@ -195,7 +195,7 @@ def convert_sleuth_to_dict(text_file):
             if not correct_shape:
                 all_shapes = np.unique([len(coord) for coord in xyz]).astype(
                     str
-                )  # pylint: disable=no-member
+                )
                 raise ValueError(
                     'Coordinates for study "{0}" are not all '
                     "correct length. Lengths detected: "

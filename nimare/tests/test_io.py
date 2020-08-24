@@ -18,6 +18,7 @@ def test_convert_sleuth_to_dataset_smoke():
     sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
     sleuth_file3 = os.path.join(get_test_data_path(), "test_sleuth_file3.txt")
     sleuth_file4 = os.path.join(get_test_data_path(), "test_sleuth_file4.txt")
+    sleuth_file5 = os.path.join(get_test_data_path(), "test_sleuth_file5.txt")
     # Use one input file
     dset = io.convert_sleuth_to_dataset(sleuth_file)
     assert isinstance(dset, nimare.dataset.Dataset)
@@ -37,6 +38,9 @@ def test_convert_sleuth_to_dataset_smoke():
     # Use invalid input (one has x & y, but not z)
     with pytest.raises(ValueError):
         io.convert_sleuth_to_dataset(sleuth_file4)
+    # Use invalid input (bad space)
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_dataset(sleuth_file5)
 
 
 def test_convert_sleuth_to_json_smoke():
@@ -48,6 +52,7 @@ def test_convert_sleuth_to_json_smoke():
     sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
     sleuth_file3 = os.path.join(get_test_data_path(), "test_sleuth_file3.txt")
     sleuth_file4 = os.path.join(get_test_data_path(), "test_sleuth_file4.txt")
+    sleuth_file5 = os.path.join(get_test_data_path(), "test_sleuth_file5.txt")
     # Use one input file
     io.convert_sleuth_to_json(sleuth_file, out_file)
     dset = nimare.dataset.Dataset(out_file)
@@ -70,7 +75,10 @@ def test_convert_sleuth_to_json_smoke():
         io.convert_sleuth_to_json(sleuth_file3, out_file)
     # Use invalid input (one has x & y, but not z)
     with pytest.raises(ValueError):
-        io.convert_sleuth_to_dataset(sleuth_file4)
+        io.convert_sleuth_to_json(sleuth_file4, out_file)
+    # Use invalid input (bad space)
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_json(sleuth_file5, out_file)
 
 
 def test_convert_neurosynth_to_dataset_smoke():
