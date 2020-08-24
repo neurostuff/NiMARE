@@ -3,6 +3,8 @@ Test nimare.io (Dataset IO/transformations).
 """
 import os
 
+import pytest
+
 import nimare
 from nimare import io
 from nimare.tests.utils import get_test_data_path
@@ -14,14 +16,19 @@ def test_convert_sleuth_to_dataset_smoke():
     """
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
     sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
+    # Use one input file
     dset = io.convert_sleuth_to_dataset(sleuth_file)
     assert isinstance(dset, nimare.dataset.Dataset)
     assert dset.coordinates.shape[0] == 7
     assert len(dset.ids) == 3
+    # Use two input files
     dset2 = io.convert_sleuth_to_dataset([sleuth_file, sleuth_file2])
     assert isinstance(dset2, nimare.dataset.Dataset)
-    assert dset2.coordinates.shape[0] == 10
-    assert len(dset2.ids) == 4
+    assert dset2.coordinates.shape[0] == 11
+    assert len(dset2.ids) == 5
+    # Use invalid input
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_dataset(5)
 
 
 def test_convert_sleuth_to_json_smoke():
@@ -30,6 +37,8 @@ def test_convert_sleuth_to_json_smoke():
     """
     out_file = os.path.abspath("temp.json")
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
+    sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
+    # Use one input file
     io.convert_sleuth_to_json(sleuth_file, out_file)
     dset = nimare.dataset.Dataset(out_file)
     assert os.path.isfile(out_file)
@@ -37,6 +46,15 @@ def test_convert_sleuth_to_json_smoke():
     assert dset.coordinates.shape[0] == 7
     assert len(dset.ids) == 3
     os.remove(out_file)
+    # Use two input files
+    io.convert_sleuth_to_json([sleuth_file, sleuth_file2], out_file)
+    dset2 = nimare.dataset.Dataset(out_file)
+    assert isinstance(dset2, nimare.dataset.Dataset)
+    assert dset2.coordinates.shape[0] == 11
+    assert len(dset2.ids) == 5
+    # Use invalid input
+    with pytest.raises(ValueError):
+        io.convert_sleuth_to_json(5, out_file)
 
 
 def test_convert_neurosynth_to_dataset_smoke():

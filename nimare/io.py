@@ -274,13 +274,9 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
     """
-    if isinstance(text_file, str):
-        text_files = [text_file]
-    elif isinstance(text_file, list):
-        text_files = text_file
-    else:
+    if not isinstance(text_file, str) and not isinstance(text_file, list):
         raise ValueError(
             'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
         )
-    dict_ = convert_sleuth_to_dict(text_files)
+    dict_ = convert_sleuth_to_dict(text_file)
     return Dataset(dict_, target=target)
