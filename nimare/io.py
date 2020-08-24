@@ -122,8 +122,9 @@ def convert_sleuth_to_dict(text_file):
 
     Parameters
     ----------
-    text_file : :obj:`str`
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
+        More than one text file may be provided.
 
     Returns
     -------
