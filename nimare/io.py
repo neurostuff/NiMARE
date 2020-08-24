@@ -193,9 +193,7 @@ def convert_sleuth_to_dict(text_file):
             xyz = [row.split() for row in xyz]
             correct_shape = np.all([len(coord) == 3 for coord in xyz])
             if not correct_shape:
-                all_shapes = np.unique([len(coord) for coord in xyz]).astype(
-                    str
-                )
+                all_shapes = np.unique([len(coord) for coord in xyz]).astype(str)
                 raise ValueError(
                     'Coordinates for study "{0}" are not all '
                     "correct length. Lengths detected: "
