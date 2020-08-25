@@ -20,9 +20,9 @@ def test_Fishers(testdata_ibma):
     res = meta.fit(testdata_ibma)
     corr = FDRCorrector(method="indep", alpha=0.001)
     cres = corr.transform(res)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
-    assert isinstance(cres, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert isinstance(cres, nimare.results.MetaResult)
 
 
 def test_Stouffers(testdata_ibma):
@@ -31,8 +31,8 @@ def test_Stouffers(testdata_ibma):
     """
     meta = ibma.Stouffers(use_sample_size=False)
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_Stouffers_weighted(testdata_ibma):
@@ -41,8 +41,8 @@ def test_Stouffers_weighted(testdata_ibma):
     """
     meta = ibma.Stouffers(use_sample_size=True)
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_WeightedLeastSquares(testdata_ibma):
@@ -51,8 +51,8 @@ def test_WeightedLeastSquares(testdata_ibma):
     """
     meta = ibma.WeightedLeastSquares(tau2=0)
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_DerSimonianLaird(testdata_ibma):
@@ -61,8 +61,8 @@ def test_DerSimonianLaird(testdata_ibma):
     """
     meta = ibma.DerSimonianLaird()
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_Hedges(testdata_ibma):
@@ -71,8 +71,8 @@ def test_Hedges(testdata_ibma):
     """
     meta = ibma.Hedges()
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_SampleSizeBasedLikelihood_ml(testdata_ibma):
@@ -81,8 +81,8 @@ def test_SampleSizeBasedLikelihood_ml(testdata_ibma):
     """
     meta = ibma.SampleSizeBasedLikelihood(method="ml")
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_SampleSizeBasedLikelihood_reml(testdata_ibma):
@@ -91,8 +91,8 @@ def test_SampleSizeBasedLikelihood_reml(testdata_ibma):
     """
     meta = ibma.SampleSizeBasedLikelihood(method="reml")
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_VarianceBasedLikelihood_ml(testdata_ibma):
@@ -101,8 +101,8 @@ def test_VarianceBasedLikelihood_ml(testdata_ibma):
     """
     meta = ibma.VarianceBasedLikelihood(method="ml")
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_VarianceBasedLikelihood_reml(testdata_ibma):
@@ -111,8 +111,8 @@ def test_VarianceBasedLikelihood_reml(testdata_ibma):
     """
     meta = ibma.VarianceBasedLikelihood(method="reml")
     res = meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_TTest_theoretical(testdata_ibma):
@@ -121,7 +121,7 @@ def test_TTest_theoretical(testdata_ibma):
     """
     meta = ibma.TTest(null="theoretical")
     meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
 
 
 def test_TTest_empirical(testdata_ibma):
@@ -130,7 +130,7 @@ def test_TTest_empirical(testdata_ibma):
     """
     meta = ibma.TTest(null="empirical", n_iters=10)
     meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
 
 
 def test_ibma_with_custom_masker(testdata_ibma):
@@ -139,5 +139,5 @@ def test_ibma_with_custom_masker(testdata_ibma):
     masker = NiftiLabelsMasker(atlas)
     meta = ibma.Fishers(mask=masker)
     meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.base.MetaResult)
+    assert isinstance(meta.results, nimare.results.MetaResult)
     assert meta.results.maps["z"].shape == (5,)

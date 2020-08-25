@@ -16,4 +16,4 @@ def test_scale(testdata_cbma):
     ijk = ijk[:, :20]
     meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk)
     res = meta.fit(dset)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
