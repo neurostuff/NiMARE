@@ -2,9 +2,11 @@
 Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms).
 """
 import os
+import pickle
 
 import nibabel as nib
 import numpy as np
+import pytest
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -28,13 +30,21 @@ def test_ale(testdata_cbma):
     assert res2 != res
     assert isinstance(res, nimare.results.MetaResult)
 
-    # Test saving
-    meta.save(out_file)
+    # Test saving/loading
+    meta.save(out_file, compress=True)
     assert os.path.isfile(out_file)
-
-    # Test loading
-    meta2 = ale.ALE.load(out_file)
+    meta2 = ale.ALE.load(out_file, compressed=True)
     assert isinstance(meta2, ale.ALE)
+    with pytest.raises(pickle.UnpicklingError):
+        ale.ALE.load(out_file, compressed=False)
+    os.remove(out_file)
+
+    meta.save(out_file, compress=False)
+    assert os.path.isfile(out_file)
+    meta2 = ale.ALE.load(out_file, compressed=False)
+    assert isinstance(meta2, ale.ALE)
+    with pytest.raises(OSError):
+        ale.ALE.load(out_file, compressed=True)
     os.remove(out_file)
 
     # Test MCC methods
