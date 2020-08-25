@@ -24,7 +24,7 @@ def test_mkda_density_kernel_class(testdata_cbma):
     """
     meta = mkda.MKDADensity(kernel.MKDAKernel, kernel__r=5)
     res = meta.fit(testdata_cbma)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_mkda_density_kernel_instance(testdata_cbma):
@@ -34,7 +34,7 @@ def test_mkda_density_kernel_instance(testdata_cbma):
     kern = kernel.MKDAKernel(r=5)
     meta = mkda.MKDADensity(kern)
     res = meta.fit(testdata_cbma)
-    assert isinstance(res, nimare.base.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_mkda_density(testdata_cbma):
@@ -45,8 +45,8 @@ def test_mkda_density(testdata_cbma):
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
-    assert isinstance(res, nimare.base.MetaResult)
-    assert isinstance(cres, nimare.base.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert isinstance(cres, nimare.results.MetaResult)
 
 
 def test_mkda_chi2_fdr(testdata_cbma):
@@ -57,8 +57,8 @@ def test_mkda_chi2_fdr(testdata_cbma):
     res = meta.fit(testdata_cbma, testdata_cbma)
     corr = FDRCorrector(method="bh", alpha=0.001)
     cres = corr.transform(res)
-    assert isinstance(res, nimare.base.MetaResult)
-    assert isinstance(cres, nimare.base.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert isinstance(cres, nimare.results.MetaResult)
 
 
 def test_mkda_chi2_fwe(testdata_cbma):
@@ -69,14 +69,14 @@ def test_mkda_chi2_fwe(testdata_cbma):
     res = meta.fit(testdata_cbma, testdata_cbma)
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
-    assert isinstance(res, nimare.base.MetaResult)
-    assert isinstance(cres, nimare.base.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert isinstance(cres, nimare.results.MetaResult)
     corr_2core = FWECorrector(method="montecarlo", n_iters=5, n_cores=2)
     cres_2core = corr_2core.transform(res)
-    assert isinstance(cres_2core, nimare.base.MetaResult)
+    assert isinstance(cres_2core, nimare.results.MetaResult)
     corr_negcore = FWECorrector(method="montecarlo", n_iters=5, n_cores=-1)
     cres_negcore = corr_negcore.transform(res)
-    assert isinstance(cres_negcore, nimare.base.MetaResult)
+    assert isinstance(cres_negcore, nimare.results.MetaResult)
 
 
 def test_kda_density(testdata_cbma):
@@ -87,8 +87,8 @@ def test_kda_density(testdata_cbma):
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
-    assert isinstance(res, nimare.base.MetaResult)
-    assert isinstance(cres, nimare.base.MetaResult)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert isinstance(cres, nimare.results.MetaResult)
     corr_100core = FWECorrector(method="montecarlo", n_iters=5, n_cores=100)
     cres_100core = corr_100core.transform(res)
-    assert isinstance(cres_100core, nimare.base.MetaResult)
+    assert isinstance(cres_100core, nimare.results.MetaResult)

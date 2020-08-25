@@ -22,6 +22,13 @@ def test_alekernel_smoke(testdata_cbma):
     assert len(ma_maps) == len(testdata_cbma.ids)
     ma_maps = kern.transform(coordinates, testdata_cbma.masker, return_type="array")
     assert ma_maps.shape[0] == len(testdata_cbma.ids)
+    # Test set_params
+    kern.set_params(fwhm=10, sample_size=None)
+    kern2 = kernel.ALEKernel(fwhm=10)
+    ma_maps1 = kern.transform(coordinates, testdata_cbma.masker, return_type="array")
+    ma_maps2 = kern2.transform(coordinates, testdata_cbma.masker, return_type="array")
+    assert ma_maps1.shape[0] == ma_maps2.shape[0] == len(testdata_cbma.ids)
+    assert np.array_equal(ma_maps1, ma_maps2)
 
 
 def test_alekernel_1mm(testdata_cbma):
