@@ -52,6 +52,27 @@ def test_NeurosynthDecoder(testdata_laird):
     assert isinstance(decoded_df, pd.DataFrame)
 
 
+def test_NeurosynthDecoder_featuregroup(testdata_laird):
+    """
+    Smoke test for discrete.NeurosynthDecoder with feature group selection
+    """
+    ids = testdata_laird.ids[:5]
+    decoder = discrete.NeurosynthDecoder(feature_group="Neurosynth_TFIDF")
+    decoder.fit(testdata_laird)
+    decoded_df = decoder.transform(ids=ids)
+    assert isinstance(decoded_df, pd.DataFrame)
+
+
+def test_NeurosynthDecoder_featuregroup_failure(testdata_laird):
+    """
+    Smoke test for discrete.NeurosynthDecoder with feature group selection
+    and no detected features with values.
+    """
+    decoder = discrete.NeurosynthDecoder(feature_group="Neurosynth_TFIDF", features=["01", "05"])
+    with pytest.raises(Exception):
+        decoder.fit(testdata_laird)
+
+
 def test_BrainMapDecoder(testdata_laird):
     """
     Smoke test for discrete.BrainMapDecoder
