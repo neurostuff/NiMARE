@@ -48,11 +48,10 @@ def test_ale(testdata_cbma):
     assert "logp_level-voxel_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert isinstance(
         cres.get_map("z_level-cluster_corr-FWE_method-montecarlo", return_type="image"),
-        nib.Nifti1Image
+        nib.Nifti1Image,
     )
     assert isinstance(
-        cres.get_map("z_level-cluster_corr-FWE_method-montecarlo", return_type="array"),
-        np.ndarray
+        cres.get_map("z_level-cluster_corr-FWE_method-montecarlo", return_type="array"), np.ndarray
     )
 
     # Bonferroni FWE
