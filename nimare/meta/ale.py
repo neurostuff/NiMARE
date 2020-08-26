@@ -1,6 +1,7 @@
 """
 CBMA methods from the activation likelihood estimation (ALE) family
 """
+import os
 import logging
 import multiprocessing as mp
 
@@ -413,11 +414,12 @@ class ALESubtraction(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, n_iters=10000):
+    def __init__(self, n_iters=10000, low_memory=False):
         self.meta1 = None
         self.meta2 = None
         self.results = None
         self.n_iters = n_iters
+        self.low_memory = low_memory
 
     def fit(self, meta1, meta2):
         """
@@ -477,27 +479,45 @@ class ALESubtraction(CBMAEstimator):
 
         diff_ale_values = grp1_ale_values - grp2_ale_values
 
-        iter_diff_values = np.zeros((self.n_iters, n_voxels))
+        if self.low_memory:
+            from tempfile import mkdtemp
+            filename = os.path.join(mkdtemp(), 'iter_diff_values.dat')
+            iter_diff_values = np.memmap(filename, dtype=ma_arr.dtype, mode='w+',
+                                         shape=(self.n_iters, n_voxels))
+        else:
+            iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
 
         for i_iter in range(self.n_iters):
             np.random.shuffle(id_idx)
-            iter_grp1_ale_values = np.ones(n_voxels)
+            iter_grp1_ale_values = np.ones(n_voxels, dtype=ma_arr.dtype)
             for j_exp in id_idx[:n_grp1]:
                 iter_grp1_ale_values *= 1.0 - ma_arr[j_exp, :]
             iter_grp1_ale_values = 1 - iter_grp1_ale_values
 
-            iter_grp2_ale_values = np.ones(n_voxels)
+            iter_grp2_ale_values = np.ones(n_voxels, dtype=ma_arr.dtype)
             for j_exp in id_idx[n_grp1:]:
                 iter_grp2_ale_values *= 1.0 - ma_arr[j_exp, :]
             iter_grp2_ale_values = 1 - iter_grp2_ale_values
 
             iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+            del iter_grp1_ale_values, iter_grp2_ale_values
+
+        if self.low_memory:
+            iter_diff_values.flush()
+            del iter_diff_values
+            iter_diff_values = np.memmap(filename, dtype=ma_arr.dtype, mode='r',
+                                         shape=(self.n_iters, n_voxels))
 
         for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(
                 diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two"
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
+
+        if self.low_memory:
+            del iter_diff_values
+            os.remove(filename)
+
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
 
         images = {"z_desc-group1MinusGroup2": z_arr}
