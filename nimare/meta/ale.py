@@ -481,8 +481,8 @@ class ALESubtraction(CBMAEstimator):
 
         if self.low_memory:
             from tempfile import mkdtemp
-            filename = os.path.join(mkdtemp(), 'iter_diff_values.dat')
-            iter_diff_values = np.memmap(filename, dtype=ma_arr.dtype, mode='w+',
+            filename = os.path.join(mkdtemp(), "iter_diff_values.dat")
+            iter_diff_values = np.memmap(filename, dtype=ma_arr.dtype, mode="w+",
                                          shape=(self.n_iters, n_voxels))
         else:
             iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
@@ -505,7 +505,7 @@ class ALESubtraction(CBMAEstimator):
         if self.low_memory:
             iter_diff_values.flush()
             del iter_diff_values
-            iter_diff_values = np.memmap(filename, dtype=ma_arr.dtype, mode='r',
+            iter_diff_values = np.memmap(filename, dtype=ma_arr.dtype, mode="r",
                                          shape=(self.n_iters, n_voxels))
 
         for voxel in range(n_voxels):
