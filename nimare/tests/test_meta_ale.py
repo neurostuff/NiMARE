@@ -80,14 +80,25 @@ def test_ale_subtraction(testdata_cbma):
     Smoke test for ALESubtraction
     """
     out_file = os.path.abspath("file.pkl.gz")
-    meta1 = ale.ALE()
-    meta1.fit(testdata_cbma)
 
-    meta2 = ale.ALE()
-    meta2.fit(testdata_cbma)
+    sub_meta = ale.ALESubtraction(n_iters=10, low_memory=False)
+    sub_meta.fit(testdata_cbma, testdata_cbma)
+    assert isinstance(sub_meta.results, nimare.results.MetaResult)
+    assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
 
-    sub_meta = ale.ALESubtraction(n_iters=10)
-    sub_meta.fit(meta1, meta2)
+    sub_meta.save(out_file)
+    assert os.path.isfile(out_file)
+    os.remove(out_file)
+
+
+def test_ale_subtraction_lowmem(testdata_cbma):
+    """
+    Smoke test for ALESubtraction with low memory settings.
+    """
+    out_file = os.path.abspath("file.pkl.gz")
+
+    sub_meta = ale.ALESubtraction(n_iters=10, low_memory=True)
+    sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
 

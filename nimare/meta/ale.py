@@ -12,9 +12,8 @@ from scipy import ndimage
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import CBMAEstimator
+from ..base import CBMAEstimator, PairwiseCBMAEstimator
 from ..due import due
-from ..results import MetaResult
 from ..stats import null_to_p
 from ..transforms import p_to_z
 from ..utils import round2
@@ -377,14 +376,25 @@ class ALE(CBMAEstimator):
         return images
 
 
-class ALESubtraction(CBMAEstimator):
-    """
+class ALESubtraction(PairwiseCBMAEstimator):
+    r"""
     ALE subtraction analysis.
 
     Parameters
     ----------
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset.
+        Default is ALEKernel.
     n_iters : :obj:`int`, optional
         Default is 10000.
+    low_memory : :obj:`bool`, optional
+        If True, use memory-mapped files for large arrays to reduce memory usage.
+        If False, do everything in memory.
+        Default is False.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
+        here, with the prefix '\kernel__' in the variable name.
+        Another optional argument is ``mask``.
 
     Notes
     -----
@@ -414,46 +424,26 @@ class ALESubtraction(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, n_iters=10000, low_memory=False):
-        self.meta1 = None
-        self.meta2 = None
+    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+
+        self.dataset1 = None
+        self.dataset2 = None
         self.results = None
         self.n_iters = n_iters
         self.low_memory = low_memory
 
-    def fit(self, meta1, meta2):
-        """
-        Run a subtraction analysis comparing two groups of experiments from
-        separate meta-analyses.
+    def _fit(self, dataset1, dataset2):
+        self.dataset1 = dataset1
+        self.dataset2 = dataset2
+        self.masker = self.masker or dataset1.masker
 
-        Parameters
-        ----------
-        meta1/meta2 : :obj:`nimare.meta.ale.ALE`
-            Fitted ALE Estimators for datasets to compare.
-            These Estimators do not require multiple comparisons correction.
-
-        Returns
-        -------
-        :obj:`nimare.results.MetaResult`
-            Results of ALE subtraction analysis, with one map:
-            'z_desc-group1MinusGroup2'.
-        """
-        maps = self._fit(meta1, meta2)
-        self.results = MetaResult(self, meta1.dataset.masker, maps)
-        return self.results
-
-    def _fit(self, meta1, meta2):
-        assert np.array_equal(
-            meta1.dataset.masker.mask_img.affine, meta2.dataset.masker.mask_img.affine
+        ma_maps1 = self.kernel_transformer.transform(
+            self.inputs_["coordinates1"], masker=self.masker, return_type="array"
         )
-        self.masker = meta1.dataset.masker
-
-        ma_maps1 = meta1.kernel_transformer.transform(
-            meta1.inputs_["coordinates"], masker=self.masker, return_type="array"
-        )
-
-        ma_maps2 = meta2.kernel_transformer.transform(
-            meta2.inputs_["coordinates"], masker=self.masker, return_type="array"
+        ma_maps2 = self.kernel_transformer.transform(
+            self.inputs_["coordinates2"], masker=self.masker, return_type="array"
         )
 
         n_grp1 = ma_maps1.shape[0]
@@ -529,8 +519,9 @@ class ALESubtraction(CBMAEstimator):
 
 @due.dcite(
     references.SCALE,
-    description="Introduces the specific co-activation likelihood "
-    "estimation (SCALE) algorithm.",
+    description=(
+        "Introduces the specific co-activation likelihood " "estimation (SCALE) algorithm."
+    ),
 )
 class SCALE(CBMAEstimator):
     r"""

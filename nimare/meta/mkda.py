@@ -11,9 +11,8 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import CBMAEstimator
+from ..base import CBMAEstimator, PairwiseCBMAEstimator
 from ..due import due
-from ..results import MetaResult
 from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
 from .kernel import KDAKernel, MKDAKernel
@@ -217,7 +216,7 @@ class MKDADensity(CBMAEstimator):
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
-class MKDAChi2(CBMAEstimator):
+class MKDAChi2(PairwiseCBMAEstimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis.
 
@@ -249,45 +248,18 @@ class MKDAChi2(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
+        self.dataset1 = None
+        self.dataset2 = None
+        self.results = None
         self.prior = prior
 
-    def fit(self, dataset1, dataset2):
-        """
-        Fit CBMAEstimator to datasets.
-
-        Parameters
-        ----------
-        dataset1/dataset2 : :obj:`nimare.dataset.Dataset`
-            Dataset objects to analyze.
-
-        Returns
-        -------
-        :obj:`nimare.results.MetaResult`
-            Results of CBMAEstimator fitting, with the following maps:
-            'prob_desc-A', 'prob_desc-AgF', 'prob_desc-FgA',
-            'prob_desc-AgF_given_pF=XX', 'prob_desc-FgA_given_pF=XX',
-            'z_desc-consistency', 'z_desc-specificity',
-            'chi2_desc-consistency', 'chi2_desc-specificity',
-            'p_desc-consistency', and 'p_desc-specificity'
-        """
-        self._validate_input(dataset1)
-        self._validate_input(dataset2)
-        self._preprocess_input(dataset1)
-        # override
-        self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
-        self._preprocess_input(dataset2)
-        # override
-        self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
-
-        maps = self._fit(dataset1, dataset2)
-        self.results = MetaResult(self, dataset1.masker.mask_img, maps)
-        return self.results
-
     def _fit(self, dataset1, dataset2):
+        self.dataset1 = dataset1
+        self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
