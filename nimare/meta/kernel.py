@@ -261,6 +261,7 @@ class KDAKernel(KernelTransformer):
             coordinates = dataset.coordinates
         # Determine paths. Must happen after parameters are set.
         from hashlib import md5
+
         self._infer_names(affine=md5(mask.affine).hexdigest())
 
         if return_type == "image":
@@ -304,14 +305,9 @@ class KDAKernel(KernelTransformer):
                 kernel_data *= mask_data
                 img = nib.Nifti1Image(kernel_data, mask.affine)
                 if return_type == "dataset":
-                    out_file = os.path.join(
-                        dataset.basepath,
-                        self.filename_pattern.format(id=id_)
-                    )
+                    out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                     img.to_filename(out_file)
-                    dataset.images.loc[
-                        dataset.images["id"] == id_, self.image_type
-                    ] = out_file
+                    dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
             elif return_type == "array":
                 img = kernel_data[mask_data]
 
