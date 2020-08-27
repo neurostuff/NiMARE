@@ -262,6 +262,11 @@ class Dataset(NiMAREBase):
             df[abs_col] = df[col].apply(try_prepend, prefix=new_path)
         self.images = df
 
+    def copy(self):
+        """Create a copy of the Dataset.
+        """
+        return copy.deepcopy(self)
+
     def get(self, dict_):
         """
         Retrieve files and/or metadata from the current Dataset.
