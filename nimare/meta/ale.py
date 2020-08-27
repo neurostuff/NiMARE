@@ -1,6 +1,7 @@
 """
 CBMA methods from the activation likelihood estimation (ALE) family
 """
+import os
 import logging
 import multiprocessing as mp
 
@@ -11,9 +12,8 @@ from scipy import ndimage
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import CBMAEstimator
+from ..base import CBMAEstimator, PairwiseCBMAEstimator
 from ..due import due
-from ..results import MetaResult
 from ..stats import null_to_p
 from ..transforms import p_to_z
 from ..utils import round2
@@ -376,14 +376,25 @@ class ALE(CBMAEstimator):
         return images
 
 
-class ALESubtraction(CBMAEstimator):
-    """
+class ALESubtraction(PairwiseCBMAEstimator):
+    r"""
     ALE subtraction analysis.
 
     Parameters
     ----------
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset.
+        Default is ALEKernel.
     n_iters : :obj:`int`, optional
         Default is 10000.
+    low_memory : :obj:`bool`, optional
+        If True, use memory-mapped files for large arrays to reduce memory usage.
+        If False, do everything in memory.
+        Default is False.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_transformer can be assigned
+        here, with the prefix '\kernel__' in the variable name.
+        Another optional argument is ``mask``.
 
     Notes
     -----
@@ -413,45 +424,26 @@ class ALESubtraction(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, n_iters=10000):
-        self.meta1 = None
-        self.meta2 = None
+    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+
+        self.dataset1 = None
+        self.dataset2 = None
         self.results = None
         self.n_iters = n_iters
+        self.low_memory = low_memory
 
-    def fit(self, meta1, meta2):
-        """
-        Run a subtraction analysis comparing two groups of experiments from
-        separate meta-analyses.
+    def _fit(self, dataset1, dataset2):
+        self.dataset1 = dataset1
+        self.dataset2 = dataset2
+        self.masker = self.masker or dataset1.masker
 
-        Parameters
-        ----------
-        meta1/meta2 : :obj:`nimare.meta.ale.ALE`
-            Fitted ALE Estimators for datasets to compare.
-            These Estimators do not require multiple comparisons correction.
-
-        Returns
-        -------
-        :obj:`nimare.results.MetaResult`
-            Results of ALE subtraction analysis, with one map:
-            'z_desc-group1MinusGroup2'.
-        """
-        maps = self._fit(meta1, meta2)
-        self.results = MetaResult(self, meta1.dataset.masker, maps)
-        return self.results
-
-    def _fit(self, meta1, meta2):
-        assert np.array_equal(
-            meta1.dataset.masker.mask_img.affine, meta2.dataset.masker.mask_img.affine
+        ma_maps1 = self.kernel_transformer.transform(
+            self.inputs_["coordinates1"], masker=self.masker, return_type="array"
         )
-        self.masker = meta1.dataset.masker
-
-        ma_maps1 = meta1.kernel_transformer.transform(
-            meta1.inputs_["coordinates"], masker=self.masker, return_type="array"
-        )
-
-        ma_maps2 = meta2.kernel_transformer.transform(
-            meta2.inputs_["coordinates"], masker=self.masker, return_type="array"
+        ma_maps2 = self.kernel_transformer.transform(
+            self.inputs_["coordinates2"], masker=self.masker, return_type="array"
         )
 
         n_grp1 = ma_maps1.shape[0]
@@ -477,27 +469,48 @@ class ALESubtraction(CBMAEstimator):
 
         diff_ale_values = grp1_ale_values - grp2_ale_values
 
-        iter_diff_values = np.zeros((self.n_iters, n_voxels))
+        if self.low_memory:
+            from tempfile import mkdtemp
+
+            filename = os.path.join(mkdtemp(), "iter_diff_values.dat")
+            iter_diff_values = np.memmap(
+                filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
+            )
+        else:
+            iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
 
         for i_iter in range(self.n_iters):
             np.random.shuffle(id_idx)
-            iter_grp1_ale_values = np.ones(n_voxels)
+            iter_grp1_ale_values = np.ones(n_voxels, dtype=ma_arr.dtype)
             for j_exp in id_idx[:n_grp1]:
                 iter_grp1_ale_values *= 1.0 - ma_arr[j_exp, :]
             iter_grp1_ale_values = 1 - iter_grp1_ale_values
 
-            iter_grp2_ale_values = np.ones(n_voxels)
+            iter_grp2_ale_values = np.ones(n_voxels, dtype=ma_arr.dtype)
             for j_exp in id_idx[n_grp1:]:
                 iter_grp2_ale_values *= 1.0 - ma_arr[j_exp, :]
             iter_grp2_ale_values = 1 - iter_grp2_ale_values
 
             iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+            del iter_grp1_ale_values, iter_grp2_ale_values
+
+        if self.low_memory:
+            iter_diff_values.flush()
+            del iter_diff_values
+            iter_diff_values = np.memmap(
+                filename, dtype=ma_arr.dtype, mode="r", shape=(self.n_iters, n_voxels)
+            )
 
         for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(
                 diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two"
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
+
+        if self.low_memory:
+            del iter_diff_values
+            os.remove(filename)
+
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
 
         images = {"z_desc-group1MinusGroup2": z_arr}
@@ -506,8 +519,9 @@ class ALESubtraction(CBMAEstimator):
 
 @due.dcite(
     references.SCALE,
-    description="Introduces the specific co-activation likelihood "
-    "estimation (SCALE) algorithm.",
+    description=(
+        "Introduces the specific co-activation likelihood " "estimation (SCALE) algorithm."
+    ),
 )
 class SCALE(CBMAEstimator):
     r"""

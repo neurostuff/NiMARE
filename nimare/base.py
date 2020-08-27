@@ -389,6 +389,62 @@ class CBMAEstimator(MetaEstimator):
                 )
 
 
+class PairwiseCBMAEstimator(CBMAEstimator):
+    """Base class for pairwise coordinate-based meta-analysis methods.
+
+    Parameters
+    ----------
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    *args
+        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        (called automatically).
+    **kwargs
+        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        __init__ (called automatically).
+    """
+
+    def fit(self, dataset1, dataset2):
+        """
+        Fit Estimator to two Datasets.
+
+        Parameters
+        ----------
+        dataset1/dataset2 : :obj:`nimare.dataset.Dataset`
+            Dataset objects to analyze.
+
+        Returns
+        -------
+        :obj:`nimare.results.MetaResult`
+            Results of Estimator fitting.
+
+        Notes
+        -----
+        The `fit` method is a light wrapper that runs input validation and
+        preprocessing before fitting the actual model. Estimators' individual
+        "fitting" methods are implemented as `_fit`, although users should
+        call `fit`.
+        """
+        self._validate_input(dataset1)
+        self._validate_input(dataset2)
+        # grab and override
+        self._preprocess_input(dataset1)
+        self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
+        # grab and override
+        self._preprocess_input(dataset2)
+        self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
+
+        maps = self._fit(dataset1, dataset2)
+
+        if hasattr(self, "masker") and self.masker is not None:
+            masker = self.masker
+        else:
+            masker = dataset1.masker
+        self.results = MetaResult(self, masker, maps)
+        return self.results
+
+
 class Transformer(NiMAREBase):
     """Transformers take in Datasets and return Datasets
 
