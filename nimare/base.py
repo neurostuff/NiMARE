@@ -488,6 +488,20 @@ class KernelTransformer(Transformer):
     def __init__(self):
         pass
 
+    def _infer_names(self, **kwargs):
+        params = self.get_params()
+        params = dict(**params, **kwargs)
+
+        # Determine names for kernel-specific files
+        keys = sorted(params.keys())
+        param_str = "_".join("{k}-{v}".format(k=k, v=str(params[k])) for k in keys)
+        self.filename_pattern = (
+            "study-[[id]]_{ps}_{n}.nii.gz".format(n=self.__class__.__name__, ps=param_str)
+            .replace("[[", "{")
+            .replace("]]", "}")
+        )
+        self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
+
 
 class Decoder(NiMAREBase):
     """Base class for decoders in :mod:`nimare.decode`.

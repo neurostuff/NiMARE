@@ -5,10 +5,12 @@ size and test statistic values).
 """
 from __future__ import division
 
+import os
+
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn.image import math_img, resample_to_img
+from nilearn import image
 
 from ..base import KernelTransformer
 from ..transforms import vox2mm
@@ -216,6 +218,7 @@ class KDAKernel(KernelTransformer):
     """
 
     def __init__(self, r=6, value=1):
+        # Set parameters
         self.r = float(r)
         self.value = value
 
@@ -232,7 +235,7 @@ class KDAKernel(KernelTransformer):
             Dataset for which to make images. Can be a DataFrame if necessary.
         masker : img_like, optional
             Only used if dataset is a DataFrame.
-        return_type : {'image', 'array'}, optional
+        return_type : {'dataset', 'image', 'array'}, optional
             Whether to return a niimg ('image') or a numpy array.
             Default is 'image'.
 
@@ -250,16 +253,34 @@ class KDAKernel(KernelTransformer):
             ), 'Argument "masker" must be provided if dataset is a DataFrame'
             mask = masker.mask_img
             coordinates = dataset.copy()
+            assert (
+                return_type != "dataset"
+            ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
             mask = dataset.masker.mask_img
             coordinates = dataset.coordinates
+        # Determine paths. Must happen after parameters are set.
+        from hashlib import md5
+        self._infer_names(affine=md5(mask.affine).hexdigest())
 
         if return_type == "image":
             mask_data = mask.get_fdata().astype(float)
         elif return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
+        elif return_type == "dataset":
+            dataset = dataset.copy()
+            mask_data = mask.get_fdata().astype(float)
+            if dataset.basepath is None:
+                raise ValueError(
+                    "Dataset output path is not set. " "Set the path with Dataset.update_path()."
+                )
+            elif not os.path.isdir(dataset.basepath):
+                raise ValueError(
+                    "Output directory does not exist. "
+                    "Set the path to an existing folder with Dataset.update_path()."
+                )
         else:
-            raise ValueError('Argument "return_type" must be "image" or "array".')
+            raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
 
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
@@ -279,15 +300,31 @@ class KDAKernel(KernelTransformer):
                 sphere = sphere[idx, :].astype(int)
                 kernel_data[tuple(sphere.T)] += self.value
 
-            if return_type == "image":
+            if return_type in ("dataset", "image"):
                 kernel_data *= mask_data
                 img = nib.Nifti1Image(kernel_data, mask.affine)
-            else:
+                if return_type == "dataset":
+                    out_file = os.path.join(
+                        dataset.basepath,
+                        self.filename_pattern.format(id=id_)
+                    )
+                    img.to_filename(out_file)
+                    dataset.images.loc[
+                        dataset.images["id"] == id_, self.image_type
+                    ] = out_file
+            elif return_type == "array":
                 img = kernel_data[mask_data]
+
             imgs.append(img)
+
         if return_type == "array":
-            imgs = np.vstack(imgs)
-        return imgs
+            return np.vstack(imgs)
+        elif return_type == "image":
+            return imgs
+        else:
+            # Infer relative path
+            dataset.images = dataset.images
+            return dataset
 
 
 class Peaks2MapsKernel(KernelTransformer):
@@ -349,17 +386,17 @@ class Peaks2MapsKernel(KernelTransformer):
         if self.resample_to_mask:
             resampled_imgs = []
             for img in imgs:
-                resampled_imgs.append(resample_to_img(img, mask))
+                resampled_imgs.append(image.resample_to_img(img, mask))
             imgs = resampled_imgs
         else:
             # Resample mask to data instead of data to mask
-            mask = resample_to_img(mask, imgs[0], interpolation="nearest")
+            mask = image.resample_to_img(mask, imgs[0], interpolation="nearest")
             masker = get_masker(mask)
 
         if return_type == "image":
             masked_images = []
             for img in imgs:
-                masked_images.append(math_img("map*mask", map=img, mask=mask))
+                masked_images.append(image.math_img("map*mask", map=img, mask=mask))
             imgs = masked_images
         else:
             imgs = masker.transform(imgs)
