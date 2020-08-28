@@ -6,6 +6,7 @@ size and test statistic values).
 from __future__ import division
 
 import os
+from hashlib import md5
 
 import nibabel as nib
 import numpy as np
@@ -180,7 +181,7 @@ class MKDAKernel(KernelTransformer):
 
         imgs = []
         for id_, data in coordinates.groupby("id"):
-            kernel_data = np.zeros(dims)
+            kernel_data = np.zeros(dims, dtype=type(self.value))
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [
                     slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
@@ -236,7 +237,8 @@ class KDAKernel(KernelTransformer):
         masker : img_like, optional
             Only used if dataset is a DataFrame.
         return_type : {'dataset', 'image', 'array'}, optional
-            Whether to return a niimg ('image') or a numpy array.
+            Whether to return a Dataset with MA images saved as files ('dataset'),
+            a list of niimgs ('image'), or a numpy array ('array').
             Default is 'image'.
 
         Returns
@@ -260,8 +262,6 @@ class KDAKernel(KernelTransformer):
             mask = dataset.masker.mask_img
             coordinates = dataset.coordinates
         # Determine paths. Must happen after parameters are set.
-        from hashlib import md5
-
         self._infer_names(affine=md5(mask.affine).hexdigest())
 
         if return_type == "image":
@@ -286,9 +286,10 @@ class KDAKernel(KernelTransformer):
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
 
+        # Create MA maps
         imgs = []
         for id_, data in coordinates.groupby("id"):
-            kernel_data = np.zeros(dims)
+            kernel_data = np.zeros(dims, dtype=type(self.value))
             for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
                 xx, yy, zz = [
                     slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
