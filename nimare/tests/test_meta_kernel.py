@@ -2,10 +2,10 @@
 Test nimare.meta.kernel (CBMA kernel estimators).
 """
 import shutil
+import tempfile
 
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
-import tempfile
 
 from nimare.dataset import Dataset
 from nimare.meta import kernel
