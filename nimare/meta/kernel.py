@@ -100,7 +100,6 @@ class ALEKernel(KernelTransformer):
                     elif return_type == "dataset":
                         return dataset.copy()
 
-
         # Otherwise, generate the MA maps
         if return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
@@ -241,7 +240,6 @@ class MKDAKernel(KernelTransformer):
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
                         return dataset.copy()
-
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -388,7 +386,6 @@ class KDAKernel(KernelTransformer):
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
                         return dataset.copy()
-
 
         # Otherwise, generate the MA maps
         if return_type == "array":
