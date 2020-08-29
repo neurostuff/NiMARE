@@ -90,7 +90,7 @@ def test_alekernel_inputdataset_returnimages(testdata_cbma):
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
-    testdata_cbma = testdata_cbma.slice(testdata_cbma.ids)
+    testdata_cbma = testdata_cbma.copy()
     coordinates = testdata_cbma.coordinates.copy()
     coordinates["sample_size"] = 20
     testdata_cbma.coordinates = coordinates
@@ -154,7 +154,7 @@ def test_alekernel_inputdataset_returndataset(testdata_cbma):
     """
     temp_dir = tempfile.mkdtemp()
     testdata_cbma.update_path(temp_dir)
-    kern = kernel.ALEKernel()
+    kern = kernel.ALEKernel(sample_size=20)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     ma_arr = kern.transform(testdata_cbma, return_type="array")
     dset = kern.transform(testdata_cbma, return_type="dataset")
