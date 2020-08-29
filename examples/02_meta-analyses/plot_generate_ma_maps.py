@@ -39,13 +39,13 @@ dset = nimare.dataset.Dataset(dset_file)
 # argument to control the radius of the kernel.
 
 kernel = nimare.meta.kernel.MKDAKernel(r=2)
-mkda_r02 = kernel.transform(dset)
+mkda_r02 = kernel.transform(dset, return_type="image")
 kernel = nimare.meta.kernel.MKDAKernel(r=6)
-mkda_r06 = kernel.transform(dset)
+mkda_r06 = kernel.transform(dset, return_type="image")
 kernel = nimare.meta.kernel.MKDAKernel(r=10)
-mkda_r10 = kernel.transform(dset)
+mkda_r10 = kernel.transform(dset, return_type="image")
 kernel = nimare.meta.kernel.MKDAKernel(r=14)
-mkda_r14 = kernel.transform(dset)
+mkda_r14 = kernel.transform(dset, return_type="image")
 
 fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 10))
 plot_stat_map(mkda_r02[2], cut_coords=[-2, -10, -4],
@@ -74,11 +74,11 @@ fig.show()
 # :class:`nimare.meta.kernel.ALEKernel` convolves coordinates with a 3D
 # Gaussian, for which the FWHM is determined by the sample size of each study.
 kernel = nimare.meta.kernel.MKDAKernel(r=10)
-mkda_res = kernel.transform(dset)
+mkda_res = kernel.transform(dset, return_type="image")
 kernel = nimare.meta.kernel.KDAKernel(r=10)
-kda_res = kernel.transform(dset)
+kda_res = kernel.transform(dset, return_type="image")
 kernel = nimare.meta.kernel.ALEKernel(sample_size=20)
-ale_res = kernel.transform(dset)
+ale_res = kernel.transform(dset, return_type="image")
 max_conv = np.max(kda_res[2].get_fdata())
 plot_stat_map(mkda_res[2], cut_coords=[-2, -10, -4], title='MKDA', vmax=max_conv)
 plot_stat_map(kda_res[2], cut_coords=[-2, -10, -4], title='KDA', vmax=max_conv)
