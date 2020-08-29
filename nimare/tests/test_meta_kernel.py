@@ -160,9 +160,7 @@ def test_alekernel_inputdataset_returndataset(testdata_cbma):
     dset = kern.transform(testdata_cbma, return_type="dataset")
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(
-            ids=dset.ids, imtype=kern.image_type
-        )
+        dset.get_images(ids=dset.ids, imtype=kern.image_type)
     )
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -230,9 +228,7 @@ def test_mkdakernel_inputdataset_returndataset(testdata_cbma):
     dset = kern.transform(testdata_cbma, return_type="dataset")
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(
-            ids=dset.ids, imtype=kern.image_type
-        )
+        dset.get_images(ids=dset.ids, imtype=kern.image_type)
     )
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -318,9 +314,7 @@ def test_kdakernel_inputdataset_returndataset(testdata_cbma):
     dset = kern.transform(testdata_cbma, return_type="dataset")
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(
-            ids=dset.ids, imtype=kern.image_type
-        )
+        dset.get_images(ids=dset.ids, imtype=kern.image_type)
     )
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
