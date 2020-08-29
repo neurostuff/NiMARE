@@ -106,6 +106,7 @@ class Dataset(NiMAREBase):
         self.images = dict_to_df(id_df, data, key="images")
         self.metadata = dict_to_df(id_df, data, key="metadata")
         self.texts = dict_to_df(id_df, data, key="text")
+        self.basepath = None
 
     @property
     def ids(self):
@@ -253,6 +254,7 @@ class Dataset(NiMAREBase):
         new_path : :obj:`str`
             Path to prepend to relative paths of files in Dataset.images.
         """
+        self.basepath = new_path
         df = self.images
         relative_path_cols = [c for c in df if c.endswith("__relative")]
         for col in relative_path_cols:
@@ -261,6 +263,11 @@ class Dataset(NiMAREBase):
                 LGR.info("Overwriting images column {}".format(abs_col))
             df[abs_col] = df[col].apply(try_prepend, prefix=new_path)
         self.images = df
+
+    def copy(self):
+        """Create a copy of the Dataset.
+        """
+        return copy.deepcopy(self)
 
     def get(self, dict_):
         """

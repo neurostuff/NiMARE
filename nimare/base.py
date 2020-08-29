@@ -477,9 +477,6 @@ class KernelTransformer(Transformer):
 
     Notes
     -----
-    This base class exists solely to allow CBMA algorithms to check the class
-    of their kernel_transformer parameters.
-
     All extra (non-ijk) parameters for a given kernel should be overrideable as
     parameters to __init__, so we can access them with get_params() and also
     apply them to datasets with missing data.
@@ -487,6 +484,39 @@ class KernelTransformer(Transformer):
 
     def __init__(self):
         pass
+
+    def _infer_names(self, **kwargs):
+        """
+        Determine the filename pattern for image files created with this transformer,
+        as well as the image type (i.e., the column for the Dataset.images DataFrame).
+        The parameters used to construct the filenames come from the transformer's
+        parameters (attributes saved in `__init__()`).
+
+        Parameters
+        ----------
+        **kwargs
+            Additional key/value pairs to incorporate into the image name.
+            A common example is the hash for the target template's affine.
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for images that will be saved by the transformer.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
+        """
+        params = self.get_params()
+        params = dict(**params, **kwargs)
+
+        # Determine names for kernel-specific files
+        keys = sorted(params.keys())
+        param_str = "_".join("{k}-{v}".format(k=k, v=str(params[k])) for k in keys)
+        self.filename_pattern = (
+            "study-[[id]]_{ps}_{n}.nii.gz".format(n=self.__class__.__name__, ps=param_str)
+            .replace("[[", "{")
+            .replace("]]", "}")
+        )
+        self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
 
 
 class Decoder(NiMAREBase):
