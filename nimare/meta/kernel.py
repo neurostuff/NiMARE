@@ -5,6 +5,7 @@ size and test statistic values).
 """
 from __future__ import division
 
+import logging
 import os
 from hashlib import md5
 
@@ -17,6 +18,8 @@ from ..base import KernelTransformer
 from ..transforms import vox2mm
 from ..utils import get_masker
 from .utils import compute_ma, get_ale_kernel, peaks2maps
+
+LGR = logging.getLogger(__name__)
 
 
 class ALEKernel(KernelTransformer):
@@ -223,7 +226,7 @@ class KDAKernel(KernelTransformer):
         self.r = float(r)
         self.value = value
 
-    def transform(self, dataset, masker=None, return_type="image"):
+    def transform(self, dataset, masker=None, return_type="dataset"):
         """
         Generate KDA modeled activation images for each Contrast in dataset.
         Differs from MKDA images in that binary spheres are summed together in
@@ -236,19 +239,32 @@ class KDAKernel(KernelTransformer):
             Dataset for which to make images. Can be a DataFrame if necessary.
         masker : img_like, optional
             Only used if dataset is a DataFrame.
-        return_type : {'dataset', 'image', 'array'}, optional
-            Whether to return a Dataset with MA images saved as files ('dataset'),
-            a list of niimgs ('image'), or a numpy array ('array').
-            Default is 'image'.
+        return_type : {'array', 'image', 'dataset'}, optional
+            Whether to return a numpy array ('array'), a list of niimgs ('image'), or
+            a Dataset with MA images saved as files ('dataset').
+            Default is 'dataset'.
 
         Returns
         -------
-        imgs : :obj:`list` of :class:`nibabel.Nifti1Image` or :class:`numpy.ndarray`
-            If return_type is 'image', a list of modeled activation images
-            (one for each of the Contrasts in the input dataset).
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` or
+               :class:`nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
+            If return_type is 'image', a list of modeled activation images
+            (one for each of the Contrasts in the input dataset).
+            If return_type is 'dataset', a new Dataset object with modeled activation
+            images saved to files and referenced in the Dataset.images attribute.
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for MA maps that will be saved by the transformer.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
         """
+        if return_type not in ("array", "image", "dataset"):
+            raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
+
         if isinstance(dataset, pd.DataFrame):
             assert (
                 masker is not None
@@ -261,27 +277,39 @@ class KDAKernel(KernelTransformer):
         else:
             mask = dataset.masker.mask_img
             coordinates = dataset.coordinates
-        # Determine paths. Must happen after parameters are set.
+
+        # Determine MA map filenames. Must happen after parameters are set.
         self._infer_names(affine=md5(mask.affine).hexdigest())
 
-        if return_type == "image":
-            mask_data = mask.get_fdata().astype(float)
-        elif return_type == "array":
+        # Check for existing MA maps
+        # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
+        # between full Dataset and contrasts with coordinates.
+        files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+        if all(f is not None for f in files):
+            LGR.debug("Files already exist. Using them.")
+            if return_type == "array":
+                return masker.transform(files).T
+            elif return_type == "image":
+                return [nib.load(f) for f in files]
+            elif return_type == "dataset":
+                return dataset.copy()
+
+        # Otherwise, generate the MA maps
+        if return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
+        elif return_type == "image":
+            mask_data = mask.get_fdata().astype(type(self.value))
         elif return_type == "dataset":
             dataset = dataset.copy()
-            mask_data = mask.get_fdata().astype(float)
             if dataset.basepath is None:
                 raise ValueError(
-                    "Dataset output path is not set. " "Set the path with Dataset.update_path()."
+                    "Dataset output path is not set. Set the path with Dataset.update_path()."
                 )
             elif not os.path.isdir(dataset.basepath):
                 raise ValueError(
                     "Output directory does not exist. "
                     "Set the path to an existing folder with Dataset.update_path()."
                 )
-        else:
-            raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
 
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
@@ -302,15 +330,16 @@ class KDAKernel(KernelTransformer):
                 sphere = sphere[idx, :].astype(int)
                 kernel_data[tuple(sphere.T)] += self.value
 
-            if return_type in ("dataset", "image"):
+            if return_type == "array":
+                img = kernel_data[mask_data]
+            elif return_type == "image":
                 kernel_data *= mask_data
                 img = nib.Nifti1Image(kernel_data, mask.affine)
-                if return_type == "dataset":
-                    out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
-                    img.to_filename(out_file)
-                    dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
-            elif return_type == "array":
-                img = kernel_data[mask_data]
+            elif return_type == "dataset":
+                img = nib.Nifti1Image(kernel_data, mask.affine)
+                out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
+                img.to_filename(out_file)
+                dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
             imgs.append(img)
 
@@ -318,7 +347,7 @@ class KDAKernel(KernelTransformer):
             return np.vstack(imgs)
         elif return_type == "image":
             return imgs
-        else:
+        elif return_type == "dataset":
             # Infer relative path
             dataset.images = dataset.images
             return dataset
