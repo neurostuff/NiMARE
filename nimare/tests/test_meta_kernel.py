@@ -1,8 +1,11 @@
 """
 Test nimare.meta.kernel (CBMA kernel estimators).
 """
+import shutil
+
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
+import tempfile
 
 from nimare.meta import kernel
 
@@ -78,7 +81,7 @@ def test_alekernel_2mm(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel_dataset(testdata_cbma):
+def test_alekernel_inputdataset_returnimages(testdata_cbma):
     """
     Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
     masked out).
@@ -144,6 +147,29 @@ def test_alekernel_sample_size(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
+def test_alekernel_inputdataset_returndataset(testdata_cbma):
+    """
+    Check that the different return types produce equivalent results
+    (minus the masking element).
+    """
+    temp_dir = tempfile.mkdtemp()
+    testdata_cbma.update_path(temp_dir)
+    kern = kernel.ALEKernel()
+    ma_maps = kern.transform(testdata_cbma, return_type="image")
+    ma_arr = kern.transform(testdata_cbma, return_type="array")
+    dset = kern.transform(testdata_cbma, return_type="dataset")
+    ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
+    ma_maps_dset = testdata_cbma.masker.transform(
+        dset.get_images(
+            ids=dset.ids, imtype=kern.image_type
+        )
+    )
+    assert np.array_equal(ma_arr, ma_maps_arr)
+    assert np.array_equal(ma_arr, ma_maps_dset)
+    # It would be nice to use a better teardown
+    shutil.rmtree(temp_dir)
+
+
 def test_mkdakernel_smoke(testdata_cbma):
     """
     Smoke test for nimare.meta.kernel.MKDAKernel, using Dataset object.
@@ -189,6 +215,29 @@ def test_mkdakernel_2mm(testdata_cbma):
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
+
+
+def test_mkdakernel_inputdataset_returndataset(testdata_cbma):
+    """
+    Check that the different return types produce equivalent results
+    (minus the masking element).
+    """
+    temp_dir = tempfile.mkdtemp()
+    testdata_cbma.update_path(temp_dir)
+    kern = kernel.MKDAKernel(r=4, value=1)
+    ma_maps = kern.transform(testdata_cbma, return_type="image")
+    ma_arr = kern.transform(testdata_cbma, return_type="array")
+    dset = kern.transform(testdata_cbma, return_type="dataset")
+    ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
+    ma_maps_dset = testdata_cbma.masker.transform(
+        dset.get_images(
+            ids=dset.ids, imtype=kern.image_type
+        )
+    )
+    assert np.array_equal(ma_arr, ma_maps_arr)
+    assert np.array_equal(ma_arr, ma_maps_dset)
+    # It would be nice to use a better teardown
+    shutil.rmtree(temp_dir)
 
 
 def test_kdakernel_smoke(testdata_cbma):
@@ -238,7 +287,7 @@ def test_kdakernel_2mm(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_kdakernel_dataset(testdata_cbma):
+def test_kdakernel_inputdataset_returnimages(testdata_cbma):
     """
     COMs of KDA kernel maps should match the foci fed in (assuming focus isn't
     masked out and spheres don't overlap).
@@ -254,3 +303,26 @@ def test_kdakernel_dataset(testdata_cbma):
     com = np.array(center_of_mass(kern_data)).astype(int).T
     com = np.squeeze(com)
     assert np.array_equal(ijk, com)
+
+
+def test_kdakernel_inputdataset_returndataset(testdata_cbma):
+    """
+    Check that the different return types produce equivalent results
+    (minus the masking element).
+    """
+    temp_dir = tempfile.mkdtemp()
+    testdata_cbma.update_path(temp_dir)
+    kern = kernel.KDAKernel(r=4, value=1)
+    ma_maps = kern.transform(testdata_cbma, return_type="image")
+    ma_arr = kern.transform(testdata_cbma, return_type="array")
+    dset = kern.transform(testdata_cbma, return_type="dataset")
+    ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
+    ma_maps_dset = testdata_cbma.masker.transform(
+        dset.get_images(
+            ids=dset.ids, imtype=kern.image_type
+        )
+    )
+    assert np.array_equal(ma_arr, ma_maps_arr)
+    assert np.array_equal(ma_arr, ma_maps_dset)
+    # It would be nice to use a better teardown
+    shutil.rmtree(temp_dir)

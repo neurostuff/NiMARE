@@ -80,7 +80,8 @@ class ALEKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img if not masker else masker.mask_img
+            masker = dataset.masker if not masker else masker
+            mask = masker.mask_img
             coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
@@ -94,7 +95,7 @@ class ALEKernel(KernelTransformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        return masker.transform(files).T
+                        return masker.transform(files)
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
@@ -221,7 +222,8 @@ class MKDAKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img if not masker else masker.mask_img
+            masker = dataset.masker if not masker else masker
+            mask = masker.mask_img
             coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
@@ -235,7 +237,7 @@ class MKDAKernel(KernelTransformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        return masker.transform(files).T
+                        return masker.transform(files)
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
@@ -367,7 +369,8 @@ class KDAKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img if not masker else masker.mask_img
+            masker = dataset.masker if not masker else masker
+            mask = masker.mask_img
             coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
@@ -381,7 +384,7 @@ class KDAKernel(KernelTransformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        return masker.transform(files).T
+                        return masker.transform(files)
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
@@ -502,7 +505,8 @@ class Peaks2MapsKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img if not masker else masker.mask_img
+            masker = dataset.masker if not masker else masker
+            mask = masker.mask_img
             coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
@@ -516,7 +520,7 @@ class Peaks2MapsKernel(KernelTransformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        return masker.transform(files).T
+                        return masker.transform(files)
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
