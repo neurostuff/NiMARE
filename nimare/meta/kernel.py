@@ -55,17 +55,28 @@ class ALEKernel(KernelTransformer):
             Dataset for which to make images. Can be a DataFrame if necessary.
         masker : img_like, optional
             Only used if dataset is a DataFrame.
-        return_type : {'image', 'array'}, optional
-            Whether to return a niimg ('image') or a numpy array.
-            Default is 'image'.
+        return_type : {'array', 'image', 'dataset'}, optional
+            Whether to return a numpy array ('array'), a list of niimgs ('image'), or
+            a Dataset with MA images saved as files ('dataset').
+            Default is 'dataset'.
 
         Returns
         -------
-        imgs : :obj:`list` of :class:`nibabel.nifti1.Nifti1Image` or :class:`numpy.ndarray`
-            If return_type is 'image', a list of modeled activation images
-            (one for each of the Contrasts in the input dataset).
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` or\
+               :class:`nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
+            If return_type is 'image', a list of modeled activation images
+            (one for each of the Contrasts in the input dataset).
+            If return_type is 'dataset', a new Dataset object with modeled activation
+            images saved to files and referenced in the Dataset.images attribute.
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for MA maps that will be saved by the transformer.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
         """
         if return_type not in ("array", "image", "dataset"):
             raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
@@ -197,17 +208,28 @@ class MKDAKernel(KernelTransformer):
             Dataset for which to make images. Can be a DataFrame if necessary.
         masker : img_like, optional
             Only used if dataset is a DataFrame.
-        return_type : {'image', 'array'}, optional
-            Whether to return a niimg ('image') or a numpy array.
-            Default is 'image'.
+        return_type : {'array', 'image', 'dataset'}, optional
+            Whether to return a numpy array ('array'), a list of niimgs ('image'), or
+            a Dataset with MA images saved as files ('dataset').
+            Default is 'dataset'.
 
         Returns
         -------
-        imgs : :obj:`list` of :class:`nibabel.Nifti1Image` or :class:`numpy.ndarray`
-            If return_type is 'image', a list of modeled activation images
-            (one for each of the Contrasts in the input dataset).
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` or\
+               :class:`nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
+            If return_type is 'image', a list of modeled activation images
+            (one for each of the Contrasts in the input dataset).
+            If return_type is 'dataset', a new Dataset object with modeled activation
+            images saved to files and referenced in the Dataset.images attribute.
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for MA maps that will be saved by the transformer.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
         """
         if return_type not in ("array", "image", "dataset"):
             raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
@@ -475,17 +497,28 @@ class Peaks2MapsKernel(KernelTransformer):
             Dataset for which to make images.
         masker : img_like, optional
             Only used if dataset is a DataFrame.
-        return_type : {'image', 'array'}, optional
-            Whether to return a niimg ('image') or a numpy array.
-            Default is 'image'.
+        return_type : {'array', 'image', 'dataset'}, optional
+            Whether to return a numpy array ('array'), a list of niimgs ('image'), or
+            a Dataset with MA images saved as files ('dataset').
+            Default is 'dataset'.
 
         Returns
         -------
-        imgs : :obj:`list` of :class:`nibabel.Nifti1Image` or :class:`numpy.ndarray`
-            If return_type is 'image', a list of modeled activation images
-            (one for each of the Contrasts in the input dataset).
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` or\
+               :class:`nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
+            If return_type is 'image', a list of modeled activation images
+            (one for each of the Contrasts in the input dataset).
+            If return_type is 'dataset', a new Dataset object with modeled activation
+            images saved to files and referenced in the Dataset.images attribute.
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for MA maps that will be saved by the transformer.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
         """
         if return_type not in ("array", "image", "dataset"):
             raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
