@@ -80,24 +80,25 @@ class ALEKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img
+            mask = dataset.masker.mask_img if not masker else masker.mask_img
+
+            # Determine MA map filenames. Must happen after parameters are set.
+            self._infer_names(affine=md5(mask.affine).hexdigest())
+
+            # Check for existing MA maps
+            # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
+            # between full Dataset and contrasts with coordinates.
+            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+            if all(f is not None for f in files):
+                LGR.debug("Files already exist. Using them.")
+                if return_type == "array":
+                    return masker.transform(files).T
+                elif return_type == "image":
+                    return [nib.load(f) for f in files]
+                elif return_type == "dataset":
+                    return dataset.copy()
+
             coordinates = dataset.coordinates
-
-        # Determine MA map filenames. Must happen after parameters are set.
-        self._infer_names(affine=md5(mask.affine).hexdigest())
-
-        # Check for existing MA maps
-        # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
-        # between full Dataset and contrasts with coordinates.
-        files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-        if all(f is not None for f in files):
-            LGR.debug("Files already exist. Using them.")
-            if return_type == "array":
-                return masker.transform(files).T
-            elif return_type == "image":
-                return [nib.load(f) for f in files]
-            elif return_type == "dataset":
-                return dataset.copy()
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -220,24 +221,25 @@ class MKDAKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img
+            mask = dataset.masker.mask_img if not masker else masker.mask_img
+
+            # Determine MA map filenames. Must happen after parameters are set.
+            self._infer_names(affine=md5(mask.affine).hexdigest())
+
+            # Check for existing MA maps
+            # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
+            # between full Dataset and contrasts with coordinates.
+            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+            if all(f is not None for f in files):
+                LGR.debug("Files already exist. Using them.")
+                if return_type == "array":
+                    return masker.transform(files).T
+                elif return_type == "image":
+                    return [nib.load(f) for f in files]
+                elif return_type == "dataset":
+                    return dataset.copy()
+
             coordinates = dataset.coordinates
-
-        # Determine MA map filenames. Must happen after parameters are set.
-        self._infer_names(affine=md5(mask.affine).hexdigest())
-
-        # Check for existing MA maps
-        # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
-        # between full Dataset and contrasts with coordinates.
-        files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-        if all(f is not None for f in files):
-            LGR.debug("Files already exist. Using them.")
-            if return_type == "array":
-                return masker.transform(files).T
-            elif return_type == "image":
-                return [nib.load(f) for f in files]
-            elif return_type == "dataset":
-                return dataset.copy()
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -365,24 +367,24 @@ class KDAKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img
+            mask = dataset.masker.mask_img if not masker else masker.mask_img
+
+            # Determine MA map filenames. Must happen after parameters are set.
+            self._infer_names(affine=md5(mask.affine).hexdigest())
+
+            # Check for existing MA maps
+            # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
+            # between full Dataset and contrasts with coordinates.
+            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+            if all(f is not None for f in files):
+                LGR.debug("Files already exist. Using them.")
+                if return_type == "array":
+                    return masker.transform(files).T
+                elif return_type == "image":
+                    return [nib.load(f) for f in files]
+                elif return_type == "dataset":
+                    return dataset.copy()
             coordinates = dataset.coordinates
-
-        # Determine MA map filenames. Must happen after parameters are set.
-        self._infer_names(affine=md5(mask.affine).hexdigest())
-
-        # Check for existing MA maps
-        # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
-        # between full Dataset and contrasts with coordinates.
-        files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-        if all(f is not None for f in files):
-            LGR.debug("Files already exist. Using them.")
-            if return_type == "array":
-                return masker.transform(files).T
-            elif return_type == "image":
-                return [nib.load(f) for f in files]
-            elif return_type == "dataset":
-                return dataset.copy()
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -499,24 +501,24 @@ class Peaks2MapsKernel(KernelTransformer):
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
-            mask = dataset.masker.mask_img
+            mask = dataset.masker.mask_img if not masker else masker.mask_img
+
+            # Determine MA map filenames. Must happen after parameters are set.
+            self._infer_names(affine=md5(mask.affine).hexdigest())
+
+            # Check for existing MA maps
+            # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
+            # between full Dataset and contrasts with coordinates.
+            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+            if all(f is not None for f in files):
+                LGR.debug("Files already exist. Using them.")
+                if return_type == "array":
+                    return masker.transform(files).T
+                elif return_type == "image":
+                    return [nib.load(f) for f in files]
+                elif return_type == "dataset":
+                    return dataset.copy()
             coordinates = dataset.coordinates
-
-        # Determine MA map filenames. Must happen after parameters are set.
-        self._infer_names(affine=md5(mask.affine).hexdigest())
-
-        # Check for existing MA maps
-        # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
-        # between full Dataset and contrasts with coordinates.
-        files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-        if all(f is not None for f in files):
-            LGR.debug("Files already exist. Using them.")
-            if return_type == "array":
-                return masker.transform(files).T
-            elif return_type == "image":
-                return [nib.load(f) for f in files]
-            elif return_type == "dataset":
-                return dataset.copy()
 
         # Otherwise, generate the MA maps
         if return_type == "dataset":
