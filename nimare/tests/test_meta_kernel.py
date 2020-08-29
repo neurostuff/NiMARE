@@ -45,7 +45,7 @@ def test_alekernel_1mm(testdata_cbma):
 
     id_ = "pain_01.nidm-1"
     kern = kernel.ALEKernel()
-    ma_maps = kern.transform(coordinates, testdata_cbma.masker)
+    ma_maps = kern.transform(coordinates, testdata_cbma.masker, return_type="image")
     ijk = coordinates.loc[coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = ijk.values.astype(int)
     kern_data = ma_maps[0].get_fdata()
@@ -68,7 +68,7 @@ def test_alekernel_2mm(testdata_cbma):
 
     id_ = "pain_01.nidm-1"
     kern = kernel.ALEKernel()
-    ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker)
+    ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="image")
 
     ijk = coordinates.loc[coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -94,7 +94,7 @@ def test_alekernel_dataset(testdata_cbma):
 
     id_ = "pain_01.nidm-1"
     kern = kernel.ALEKernel()
-    ma_maps = kern.transform(testdata_cbma)
+    ma_maps = kern.transform(testdata_cbma, return_type="image")
 
     ijk = coordinates.loc[coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -114,7 +114,7 @@ def test_alekernel_fwhm(testdata_cbma):
 
     id_ = "pain_01.nidm-1"
     kern = kernel.ALEKernel(fwhm=10)
-    ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker)
+    ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="image")
 
     ijk = coordinates.loc[coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -134,7 +134,7 @@ def test_alekernel_sample_size(testdata_cbma):
 
     id_ = "pain_01.nidm-1"
     kern = kernel.ALEKernel(sample_size=20)
-    ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker)
+    ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="image")
 
     ijk = coordinates.loc[coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -149,7 +149,7 @@ def test_mkdakernel_smoke(testdata_cbma):
     Smoke test for nimare.meta.kernel.MKDAKernel, using Dataset object.
     """
     kern = kernel.MKDAKernel()
-    ma_maps = kern.transform(testdata_cbma)
+    ma_maps = kern.transform(testdata_cbma, return_type="image")
     assert len(ma_maps) == len(testdata_cbma.ids)
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="array")
     assert ma_maps.shape[0] == len(testdata_cbma.ids)
@@ -163,7 +163,7 @@ def test_mkdakernel_1mm(testdata_cbma):
     """
     id_ = "pain_01.nidm-1"
     kern = kernel.MKDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker)
+    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -181,7 +181,7 @@ def test_mkdakernel_2mm(testdata_cbma):
     """
     id_ = "pain_01.nidm-1"
     kern = kernel.MKDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker)
+    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -196,7 +196,7 @@ def test_kdakernel_smoke(testdata_cbma):
     Smoke test for nimare.meta.kernel.KDAKernel
     """
     kern = kernel.KDAKernel()
-    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker)
+    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
     assert len(ma_maps) == len(testdata_cbma.ids)
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="array")
     assert ma_maps.shape[0] == len(testdata_cbma.ids)
@@ -210,7 +210,7 @@ def test_kdakernel_1mm(testdata_cbma):
     """
     id_ = "pain_01.nidm-1"
     kern = kernel.KDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker)
+    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -228,7 +228,7 @@ def test_kdakernel_2mm(testdata_cbma):
     """
     id_ = "pain_01.nidm-1"
     kern = kernel.KDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker)
+    ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))
@@ -246,7 +246,7 @@ def test_kdakernel_dataset(testdata_cbma):
     """
     id_ = "pain_01.nidm-1"
     kern = kernel.KDAKernel(r=4, value=1)
-    ma_maps = kern.transform(testdata_cbma)
+    ma_maps = kern.transform(testdata_cbma, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
     ijk = np.squeeze(ijk.values.astype(int))

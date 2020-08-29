@@ -81,6 +81,7 @@ class ALEKernel(KernelTransformer):
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
             mask = dataset.masker.mask_img if not masker else masker.mask_img
+            coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
             self._infer_names(affine=md5(mask.affine).hexdigest())
@@ -97,8 +98,6 @@ class ALEKernel(KernelTransformer):
                     return [nib.load(f) for f in files]
                 elif return_type == "dataset":
                     return dataset.copy()
-
-            coordinates = dataset.coordinates
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -222,6 +221,7 @@ class MKDAKernel(KernelTransformer):
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
             mask = dataset.masker.mask_img if not masker else masker.mask_img
+            coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
             self._infer_names(affine=md5(mask.affine).hexdigest())
@@ -238,8 +238,6 @@ class MKDAKernel(KernelTransformer):
                     return [nib.load(f) for f in files]
                 elif return_type == "dataset":
                     return dataset.copy()
-
-            coordinates = dataset.coordinates
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -368,6 +366,7 @@ class KDAKernel(KernelTransformer):
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
             mask = dataset.masker.mask_img if not masker else masker.mask_img
+            coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
             self._infer_names(affine=md5(mask.affine).hexdigest())
@@ -384,7 +383,6 @@ class KDAKernel(KernelTransformer):
                     return [nib.load(f) for f in files]
                 elif return_type == "dataset":
                     return dataset.copy()
-            coordinates = dataset.coordinates
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -502,6 +500,7 @@ class Peaks2MapsKernel(KernelTransformer):
             ), "Input dataset must be a Dataset if return_type='dataset'."
         else:
             mask = dataset.masker.mask_img if not masker else masker.mask_img
+            coordinates = dataset.coordinates
 
             # Determine MA map filenames. Must happen after parameters are set.
             self._infer_names(affine=md5(mask.affine).hexdigest())
@@ -518,7 +517,6 @@ class Peaks2MapsKernel(KernelTransformer):
                     return [nib.load(f) for f in files]
                 elif return_type == "dataset":
                     return dataset.copy()
-            coordinates = dataset.coordinates
 
         # Otherwise, generate the MA maps
         if return_type == "dataset":
