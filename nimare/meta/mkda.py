@@ -92,7 +92,7 @@ class MKDADensity(CBMAEstimator):
             weight_vec = np.ones((ma_values.shape[0], 1))
         self.weight_vec = weight_vec
 
-        ma_values *= self.weight_vec
+        ma_values = ma_values * self.weight_vec
         of_values = np.sum(ma_values, axis=0)
 
         images = {

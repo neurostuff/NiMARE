@@ -89,15 +89,17 @@ class ALEKernel(KernelTransformer):
             # Check for existing MA maps
             # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
             # between full Dataset and contrasts with coordinates.
-            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-            if all(f is not None for f in files):
-                LGR.debug("Files already exist. Using them.")
-                if return_type == "array":
-                    return masker.transform(files).T
-                elif return_type == "image":
-                    return [nib.load(f) for f in files]
-                elif return_type == "dataset":
-                    return dataset.copy()
+            if self.image_type in dataset.images.columns:
+                files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+                if all(f is not None for f in files):
+                    LGR.debug("Files already exist. Using them.")
+                    if return_type == "array":
+                        return masker.transform(files).T
+                    elif return_type == "image":
+                        return [nib.load(f) for f in files]
+                    elif return_type == "dataset":
+                        return dataset.copy()
+
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -229,15 +231,17 @@ class MKDAKernel(KernelTransformer):
             # Check for existing MA maps
             # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
             # between full Dataset and contrasts with coordinates.
-            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-            if all(f is not None for f in files):
-                LGR.debug("Files already exist. Using them.")
-                if return_type == "array":
-                    return masker.transform(files).T
-                elif return_type == "image":
-                    return [nib.load(f) for f in files]
-                elif return_type == "dataset":
-                    return dataset.copy()
+            if self.image_type in dataset.images.columns:
+                files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+                if all(f is not None for f in files):
+                    LGR.debug("Files already exist. Using them.")
+                    if return_type == "array":
+                        return masker.transform(files).T
+                    elif return_type == "image":
+                        return [nib.load(f) for f in files]
+                    elif return_type == "dataset":
+                        return dataset.copy()
+
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -374,15 +378,17 @@ class KDAKernel(KernelTransformer):
             # Check for existing MA maps
             # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
             # between full Dataset and contrasts with coordinates.
-            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-            if all(f is not None for f in files):
-                LGR.debug("Files already exist. Using them.")
-                if return_type == "array":
-                    return masker.transform(files).T
-                elif return_type == "image":
-                    return [nib.load(f) for f in files]
-                elif return_type == "dataset":
-                    return dataset.copy()
+            if self.image_type in dataset.images.columns:
+                files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+                if all(f is not None for f in files):
+                    LGR.debug("Files already exist. Using them.")
+                    if return_type == "array":
+                        return masker.transform(files).T
+                    elif return_type == "image":
+                        return [nib.load(f) for f in files]
+                    elif return_type == "dataset":
+                        return dataset.copy()
+
 
         # Otherwise, generate the MA maps
         if return_type == "array":
@@ -508,15 +514,16 @@ class Peaks2MapsKernel(KernelTransformer):
             # Check for existing MA maps
             # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
             # between full Dataset and contrasts with coordinates.
-            files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-            if all(f is not None for f in files):
-                LGR.debug("Files already exist. Using them.")
-                if return_type == "array":
-                    return masker.transform(files).T
-                elif return_type == "image":
-                    return [nib.load(f) for f in files]
-                elif return_type == "dataset":
-                    return dataset.copy()
+            if self.image_type in dataset.images.columns:
+                files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
+                if all(f is not None for f in files):
+                    LGR.debug("Files already exist. Using them.")
+                    if return_type == "array":
+                        return masker.transform(files).T
+                    elif return_type == "image":
+                        return [nib.load(f) for f in files]
+                    elif return_type == "dataset":
+                        return dataset.copy()
 
         # Otherwise, generate the MA maps
         if return_type == "dataset":
