@@ -107,7 +107,7 @@ class MKDADensity(CBMAEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ma_maps *= self.weight_vec
+        iter_ma_maps = iter_ma_maps * self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = self.masker.inverse_transform(iter_of_map)
