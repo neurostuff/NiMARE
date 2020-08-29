@@ -178,6 +178,10 @@ class CorrelationDecoder(Decoder):
         """
         self.masker = dataset.masker
 
+        # Pre-generate MA maps to speed things up
+        kernel_transformer = self.meta_estimator.kernel_transformer
+        dataset = kernel_transformer.transform(dataset, return_type="dataset")
+
         for i, feature in enumerate(self.features_):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold,
