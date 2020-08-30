@@ -1,9 +1,6 @@
 """
 Test nimare.meta.kernel (CBMA kernel estimators).
 """
-import shutil
-import tempfile
-
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
 
@@ -148,13 +145,13 @@ def test_alekernel_sample_size(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel_inputdataset_returndataset(testdata_cbma):
+def test_alekernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """
     Check that the different return types produce equivalent results
     (minus the masking element).
     """
-    temp_dir = tempfile.mkdtemp()
-    testdata_cbma.update_path(temp_dir)
+    tmpdir = tmp_path_factory.mktemp("test_alekernel_inputdataset_returndataset")
+    testdata_cbma.update_path(tmpdir)
     kern = kernel.ALEKernel(sample_size=20)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     ma_arr = kern.transform(testdata_cbma, return_type="array")
@@ -172,9 +169,6 @@ def test_alekernel_inputdataset_returndataset(testdata_cbma):
     assert np.array_equal(ma_arr, ma_maps_dset)
     assert np.array_equal(ma_arr, ma_maps_from_dset_arr)
     assert np.array_equal(ma_arr, ma_arr_from_dset)
-
-    # It would be nice to use a better teardown
-    shutil.rmtree(temp_dir)
 
 
 def test_mkdakernel_smoke(testdata_cbma):
@@ -224,13 +218,13 @@ def test_mkdakernel_2mm(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_mkdakernel_inputdataset_returndataset(testdata_cbma):
+def test_mkdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """
     Check that the different return types produce equivalent results
     (minus the masking element).
     """
-    temp_dir = tempfile.mkdtemp()
-    testdata_cbma.update_path(temp_dir)
+    tmpdir = tmp_path_factory.mktemp("test_mkdakernel_inputdataset_returndataset")
+    testdata_cbma.update_path(tmpdir)
     kern = kernel.MKDAKernel(r=4, value=1)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     ma_arr = kern.transform(testdata_cbma, return_type="array")
@@ -248,9 +242,6 @@ def test_mkdakernel_inputdataset_returndataset(testdata_cbma):
     assert np.array_equal(ma_arr, ma_maps_dset)
     assert np.array_equal(ma_arr, ma_maps_from_dset_arr)
     assert np.array_equal(ma_arr, ma_arr_from_dset)
-
-    # It would be nice to use a better teardown
-    shutil.rmtree(temp_dir)
 
 
 def test_kdakernel_smoke(testdata_cbma):
@@ -318,13 +309,13 @@ def test_kdakernel_inputdataset_returnimages(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_kdakernel_inputdataset_returndataset(testdata_cbma):
+def test_kdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """
     Check that the different return types produce equivalent results
     (minus the masking element).
     """
-    temp_dir = tempfile.mkdtemp()
-    testdata_cbma.update_path(temp_dir)
+    tmpdir = tmp_path_factory.mktemp("test_kdakernel_inputdataset_returndataset")
+    testdata_cbma.update_path(tmpdir)
     kern = kernel.KDAKernel(r=4, value=1)
     # MA map generation from transformer
     ma_maps = kern.transform(testdata_cbma, return_type="image")
@@ -344,9 +335,6 @@ def test_kdakernel_inputdataset_returndataset(testdata_cbma):
     assert np.array_equal(ma_arr, ma_maps_dset)
     assert np.array_equal(ma_arr, ma_maps_from_dset_arr)
     assert np.array_equal(ma_arr, ma_arr_from_dset)
-
-    # It would be nice to use a better teardown
-    shutil.rmtree(temp_dir)
 
 
 def test_kdakernel_transform_attributes(testdata_cbma):

@@ -13,11 +13,13 @@ from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
 
 
-def test_ale(testdata_cbma):
+def test_ale(testdata_cbma, tmp_path_factory):
     """
     Smoke test for ALE
     """
-    out_file = os.path.abspath("file.pkl.gz")
+    tmpdir = tmp_path_factory.mktemp("test_ale")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
+
     meta = ale.ALE()
     res = meta.fit(testdata_cbma)
     assert "ale" in res.maps.keys()
@@ -37,7 +39,6 @@ def test_ale(testdata_cbma):
     assert isinstance(meta2, ale.ALE)
     with pytest.raises(pickle.UnpicklingError):
         ale.ALE.load(out_file, compressed=False)
-    os.remove(out_file)
 
     meta.save(out_file, compress=False)
     assert os.path.isfile(out_file)
@@ -45,7 +46,6 @@ def test_ale(testdata_cbma):
     assert isinstance(meta2, ale.ALE)
     with pytest.raises(OSError):
         ale.ALE.load(out_file, compressed=True)
-    os.remove(out_file)
 
     # Test MCC methods
     # Monte Carlo FWE
@@ -75,11 +75,12 @@ def test_ale(testdata_cbma):
     assert isinstance(cres, nimare.results.MetaResult)
 
 
-def test_ale_subtraction(testdata_cbma):
+def test_ale_subtraction(testdata_cbma, tmp_path_factory):
     """
     Smoke test for ALESubtraction
     """
-    out_file = os.path.abspath("file.pkl.gz")
+    tmpdir = tmp_path_factory.mktemp("test_ale_subtraction")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
 
     sub_meta = ale.ALESubtraction(n_iters=10, low_memory=False)
     sub_meta.fit(testdata_cbma, testdata_cbma)
@@ -88,14 +89,14 @@ def test_ale_subtraction(testdata_cbma):
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
-    os.remove(out_file)
 
 
-def test_ale_subtraction_lowmem(testdata_cbma):
+def test_ale_subtraction_lowmem(testdata_cbma, tmp_path_factory):
     """
     Smoke test for ALESubtraction with low memory settings.
     """
-    out_file = os.path.abspath("file.pkl.gz")
+    tmpdir = tmp_path_factory.mktemp("test_ale_subtraction_lowmem")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
 
     sub_meta = ale.ALESubtraction(n_iters=10, low_memory=True)
     sub_meta.fit(testdata_cbma, testdata_cbma)
@@ -104,4 +105,3 @@ def test_ale_subtraction_lowmem(testdata_cbma):
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
-    os.remove(out_file)
