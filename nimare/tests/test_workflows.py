@@ -165,6 +165,7 @@ def test_conperm_workflow_cli_smoke(testdata_ibma, tmp_path_factory):
             prefix,
             "--n_iters",
             "5",
-        ] + files
+        ]
+        + files
     )
     assert op.isfile(op.join(tmpdir, "{}_logp.nii.gz".format(prefix)))

@@ -25,14 +25,13 @@ def testdata_ibma(tmp_path_factory):
     dset.update_path(dset_dir)
     # Move image contents of Dataset to temporary directory
     for c in dset.images.columns:
-        if c.endswith('__relative'):
+        if c.endswith("__relative"):
             continue
         for f in dset.images[c].values:
             if (f is None) or not os.path.isfile(f):
                 continue
             new_f = f.replace(
-                dset_dir.rstrip(os.path.sep),
-                str(tmpdir.absolute()).rstrip(os.path.sep)
+                dset_dir.rstrip(os.path.sep), str(tmpdir.absolute()).rstrip(os.path.sep)
             )
             dirname = os.path.dirname(new_f)
             if not os.path.isdir(dirname):
