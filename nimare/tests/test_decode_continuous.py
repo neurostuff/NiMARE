@@ -33,7 +33,6 @@ def test_CorrelationDecoder(testdata_laird, tmp_path_factory):
     img = res.get_map("of")
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)
-    raise Exception(decoded_df)
 
 
 def test_CorrelationDistributionDecoder(testdata_laird, tmp_path_factory):
@@ -67,4 +66,3 @@ def test_CorrelationDistributionDecoder(testdata_laird, tmp_path_factory):
     img = res.get_map("of")
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)
-    raise Exception(decoded_df)
