@@ -184,7 +184,8 @@ class CorrelationDecoder(Decoder):
 
         for i, feature in enumerate(self.features_):
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold,
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
             )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
@@ -281,7 +282,8 @@ class CorrelationDistributionDecoder(Decoder):
         images_ = {}
         for feature in self.features_:
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold,
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
             )
             test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
             test_imgs = list(filter(None, test_imgs))
