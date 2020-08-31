@@ -28,7 +28,7 @@ jobs:
             else
                 conda create -n py36_env python=3.6 numpy traits -yq
                 source activate py36_env
-                pip install -e .[tests,doc]
+                pip install -e .[tests,doc,peaks2maps-cpu]
             fi
             python setup.py install --user
       - save_cache:  # environment cache tied to requirements
@@ -56,7 +56,7 @@ jobs:
                 conda create -n py38_env python=3.8 numpy traits -yq
                 source activate py38_env
                 pip install pip -U
-                pip install -e .[tests,doc]
+                pip install -e .[tests,doc,peaks2maps-cpu]
             fi
             python setup.py install --user
       - run:
@@ -84,7 +84,7 @@ jobs:
             else
                 conda create -n py37_env python=3.7 numpy traits -yq
                 source activate py37_env
-                pip install -e .[tests,doc]
+                pip install -e .[tests,doc,peaks2maps-cpu]
             fi
             python setup.py install --user
       - run:
