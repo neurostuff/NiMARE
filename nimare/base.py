@@ -527,7 +527,8 @@ class Decoder(NiMAREBase):
 
     def _preprocess_input(self, dataset):
         """
-        Perform any additional preprocessing steps on data in self.inputs_
+        Select features for model based on requested features and feature_group, as well as
+        which features have at least one study in the Dataset with the feature.
         """
         # Reduce feature list as desired
         if self.feature_group is not None:
@@ -572,6 +573,9 @@ class Decoder(NiMAREBase):
         preprocessing before fitting the actual model. Estimators' individual
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
+
+        Selection of features based on requested features and feature group is performed in
+        `Decoder._preprocess_input`.
         """
         self._preprocess_input(dataset)
         self._fit(dataset)
@@ -579,8 +583,7 @@ class Decoder(NiMAREBase):
     @abstractmethod
     def _fit(self, dataset):
         """
-        Apply estimation to dataset and output results. Must return a
-        dictionary of results, where keys are names of images and values are
-        ndarrays.
+        Apply decoding to dataset and output results.
+        Must return a DataFrame, with one row for each feature.
         """
         pass
