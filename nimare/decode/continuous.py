@@ -188,6 +188,7 @@ class CorrelationDecoder(Decoder):
             )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
+            # Check if the meta method is a pairwise estimator
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(dataset.ids) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)

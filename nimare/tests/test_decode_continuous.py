@@ -1,7 +1,7 @@
 """
-Test nimare.decode.discrete.
+Test nimare.decode.continuous.
 
-Tests for nimare.decode.discrete.gclda_decode_roi are in test_annotate_gclda.
+Tests for nimare.decode.continuous.gclda_decode_map are in test_annotate_gclda.
 """
 import pandas as pd
 import pytest
@@ -10,7 +10,7 @@ from nimare.decode import continuous
 from nimare.meta import mkda, kernel
 
 
-def test_CorrelationDecoder(testdata_laird, tmp_path_factory):
+def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     """
     Smoke test for continuous.CorrelationDecoder
     """
@@ -28,6 +28,7 @@ def test_CorrelationDecoder(testdata_laird, tmp_path_factory):
     testdata_laird.update_path(tmpdir)
     decoder.fit(testdata_laird)
 
+    # Make an image to decode
     meta = mkda.KDA()
     res = meta.fit(testdata_laird)
     img = res.get_map("of")
@@ -35,7 +36,7 @@ def test_CorrelationDecoder(testdata_laird, tmp_path_factory):
     assert isinstance(decoded_df, pd.DataFrame)
 
 
-def test_CorrelationDistributionDecoder(testdata_laird, tmp_path_factory):
+def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     """
     Smoke test for continuous.CorrelationDistributionDecoder
     """
@@ -46,7 +47,7 @@ def test_CorrelationDistributionDecoder(testdata_laird, tmp_path_factory):
 
     decoder = continuous.CorrelationDistributionDecoder(features=features)
 
-    # No basepath
+    # No images of the requested type
     with pytest.raises(ValueError):
         decoder.fit(testdata_laird)
 
@@ -61,6 +62,7 @@ def test_CorrelationDistributionDecoder(testdata_laird, tmp_path_factory):
     decoder.set_params(target_image=kern.image_type)
     decoder.fit(dset)
 
+    # Make an image to decode
     meta = mkda.KDA()
     res = meta.fit(testdata_laird)
     img = res.get_map("of")
