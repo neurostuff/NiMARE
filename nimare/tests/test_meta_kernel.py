@@ -1,6 +1,8 @@
 """
 Test nimare.meta.kernel (CBMA kernel estimators).
 """
+import shutil
+
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
 
@@ -378,3 +380,4 @@ def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
     assert np.array_equal(ma_arr, ma_maps_dset)
     assert np.array_equal(ma_arr, ma_maps_from_dset_arr)
     assert np.array_equal(ma_arr, ma_arr_from_dset)
+    shutil.rmtree(model_dir)
