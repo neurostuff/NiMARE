@@ -6,6 +6,7 @@ from scipy.ndimage.measurements import center_of_mass
 
 from nimare.dataset import Dataset
 from nimare.meta import kernel
+from nimare import extract
 
 
 def test_alekernel_smoke(testdata_cbma):
@@ -347,3 +348,33 @@ def test_kdakernel_transform_attributes(testdata_cbma):
     _ = kern.transform(testdata_cbma, return_type="image")
     assert hasattr(kern, "filename_pattern")
     assert hasattr(kern, "image_type")
+
+
+def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
+    """
+    Test Peaks2MapsKernel
+    """
+    tmpdir = tmp_path_factory.mktemp("test_Peaks2MapsKernel")
+
+    model_dir = extract.download_peaks2maps_model(data_dir=str(tmpdir))
+
+    testdata_cbma.update_path(tmpdir)
+    kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
+    # MA map generation from transformer
+    ma_maps = kern.transform(testdata_cbma, return_type="image")
+    ma_arr = kern.transform(testdata_cbma, return_type="array")
+    dset = kern.transform(testdata_cbma, return_type="dataset")
+    # Load generated MA maps
+    ma_maps_from_dset = kern.transform(dset, return_type="image")
+    ma_arr_from_dset = kern.transform(dset, return_type="array")
+    dset_from_dset = kern.transform(dset, return_type="dataset")
+    ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
+    ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
+    ma_maps_dset = testdata_cbma.masker.transform(
+        dset.get_images(ids=dset.ids, imtype=kern.image_type)
+    )
+    assert isinstance(dset_from_dset, Dataset)
+    assert np.array_equal(ma_arr, ma_maps_arr)
+    assert np.array_equal(ma_arr, ma_maps_dset)
+    assert np.array_equal(ma_arr, ma_maps_from_dset_arr)
+    assert np.array_equal(ma_arr, ma_arr_from_dset)

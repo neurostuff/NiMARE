@@ -484,8 +484,11 @@ class Peaks2MapsKernel(KernelTransformer):
         Default is True.
     """
 
-    def __init__(self, resample_to_mask=True):
+    def __init__(self, resample_to_mask=True, model_dir="auto"):
         self.resample_to_mask = resample_to_mask
+        # Use private attribute to hide value from get_params.
+        # get_params will find model_dir=None, which is *very important* when a path is provided.
+        self._model_dir = model_dir
 
     def transform(self, dataset, masker=None, return_type="image"):
         """
@@ -580,7 +583,7 @@ class Peaks2MapsKernel(KernelTransformer):
                 mm_coords.append(vox2mm(coord, dataset.masker.mask_img.affine))
             coordinates_list.append(mm_coords)
 
-        imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True)
+        imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
 
         if self.resample_to_mask:
             resampled_imgs = []

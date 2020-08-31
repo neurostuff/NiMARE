@@ -309,6 +309,22 @@ def download_abstracts(dataset, email):
 def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     """
     Download the trained Peaks2Maps model from OHBM 2018.
+
+    Parameters
+    ----------
+    data_dir : None or str, optional
+        Where to put the trained model.
+        If None, then download to the automatic NiMARE data directory.
+        Default is None.
+    overwrite : bool, optional
+        Whether to overwrite an existing model or not. Default is False.
+    verbose : int, optional
+        Verbosity level. Default is 1.
+
+    Returns
+    -------
+    data_dir : str
+        Path to folder containing model.
     """
     url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
 
@@ -316,7 +332,8 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
 
     dataset_name = "peaks2maps_model_ohbm2018"
-    data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
+    if dataset_name not in data_dir:  # allow data_dir to include model folder
+        data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
 
     desc_file = op.join(data_dir, "description.txt")
     if op.isfile(desc_file) and overwrite is False:
