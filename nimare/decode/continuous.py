@@ -309,7 +309,7 @@ class CorrelationDistributionDecoder(Decoder):
         """
         img_vec = self.masker.transform(img)
         out_df = pd.DataFrame(
-            index=self.features_, columns=["mean", "std"], data=np.zeros(len(self.features_), 2)
+            index=self.features_, columns=["mean", "std"], data=np.zeros((len(self.features_), 2))
         )
         out_df.index.name = "feature"
         for feature, feature_arr in self.images_.items():
