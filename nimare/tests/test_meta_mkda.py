@@ -95,15 +95,3 @@ def test_kda_density_fwe_1core(testdata_cbma):
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
-
-
-def test_kda_density_fwe_100core(testdata_cbma):
-    """
-    Smoke test for KDA
-    """
-    meta = mkda.KDA()
-    res = meta.fit(testdata_cbma)
-    assert isinstance(res, nimare.results.MetaResult)
-    corr_100core = FWECorrector(method="montecarlo", n_iters=5, n_cores=100)
-    cres_100core = corr_100core.transform(res)
-    assert isinstance(cres_100core, nimare.results.MetaResult)
