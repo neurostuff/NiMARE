@@ -146,8 +146,7 @@ def dict_to_coordinates(data, masker, space):
 
 
 def validate_df(df):
-    """Check that an input is a DataFrame and has a column for 'id'.
-    """
+    """Check that an input is a DataFrame and has a column for 'id'."""
     assert isinstance(df, pd.DataFrame)
     assert "id" in df.columns
 

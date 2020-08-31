@@ -200,8 +200,7 @@ class NiMAREBase(with_metaclass(ABCMeta)):
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults
-    """
+    """Estimators take in Datasets and return MetaResults"""
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
@@ -278,8 +277,7 @@ class Estimator(NiMAREBase):
 
 
 class MetaEstimator(Estimator):
-    """Base class for meta-analysis methods in :mod:`nimare.meta`.
-    """
+    """Base class for meta-analysis methods in :mod:`nimare.meta`."""
 
     def __init__(self, *args, **kwargs):
         mask = kwargs.get("mask")
@@ -288,8 +286,7 @@ class MetaEstimator(Estimator):
         self.masker = mask
 
     def _preprocess_input(self, dataset):
-        """Preprocess inputs to the Estimator from the Dataset as needed.
-        """
+        """Preprocess inputs to the Estimator from the Dataset as needed."""
         masker = self.masker or dataset.masker
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
@@ -456,8 +453,7 @@ class Transformer(NiMAREBase):
 
     @abstractmethod
     def transform(self, dataset):
-        """Add stuff to transformer.
-        """
+        """Add stuff to transformer."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 'Argument "dataset" must be a valid Dataset '
@@ -520,8 +516,7 @@ class KernelTransformer(Transformer):
 
 
 class Decoder(NiMAREBase):
-    """Base class for decoders in :mod:`nimare.decode`.
-    """
+    """Base class for decoders in :mod:`nimare.decode`."""
 
     __id_cols = ["id", "study_id", "contrast_id"]
 

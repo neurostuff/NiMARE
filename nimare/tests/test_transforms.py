@@ -7,8 +7,7 @@ from nimare import transforms, utils
 
 
 def test_transform_images(testdata_ibma):
-    """Smoke test on transforms.transform_images
-    """
+    """Smoke test on transforms.transform_images"""
     dset = testdata_ibma
     z_files = dset.images["z"].tolist()
     new_images = transforms.transform_images(
@@ -28,8 +27,7 @@ def test_transform_images(testdata_ibma):
 
 
 def test_sample_sizes_to_dof():
-    """Unit tests for transforms.sample_sizes_to_dof
-    """
+    """Unit tests for transforms.sample_sizes_to_dof"""
     sample_sizes = [20, 20, 20]
     dof = 57
     assert transforms.sample_sizes_to_dof(sample_sizes) == dof
@@ -39,8 +37,7 @@ def test_sample_sizes_to_dof():
 
 
 def test_sample_sizes_to_sample_size():
-    """Unit tests for transforms.sample_sizes_to_sample_size
-    """
+    """Unit tests for transforms.sample_sizes_to_sample_size"""
     sample_sizes = [20, 20, 20]
     sample_size = 60
     assert transforms.sample_sizes_to_sample_size(sample_sizes) == sample_size
@@ -50,8 +47,7 @@ def test_sample_sizes_to_sample_size():
 
 
 def test_t_to_z():
-    """Smoke test
-    """
+    """Smoke test"""
     t_arr = np.random.random(100)
     z_arr = transforms.t_to_z(t_arr, dof=20)
     assert z_arr.shape == t_arr.shape

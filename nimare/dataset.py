@@ -265,8 +265,7 @@ class Dataset(NiMAREBase):
         self.images = df
 
     def copy(self):
-        """Create a copy of the Dataset.
-        """
+        """Create a copy of the Dataset."""
         return copy.deepcopy(self)
 
     def get(self, dict_):

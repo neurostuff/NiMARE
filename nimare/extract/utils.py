@@ -18,7 +18,7 @@ LGR = logging.getLogger(__name__)
 
 
 def get_data_dirs(data_dir=None):
-    """ Returns the directories in which NiMARE looks for data.
+    """Returns the directories in which NiMARE looks for data.
     This is typically useful for the end-user to check where the data is
     downloaded and stored.
 
@@ -68,7 +68,7 @@ def get_data_dirs(data_dir=None):
 
 
 def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1):
-    """ Create if necessary and returns data directory of given dataset.
+    """Create if necessary and returns data directory of given dataset.
 
     Parameters
     ----------

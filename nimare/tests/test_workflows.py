@@ -94,8 +94,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
 
 
 def test_scale_workflow_function_smoke(tmp_path_factory):
-    """
-    """
+    """Test the SCALE workflow as a function"""
     tmpdir = tmp_path_factory.mktemp("test_scale_workflow_function_smoke")
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     prefix = "test"
