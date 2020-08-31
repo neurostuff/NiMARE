@@ -202,8 +202,9 @@ def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_boun
     description="Transforms coordinates of peaks to unthresholded maps using a deep "
     "convolutional neural net.",
 )
-def peaks2maps(contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None,
-               model_dir="auto"):
+def peaks2maps(
+    contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None, model_dir="auto"
+):
     """
     Generate modeled activation (MA) maps using depp ConvNet model peaks2maps
 
