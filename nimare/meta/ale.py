@@ -349,8 +349,8 @@ class ALE(CBMAEstimator):
         p_cfwe_values = np.squeeze(
             self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
         )
-        logp_cfwe_values = -np.log(p_cfwe_values)
-        logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log(np.finfo(float).eps)
+        logp_cfwe_values = -np.log10(p_cfwe_values)
+        logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log10(np.finfo(float).eps)
         z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
@@ -363,8 +363,8 @@ class ALE(CBMAEstimator):
             )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
-        logp_vfwe_values = -np.log(p_vfwe_values)
-        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log(np.finfo(float).eps)
+        logp_vfwe_values = -np.log10(p_vfwe_values)
+        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
 
         # Write out unthresholded value images
         images = {
@@ -643,9 +643,8 @@ class SCALE(CBMAEstimator):
         if self.low_memory:
             del perm_scale_values
             os.remove(filename)
-
-        logp_values = -np.log(p_values)
-        logp_values[np.isinf(logp_values)] = -np.log(np.finfo(float).eps)
+        logp_values = -np.log10(p_values)
+        logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
         # Write out unthresholded value images
         images = {
