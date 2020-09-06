@@ -13,9 +13,9 @@ from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
 
 
-def test_ale(testdata_cbma, tmp_path_factory):
+def test_ALE_unit(testdata_cbma, tmp_path_factory):
     """
-    Smoke test for ALE
+    Unit test for ALE
     """
     tmpdir = tmp_path_factory.mktemp("test_ale")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
@@ -68,40 +68,108 @@ def test_ale(testdata_cbma, tmp_path_factory):
     corr = FWECorrector(method="bonferroni")
     cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
+    assert isinstance(
+        cres.get_map("z_corr-FWE_method-bonferroni", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        cres.get_map("z_corr-FWE_method-bonferroni", return_type="array"), np.ndarray
+    )
 
     # FDR
     corr = FDRCorrector(method="indep", alpha=0.05)
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.results.MetaResult)
+    assert isinstance(
+        cres.get_map("z_corr-FDR_method-indep", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        cres.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray
+    )
 
 
-def test_ale_subtraction(testdata_cbma, tmp_path_factory):
+def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     """
     Smoke test for ALESubtraction
     """
-    tmpdir = tmp_path_factory.mktemp("test_ale_subtraction")
+    tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
     sub_meta = ale.ALESubtraction(n_iters=10, low_memory=False)
     sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
+    assert isinstance(
+        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
+    )
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
 
 
-def test_ale_subtraction_lowmem(testdata_cbma, tmp_path_factory):
+def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
     """
     Smoke test for ALESubtraction with low memory settings.
     """
-    tmpdir = tmp_path_factory.mktemp("test_ale_subtraction_lowmem")
+    tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke_lowmem")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
     sub_meta = ale.ALESubtraction(n_iters=10, low_memory=True)
     sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
+    assert isinstance(
+        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
+    )
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_SCALE_smoke(testdata_cbma):
+    """
+    Smoke test for SCALE
+    """
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+    ijk = np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T
+    ijk = ijk[:, :20]
+    meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk)
+    res = meta.fit(dset)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert "z" in res.maps.keys()
+    assert isinstance(
+        res.get_map("z", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        res.get_map("z", return_type="array"), np.ndarray
+    )
+
+
+def test_SCALE_smoke_lowmem(testdata_cbma):
+    """
+    Smoke test for SCALE with low memory settings.
+    """
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+    ijk = np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T
+    ijk = ijk[:, :20]
+    meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk, low_memory=True)
+    res = meta.fit(dset)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert "z" in res.maps.keys()
+    assert isinstance(
+        res.get_map("z", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        res.get_map("z", return_type="array"), np.ndarray
+    )
