@@ -12,9 +12,10 @@ NiMARE-generated files, especially ones made by meta-analyses, follow a naming c
 
 Here is the basic naming convention for statistical maps:
 
-```Text
-[value]_desc-[description]_level-[cluster|voxel]_corr-[FWE|FDR]_method-[method].nii.gz
-```
+.. code-block:: Text
+
+   [value]_desc-[description]_level-[cluster|voxel]_corr-[FWE|FDR]_method-[method].nii.gz
+
 
 First, the `value` represents type of data in the map (e.g., z-statistic, t-statistic).
 Some of the values found in NiMARE include:
