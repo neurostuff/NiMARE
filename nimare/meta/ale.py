@@ -95,10 +95,10 @@ class ALE(CBMAEstimator):
         self.null_distributions_ = {}
 
         ma_maps = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="image"
+            self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
         ale_values = self._compute_ale(ma_maps)
-        self._compute_null(ma_maps)
+        self._compute_null(ma_maps)  # Determine null distributions for ALE to p conversion
         p_values, z_values = self._ale_to_p(ale_values)
 
         images = {
@@ -133,6 +133,16 @@ class ALE(CBMAEstimator):
     def _compute_null(self, ma_maps):
         """
         Compute uncorrected ALE-value null distribution from MA values.
+
+        Parameters
+        ----------
+        ma_maps : list of imgs or numpy.ndarray
+            MA maps.
+
+        Notes
+        -----
+        This method sets two parameters in the null_distributions_ attribute:
+        "histogram_bins" and "histogram_weights".
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
@@ -141,12 +151,12 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
-        # Determine histogram bins for ALE-value null distribution
+        # Determine bins for null distribution histogram
         max_poss_ale = 1.0
-        for i in range(ma_values.shape[0]):
-            max_poss_ale *= 1 - np.max(ma_values[i, :])
+        max_ma_values = np.max(ma_values, axis=1)
+        for ma_value in max_ma_values:
+            max_poss_ale *= 1 - ma_value
         max_poss_ale = 1 - max_poss_ale
-
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
@@ -154,13 +164,13 @@ class ALE(CBMAEstimator):
         ma_hists = np.zeros(
             (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
         )
-        for i in range(ma_values.shape[0]):
+        for i_exp in range(ma_values.shape[0]):
             # Remember that histogram uses bin edges (not centers), so it
             # returns a 1xhist_bins-1 array
-            n_zeros = len(np.where(ma_values[i, :] == 0)[0])
-            reduced_ma_values = ma_values[i, ma_values[i, :] > 0]
-            ma_hists[i, 0] = n_zeros
-            ma_hists[i, 1:] = np.histogram(
+            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
+            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
+            ma_hists[i_exp, 0] = n_zeros
+            ma_hists[i_exp, 1:] = np.histogram(
                 a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
             )[0]
 
@@ -220,7 +230,7 @@ class ALE(CBMAEstimator):
 
     def _run_fwe_permutation(self, params):
         """
-        Run a single random permutation of a dataset. Does the shared work
+        Run a single Monte Carlo permutation of a dataset. Does the shared work
         between vFWE and cFWE.
         """
         iter_df, iter_ijk, conn, z_thresh = params
@@ -465,10 +475,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
             grp2_ale_values *= 1.0 - grp2_ma_arr[i_exp, :]
         grp2_ale_values = 1 - grp2_ale_values
 
-        p_arr = np.ones(n_voxels)
-
         diff_ale_values = grp1_ale_values - grp2_ale_values
 
+        # Calculate null distribution for each voxel based on group-assignment randomization
         if self.low_memory:
             from tempfile import mkdtemp
 
@@ -493,22 +502,21 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
             iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
             del iter_grp1_ale_values, iter_grp2_ale_values
+            if self.low_memory:
+                # Write changes to disk
+                iter_diff_values.flush()
 
-        if self.low_memory:
-            iter_diff_values.flush()
-            del iter_diff_values
-            iter_diff_values = np.memmap(
-                filename, dtype=ma_arr.dtype, mode="r", shape=(self.n_iters, n_voxels)
-            )
-
+        # Determine p-values based on voxel-wise null distributions
+        p_arr = np.ones(n_voxels)
         for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(
                 diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two"
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
 
+        del iter_diff_values
         if self.low_memory:
-            del iter_diff_values
+            # Get rid of memmap
             os.remove(filename)
 
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
@@ -564,17 +572,17 @@ class SCALE(CBMAEstimator):
         n_cores=-1,
         ijk=None,
         kernel_transformer=ALEKernel,
+        low_memory=False,
         **kwargs,
     ):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
-        self.dataset = None
-        self.results = None
         self.voxel_thresh = voxel_thresh
         self.ijk = ijk
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
+        self.low_memory = low_memory
 
     def _fit(self, dataset):
         """
@@ -591,14 +599,15 @@ class SCALE(CBMAEstimator):
         self.null_distributions_ = {}
 
         ma_maps = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="image"
+            self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
 
+        # Determine bins for null distribution histogram
         max_poss_ale = 1.0
-        for ma_map in ma_maps:
-            max_poss_ale *= 1 - np.max(ma_map.get_fdata())
+        max_ma_values = np.max(ma_maps, axis=1)
+        for ma_value in max_ma_values:
+            max_poss_ale *= 1 - ma_value
         max_poss_ale = 1 - max_poss_ale
-
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
@@ -614,23 +623,26 @@ class SCALE(CBMAEstimator):
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
 
-        if (self.n_cores == 1):
+        if self.n_cores == 1:
             if self.low_memory:
                 from tempfile import mkdtemp
 
                 filename = os.path.join(mkdtemp(), "perm_scale_values.dat")
                 perm_scale_values = np.memmap(
-                    filename, dtype=ale_values.dtype, mode="w+",
-                    shape=(self.n_iters, self.null_distributions_["histogram_bins"].shape[0])
+                    filename,
+                    dtype=ale_values.dtype,
+                    mode="w+",
+                    shape=(self.n_iters, ale_values.shape[0]),
                 )
             else:
                 perm_scale_values = np.zeros(
-                    (self.n_iters, self.null_distributions_["histogram_bins"].shape[0]),
+                    (self.n_iters, ale_values.shape[0]),
                     dtype=ale_values.dtype,
                 )
             for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
                 perm_scale_values[i_iter, :] = self._run_permutation(pp)
                 if self.low_memory:
+                    # Write changes to disk
                     perm_scale_values.flush()
         else:
             with mp.Pool(self.n_cores) as p:
