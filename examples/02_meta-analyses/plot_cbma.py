@@ -91,7 +91,7 @@ plot_stat_map(cres.get_map('logp_level-cluster_corr-FWE_method-montecarlo'),
 # SCALE
 # --------------------------------------------------
 ijk = np.vstack(np.where(mask_img.get_fdata())).T
-scale = nimare.meta.ale.SCALE(ijk=ijk, n_iters=10, n_cores=1)
+scale = nimare.meta.ale.SCALE(ijk=ijk, n_iters=10, n_cores=1, low_memory=True)
 scale.fit(dset)
 plot_stat_map(scale.results.get_map('z'), cut_coords=[0, 0, -8],
               draw_cross=False, cmap='RdBu_r')
