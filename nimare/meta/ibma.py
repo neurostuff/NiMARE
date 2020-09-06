@@ -540,6 +540,6 @@ def t_test(beta_maps, null="theoretical", n_iters=None, two_sided=True):
     sign = np.sign(t_map)
     sign[sign == 0] = 1
     z_map = p_to_z(p_map, tail="two") * sign
-    log_p_map = -np.log10(p_map)
-    images = {"t": t_map, "z": z_map, "p": p_map, "logp": log_p_map}
+    logp_map = -np.log10(p_map)
+    images = {"t": t_map, "z": z_map, "p": p_map, "logp": logp_map}
     return images
