@@ -93,7 +93,7 @@ class Dataset(NiMAREBase):
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
         id_df = id_df.set_index("id", drop=False)
-        self.__ids = id_df.index.values
+        self._ids = id_df.index.values
 
         # Set up Masker
         if mask is None:
@@ -110,11 +110,17 @@ class Dataset(NiMAREBase):
 
     @property
     def ids(self):
-        """array_like: 1D array of identifiers in Dataset.
+        """numpy.ndarray: 1D array of identifiers in Dataset.
 
-        There is no setter for this property, as ``Dataset.ids`` is immutable.
+        The associated setter for this property is private, as ``Dataset.ids`` is immutable.
         """
         return self.__ids
+
+    @ids.setter
+    def _ids(self, ids):
+        ids = np.asarray(ids)
+        assert isinstance(ids, np.ndarray) and ids.ndim == 1
+        self.__ids = ids
 
     @property
     def masker(self):
@@ -236,7 +242,7 @@ class Dataset(NiMAREBase):
             Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
-        new_dset.__ids = ids
+        new_dset._ids = ids
         new_dset.annotations = new_dset.annotations.loc[new_dset.annotations["id"].isin(ids)]
         new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates["id"].isin(ids)]
         new_dset.images = new_dset.images.loc[new_dset.images["id"].isin(ids)]
