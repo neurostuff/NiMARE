@@ -199,8 +199,8 @@ class MKDADensity(CBMAEstimator):
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
-            cfwe_map[clust_idx] = -np.log(null_to_p(clust_size, perm_clust_sizes, "upper"))
-        cfwe_map[np.isinf(cfwe_map)] = -np.log(np.finfo(float).eps)
+            cfwe_map[clust_idx] = -np.log10(null_to_p(clust_size, perm_clust_sizes, "upper"))
+        cfwe_map[np.isinf(cfwe_map)] = -np.log10(np.finfo(float).eps)
         cfwe_map = np.squeeze(
             self.masker.transform(nib.Nifti1Image(cfwe_map, self.masker.mask_img.affine))
         )
@@ -208,8 +208,8 @@ class MKDADensity(CBMAEstimator):
         # Voxel-level FWE
         vfwe_map = np.squeeze(self.masker.transform(of_map))
         for i_vox, val in enumerate(vfwe_map):
-            vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, "upper"))
-        vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
+            vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
+        vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
 
         images = {"logp_level-cluster": cfwe_map, "logp_level-voxel": vfwe_map}
         return images
@@ -666,8 +666,8 @@ class KDA(CBMAEstimator):
         # Voxel-level FWE
         vfwe_map = of_values.copy()
         for i_vox, val in enumerate(of_values):
-            vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, "upper"))
-        vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
+            vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
+        vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
 
         images = {"logp_level-voxel": vfwe_map}
         return images
