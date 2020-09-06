@@ -252,9 +252,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
-        self.dataset1 = None
-        self.dataset2 = None
-        self.results = None
         self.prior = prior
 
     def _fit(self, dataset1, dataset2):
@@ -274,12 +271,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_selected = ma_maps1.shape[0]
         n_unselected = ma_maps2.shape[0]
         n_mappables = n_selected + n_unselected
+        n_selected_active_voxels = np.sum(ma_maps1, axis=0)
+        n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
 
         # Transform MA maps to 1d arrays
         ma_maps_all = np.vstack((ma_maps1, ma_maps2))
-
-        n_selected_active_voxels = np.sum(ma_maps1, axis=0)
-        n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
+        del ma_maps1, ma_maps2
 
         # Nomenclature for variables below: p = probability,
         # F = feature present, g = given, U = unselected, A = activation.
@@ -354,7 +351,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
         n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
 
-        # Conditional probabilities
+        # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels * 1.0 / n_selected
         # pAgU = n_unselected_active_voxels * 1.0 / n_unselected
 
