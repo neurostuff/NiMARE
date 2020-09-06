@@ -614,19 +614,36 @@ class SCALE(CBMAEstimator):
         iter_dfs = [iter_df] * self.n_iters
         params = zip(iter_dfs, iter_ijks)
 
-        if self.n_cores == 1:
-            perm_scale_values = []
-            for pp in tqdm(params, total=self.n_iters):
-                perm_scale_values.append(self._run_permutation(pp))
+        if (self.n_cores == 1):
+            if self.low_memory:
+                from tempfile import mkdtemp
+
+                filename = os.path.join(mkdtemp(), "perm_scale_values.dat")
+                perm_scale_values = np.memmap(
+                    filename, dtype=ale_values.dtype, mode="w+",
+                    shape=(self.n_iters, self.null_distributions_["histogram_bins"].shape[0])
+                )
+            else:
+                perm_scale_values = np.zeros(
+                    (self.n_iters, self.null_distributions_["histogram_bins"].shape[0]),
+                    dtype=ale_values.dtype,
+                )
+            for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
+                perm_scale_values[i_iter, :] = self._run_permutation(pp)
+                if self.low_memory:
+                    perm_scale_values.flush()
         else:
             with mp.Pool(self.n_cores) as p:
                 perm_scale_values = list(
                     tqdm(p.imap(self._run_permutation, params), total=self.n_iters)
                 )
-
-        perm_scale_values = np.stack(perm_scale_values)
+            perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(ale_values, perm_scale_values)
+        if self.low_memory:
+            del perm_scale_values
+            os.remove(filename)
+
         logp_values = -np.log(p_values)
         logp_values[np.isinf(logp_values)] = -np.log(np.finfo(float).eps)
 
@@ -666,6 +683,22 @@ class SCALE(CBMAEstimator):
     def _scale_to_p(self, ale_values, scale_values):
         """
         Compute p- and z-values.
+
+        Parameters
+        ----------
+        ale_values : (V) array
+            ALE values.
+        scale_values : (I x V) array
+            Permutation ALE values.
+
+        Returns
+        -------
+        p_values : (V) array
+        z_values : (V) array
+
+        Notes
+        -----
+        This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
         step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
