@@ -84,9 +84,7 @@ def test_ALE_unit(testdata_cbma, tmp_path_factory):
         cres.get_map("z_corr-FDR_method-indep", return_type="image"),
         nib.Nifti1Image,
     )
-    assert isinstance(
-        cres.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray
-    )
+    assert isinstance(cres.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray)
 
 
 def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
@@ -150,9 +148,7 @@ def test_SCALE_smoke(testdata_cbma):
         res.get_map("z", return_type="image"),
         nib.Nifti1Image,
     )
-    assert isinstance(
-        res.get_map("z", return_type="array"), np.ndarray
-    )
+    assert isinstance(res.get_map("z", return_type="array"), np.ndarray)
 
 
 def test_SCALE_smoke_lowmem(testdata_cbma):
@@ -170,6 +166,4 @@ def test_SCALE_smoke_lowmem(testdata_cbma):
         res.get_map("z", return_type="image"),
         nib.Nifti1Image,
     )
-    assert isinstance(
-        res.get_map("z", return_type="array"), np.ndarray
-    )
+    assert isinstance(res.get_map("z", return_type="array"), np.ndarray)
