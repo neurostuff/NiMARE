@@ -11,9 +11,8 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import CBMAEstimator
+from ..base import CBMAEstimator, PairwiseCBMAEstimator
 from ..due import due
-from ..results import MetaResult
 from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
 from .kernel import KDAKernel, MKDAKernel
@@ -93,7 +92,7 @@ class MKDADensity(CBMAEstimator):
             weight_vec = np.ones((ma_values.shape[0], 1))
         self.weight_vec = weight_vec
 
-        ma_values *= self.weight_vec
+        ma_values = ma_values * self.weight_vec
         of_values = np.sum(ma_values, axis=0)
 
         images = {
@@ -108,7 +107,7 @@ class MKDADensity(CBMAEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ma_maps *= self.weight_vec
+        iter_ma_maps = iter_ma_maps * self.weight_vec
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = self.masker.inverse_transform(iter_of_map)
@@ -164,14 +163,7 @@ class MKDADensity(CBMAEstimator):
         of_map = result.get_map("of", return_type="image")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            n_cores = mp.cpu_count()
+        n_cores = self._check_ncores(n_cores)
 
         vthresh_of_map = of_map.get_fdata().copy()
         vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
@@ -207,8 +199,8 @@ class MKDADensity(CBMAEstimator):
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
-            cfwe_map[clust_idx] = -np.log(null_to_p(clust_size, perm_clust_sizes, "upper"))
-        cfwe_map[np.isinf(cfwe_map)] = -np.log(np.finfo(float).eps)
+            cfwe_map[clust_idx] = -np.log10(null_to_p(clust_size, perm_clust_sizes, "upper"))
+        cfwe_map[np.isinf(cfwe_map)] = -np.log10(np.finfo(float).eps)
         cfwe_map = np.squeeze(
             self.masker.transform(nib.Nifti1Image(cfwe_map, self.masker.mask_img.affine))
         )
@@ -216,15 +208,15 @@ class MKDADensity(CBMAEstimator):
         # Voxel-level FWE
         vfwe_map = np.squeeze(self.masker.transform(of_map))
         for i_vox, val in enumerate(vfwe_map):
-            vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, "upper"))
-        vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
+            vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
+        vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
 
         images = {"logp_level-cluster": cfwe_map, "logp_level-voxel": vfwe_map}
         return images
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
-class MKDAChi2(CBMAEstimator):
+class MKDAChi2(PairwiseCBMAEstimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis.
 
@@ -256,45 +248,15 @@ class MKDAChi2(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, prior=0.5, kernel_transformer=MKDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
         self.prior = prior
 
-    def fit(self, dataset1, dataset2):
-        """
-        Fit CBMAEstimator to datasets.
-
-        Parameters
-        ----------
-        dataset1/dataset2 : :obj:`nimare.dataset.Dataset`
-            Dataset objects to analyze.
-
-        Returns
-        -------
-        :obj:`nimare.results.MetaResult`
-            Results of CBMAEstimator fitting, with the following maps:
-            'prob_desc-A', 'prob_desc-AgF', 'prob_desc-FgA',
-            'prob_desc-AgF_given_pF=XX', 'prob_desc-FgA_given_pF=XX',
-            'z_desc-consistency', 'z_desc-specificity',
-            'chi2_desc-consistency', 'chi2_desc-specificity',
-            'p_desc-consistency', and 'p_desc-specificity'
-        """
-        self._validate_input(dataset1)
-        self._validate_input(dataset2)
-        self._preprocess_input(dataset1)
-        # override
-        self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
-        self._preprocess_input(dataset2)
-        # override
-        self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
-
-        maps = self._fit(dataset1, dataset2)
-        self.results = MetaResult(self, dataset1.masker.mask_img, maps)
-        return self.results
-
     def _fit(self, dataset1, dataset2):
+        self.dataset1 = dataset1
+        self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
@@ -309,12 +271,12 @@ class MKDAChi2(CBMAEstimator):
         n_selected = ma_maps1.shape[0]
         n_unselected = ma_maps2.shape[0]
         n_mappables = n_selected + n_unselected
+        n_selected_active_voxels = np.sum(ma_maps1, axis=0)
+        n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
 
         # Transform MA maps to 1d arrays
         ma_maps_all = np.vstack((ma_maps1, ma_maps2))
-
-        n_selected_active_voxels = np.sum(ma_maps1, axis=0)
-        n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
+        del ma_maps1, ma_maps2
 
         # Nomenclature for variables below: p = probability,
         # F = feature present, g = given, U = unselected, A = activation.
@@ -389,7 +351,7 @@ class MKDAChi2(CBMAEstimator):
         n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
         n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
 
-        # Conditional probabilities
+        # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels * 1.0 / n_selected
         # pAgU = n_unselected_active_voxels * 1.0 / n_unselected
 
@@ -457,14 +419,7 @@ class MKDAChi2(CBMAEstimator):
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            n_cores = mp.cpu_count()
+        n_cores = self._check_ncores(n_cores)
 
         iter_df1 = self.inputs_["coordinates1"].copy()
         iter_df2 = self.inputs_["coordinates2"].copy()
@@ -682,14 +637,7 @@ class KDA(CBMAEstimator):
         of_values = result.get_map("of", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
-            )
-            n_cores = mp.cpu_count()
+        n_cores = self._check_ncores(n_cores)
 
         rand_idx = np.random.choice(
             null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
@@ -715,8 +663,8 @@ class KDA(CBMAEstimator):
         # Voxel-level FWE
         vfwe_map = of_values.copy()
         for i_vox, val in enumerate(of_values):
-            vfwe_map[i_vox] = -np.log(null_to_p(val, perm_max_values, "upper"))
-        vfwe_map[np.isinf(vfwe_map)] = -np.log(np.finfo(float).eps)
+            vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
+        vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
 
         images = {"logp_level-voxel": vfwe_map}
         return images

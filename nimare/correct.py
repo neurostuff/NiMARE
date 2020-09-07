@@ -142,7 +142,7 @@ class FWECorrector(Corrector):
 
     Notes
     -----
-    This corrector supports a small number of internal FDR correction methods,
+    This corrector supports a small number of internal FWE correction methods,
     but can also use special methods implemented within individual Estimators.
     To determine what methods are available for the Estimator you're using,
     check the Estimator's documentation. Estimators have special methods

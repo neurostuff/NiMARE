@@ -185,8 +185,8 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         )
         cres1 = corr.transform(res1)
         cres2 = corr.transform(res2)
-        sub = ALESubtraction(n_iters=n_iters)
-        sres = sub.fit(ale1, ale2)
+        sub = ALESubtraction(n_iters=n_iters, kernel__fwhm=fwhm)
+        sres = sub.fit(dset1, dset2)
 
         boilerplate = boilerplate.format(
             n_exps1=len(dset1.ids),

@@ -178,12 +178,18 @@ class CorrelationDecoder(Decoder):
         """
         self.masker = dataset.masker
 
+        # Pre-generate MA maps to speed things up
+        kernel_transformer = self.meta_estimator.kernel_transformer
+        dataset = kernel_transformer.transform(dataset, return_type="dataset")
+
         for i, feature in enumerate(self.features_):
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold,
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
             )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
+            # Check if the meta method is a pairwise estimator
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(dataset.ids) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
@@ -276,7 +282,8 @@ class CorrelationDistributionDecoder(Decoder):
         images_ = {}
         for feature in self.features_:
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold,
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
             )
             test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
             test_imgs = list(filter(None, test_imgs))
@@ -305,7 +312,7 @@ class CorrelationDistributionDecoder(Decoder):
         """
         img_vec = self.masker.transform(img)
         out_df = pd.DataFrame(
-            index=self.features_, columns=["mean", "std"], data=np.zeros(len(self.features_), 2)
+            index=self.features_, columns=["mean", "std"], data=np.zeros((len(self.features_), 2))
         )
         out_df.index.name = "feature"
         for feature, feature_arr in self.images_.items():

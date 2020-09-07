@@ -93,7 +93,7 @@ class Dataset(NiMAREBase):
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
         id_df = id_df.set_index("id", drop=False)
-        self.__ids = id_df.index.values
+        self._ids = id_df.index.values
 
         # Set up Masker
         if mask is None:
@@ -106,14 +106,21 @@ class Dataset(NiMAREBase):
         self.images = dict_to_df(id_df, data, key="images")
         self.metadata = dict_to_df(id_df, data, key="metadata")
         self.texts = dict_to_df(id_df, data, key="text")
+        self.basepath = None
 
     @property
     def ids(self):
-        """array_like: 1D array of identifiers in Dataset.
+        """numpy.ndarray: 1D array of identifiers in Dataset.
 
-        There is no setter for this property, as ``Dataset.ids`` is immutable.
+        The associated setter for this property is private, as ``Dataset.ids`` is immutable.
         """
         return self.__ids
+
+    @ids.setter
+    def _ids(self, ids):
+        ids = np.asarray(ids)
+        assert isinstance(ids, np.ndarray) and ids.ndim == 1
+        self.__ids = ids
 
     @property
     def masker(self):
@@ -235,7 +242,7 @@ class Dataset(NiMAREBase):
             Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
-        new_dset.__ids = ids
+        new_dset._ids = ids
         new_dset.annotations = new_dset.annotations.loc[new_dset.annotations["id"].isin(ids)]
         new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates["id"].isin(ids)]
         new_dset.images = new_dset.images.loc[new_dset.images["id"].isin(ids)]
@@ -253,6 +260,7 @@ class Dataset(NiMAREBase):
         new_path : :obj:`str`
             Path to prepend to relative paths of files in Dataset.images.
         """
+        self.basepath = new_path
         df = self.images
         relative_path_cols = [c for c in df if c.endswith("__relative")]
         for col in relative_path_cols:
@@ -261,6 +269,10 @@ class Dataset(NiMAREBase):
                 LGR.info("Overwriting images column {}".format(abs_col))
             df[abs_col] = df[col].apply(try_prepend, prefix=new_path)
         self.images = df
+
+    def copy(self):
+        """Create a copy of the Dataset."""
+        return copy.deepcopy(self)
 
     def get(self, dict_):
         """

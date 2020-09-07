@@ -141,6 +141,10 @@ def null_to_p(test_value, null_array, tail="two"):
         p_value = stats.percentileofscore(null_array, test_value) / 100.0
     else:
         raise ValueError('Argument "tail" must be one of ["two", "upper", ' '"lower"]')
+
+    if p_value == 0:
+        p_value = np.finfo(float).eps
+
     return p_value
 
 

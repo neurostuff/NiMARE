@@ -59,12 +59,13 @@ To install NiMARE check out our `installation guide`_.
 
   about
   installation
-  cli
+  api
   auto_examples/index
   contributing
   dev_guide
   roadmap
-  api
+  cli
+  outputs
 
 Indices and tables
 ------------------

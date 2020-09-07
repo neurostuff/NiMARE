@@ -200,8 +200,7 @@ class NiMAREBase(with_metaclass(ABCMeta)):
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults
-    """
+    """Estimators take in Datasets and return MetaResults"""
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
@@ -278,8 +277,7 @@ class Estimator(NiMAREBase):
 
 
 class MetaEstimator(Estimator):
-    """Base class for meta-analysis methods in :mod:`nimare.meta`.
-    """
+    """Base class for meta-analysis methods in :mod:`nimare.meta`."""
 
     def __init__(self, *args, **kwargs):
         mask = kwargs.get("mask")
@@ -288,8 +286,7 @@ class MetaEstimator(Estimator):
         self.masker = mask
 
     def _preprocess_input(self, dataset):
-        """Preprocess inputs to the Estimator from the Dataset as needed.
-        """
+        """Preprocess inputs to the Estimator from the Dataset as needed."""
         masker = self.masker or dataset.masker
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
@@ -390,6 +387,62 @@ class CBMAEstimator(MetaEstimator):
                 )
 
 
+class PairwiseCBMAEstimator(CBMAEstimator):
+    """Base class for pairwise coordinate-based meta-analysis methods.
+
+    Parameters
+    ----------
+    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
+    *args
+        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        (called automatically).
+    **kwargs
+        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        __init__ (called automatically).
+    """
+
+    def fit(self, dataset1, dataset2):
+        """
+        Fit Estimator to two Datasets.
+
+        Parameters
+        ----------
+        dataset1/dataset2 : :obj:`nimare.dataset.Dataset`
+            Dataset objects to analyze.
+
+        Returns
+        -------
+        :obj:`nimare.results.MetaResult`
+            Results of Estimator fitting.
+
+        Notes
+        -----
+        The `fit` method is a light wrapper that runs input validation and
+        preprocessing before fitting the actual model. Estimators' individual
+        "fitting" methods are implemented as `_fit`, although users should
+        call `fit`.
+        """
+        self._validate_input(dataset1)
+        self._validate_input(dataset2)
+        # grab and override
+        self._preprocess_input(dataset1)
+        self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
+        # grab and override
+        self._preprocess_input(dataset2)
+        self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
+
+        maps = self._fit(dataset1, dataset2)
+
+        if hasattr(self, "masker") and self.masker is not None:
+            masker = self.masker
+        else:
+            masker = dataset1.masker
+        self.results = MetaResult(self, masker, maps)
+        return self.results
+
+
 class Transformer(NiMAREBase):
     """Transformers take in Datasets and return Datasets
 
@@ -401,8 +454,7 @@ class Transformer(NiMAREBase):
 
     @abstractmethod
     def transform(self, dataset):
-        """Add stuff to transformer.
-        """
+        """Add stuff to transformer."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 'Argument "dataset" must be a valid Dataset '
@@ -422,9 +474,6 @@ class KernelTransformer(Transformer):
 
     Notes
     -----
-    This base class exists solely to allow CBMA algorithms to check the class
-    of their kernel_transformer parameters.
-
     All extra (non-ijk) parameters for a given kernel should be overrideable as
     parameters to __init__, so we can access them with get_params() and also
     apply them to datasets with missing data.
@@ -433,16 +482,49 @@ class KernelTransformer(Transformer):
     def __init__(self):
         pass
 
+    def _infer_names(self, **kwargs):
+        """
+        Determine the filename pattern for image files created with this transformer,
+        as well as the image type (i.e., the column for the Dataset.images DataFrame).
+        The parameters used to construct the filenames come from the transformer's
+        parameters (attributes saved in `__init__()`).
+
+        Parameters
+        ----------
+        **kwargs
+            Additional key/value pairs to incorporate into the image name.
+            A common example is the hash for the target template's affine.
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for images that will be saved by the transformer.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
+        """
+        params = self.get_params()
+        params = dict(**params, **kwargs)
+
+        # Determine names for kernel-specific files
+        keys = sorted(params.keys())
+        param_str = "_".join("{k}-{v}".format(k=k, v=str(params[k])) for k in keys)
+        self.filename_pattern = (
+            "study-[[id]]_{ps}_{n}.nii.gz".format(n=self.__class__.__name__, ps=param_str)
+            .replace("[[", "{")
+            .replace("]]", "}")
+        )
+        self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
+
 
 class Decoder(NiMAREBase):
-    """Base class for decoders in :mod:`nimare.decode`.
-    """
+    """Base class for decoders in :mod:`nimare.decode`."""
 
     __id_cols = ["id", "study_id", "contrast_id"]
 
     def _preprocess_input(self, dataset):
         """
-        Perform any additional preprocessing steps on data in self.inputs_
+        Select features for model based on requested features and feature_group, as well as
+        which features have at least one study in the Dataset with the feature.
         """
         # Reduce feature list as desired
         if self.feature_group is not None:
@@ -487,6 +569,9 @@ class Decoder(NiMAREBase):
         preprocessing before fitting the actual model. Estimators' individual
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
+
+        Selection of features based on requested features and feature group is performed in
+        `Decoder._preprocess_input`.
         """
         self._preprocess_input(dataset)
         self._fit(dataset)
@@ -494,8 +579,7 @@ class Decoder(NiMAREBase):
     @abstractmethod
     def _fit(self, dataset):
         """
-        Apply estimation to dataset and output results. Must return a
-        dictionary of results, where keys are names of images and values are
-        ndarrays.
+        Apply decoding to dataset and output results.
+        Must return a DataFrame, with one row for each feature.
         """
         pass

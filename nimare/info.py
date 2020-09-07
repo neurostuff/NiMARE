@@ -66,20 +66,19 @@ REQUIRES = [
     "traits",
 ]
 
-TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8", "pytest", "pytest-cov"]
+TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8-black", "pytest", "pytest-cov"]
 
 EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
-    "text": ["nltk"],
     "doc": [
-        "sphinx>=3.1.1",
-        "sphinx-argparse",
-        "sphinx_rtd_theme",
-        "sphinx_gallery",
         "m2r",
         "pillow",
         "recommonmark",
+        "sphinx>=3.1.1",
+        "sphinx-argparse",
+        "sphinx_gallery",
+        "sphinx_rtd_theme",
     ],
     "tests": TESTS_REQUIRES,
     "duecredit": ["duecredit"],
