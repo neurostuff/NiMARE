@@ -412,8 +412,8 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
 
     f.seek(0)
     LGR.info("Uncompressing the model to {}...".format(temp_data_dir))
-    tarfile = tarfile.TarFile(fileobj=LZMAFile(f), mode="r")
-    tarfile.extractall(temp_data_dir)
+    tf_file = tarfile.TarFile(fileobj=LZMAFile(f), mode="r")
+    tf_file.extractall(temp_data_dir)
 
     os.rename(op.join(temp_data_dir, "ohbm2018_model"), data_dir)
     shutil.rmtree(temp_data_dir)
