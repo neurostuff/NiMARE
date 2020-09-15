@@ -13,7 +13,7 @@ import zipfile
 from glob import glob
 from io import BytesIO
 from lzma import LZMAFile
-from urllib2 import urlopen
+from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
