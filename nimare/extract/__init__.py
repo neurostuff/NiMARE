@@ -9,6 +9,7 @@ from .extract import (
     download_cognitive_atlas,
     download_abstracts,
     download_peaks2maps_model,
+    fetch_neurosynth,
 )
 from . import utils
 
@@ -18,6 +19,7 @@ __all__ = [
     "download_cognitive_atlas",
     "download_abstracts",
     "download_peaks2maps_model",
+    "fetch_neurosynth",
     "utils",
 ]
 

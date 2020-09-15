@@ -6,13 +6,14 @@ import math
 import os
 import os.path as op
 import shutil
+import sys
 import tarfile
 import time
 import zipfile
 from glob import glob
 from io import BytesIO
 from lzma import LZMAFile
-from tarfile import TarFile
+from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,60 @@ from .utils import (
 )
 
 LGR = logging.getLogger(__name__)
+
+
+def fetch_neurosynth(path=".", url=None, unpack=False):
+    """
+    Download the latest data files from NeuroSynth.
+
+    Parameters
+    ----------
+    path : str
+        Location to save the retrieved data files. Defaults to current directory.
+    url : None or str, optional
+        Specific URL to download. If not None, overrides URL to current data.
+    unpack : bool, optional
+        If True, unzips the data file post-download. Defaults to False.
+
+    Notes
+    -----
+    This function was originally neurosynth.base.dataset.download().
+    """
+
+    if url is None:
+        url = (
+            "https://github.com/neurosynth/neurosynth-data/blob/master/current_data.tar.gz?"
+            "raw=true"
+        )
+    if os.path.exists(path) and os.path.isdir(path):
+        basename = os.path.basename(url).split("?")[0]
+        filename = os.path.join(path, basename)
+    else:
+        filename = path
+
+    f = open(filename, "wb")
+
+    u = urlopen(url)
+    file_size = int(u.headers["Content-Length"][0])
+    print("Downloading the latest Neurosynth files: {0} bytes: {1}".format(url, file_size))
+
+    bytes_dl = 0
+    block_size = 8192
+    while True:
+        buffer = u.read(block_size)
+        if not buffer:
+            break
+        bytes_dl += len(buffer)
+        f.write(buffer)
+        p = float(bytes_dl) / file_size
+        status = r"{0}  [{1:.2%}]".format(bytes_dl, p)
+        status = status + chr(8) * (len(status) + 1)
+        sys.stdout.write(status)
+
+    f.close()
+
+    if unpack:
+        tarfile.open(filename, "r:gz").extractall(os.path.dirname(filename))
 
 
 def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
@@ -362,8 +417,8 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
 
     f.seek(0)
     LGR.info("Uncompressing the model to {}...".format(temp_data_dir))
-    tarfile = TarFile(fileobj=LZMAFile(f), mode="r")
-    tarfile.extractall(temp_data_dir)
+    tf_file = tarfile.TarFile(fileobj=LZMAFile(f), mode="r")
+    tf_file.extractall(temp_data_dir)
 
     os.rename(op.join(temp_data_dir, "ohbm2018_model"), data_dir)
     shutil.rmtree(temp_data_dir)
