@@ -5,9 +5,11 @@ import os
 from shutil import copyfile
 
 import pytest
+import numpy as np
 
 import nimare
 from nimare.tests.utils import get_test_data_path
+from ..generate import create_coordinate_dataset
 
 
 @pytest.fixture(scope="session")
@@ -62,3 +64,12 @@ def testdata_laird():
         os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
     )
     return testdata_laird
+
+
+@pytest.fixture(scope="session", params=[
+    {'foci': 4, 'fwhm': 10., 'studies': 20,  'sample_size_mean': 30, 'sample_size_variance': 10, 'rng': np.random.RandomState(seed=1939)},
+    {'foci': 2, 'fwhm': 20., 'studies': 20, 'sample_size_mean': 30, 'sample_size_variance': 10, 'rng': np.random.RandomState(seed=1939)}
+    ]
+)
+def simulatedata_cbma(request):
+    return create_coordinate_dataset(**request.param)
