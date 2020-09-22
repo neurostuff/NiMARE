@@ -163,18 +163,24 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
             raise TypeError("fwhm must be a float or a list")
 
     foci_dict = {}
+    # generate study specific foci for each ground truth focus
     for ground_truth_focus, fwhm in zip(ground_truth_foci, fwhms):
         _, kernel = get_ale_kernel(template_img, fwhm=fwhm)
+        # dilate template so coordinates can be generated near an edge
         template_data_dilated = tuple([s + kernel.shape[0] for s in template_data.shape])
+        # create the probability map to select study specific foci
         prob_map = compute_ma(template_data_dilated, np.atleast_2d(ground_truth_focus), kernel)
+        # extract all viable coordinates from prob_map and filter them based on the boundaries of the brain
         prob_map_ijk = np.argwhere(prob_map)
         filtered_idxs = np.where((prob_map_ijk[:, 0] <= max_i) & (prob_map_ijk[:, 1] <= max_j) & (prob_map_ijk[:, 2] <= max_k))
         usable_ijk = prob_map_ijk[filtered_idxs]
         usable_prob_map = prob_map[[tuple(c) for c in usable_ijk.T]]
+        # normalize the probability map so it sums to 1
         usable_prob_map = usable_prob_map / usable_prob_map.sum()
+        # select the foci for the number of studies specified
         ijk_idxs = rng.choice(usable_ijk.shape[0], studies, p=usable_prob_map, replace=False)
-
         focus_ijks = prob_map_ijk[ijk_idxs]
+        # transform ijk voxel coordinates to xyz mm coordinates
         focus_xyzs = [vox2mm(ijk, template_img.affine) for ijk in focus_ijks]
         foci_dict[tuple(vox2mm(ground_truth_focus, template_img.affine))] = focus_xyzs
 
