@@ -3,7 +3,6 @@ import os
 
 import numpy as np
 import nibabel as nib
-from scipy import ndimage
 
 from .dataset import Dataset
 from .utils import get_resource_path
@@ -14,10 +13,10 @@ from .transforms import vox2mm
 def create_coordinate_dataset(foci, fwhm, sample_size_mean,
                               sample_size_variance, studies, rng=None):
     """Generate coordinate based dataset for meta analysis.
- 
+
     Parameters
     ----------
-    foci : :obj:`int` or :obj:`list` of three item array_like objects  
+    foci : :obj:`int` or :obj:`list` of three item array_like objects
         Either the number of foci to be generated or a list of foci in ijk
         coordinates.
     fwhm : :obj:`float`
@@ -64,7 +63,7 @@ def create_source(foci, sample_sizes, space="MNI"):
 
     Parameters
     ----------
-    foci : :obj:`list` of three item array_like objects  
+    foci : :obj:`list` of three item array_like objects
         A list of foci in xyz (mm) coordinates
     sample_sizes : :obj:`list`
         The sample size for each study
@@ -74,10 +73,10 @@ def create_source(foci, sample_sizes, space="MNI"):
     Returns
     -------
     source : :obj:`dict`
-        study information in nimads format 
+        study information in nimads format
     """
     source = {}
-    for study_idx, (sample_size, study_foci)  in enumerate(zip(sample_sizes, foci)):
+    for study_idx, (sample_size, study_foci) in enumerate(zip(sample_sizes, foci)):
         source[f"study-{study_idx}"] = {
             "contrasts": {
                 "1": {
@@ -93,7 +92,7 @@ def create_source(foci, sample_sizes, space="MNI"):
                 }
             }
         }
-        
+
     return source
 
 
@@ -102,7 +101,7 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
 
     Parameters
     ----------
-    foci : :obj:`int` or :obj:`list` of three item array_like objects  
+    foci : :obj:`int` or :obj:`list` of three item array_like objects
         Either the number of foci to be generated or a list of foci in ijk
         coordinates.
     studies : :obj:`int`
@@ -150,7 +149,7 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
         ground_truth_foci = np.vstack([ground_truth_i, ground_truth_j, ground_truth_k]).T
 
     if isinstance(fwhm, float):
-        fwhms = [fwhm] * foci_n 
+        fwhms = [fwhm] * foci_n
     elif isinstance(fwhm, list):
         fwhms = fwhm
         if len(fwhms) != foci_n:
@@ -159,7 +158,7 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
     else:
         try:
             fwhms = [float(fwhm)] * foci_n
-        except TypeError as e:
+        except TypeError:
             raise TypeError("fwhm must be a float or a list")
 
     foci_dict = {}
@@ -170,9 +169,12 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
         template_data_dilated = tuple([s + kernel.shape[0] for s in template_data.shape])
         # create the probability map to select study specific foci
         prob_map = compute_ma(template_data_dilated, np.atleast_2d(ground_truth_focus), kernel)
-        # extract all viable coordinates from prob_map and filter them based on the boundaries of the brain
+        # extract all viable coordinates from prob_map
+        # and filter them based on the boundaries of the brain
         prob_map_ijk = np.argwhere(prob_map)
-        filtered_idxs = np.where((prob_map_ijk[:, 0] <= max_i) & (prob_map_ijk[:, 1] <= max_j) & (prob_map_ijk[:, 2] <= max_k))
+        filtered_idxs = np.where(((prob_map_ijk[:, 0] <= max_i)
+                                 & (prob_map_ijk[:, 1] <= max_j)
+                                 & (prob_map_ijk[:, 2] <= max_k)))
         usable_ijk = prob_map_ijk[filtered_idxs]
         usable_prob_map = prob_map[[tuple(c) for c in usable_ijk.T]]
         # normalize the probability map so it sums to 1
