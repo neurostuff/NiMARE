@@ -9,14 +9,13 @@ from ..utils import get_resource_path
 @pytest.mark.parametrize("meta",
     [
         ale.ALE(),
-        mkda.MKDADensity(kernel.MKDAKernel(r=2)),
-        mkda.MKDADensity(kernel.MKDAKernel(r=6)),
     ],
 )
 @pytest.mark.parametrize("corr",
     [
-        FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1),
+        FWECorrector(method="bonferroni"),
         FDRCorrector(method="indep", alpha=0.05),
+        FDRCorrector(method="negcorr", alpha=0.05),
     ],
 )
 def test_estimators(simulatedata_cbma, meta, corr):
