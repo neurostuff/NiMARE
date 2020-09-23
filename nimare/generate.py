@@ -63,8 +63,9 @@ def create_source(foci, sample_sizes, space="MNI"):
 
     Parameters
     ----------
-    foci : :obj:`list` of three item array_like objects
-        A list of foci in xyz (mm) coordinates
+    foci : :obj:`list` of :obj:`dict`
+        A list of foci in xyz (mm) coordinates in a dictionary
+        with the keys ``x, y, z``.
     sample_sizes : :obj:`list`
         The sample size for each study
     space : :obj:`str` (Default="MNI")
