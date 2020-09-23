@@ -66,24 +66,26 @@ def testdata_laird():
     return testdata_laird
 
 
-@pytest.fixture(scope="session", params=[
-    {
-        'foci': 4,
-        'fwhm': 10.,
-        'studies': 20,
-        'sample_size_mean': 30,
-        'sample_size_variance': 10,
-        'rng': np.random.RandomState(seed=1939)
-    },
-    {
-        'foci': 2,
-        'fwhm': 12.,
-        'studies': 20,
-        'sample_size_mean': 30,
-        'sample_size_variance': 10,
-        'rng': np.random.RandomState(seed=1939)
-    },
-]
+@pytest.fixture(
+    scope="session",
+    params=[
+        {
+            "foci": 4,
+            "fwhm": 10.0,
+            "studies": 20,
+            "sample_size_mean": 30,
+            "sample_size_variance": 10,
+            "rng": np.random.RandomState(seed=1939),
+        },
+        {
+            "foci": 2,
+            "fwhm": 12.0,
+            "studies": 20,
+            "sample_size_mean": 30,
+            "sample_size_variance": 10,
+            "rng": np.random.RandomState(seed=1939),
+        },
+    ],
 )
 def simulatedata_cbma(request):
     return create_coordinate_dataset(**request.param)

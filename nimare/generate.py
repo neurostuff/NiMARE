@@ -10,8 +10,9 @@ from .meta.utils import compute_ma, get_ale_kernel
 from .transforms import vox2mm
 
 
-def create_coordinate_dataset(foci, fwhm, sample_size_mean,
-                              sample_size_variance, studies, rng=None):
+def create_coordinate_dataset(
+    foci, fwhm, sample_size_mean, sample_size_variance, studies, rng=None
+):
     """Generate coordinate based dataset for meta analysis.
 
     Parameters
@@ -89,7 +90,7 @@ def create_source(foci, sample_sizes, space="MNI"):
                     },
                     "metadata": {
                         "sample_sizes": [sample_size],
-                    }
+                    },
                 }
             }
         }
@@ -154,8 +155,9 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
     elif isinstance(fwhm, list):
         fwhms = fwhm
         if len(fwhms) != foci_n:
-            raise ValueError(("fwhm must be a list the same size as the"
-                             " number of foci or a float"))
+            raise ValueError(
+                ("fwhm must be a list the same size as the" " number of foci or a float")
+            )
     else:
         try:
             fwhms = [float(fwhm)] * foci_n
@@ -173,9 +175,13 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
         # extract all viable coordinates from prob_map
         # and filter them based on the boundaries of the brain
         prob_map_ijk = np.argwhere(prob_map)
-        filtered_idxs = np.where(((prob_map_ijk[:, 0] <= max_i)
-                                 & (prob_map_ijk[:, 1] <= max_j)
-                                 & (prob_map_ijk[:, 2] <= max_k)))
+        filtered_idxs = np.where(
+            (
+                (prob_map_ijk[:, 0] <= max_i)
+                & (prob_map_ijk[:, 1] <= max_j)
+                & (prob_map_ijk[:, 2] <= max_k)
+            )
+        )
         usable_ijk = prob_map_ijk[filtered_idxs]
         usable_prob_map = prob_map[[tuple(c) for c in usable_ijk.T]]
         # normalize the probability map so it sums to 1
