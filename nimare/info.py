@@ -60,7 +60,6 @@ REQUIRES = [
     "scikit-learn",
     "scipy",
     "seaborn",
-    "six",
     "statsmodels",
     "tqdm",
     "traits",
