@@ -62,7 +62,6 @@ REQUIRES = [
     "seaborn",
     "statsmodels",
     "tqdm",
-    "traits",
 ]
 
 TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8-black", "pytest", "pytest-cov"]
