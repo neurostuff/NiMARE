@@ -11,7 +11,6 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-from six import with_metaclass
 
 from .results import MetaResult
 from .utils import get_masker
@@ -19,7 +18,7 @@ from .utils import get_masker
 LGR = logging.getLogger(__name__)
 
 
-class NiMAREBase(with_metaclass(ABCMeta)):
+class NiMAREBase(metaclass=ABCMeta):
     """
     Base class for NiMARE.
     """
