@@ -64,17 +64,21 @@ for kt_name, kt in kernel_transformers.items():
     )
 
 ###############################################################################
-# MKDA Chi2 with FDR correction
+# MKDA Chi2
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     mkda = nimare.meta.mkda.MKDAChi2(kernel_transformer=kt)
     dset1 = dset.slice(dset.ids)
     dset2 = dset.slice(dset.ids)
     mkda.fit(dset1, dset2)
-    corr = nimare.correct.FDRCorrector(method="bh", alpha=0.001)
+    corr = nimare.correct.FWECorrector(
+        method="montecarlo", n_iters=10, n_cores=1
+    )
     cres = corr.transform(mkda.results)
     plot_stat_map(
-        cres.get_map("z_desc-consistency_level-voxel_corr-FDR_method-bh"),
+        cres.get_map(
+            "z_desc-consistency_level-voxel_corr-FWE_method-montecarlo"
+        ),
         threshold=1.65,
         cut_coords=[0, 0, -8],
         draw_cross=False,
