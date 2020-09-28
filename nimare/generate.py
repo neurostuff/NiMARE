@@ -45,16 +45,9 @@ def create_coordinate_dataset(
     # add 1 since randint upper limit is a closed interval
     sample_size_upper_limit = int(sample_size_mean + sample_size_variance + 1)
     sample_sizes = rng.randint(sample_size_lower_limit, sample_size_upper_limit, size=studies)
-    foci_dict = create_foci(foci, studies, fwhm=fwhm, rng=rng)
-    # re-arrange foci_dict into a list of dictionaries which represent individual studies
-    study_foci = [
-        {a: [c[s][i] for c in foci_dict.values()] for i, a in enumerate(["x", "y", "z"])}
-        for s in range(studies)
-    ]
-
-    source_dict = create_source(study_foci, sample_sizes)
+    ground_truth_foci, foci_dict = create_foci(foci, studies, fwhm=fwhm, rng=rng)
+    source_dict = create_source(foci_dict, sample_sizes)
     dataset = Dataset(source_dict)
-    ground_truth_foci = list(foci_dict.keys())
 
     return ground_truth_foci, dataset
 
@@ -64,9 +57,9 @@ def create_source(foci, sample_sizes, space="MNI"):
 
     Parameters
     ----------
-    foci : :obj:`list` of :obj:`dict`
-        A list of foci in xyz (mm) coordinates in a dictionary
-        with the keys ``x, y, z``.
+    foci : :obj:`dict`
+        A dictionary of foci in xyz (mm) coordinates whose keys represent
+        different studies.
     sample_sizes : :obj:`list`
         The sample size for each study
     space : :obj:`str` (Default="MNI")
@@ -78,15 +71,15 @@ def create_source(foci, sample_sizes, space="MNI"):
         study information in nimads format
     """
     source = {}
-    for study_idx, (sample_size, study_foci) in enumerate(zip(sample_sizes, foci)):
-        source[f"study-{study_idx}"] = {
+    for sample_size, (study, study_foci) in zip(sample_sizes, foci.items()):
+        source[f"study-{study}"] = {
             "contrasts": {
                 "1": {
                     "coords": {
                         "space": space,
-                        "x": study_foci["x"],
-                        "y": study_foci["y"],
-                        "z": study_foci["z"],
+                        "x": [c[0] for c in study_foci],
+                        "y": [c[1] for c in study_foci],
+                        "z": [c[2] for c in study_foci],
                     },
                     "metadata": {
                         "sample_sizes": [sample_size],
@@ -98,7 +91,7 @@ def create_source(foci, sample_sizes, space="MNI"):
     return source
 
 
-def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
+def create_foci(foci, studies, fwhm, foci_weights=None, foci_noise=0, rng=None, space="MNI"):
     """Generate study specific foci.
 
     Parameters
@@ -111,6 +104,13 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
     fwhm : :obj:`float`
         Full width at half maximum to define the probability
         spread of the foci.
+    foci_noise : :obj:`int` or :obj:`list`
+        Number of foci considered to be noise in each study
+        or a list of integers representing how many noise focis
+        there should be in each study.
+    foci_weights : :obj:`list`
+        Weighing of each foci representing the probability of
+        that foci being sampled in a study.
     rng : :class:`numpy.random.RandomState` (Optional)
         Random state to reproducibly initialize random numbers.
     space : :obj:`str` (Default="MNI")
@@ -118,6 +118,9 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
 
     Returns
     -------
+    ground_truth_foci : :obj:`list`
+        List of 3-item tuples containing x, y, z coordinates
+        of the ground truth foci.
     foci_dict : :obj:`dict`
         Dictionary with keys representing the ground truth foci, and
         whose values represent the study specific foci.
@@ -134,10 +137,7 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
 
     # use a template to find all "valid" coordinates
     template_data = template_img.get_data()
-    possible_i, possible_j, possible_k = np.nonzero(template_data)
-    max_i = possible_i.max()
-    max_j = possible_j.max()
-    max_k = possible_k.max()
+    possible_ijks = np.argwhere(template_data)
     # foci were specified by the caller
     if isinstance(foci, np.ndarray):
         foci_n = foci.shape[0]
@@ -145,10 +145,13 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
     # foci are to be generated randomly
     elif isinstance(foci, int):
         foci_n = foci
-        ground_truth_i = rng.choice(possible_i, foci_n, replace=False)
-        ground_truth_j = rng.choice(possible_j, foci_n, replace=False)
-        ground_truth_k = rng.choice(possible_k, foci_n, replace=False)
-        ground_truth_foci = np.vstack([ground_truth_i, ground_truth_j, ground_truth_k]).T
+        foci_idxs = rng.choice(range(possible_ijks.shape[0]), foci_n, replace=False)
+        ground_truth_foci = possible_ijks[foci_idxs]
+
+    if not foci_weights:
+        foci_weights = [1] * foci_n
+    elif len(foci_weights) != foci_n:
+        raise ValueError("foci_weights must be the same length as foci")
 
     if isinstance(fwhm, float):
         fwhms = [fwhm] * foci_n
@@ -166,31 +169,41 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
 
     foci_dict = {}
     # generate study specific foci for each ground truth focus
-    for ground_truth_focus, fwhm in zip(ground_truth_foci, fwhms):
-        _, kernel = get_ale_kernel(template_img, fwhm=fwhm)
-        # dilate template so coordinates can be generated near an edge
-        template_data_dilated = tuple([s + kernel.shape[0] for s in template_data.shape])
-        # create the probability map to select study specific foci
-        prob_map = compute_ma(template_data_dilated, np.atleast_2d(ground_truth_focus), kernel)
-        # extract all viable coordinates from prob_map
-        # and filter them based on the boundaries of the brain
-        prob_map_ijk = np.argwhere(prob_map)
-        filtered_idxs = np.where(
-            (
-                (prob_map_ijk[:, 0] <= max_i)
-                & (prob_map_ijk[:, 1] <= max_j)
-                & (prob_map_ijk[:, 2] <= max_k)
-            )
-        )
-        usable_ijk = prob_map_ijk[filtered_idxs]
-        usable_prob_map = prob_map[[tuple(c) for c in usable_ijk.T]]
-        # normalize the probability map so it sums to 1
-        usable_prob_map = usable_prob_map / usable_prob_map.sum()
-        # select the foci for the number of studies specified
-        ijk_idxs = rng.choice(usable_ijk.shape[0], studies, p=usable_prob_map, replace=False)
-        focus_ijks = prob_map_ijk[ijk_idxs]
-        # transform ijk voxel coordinates to xyz mm coordinates
-        focus_xyzs = [vox2mm(ijk, template_img.affine) for ijk in focus_ijks]
-        foci_dict[tuple(vox2mm(ground_truth_focus, template_img.affine))] = focus_xyzs
 
-    return foci_dict
+    kernels = [get_ale_kernel(template_img, fwhm)[1] for fwhm in fwhms]
+    weighted_prob_map = sum(
+        [
+            compute_ma(template_data.shape, np.atleast_2d(ground_truth_focus), kernel) * weight
+            for kernel, ground_truth_focus, weight
+            in zip(kernels, ground_truth_foci, foci_weights)
+        ]
+    )
+    weighted_prob_map = weighted_prob_map / weighted_prob_map.sum()
+    weighted_prob_map_ijks = np.argwhere(weighted_prob_map)
+    weighted_prob_vector = weighted_prob_map[np.nonzero(weighted_prob_map)]
+    inv_weighted_prob_vector = (
+        (1.0 - weighted_prob_vector)
+        / (1.0 - weighted_prob_vector).sum()
+    )
+    for study in range(studies):
+        ijk_idxs = rng.choice(
+            weighted_prob_map_ijks.shape[0], foci_n, p=weighted_prob_vector, replace=False
+        )
+        foci_ijks = weighted_prob_map_ijks[ijk_idxs]
+
+        if foci_noise > 0:
+            weighted_noise_map_ijks = np.delete(weighted_prob_map_ijks, ijk_idxs, axis=0)
+            weighted_noise_vector = np.delete(inv_weighted_prob_vector, ijk_idxs)
+
+            noise_ijk_idxs = rng.choice(
+                weighted_noise_map_ijks.shape[0], foci_n, p=weighted_noise_vector, replace=False
+            )
+            # add the noise foci ijks to the existing foci ijks
+            foci_ijks = np.vstack([foci_ijks, weighted_noise_map_ijks[noise_ijk_idxs]])
+
+        # transform ijk voxel coordinates to xyz mm coordinates
+        foci_xyzs = [vox2mm(ijk, template_img.affine) for ijk in foci_ijks]
+        foci_dict[study] = foci_xyzs
+
+    ground_truth_foci_xyz = [tuple(vox2mm(ijk, template_img.affine)) for ijk in ground_truth_foci]
+    return ground_truth_foci_xyz, foci_dict
