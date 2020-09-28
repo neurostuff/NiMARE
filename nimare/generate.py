@@ -153,16 +153,16 @@ def create_foci(foci, studies, fwhm, rng=None, space="MNI"):
     if isinstance(fwhm, float):
         fwhms = [fwhm] * foci_n
     elif isinstance(fwhm, list):
-        fwhms = fwhm
+        fwhms = [float(f) for f in fwhm]
         if len(fwhms) != foci_n:
             raise ValueError(
-                ("fwhm must be a list the same size as the" " number of foci or a float")
+                ("fwhm must be a list the same size as the number of foci or a float")
             )
     else:
         try:
             fwhms = [float(fwhm)] * foci_n
-        except TypeError:
-            raise TypeError("fwhm must be a float or a list")
+        except ValueError:
+            raise ValueError("fwhm must be a float or a list")
 
     foci_dict = {}
     # generate study specific foci for each ground truth focus
