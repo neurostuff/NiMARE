@@ -19,13 +19,14 @@ from ..dataset import Dataset
 )
 def test_create_foci(foci, studies, fwhm, rng, space, expectation):
     with expectation:
-        foci = create_foci(foci, studies, fwhm, rng, space)
+        ground_truth_foci, foci_dict = create_foci(foci, studies, fwhm, rng=rng, space=space)
     if isinstance(expectation, does_not_raise):
-        assert all(isinstance(key, tuple) for key in foci)
+        assert all(isinstance(key, int) for key in foci_dict)
+        assert all(isinstance(coord, tuple) for coord in ground_truth_foci)
 
 
 def test_create_source():
-    source_dict = create_source(foci=[{"x": [0], "y": [0], "z": [0]}], sample_sizes=[25])
+    source_dict = create_source(foci={0: [(0, 0, 0)]}, sample_sizes=[25])
     assert source_dict["study-0"]["contrasts"]["1"]["metadata"]["sample_sizes"] == [25]
 
 
