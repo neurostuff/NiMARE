@@ -108,7 +108,7 @@ for kt_name, kt in kernel_transformers.items():
 # ALE
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
-    ale = nimare.meta.ale.ALE()
+    ale = nimare.meta.ale.ALE(kernel_transformer=kt)
     ale.fit(dset)
     corr = nimare.correct.FWECorrector(
         method="montecarlo", n_iters=10, n_cores=1
