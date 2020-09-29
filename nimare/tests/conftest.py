@@ -6,10 +6,12 @@ from shutil import copyfile
 
 import pytest
 import numpy as np
+import nibabel as nib
 
 import nimare
 from nimare.tests.utils import get_test_data_path
 from ..generate import create_coordinate_dataset
+from ..utils import get_resource_path
 
 
 @pytest.fixture(scope="session")
@@ -70,18 +72,18 @@ def testdata_laird():
     scope="session",
     params=[
         {
-            "foci": 4,
+            "foci_num": 4,
             "fwhm": 10.0,
-            "studies": 20,
-            "sample_size_mean": 30,
+            "studies": 30,
+            "sample_size": 30,
             "sample_size_variance": 10,
             "rng": np.random.RandomState(seed=1939),
         },
         {
-            "foci": 2,
+            "foci_num": 2,
             "fwhm": 12.0,
             "studies": 20,
-            "sample_size_mean": 30,
+            "sample_size": 30,
             "sample_size_variance": 10,
             "rng": np.random.RandomState(seed=1939),
         },
@@ -89,3 +91,10 @@ def testdata_laird():
 )
 def simulatedata_cbma(request):
     return create_coordinate_dataset(**request.param)
+
+
+@pytest.fixture(scope="session")
+def mni_mask():
+    return nib.load(
+        os.path.join(get_resource_path(), "templates", "MNI152_2x2x2_brainmask.nii.gz")
+    )
