@@ -191,6 +191,34 @@ from ..dataset import Dataset
             does_not_raise(),
             id="only_noise_foci",
         ),
+        pytest.param(
+            {
+                "foci_num": [1, 2],
+                "fwhm": 10.0,
+                "studies": 3,
+                "foci_coords": [(0, 0, 0)],
+                "foci_noise": 10,
+                "foci_weights": None,
+                "rng": None,
+                "space": "MNI",
+            },
+            pytest.raises(ValueError),
+            id="incorrect_foci_num_length",
+        ),
+        pytest.param(
+            {
+                "foci_num": 2,
+                "fwhm": 10.0,
+                "studies": 3,
+                "foci_coords": "INVALID_FOCI_COORDS",
+                "foci_noise": 10,
+                "foci_weights": None,
+                "rng": None,
+                "space": "MNI",
+            },
+            pytest.raises(ValueError),
+            id="invalid_foci_coords",
+        ),
     ],
 )
 def test_create_foci(kwargs, expectation):
