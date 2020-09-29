@@ -66,9 +66,11 @@ def create_coordinate_dataset(
         rng = np.random.RandomState(seed=1939)
     if isinstance(sample_size, list):
         sample_sizes = sample_size
-        assert len(sample_sizes) == studies, "sample_size must be the same length as studies"
+        if len(sample_sizes) != studies:
+            raise ValueError("sample_size must be the same length as studies")
     else:
-        assert sample_size_variance is not None, "sample_size_variance must be specified"
+        if sample_size_variance is None:
+            raise ValueError("sample_size_variance must be specified")
         sample_size_lower_limit = int(sample_size - sample_size_variance)
         # add 1 since randint upper limit is a closed interval
         sample_size_upper_limit = int(sample_size + sample_size_variance + 1)
@@ -187,7 +189,8 @@ def create_foci(
     if isinstance(foci_num, int):
         foci_nums = [foci_num] * studies
     else:
-        assert len(foci_num) == studies, "foci_num must be the same length as studies"
+        if len(foci_num) != studies:
+            raise ValueError("foci_num must be the same length as studies")
         foci_nums = foci_num
     # foci_coords are to be generated randomly
     if foci_coords is None:
@@ -252,9 +255,7 @@ def create_foci(
 
         if f_noise > 0:
             weighted_noise_map_ijks = np.delete(weighted_prob_map_ijks, ijk_idxs, axis=0)
-            noise_ijk_idxs = rng.choice(
-                weighted_noise_map_ijks.shape[0], f_noise, replace=False
-            )
+            noise_ijk_idxs = rng.choice(weighted_noise_map_ijks.shape[0], f_noise, replace=False)
             # add the noise foci ijks to the existing foci ijks
             foci_ijks = np.vstack([foci_ijks, weighted_noise_map_ijks[noise_ijk_idxs]])
 
