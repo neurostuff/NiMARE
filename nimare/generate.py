@@ -9,6 +9,8 @@ from .utils import get_resource_path
 from .meta.utils import compute_ma, get_ale_kernel
 from .transforms import vox2mm, mm2vox
 
+DEF_TINY = 1e-50
+
 
 def create_coordinate_dataset(
     foci_num,
@@ -232,10 +234,10 @@ def create_foci(
             )
         ]
     )
-    weighted_prob_map = weighted_prob_map / weighted_prob_map.sum()
+    # handle case when sum is 0 by adding a small amount
+    weighted_prob_map = weighted_prob_map / weighted_prob_map.sum() + DEF_TINY
     weighted_prob_map_ijks = np.argwhere(weighted_prob_map)
     weighted_prob_vector = weighted_prob_map[np.nonzero(weighted_prob_map)]
-    inv_weighted_prob_vector = (1.0 - weighted_prob_vector) / (1.0 - weighted_prob_vector).sum()
 
     if isinstance(foci_noise, int):
         foci_noises = [foci_noise] * studies
@@ -250,10 +252,8 @@ def create_foci(
 
         if f_noise > 0:
             weighted_noise_map_ijks = np.delete(weighted_prob_map_ijks, ijk_idxs, axis=0)
-            weighted_noise_vector = np.delete(inv_weighted_prob_vector, ijk_idxs)
-            weighted_noise_vector = weighted_noise_vector / weighted_noise_vector.sum()
             noise_ijk_idxs = rng.choice(
-                weighted_noise_map_ijks.shape[0], f_noise, p=weighted_noise_vector, replace=False
+                weighted_noise_map_ijks.shape[0], f_noise, replace=False
             )
             # add the noise foci ijks to the existing foci ijks
             foci_ijks = np.vstack([foci_ijks, weighted_noise_map_ijks[noise_ijk_idxs]])
