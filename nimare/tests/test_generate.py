@@ -274,4 +274,4 @@ def test_create_coordinate_dataset(kwargs, expectation):
         ground_truth_foci, dataset = create_coordinate_dataset(**kwargs)
     if isinstance(expectation, does_not_raise):
         assert isinstance(dataset, Dataset)
-        assert len(dataset.ids) == kwargs['studies']
+        assert len(dataset.ids) == kwargs["studies"]
