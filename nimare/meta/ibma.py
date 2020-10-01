@@ -530,17 +530,7 @@ class PermutedOLS(MetaEstimator):
         """
         n_cores = self._check_ncores(n_cores)
 
-        # Remove bad voxels from maps array before calling permuted_ols
-        # This is because permuted_ols evaluates all zero-variance voxels as NaN
-        # and *then* during null distribution generation propagates those NaNs
-        # across the whole brain!
-        good_voxel_idx = np.all(self.inputs_["z_maps"] != 0, axis=0)
-        p_map = np.ones((1, self.inputs_["z_maps"].shape[1]))
-        t_map = np.zeros((1, self.inputs_["z_maps"].shape[1]))
-        log_p_map = np.zeros((1, self.inputs_["z_maps"].shape[1]))
-        red_z_maps = self.inputs_["z_maps"][:, good_voxel_idx]
-
-        red_log_p_map, red_t_map, _ = permuted_ols(
+        log_p_map, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
             red_z_maps,
             confounding_vars=self.parameters_["confounding_vars"],
@@ -553,10 +543,7 @@ class PermutedOLS(MetaEstimator):
         )
 
         # Fill complete maps
-        red_p_map = np.power(10.0, -red_log_p_map)
-        p_map[:, good_voxel_idx] = red_p_map
-        t_map[:, good_voxel_idx] = red_t_map
-        log_p_map[:, good_voxel_idx] = red_log_p_map
+        p_map = np.power(10.0, -log_p_map)
 
         # Convert p to z, preserving signs
         sign = np.sign(t_map)
