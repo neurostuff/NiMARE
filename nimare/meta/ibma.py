@@ -428,7 +428,7 @@ class VarianceBasedLikelihood(MetaEstimator):
 
 
 class PermutedOLS(MetaEstimator):
-    """
+    r"""
     An analysis with permuted ordinary least squares (OLS), using nilearn.
 
     Parameters
@@ -442,6 +442,8 @@ class PermutedOLS(MetaEstimator):
     Notes
     -----
     Requires ``z`` images.
+
+    Available correction methods: :func:`PermutedOLS.correct_fwe_montecarlo`
 
     Warning
     -------
@@ -532,7 +534,7 @@ class PermutedOLS(MetaEstimator):
 
         log_p_map, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
-            red_z_maps,
+            self.inputs_["z_maps"],
             confounding_vars=self.parameters_["confounding_vars"],
             model_intercept=False,  # modeled by tested_vars
             n_perm=n_iters,
