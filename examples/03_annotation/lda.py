@@ -22,7 +22,8 @@ from nimare.tests.utils import get_test_data_path
 # Load dataset with abstracts
 # ---------------------------
 dset = nimare.dataset.Dataset.load(
-    os.path.join(get_test_data_path(), 'neurosynth_laird_studies.pkl.gz'))
+    os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
+)
 
 ###############################################################################
 # Download MALLET
@@ -37,9 +38,9 @@ mallet_dir = nimare.extract.download_mallet()
 # Run model
 # ---------
 # This may take some time, so we won't run it in the gallery.
-model = annotate.lda.LDAModel(dset.texts, text_column='abstract', n_iters=5)
+model = annotate.lda.LDAModel(dset.texts, text_column="abstract", n_iters=5)
 model.fit()
-model.save('lda_model.pkl.gz')
+model.save("lda_model.pkl.gz")
 
 # Let's remove the model now that you know how to generate it.
-os.remove('lda_model.pkl.gz')
+os.remove("lda_model.pkl.gz")
