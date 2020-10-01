@@ -104,9 +104,7 @@ class Corrector(metaclass=ABCMeta):
             LGR.info(
                 "Using correction method implemented in Estimator: "
                 "{}.{}.{}.".format(
-                    est.__class__.__module__,
-                    est.__class__.__name__,
-                    correction_method
+                    est.__class__.__module__, est.__class__.__name__, correction_method
                 )
             )
             corr_maps = getattr(est, correction_method)(result, **self.parameters)

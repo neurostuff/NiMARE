@@ -33,11 +33,11 @@ from nimare.tests.utils import get_test_data_path
 dset_dir = nimare.extract.download_nidm_pain()
 
 # Now we can load and save the Dataset object
-dset_file = os.path.join(get_test_data_path(), 'nidm_pain_dset.json')
-dset = nimare.dataset.Dataset(dset_file, target='mni152_2mm', mask=None)
-dset.save('pain_dset.pkl')
-dset = nimare.dataset.Dataset.load('pain_dset.pkl')
-os.remove('pain_dset.pkl')  # cleanup
+dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
+dset = nimare.dataset.Dataset(dset_file, target="mni152_2mm", mask=None)
+dset.save("pain_dset.pkl")
+dset = nimare.dataset.Dataset.load("pain_dset.pkl")
+os.remove("pain_dset.pkl")  # cleanup
 
 ###############################################################################
 # Much of the data in Datasets is stored as DataFrames
@@ -67,7 +67,7 @@ dset.coordinates.head()
 # by image type (e.g., z, beta, t).
 
 # Here we'll only show a subset of these image types to fit in the window.
-columns_to_show = ['id', 'study_id', 'contrast_id', 'beta__relative', 'z__relative']
+columns_to_show = ["id", "study_id", "contrast_id", "beta__relative", "z__relative"]
 dset.images[columns_to_show].head()
 
 ###############################################################################
@@ -97,7 +97,7 @@ dset.masker
 
 ###############################################################################
 # ``Dataset.space`` is a string
-print('Template space: {}'.format(dset.space))
+print("Template space: {}".format(dset.space))
 
 ###############################################################################
 # Statistical images are not stored internally
@@ -108,7 +108,7 @@ print('Template space: {}'.format(dset.space))
 # When loading a Dataset, you will likely need to specify the path to the images.
 # To do this, you can use :func:`nimare.dataset.Dataset.update_path`.
 dset.update_path(dset_dir)
-columns_to_show = ['id', 'study_id', 'contrast_id', 'beta', 'beta__relative']
+columns_to_show = ["id", "study_id", "contrast_id", "beta", "beta__relative"]
 dset.images[columns_to_show].head()
 
 ###############################################################################
@@ -123,9 +123,9 @@ dset.images[columns_to_show].head()
 # We use :mod:`nimare.transforms` to perform these transformations
 # (especially :func:`nimare.transforms.transform_images`)
 dset.images = nimare.transforms.transform_images(
-    dset.images, 'varcope', dset.masker, dset.metadata, out_dir=None
+    dset.images, "varcope", dset.masker, dset.metadata, out_dir=None
 )
-dset.images[['id', 'varcope']].head()
+dset.images[["id", "varcope"]].head()
 
 ###############################################################################
 # Datasets support many search methods
@@ -140,19 +140,19 @@ dset.images[['id', 'varcope']].head()
 # by default, and for every requested study if the ``ids`` argument is provided.
 # If a study does not have the data requested, the returned list will have
 # ``None`` for that study.
-z_images = dset.get_images(imtype='z')
+z_images = dset.get_images(imtype="z")
 z_images = [str(z) for z in z_images]
-print('\n'.join(z_images))
+print("\n".join(z_images))
 
 ###############################################################################
 # Let's try to fill in missing z images
 # `````````````````````````````````````````````````````````````````````````````
 dset.images = nimare.transforms.transform_images(
-    dset.images, 'z', dset.masker, dset.metadata, out_dir=None
+    dset.images, "z", dset.masker, dset.metadata, out_dir=None
 )
-z_images = dset.get_images(imtype='z')
+z_images = dset.get_images(imtype="z")
 z_images = [str(z) for z in z_images]
-print('\n'.join(z_images))
+print("\n".join(z_images))
 
 ###############################################################################
 # Datasets can also search for studies matching criteria
@@ -160,7 +160,7 @@ print('\n'.join(z_images))
 # ``get_studies_by_[X]`` methods return a list of study identifiers matching
 # the criteria, such as reporting a peak coordinate near a search coordinate.
 sel_studies = dset.get_studies_by_coordinate(xyz=[[0, 0, 0]], r=20)
-print('\n'.join(sel_studies))
+print("\n".join(sel_studies))
 
 ###############################################################################
 # Datasets are meant to be mostly immutable
@@ -171,4 +171,4 @@ print('\n'.join(sel_studies))
 # If you want to reduce a Dataset based on a subset of the studies in the
 # Dataset, you need to use :func:`nimare.dataset.Dataset.slice`.
 sub_dset = dset.slice(ids=sel_studies)
-print('\n'.join(sub_dset.ids))
+print("\n".join(sub_dset.ids))

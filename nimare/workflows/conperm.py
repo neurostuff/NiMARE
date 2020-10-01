@@ -60,8 +60,8 @@ Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
         verbose=0,
     )
     res = {
-        'logp': log_p_map,
-        't': t_map,
+        "logp": log_p_map,
+        "t": t_map,
     }
     # The t_test function will stand in for the Estimator in the results object
     res = MetaResult(permuted_ols, mask_image, maps=res)
