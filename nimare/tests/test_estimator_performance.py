@@ -23,7 +23,7 @@ from ..transforms import mm2vox
         pytest.param(kernel.MKDAKernel(), id="mkda_kernel"),
         pytest.param(kernel.KDAKernel(), id="kda_kernel"),
         pytest.param(kernel.Peaks2MapsKernel(), id="p2m_kernel"),
-    ]
+    ],
 )
 @pytest.mark.parametrize(
     "corr",
@@ -100,9 +100,7 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
         p_values_img = cres.get_map("p", return_type="image")
         p_values_data = p_values_img.get_fdata()
 
-    ground_truth_foci_ijks = [
-        tuple(mm2vox(focus, mni_mask.affine)) for focus in ground_truth_foci
-    ]
+    ground_truth_foci_ijks = [tuple(mm2vox(focus, mni_mask.affine)) for focus in ground_truth_foci]
 
     # reformat coordinate indices to index p_values_data
     gtf_idx = [
@@ -116,9 +114,7 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
 
     # create an expectation of significant/non-significant regions
     fwhm = 10
-    sig_regions, nonsig_regions = _create_null_mask(
-        mni_mask, ground_truth_foci_ijks, fwhm=fwhm
-    )
+    sig_regions, nonsig_regions = _create_null_mask(mni_mask, ground_truth_foci_ijks, fwhm=fwhm)
 
     # assert that at least 50% of voxels surrounding the foci
     # are significant at alpha = .05
@@ -135,11 +131,11 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
 
     # TODO: use output in reports
     return {
-        'meta': meta,
-        'kernel': kern,
-        'corr': corr,
-        'sensitivity': observed_sig_perc,
-        'specificity': observed_nonsig_perc,
+        "meta": meta,
+        "kernel": kern,
+        "corr": corr,
+        "sensitivity": observed_sig_perc,
+        "specificity": observed_nonsig_perc,
     }
 
 
