@@ -26,7 +26,7 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py36_env
             else
-                conda create -n py36_env python=3.6 numpy traits -yq
+                conda create -n py36_env python=3.6 numpy -yq
                 source activate py36_env
                 pip install -e .[tests,doc,peaks2maps-cpu]
             fi
@@ -53,7 +53,7 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py38_env
             else
-                conda create -n py38_env python=3.8 numpy traits -yq
+                conda create -n py38_env python=3.8 numpy -yq
                 source activate py38_env
                 pip install pip -U
                 pip install -e .[tests,doc,peaks2maps-cpu]
@@ -82,7 +82,7 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py37_env
             else
-                conda create -n py37_env python=3.7 numpy traits -yq
+                conda create -n py37_env python=3.7 numpy -yq
                 source activate py37_env
                 pip install -e .[tests,doc,peaks2maps-cpu]
             fi

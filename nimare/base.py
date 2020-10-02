@@ -11,7 +11,6 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-from six import with_metaclass
 
 from .results import MetaResult
 from .utils import get_masker
@@ -19,7 +18,7 @@ from .utils import get_masker
 LGR = logging.getLogger(__name__)
 
 
-class NiMAREBase(with_metaclass(ABCMeta)):
+class NiMAREBase(metaclass=ABCMeta):
     """
     Base class for NiMARE.
     """
@@ -298,6 +297,7 @@ class MetaEstimator(Estimator):
                 # once PyMARE is able to handle masked arrays or missing data.
                 bad_voxel_idx = np.where(temp_arr == 0)[1]
                 bad_voxel_idx = np.unique(bad_voxel_idx)
+                LGR.debug('Masking out {} "bad" voxels'.format(len(bad_voxel_idx)))
                 temp_arr[:, bad_voxel_idx] = 0
 
                 self.inputs_[name] = temp_arr

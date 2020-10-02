@@ -6,7 +6,7 @@ import os.path as op
 from nilearn.input_data import NiftiLabelsMasker
 
 import nimare
-from nimare.correct import FDRCorrector
+from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ibma
 
 from .utils import get_test_data_path
@@ -115,22 +115,16 @@ def test_VarianceBasedLikelihood_reml(testdata_ibma):
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_TTest_theoretical(testdata_ibma):
+def test_PermutedOLS(testdata_ibma):
     """
-    Smoke test for TTest with theoretical null (i.e., t-test).
+    Smoke test for PermutedOLS with FWE correction.
     """
-    meta = ibma.TTest(null="theoretical")
+    meta = ibma.PermutedOLS(two_sided=True)
     meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.results.MetaResult)
-
-
-def test_TTest_empirical(testdata_ibma):
-    """
-    Smoke test for TTest with empirical null (i.e., contrast permutation).
-    """
-    meta = ibma.TTest(null="empirical", n_iters=10)
-    meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.results.MetaResult)
+    assert isinstance(meta.results, nimare.base.MetaResult)
+    corr = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
+    cres = corr.transform(meta.results)
+    assert isinstance(cres, nimare.base.MetaResult)
 
 
 def test_ibma_with_custom_masker(testdata_ibma):
