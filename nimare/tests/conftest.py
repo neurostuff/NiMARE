@@ -5,7 +5,6 @@ import os
 from shutil import copyfile
 
 import pytest
-import numpy as np
 import nibabel as nib
 
 import nimare
@@ -77,7 +76,7 @@ def testdata_laird():
             "studies": 30,
             "sample_size": 30,
             "sample_size_variance": 10,
-            "rng": np.random.RandomState(seed=1939),
+            "seed": 1939,
         },
         {
             "foci_num": 2,
@@ -85,7 +84,7 @@ def testdata_laird():
             "studies": 20,
             "sample_size": 30,
             "sample_size_variance": 10,
-            "rng": np.random.RandomState(seed=1939),
+            "seed": 1939,
         },
     ],
 )

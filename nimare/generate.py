@@ -20,7 +20,7 @@ def create_coordinate_dataset(
     foci_coords=None,
     foci_noise=0,
     foci_weights=None,
-    rng=None,
+    seed=42,
     sample_size_variance=None,
 ):
     """Generate coordinate based dataset for meta analysis.
@@ -50,7 +50,7 @@ def create_coordinate_dataset(
     foci_weights : :obj:`list` (Optional)
         Weighing of each foci representing the probability of
         that foci being sampled in a study.
-    rng : :class:`numpy.random.RandomState` (Optional)
+    seed : :obj:`int` (Optional)
         Random state to reproducibly initialize random numbers.
     sample_size_variance : :obj:`int` (Optional)
         Variance of the number of participants in each study.
@@ -62,8 +62,7 @@ def create_coordinate_dataset(
         generated foci in xyz (mm) coordinates
     dataset : :class:`nimare.Dataset`
     """
-    if rng is None:
-        rng = np.random.RandomState(seed=1939)
+    rng = np.random.RandomState(seed=seed)
     if isinstance(sample_size, list):
         sample_sizes = sample_size
         if len(sample_sizes) != studies:
@@ -76,7 +75,7 @@ def create_coordinate_dataset(
         sample_size_upper_limit = int(sample_size + sample_size_variance + 1)
         sample_sizes = rng.randint(sample_size_lower_limit, sample_size_upper_limit, size=studies)
     ground_truth_foci, foci_dict = create_foci(
-        foci_num, fwhm, studies, foci_coords, foci_noise, foci_weights, rng=rng, space="MNI"
+        foci_num, fwhm, studies, foci_coords, foci_noise, foci_weights, seed=seed, space="MNI"
     )
 
     source_dict = create_source(foci_dict, sample_sizes)
@@ -131,7 +130,7 @@ def create_foci(
     foci_coords=None,
     foci_noise=0,
     foci_weights=None,
-    rng=None,
+    seed=42,
     space="MNI",
 ):
     """Generate study specific foci.
@@ -158,7 +157,7 @@ def create_foci(
     foci_weights : :obj:`list`
         Weighing of each foci representing the probability of
         that foci being sampled in a study.
-    rng : :class:`numpy.random.RandomState` (Optional)
+    seed : :obj:`int` (Optional)
         Random state to reproducibly initialize random numbers.
     space : :obj:`str` (Default="MNI")
         The template space the coordinates are reported in.
@@ -172,8 +171,7 @@ def create_foci(
         Dictionary with keys representing the ground truth foci, and
         whose values represent the study specific foci.
     """
-    if rng is None:
-        rng = np.random.RandomState(seed=1939)
+    rng = np.random.RandomState(seed=seed)
 
     if space == "MNI":
         template_img = nib.load(
