@@ -45,11 +45,15 @@ def analyze_and_plot(dset, ground_truth_foci):
 ###############################################################################
 # Create Dataset
 # --------------------------------------------------
-# In this example, each of the 30 fake studies being generated
+# In this example, each of the 30 generated fake studies
 # select 4 coordinates from a probability map representing the probability
 # that particular coordinate will be chosen.
-# There are 4 "hot" spots centered on 3D gaussian distributions.
-# Each study has a mean sample_size of 30
+# There are 4 "hot" spots centered on 3D gaussian distributions,
+# meaning each study will likely select 4 foci that are close
+# to those hot spots, but there is still random jittering.
+# Each study has a mean ``sample_size`` of 30 with a variance of 10
+# so some studies may have fewer than 30 participants and some
+# more.
 
 ground_truth_foci, dset = create_coordinate_dataset(
     foci_num=4, fwhm=10.0, sample_size=30, sample_size_variance=10, studies=30
@@ -146,12 +150,6 @@ analyze_and_plot(two_foci_dset, ground_truth_foci[0:2])
 
 num_studies = 30
 # create array of zeros and ones for foci
-foci_num = np.random.choice([0, 1], size=num_studies, p=[0.9, 0.1])
-# make a noise_foci for studies without ground truth foci
-foci_noise = 1 - foci_num
-
-num_studies = 30
-# create array of zeros and ones for foci
 foci_num = np.random.choice([0, 1], size=num_studies, p=[0.8, 0.2])
 # make a noise_foci for studies without ground truth foci
 foci_noise = 1 - foci_num
@@ -168,6 +166,18 @@ _, one_foci_dset = create_coordinate_dataset(
 
 ###############################################################################
 # Analyze and plot one foci dataset
-# -------------------------------
+# ---------------------------------
 
 analyze_and_plot(one_foci_dset, [ground_truth_foci[2]])
+
+###############################################################################
+# Further exploration
+# -------------------
+# This notebook covers a few of the presumed use-cases for
+# ``create_coordinate_dataset``, but the notebook is not exhaustive.
+# For example, this notebook did not cover how varying the fwhm
+# could change how well a meta-analysis detects an effect
+# or how to generate 1000s of datasets for testing a
+# meta-analysis algorithm.
+# Hopefully, this notebook gave you an understanding of the fundamentals
+# of ``create_coordinate_dataset``.
