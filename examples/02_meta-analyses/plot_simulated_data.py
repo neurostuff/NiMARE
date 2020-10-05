@@ -56,7 +56,7 @@ def analyze_and_plot(dset, ground_truth_foci):
 # more.
 
 ground_truth_foci, dset = create_coordinate_dataset(
-    foci_num=4, fwhm=10.0, sample_size=30, sample_size_variance=10, studies=30
+    n_foci=4, fwhm=10.0, sample_size=30, sample_size_interval=10, n_studies=30
 )
 
 ###############################################################################
@@ -70,32 +70,32 @@ analyze_and_plot(dset, ground_truth_foci)
 # --------------------------------------------------
 # Perhaps you want more control over the studies being generated.
 # You can manually specify how many "converging" foci you want specified
-# in each study (i.e., ``foci_num``).
+# in each study (i.e., ``n_foci``).
 # This way you can test what happens if one study has way more reported
 # foci than another study.
 # You can also:
 #   - manually specify the sample sizes for each study (i.e., ``sample_size``).
-#   - set the number of false positive foci for each study (i.e., ``foci_noise``).
+#   - set the number of false positive foci for each study (i.e., ``n_noise_foci``).
 #   - set the weighed probability of each foci being chosen (i.e., ``foci_weights``).
 #   - set the dispersion of the gaussian spread for each foci (i.e., ``fwhm``).
 #   - set the specific ground truth foci (i.e., ``foci_coords``).
 
 num_studies = 30
-foci_num = [4] * num_studies
-foci_num[0] = 10
+n_foci = [4] * num_studies
+n_foci[0] = 10
 sample_sizes = [30] * num_studies
 sample_sizes[0] = 300
-foci_noise = [10] * num_studies
-foci_noise[0] = 25
+n_noise_foci = [10] * num_studies
+n_noise_foci[0] = 25
 foci_weights = [1, 0.1, 0.5, 0.75]
 fwhm = [6.0, 12.0, 10.0, 8.0]
 _, manual_dset = create_coordinate_dataset(
-    foci_num=foci_num,
+    n_foci=n_foci,
     fwhm=fwhm,
     sample_size=sample_sizes,
-    studies=num_studies,
+    n_studies=num_studies,
     foci_coords=ground_truth_foci,
-    foci_noise=foci_noise,
+    n_noise_foci=n_noise_foci,
     foci_weights=foci_weights,
 )
 
@@ -112,7 +112,7 @@ analyze_and_plot(manual_dset, ground_truth_foci)
 # a focus is only present in some of the studies.
 # One way is to have two ground truth foci specified
 # with ``foci_coords``, but only one foci specified
-# for ``foci_num``.
+# for ``n_foci``.
 # The relative probability of the two foci appearing
 # can be controlled with ``foci_weight``.
 # For example the weights ``[0.9, 0.1]`` mean
@@ -121,13 +121,13 @@ analyze_and_plot(manual_dset, ground_truth_foci)
 # study.
 
 _, two_foci_dset = create_coordinate_dataset(
-    foci_num=1,
+    n_foci=1,
     fwhm=10.0,
     sample_size=30,
-    sample_size_variance=10,
-    studies=30,
+    sample_size_interval=10,
+    n_studies=30,
     foci_coords=ground_truth_foci[0:2],
-    foci_noise=0,
+    n_noise_foci=0,
     foci_weights=[0.9, 0.1],
 )
 
@@ -142,26 +142,26 @@ analyze_and_plot(two_foci_dset, ground_truth_foci[0:2])
 # --------------------------------------------------------------------
 # Another method to control what percentage of studies contain
 # a focus is to have one focus specified in ``foci_coords``
-# and have a list of zeros and ones in ``foci_num`` to specify
+# and have a list of zeros and ones in ``n_foci`` to specify
 # which studies contain the focus of interest.
 # The caveat of this strategy is that each study must have at least
-# one coordinate to report necessitating ``foci_noise`` be set for
+# one coordinate to report necessitating ``n_noise_foci`` be set for
 # studies without a ground truth foci.
 
 num_studies = 30
 # create array of zeros and ones for foci
-foci_num = np.random.choice([0, 1], size=num_studies, p=[0.8, 0.2])
+n_foci = np.random.choice([0, 1], size=num_studies, p=[0.8, 0.2])
 # make a noise_foci for studies without ground truth foci
-foci_noise = 1 - foci_num
+n_noise_foci = 1 - n_foci
 
 _, one_foci_dset = create_coordinate_dataset(
-    foci_num=foci_num,
+    n_foci=n_foci,
     fwhm=10.0,
     sample_size=30,
-    sample_size_variance=10,
-    studies=num_studies,
+    sample_size_interval=10,
+    n_studies=num_studies,
     foci_coords=[ground_truth_foci[2]],
-    foci_noise=foci_noise,
+    n_noise_foci=n_noise_foci,
 )
 
 ###############################################################################

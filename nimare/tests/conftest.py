@@ -71,19 +71,11 @@ def testdata_laird():
     scope="session",
     params=[
         {
-            "foci_num": 4,
+            "n_foci": 4,
             "fwhm": 10.0,
-            "studies": 30,
+            "n_studies": 30,
             "sample_size": 30,
-            "sample_size_variance": 10,
-            "seed": 1939,
-        },
-        {
-            "foci_num": 2,
-            "fwhm": 12.0,
-            "studies": 20,
-            "sample_size": 30,
-            "sample_size_variance": 10,
+            "sample_size_interval": 10,
             "seed": 1939,
         },
     ],

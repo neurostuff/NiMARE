@@ -13,21 +13,21 @@ DEF_TINY = 1e-50
 
 
 def create_coordinate_dataset(
-    foci_num,
+    n_foci,
     fwhm,
     sample_size,
-    studies,
+    n_studies,
     foci_coords=None,
-    foci_noise=0,
+    n_noise_foci=0,
     foci_weights=None,
     seed=42,
-    sample_size_variance=None,
+    sample_size_interval=None,
 ):
     """Generate coordinate based dataset for meta analysis.
 
     Parameters
     ----------
-    foci_num : :obj:`int` or :obj:`list`
+    n_foci : :obj:`int` or :obj:`list`
         The number of foci to be generated per study
     fwhm : :obj:`float`
         Full width at half maximum to define the probability
@@ -36,25 +36,26 @@ def create_coordinate_dataset(
         Either mean number of participants in each study
         or a list specifying the sample size for each
         study.
-    studies : :obj:`int`
-        Number of studies to generate.
-    foci_coords : :obj:`list` of three item array_like objects (Optional)
-        Ground truth coordinates of foci.
+    n_studies : :obj:`int`
+        Number of n_studies to generate.
+    foci_coords : :obj:`list` of three item array_like objects, optional
+        Ground truth xyz coordinates of foci.
         If not specified, coordinates will be randomly selected.
-        If not the same length as the number of foci (i.e., `foci_num`),
+        If not the same length as the number of foci (i.e., `n_foci`),
         foci will either be over-sampled or under-sampled.
-    foci_noise : :obj:`int` or :obj:`list`
+    n_noise_foci : :obj:`int` or :obj:`list`, optional
         Number of foci considered to be noise in each study
-        or a list of integers representing how many noise focis
+        or a list of integers representing how many noise foci
         there should be in each study.
-    foci_weights : :obj:`list` (Optional)
-        Weighing of each foci representing the probability of
-        that foci being sampled in a study.
-    seed : :obj:`int` (Optional)
+    foci_weights : :obj:`list`, optional
+        Weighting of each peak representing the probability of
+        that peak being sampled in a study.
+    seed : :obj:`int`, optional
         Random state to reproducibly initialize random numbers.
-    sample_size_variance : :obj:`int` (Optional)
-        Variance of the number of participants in each study.
-        (must be >=0).
+    sample_size_interval : :obj:`int`, optional
+        Half of the interval for the uniform distribution centered on
+        sample_size, U(sample_size - interval, sample_size + interval).
+        sample_size_interval must be >= 0.
 
     Returns
     -------
@@ -65,17 +66,24 @@ def create_coordinate_dataset(
     rng = np.random.RandomState(seed=seed)
     if isinstance(sample_size, list):
         sample_sizes = sample_size
-        if len(sample_sizes) != studies:
-            raise ValueError("sample_size must be the same length as studies")
+        if len(sample_sizes) != n_studies:
+            raise ValueError("sample_size must be the same length as n_studies")
     else:
-        if sample_size_variance is None:
-            raise ValueError("sample_size_variance must be specified")
-        sample_size_lower_limit = int(sample_size - sample_size_variance)
+        if sample_size_interval is None:
+            raise ValueError(
+                (
+                    "sample_size_interval must be specified if sample_size is not"
+                    "provided for each study"
+                )
+            )
+        sample_size_lower_limit = int(sample_size - sample_size_interval)
         # add 1 since randint upper limit is a closed interval
-        sample_size_upper_limit = int(sample_size + sample_size_variance + 1)
-        sample_sizes = rng.randint(sample_size_lower_limit, sample_size_upper_limit, size=studies)
+        sample_size_upper_limit = int(sample_size + sample_size_interval + 1)
+        sample_sizes = rng.randint(
+            sample_size_lower_limit, sample_size_upper_limit, size=n_studies
+        )
     ground_truth_foci, foci_dict = create_foci(
-        foci_num, fwhm, studies, foci_coords, foci_noise, foci_weights, seed=seed, space="MNI"
+        n_foci, fwhm, n_studies, foci_coords, n_noise_foci, foci_weights, seed=seed, space="MNI"
     )
 
     source_dict = create_source(foci_dict, sample_sizes)
@@ -91,7 +99,7 @@ def create_source(foci, sample_sizes, space="MNI"):
     ----------
     foci : :obj:`dict`
         A dictionary of foci in xyz (mm) coordinates whose keys represent
-        different studies.
+        different n_studies.
     sample_sizes : :obj:`list`
         The sample size for each study
     space : :obj:`str` (Default="MNI")
@@ -124,11 +132,11 @@ def create_source(foci, sample_sizes, space="MNI"):
 
 
 def create_foci(
-    foci_num,
+    n_foci,
     fwhm,
-    studies,
+    n_studies,
     foci_coords=None,
-    foci_noise=0,
+    n_noise_foci=0,
     foci_weights=None,
     seed=42,
     space="MNI",
@@ -137,27 +145,27 @@ def create_foci(
 
     Parameters
     ----------
-    foci_num : :obj:`int` or :obj:`list`
+    n_foci : :obj:`int` or :obj:`list`
         The number of foci to be generated per study.
     fwhm : :obj:`float` or :obj:`list`
         Full width at half maximum (fwhm) to define the probability
         spread of the foci or list of fwhms identifying the fwhm
         for each foci.
-    studies : :obj:`int`
-        Number of studies to generate.
-    foci_coords : :obj:`list` of three item array_like objects (Optional)
-        Ground truth coordinates of foci.
+    n_studies : :obj:`int`
+        Number of n_studies to generate.
+    foci_coords : :obj:`list` of three item array_like objects, optional
+        Ground truth xyz coordinates of foci.
         If not specified, coordinates will be randomly selected.
-        If not the same length as the number of foci (i.e., `foci_num`),
+        If not the same length as the number of foci (i.e., `n_foci`),
         foci will either be over-sampled or under-sampled.
-    foci_noise : :obj:`int` or :obj:`list`
+    n_noise_foci : :obj:`int` or :obj:`list`, optional
         Number of foci considered to be noise in each study
-        or a list of integers representing how many noise focis
+        or a list of integers representing how many noise foci
         there should be in each study.
-    foci_weights : :obj:`list`
-        Weighing of each foci representing the probability of
-        that foci being sampled in a study.
-    seed : :obj:`int` (Optional)
+    foci_weights : :obj:`list`, optional
+        Weighting of each peak representing the probability of
+        that peak being sampled in a study.
+    seed : :obj:`int`, optional
         Random state to reproducibly initialize random numbers.
     space : :obj:`str` (Default="MNI")
         The template space the coordinates are reported in.
@@ -181,18 +189,18 @@ def create_foci(
         raise NotImplementedError("Only coordinates for the MNI atlas has been defined")
 
     # use a template to find all "valid" coordinates
-    template_data = template_img.get_data()
+    template_data = template_img.get_fdata()
     possible_ijks = np.argwhere(template_data)
     # number of "convergent" foci each study should report
-    if isinstance(foci_num, int):
-        foci_nums = [foci_num] * studies
+    if isinstance(n_foci, int):
+        n_focis = [n_foci] * n_studies
     else:
-        if len(foci_num) != studies:
-            raise ValueError("foci_num must be the same length as studies")
-        foci_nums = foci_num
+        if len(n_foci) != n_studies:
+            raise ValueError("n_foci must be the same length as n_studies")
+        n_focis = n_foci
     # foci_coords are to be generated randomly
     if foci_coords is None:
-        foci_idxs = rng.choice(range(possible_ijks.shape[0]), max(foci_nums), replace=False)
+        foci_idxs = rng.choice(range(possible_ijks.shape[0]), max(n_focis), replace=False)
         ground_truth_foci_ijk = possible_ijks[foci_idxs]
         foci_coords_num = ground_truth_foci_ijk.shape[0]
     # foci_coords were specified by the caller
@@ -240,12 +248,12 @@ def create_foci(
     weighted_prob_map_ijks = np.argwhere(weighted_prob_map)
     weighted_prob_vector = weighted_prob_map[np.nonzero(weighted_prob_map)]
 
-    if isinstance(foci_noise, int):
-        foci_noises = [foci_noise] * studies
+    if isinstance(n_noise_foci, int):
+        n_noise_foci_list = [n_noise_foci] * n_studies
     else:
-        foci_noises = foci_noise
+        n_noise_foci_list = n_noise_foci
 
-    for f_num, f_noise, study in zip(foci_nums, foci_noises, range(studies)):
+    for f_num, f_noise, study in zip(n_focis, n_noise_foci_list, range(n_studies)):
         ijk_idxs = rng.choice(
             weighted_prob_map_ijks.shape[0], f_num, p=weighted_prob_vector, replace=False
         )

@@ -10,11 +10,11 @@ from ..dataset import Dataset
     [
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": [1, 0.1],
                 "seed": 42,
                 "space": "MNI",
@@ -24,11 +24,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": [(0, 0, 0)],
-                "foci_noise": 2,
+                "n_noise_foci": 2,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -38,11 +38,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": [10.0, 6.0],
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -52,11 +52,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "INVALID_SPACE",
@@ -66,11 +66,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": "INVALID_FWHM",
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -80,11 +80,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": [10.0],
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -94,11 +94,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": "INVALID_FOCI_WEIGHTS",
                 "seed": 42,
                 "space": "MNI",
@@ -108,11 +108,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": [0.1],
                 "seed": 42,
                 "space": "MNI",
@@ -122,11 +122,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": [10, 1, 5],
+                "n_foci": [10, 1, 5],
                 "fwhm": [8.0],
-                "studies": 3,
+                "n_studies": 3,
                 "foci_coords": [(0, 0, 0)],
-                "foci_noise": [10, 20, 30],
+                "n_noise_foci": [10, 20, 30],
                 "foci_weights": [0.1],
                 "seed": 42,
                 "space": "MNI",
@@ -136,25 +136,25 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": [1, 2, 2],
+                "n_foci": [1, 2, 2],
                 "fwhm": [8.0, 10.0],
-                "studies": 3,
+                "n_studies": 3,
                 "foci_coords": None,
-                "foci_noise": [10, 20, 30],
+                "n_noise_foci": [10, 20, 30],
                 "foci_weights": [0.1, 1],
                 "seed": 42,
                 "space": "MNI",
             },
             does_not_raise(),
-            id="foci_num_list_but_no_coords",
+            id="n_foci_list_but_no_coords",
         ),
         pytest.param(
             {
-                "foci_num": [1, 0, 0],
+                "n_foci": [1, 0, 0],
                 "fwhm": 10.0,
-                "studies": 3,
+                "n_studies": 3,
                 "foci_coords": None,
-                "foci_noise": 5,
+                "n_noise_foci": 5,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -164,11 +164,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 0,
+                "n_foci": 0,
                 "fwhm": 10.0,
-                "studies": 3,
+                "n_studies": 3,
                 "foci_coords": [(0, 0, 0)],
-                "foci_noise": None,
+                "n_noise_foci": None,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -178,11 +178,11 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": 0,
+                "n_foci": 0,
                 "fwhm": 10.0,
-                "studies": 3,
+                "n_studies": 3,
                 "foci_coords": [(0, 0, 0)],
-                "foci_noise": 10,
+                "n_noise_foci": 10,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -192,25 +192,25 @@ from ..dataset import Dataset
         ),
         pytest.param(
             {
-                "foci_num": [1, 2],
+                "n_foci": [1, 2],
                 "fwhm": 10.0,
-                "studies": 3,
+                "n_studies": 3,
                 "foci_coords": [(0, 0, 0)],
-                "foci_noise": 10,
+                "n_noise_foci": 10,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
             },
             pytest.raises(ValueError),
-            id="incorrect_foci_num_length",
+            id="incorrect_n_foci_length",
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
-                "studies": 3,
+                "n_studies": 3,
                 "foci_coords": "INVALID_FOCI_COORDS",
-                "foci_noise": 10,
+                "n_noise_foci": 10,
                 "foci_weights": None,
                 "seed": 42,
                 "space": "MNI",
@@ -238,13 +238,13 @@ def test_create_source():
     [
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
                 "sample_size": 30,
-                "sample_size_variance": 10,
-                "studies": 5,
+                "sample_size_interval": 10,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
             },
@@ -253,12 +253,12 @@ def test_create_source():
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
                 "sample_size": [30] * 5,
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
             },
@@ -267,12 +267,12 @@ def test_create_source():
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
                 "sample_size": [30] * 4,
-                "studies": 5,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
             },
@@ -281,13 +281,13 @@ def test_create_source():
         ),
         pytest.param(
             {
-                "foci_num": 2,
+                "n_foci": 2,
                 "fwhm": 10.0,
                 "sample_size": 30,
-                "sample_size_variance": None,
-                "studies": 5,
+                "sample_size_interval": None,
+                "n_studies": 5,
                 "foci_coords": None,
-                "foci_noise": 0,
+                "n_noise_foci": 0,
                 "foci_weights": None,
                 "seed": 42,
             },
@@ -301,4 +301,4 @@ def test_create_coordinate_dataset(kwargs, expectation):
         ground_truth_foci, dataset = create_coordinate_dataset(**kwargs)
     if isinstance(expectation, does_not_raise):
         assert isinstance(dataset, Dataset)
-        assert len(dataset.ids) == kwargs["studies"]
+        assert len(dataset.ids) == kwargs["n_studies"]

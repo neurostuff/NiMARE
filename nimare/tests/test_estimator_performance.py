@@ -64,15 +64,23 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
     # all combinations of meta-analysis estimators and multiple comparison correctors
     # that do not work together
     if isinstance(meta, mkda.MKDADensity) and isinstance(corr, FDRCorrector):
+        # ValueError: <class 'nimare.correct.FDRCorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
         corr_expectation = pytest.raises(ValueError)
     elif isinstance(meta, mkda.KDA) and isinstance(corr, FDRCorrector):
+        # ValueError: <class 'nimare.correct.FDRCorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
         corr_expectation = pytest.raises(ValueError)
     elif isinstance(meta, mkda.MKDADensity) and corr.method == "bonferroni":
+        # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
         corr_expectation = pytest.raises(ValueError)
     elif isinstance(meta, mkda.KDA) and corr.method == "montecarlo":
         # TypeError: correct_fwe_montecarlo() got an unexpected keyword argument 'voxel_thresh'
         corr_expectation = pytest.raises(TypeError)
     elif isinstance(meta, mkda.KDA) and corr.method == "bonferroni":
+        # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
         corr_expectation = pytest.raises(ValueError)
     else:
         corr_expectation = does_not_raise()
