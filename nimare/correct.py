@@ -161,7 +161,7 @@ class FWECorrector(Corrector):
 
     def _transform(self, result):
         p = result.maps["p"]
-        _, p_corr, _, _ = mc.multipletests(p, alpha=0.05, method=self.method, is_sorted=False)
+        _, p_corr, _, _ = mc.multipletests(p, method=self.method, is_sorted=False)
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps
