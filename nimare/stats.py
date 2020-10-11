@@ -112,11 +112,6 @@ def pearson(x, y):
 def null_to_p(test_value, null_array, tail="two"):
     """Return p-value for test value against null array.
 
-    Notes
-    -----
-    P-values are clipped based on the number of elements in the null array.
-    Therefore no p-values of 0 or 1 should be produced.
-
     Parameters
     ----------
     test_value : :obj:`float`
@@ -135,6 +130,11 @@ def null_to_p(test_value, null_array, tail="two"):
     p_value : :obj:`float`
         P-value associated with the test value when compared against the null
         distribution.
+
+    Notes
+    -----
+    P-values are clipped based on the number of elements in the null array.
+    Therefore no p-values of 0 or 1 should be produced.
     """
     if tail == "two":
         p_value = (
