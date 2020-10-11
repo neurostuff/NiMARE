@@ -112,6 +112,11 @@ def pearson(x, y):
 def null_to_p(test_value, null_array, tail="two"):
     """Return p-value for test value against null array.
 
+    Notes
+    -----
+    P-values are clipped based on the number of elements in the null array.
+    Therefore no p-values of 0 or 1 should be produced.
+
     Parameters
     ----------
     test_value : :obj:`float`
@@ -142,7 +147,7 @@ def null_to_p(test_value, null_array, tail="two"):
     else:
         raise ValueError('Argument "tail" must be one of ["two", "upper", ' '"lower"]')
 
-    smallest_value = np.maximum(np.finfo(float).eps, 1. / len(null_array))
+    smallest_value = np.maximum(np.finfo(float).eps, 1. / null_array.size)
     if p_value == 0:
         p_value = smallest_value
     elif p_value == 1:
