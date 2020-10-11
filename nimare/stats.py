@@ -116,7 +116,7 @@ def null_to_p(test_value, null_array, tail="two"):
     ----------
     test_value : :obj:`float`
         Value for which to determine p-value.
-    null_array : 1D :class:`numpy.ndarray`
+    null_array : 1D array_like
         Null distribution against which test_value is compared.
     tail : {'two', 'upper', 'lower'}, optional
         Whether to compare value against null distribution in a two-sided
@@ -147,11 +147,11 @@ def null_to_p(test_value, null_array, tail="two"):
     else:
         raise ValueError('Argument "tail" must be one of ["two", "upper", ' '"lower"]')
 
-    smallest_value = np.maximum(np.finfo(float).eps, 1. / null_array.size)
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
     if p_value == 0:
         p_value = smallest_value
     elif p_value == 1:
-        p_value = 1. - smallest_value
+        p_value = 1.0 - smallest_value
 
     return p_value
 
