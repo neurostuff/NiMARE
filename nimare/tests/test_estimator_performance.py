@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from contextlib import ExitStack as does_not_raise
 import numpy as np
@@ -10,6 +12,11 @@ from ..transforms import mm2vox
 # set significance levels used for testing.
 ALPHA = 0.05
 BETA = 1 - ALPHA
+
+if os.environ.get('CIRCLECI'):
+    N_CORES = 1
+else:
+    N_CORES = -1
 
 
 @pytest.mark.parametrize(
@@ -34,7 +41,7 @@ BETA = 1 - ALPHA
     [
         pytest.param(FWECorrector(method="bonferroni"), id="fwe_bonferroni"),
         pytest.param(
-            FWECorrector(method="montecarlo", voxel_thresh=ALPHA, n_iters=100, n_cores=-1),
+            FWECorrector(method="montecarlo", voxel_thresh=ALPHA, n_iters=100, n_cores=N_CORES),
             id="fwe_montecarlo",
         ),
         pytest.param(FDRCorrector(method="indep", alpha=ALPHA), id="fdr_indep"),
