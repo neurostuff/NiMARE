@@ -81,7 +81,7 @@ def testdata_laird():
     ],
 )
 def simulatedata_cbma(request):
-    return create_coordinate_dataset(**request.param)
+    return request.param["fwhm"], create_coordinate_dataset(**request.param)
 
 
 @pytest.fixture(scope="session")
