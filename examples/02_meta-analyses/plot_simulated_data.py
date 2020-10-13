@@ -212,8 +212,8 @@ logp_values = cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return
 # inverse the log transform of the p_values
 p_values = 10 ** -logp_values
 # what percentage of voxels are not significant?
-non_significant_percent = (p_values > 0.05).sum() / p_values.size
-print(non_significant_percent)
+non_significant_percent = ((p_values > 0.05).sum() / p_values.size) * 100
+print(f"{non_significant_percent}% of voxels are not significant")
 
 ###############################################################################
 # Further exploration
