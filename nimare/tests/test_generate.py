@@ -181,7 +181,7 @@ from ..dataset import Dataset
                 "n_foci": 0,
                 "fwhm": 10.0,
                 "n_studies": 3,
-                "foci_coords": [(0, 0, 0)],
+                "foci_coords": None,
                 "n_noise_foci": 10,
                 "foci_weights": None,
                 "seed": 42,
