@@ -62,6 +62,9 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
     # create meta-analysis
     meta = meta_alg(kern)
 
+    ####################################
+    # CHECK IF META/KERNEL WORK TOGETHER
+    ####################################
     # peaks2MapsKernel does not work with any meta-analysis estimator
     if isinstance(kern, kernel.Peaks2MapsKernel):
         # AttributeError: 'DataFrame' object has no attribute 'masker'
@@ -76,8 +79,12 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
         res = meta.fit(dataset)
     # if creating the result failed (expected), do not continue
     if isinstance(meta_expectation, type(pytest.raises(ValueError))):
+        pytest.xfail("this meta-analysis & kernel combo fails")
         return 0
 
+    #######################################
+    # CHECK IF META/CORRECTOR WORK TOGETHER
+    #######################################
     # all combinations of meta-analysis estimators and multiple comparison correctors
     # that do not work together
     if isinstance(meta, mkda.MKDADensity) and isinstance(corr, FDRCorrector):
@@ -107,8 +114,59 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
 
     # if multiple correction failed (expected) do not continue
     if isinstance(corr_expectation, type(pytest.raises(ValueError))):
+        pytest.xfail("this meta-analysis & corrector combo fails")
         return 0
 
+    ################################################
+    # CHECK IF P-VALUES ARE WITHIN THE CORRECT RANGE
+    ################################################
+    # default value to assume p-value outputs are correct
+    contains_invalid_p_values = False
+    if corr.method == "montecarlo":
+        logp_values_img = cres.get_map(
+            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="image"
+        )
+        # transform logp values back into regular p values
+        p_values_data = 10 ** -logp_values_img.get_fdata()
+
+        if isinstance(meta, mkda.KDA) and isinstance(kern, kernel.MKDAKernel):
+            # KDA with the MKDAKernel gives p-values twice as small as allowed
+            assert p_values_data.min() >= (1.0 / (corr.parameters["n_iters"] * 2))
+        else:
+            # there should not be p-values less than 1 / n_iters
+            assert p_values_data.min() >= (1.0 / corr.parameters["n_iters"])
+        # max p-values should be less than 1, but several meta/kernel combinations
+        # retain the max p-value of 1.
+        if isinstance(meta, ale.ALE) and isinstance(kern, kernel.ALEKernel):
+            contains_invalid_p_values = True
+            assert p_values_data.max() == 1.0
+        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.ALEKernel):
+            contains_invalid_p_values = True
+            assert p_values_data.max() == 1.0
+        elif isinstance(meta, ale.ALE) and isinstance(kern, kernel.MKDAKernel):
+            contains_invalid_p_values = True
+            assert p_values_data.max() == 1.0
+        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.MKDAKernel):
+            contains_invalid_p_values = True
+            assert p_values_data.max() == 1.0
+        elif isinstance(meta, mkda.KDA) and isinstance(kern, kernel.MKDAKernel):
+            contains_invalid_p_values = True
+            assert p_values_data.max() == 1.0
+        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.KDAKernel):
+            contains_invalid_p_values = True
+            assert p_values_data.max() == 1.0
+        else:
+            assert p_values_data.max() < 1.0
+    else:
+        p_values_img = cres.get_map("p", return_type="image")
+        p_values_data = p_values_img.get_fdata()
+
+    # ensure all values are between 0 and 1 (inclusively)
+    assert (p_values_data >= 0).all() and (p_values_data <= 1).all()
+
+    ################################################################
+    # CHECK IF META/KERNEL/CORRECTOR COMBINATION PERFORMS ADEQUATELY
+    ################################################################
     # The below combinations cannot even detect
     # significance at the ground truth foci voxel
     # locations
@@ -133,41 +191,7 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
     else:
         good_performance = True
 
-    if corr.method == "montecarlo":
-        logp_values_img = cres.get_map(
-            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="image"
-        )
-        # transform logp values back into regular p values
-        p_values_data = 10 ** -logp_values_img.get_fdata()
-
-        if isinstance(meta, mkda.KDA) and isinstance(kern, kernel.MKDAKernel):
-            # KDA with the MKDAKernel gives p-values twice as small as allowed
-            assert p_values_data.min() >= (1.0 / (corr.parameters["n_iters"] * 2))
-        else:
-            # there should not be p-values less than 1 / n_iters
-            assert p_values_data.min() >= (1.0 / corr.parameters["n_iters"])
-        # max p-values should be less than 1, but several meta/kernel combinations
-        # retain the max p-value of 1.
-        if isinstance(meta, ale.ALE) and isinstance(kern, kernel.ALEKernel):
-            assert p_values_data.max() == 1.0
-        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.ALEKernel):
-            assert p_values_data.max() == 1.0
-        elif isinstance(meta, ale.ALE) and isinstance(kern, kernel.MKDAKernel):
-            assert p_values_data.max() == 1.0
-        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.MKDAKernel):
-            assert p_values_data.max() == 1.0
-        elif isinstance(meta, mkda.KDA) and isinstance(kern, kernel.MKDAKernel):
-            assert p_values_data.max() == 1.0
-        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.KDAKernel):
-            assert p_values_data.max() == 1.0
-        else:
-            assert p_values_data.max() < 1.0
-    else:
-        p_values_img = cres.get_map("p", return_type="image")
-        p_values_data = p_values_img.get_fdata()
-
     ground_truth_foci_ijks = [tuple(mm2vox(focus, mni_mask.affine)) for focus in ground_truth_foci]
-
     # reformat coordinate indices to index p_values_data
     gtf_idx = [
         [ground_truth_foci_ijks[i][j] for i in range(len(ground_truth_foci_ijks))]
@@ -210,6 +234,12 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
     observed_nonsig = p_values_data[mni_nonzero][nonsig_regions[mni_nonzero]] > ALPHA
     observed_nonsig_perc = observed_nonsig.sum() / len(observed_nonsig)
     assert observed_nonsig_perc >= BETA
+
+    if contains_invalid_p_values:
+        pytest.xfail("this meta-analysis/kenrel/corrector combo contains invalid p-values")
+
+    if not good_performance:
+        pytest.xfail("this meta-analysis/kenrel/corrector combo has poor performance")
 
     # TODO: use output in reports
     return {
