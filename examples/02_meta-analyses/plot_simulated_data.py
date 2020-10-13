@@ -25,7 +25,7 @@ import numpy as np
 def analyze_and_plot(dset, ground_truth_foci=None, return_cres=False):
     mkda = nimare.meta.mkda.MKDADensity(kernel__r=10)
     mkda.fit(dset)
-    corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=100, n_cores=-1)
+    corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
     cres = corr.transform(mkda.results)
 
     # get the z coordinates
