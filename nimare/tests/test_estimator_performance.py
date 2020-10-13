@@ -13,7 +13,7 @@ from ..transforms import mm2vox
 ALPHA = 0.05
 BETA = 1 - ALPHA
 
-if os.environ.get('CIRCLECI'):
+if os.environ.get("CIRCLECI"):
     N_CORES = 1
 else:
     N_CORES = -1
