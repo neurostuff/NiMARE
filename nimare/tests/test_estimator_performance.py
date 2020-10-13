@@ -122,6 +122,8 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
     ################################################
     # default value to assume p-value outputs are correct
     contains_invalid_p_values = False
+    # mask to include only brain voxels
+    mni_mask_idx = np.nonzero(mni_mask.get_fdata())
     if corr.method == "montecarlo":
         logp_values_img = cres.get_map(
             "logp_level-voxel_corr-FWE_method-montecarlo", return_type="image"
@@ -139,24 +141,24 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
         # retain the max p-value of 1.
         if isinstance(meta, ale.ALE) and isinstance(kern, kernel.ALEKernel):
             contains_invalid_p_values = True
-            assert p_values_data.max() == 1.0
+            assert p_values_data[mni_mask_idx].max() == 1.0
         elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.ALEKernel):
             contains_invalid_p_values = True
-            assert p_values_data.max() == 1.0
+            assert p_values_data[mni_mask_idx].max() == 1.0
         elif isinstance(meta, ale.ALE) and isinstance(kern, kernel.MKDAKernel):
             contains_invalid_p_values = True
-            assert p_values_data.max() == 1.0
+            assert p_values_data[mni_mask_idx].max() == 1.0
         elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.MKDAKernel):
             contains_invalid_p_values = True
-            assert p_values_data.max() == 1.0
+            assert p_values_data[mni_mask_idx].max() == 1.0
         elif isinstance(meta, mkda.KDA) and isinstance(kern, kernel.MKDAKernel):
             contains_invalid_p_values = True
-            assert p_values_data.max() == 1.0
+            assert p_values_data[mni_mask_idx].max() == 1.0
         elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.KDAKernel):
             contains_invalid_p_values = True
-            assert p_values_data.max() == 1.0
+            assert p_values_data[mni_mask_idx].max() == 1.0
         else:
-            assert p_values_data.max() < 1.0
+            assert p_values_data[mni_mask_idx].max() < 1.0
     else:
         p_values_img = cres.get_map("p", return_type="image")
         p_values_data = p_values_img.get_fdata()
@@ -230,16 +232,12 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
 
     # assert that more than 95% of voxels farther away
     # from foci are nonsignificant at alpha = 0.05
-    mni_nonzero = np.nonzero(mni_mask.get_fdata())
-    observed_nonsig = p_values_data[mni_nonzero][nonsig_regions[mni_nonzero]] > ALPHA
+    observed_nonsig = p_values_data[mni_mask_idx][nonsig_regions[mni_mask_idx]] > ALPHA
     observed_nonsig_perc = observed_nonsig.sum() / len(observed_nonsig)
     assert observed_nonsig_perc >= BETA
 
     if contains_invalid_p_values:
         pytest.xfail("this meta-analysis/kenrel/corrector combo contains invalid p-values")
-
-    if not good_performance:
-        pytest.xfail("this meta-analysis/kenrel/corrector combo has poor performance")
 
     # TODO: use output in reports
     return {
