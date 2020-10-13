@@ -22,23 +22,37 @@ import numpy as np
 # -----------------------------------------------------------
 
 
-def analyze_and_plot(dset, ground_truth_foci):
+def analyze_and_plot(dset, ground_truth_foci=None, return_cres=False):
     mkda = nimare.meta.mkda.MKDADensity(kernel__r=10)
     mkda.fit(dset)
-    corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+    corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=100, n_cores=-1)
     cres = corr.transform(mkda.results)
 
     # get the z coordinates
-    cut_coords = [c[2] for c in ground_truth_foci]
+    if ground_truth_foci:
+        stat_map_kwargs = {
+            "cut_coords": [c[2] for c in ground_truth_foci],
+        }
+    else:
+        stat_map_kwargs = {}
+
     display = plot_stat_map(
         cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo"),
         display_mode="z",
-        cut_coords=cut_coords,
         draw_cross=False,
-        cmap="RdBu_r",
+        cmap="Purples",
+        threshold=1.0,
+        vmax=15,
+        symmetric_cbar=False,
+        **stat_map_kwargs,
     )
-    display.add_markers(ground_truth_foci)
 
+    if ground_truth_foci:
+        # place red dots indicating the ground truth foci
+        display.add_markers(ground_truth_foci)
+
+    if return_cres:
+        return display, cres
     return display
 
 
@@ -169,6 +183,37 @@ _, one_foci_dset = create_coordinate_dataset(
 # ---------------------------------
 
 analyze_and_plot(one_foci_dset, [ground_truth_foci[2]])
+
+###############################################################################
+# Create a null dataset
+# --------------------------------------------------------------------
+# Perhaps you are interested in the number of false positives your favorite
+# meta-analysis algorithm typically gives.
+# At an alpha of 0.05 we would expect no more than 5% of results to be false positives.
+# To test this, we can create a dataset with no foci that converge, but have many
+# distributed foci.
+
+_, no_foci_dset = create_coordinate_dataset(
+    n_foci=0,
+    fwhm=10.0,
+    sample_size=30,
+    sample_size_interval=10,
+    n_studies=30,
+    n_noise_foci=100,
+)
+
+###############################################################################
+# Analyze and plot no foci dataset
+# --------------------------------
+
+display, cres = analyze_and_plot(no_foci_dset, return_cres=True)
+
+logp_values = display.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array")
+# inverse the log transform of the p_values
+p_values = 10 ** -logp_values
+# what percentage of voxels are not significant?
+non_significant_percent = (p_values > 0.05).sum() / p_values.size
+print(non_significant_percent)
 
 ###############################################################################
 # Further exploration
