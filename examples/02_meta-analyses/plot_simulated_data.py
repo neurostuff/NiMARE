@@ -147,7 +147,7 @@ _, two_foci_dset = create_coordinate_dataset(
 
 ###############################################################################
 # Analyze and plot two foci dataset
-# -------------------------------
+# ---------------------------------
 
 analyze_and_plot(two_foci_dset, ground_truth_foci[0:2])
 
@@ -208,7 +208,7 @@ _, no_foci_dset = create_coordinate_dataset(
 
 display, cres = analyze_and_plot(no_foci_dset, return_cres=True)
 
-logp_values = display.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array")
+logp_values = cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array")
 # inverse the log transform of the p_values
 p_values = 10 ** -logp_values
 # what percentage of voxels are not significant?
