@@ -9,7 +9,7 @@ from .utils import get_resource_path
 from .meta.utils import compute_ma, get_ale_kernel
 from .transforms import vox2mm, mm2vox
 
-DEF_TINY = 1e-50
+DEF_TINY = np.finfo(float).eps
 
 
 def create_coordinate_dataset(
@@ -22,6 +22,7 @@ def create_coordinate_dataset(
     foci_weights=None,
     seed=42,
     sample_size_interval=None,
+    space="MNI",
 ):
     """Generate coordinate based dataset for meta analysis.
 
@@ -46,16 +47,19 @@ def create_coordinate_dataset(
     n_noise_foci : :obj:`int` or :obj:`list`, optional
         Number of foci considered to be noise in each study
         or a list of integers representing how many noise foci
-        there should be in each study.
+        there should be in each study. (Default=0)
     foci_weights : :obj:`list`, optional
         Weighting of each peak representing the probability of
         that peak being sampled in a study.
     seed : :obj:`int`, optional
         Random state to reproducibly initialize random numbers.
+        (Default=42)
     sample_size_interval : :obj:`int`, optional
         Half of the interval for the uniform distribution centered on
         sample_size, U(sample_size - interval, sample_size + interval).
         sample_size_interval must be >= 0.
+    space : :obj:`str`
+        The template space the coordinates are reported in. (Default='MNI')
 
     Returns
     -------
@@ -83,7 +87,14 @@ def create_coordinate_dataset(
             sample_size_lower_limit, sample_size_upper_limit, size=n_studies
         )
     ground_truth_foci, foci_dict = create_foci(
-        n_foci, fwhm, n_studies, foci_coords, n_noise_foci, foci_weights, seed=seed, space="MNI"
+        n_foci,
+        fwhm,
+        n_studies,
+        foci_coords,
+        n_noise_foci,
+        foci_weights,
+        seed=seed,
+        space="MNI",
     )
 
     source_dict = create_source(foci_dict, sample_sizes)
@@ -102,8 +113,8 @@ def create_source(foci, sample_sizes, space="MNI"):
         different n_studies.
     sample_sizes : :obj:`list`
         The sample size for each study
-    space : :obj:`str` (Default="MNI")
-        The template space the coordinates are reported in
+    space : :obj:`str`
+        The template space the coordinates are reported in. (Default='MNI')
 
     Returns
     -------
@@ -161,14 +172,15 @@ def create_foci(
     n_noise_foci : :obj:`int` or :obj:`list`, optional
         Number of foci considered to be noise in each study
         or a list of integers representing how many noise foci
-        there should be in each study.
+        there should be in each study. (Default=0)
     foci_weights : :obj:`list`, optional
         Weighting of each peak representing the probability of
         that peak being sampled in a study.
     seed : :obj:`int`, optional
         Random state to reproducibly initialize random numbers.
-    space : :obj:`str` (Default="MNI")
-        The template space the coordinates are reported in.
+        (Default=42)
+    space : :obj:`str`
+        The template space the coordinates are reported in. (Default='MNI')
 
     Returns
     -------
@@ -201,7 +213,10 @@ def create_foci(
     # foci_coords are to be generated randomly
     if foci_coords is None:
         foci_idxs = rng.choice(range(possible_ijks.shape[0]), max(n_focis), replace=False)
-        ground_truth_foci_ijk = possible_ijks[foci_idxs]
+        # if there are no foci_idxs, give a dummy coordinate (0, 0, 0)
+        ground_truth_foci_ijk = (
+            possible_ijks[foci_idxs] if foci_idxs.size else np.array([(0, 0, 0)])
+        )
         foci_coords_num = ground_truth_foci_ijk.shape[0]
     # foci_coords were specified by the caller
     elif isinstance(foci_coords, list):
@@ -244,7 +259,7 @@ def create_foci(
         ]
     )
     # handle case when sum is 0 by adding a small amount
-    weighted_prob_map = weighted_prob_map / weighted_prob_map.sum() + DEF_TINY
+    weighted_prob_map = weighted_prob_map / np.sum(weighted_prob_map) + DEF_TINY
     weighted_prob_map_ijks = np.argwhere(weighted_prob_map)
     weighted_prob_vector = weighted_prob_map[np.nonzero(weighted_prob_map)]
 
