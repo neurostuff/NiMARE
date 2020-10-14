@@ -266,7 +266,33 @@ def peaks2maps(
     return niis
 
 
-def compute_kda_ma(shape, vox_dims, ijks, r, value, allow_overlap=False):
+def compute_kda_ma(shape, vox_dims, ijks, r, value, sum_overlap=False):
+    """
+    Compute (M)KDA modeled activation (MA) map.
+    Replaces the values around each focus in ijk with binary sphere.
+
+    Parameters
+    ----------
+    shape : :obj:`tuple`
+        Shape of brain image + buffer. Typically (91, 109, 91).
+    vox_dims : array_like
+        Size (in mm) of each dimension of a voxel.
+    ijks : array-like
+        Indices of foci. Each row is a coordinate, with the three columns
+        corresponding to index in each of three dimensions.
+    r : :obj:`int`
+        Sphere radius, in mm.
+    value : :obj:`int`
+        Value for sphere.
+    sum_overlap : :obj:`bool`
+        Whether to sum voxel values in overlapping spheres.
+
+    Returns
+    -------
+    kernel_data : :obj:`numpy.array`
+        Array in the same shape as the input parameter
+        representing the modeled activation map.
+    """
     kernel_data = np.zeros(shape, dtype=type(value))
     for peak in ijks:
         xx, yy, zz = [
@@ -277,7 +303,7 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value, allow_overlap=False):
         sphere = np.round(sphere.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
         sphere = sphere[idx, :].astype(int)
-        if allow_overlap:
+        if sum_overlap:
             kernel_data[tuple(sphere.T)] += value
         else:
             kernel_data[tuple(sphere.T)] = value

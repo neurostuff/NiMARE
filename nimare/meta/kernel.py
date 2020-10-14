@@ -290,7 +290,7 @@ class MKDAKernel(KernelTransformer):
         for id_, data in coordinates.groupby("id"):
             ijks = np.vstack((data.i.values, data.j.values, data.k.values)).T
             kernel_data = compute_kda_ma(
-                dims, vox_dims, ijks, r=self.r, value=self.value, allow_overlap=False
+                dims, vox_dims, ijks, r=self.r, value=self.value, sum_overlap=False
             )
 
             # Generic KernelTransformer code
@@ -435,7 +435,7 @@ class KDAKernel(KernelTransformer):
                 ijks,
                 r=self.r,
                 value=self.value,
-                allow_overlap=True,
+                sum_overlap=True,
             )
 
             # Generic KernelTransformer code
