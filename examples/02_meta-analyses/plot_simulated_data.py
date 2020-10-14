@@ -94,12 +94,12 @@ analyze_and_plot(dset, ground_truth_foci)
 #   - set the dispersion of the gaussian spread for each foci (i.e., ``fwhm``).
 #   - set the specific ground truth foci (i.e., ``foci_coords``).
 
-num_studies = 30
-n_foci = [4] * num_studies
+n_studies = 30
+n_foci = [4] * n_studies
 n_foci[0] = 10
-sample_sizes = [30] * num_studies
+sample_sizes = [30] * n_studies
 sample_sizes[0] = 300
-n_noise_foci = [10] * num_studies
+n_noise_foci = [10] * n_studies
 n_noise_foci[0] = 25
 foci_weights = [1, 0.1, 0.5, 0.75]
 fwhm = [6.0, 12.0, 10.0, 8.0]
@@ -107,7 +107,7 @@ _, manual_dset = create_coordinate_dataset(
     n_foci=n_foci,
     fwhm=fwhm,
     sample_size=sample_sizes,
-    n_studies=num_studies,
+    n_studies=n_studies,
     foci_coords=ground_truth_foci,
     n_noise_foci=n_noise_foci,
     foci_weights=foci_weights,
@@ -162,9 +162,9 @@ analyze_and_plot(two_foci_dset, ground_truth_foci[0:2])
 # one coordinate to report necessitating ``n_noise_foci`` be set for
 # studies without a ground truth foci.
 
-num_studies = 30
+n_studies = 30
 # create array of zeros and ones for foci
-n_foci = np.random.choice([0, 1], size=num_studies, p=[0.8, 0.2])
+n_foci = np.random.choice([0, 1], size=n_studies, p=[0.8, 0.2])
 # make a noise_foci for studies without ground truth foci
 n_noise_foci = 1 - n_foci
 
@@ -173,7 +173,7 @@ _, one_foci_dset = create_coordinate_dataset(
     fwhm=10.0,
     sample_size=30,
     sample_size_interval=10,
-    n_studies=num_studies,
+    n_studies=n_studies,
     foci_coords=[ground_truth_foci[2]],
     n_noise_foci=n_noise_foci,
 )
