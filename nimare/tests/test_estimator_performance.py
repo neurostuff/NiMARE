@@ -2,7 +2,7 @@ import os
 
 import pytest
 from contextlib import ExitStack as does_not_raise
-import numpy as np
+import nibabel as nib
 
 from ..correct import FDRCorrector, FWECorrector
 from ..meta import ale, kernel, mkda
@@ -48,7 +48,7 @@ else:
         pytest.param(FDRCorrector(method="negcorr", alpha=ALPHA), id="fdr_negcorr"),
     ],
 )
-def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
+def test_estimators(simulatedata_cbma, meta_alg, kern, corr):
 
     # set up testing dataset
     fwhm, (ground_truth_foci, dataset) = simulatedata_cbma
@@ -123,13 +123,13 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
     # default value to assume p-value outputs are correct
     contains_invalid_p_values = False
     # mask to include only brain voxels
-    mni_mask_idx = np.nonzero(mni_mask.get_fdata())
     if corr.method == "montecarlo":
-        logp_values_img = cres.get_map(
-            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="image"
+        # the array only contains in-brain voxels
+        logp_values_data = cres.get_map(
+            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
         )
         # transform logp values back into regular p values
-        p_values_data = 10 ** -logp_values_img.get_fdata()
+        p_values_data = 10 ** -logp_values_data
 
         if isinstance(meta, mkda.KDA) and isinstance(kern, kernel.MKDAKernel):
             # KDA with the MKDAKernel gives p-values twice as small as allowed
@@ -137,31 +137,11 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
         else:
             # there should not be p-values less than 1 / n_iters
             assert p_values_data.min() >= (1.0 / corr.parameters["n_iters"])
-        # max p-values should be less than 1, but several meta/kernel combinations
-        # retain the max p-value of 1.
-        if isinstance(meta, ale.ALE) and isinstance(kern, kernel.ALEKernel):
-            contains_invalid_p_values = True
-            assert p_values_data[mni_mask_idx].max() == 1.0
-        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.ALEKernel):
-            contains_invalid_p_values = True
-            assert p_values_data[mni_mask_idx].max() == 1.0
-        elif isinstance(meta, ale.ALE) and isinstance(kern, kernel.MKDAKernel):
-            contains_invalid_p_values = True
-            assert p_values_data[mni_mask_idx].max() == 1.0
-        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.MKDAKernel):
-            contains_invalid_p_values = True
-            assert p_values_data[mni_mask_idx].max() == 1.0
-        elif isinstance(meta, mkda.KDA) and isinstance(kern, kernel.MKDAKernel):
-            contains_invalid_p_values = True
-            assert p_values_data[mni_mask_idx].max() == 1.0
-        elif isinstance(meta, mkda.MKDADensity) and isinstance(kern, kernel.KDAKernel):
-            contains_invalid_p_values = True
-            assert p_values_data[mni_mask_idx].max() == 1.0
-        else:
-            assert p_values_data[mni_mask_idx].max() < 1.0
+
+        # max p-values should be less than 1
+        assert p_values_data.max() < 1.0
     else:
-        p_values_img = cres.get_map("p", return_type="image")
-        p_values_data = p_values_img.get_fdata()
+        p_values_data = cres.get_map("p", return_type="array")
 
     # ensure all values are between 0 and 1 (inclusively)
     assert (p_values_data >= 0).all() and (p_values_data <= 1).all()
@@ -192,23 +172,25 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
         good_performance = False
     else:
         good_performance = True
-
-    ground_truth_foci_ijks = [tuple(mm2vox(focus, mni_mask.affine)) for focus in ground_truth_foci]
+    mask = cres.masker.mask_img
+    ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
     # reformat coordinate indices to index p_values_data
     gtf_idx = [
         [ground_truth_foci_ijks[i][j] for i in range(len(ground_truth_foci_ijks))]
         for j in range(3)
     ]
 
+    p_values_volume = cres.masker.inverse_transform(p_values_data).get_fdata()
     # the ground truth foci should be significant at minimum
-    best_chance_p_values = p_values_data[gtf_idx]
+    best_chance_p_values = p_values_volume[gtf_idx]
     assert all(best_chance_p_values < ALPHA) == good_performance
 
     # double the radius of what is expected to be significant
     r = fwhm
     # create an expectation of significant/non-significant regions
-    sig_regions, nonsig_regions = _create_signal_mask(mni_mask, ground_truth_foci_ijks, r=r)
-
+    sig_map, nonsig_map = _create_signal_mask(mask, ground_truth_foci_ijks, r=r)
+    sig_idx = cres.masker.transform(sig_map).astype(bool).squeeze()
+    nonsig_idx = cres.masker.transform(nonsig_map).astype(bool).squeeze()
     # while this combination passes the basic
     # test of significance at the ground truth foci voxels,
     # it does not meet the criteria for 50% power
@@ -226,13 +208,13 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
 
     # assert that at least 50% of voxels surrounding the foci
     # are significant at alpha = .05
-    observed_sig = p_values_data[sig_regions] < ALPHA
+    observed_sig = p_values_data[sig_idx] < ALPHA
     observed_sig_perc = observed_sig.sum() / len(observed_sig)
     assert (observed_sig_perc >= 0.5) == good_performance
 
     # assert that more than 95% of voxels farther away
     # from foci are nonsignificant at alpha = 0.05
-    observed_nonsig = p_values_data[mni_mask_idx][nonsig_regions[mni_mask_idx]] > ALPHA
+    observed_nonsig = p_values_data[nonsig_idx] > ALPHA
     observed_nonsig_perc = observed_nonsig.sum() / len(observed_nonsig)
     assert observed_nonsig_perc >= BETA
 
@@ -249,18 +231,38 @@ def test_estimators(simulatedata_cbma, meta_alg, kern, corr, mni_mask):
     }
 
 
-def _create_signal_mask(mni_mask, ground_truth_foci_ijks, r=8):
-    dims = mni_mask.shape
-    vox_dims = mni_mask.header.get_zooms()
+def _create_signal_mask(mask, ground_truth_foci_ijks, r):
+    """
+    Creates complementary binary images.
+
+    Parameters
+    ----------
+    mask : :obj:`nibabel.Nifti1Image`
+        Input mask to define shape and size of output binary masks
+    ground_truth_foci_ijks : array_like
+        Ground truth ijk coordinates of foci.
+    r : :obj:`int`
+        Sphere radius, in mm.
+
+    Returns
+    -------
+    sig_map : :obj:`nibabel.Nifti1Image`
+        Binary image representing regions around the
+        ground truth foci expected to be significant.
+    nonsig_map : :obj:`nibabel.Nifti1Image`
+        Binary image representing the inverse of the `sig_map`
+        within the brain.
+    """
+    dims = mask.shape
+    vox_dims = mask.header.get_zooms()
     prob_map = compute_kda_ma(
         dims,
         vox_dims,
         ground_truth_foci_ijks,
         r=r,
         value=1,
-        allow_overlap=False,
+        sum_overlap=False,
     )
-    sig_regions = prob_map == 1
-    nonsig_regions = prob_map == 0
-
-    return sig_regions, nonsig_regions
+    sig_map = nib.Nifti1Image((prob_map == 1).astype(int), affine=mask.affine)
+    nonsig_map = nib.Nifti1Image((prob_map == 0).astype(int), affine=mask.affine)
+    return sig_map, nonsig_map
