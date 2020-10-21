@@ -9,7 +9,6 @@ import nibabel as nib
 
 import nimare
 from nimare.tests.utils import get_test_data_path
-from ..generate import create_coordinate_dataset
 from ..utils import get_resource_path
 
 
@@ -65,23 +64,6 @@ def testdata_laird():
         os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
     )
     return testdata_laird
-
-
-@pytest.fixture(
-    scope="session",
-    params=[
-        {
-            "n_foci": 4,
-            "fwhm": 10.0,
-            "n_studies": 30,
-            "sample_size": 30,
-            "sample_size_interval": 10,
-            "seed": 1939,
-        },
-    ],
-)
-def simulatedata_cbma(request):
-    return request.param["fwhm"], create_coordinate_dataset(**request.param)
 
 
 @pytest.fixture(scope="session")
