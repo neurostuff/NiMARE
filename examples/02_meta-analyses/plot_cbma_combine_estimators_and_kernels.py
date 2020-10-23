@@ -132,6 +132,7 @@ for kt_name, kt in kernel_transformers.items():
 
 
 for kt_name, kt in kernel_transformers.items():
+<<<<<<< HEAD
     try:
         ale = nimare.meta.ale.ALE(kernel_transformer=kt)
         ale.fit(dset)
@@ -154,3 +155,18 @@ for kt_name, kt in kernel_transformers.items():
         )
 
 ""
+=======
+    ale = nimare.meta.ale.ALE(kernel_transformer=kt)
+    ale.fit(dset)
+    corr = nimare.correct.FWECorrector(
+        method="montecarlo", n_iters=10, n_cores=1
+    )
+    cres = corr.transform(ale.results)
+    plot_stat_map(
+        cres.get_map("logp_level-cluster_corr-FWE_method-montecarlo"),
+        cut_coords=[0, 0, -8],
+        draw_cross=False,
+        cmap="RdBu_r",
+        title="ALE estimator with %s" % kt_name,
+    )
+>>>>>>> 7a0d6866d69ea42c6529a9f59e10c1a47410d626
