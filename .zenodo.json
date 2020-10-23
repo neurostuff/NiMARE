@@ -16,6 +16,11 @@
       "orcid": "0000-0002-4516-5103"
     },
     {
+      "name": "Poline, Jean-Baptiste",
+      "affiliation": "Neurology and Neurosurgery, McGill University",
+      "orcid": "0000-0002-9794-749X"
+    },
+    {
       "name": "Kent, James D.",
       "affiliation": "Neuroscience Program, University of Iowa",
       "orcid": "0000-0002-4892-2659"
@@ -26,7 +31,9 @@
       "orcid": "0000-0003-3321-7583"
     },
     {
-      "name": "Glerean, Enrico"
+      "name": "Glerean, Enrico",
+      "affiliation": "Department of Neuroscience and Biomedical Engineering, Aalto University",
+      "orcid": "0000-0003-0624-675X"
     },
     {
       "name": "Bottenhorn, Katherine L.",
@@ -67,6 +74,16 @@
       "name": "Pérez, Alexandre",
       "affiliation": "Montreal Neurological Institute, McGill University",
       "orcid": "0000-0003-0556-0763"
+    },
+    {
+      "name": "Oudyk, Kendra M.",
+      "affiliation": "Montreal Neurological Institute, McGill University",
+      "orcid": "0000-0003-4087-5402"
+    },
+    {
+      "name": "Jarecka, Dorota",
+      "affiliation": "MIT",
+      "orcid": "0000-0001-8282-2988"
     },
     {
       "name": "Laird, Angela R.",
