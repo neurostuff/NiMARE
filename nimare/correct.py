@@ -103,7 +103,9 @@ class Corrector(metaclass=ABCMeta):
         if correction_method is not None and hasattr(est, correction_method):
             LGR.info(
                 "Using correction method implemented in Estimator: "
-                "{}.{}.".format(type(est), correction_method)
+                "{}.{}.{}.".format(
+                    est.__class__.__module__, est.__class__.__name__, correction_method
+                )
             )
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
@@ -159,7 +161,7 @@ class FWECorrector(Corrector):
 
     def _transform(self, result):
         p = result.maps["p"]
-        _, p_corr, _, _ = mc.multipletests(p, alpha=0.05, method=self.method, is_sorted=False)
+        _, p_corr, _, _ = mc.multipletests(p, method=self.method, is_sorted=False)
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps

@@ -22,19 +22,19 @@ from nimare.tests.utils import get_test_data_path
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(get_test_data_path(), 'nidm_pain_dset.json')
+dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 
 ###############################################################################
 # Run peaks2maps
 # --------------------------------------------------
 k = nimare.meta.kernel.Peaks2MapsKernel()
-imgs = k.transform(dset, return_type='image')
+imgs = k.transform(dset, return_type="image")
 
 ###############################################################################
 # Plot modeled activation maps
 # --------------------------------------------------
 for img in imgs:
-    display = plot_glass_brain(img, display_mode='lyrz',
-                               plot_abs=False, colorbar=True,
-                               vmax=1, threshold=0)
+    display = plot_glass_brain(
+        img, display_mode="lyrz", plot_abs=False, colorbar=True, vmax=1, threshold=0
+    )
