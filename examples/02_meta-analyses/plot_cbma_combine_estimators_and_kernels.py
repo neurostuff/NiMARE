@@ -25,8 +25,6 @@ from nilearn.plotting import plot_stat_map
 import nimare
 from nimare.tests.utils import get_test_data_path
 
-import matplotlib.pyplot as plt
-
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
@@ -34,7 +32,6 @@ dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 
 mask_img = dset.masker.mask_img
-
 
 ###############################################################################
 # List possible kernel transformers
@@ -44,7 +41,6 @@ kernel_transformers = {
     "KDA kernel": nimare.meta.kernel.KDAKernel,
     "ALE kernel": nimare.meta.kernel.ALEKernel,
 }
-
 
 ###############################################################################
 # MKDA density analysis
@@ -129,10 +125,7 @@ for kt_name, kt in kernel_transformers.items():
 ###############################################################################
 # ALE
 # --------------------------------------------------
-
-
 for kt_name, kt in kernel_transformers.items():
-<<<<<<< HEAD
     try:
         ale = nimare.meta.ale.ALE(kernel_transformer=kt)
         ale.fit(dset)
@@ -153,20 +146,3 @@ for kt_name, kt in kernel_transformers.items():
             "\nError: the %s does not currently work with the ALE meta-analysis method\n"
             % kt_name
         )
-
-""
-=======
-    ale = nimare.meta.ale.ALE(kernel_transformer=kt)
-    ale.fit(dset)
-    corr = nimare.correct.FWECorrector(
-        method="montecarlo", n_iters=10, n_cores=1
-    )
-    cres = corr.transform(ale.results)
-    plot_stat_map(
-        cres.get_map("logp_level-cluster_corr-FWE_method-montecarlo"),
-        cut_coords=[0, 0, -8],
-        draw_cross=False,
-        cmap="RdBu_r",
-        title="ALE estimator with %s" % kt_name,
-    )
->>>>>>> 7a0d6866d69ea42c6529a9f59e10c1a47410d626
