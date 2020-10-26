@@ -4,17 +4,18 @@ Our Roadmap
 ===========
 
 NiMARE's primary goal is to consolidate coordinate- and image-based
-meta-analysis methods with a simple, shared interface.
+meta-analysis methods with a simple, shared and comprehensive interface.
 This should reduce brand loyalty to any given algorithm, as it should be easy
-to employ the most appropriate algorithm for a given project.
+to employ the most appropriate algorithm for a given project. It also provides
+an environment where comparisons between methods are easier to perform.
 
 A secondary goal of NiMARE is to implement some of the more cutting-edge
-methods for analyses built on meta-analytic data.
+methods for analyses built on meta-analytic neuroimaging data.
 There are many tools or algorithms that use meta-analytic data, including
 automated annotation, meta-analytic functional characterization analysis, and
 meta-analytic parcellation.
 Many of these methods are either tied to a specific meta-analysis package or
-never make it from publication to useable code.
+never make it from publication to useable (i.e., documented and tested) code.
 
 Ultimately, we plan to support all (or most) of the methods listed below in NiMARE:
 
@@ -56,6 +57,7 @@ Ultimately, we plan to support all (or most) of the methods listed below in NiMA
     - BrainMap decoding
     - Text2brain encoding
     - Generalized correspondence latent Dirichlet allocation (GCLDA)
+    - Prediction framework (e.g. NeuroQuery)
 - Meta-analytic parcellation (`nimare.parcellate`)
     - Meta-analytic parcellation based on text (MAPBOT)
     - Coactivation-base parcellation (CBP)
