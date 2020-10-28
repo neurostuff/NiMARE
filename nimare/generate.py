@@ -65,7 +65,7 @@ def create_coordinate_dataset(
     if (
         (not isinstance(foci_percentage, (float, str)))
         or (isinstance(foci_percentage, str) and foci_percentage[-1] != "%")
-        or (isinstance(foci_percentage, float) and not (0. <= foci_percentage <= 1.0))
+        or (isinstance(foci_percentage, float) and not (0.0 <= foci_percentage <= 1.0))
     ):
         raise ValueError(
             "foci_percentage must be a string (example '96%') or a float between 0 and 1"
@@ -91,11 +91,9 @@ def create_coordinate_dataset(
     elif _array_like(sample_size) and len(sample_size) == 2 and n_studies != 2:
         sample_size_lower_limit = sample_size[0]
         sample_size_upper_limit = sample_size[1]
-        sample_size = rng.randint(
-            sample_size_lower_limit, sample_size_upper_limit, size=n_studies
-        )
+        sample_size = rng.randint(sample_size_lower_limit, sample_size_upper_limit, size=n_studies)
 
-    ground_truth_foci, foci_dict = create_foci(
+    ground_truth_foci, foci_dict = _create_foci(
         foci,
         foci_percentage,
         fwhm,
@@ -105,13 +103,13 @@ def create_coordinate_dataset(
         space,
     )
 
-    source_dict = create_source(foci_dict, sample_size, space)
+    source_dict = _create_source(foci_dict, sample_size, space)
     dataset = Dataset(source_dict)
 
     return ground_truth_foci, dataset
 
 
-def create_source(foci, sample_sizes, space="MNI"):
+def _create_source(foci, sample_sizes, space="MNI"):
     """Create dictionary according to nimads(ish) specification
 
     Parameters
@@ -150,7 +148,7 @@ def create_source(foci, sample_sizes, space="MNI"):
     return source
 
 
-def create_foci(
+def _create_foci(
     foci,
     foci_percentage,
     fwhm,
@@ -184,11 +182,15 @@ def create_foci(
     -------
     ground_truth_foci : :obj:`list`
         List of 3-item tuples containing x, y, z coordinates
-        of the ground truth foci.
+        of the ground truth foci or an empty list if
+        there are no ground_truth_foci.
     foci_dict : :obj:`dict`
-        Dictionary with keys representing the ground truth foci, and
+        Dictionary with keys representing the study, and
         whose values represent the study specific foci.
     """
+    # convert foci_percentage to float between 0 and 1
+    if isinstance(foci_percentage, str) and foci_percentage[-1] == "%":
+        foci_percentage = float(foci_percentage[:-1]) / 100
 
     if space == "MNI":
         template_img = nilearn.datasets.load_mni152_brain_mask()
@@ -199,62 +201,61 @@ def create_foci(
 
     # number of "convergent" foci each study should report
     if isinstance(foci, int):
-        foci_idxs = rng.choice(range(possible_ijks.shape[0]), foci, replace=False)
+        foci_idxs = np.unique(rng.choice(range(possible_ijks.shape[0]), foci, replace=True))
         # if there are no foci_idxs, give a dummy coordinate (0, 0, 0)
-        ground_truth_foci_ijks = (
-            possible_ijks[foci_idxs] if foci_idxs.size else np.array([[]])
-        )
+        ground_truth_foci_ijks = possible_ijks[foci_idxs] if foci_idxs.size else np.array([[]])
     elif isinstance(foci, list):
         ground_truth_foci_ijks = np.array([mm2vox(coord, template_img.affine) for coord in foci])
 
-    foci_dict = {}
-    # generate study specific foci for each ground truth focus
-
+    # create a probability map for each peak
     kernel = get_ale_kernel(template_img, fwhm)[1]
     foci_prob_maps = {
         tuple(peak): compute_ma(template_data.shape, np.atleast_2d(peak), kernel)
-        for peak in ground_truth_foci_ijks if peak.size
+        for peak in ground_truth_foci_ijks
+        if peak.size
     }
 
-    if isinstance(foci_percentage, str) and foci_percentage[-1] == "%":
-        foci_percentage = float(foci_percentage[:-1]) / 100
-
+    # get study specific instances of each foci
     signal_studies = int(round(foci_percentage * n_studies))
     signal_ijks = {
         peak: np.argwhere(prob_map)[
             rng.choice(
-                np.argwhere(prob_map).shape[0], size=signal_studies, replace=False,
-                p=prob_map[np.nonzero(prob_map)],
+                np.argwhere(prob_map).shape[0],
+                size=signal_studies,
+                replace=True,
+                p=prob_map[np.nonzero(prob_map)] / sum(prob_map[np.nonzero(prob_map)]),
             )
-        ] for peak, prob_map in foci_prob_maps.items()
+        ]
+        for peak, prob_map in foci_prob_maps.items()
     }
 
-    paired_signal_ijks = np.transpose(
-        np.array(
-            list(signal_ijks.values())
-        ),
-        axes=(1, 0, 2)
-    ) if signal_ijks else (None,)
+    # reshape foci coordinates to be study specific
+    paired_signal_ijks = (
+        np.transpose(np.array(list(signal_ijks.values())), axes=(1, 0, 2))
+        if signal_ijks
+        else (None,)
+    )
+
+    foci_dict = {}
     for study_signal_ijks, study in zip_longest(paired_signal_ijks, range(n_studies)):
         if study_signal_ijks is None:
             study_signal_ijks = np.array([[]])
             n_noise_foci = 1
 
         if n_noise_foci > 0:
-            possible_noise_ijks = np.delete(
-                possible_ijks,
-                study_signal_ijks,
-                axis=0,
-            ) if np.any(study_signal_ijks) else possible_ijks
-
-            noise_ijks = possible_noise_ijks[
-                rng.choice(possible_noise_ijks.shape[0], n_noise_foci, replace=False)
+            noise_ijks = possible_ijks[
+                rng.choice(possible_ijks.shape[0], n_noise_foci, replace=True)
             ]
 
             # add the noise foci ijks to the existing signal ijks
-            foci_ijks = np.vstack(
-                [study_signal_ijks, noise_ijks]
-            ) if np.any(study_signal_ijks) else noise_ijks
+            foci_ijks = (
+                np.unique(
+                    np.vstack([study_signal_ijks, noise_ijks]),
+                    axis=0,
+                )
+                if np.any(study_signal_ijks)
+                else noise_ijks
+            )
         else:
             foci_ijks = study_signal_ijks
 
