@@ -14,7 +14,6 @@ would perform with simplified data
 import nimare
 from nimare.generate import create_coordinate_dataset
 from nilearn.plotting import plot_stat_map
-import numpy as np
 
 
 ###############################################################################
@@ -22,11 +21,14 @@ import numpy as np
 # -----------------------------------------------------------
 
 
-def analyze_and_plot(dset, ground_truth_foci=None, return_cres=False):
-    mkda = nimare.meta.mkda.MKDADensity(kernel__r=10)
-    mkda.fit(dset)
-    corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
-    cres = corr.transform(mkda.results)
+def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=False):
+    meta = nimare.meta.ale.ALE(kernel__fwhm=10)
+    meta.fit(dset)
+    if correct:
+        corr = nimare.correct.FDRCorrector()
+        cres = corr.transform(meta.results)
+    else:
+        cres = meta.results
 
     # get the z coordinates
     if ground_truth_foci:
@@ -37,7 +39,7 @@ def analyze_and_plot(dset, ground_truth_foci=None, return_cres=False):
         stat_map_kwargs = {}
 
     display = plot_stat_map(
-        cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo"),
+        cres.get_map("z"),
         display_mode="z",
         draw_cross=False,
         cmap="Purples",
@@ -65,52 +67,51 @@ def analyze_and_plot(dset, ground_truth_foci=None, return_cres=False):
 # There are 4 "hot" spots centered on 3D gaussian distributions,
 # meaning each study will likely select 4 foci that are close
 # to those hot spots, but there is still random jittering.
-# Each study has a mean ``sample_size`` of 30 with a variance of 10
+# Each study has a ``sample_size`` sampled from a uniform distribution from 20 to 40.
 # so some studies may have fewer than 30 participants and some
 # more.
 
 ground_truth_foci, dset = create_coordinate_dataset(
-    n_foci=4, fwhm=10.0, sample_size=30, sample_size_interval=10, n_studies=30
+    foci=4,
+    sample_size=(20, 40),
+    n_studies=30,
 )
 
 ###############################################################################
 # Analyze and plot simple dataset
 # -------------------------------
+# The red dots in this plot and subsequent plots represent the
+# simulated ground truth foci, and the clouds represent the statistical
+# maps of the simulated data.
 
 analyze_and_plot(dset, ground_truth_foci)
 
 ###############################################################################
 # Fine-tune dataset creation
-# --------------------------------------------------
+# --------------------------
 # Perhaps you want more control over the studies being generated.
-# You can manually specify how many "converging" foci you want specified
-# in each study (i.e., ``n_foci``).
-# This way you can test what happens if one study has way more reported
-# foci than another study.
-# You can also:
-#   - manually specify the sample sizes for each study (i.e., ``sample_size``).
-#   - set the number of false positive foci for each study (i.e., ``n_noise_foci``).
-#   - set the weighed probability of each foci being chosen (i.e., ``foci_weights``).
-#   - set the dispersion of the gaussian spread for each foci (i.e., ``fwhm``).
-#   - set the specific ground truth foci (i.e., ``foci_coords``).
+# you can set:
+#   - the specific peak coordinates (i.e., ``foci``)
+#   - the percentage of studies that contain the foci of interest (``foci_percentage``)
+#   - how tightly the study specific foci are selected around the ground truth (i.e., ``fwhm``)
+#   - the sample size for each study (i.e., ``sample_size``)
+#   - the number of noise foci in each study (i.e., ``n_noise_foci``)
+#   - the number of studies (i.e., ``n_studies``)
 
+foci = [(0, 0, 0)]
+foci_percentage = 1.0
+fwhm = 10.0
 n_studies = 30
-n_foci = [4] * n_studies
-n_foci[0] = 10
 sample_sizes = [30] * n_studies
 sample_sizes[0] = 300
-n_noise_foci = [10] * n_studies
-n_noise_foci[0] = 25
-foci_weights = [1, 0.1, 0.5, 0.75]
-fwhm = [6.0, 12.0, 10.0, 8.0]
+n_noise_foci = 10
+
 _, manual_dset = create_coordinate_dataset(
-    n_foci=n_foci,
+    foci=foci,
     fwhm=fwhm,
     sample_size=sample_sizes,
     n_studies=n_studies,
-    foci_coords=ground_truth_foci,
     n_noise_foci=n_noise_foci,
-    foci_weights=foci_weights,
 )
 
 ###############################################################################
@@ -120,69 +121,26 @@ _, manual_dset = create_coordinate_dataset(
 analyze_and_plot(manual_dset, ground_truth_foci)
 
 ###############################################################################
-# Control percentage of studies with the foci of interest: Strategy #1
-# --------------------------------------------------------------------
-# There are two ways you can create a dataset where
-# a focus is only present in some of the studies.
-# One way is to have two ground truth foci specified
-# with ``foci_coords``, but only one foci specified
-# for ``n_foci``.
-# The relative probability of the two foci appearing
-# can be controlled with ``foci_weight``.
-# For example the weights ``[0.9, 0.1]`` mean
-# the first foci is 90% likely to appear in a study and
-# the second foci has a 10% chance of appearing in a particular
-# study.
+# Control percentage of studies with the foci of interest
+# -------------------------------------------------------
+# Often times a converging peak is not found in all studies within
+# the meta-analysis, but only a portion.
+# We can select a percentage of studies where a coordinate
+# is selected around the ground truth foci.
 
-_, two_foci_dset = create_coordinate_dataset(
-    n_foci=1,
+_, perc_foci_dset = create_coordinate_dataset(
+    foci=1,
+    foci_percentage="50%",
     fwhm=10.0,
     sample_size=30,
-    sample_size_interval=10,
     n_studies=30,
-    foci_coords=ground_truth_foci[0:2],
-    n_noise_foci=0,
-    foci_weights=[0.9, 0.1],
 )
 
 ###############################################################################
-# Analyze and plot two foci dataset
-# ---------------------------------
+# Analyze and plot the 50% foci dataset
+# -------------------------------------
 
-analyze_and_plot(two_foci_dset, ground_truth_foci[0:2])
-
-###############################################################################
-# Control percentage of studies with the foci of interest: Strategy #2
-# --------------------------------------------------------------------
-# Another method to control what percentage of studies contain
-# a focus is to have one focus specified in ``foci_coords``
-# and have a list of zeros and ones in ``n_foci`` to specify
-# which studies contain the focus of interest.
-# The caveat of this strategy is that each study must have at least
-# one coordinate to report necessitating ``n_noise_foci`` be set for
-# studies without a ground truth foci.
-
-n_studies = 30
-# create array of zeros and ones for foci
-n_foci = np.random.choice([0, 1], size=n_studies, p=[0.8, 0.2])
-# make a noise_foci for studies without ground truth foci
-n_noise_foci = 1 - n_foci
-
-_, one_foci_dset = create_coordinate_dataset(
-    n_foci=n_foci,
-    fwhm=10.0,
-    sample_size=30,
-    sample_size_interval=10,
-    n_studies=n_studies,
-    foci_coords=[ground_truth_foci[2]],
-    n_noise_foci=n_noise_foci,
-)
-
-###############################################################################
-# Analyze and plot one foci dataset
-# ---------------------------------
-
-analyze_and_plot(one_foci_dset, [ground_truth_foci[2]])
+analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
 
 ###############################################################################
 # Create a null dataset
@@ -194,10 +152,8 @@ analyze_and_plot(one_foci_dset, [ground_truth_foci[2]])
 # distributed foci.
 
 _, no_foci_dset = create_coordinate_dataset(
-    n_foci=0,
-    fwhm=10.0,
-    sample_size=30,
-    sample_size_interval=10,
+    foci=0,
+    sample_size=(20, 30),
     n_studies=30,
     n_noise_foci=100,
 )
@@ -205,24 +161,12 @@ _, no_foci_dset = create_coordinate_dataset(
 ###############################################################################
 # Analyze and plot no foci dataset
 # --------------------------------
+# When not performing a multiple comparisons correction,
+# there is a false positive rate of approximately 5%.
 
-display, cres = analyze_and_plot(no_foci_dset, return_cres=True)
+display, cres = analyze_and_plot(no_foci_dset, correct=False, return_cres=True)
 
-logp_values = cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array")
-# inverse the log transform of the p_values
-p_values = 10 ** -logp_values
+p_values = cres.get_map("p", return_type="array")
 # what percentage of voxels are not significant?
 non_significant_percent = ((p_values > 0.05).sum() / p_values.size) * 100
 print(f"{non_significant_percent}% of voxels are not significant")
-
-###############################################################################
-# Further exploration
-# -------------------
-# This notebook covers a few of the presumed use-cases for
-# ``create_coordinate_dataset``, but the notebook is not exhaustive.
-# For example, this notebook did not cover how varying the fwhm
-# could change how well a meta-analysis detects an effect
-# or how to generate 1000s of datasets for testing a
-# meta-analysis algorithm.
-# Hopefully, this notebook gave you an understanding of the fundamentals
-# of ``create_coordinate_dataset``.
