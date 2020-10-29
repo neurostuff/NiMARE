@@ -661,7 +661,7 @@ class KDA(CBMAEstimator):
         perm_max_values = perm_results
 
         # Voxel-level FWE
-        vfwe_map = of_values.copy()
+        vfwe_map = of_values.copy().astype(float)
         for i_vox, val in enumerate(of_values):
             vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
         vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
