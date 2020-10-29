@@ -116,7 +116,7 @@ def _create_source(foci, sample_sizes, space="MNI"):
     ----------
     foci : :obj:`dict`
         A dictionary of foci in xyz (mm) coordinates whose keys represent
-        different n_studies.
+        different studies.
     sample_sizes : :obj:`list`
         The sample size for each study
     space : :obj:`str`
@@ -173,7 +173,7 @@ def _create_foci(
         Number of n_studies to generate.
     n_noise_foci : :obj:`int`
         Number of foci considered to be noise in each study.
-    seed : :obj:`int`
+    rng : :class:`numpy.random.RandomState`
         Random state to reproducibly initialize random numbers.
     space : :obj:`str`
         The template space the coordinates are reported in.
@@ -270,4 +270,5 @@ def _create_foci(
 
 
 def _array_like(obj):
+    """Test if obj is array-like"""
     return isinstance(obj, (list, tuple, np.ndarray))
