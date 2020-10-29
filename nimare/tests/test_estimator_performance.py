@@ -400,7 +400,7 @@ def _transform_res(meta, meta_res, corr):
         corr_expectation = pytest.raises(ValueError)
     elif isinstance(meta, mkda.KDA) and corr.method == "montecarlo":
         # TypeError: correct_fwe_montecarlo() got an unexpected keyword argument 'voxel_thresh'
-        corr.parameters.pop("voxel_thresh")
+        voxel_thresh = corr.parameters.pop("voxel_thresh")
         corr_expectation = does_not_raise()
     elif isinstance(meta, mkda.KDA) and corr.method == "bonferroni":
         # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
@@ -418,6 +418,9 @@ def _transform_res(meta, meta_res, corr):
 
     with corr_expectation:
         cres = corr.transform(meta_res)
+
+    if corr.method == 'montecarlo' and not corr.parameters.get("voxel_thresh"):
+        corr.parameters['voxel_thresh'] = voxel_thresh
 
     # if multiple correction failed (expected) do not continue
     if isinstance(corr_expectation, type(pytest.raises(ValueError))):
