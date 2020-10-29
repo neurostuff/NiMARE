@@ -149,6 +149,8 @@ def null_to_p(test_value, null_array, tail="two"):
 
     smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
 
+    # ensure p_value in the following range:
+    # smallest_value <= p_value <= (1.0 - smallest_value)
     p_value = max(smallest_value, min(p_value, 1.0 - smallest_value))
 
     return p_value
