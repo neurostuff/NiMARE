@@ -148,7 +148,7 @@ def null_to_p(test_value, null_array, tail="two"):
         raise ValueError('Argument "tail" must be one of ["two", "upper", ' '"lower"]')
 
     smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
-    if p_value == 0:
+    if p_value < smallest_value:
         p_value = smallest_value
     elif p_value == 1:
         p_value = 1.0 - smallest_value
