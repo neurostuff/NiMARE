@@ -35,10 +35,11 @@ else:
     params=[
         pytest.param(
             {
-                "foci": 4,
+                "foci": 5,
                 "fwhm": 10.0,
                 "n_studies": 30,
                 "sample_size": 30,
+                "n_noise_foci": 20,
                 "seed": 1939,
             },
             id="normal_data",
@@ -158,6 +159,8 @@ def meta_res(simulatedata_cbma, meta):
     if isinstance(meta.kernel_transformer, kernel.Peaks2MapsKernel):
         # AttributeError: 'DataFrame' object has no attribute 'masker'
         meta_expectation = pytest.raises(AttributeError)
+    elif isinstance(meta, ale.ALE) and isinstance(meta.kernel_transformer, kernel.KDAKernel):
+        meta_expectation = pytest.raises(IndexError)
     else:
         meta_expectation = does_not_raise()
 
@@ -217,8 +220,13 @@ def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
     if isinstance(p_val_expectation, type(pytest.raises(ValueError))):
         pytest.xfail("this meta-analysis estimator does not generate p-values")
 
+    # poor performer(s)
+    if isinstance(meta_res.estimator, ale.ALE) and isinstance(meta_res.estimator.kernel_transformer, kernel.MKDAKernel):
+        good_performance = False
+    else:
+        good_performance = True
     _check_p_values(
-        p_array, meta_res.masker, sig_idx, nonsig_idx, ALPHA, ground_truth_foci_ijks, n_iters=None
+        p_array, meta_res.masker, sig_idx, nonsig_idx, ALPHA, ground_truth_foci_ijks, n_iters=None, good_performance=good_performance,
     )
 
 
@@ -245,7 +253,7 @@ def test_corr_transform_p_values(meta_cres, corr, signal_masks, simulatedata_cbm
     if (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and corr.method == "montecarlo"
+        and isinstance(corr, (FDRCorrector, FWECorrector))
     ):
         good_performance = False
     else:
@@ -360,7 +368,7 @@ def _check_p_values(
     # from foci are nonsignificant at alpha = 0.05
     observed_nonsig = p_array_nonsig > alpha
     observed_nonsig_perc = observed_nonsig.sum() / len(observed_nonsig)
-    assert observed_nonsig_perc >= (1 - alpha)
+    assert np.isclose(observed_nonsig_perc, (1 - alpha), atol=0.05)
 
 
 def _transform_res(meta, meta_res, corr):
