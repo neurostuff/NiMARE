@@ -3,6 +3,7 @@ import os
 import pytest
 from contextlib import ExitStack as does_not_raise
 import nibabel as nib
+import numpy as np
 
 from ..results import MetaResult
 from ..generate import create_coordinate_dataset
@@ -11,9 +12,11 @@ from ..meta import ale, kernel, mkda
 from ..meta.utils import compute_kda_ma
 from ..transforms import mm2vox
 
+# set random state so that errors are consistent
+np.random.seed(seed=1)
+
 # set significance levels used for testing.
 ALPHA = 0.05
-BETA = 1 - ALPHA
 
 if os.environ.get("CIRCLECI"):
     N_CORES = 1
@@ -32,11 +35,10 @@ else:
     params=[
         pytest.param(
             {
-                "n_foci": 4,
+                "foci": 4,
                 "fwhm": 10.0,
                 "n_studies": 30,
                 "sample_size": 30,
-                "sample_size_interval": 10,
                 "seed": 1939,
             },
             id="normal_data",
@@ -156,9 +158,6 @@ def meta_res(simulatedata_cbma, meta):
     if isinstance(meta.kernel_transformer, kernel.Peaks2MapsKernel):
         # AttributeError: 'DataFrame' object has no attribute 'masker'
         meta_expectation = pytest.raises(AttributeError)
-    elif isinstance(meta.kernel_transformer, kernel.KDAKernel) and isinstance(meta, ale.ALE):
-        # IndexError: index 20000 is out of bounds for axis 0 with size 10010
-        meta_expectation = pytest.raises(IndexError)
     else:
         meta_expectation = does_not_raise()
 
@@ -293,6 +292,8 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
     """
     dims = mask.shape
     vox_dims = mask.header.get_zooms()
+
+    # area where I'm reasonably certain there are significant results
     sig_prob_map = compute_kda_ma(
         dims,
         vox_dims,
@@ -301,11 +302,13 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
         value=1,
         sum_overlap=False,
     )
+
+    # area where I'm reasonably certain there are not significant results
     nonsig_prob_map = compute_kda_ma(
         dims,
         vox_dims,
         ground_truth_foci_ijks,
-        r=12,
+        r=14,
         value=1,
         sum_overlap=False,
     )
@@ -385,6 +388,13 @@ def _transform_res(meta, meta_res, corr):
         # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
         # to be present in the MetaResult, but none were found.
         corr_expectation = pytest.raises(ValueError)
+    elif (
+        isinstance(meta, ale.ALE)
+        and isinstance(meta.kernel_transformer, kernel.KDAKernel)
+        and corr.method == "montecarlo"
+    ):
+        # IndexError: index 20000 is out of bounds for axis 0 with size 10010
+        corr_expectation = pytest.raises(IndexError)
     else:
         corr_expectation = does_not_raise()
 
