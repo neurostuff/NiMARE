@@ -221,12 +221,21 @@ def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
         pytest.xfail("this meta-analysis estimator does not generate p-values")
 
     # poor performer(s)
-    if isinstance(meta_res.estimator, ale.ALE) and isinstance(meta_res.estimator.kernel_transformer, kernel.MKDAKernel):
+    if isinstance(meta_res.estimator, ale.ALE) and isinstance(
+        meta_res.estimator.kernel_transformer, kernel.MKDAKernel
+    ):
         good_performance = False
     else:
         good_performance = True
     _check_p_values(
-        p_array, meta_res.masker, sig_idx, nonsig_idx, ALPHA, ground_truth_foci_ijks, n_iters=None, good_performance=good_performance,
+        p_array,
+        meta_res.masker,
+        sig_idx,
+        nonsig_idx,
+        ALPHA,
+        ground_truth_foci_ijks,
+        n_iters=None,
+        good_performance=good_performance,
     )
 
 
