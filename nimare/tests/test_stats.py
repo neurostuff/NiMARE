@@ -25,3 +25,11 @@ def test_null_to_p():
     assert math.isclose(stats.null_to_p(101, data, "lower"), 0.99)
     assert math.isclose(stats.null_to_p(101, data, "upper"), 0.01)
     assert math.isclose(stats.null_to_p(101, data, "two"), 0.01)
+
+    # modify data to handle edge case
+    data[98] = 100
+    assert math.isclose(stats.null_to_p(1, data, "lower"), 0.01)
+    assert math.isclose(stats.null_to_p(1, data, "upper"), 0.99)
+    assert math.isclose(stats.null_to_p(100, data, "lower"), 0.99)
+    assert math.isclose(stats.null_to_p(100, data, "upper"), 0.01)
+    assert math.isclose(stats.null_to_p(100, data, "two"), 0.01)

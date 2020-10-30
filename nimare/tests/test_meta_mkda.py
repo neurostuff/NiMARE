@@ -1,6 +1,8 @@
 """
 Test nimare.meta.mkda (KDA-based meta-analytic algorithms).
 """
+import numpy as np
+
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import kernel, mkda
@@ -95,3 +97,7 @@ def test_kda_density_fwe_1core(testdata_cbma):
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
+    assert (
+        cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array").dtype
+        == np.float64
+    )
