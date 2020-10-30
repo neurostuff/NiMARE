@@ -43,8 +43,7 @@ def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=Fal
         display_mode="z",
         draw_cross=False,
         cmap="Purples",
-        threshold=1.0,
-        vmax=15,
+        threshold=2.3,
         symmetric_cbar=False,
         **stat_map_kwargs,
     )
@@ -129,7 +128,7 @@ analyze_and_plot(manual_dset, ground_truth_foci)
 # is selected around the ground truth foci.
 
 _, perc_foci_dset = create_coordinate_dataset(
-    foci=1,
+    foci=ground_truth_foci[0:2],
     foci_percentage="50%",
     fwhm=10.0,
     sample_size=30,
