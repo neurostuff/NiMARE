@@ -193,8 +193,8 @@ class ALE(CBMAEstimator):
             ale_scores = 1 - np.outer(
                 1 - hist_bins[exp_idx], 1 - all_bins[ale_idx]).ravel()
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
-            probabilities = 1 - np.outer(
-                1 - ma_hists[i_exp, exp_idx], 1 - ale_hist[ale_idx]).ravel()
+            probabilities = np.outer(
+                ma_hists[i_exp, exp_idx], ale_hist[ale_idx]).ravel()
 
             np.add.at(ale_hist, score_idx, probabilities)
 
