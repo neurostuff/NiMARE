@@ -151,26 +151,26 @@ class ALE(CBMAEstimator):
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
         max_poss_ale = 1 - np.prod(1. - np.max(ma_values, axis=1))
+        step_size = 0.0001
 
-        self.null_distributions_["histogram_bins"] = np.round(
-            np.arange(0, max_poss_ale + 0.001, 0.0001), 4
-        )
+        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
+        self.null_distributions_["histogram_bins"] = hist_bins
 
         ma_hists = np.zeros(
-            (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
+            (ma_values.shape[0], hist_bins.shape[0])
         )
-        for i_exp in range(ma_values.shape[0]):
-            # Remember that histogram uses bin edges (not centers), so it
-            # returns a 1xhist_bins-1 array
-            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
+
+        n_zeros = np.sum(ma_values == 0, 1)
+        ma_hists[:, 0] = n_zeros
+
+        for i_exp in range(len(ma_values)):
             reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 0] = n_zeros
             ma_hists[i_exp, 1:] = np.histogram(
-                a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
+                reduced_ma_values, bins=hist_bins, density=False
             )[0]
 
-        # Inverse of step size in histBins (0.0001) = 10000
-        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+        # Inverse of step size in histBins
+        step = 1 / step_size
 
         # Null distribution to convert ALE to p-values.
         ale_hist = ma_hists[0, :]
