@@ -149,11 +149,9 @@ class ALE(CBMAEstimator):
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
         # Determine bins for null distribution histogram
-        max_poss_ale = 1.0
         max_ma_values = np.max(ma_values, axis=1)
-        for ma_value in max_ma_values:
-            max_poss_ale *= 1 - ma_value
-        max_poss_ale = 1 - max_poss_ale
+        max_poss_ale = 1 - np.prod(1. - np.max(ma_values, axis=1))
+
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
