@@ -124,10 +124,7 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        ale_values = np.ones(ma_values.shape[1])
-        for i in range(ma_values.shape[0]):
-            ale_values *= 1.0 - ma_values[i, :]
-        ale_values = 1 - ale_values
+        ale_values = 1. - np.prod(1. - ma_values, axis=0)
         return ale_values
 
     def _compute_null(self, ma_maps):
