@@ -1,0 +1,428 @@
+import os
+
+import pytest
+from contextlib import ExitStack as does_not_raise
+import nibabel as nib
+import numpy as np
+
+from ..results import MetaResult
+from ..generate import create_coordinate_dataset
+from ..correct import FDRCorrector, FWECorrector
+from ..meta import ale, kernel, mkda
+from ..meta.utils import compute_kda_ma
+from ..transforms import mm2vox
+
+# set random state so that errors are consistent
+np.random.seed(seed=1)
+
+# set significance levels used for testing.
+ALPHA = 0.05
+
+if os.environ.get("CIRCLECI"):
+    N_CORES = 1
+else:
+    N_CORES = -1
+
+
+# PRECOMPUTED FIXTURES
+# --------------------
+
+##########################################
+# simulated dataset(s)
+##########################################
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(
+            {
+                "foci": 5,
+                "fwhm": 10.0,
+                "n_studies": 30,
+                "sample_size": 30,
+                "n_noise_foci": 20,
+                "seed": 1939,
+            },
+            id="normal_data",
+        )
+    ],
+)
+def simulatedata_cbma(request):
+    return request.param["fwhm"], create_coordinate_dataset(**request.param)
+
+
+##########################################
+# signal and non-signal masks
+##########################################
+@pytest.fixture(scope="session")
+def signal_masks(simulatedata_cbma):
+    _, (ground_truth_foci, dataset) = simulatedata_cbma
+    ground_truth_foci_ijks = [
+        tuple(mm2vox(focus, dataset.masker.mask_img.affine)) for focus in ground_truth_foci
+    ]
+    return _create_signal_mask(ground_truth_foci_ijks, dataset.masker.mask_img)
+
+
+##########################################
+# meta-analysis estimators
+##########################################
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(ale.ALE, id="ale"),
+        pytest.param(mkda.MKDADensity, id="mkda"),
+        pytest.param(mkda.KDA, id="kda"),
+    ],
+)
+def meta_est(request):
+    return request.param
+
+
+##########################################
+# meta-analysis kernels
+##########################################
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(kernel.ALEKernel, id="ale_kernel"),
+        pytest.param(kernel.MKDAKernel, id="mkda_kernel"),
+        pytest.param(kernel.KDAKernel, id="kda_kernel"),
+        pytest.param(kernel.Peaks2MapsKernel, id="p2m_kernel"),
+    ],
+)
+def kern(request):
+    return request.param
+
+
+##########################################
+# multiple comparison correctors (testing)
+##########################################
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(FWECorrector(method="bonferroni"), id="fwe_bonferroni"),
+        pytest.param(
+            FWECorrector(method="montecarlo", voxel_thresh=ALPHA, n_iters=100, n_cores=N_CORES),
+            id="fwe_montecarlo",
+        ),
+        pytest.param(FDRCorrector(method="indep", alpha=ALPHA), id="fdr_indep"),
+        pytest.param(FDRCorrector(method="negcorr", alpha=ALPHA), id="fdr_negcorr"),
+    ],
+)
+def corr(request):
+    return request.param
+
+
+##########################################
+# multiple comparison correctors (smoke)
+##########################################
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(FWECorrector(method="bonferroni"), id="fwe_bonferroni"),
+        pytest.param(
+            FWECorrector(method="montecarlo", voxel_thresh=ALPHA, n_iters=2, n_cores=1),
+            id="fwe_montecarlo",
+        ),
+        pytest.param(FDRCorrector(method="indep", alpha=ALPHA), id="fdr_indep"),
+        pytest.param(FDRCorrector(method="negcorr", alpha=ALPHA), id="fdr_negcorr"),
+    ],
+)
+def corr_small(request):
+    return request.param
+
+
+###########################################
+# all meta-analysis estimator/kernel combos
+###########################################
+@pytest.fixture(scope="session")
+def meta(simulatedata_cbma, meta_est, kern):
+    fwhm, (_, _) = simulatedata_cbma
+    if kern == kernel.KDAKernel or kern == kernel.MKDAKernel:
+        kern = kern(r=fwhm / 2)
+    else:
+        kern = kern()
+
+    # instantiate meta-analysis estimator
+    return meta_est(kern)
+
+
+###########################################
+# meta-analysis estimator results
+###########################################
+@pytest.fixture(scope="session")
+def meta_res(simulatedata_cbma, meta):
+    _, (_, dataset) = simulatedata_cbma
+    ####################################
+    # CHECK IF META/KERNEL WORK TOGETHER
+    ####################################
+    # peaks2MapsKernel does not work with any meta-analysis estimator
+    if isinstance(meta.kernel_transformer, kernel.Peaks2MapsKernel):
+        # AttributeError: 'DataFrame' object has no attribute 'masker'
+        meta_expectation = pytest.raises(AttributeError)
+    elif isinstance(meta, ale.ALE) and isinstance(meta.kernel_transformer, kernel.KDAKernel):
+        meta_expectation = pytest.raises(IndexError)
+    else:
+        meta_expectation = does_not_raise()
+
+    with meta_expectation:
+        res = meta.fit(dataset)
+    # if creating the result failed (expected), do not continue
+    if isinstance(meta_expectation, type(pytest.raises(ValueError))):
+        pytest.xfail("this meta-analysis & kernel combo fails")
+    # instantiate meta-analysis estimator
+    return res
+
+
+###########################################
+# corrected results (testing)
+###########################################
+@pytest.fixture(scope="session")
+def meta_cres(meta, meta_res, corr):
+    return _transform_res(meta, meta_res, corr)
+
+
+###########################################
+# corrected results (smoke)
+###########################################
+@pytest.fixture(scope="session")
+def meta_cres_small(meta, meta_res, corr_small):
+    return _transform_res(meta, meta_res, corr_small)
+
+
+# --------------
+# TEST FUNCTIONS
+# --------------
+
+
+def test_meta_fit_smoke(meta_res):
+    assert isinstance(meta_res, MetaResult)
+
+
+def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
+    _, (ground_truth_foci, _) = simulatedata_cbma
+    mask = meta_res.masker.mask_img
+    ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
+    sig_idx, nonsig_idx = [
+        meta_res.masker.transform(img).astype(bool).squeeze() for img in signal_masks
+    ]
+
+    # kda and mkda estimators do not generate p-values
+    if isinstance(meta_res.estimator, mkda.MKDADensity):
+        p_val_expectation = pytest.raises(ValueError)
+    elif isinstance(meta_res.estimator, mkda.KDA):
+        p_val_expectation = pytest.raises(ValueError)
+    else:
+        p_val_expectation = does_not_raise()
+
+    with p_val_expectation:
+        p_array = meta_res.get_map("p", return_type="array")
+
+    if isinstance(p_val_expectation, type(pytest.raises(ValueError))):
+        pytest.xfail("this meta-analysis estimator does not generate p-values")
+
+    # poor performer(s)
+    if isinstance(meta_res.estimator, ale.ALE) and isinstance(
+        meta_res.estimator.kernel_transformer, kernel.MKDAKernel
+    ):
+        good_performance = False
+    else:
+        good_performance = True
+    _check_p_values(
+        p_array,
+        meta_res.masker,
+        sig_idx,
+        nonsig_idx,
+        ALPHA,
+        ground_truth_foci_ijks,
+        n_iters=None,
+        good_performance=good_performance,
+    )
+
+
+def test_corr_transform_smoke(meta_cres_small):
+    assert isinstance(meta_cres_small, MetaResult)
+
+
+def test_corr_transform_p_values(meta_cres, corr, signal_masks, simulatedata_cbma):
+    _, (ground_truth_foci, _) = simulatedata_cbma
+    mask = meta_cres.masker.mask_img
+    ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
+    sig_idx, nonsig_idx = [
+        meta_cres.masker.transform(img).astype(bool).squeeze() for img in signal_masks
+    ]
+
+    p_array = meta_cres.maps.get("p")
+    if p_array is None or corr.method == "montecarlo":
+        p_array = 10 ** -meta_cres.maps.get("logp_level-voxel_corr-FWE_method-montecarlo")
+
+    n_iters = corr.parameters.get("n_iters")
+
+    # ALE with MKDA kernel with montecarlo correction
+    # combination gives poor performance
+    if (
+        isinstance(meta_cres.estimator, ale.ALE)
+        and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
+        and isinstance(corr, (FDRCorrector, FWECorrector))
+    ):
+        good_performance = False
+    else:
+        good_performance = True
+
+    _check_p_values(
+        p_array,
+        meta_cres.masker,
+        sig_idx,
+        nonsig_idx,
+        ALPHA,
+        ground_truth_foci_ijks,
+        n_iters=n_iters,
+        good_performance=good_performance,
+    )
+
+
+# -----------------
+# UTILITY FUNCTIONS
+# -----------------
+
+
+def _create_signal_mask(ground_truth_foci_ijks, mask):
+    """
+    Creates complementary binary images to
+    identify areas of likely significance and areas
+    far from the likely results.
+
+    Parameters
+    ----------
+    ground_truth_foci_ijks : array_like
+        Ground truth ijk coordinates of foci.
+    mask : :obj:`nibabel.Nifti1Image`
+        Input mask to define shape and size of output binary masks
+
+    Returns
+    -------
+    sig_map : :obj:`nibabel.Nifti1Image`
+        Binary image representing regions around the
+        ground truth foci expected to be significant.
+    nonsig_map : :obj:`nibabel.Nifti1Image`
+        Binary image representing regions not expected
+        to be significant within the brain.
+    """
+    dims = mask.shape
+    vox_dims = mask.header.get_zooms()
+
+    # area where I'm reasonably certain there are significant results
+    sig_prob_map = compute_kda_ma(
+        dims,
+        vox_dims,
+        ground_truth_foci_ijks,
+        r=2,
+        value=1,
+        sum_overlap=False,
+    )
+
+    # area where I'm reasonably certain there are not significant results
+    nonsig_prob_map = compute_kda_ma(
+        dims,
+        vox_dims,
+        ground_truth_foci_ijks,
+        r=14,
+        value=1,
+        sum_overlap=False,
+    )
+    sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(int), affine=mask.affine)
+    nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(int), affine=mask.affine)
+    return sig_map, nonsig_map
+
+
+def _check_p_values(
+    p_array,
+    masker,
+    sig_idx,
+    nonsig_idx,
+    alpha,
+    ground_truth_foci_ijks,
+    n_iters=None,
+    good_performance=True,
+):
+    ################################################
+    # CHECK IF P-VALUES ARE WITHIN THE CORRECT RANGE
+    ################################################
+    if n_iters:
+        assert p_array.min() >= (1.0 / n_iters)
+        assert p_array.max() <= 1.0 - (1.0 / n_iters)
+    else:
+        assert (p_array >= 0).all() and (p_array <= 1).all()
+
+    p_map = masker.inverse_transform(p_array).get_fdata()
+
+    # reformat coordinate indices to index p_map
+    gtf_idx = [
+        [ground_truth_foci_ijks[i][j] for i in range(len(ground_truth_foci_ijks))]
+        for j in range(3)
+    ]
+
+    best_chance_p_values = p_map[gtf_idx]
+    assert all(best_chance_p_values < ALPHA) == good_performance
+
+    p_array_sig = p_array[sig_idx]
+    p_array_nonsig = p_array[nonsig_idx]
+
+    # assert that at least 50% of voxels surrounding the foci
+    # are significant at alpha = .05
+    observed_sig = p_array_sig < alpha
+    observed_sig_perc = observed_sig.sum() / len(observed_sig)
+    assert (observed_sig_perc >= 0.5) == good_performance
+
+    # assert that more than 95% of voxels farther away
+    # from foci are nonsignificant at alpha = 0.05
+    observed_nonsig = p_array_nonsig > alpha
+    observed_nonsig_perc = observed_nonsig.sum() / len(observed_nonsig)
+    assert np.isclose(observed_nonsig_perc, (1 - alpha), atol=0.05)
+
+
+def _transform_res(meta, meta_res, corr):
+    #######################################
+    # CHECK IF META/CORRECTOR WORK TOGETHER
+    #######################################
+    # all combinations of meta-analysis estimators and multiple comparison correctors
+    # that do not work together
+    if isinstance(meta, mkda.MKDADensity) and isinstance(corr, FDRCorrector):
+        # ValueError: <class 'nimare.correct.FDRCorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
+        corr_expectation = pytest.raises(ValueError)
+    elif isinstance(meta, mkda.KDA) and isinstance(corr, FDRCorrector):
+        # ValueError: <class 'nimare.correct.FDRCorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
+        corr_expectation = pytest.raises(ValueError)
+    elif isinstance(meta, mkda.MKDADensity) and corr.method == "bonferroni":
+        # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
+        corr_expectation = pytest.raises(ValueError)
+    elif isinstance(meta, mkda.KDA) and corr.method == "montecarlo":
+        # TypeError: correct_fwe_montecarlo() got an unexpected keyword argument 'voxel_thresh'
+        voxel_thresh = corr.parameters.pop("voxel_thresh")
+        corr_expectation = does_not_raise()
+    elif isinstance(meta, mkda.KDA) and corr.method == "bonferroni":
+        # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
+        # to be present in the MetaResult, but none were found.
+        corr_expectation = pytest.raises(ValueError)
+    elif (
+        isinstance(meta, ale.ALE)
+        and isinstance(meta.kernel_transformer, kernel.KDAKernel)
+        and corr.method == "montecarlo"
+    ):
+        # IndexError: index 20000 is out of bounds for axis 0 with size 10010
+        corr_expectation = pytest.raises(IndexError)
+    else:
+        corr_expectation = does_not_raise()
+
+    with corr_expectation:
+        cres = corr.transform(meta_res)
+
+    if corr.method == "montecarlo" and not corr.parameters.get("voxel_thresh"):
+        corr.parameters["voxel_thresh"] = voxel_thresh
+
+    # if multiple correction failed (expected) do not continue
+    if isinstance(corr_expectation, type(pytest.raises(ValueError))):
+        pytest.xfail("this meta-analysis & corrector combo fails")
+    return cres

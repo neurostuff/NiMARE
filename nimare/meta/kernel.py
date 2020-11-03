@@ -17,7 +17,7 @@ from nilearn import image
 from ..base import KernelTransformer
 from ..transforms import vox2mm
 from ..utils import get_masker
-from .utils import compute_ma, get_ale_kernel, peaks2maps
+from .utils import compute_ma, get_ale_kernel, peaks2maps, compute_kda_ma
 
 LGR = logging.getLogger(__name__)
 
@@ -288,18 +288,10 @@ class MKDAKernel(KernelTransformer):
 
         imgs = []
         for id_, data in coordinates.groupby("id"):
-            kernel_data = np.zeros(dims, dtype=type(self.value))
-            for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                xx, yy, zz = [
-                    slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
-                    for i in range(len(ijk))
-                ]
-                cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= self.r]
-                sphere = np.round(sphere.T + ijk)
-                idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
-                sphere = sphere[idx, :].astype(int)
-                kernel_data[tuple(sphere.T)] = self.value
+            ijks = np.vstack((data.i.values, data.j.values, data.k.values)).T
+            kernel_data = compute_kda_ma(
+                dims, vox_dims, ijks, r=self.r, value=self.value, sum_overlap=False
+            )
 
             # Generic KernelTransformer code
             if return_type == "array":
@@ -436,18 +428,15 @@ class KDAKernel(KernelTransformer):
         # Create MA maps
         imgs = []
         for id_, data in coordinates.groupby("id"):
-            kernel_data = np.zeros(dims, dtype=type(self.value))
-            for ijk in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                xx, yy, zz = [
-                    slice(-self.r // vox_dims[i], self.r // vox_dims[i] + 0.01, 1)
-                    for i in range(len(ijk))
-                ]
-                cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-                sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= self.r]
-                sphere = np.round(sphere.T + ijk)
-                idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, dims), 1) <= -1)
-                sphere = sphere[idx, :].astype(int)
-                kernel_data[tuple(sphere.T)] += self.value
+            ijks = np.vstack((data.i.values, data.j.values, data.k.values)).T
+            kernel_data = compute_kda_ma(
+                dims,
+                vox_dims,
+                ijks,
+                r=self.r,
+                value=self.value,
+                sum_overlap=True,
+            )
 
             # Generic KernelTransformer code
             if return_type == "array":
