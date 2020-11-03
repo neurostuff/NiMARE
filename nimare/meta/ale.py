@@ -169,7 +169,7 @@ class ALE(CBMAEstimator):
                 reduced_ma_values, bins=hist_bins, density=False
             )[0]
 
-        inv_step_size = int(np.round(1 / step_size))
+        inv_step_size = int(np.ceil(1 / step_size))
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
@@ -177,25 +177,27 @@ class ALE(CBMAEstimator):
         # Histogram of integrated values can have larger MA values than any
         # individual contrast, so use full [0, 1] range here.
         ale_hist = np.zeros((inv_step_size,))
-        ale_hist[np.floor(hist_bins * inv_step_size).astype(int)] = ma_hists[0, :]
+        ale_hist[np.round(hist_bins * inv_step_size).astype(int)] = ma_hists[0, :]
         all_bins = np.round(np.arange(0, 1, step_size), 4)
 
         for i_exp in range(1, ma_hists.shape[0]):
 
+            exp_hist = ma_hists[i_exp, :]
+
             # Find histogram bins with nonzero values for each histogram.
             ale_idx = np.where(ale_hist > 0)[0]
-            exp_idx = np.where(ma_hists[i_exp, :] > 0)[0]
-
-            if not ale_idx.size or not exp_idx.size:
-                continue
+            exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
             ale_scores = 1 - np.outer(
                 1 - hist_bins[exp_idx], 1 - all_bins[ale_idx]).ravel()
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
             probabilities = np.outer(
-                ma_hists[i_exp, exp_idx], ale_hist[ale_idx]).ravel()
+                exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
+            # Reset histogram and set probabilities. Use at() because there can
+            # be redundant values in score_idx.
+            ale_hist = np.zeros((inv_step_size,))
             np.add.at(ale_hist, score_idx, probabilities)
 
         # Convert aleHist into null distribution. The value in each bin
