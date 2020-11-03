@@ -169,36 +169,34 @@ class ALE(CBMAEstimator):
                 reduced_ma_values, bins=hist_bins, density=False
             )[0]
 
-        # Inverse of step size in histBins
-        step = 1 / step_size
+        inv_step_size = int(np.round(1 / step_size))
 
-        # Null distribution to convert ALE to p-values.
-        ale_hist = ma_hists[0, :]
+        # Normalize MA histograms to get probabilities
+        ma_hists /= ma_hists.sum(1)[:, None]
+
+        # Histogram of integrated values can have larger MA values than any
+        # individual contrast, so use full [0, 1] range here.
+        ale_hist = np.zeros((inv_step_size,))
+        ale_hist[np.floor(hist_bins * inv_step_size).astype(int)] = ma_hists[0, :]
+        all_bins = np.round(np.arange(0, 1, step_size), 4)
+
         for i_exp in range(1, ma_hists.shape[0]):
-            temp_hist = np.copy(ale_hist)
-            ma_hist = np.copy(ma_hists[i_exp, :])
 
             # Find histogram bins with nonzero values for each histogram.
-            ale_idx = np.where(temp_hist > 0)[0]
-            exp_idx = np.where(ma_hist > 0)[0]
+            ale_idx = np.where(ale_hist > 0)[0]
+            exp_idx = np.where(ma_hists[i_exp, :] > 0)[0]
 
-            # Normalize histograms.
-            temp_hist /= np.sum(temp_hist)
-            ma_hist /= np.sum(ma_hist)
+            if not ale_idx.size or not exp_idx.size:
+                continue
 
-            # Perform weighted convolution of histograms.
-            ale_hist = np.zeros(self.null_distributions_["histogram_bins"].shape[0])
-            for j_idx in exp_idx:
-                # Compute probabilities of observing each ALE value in histBins
-                # by randomly combining maps represented by maHist and aleHist.
-                # Add observed probabilities to corresponding bins in ALE
-                # histogram.
-                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - self.null_distributions_["histogram_bins"][j_idx]) * (
-                    1 - self.null_distributions_["histogram_bins"][ale_idx]
-                )
-                score_idx = np.floor(ale_scores * step).astype(int)
-                np.add.at(ale_hist, score_idx, probabilities)
+            # Compute output MA values, ale_hist indices, and probabilities
+            ale_scores = 1 - np.outer(
+                1 - hist_bins[exp_idx], 1 - all_bins[ale_idx]).ravel()
+            score_idx = np.floor(ale_scores * inv_step_size).astype(int)
+            probabilities = 1 - np.outer(
+                1 - ma_hists[i_exp, exp_idx], 1 - ale_hist[ale_idx]).ravel()
+
+            np.add.at(ale_hist, score_idx, probabilities)
 
         # Convert aleHist into null distribution. The value in each bin
         # represents the probability of finding an ALE value (stored in
