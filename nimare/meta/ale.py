@@ -44,6 +44,8 @@ class ALE(CBMAEstimator):
     kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
+    null : {"analytic", "empirical"}, optional
+        Method by which to determine uncorrected p-values.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -83,13 +85,18 @@ class ALE(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, kernel_transformer=ALEKernel, **kwargs):
+    def __init__(self, kernel_transformer=ALEKernel, null="analytic", n_iters=10000, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer, **kwargs
+        )
+        self.null = null
+        self.n_iters = n_iters
         self.dataset = None
         self.results = None
 
     def _fit(self, dataset):
+        """Estimator-specific fitting function."""
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
@@ -97,9 +104,13 @@ class ALE(CBMAEstimator):
         ma_maps = self.kernel_transformer.transform(
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
-        ale_values = self._compute_ale(ma_maps)
-        self._compute_null(ma_maps)  # Determine null distributions for ALE to p conversion
-        p_values, z_values = self._ale_to_p(ale_values)
+        ale_values = self._compute_summarystat(ma_maps)
+        # Determine null distributions for summary stat (ALE) to p conversion
+        if self.null == "analytic":
+            self._compute_null_analytic(ma_maps)
+        else:
+            self._compute_null_empirical(ma_maps, n_iters=self.n_iters)
+        p_values, z_values = self._summarystat_to_p(ale_values, method=self.null)
 
         images = {
             "ale": ale_values,
@@ -108,10 +119,21 @@ class ALE(CBMAEstimator):
         }
         return images
 
-    def _compute_ale(self, data):
-        """
-        Generate ALE-value array from MA values.
-        Returns masked array of ALE values.
+    def _compute_summarystat(self, data):
+        """Compute ALE scores from data.
+
+        Parameters
+        ----------
+        data : array, pandas.DataFrame, or list of img_like
+            Data from which to estimate ALE scores.
+            The data can be (1) a contrast-by-voxel array of MA values,
+            (2) a DataFrame containing coordinates to produce MA values,
+            or (3) a list of imgs containing MA values.
+
+        Returns
+        -------
+        stat_values : 1d array
+            ALE values. One value per voxel.
         """
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
@@ -124,15 +146,40 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        ale_values = np.ones(ma_values.shape[1])
+        stat_values = np.ones(ma_values.shape[1])
         for i in range(ma_values.shape[0]):
-            ale_values *= 1.0 - ma_values[i, :]
-        ale_values = 1 - ale_values
-        return ale_values
+            stat_values *= 1.0 - ma_values[i, :]
+        stat_values = 1 - stat_values
+        return stat_values
 
-    def _compute_null(self, ma_maps):
+    def _compute_null_empirical(self, ma_maps, n_iters=10000):
+        """Compute uncorrected ALE null distribution using empirical method.
+
+        Parameters
+        ----------
+        ma_maps : (C x V) array
+            Contrast by voxel array of MA values.
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute:
+        "empirical_null".
         """
-        Compute uncorrected ALE-value null distribution from MA values.
+        n_studies, n_voxels = ma_maps.shape
+        null_distribution = np.zeros(n_iters)
+        for i_iter in range(n_iters):
+            # One random MA value per study
+            null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
+            iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
+            # Calculate ALE
+            iter_ma_values = 1 - iter_ma_values
+            iter_ale_value = 1 - np.prod(iter_ma_values)
+            # Retain value in null distribution
+            null_distribution[i_iter] = iter_ale_value
+        self.null_distributions_["empirical_null"] = null_distribution
+
+    def _compute_null_analytic(self, ma_maps):
+        """Compute uncorrected ALE null distribution using analytic solution.
 
         Parameters
         ----------
@@ -141,7 +188,7 @@ class ALE(CBMAEstimator):
 
         Notes
         -----
-        This method sets two parameters in the null_distributions_ attribute:
+        This method adds two entries to the null_distributions_ dict attribute:
         "histogram_bins" and "histogram_weights".
         """
         if isinstance(ma_maps, list):
@@ -213,18 +260,50 @@ class ALE(CBMAEstimator):
         null_distribution /= np.max(null_distribution)
         self.null_distributions_["histogram_weights"] = null_distribution
 
-    def _ale_to_p(self, ale_values):
+    def _summarystat_to_p(self, stat_values, method="analytic"):
         """
-        Compute p- and z-values.
+        Compute p- and z-values from summary statistics (e.g., ALE scores) and
+        either histograms from analytic null or null distribution from
+        empirical null.
+
+        Parameters
+        ----------
+        stat_values : 1D array_like
+            Array of summary statistic values from estimator.
+        method : {"analytic", "empirical"}, optional
+            Whether to use analytic null or empirical null.
+            Default is "analytic".
+
+        Returns
+        -------
+        p_values, z_values : 1D array
+            P- and Z-values for statistic values.
+            Same shape as stat_values.
         """
-        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+        p_values = np.ones(stat_values.shape)
 
-        # Determine p- and z-values from ALE values and null distribution.
-        p_values = np.ones(ale_values.shape)
+        if method == "analytic":
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histogram_weights" in self.null_distributions_.keys()
 
-        idx = np.where(ale_values > 0)[0]
-        ale_bins = round2(ale_values[idx] * step)
-        p_values[idx] = self.null_distributions_["histogram_weights"][ale_bins]
+            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+
+            # Determine p- and z-values from ALE values and null distribution.
+            idx = np.where(stat_values > 0)[0]
+            stat_bins = round2(stat_values[idx] * step)
+            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+        elif method == "empirical":
+            assert "empirical_null" in self.null_distributions_.keys()
+
+            for i_voxel in range(stat_values.shape[0]):
+                p_values[i_voxel] = null_to_p(
+                    stat_values[i_voxel],
+                    self.null_distributions_["empirical_null"],
+                    tail="upper",
+                )
+        else:
+            raise ValueError("Argument 'method' must be one of: 'analytic', " "'empirical'.")
+
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 
@@ -236,8 +315,8 @@ class ALE(CBMAEstimator):
         iter_df, iter_ijk, conn, z_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
-        ale_values = self._compute_ale(iter_df)
-        _, z_values = self._ale_to_p(ale_values)
+        ale_values = self._compute_summarystat(iter_df)
+        _, z_values = self._summarystat_to_p(ale_values, method=self.null)
         iter_max_value = np.max(ale_values)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
@@ -612,7 +691,7 @@ class SCALE(CBMAEstimator):
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
 
-        ale_values = self._compute_ale(ma_maps)
+        ale_values = self._compute_summarystat(ma_maps)
 
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.ijk.shape[0], size=(iter_df.shape[0], self.n_iters))
@@ -666,7 +745,7 @@ class SCALE(CBMAEstimator):
         }
         return images
 
-    def _compute_ale(self, data):
+    def _compute_summarystat(self, data):
         """
         Generate ALE-value array and null distribution from list of contrasts.
         For ALEs on the original dataset, computes the null distribution.
@@ -765,5 +844,5 @@ class SCALE(CBMAEstimator):
         iter_df, iter_ijk = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
-        ale_values = self._compute_ale(iter_df)
+        ale_values = self._compute_summarystat(iter_df)
         return ale_values
