@@ -46,6 +46,10 @@ class ALE(CBMAEstimator):
         ALEKernel.
     null : {"analytic", "empirical"}, optional
         Method by which to determine uncorrected p-values.
+    n_iters : int, optional
+        Number of iterations to use to define the null distribution.
+        This is only used if ``null=="empirical"``.
+        Default is 10000.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
