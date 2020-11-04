@@ -91,9 +91,7 @@ class ALE(CBMAEstimator):
 
     def __init__(self, kernel_transformer=ALEKernel, null="analytic", n_iters=10000, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(
-            kernel_transformer=kernel_transformer, **kwargs
-        )
+        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null = null
         self.n_iters = n_iters
         self.dataset = None
@@ -109,6 +107,7 @@ class ALE(CBMAEstimator):
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
         ale_values = self._compute_summarystat(ma_maps)
+
         # Determine null distributions for summary stat (ALE) to p conversion
         if self.null == "analytic":
             self._compute_null_analytic(ma_maps)
