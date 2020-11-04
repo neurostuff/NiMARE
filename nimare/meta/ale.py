@@ -151,10 +151,7 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        stat_values = np.ones(ma_values.shape[1])
-        for i in range(ma_values.shape[0]):
-            stat_values *= 1.0 - ma_values[i, :]
-        stat_values = 1 - stat_values
+        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
@@ -203,11 +200,8 @@ class ALE(CBMAEstimator):
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
         # Determine bins for null distribution histogram
-        max_poss_ale = 1.0
         max_ma_values = np.max(ma_values, axis=1)
-        for ma_value in max_ma_values:
-            max_poss_ale *= 1 - ma_value
-        max_poss_ale = 1 - max_poss_ale
+        max_poss_ale = self._compute_summarystat(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
@@ -546,17 +540,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         # Get ALE values for first group.
         grp1_ma_arr = ma_arr[:n_grp1, :]
-        grp1_ale_values = np.ones(n_voxels)
-        for i_exp in range(grp1_ma_arr.shape[0]):
-            grp1_ale_values *= 1.0 - grp1_ma_arr[i_exp, :]
-        grp1_ale_values = 1 - grp1_ale_values
+        grp1_ale_values = 1.0 - np.prod(1.0 - grp1_ma_arr, axis=0)
 
         # Get ALE values for second group.
         grp2_ma_arr = ma_arr[n_grp1:, :]
-        grp2_ale_values = np.ones(n_voxels)
-        for i_exp in range(grp2_ma_arr.shape[0]):
-            grp2_ale_values *= 1.0 - grp2_ma_arr[i_exp, :]
-        grp2_ale_values = 1 - grp2_ale_values
+        grp2_ale_values = 1.0 - np.prod(1.0 - grp2_ma_arr, axis=0)
 
         diff_ale_values = grp1_ale_values - grp2_ale_values
 
@@ -573,16 +561,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         for i_iter in range(self.n_iters):
             np.random.shuffle(id_idx)
-            iter_grp1_ale_values = np.ones(n_voxels, dtype=ma_arr.dtype)
-            for j_exp in id_idx[:n_grp1]:
-                iter_grp1_ale_values *= 1.0 - ma_arr[j_exp, :]
-            iter_grp1_ale_values = 1 - iter_grp1_ale_values
-
-            iter_grp2_ale_values = np.ones(n_voxels, dtype=ma_arr.dtype)
-            for j_exp in id_idx[n_grp1:]:
-                iter_grp2_ale_values *= 1.0 - ma_arr[j_exp, :]
-            iter_grp2_ale_values = 1 - iter_grp2_ale_values
-
+            iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
+            iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
             iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
             del iter_grp1_ale_values, iter_grp2_ale_values
             if self.low_memory:
@@ -686,11 +666,8 @@ class SCALE(CBMAEstimator):
         )
 
         # Determine bins for null distribution histogram
-        max_poss_ale = 1.0
         max_ma_values = np.max(ma_maps, axis=1)
-        for ma_value in max_ma_values:
-            max_poss_ale *= 1 - ma_value
-        max_poss_ale = 1 - max_poss_ale
+        max_poss_ale = self._compute_summarystat(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
@@ -767,12 +744,8 @@ class SCALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        ale_values = np.ones(ma_values.shape[1])
-        for i in range(ma_values.shape[0]):
-            ale_values *= 1.0 - ma_values[i, :]
-
-        ale_values = 1 - ale_values
-        return ale_values
+        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+        return stat_values
 
     def _scale_to_p(self, ale_values, scale_values):
         """
