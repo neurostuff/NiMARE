@@ -19,7 +19,6 @@ uploaded by Dr. Camille Maumet.
 """
 import os
 
-import numpy as np
 from nilearn.plotting import plot_stat_map
 
 import nimare
@@ -47,7 +46,11 @@ kernel_transformers = {
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        mkda = nimare.meta.mkda.MKDADensity(kernel_transformer=kt)
+        mkda = nimare.meta.mkda.MKDADensity(
+            kernel_transformer=kt,
+            null="empirical",
+            n_iters=100
+        )
         mkda.fit(dset)
         corr = nimare.correct.FWECorrector(
             method="montecarlo", n_iters=10, n_cores=1
@@ -102,7 +105,11 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        kda = nimare.meta.mkda.KDA(kernel_transformer=kt)
+        kda = nimare.meta.mkda.KDA(
+            kernel_transformer=kt,
+            null="empirical",
+            n_iters=100
+        )
         kda.fit(dset)
         corr = nimare.correct.FWECorrector(
             method="montecarlo", n_iters=10, n_cores=1
