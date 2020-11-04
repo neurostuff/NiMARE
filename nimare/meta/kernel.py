@@ -165,7 +165,7 @@ class KernelTransformer(Transformer):
         transformed_maps = self._apply_kernel(mask, coordinates)
 
         imgs = []
-        for (kernel_data, id_)  in transformed_maps:
+        for (kernel_data, id_) in transformed_maps:
             if return_type == "array":
                 img = kernel_data[mask_data]
                 imgs.append(img)
@@ -243,7 +243,7 @@ class ALEKernel(KernelTransformer):
             kernel_data = compute_ma(mask.shape, ijk, kern)
             transformed.append((kernel_data, id_))
 
-        return kernel_data
+        return transformed
 
 
 class MKDAKernel(KernelTransformer):
