@@ -147,7 +147,8 @@ class KernelTransformer(Transformer):
         if return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         elif return_type == "image":
-            mask_data = mask.get_fdata().astype(float)
+            dtype = type(self.value) if hasattr(self, 'value') else float
+            mask_data = mask.get_fdata().astype(dtype)
         elif return_type == "dataset":
             dataset = dataset.copy()
             if dataset.basepath is None:
