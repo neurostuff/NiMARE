@@ -6,6 +6,7 @@ import multiprocessing as mp
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from scipy import ndimage, special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
@@ -15,6 +16,7 @@ from ..base import CBMAEstimator, PairwiseCBMAEstimator
 from ..due import due
 from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
+from ..utils import round2
 from .kernel import KDAKernel, MKDAKernel
 
 LGR = logging.getLogger(__name__)
@@ -49,10 +51,11 @@ class MKDADensity(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, kernel_transformer=MKDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=MKDAKernel, null="empirical", n_iters=10000, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
-
+        self.null = null
+        self.n_iters = n_iters
         self.dataset = None
         self.results = None
 
@@ -90,24 +93,142 @@ class MKDADensity(CBMAEstimator):
             )
         else:
             weight_vec = np.ones((ma_values.shape[0], 1))
-        self.weight_vec = weight_vec
+        self.weight_vec_ = weight_vec
 
-        ma_values = ma_values * self.weight_vec
-        of_values = np.sum(ma_values, axis=0)
+        ma_values = ma_values * self.weight_vec_
+        of_values = self._compute_summarystat(ma_values)
+
+        # Determine null distributions for summary stat (OF) to p conversion
+        if self.null == "analytic":
+            raise ValueError("'analytic' null distribution estimation is not yet supported.")
+        else:
+            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
+        p_values, z_values = self._summarystat_to_p(of_values, method=self.null)
 
         images = {
             "of": of_values,
+            "p": p_values,
+            "z": z_values,
         }
         return images
 
+    def _compute_summarystat(self, data):
+        """Compute OF scores from data.
+
+        Parameters
+        ----------
+        data : array, pandas.DataFrame, or list of img_like
+            Data from which to estimate ALE scores.
+            The data can be:
+            (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
+            (2) a DataFrame containing coordinates to produce MA values,
+            or (3) a list of imgs containing MA values.
+
+        Returns
+        -------
+        stat_values : 1d array
+            OF values. One value per voxel.
+        """
+        if isinstance(data, pd.DataFrame):
+            ma_values = self.kernel_transformer.transform(
+                data, masker=self.masker, return_type="array"
+            )
+        elif isinstance(data, list):
+            ma_values = self.masker.transform(data)
+        elif isinstance(data, np.ndarray):
+            ma_values = data.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+
+        # OF is just a sum of MA values.
+        stat_values = np.sum(ma_values, axis=0)
+        return stat_values
+
+    def _compute_null_empirical(self, ma_maps, n_iters=10000):
+        """Compute uncorrected null distribution using empirical method.
+
+        Parameters
+        ----------
+        ma_maps : (C x V) array
+            Contrast by voxel array of MA values.
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute:
+        "empirical_null".
+        """
+        n_studies, n_voxels = ma_maps.shape
+        null_distribution = np.zeros(n_iters)
+        for i_iter in range(n_iters):
+            # One random MA value per study
+            null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
+            iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
+            # Calculate summary statistic
+            iter_ma_values *= self.weight_vec_
+            iter_ss_value = self._compute_summarystat(iter_ma_values)
+            # Retain value in null distribution
+            null_distribution[i_iter] = iter_ss_value
+        self.null_distributions_["empirical_null"] = null_distribution
+
+    def _summarystat_to_p(self, stat_values, method="analytic"):
+        """
+        Compute p- and z-values from summary statistics (e.g., ALE scores) and
+        either histograms from analytic null or null distribution from
+        empirical null.
+
+        Parameters
+        ----------
+        stat_values : 1D array_like
+            Array of summary statistic values from estimator.
+        method : {"analytic", "empirical"}, optional
+            Whether to use analytic null or empirical null.
+            Default is "analytic".
+
+        Returns
+        -------
+        p_values, z_values : 1D array
+            P- and Z-values for statistic values.
+            Same shape as stat_values.
+        """
+        p_values = np.ones(stat_values.shape)
+
+        if method == "analytic":
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histogram_weights" in self.null_distributions_.keys()
+
+            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+
+            # Determine p- and z-values from ALE values and null distribution.
+            idx = np.where(stat_values > 0)[0]
+            stat_bins = round2(stat_values[idx] * step)
+            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+        elif method == "empirical":
+            assert "empirical_null" in self.null_distributions_.keys()
+
+            for i_voxel in range(stat_values.shape[0]):
+                p_values[i_voxel] = null_to_p(
+                    stat_values[i_voxel],
+                    self.null_distributions_["empirical_null"],
+                    tail="upper",
+                )
+        else:
+            raise ValueError("Argument 'method' must be one of: 'analytic', " "'empirical'.")
+
+        z_values = p_to_z(p_values, tail="one")
+        return p_values, z_values
+
     def _run_fwe_permutation(self, params):
+        """
+        Run a single Monte Carlo permutation of a dataset. Does the shared work
+        between vFWE and cFWE.
+        """
         iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ma_maps = iter_ma_maps * self.weight_vec
+        iter_ma_maps = iter_ma_maps * self.weight_vec_
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = self.masker.inverse_transform(iter_of_map)
@@ -562,10 +683,11 @@ class KDA(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, kernel_transformer=KDAKernel, **kwargs):
+    def __init__(self, kernel_transformer=KDAKernel, null="empirical", n_iters=10000, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
-
+        self.null = null
+        self.n_iters = n_iters
         self.dataset = None
         self.results = None
 
@@ -582,14 +704,133 @@ class KDA(CBMAEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_maps = self.kernel_transformer.transform(
+        ma_values = self.kernel_transformer.transform(
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
-        of_values = np.sum(ma_maps, axis=0)
-        images = {"of": of_values}
+        of_values = self._compute_summarystat(ma_values)
+
+        # Determine null distributions for summary stat (OF) to p conversion
+        if self.null == "analytic":
+            raise ValueError("'analytic' null distribution estimation is not yet supported.")
+        else:
+            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
+        p_values, z_values = self._summarystat_to_p(of_values, method=self.null)
+
+        images = {
+            "of": of_values,
+            "p": p_values,
+            "z": z_values,
+        }
         return images
 
+    def _compute_summarystat(self, data):
+        """Compute OF scores from data.
+
+        Parameters
+        ----------
+        data : array, pandas.DataFrame, or list of img_like
+            Data from which to estimate ALE scores.
+            The data can be:
+            (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
+            (2) a DataFrame containing coordinates to produce MA values,
+            or (3) a list of imgs containing MA values.
+
+        Returns
+        -------
+        stat_values : 1d array
+            OF values. One value per voxel.
+        """
+        if isinstance(data, pd.DataFrame):
+            ma_values = self.kernel_transformer.transform(
+                data, masker=self.masker, return_type="array"
+            )
+        elif isinstance(data, list):
+            ma_values = self.masker.transform(data)
+        elif isinstance(data, np.ndarray):
+            ma_values = data.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+
+        # OF is just a sum of MA values.
+        stat_values = np.sum(ma_values, axis=0)
+        return stat_values
+
+    def _compute_null_empirical(self, ma_maps, n_iters=10000):
+        """Compute uncorrected null distribution using empirical method.
+
+        Parameters
+        ----------
+        ma_maps : (C x V) array
+            Contrast by voxel array of MA values.
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute:
+        "empirical_null".
+        """
+        n_studies, n_voxels = ma_maps.shape
+        null_distribution = np.zeros(n_iters)
+        for i_iter in range(n_iters):
+            # One random MA value per study
+            null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
+            iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
+            # Calculate summary statistic
+            iter_ss_value = self._compute_summarystat(iter_ma_values)
+            # Retain value in null distribution
+            null_distribution[i_iter] = iter_ss_value
+        self.null_distributions_["empirical_null"] = null_distribution
+
+    def _summarystat_to_p(self, stat_values, method="analytic"):
+        """
+        Compute p- and z-values from summary statistics (e.g., ALE scores) and
+        either histograms from analytic null or null distribution from
+        empirical null.
+
+        Parameters
+        ----------
+        stat_values : 1D array_like
+            Array of summary statistic values from estimator.
+        method : {"analytic", "empirical"}, optional
+            Whether to use analytic null or empirical null.
+            Default is "analytic".
+
+        Returns
+        -------
+        p_values, z_values : 1D array
+            P- and Z-values for statistic values.
+            Same shape as stat_values.
+        """
+        p_values = np.ones(stat_values.shape)
+
+        if method == "analytic":
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histogram_weights" in self.null_distributions_.keys()
+
+            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+
+            # Determine p- and z-values from ALE values and null distribution.
+            idx = np.where(stat_values > 0)[0]
+            stat_bins = round2(stat_values[idx] * step)
+            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+        elif method == "empirical":
+            assert "empirical_null" in self.null_distributions_.keys()
+
+            for i_voxel in range(stat_values.shape[0]):
+                p_values[i_voxel] = null_to_p(
+                    stat_values[i_voxel],
+                    self.null_distributions_["empirical_null"],
+                    tail="upper",
+                )
+        else:
+            raise ValueError("Argument 'method' must be one of: 'analytic', " "'empirical'.")
+
+        z_values = p_to_z(p_values, tail="one")
+        return p_values, z_values
+
     def _run_fwe_permutation(self, params):
+        """
+        Run a single Monte Carlo permutation of a dataset. Does vFWE, but not cFWE.
+        """
         iter_ijk, iter_df = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk

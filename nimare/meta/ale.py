@@ -127,9 +127,10 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        data : array, pandas.DataFrame, or list of img_like
+        data : (S [x V]) array, pandas.DataFrame, or list of img_like
             Data from which to estimate ALE scores.
-            The data can be (1) a contrast-by-voxel array of MA values,
+            The data can be:
+            (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
             (2) a DataFrame containing coordinates to produce MA values,
             or (3) a list of imgs containing MA values.
 
@@ -145,6 +146,7 @@ class ALE(CBMAEstimator):
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
         elif isinstance(data, np.ndarray):
+            assert data.ndim in (1, 2)
             ma_values = data.copy()
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
@@ -175,10 +177,9 @@ class ALE(CBMAEstimator):
             null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
             iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
             # Calculate ALE
-            iter_ma_values = 1 - iter_ma_values
-            iter_ale_value = 1 - np.prod(iter_ma_values)
+            iter_ss_value = self._compute_summarystat(iter_ma_values)
             # Retain value in null distribution
-            null_distribution[i_iter] = iter_ale_value
+            null_distribution[i_iter] = iter_ss_value
         self.null_distributions_["empirical_null"] = null_distribution
 
     def _compute_null_analytic(self, ma_maps):
