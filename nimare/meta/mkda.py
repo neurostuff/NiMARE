@@ -93,8 +93,8 @@ class MKDADensity(CBMAEstimator):
             )
         else:
             weight_vec = np.ones((ma_values.shape[0], 1))
-        self.weight_vec_ = weight_vec
-
+        self.weight_vec_ = weight_vec  # C x 1 array
+        assert self.weight_vec_.shape[0] == ma_values.shape[0]
         ma_values = ma_values * self.weight_vec_
         of_values = self._compute_summarystat(ma_values)
 
@@ -158,13 +158,15 @@ class MKDADensity(CBMAEstimator):
         "empirical_null".
         """
         n_studies, n_voxels = ma_maps.shape
+        weight_vec = np.squeeze(self.weight_vec_)  # cannot have singleton
+        assert weight_vec.ndim == 1
         null_distribution = np.zeros(n_iters)
         for i_iter in range(n_iters):
             # One random MA value per study
             null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
             iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
             # Calculate summary statistic
-            iter_ma_values *= self.weight_vec_
+            iter_ma_values *= weight_vec
             iter_ss_value = self._compute_summarystat(iter_ma_values)
             # Retain value in null distribution
             null_distribution[i_iter] = iter_ss_value
