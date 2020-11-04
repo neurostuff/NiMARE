@@ -207,13 +207,7 @@ def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
     ]
 
     # all estimators generate p-values
-    p_val_expectation = does_not_raise()
-
-    with p_val_expectation:
-        p_array = meta_res.get_map("p", return_type="array")
-
-    if isinstance(p_val_expectation, type(pytest.raises(ValueError))):
-        pytest.xfail("this meta-analysis estimator does not generate p-values")
+    p_array = meta_res.get_map("p", return_type="array")
 
     # poor performer(s)
     if isinstance(meta_res.estimator, ale.ALE) and isinstance(
