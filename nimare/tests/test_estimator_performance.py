@@ -206,13 +206,8 @@ def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
         meta_res.masker.transform(img).astype(bool).squeeze() for img in signal_masks
     ]
 
-    # kda and mkda estimators do not generate p-values
-    if isinstance(meta_res.estimator, mkda.MKDADensity):
-        p_val_expectation = pytest.raises(ValueError)
-    elif isinstance(meta_res.estimator, mkda.KDA):
-        p_val_expectation = pytest.raises(ValueError)
-    else:
-        p_val_expectation = does_not_raise()
+    # all estimators generate p-values
+    p_val_expectation = does_not_raise()
 
     with p_val_expectation:
         p_array = meta_res.get_map("p", return_type="array")
