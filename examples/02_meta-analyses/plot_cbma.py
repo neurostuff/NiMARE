@@ -37,7 +37,7 @@ mask_img = dset.masker.mask_img
 # --------------------------------------------------
 mkda = nimare.meta.mkda.MKDADensity(
     kernel__r=10,
-    null="empirical",
+    null_method="empirical",
     n_iters=100
 )
 mkda.fit(dset)
@@ -87,7 +87,7 @@ plot_stat_map(
 # --------------------------------------------------
 kda = nimare.meta.mkda.KDA(
     kernel__r=10,
-    null="empirical",
+    null_method="empirical",
     n_iters=100
 )
 kda.fit(dset)

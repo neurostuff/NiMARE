@@ -51,10 +51,12 @@ class MKDADensity(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, kernel_transformer=MKDAKernel, null="empirical", n_iters=10000, **kwargs):
+    def __init__(
+        self, kernel_transformer=MKDAKernel, null_method="empirical", n_iters=10000, **kwargs
+    ):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
-        self.null = null
+        self.null_method = null_method
         self.n_iters = n_iters
         self.dataset = None
         self.results = None
@@ -99,11 +101,11 @@ class MKDADensity(CBMAEstimator):
         stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
-        if self.null == "analytic":
+        if self.null_method == "analytic":
             raise ValueError("'analytic' null distribution estimation is not yet supported.")
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
+        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
 
         images = {
             "stat": stat_values,
@@ -170,7 +172,7 @@ class MKDADensity(CBMAEstimator):
             null_distribution[i_iter] = iter_ss_value
         self.null_distributions_["empirical_null"] = null_distribution
 
-    def _summarystat_to_p(self, stat_values, method="analytic"):
+    def _summarystat_to_p(self, stat_values, null_method="analytic"):
         """
         Compute p- and z-values from summary statistics (e.g., ALE scores) and
         either histograms from analytic null or null distribution from
@@ -180,7 +182,7 @@ class MKDADensity(CBMAEstimator):
         ----------
         stat_values : 1D array_like
             Array of summary statistic values from estimator.
-        method : {"analytic", "empirical"}, optional
+        null_method : {"analytic", "empirical"}, optional
             Whether to use analytic null or empirical null.
             Default is "analytic".
 
@@ -192,7 +194,7 @@ class MKDADensity(CBMAEstimator):
         """
         p_values = np.ones(stat_values.shape)
 
-        if method == "analytic":
+        if null_method == "analytic":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
@@ -202,7 +204,7 @@ class MKDADensity(CBMAEstimator):
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
-        elif method == "empirical":
+        elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
 
             for i_voxel in range(stat_values.shape[0]):
@@ -212,7 +214,7 @@ class MKDADensity(CBMAEstimator):
                     tail="upper",
                 )
         else:
-            raise ValueError("Argument 'method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
@@ -711,10 +713,12 @@ class KDA(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, kernel_transformer=KDAKernel, null="empirical", n_iters=10000, **kwargs):
+    def __init__(
+        self, kernel_transformer=KDAKernel, null_method="empirical", n_iters=10000, **kwargs
+    ):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
-        self.null = null
+        self.null_method = null_method
         self.n_iters = n_iters
         self.dataset = None
         self.results = None
@@ -738,11 +742,11 @@ class KDA(CBMAEstimator):
         stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
-        if self.null == "analytic":
+        if self.null_method == "analytic":
             raise ValueError("'analytic' null distribution estimation is not yet supported.")
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
+        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
 
         images = {
             "stat": stat_values,

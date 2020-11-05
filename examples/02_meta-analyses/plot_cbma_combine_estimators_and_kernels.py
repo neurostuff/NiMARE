@@ -48,7 +48,7 @@ for kt_name, kt in kernel_transformers.items():
     try:
         mkda = nimare.meta.mkda.MKDADensity(
             kernel_transformer=kt,
-            null="empirical",
+            null_method="empirical",
             n_iters=100
         )
         mkda.fit(dset)
@@ -107,7 +107,7 @@ for kt_name, kt in kernel_transformers.items():
     try:
         kda = nimare.meta.mkda.KDA(
             kernel_transformer=kt,
-            null="empirical",
+            null_method="empirical",
             n_iters=100
         )
         kda.fit(dset)

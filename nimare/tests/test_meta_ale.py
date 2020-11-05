@@ -15,12 +15,12 @@ from nimare.meta import ale
 
 def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
     """
-    Unit test for ALE with analytic null
+    Unit test for ALE with analytic null_method
     """
     tmpdir = tmp_path_factory.mktemp("test_ALE_analytic_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null="analytic")
+    meta = ale.ALE(null_method="analytic")
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
@@ -89,12 +89,12 @@ def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
 
 def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
     """
-    Unit test for ALE with an empirical null
+    Unit test for ALE with an empirical null_method
     """
     tmpdir = tmp_path_factory.mktemp("test_ALE_empirical_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null="empirical", n_iters=1000)
+    meta = ale.ALE(null_method="empirical", n_iters=1000)
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()

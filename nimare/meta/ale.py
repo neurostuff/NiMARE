@@ -44,11 +44,11 @@ class ALE(CBMAEstimator):
     kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
-    null : {"analytic", "empirical"}, optional
+    null_method : {"analytic", "empirical"}, optional
         Method by which to determine uncorrected p-values.
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
-        This is only used if ``null=="empirical"``.
+        This is only used if ``null_method=="empirical"``.
         Default is 10000.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
@@ -89,10 +89,12 @@ class ALE(CBMAEstimator):
         "coordinates": ("coordinates", None),
     }
 
-    def __init__(self, kernel_transformer=ALEKernel, null="analytic", n_iters=10000, **kwargs):
+    def __init__(
+        self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
+    ):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
-        self.null = null
+        self.null_method = null_method
         self.n_iters = n_iters
         self.dataset = None
         self.results = None
@@ -109,11 +111,11 @@ class ALE(CBMAEstimator):
         stat_values = self._compute_summarystat(ma_maps)
 
         # Determine null distributions for summary stat (ALE) to p conversion
-        if self.null == "analytic":
+        if self.null_method == "analytic":
             self._compute_null_analytic(ma_maps)
         else:
             self._compute_null_empirical(ma_maps, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
+        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
 
         images = {
             "stat": stat_values,
@@ -258,7 +260,7 @@ class ALE(CBMAEstimator):
         null_distribution /= np.max(null_distribution)
         self.null_distributions_["histogram_weights"] = null_distribution
 
-    def _summarystat_to_p(self, stat_values, method="analytic"):
+    def _summarystat_to_p(self, stat_values, null_method="analytic"):
         """
         Compute p- and z-values from summary statistics (e.g., ALE scores) and
         either histograms from analytic null or null distribution from
@@ -268,7 +270,7 @@ class ALE(CBMAEstimator):
         ----------
         stat_values : 1D array_like
             Array of summary statistic values from estimator.
-        method : {"analytic", "empirical"}, optional
+        null_method : {"analytic", "empirical"}, optional
             Whether to use analytic null or empirical null.
             Default is "analytic".
 
@@ -280,7 +282,7 @@ class ALE(CBMAEstimator):
         """
         p_values = np.ones(stat_values.shape)
 
-        if method == "analytic":
+        if null_method == "analytic":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
@@ -290,7 +292,7 @@ class ALE(CBMAEstimator):
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
-        elif method == "empirical":
+        elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
 
             for i_voxel in range(stat_values.shape[0]):
@@ -300,7 +302,7 @@ class ALE(CBMAEstimator):
                     tail="upper",
                 )
         else:
-            raise ValueError("Argument 'method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
@@ -314,7 +316,7 @@ class ALE(CBMAEstimator):
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
         stat_values = self._compute_summarystat(iter_df)
-        _, z_values = self._summarystat_to_p(stat_values, method=self.null)
+        _, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
         iter_max_value = np.max(stat_values)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
