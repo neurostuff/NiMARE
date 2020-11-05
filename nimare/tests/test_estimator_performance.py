@@ -206,19 +206,8 @@ def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
         meta_res.masker.transform(img).astype(bool).squeeze() for img in signal_masks
     ]
 
-    # kda and mkda estimators do not generate p-values
-    if isinstance(meta_res.estimator, mkda.MKDADensity):
-        p_val_expectation = pytest.raises(ValueError)
-    elif isinstance(meta_res.estimator, mkda.KDA):
-        p_val_expectation = pytest.raises(ValueError)
-    else:
-        p_val_expectation = does_not_raise()
-
-    with p_val_expectation:
-        p_array = meta_res.get_map("p", return_type="array")
-
-    if isinstance(p_val_expectation, type(pytest.raises(ValueError))):
-        pytest.xfail("this meta-analysis estimator does not generate p-values")
+    # all estimators generate p-values
+    p_array = meta_res.get_map("p", return_type="array")
 
     # poor performer(s)
     if isinstance(meta_res.estimator, ale.ALE) and isinstance(
@@ -386,26 +375,10 @@ def _transform_res(meta, meta_res, corr):
     #######################################
     # all combinations of meta-analysis estimators and multiple comparison correctors
     # that do not work together
-    if isinstance(meta, mkda.MKDADensity) and isinstance(corr, FDRCorrector):
-        # ValueError: <class 'nimare.correct.FDRCorrector'> requires "p" maps
-        # to be present in the MetaResult, but none were found.
-        corr_expectation = pytest.raises(ValueError)
-    elif isinstance(meta, mkda.KDA) and isinstance(corr, FDRCorrector):
-        # ValueError: <class 'nimare.correct.FDRCorrector'> requires "p" maps
-        # to be present in the MetaResult, but none were found.
-        corr_expectation = pytest.raises(ValueError)
-    elif isinstance(meta, mkda.MKDADensity) and corr.method == "bonferroni":
-        # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
-        # to be present in the MetaResult, but none were found.
-        corr_expectation = pytest.raises(ValueError)
-    elif isinstance(meta, mkda.KDA) and corr.method == "montecarlo":
+    if isinstance(meta, mkda.KDA) and corr.method == "montecarlo":
         # TypeError: correct_fwe_montecarlo() got an unexpected keyword argument 'voxel_thresh'
         voxel_thresh = corr.parameters.pop("voxel_thresh")
         corr_expectation = does_not_raise()
-    elif isinstance(meta, mkda.KDA) and corr.method == "bonferroni":
-        # ValueError: <class 'nimare.correct.FWECorrector'> requires "p" maps
-        # to be present in the MetaResult, but none were found.
-        corr_expectation = pytest.raises(ValueError)
     elif (
         isinstance(meta, ale.ALE)
         and isinstance(meta.kernel_transformer, kernel.KDAKernel)

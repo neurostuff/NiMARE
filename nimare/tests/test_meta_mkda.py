@@ -15,7 +15,7 @@ def test_mkda_density_kernel_instance_with_kwargs(testdata_cbma):
     object's parameters should remain untouched.
     """
     kern = kernel.MKDAKernel(r=2)
-    meta = mkda.MKDADensity(kern, kernel__r=6)
+    meta = mkda.MKDADensity(kern, kernel__r=6, null_method="empirical", n_iters=100)
 
     assert meta.kernel_transformer.get_params().get("r") == 2
 
@@ -24,7 +24,7 @@ def test_mkda_density_kernel_class(testdata_cbma):
     """
     Smoke test for MKDADensity with a kernel transformer class.
     """
-    meta = mkda.MKDADensity(kernel.MKDAKernel, kernel__r=5)
+    meta = mkda.MKDADensity(kernel.MKDAKernel, kernel__r=5, null_method="empirical", n_iters=100)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
 
@@ -34,16 +34,28 @@ def test_mkda_density_kernel_instance(testdata_cbma):
     Smoke test for MKDADensity with a kernel transformer object.
     """
     kern = kernel.MKDAKernel(r=5)
-    meta = mkda.MKDADensity(kern)
+    meta = mkda.MKDADensity(kern, null_method="empirical", n_iters=100)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
+
+
+def test_mkda_density_analytic_null(testdata_cbma):
+    """
+    Smoke test for MKDADensity
+    """
+    meta = mkda.MKDADensity(null="analytic")
+    res = meta.fit(testdata_cbma)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
+    cres = corr.transform(res)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert isinstance(cres, nimare.results.MetaResult)
 
 
 def test_mkda_density(testdata_cbma):
     """
     Smoke test for MKDADensity
     """
-    meta = mkda.MKDADensity()
+    meta = mkda.MKDADensity(null_method="empirical", n_iters=100)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
@@ -89,13 +101,14 @@ def test_mkda_chi2_fwe_2core(testdata_cbma):
 
 def test_kda_density_fwe_1core(testdata_cbma):
     """
-    Smoke test for KDA
+    Smoke test for KDA with empirical null and FWE correction.
     """
-    meta = mkda.KDA()
+    meta = mkda.KDA(null_method="empirical", n_iters=100)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
+    assert res.get_map("p", return_type="array").dtype == np.float64
     assert isinstance(cres, nimare.results.MetaResult)
     assert (
         cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array").dtype

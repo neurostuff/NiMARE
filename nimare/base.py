@@ -330,6 +330,8 @@ class CBMAEstimator(MetaEstimator):
         }
 
         # Allow both instances and classes for the kernel transformer input.
+        from .meta.kernel import KernelTransformer
+
         if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
             kernel_transformer, KernelTransformer
         ):
@@ -459,60 +461,6 @@ class Transformer(NiMAREBase):
                 'Argument "dataset" must be a valid Dataset '
                 "object, not a {0}".format(type(dataset))
             )
-
-
-class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods in
-    :mod:`nimare.meta.kernel`.
-
-    Coordinate-based meta-analyses leverage coordinates reported in
-    neuroimaging papers to simulate the thresholded statistical maps from the
-    original analyses. This generally involves convolving each coordinate with
-    a kernel (typically a Gaussian or binary sphere) that may be weighted based
-    on some additional measure, such as statistic value or sample size.
-
-    Notes
-    -----
-    All extra (non-ijk) parameters for a given kernel should be overrideable as
-    parameters to __init__, so we can access them with get_params() and also
-    apply them to datasets with missing data.
-    """
-
-    def __init__(self):
-        pass
-
-    def _infer_names(self, **kwargs):
-        """
-        Determine the filename pattern for image files created with this transformer,
-        as well as the image type (i.e., the column for the Dataset.images DataFrame).
-        The parameters used to construct the filenames come from the transformer's
-        parameters (attributes saved in `__init__()`).
-
-        Parameters
-        ----------
-        **kwargs
-            Additional key/value pairs to incorporate into the image name.
-            A common example is the hash for the target template's affine.
-
-        Attributes
-        ----------
-        filename_pattern : str
-            Filename pattern for images that will be saved by the transformer.
-        image_type : str
-            Name of the corresponding column in the Dataset.images DataFrame.
-        """
-        params = self.get_params()
-        params = dict(**params, **kwargs)
-
-        # Determine names for kernel-specific files
-        keys = sorted(params.keys())
-        param_str = "_".join("{k}-{v}".format(k=k, v=str(params[k])) for k in keys)
-        self.filename_pattern = (
-            "study-[[id]]_{ps}_{n}.nii.gz".format(n=self.__class__.__name__, ps=param_str)
-            .replace("[[", "{")
-            .replace("]]", "}")
-        )
-        self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
 
 
 class Decoder(NiMAREBase):
