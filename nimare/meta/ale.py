@@ -152,7 +152,7 @@ class ALE(CBMAEstimator):
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
         stat_values = 1. - np.prod(1. - ma_values, axis=0)
-        return ale_values
+        return stat_values
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
         """Compute uncorrected ALE null distribution using empirical method.
