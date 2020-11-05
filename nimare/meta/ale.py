@@ -590,9 +590,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
 @due.dcite(
     references.SCALE,
-    description=(
-        "Introduces the specific co-activation likelihood estimation (SCALE) algorithm."
-    ),
+    description=("Introduces the specific co-activation likelihood estimation (SCALE) algorithm."),
 )
 class SCALE(CBMAEstimator):
     r"""

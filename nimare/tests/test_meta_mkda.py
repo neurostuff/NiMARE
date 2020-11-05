@@ -96,10 +96,7 @@ def test_kda_density_fwe_1core(testdata_cbma):
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
-    assert (
-        res.get_map("p", return_type="array").dtype
-        == np.float64
-    )
+    assert res.get_map("p", return_type="array").dtype == np.float64
     assert isinstance(cres, nimare.results.MetaResult)
     assert (
         cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array").dtype
