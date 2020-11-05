@@ -331,6 +331,7 @@ class CBMAEstimator(MetaEstimator):
 
         # Allow both instances and classes for the kernel transformer input.
         from .meta.kernel import KernelTransformer
+
         if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
             kernel_transformer, KernelTransformer
         ):

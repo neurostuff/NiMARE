@@ -161,7 +161,7 @@ class KernelTransformer(Transformer):
                     "Output directory does not exist. Set the path to an "
                     "existing folder with Dataset.update_path()."
                 )
-        
+
         transformed_maps = self._transform(mask, coordinates)
 
         imgs = []

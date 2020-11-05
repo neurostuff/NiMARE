@@ -6,6 +6,7 @@ import multiprocessing as mp
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from scipy import ndimage, special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
@@ -15,6 +16,7 @@ from ..base import CBMAEstimator, PairwiseCBMAEstimator
 from ..due import due
 from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
+from ..utils import round2
 from .kernel import KDAKernel, MKDAKernel
 
 LGR = logging.getLogger(__name__)
@@ -103,7 +105,7 @@ class MKDADensity(CBMAEstimator):
         p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
 
         images = {
-            "of": of_values,
+            "of": stat_values,
         }
         return images
 
