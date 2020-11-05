@@ -150,7 +150,8 @@ class MKDADensity(CBMAEstimator):
         Parameters
         ----------
         ma_maps : (C x V) array
-            Contrast by voxel array of MA values.
+            Contrast by voxel array of MA values, after weighting with
+            weight_vec.
 
         Notes
         -----
@@ -158,15 +159,12 @@ class MKDADensity(CBMAEstimator):
         "empirical_null".
         """
         n_studies, n_voxels = ma_maps.shape
-        weight_vec = np.squeeze(self.weight_vec_)  # cannot have singleton
-        assert weight_vec.ndim == 1
         null_distribution = np.zeros(n_iters)
         for i_iter in range(n_iters):
             # One random MA value per study
             null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
             iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
             # Calculate summary statistic
-            iter_ma_values *= weight_vec
             iter_ss_value = self._compute_summarystat(iter_ma_values)
             # Retain value in null distribution
             null_distribution[i_iter] = iter_ss_value
