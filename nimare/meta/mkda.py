@@ -198,9 +198,7 @@ class MKDADensity(CBMAEstimator):
         # Set up histogram with bins from 0 to max value + one bin
         N_BINS = 10000
         bins_max = max_poss_value + (max_poss_value / (N_BINS - 1))  # one extra bin
-        self.null_distributions_["histogram_bins"] = np.linspace(
-            0, bins_max, num=N_BINS
-        )
+        self.null_distributions_["histogram_bins"] = np.linspace(0, bins_max, num=N_BINS)
 
         ma_hists = np.zeros(
             (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
