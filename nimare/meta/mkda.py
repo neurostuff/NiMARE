@@ -105,7 +105,7 @@ class MKDADensity(CBMAEstimator):
             raise ValueError("'analytic' null distribution estimation is not yet supported.")
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
+        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {
             "stat": stat_values,
@@ -746,7 +746,7 @@ class KDA(CBMAEstimator):
             raise ValueError("'analytic' null distribution estimation is not yet supported.")
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
+        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {
             "stat": stat_values,
@@ -812,7 +812,7 @@ class KDA(CBMAEstimator):
             null_distribution[i_iter] = iter_ss_value
         self.null_distributions_["empirical_null"] = null_distribution
 
-    def _summarystat_to_p(self, stat_values, method="analytic"):
+    def _summarystat_to_p(self, stat_values, null_method="analytic"):
         """
         Compute p- and z-values from summary statistics (e.g., ALE scores) and
         either histograms from analytic null or null distribution from

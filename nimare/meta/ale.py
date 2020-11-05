@@ -115,7 +115,7 @@ class ALE(CBMAEstimator):
             self._compute_null_analytic(ma_maps)
         else:
             self._compute_null_empirical(ma_maps, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
+        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {
             "stat": stat_values,
@@ -316,7 +316,7 @@ class ALE(CBMAEstimator):
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
         stat_values = self._compute_summarystat(iter_df)
-        _, z_values = self._summarystat_to_p(stat_values, method=self.null_method)
+        _, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
         iter_max_value = np.max(stat_values)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
