@@ -822,7 +822,7 @@ class KDA(CBMAEstimator):
         ----------
         stat_values : 1D array_like
             Array of summary statistic values from estimator.
-        method : {"analytic", "empirical"}, optional
+        null_method : {"analytic", "empirical"}, optional
             Whether to use analytic null or empirical null.
             Default is "analytic".
 
@@ -834,7 +834,7 @@ class KDA(CBMAEstimator):
         """
         p_values = np.ones(stat_values.shape)
 
-        if method == "analytic":
+        if null_method == "analytic":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
@@ -844,7 +844,7 @@ class KDA(CBMAEstimator):
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
-        elif method == "empirical":
+        elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
 
             for i_voxel in range(stat_values.shape[0]):
@@ -854,7 +854,7 @@ class KDA(CBMAEstimator):
                     tail="upper",
                 )
         else:
-            raise ValueError("Argument 'method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
