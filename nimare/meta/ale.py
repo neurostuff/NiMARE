@@ -79,9 +79,7 @@ class ALE(CBMAEstimator):
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(self, kernel_transformer=ALEKernel, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
@@ -101,11 +99,7 @@ class ALE(CBMAEstimator):
         self._compute_null(ma_maps)  # Determine null distributions for ALE to p conversion
         p_values, z_values = self._ale_to_p(ale_values)
 
-        images = {
-            "ale": ale_values,
-            "p": p_values,
-            "z": z_values,
-        }
+        images = {"ale": ale_values, "p": p_values, "z": z_values}
         return images
 
     def _compute_ale(self, data):
@@ -156,29 +150,21 @@ class ALE(CBMAEstimator):
         hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
         self.null_distributions_["histogram_bins"] = hist_bins
 
-        ma_hists = np.zeros(
-            (ma_values.shape[0], hist_bins.shape[0])
-        )
+        ma_hists = np.zeros((ma_values.shape[0], hist_bins.shape[0]))
 
         n_zeros = np.sum(ma_values == 0, 1)
         ma_hists[:, 0] = n_zeros
 
         for i_exp in range(len(ma_values)):
             reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 1:] = np.histogram(
-                reduced_ma_values, bins=hist_bins, density=False
-            )[0]
+            ma_hists[i_exp, 1:] = np.histogram(reduced_ma_values, bins=hist_bins, density=False)[0]
 
         inv_step_size = int(np.ceil(1 / step_size))
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
 
-        # Histogram of integrated values can have larger MA values than any
-        # individual contrast, so use full [0, 1] range here.
-        ale_hist = np.zeros((inv_step_size,))
-        ale_hist[np.round(hist_bins * inv_step_size).astype(int)] = ma_hists[0, :]
-        all_bins = np.round(np.arange(0, 1, step_size), 4)
+        ale_hist = ma_hists[0, :].copy()
 
         for i_exp in range(1, ma_hists.shape[0]):
 
@@ -189,11 +175,9 @@ class ALE(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = 1 - np.outer(
-                1 - hist_bins[exp_idx], 1 - all_bins[ale_idx]).ravel()
+            ale_scores = 1 - np.outer(1 - hist_bins[exp_idx], 1 - hist_bins[ale_idx]).ravel()
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
-            probabilities = np.outer(
-                exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
+            probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
             # Reset histogram and set probabilities. Use at() because there can
             # be redundant values in score_idx.
@@ -424,9 +408,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
@@ -555,9 +537,7 @@ class SCALE(CBMAEstimator):
       revisited: controlling for activation base rates." NeuroImage 99
       (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self,
@@ -630,8 +610,7 @@ class SCALE(CBMAEstimator):
                 )
             else:
                 perm_scale_values = np.zeros(
-                    (self.n_iters, ale_values.shape[0]),
-                    dtype=ale_values.dtype,
+                    (self.n_iters, ale_values.shape[0]), dtype=ale_values.dtype
                 )
             for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
                 perm_scale_values[i_iter, :] = self._run_permutation(pp)
@@ -653,11 +632,7 @@ class SCALE(CBMAEstimator):
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
         # Write out unthresholded value images
-        images = {
-            "ale": ale_values,
-            "logp": logp_values,
-            "z": z_values,
-        }
+        images = {"ale": ale_values, "logp": logp_values, "z": z_values}
         return images
 
     def _compute_ale(self, data):
