@@ -162,7 +162,7 @@ class KernelTransformer(Transformer):
                     "existing folder with Dataset.update_path()."
                 )
         
-        transformed_maps = self._apply_kernel(mask, coordinates)
+        transformed_maps = self._transform(mask, coordinates)
 
         imgs = []
         for (kernel_data, id_) in transformed_maps:
@@ -189,7 +189,7 @@ class KernelTransformer(Transformer):
             dataset.images = dataset.images
             return dataset
 
-    def _apply_kernel(self, mask, coordinates):
+    def _transform(self, mask, coordinates):
         pass
 
 
@@ -216,7 +216,7 @@ class ALEKernel(KernelTransformer):
         self.fwhm = fwhm
         self.sample_size = sample_size
 
-    def _apply_kernel(self, mask, coordinates):
+    def _transform(self, mask, coordinates):
         transformed = []
         kernels = {}  # retain kernels in dictionary to speed things up
         for id_, data in coordinates.groupby("id"):
@@ -262,7 +262,7 @@ class MKDAKernel(KernelTransformer):
         self.r = float(r)
         self.value = value
 
-    def _apply_kernel(self, mask, coordinates):
+    def _transform(self, mask, coordinates):
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
 
@@ -292,7 +292,7 @@ class KDAKernel(KernelTransformer):
         self.r = float(r)
         self.value = value
 
-    def _apply_kernel(self, mask, coordinates):
+    def _transform(self, mask, coordinates):
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
 
