@@ -108,8 +108,7 @@ class KernelTransformer(Transformer):
             Name of the corresponding column in the Dataset.images DataFrame.
         """
         if return_type not in ("array", "image", "dataset"):
-            raise ValueError('Argument "return_type" must be "image", "array",'
-                             'or "dataset".')
+            raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
 
         if isinstance(dataset, pd.DataFrame):
             assert (
@@ -132,8 +131,7 @@ class KernelTransformer(Transformer):
             # Use coordinates to get IDs instead of Dataset.ids bc of possible
             # mismatch between full Dataset and contrasts with coordinates.
             if self.image_type in dataset.images.columns:
-                files = dataset.get_images(ids=coordinates["id"].unique(),
-                                           imtype=self.image_type)
+                files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
@@ -147,21 +145,20 @@ class KernelTransformer(Transformer):
         if return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         elif return_type == "image":
-            dtype = type(self.value) if hasattr(self, 'value') else float
+            dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
         elif return_type == "dataset":
             dataset = dataset.copy()
             if dataset.basepath is None:
                 raise ValueError(
-                    "Dataset output path is not set. Set the path with "
-                    "Dataset.update_path()."
+                    "Dataset output path is not set. Set the path with Dataset.update_path()."
                 )
             elif not os.path.isdir(dataset.basepath):
                 raise ValueError(
                     "Output directory does not exist. Set the path to an "
                     "existing folder with Dataset.update_path()."
                 )
-        
+
         transformed_maps = self._transform(mask, coordinates)
 
         imgs = []
@@ -175,8 +172,7 @@ class KernelTransformer(Transformer):
                 imgs.append(img)
             elif return_type == "dataset":
                 img = nib.Nifti1Image(kernel_data, mask.affine)
-                out_file = os.path.join(dataset.basepath,
-                                        self.filename_pattern.format(id=id_))
+                out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
@@ -269,8 +265,9 @@ class MKDAKernel(KernelTransformer):
         transformed = []
         for id_, data in coordinates.groupby("id"):
             ijks = np.vstack((data.i.values, data.j.values, data.k.values)).T
-            kernel_data = compute_kda_ma(dims, vox_dims, ijks, r=self.r,
-                                         value=self.value, sum_overlap=False)
+            kernel_data = compute_kda_ma(
+                dims, vox_dims, ijks, r=self.r, value=self.value, sum_overlap=False
+            )
             transformed.append((kernel_data, id_))
         return transformed
 
