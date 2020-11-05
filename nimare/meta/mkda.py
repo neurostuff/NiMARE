@@ -96,17 +96,17 @@ class MKDADensity(CBMAEstimator):
         self.weight_vec_ = weight_vec  # C x 1 array
         assert self.weight_vec_.shape[0] == ma_values.shape[0]
         ma_values = ma_values * self.weight_vec_
-        of_values = self._compute_summarystat(ma_values)
+        stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
         if self.null == "analytic":
             raise ValueError("'analytic' null distribution estimation is not yet supported.")
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(of_values, method=self.null)
+        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
 
         images = {
-            "of": of_values,
+            "stat": stat_values,
             "p": p_values,
             "z": z_values,
         }
@@ -200,7 +200,7 @@ class MKDADensity(CBMAEstimator):
 
             step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
-            # Determine p- and z-values from ALE values and null distribution.
+            # Determine p- and z-values from stat values and null distribution.
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
@@ -214,7 +214,7 @@ class MKDADensity(CBMAEstimator):
                     tail="upper",
                 )
         else:
-            raise ValueError("Argument 'method' must be one of: 'analytic', " "'empirical'.")
+            raise ValueError("Argument 'method' must be one of: 'analytic', 'empirical'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
@@ -246,7 +246,7 @@ class MKDADensity(CBMAEstimator):
             iter_max_cluster = 0
         return iter_max_value, iter_max_cluster
 
-    def correct_fwe_montecarlo(self, result, voxel_thresh=0.01, n_iters=1000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -256,10 +256,10 @@ class MKDADensity(CBMAEstimator):
         result : :obj:`nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
         voxel_thresh : :obj:`float`, optional
-            Cluster-defining OF-value threshold. Default is 0.01.
+            Cluster-defining p-value threshold. Default is 0.001.
         n_iters : :obj:`int`, optional
             Number of iterations to build the vFWE and cFWE null distributions.
-            Default is 1000.
+            Default is 10000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is -1.
@@ -283,13 +283,17 @@ class MKDADensity(CBMAEstimator):
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        of_map = result.get_map("of", return_type="image")
+        z_values = result.get_map("z", return_type="array")
+        stat_map = result.get_map("stat", return_type="image")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         n_cores = self._check_ncores(n_cores)
 
-        vthresh_of_map = of_map.get_fdata().copy()
-        vthresh_of_map[vthresh_of_map < voxel_thresh] = 0
+        # Begin cluster-extent thresholding by thresholding matrix at cluster-
+        # defining voxel-level threshold
+        z_thresh = p_to_z(voxel_thresh, tail="one")
+        vthresh_z_values = z_values.copy()
+        vthresh_z_values[np.abs(vthresh_z_values) < z_thresh] = 0
 
         rand_idx = np.random.choice(
             null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
@@ -317,7 +321,7 @@ class MKDADensity(CBMAEstimator):
         perm_max_values, perm_clust_sizes = zip(*perm_results)
 
         # Cluster-level FWE
-        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_of_map, conn)
+        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_values, conn)
         cfwe_map = np.zeros(self.masker.mask_img.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
@@ -329,12 +333,15 @@ class MKDADensity(CBMAEstimator):
         )
 
         # Voxel-level FWE
-        vfwe_map = np.squeeze(self.masker.transform(of_map))
+        vfwe_map = np.squeeze(self.masker.transform(stat_map))
         for i_vox, val in enumerate(vfwe_map):
             vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
         vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
 
-        images = {"logp_level-cluster": cfwe_map, "logp_level-voxel": vfwe_map}
+        images = {
+            "logp_level-cluster": cfwe_map,
+            "logp_level-voxel": vfwe_map,
+        }
         return images
 
 
@@ -709,17 +716,17 @@ class KDA(CBMAEstimator):
         ma_values = self.kernel_transformer.transform(
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
-        of_values = self._compute_summarystat(ma_values)
+        stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
         if self.null == "analytic":
             raise ValueError("'analytic' null distribution estimation is not yet supported.")
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(of_values, method=self.null)
+        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
 
         images = {
-            "of": of_values,
+            "stat": stat_values,
             "p": p_values,
             "z": z_values,
         }
@@ -824,7 +831,7 @@ class KDA(CBMAEstimator):
                     tail="upper",
                 )
         else:
-            raise ValueError("Argument 'method' must be one of: 'analytic', " "'empirical'.")
+            raise ValueError("Argument 'method' must be one of: 'analytic', 'empirical'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
@@ -877,7 +884,7 @@ class KDA(CBMAEstimator):
         >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        of_values = result.get_map("of", return_type="array")
+        stat_values = result.get_map("stat", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         n_cores = self._check_ncores(n_cores)
@@ -904,8 +911,8 @@ class KDA(CBMAEstimator):
         perm_max_values = perm_results
 
         # Voxel-level FWE
-        vfwe_map = np.empty(of_values.shape, dtype=float)
-        for i_vox, val in enumerate(of_values):
+        vfwe_map = np.empty(stat_values.shape, dtype=float)
+        for i_vox, val in enumerate(stat_values):
             vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
         vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
 

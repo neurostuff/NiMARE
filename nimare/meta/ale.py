@@ -106,17 +106,17 @@ class ALE(CBMAEstimator):
         ma_maps = self.kernel_transformer.transform(
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
-        ale_values = self._compute_summarystat(ma_maps)
+        stat_values = self._compute_summarystat(ma_maps)
 
         # Determine null distributions for summary stat (ALE) to p conversion
         if self.null == "analytic":
             self._compute_null_analytic(ma_maps)
         else:
             self._compute_null_empirical(ma_maps, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(ale_values, method=self.null)
+        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
 
         images = {
-            "ale": ale_values,
+            "stat": stat_values,
             "p": p_values,
             "z": z_values,
         }
@@ -300,7 +300,7 @@ class ALE(CBMAEstimator):
                     tail="upper",
                 )
         else:
-            raise ValueError("Argument 'method' must be one of: 'analytic', " "'empirical'.")
+            raise ValueError("Argument 'method' must be one of: 'analytic', 'empirical'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
@@ -313,9 +313,9 @@ class ALE(CBMAEstimator):
         iter_df, iter_ijk, conn, z_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
-        ale_values = self._compute_summarystat(iter_df)
-        _, z_values = self._summarystat_to_p(ale_values, method=self.null)
-        iter_max_value = np.max(ale_values)
+        stat_values = self._compute_summarystat(iter_df)
+        _, z_values = self._summarystat_to_p(stat_values, method=self.null)
+        iter_max_value = np.max(stat_values)
 
         # Begin cluster-extent thresholding by thresholding matrix at cluster-
         # defining voxel-level threshold
@@ -378,7 +378,7 @@ class ALE(CBMAEstimator):
         >>> cresult = corrector.transform(result)
         """
         z_values = result.get_map("z", return_type="array")
-        ale_values = result.get_map("ale", return_type="array")
+        stat_values = result.get_map("stat", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         n_cores = self._check_ncores(n_cores)
@@ -441,10 +441,10 @@ class ALE(CBMAEstimator):
         z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
-        p_vfwe_values = np.ones(ale_values.shape)
-        for voxel in range(ale_values.shape[0]):
+        p_vfwe_values = np.ones(stat_values.shape)
+        for voxel in range(stat_values.shape[0]):
             p_vfwe_values[voxel] = null_to_p(
-                ale_values[voxel],
+                stat_values[voxel],
                 self.null_distributions_["fwe_level-voxel_method-montecarlo"],
                 tail="upper",
             )
@@ -591,7 +591,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 @due.dcite(
     references.SCALE,
     description=(
-        "Introduces the specific co-activation likelihood " "estimation (SCALE) algorithm."
+        "Introduces the specific co-activation likelihood estimation (SCALE) algorithm."
     ),
 )
 class SCALE(CBMAEstimator):
@@ -672,7 +672,7 @@ class SCALE(CBMAEstimator):
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
 
-        ale_values = self._compute_summarystat(ma_maps)
+        stat_values = self._compute_summarystat(ma_maps)
 
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.ijk.shape[0], size=(iter_df.shape[0], self.n_iters))
@@ -690,14 +690,14 @@ class SCALE(CBMAEstimator):
                 filename = os.path.join(mkdtemp(), "perm_scale_values.dat")
                 perm_scale_values = np.memmap(
                     filename,
-                    dtype=ale_values.dtype,
+                    dtype=stat_values.dtype,
                     mode="w+",
-                    shape=(self.n_iters, ale_values.shape[0]),
+                    shape=(self.n_iters, stat_values.shape[0]),
                 )
             else:
                 perm_scale_values = np.zeros(
-                    (self.n_iters, ale_values.shape[0]),
-                    dtype=ale_values.dtype,
+                    (self.n_iters, stat_values.shape[0]),
+                    dtype=stat_values.dtype,
                 )
             for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
                 perm_scale_values[i_iter, :] = self._run_permutation(pp)
@@ -711,7 +711,7 @@ class SCALE(CBMAEstimator):
                 )
             perm_scale_values = np.stack(perm_scale_values)
 
-        p_values, z_values = self._scale_to_p(ale_values, perm_scale_values)
+        p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
         if self.low_memory:
             del perm_scale_values
             os.remove(filename)
@@ -720,7 +720,7 @@ class SCALE(CBMAEstimator):
 
         # Write out unthresholded value images
         images = {
-            "ale": ale_values,
+            "stat": stat_values,
             "logp": logp_values,
             "z": z_values,
         }
@@ -747,13 +747,13 @@ class SCALE(CBMAEstimator):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
-    def _scale_to_p(self, ale_values, scale_values):
+    def _scale_to_p(self, stat_values, scale_values):
         """
         Compute p- and z-values.
 
         Parameters
         ----------
-        ale_values : (V) array
+        stat_values : (V) array
             ALE values.
         scale_values : (I x V) array
             Permutation ALE values.
@@ -786,7 +786,7 @@ class SCALE(CBMAEstimator):
         # Get the hist bins associated with each voxel's ale value, in order to
         # get the p-value from the associated bin in the null distribution.
         n_bins = len(self.null_distributions_["histogram_bins"])
-        ale_bins = round2(ale_values * step).astype(int)
+        ale_bins = round2(stat_values * step).astype(int)
         ale_bins[ale_bins > n_bins] = n_bins
 
         # Get p-values by getting the ale_bin-th value in null_distribution
@@ -821,5 +821,5 @@ class SCALE(CBMAEstimator):
         iter_df, iter_ijk = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
-        ale_values = self._compute_summarystat(iter_df)
-        return ale_values
+        stat_values = self._compute_summarystat(iter_df)
+        return stat_values
