@@ -90,15 +90,211 @@ class MKDADensity(CBMAEstimator):
             )
         else:
             weight_vec = np.ones((ma_values.shape[0], 1))
-        self.weight_vec = weight_vec
+        self.weight_vec_ = weight_vec  # C x 1 array
+        assert self.weight_vec_.shape[0] == ma_values.shape[0]
+        ma_values = ma_values * self.weight_vec_
+        stat_values = self._compute_summarystat(ma_values)
 
-        ma_values = ma_values * self.weight_vec
-        of_values = np.sum(ma_values, axis=0)
+        # Determine null distributions for summary stat (OF) to p conversion
+        if self.null == "analytic":
+            self._compute_null_analytic(ma_values)
+        else:
+            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
+        p_values, z_values = self._summarystat_to_p(stat_values, method=self.null)
 
         images = {
             "of": of_values,
         }
         return images
+
+    def _compute_summarystat(self, data):
+        """Compute OF scores from data.
+
+        Parameters
+        ----------
+        data : array, pandas.DataFrame, or list of img_like
+            Data from which to estimate ALE scores.
+            The data can be:
+            (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
+            (2) a DataFrame containing coordinates to produce MA values,
+            or (3) a list of imgs containing MA values.
+
+        Returns
+        -------
+        stat_values : 1d array
+            OF values. One value per voxel.
+        """
+        if isinstance(data, pd.DataFrame):
+            ma_values = self.kernel_transformer.transform(
+                data, masker=self.masker, return_type="array"
+            )
+        elif isinstance(data, list):
+            ma_values = self.masker.transform(data)
+        elif isinstance(data, np.ndarray):
+            ma_values = data.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+
+        # OF is just a sum of MA values.
+        stat_values = np.sum(ma_values, axis=0)
+        return stat_values
+
+    def _compute_null_empirical(self, ma_maps, n_iters=10000):
+        """Compute uncorrected null distribution using empirical method.
+
+        Parameters
+        ----------
+        ma_maps : (C x V) array
+            Contrast by voxel array of MA values.
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute:
+        "empirical_null".
+        """
+        n_studies, n_voxels = ma_maps.shape
+        weight_vec = np.squeeze(self.weight_vec_)  # cannot have singleton
+        assert weight_vec.ndim == 1
+        null_distribution = np.zeros(n_iters)
+        for i_iter in range(n_iters):
+            # One random MA value per study
+            null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
+            iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
+            # Calculate summary statistic
+            iter_ma_values *= weight_vec
+            iter_ss_value = self._compute_summarystat(iter_ma_values)
+            # Retain value in null distribution
+            null_distribution[i_iter] = iter_ss_value
+        self.null_distributions_["empirical_null"] = null_distribution
+
+    def _compute_null_analytic(self, ma_maps):
+        """Compute uncorrected null distribution using analytic solution.
+
+        Parameters
+        ----------
+        ma_maps : list of imgs or numpy.ndarray
+            MA maps.
+
+        Notes
+        -----
+        This method adds two entries to the null_distributions_ dict attribute:
+        "histogram_bins" and "histogram_weights".
+        """
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+
+        # Determine bins for null distribution histogram
+        max_ma_values = np.max(ma_values, axis=1)
+        max_poss_value = self._compute_summarystat(max_ma_values)
+        # Set up histogram with bins from 0 to max value + one bin
+        N_BINS = 10000
+        bins_max = max_poss_value + (max_poss_value / (N_BINS - 1))  # one extra bin
+        self.null_distributions_["histogram_bins"] = np.linspace(
+            0, bins_max, num=N_BINS
+        )
+
+        ma_hists = np.zeros(
+            (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
+        )
+        for i_exp in range(ma_values.shape[0]):
+            # Remember that histogram uses bin edges (not centers), so it
+            # returns a 1xhist_bins-1 array
+            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
+            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
+            ma_hists[i_exp, 0] = n_zeros
+            ma_hists[i_exp, 1:] = np.histogram(
+                a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
+            )[0]
+
+        # Inverse of step size in histBins (0.0001) = 10000
+        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+
+        # Null distribution to convert ALE to p-values.
+        stat_hist = ma_hists[0, :]
+        for i_exp in range(1, ma_hists.shape[0]):
+            temp_hist = np.copy(stat_hist)
+            ma_hist = np.copy(ma_hists[i_exp, :])
+
+            # Find histogram bins with nonzero values for each histogram.
+            ale_idx = np.where(temp_hist > 0)[0]
+            exp_idx = np.where(ma_hist > 0)[0]
+
+            # Normalize histograms.
+            temp_hist /= np.sum(temp_hist)
+            ma_hist /= np.sum(ma_hist)
+
+            # Perform weighted convolution of histograms.
+            stat_hist = np.zeros(self.null_distributions_["histogram_bins"].shape[0])
+            for j_idx in exp_idx:
+                # Compute probabilities of observing each ALE value in histBins
+                # by randomly combining maps represented by maHist and aleHist.
+                # Add observed probabilities to corresponding bins in ALE
+                # histogram.
+                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
+                ale_scores = 1 - (1 - self.null_distributions_["histogram_bins"][j_idx]) * (
+                    1 - self.null_distributions_["histogram_bins"][ale_idx]
+                )
+                score_idx = np.floor(ale_scores * step).astype(int)
+                np.add.at(stat_hist, score_idx, probabilities)
+
+        # Convert aleHist into null distribution. The value in each bin
+        # represents the probability of finding an ALE value (stored in
+        # histBins) of that value or lower.
+        null_distribution = stat_hist / np.sum(stat_hist)
+        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+        null_distribution /= np.max(null_distribution)
+        self.null_distributions_["histogram_weights"] = null_distribution
+
+    def _summarystat_to_p(self, stat_values, method="analytic"):
+        """
+        Compute p- and z-values from summary statistics (e.g., ALE scores) and
+        either histograms from analytic null or null distribution from
+        empirical null.
+
+        Parameters
+        ----------
+        stat_values : 1D array_like
+            Array of summary statistic values from estimator.
+        method : {"analytic", "empirical"}, optional
+            Whether to use analytic null or empirical null.
+            Default is "analytic".
+
+        Returns
+        -------
+        p_values, z_values : 1D array
+            P- and Z-values for statistic values.
+            Same shape as stat_values.
+        """
+        p_values = np.ones(stat_values.shape)
+
+        if method == "analytic":
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histogram_weights" in self.null_distributions_.keys()
+
+            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+
+            # Determine p- and z-values from stat values and null distribution.
+            idx = np.where(stat_values > 0)[0]
+            stat_bins = round2(stat_values[idx] * step)
+            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+        elif method == "empirical":
+            assert "empirical_null" in self.null_distributions_.keys()
+
+            for i_voxel in range(stat_values.shape[0]):
+                p_values[i_voxel] = null_to_p(
+                    stat_values[i_voxel],
+                    self.null_distributions_["empirical_null"],
+                    tail="upper",
+                )
+        else:
+            raise ValueError("Argument 'method' must be one of: 'analytic', 'empirical'.")
+
+        z_values = p_to_z(p_values, tail="one")
+        return p_values, z_values
 
     def _run_fwe_permutation(self, params):
         iter_ijk, iter_df, conn, voxel_thresh = params
