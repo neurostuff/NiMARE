@@ -31,7 +31,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     # Make an image to decode
     meta = mkda.KDA()
     res = meta.fit(testdata_laird)
-    img = res.get_map("of")
+    img = res.get_map("stat")
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)
 
@@ -65,6 +65,6 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     # Make an image to decode
     meta = mkda.KDA()
     res = meta.fit(testdata_laird)
-    img = res.get_map("of")
+    img = res.get_map("stat")
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)

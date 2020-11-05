@@ -284,7 +284,7 @@ class MKDADensity(CBMAEstimator):
         >>> cresult = corrector.transform(result)
         """
         z_values = result.get_map("z", return_type="array")
-        stat_map = result.get_map("stat", return_type="image")
+        stat_values = result.get_map("stat", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         n_cores = self._check_ncores(n_cores)
@@ -318,29 +318,50 @@ class MKDADensity(CBMAEstimator):
             with mp.Pool(n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
 
-        perm_max_values, perm_clust_sizes = zip(*perm_results)
+        (
+            self.null_distributions_["fwe_level-voxel_method-montecarlo"],
+            self.null_distributions_["fwe_level-cluster_method-montecarlo"],
+        ) = zip(*perm_results)
 
         # Cluster-level FWE
-        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_values, conn)
-        cfwe_map = np.zeros(self.masker.mask_img.shape)
+        vthresh_z_map = self.masker.inverse_transform(vthresh_z_values).get_fdata()
+        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
+        p_cfwe_map = np.ones(self.masker.mask_img.shape)
         for i_clust in range(1, n_clusters + 1):
             clust_size = np.sum(labeled_matrix == i_clust)
             clust_idx = np.where(labeled_matrix == i_clust)
-            cfwe_map[clust_idx] = -np.log10(null_to_p(clust_size, perm_clust_sizes, "upper"))
-        cfwe_map[np.isinf(cfwe_map)] = -np.log10(np.finfo(float).eps)
-        cfwe_map = np.squeeze(
-            self.masker.transform(nib.Nifti1Image(cfwe_map, self.masker.mask_img.affine))
+            p_cfwe_map[clust_idx] = null_to_p(
+                clust_size,
+                self.null_distributions_["fwe_level-cluster_method-montecarlo"],
+                "upper",
+            )
+        p_cfwe_map[np.isinf(p_cfwe_map)] = -np.log10(np.finfo(float).eps)
+        p_cfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
         )
+        logp_cfwe_values = -np.log10(p_cfwe_values)
+        logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log10(np.finfo(float).eps)
+        z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
-        vfwe_map = np.squeeze(self.masker.transform(stat_map))
-        for i_vox, val in enumerate(vfwe_map):
-            vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
-        vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
+        p_vfwe_values = np.ones(stat_values.shape)
+        for voxel in range(stat_values.shape[0]):
+            p_vfwe_values[voxel] = null_to_p(
+                stat_values[voxel],
+                self.null_distributions_["fwe_level-voxel_method-montecarlo"],
+                tail="upper",
+            )
 
+        z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
+        logp_vfwe_values = -np.log10(p_vfwe_values)
+        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
+
+        # Write out unthresholded value images
         images = {
-            "logp_level-cluster": cfwe_map,
-            "logp_level-voxel": vfwe_map,
+            "logp_level-voxel": logp_vfwe_values,
+            "z_level-voxel": z_vfwe_values,
+            "logp_level-cluster": logp_cfwe_values,
+            "z_level-cluster": z_cfwe_values,
         }
         return images
 

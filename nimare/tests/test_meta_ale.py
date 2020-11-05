@@ -22,7 +22,7 @@ def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
 
     meta = ale.ALE(null="analytic")
     res = meta.fit(testdata_cbma)
-    assert "ale" in res.maps.keys()
+    assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
     assert "z" in res.maps.keys()
     assert isinstance(res, nimare.results.MetaResult)
@@ -96,7 +96,7 @@ def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
 
     meta = ale.ALE(null="empirical", n_iters=1000)
     res = meta.fit(testdata_cbma)
-    assert "ale" in res.maps.keys()
+    assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
     assert "z" in res.maps.keys()
     assert isinstance(res, nimare.results.MetaResult)
