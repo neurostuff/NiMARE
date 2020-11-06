@@ -387,7 +387,8 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
 
     dataset_name = "peaks2maps_model_ohbm2018"
-    if dataset_name not in data_dir:  # allow data_dir to include model folder
+    # allow data_dir to include model folder
+    if (data_dir is not None) and (dataset_name not in data_dir):
         data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
 
     desc_file = op.join(data_dir, "description.txt")
