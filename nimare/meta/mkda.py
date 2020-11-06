@@ -161,7 +161,7 @@ class MKDADensity(CBMAEstimator):
         "empirical_null".
         """
         n_studies, n_voxels = ma_maps.shape
-        null_ijk = np.random.choice(np.arange(n_voxels), (self.n_iters, n_studies))
+        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["empirical_null"] = null_dist
@@ -186,63 +186,16 @@ class MKDADensity(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
-        # Determine bins for null distribution histogram
-        max_ma_values = np.max(ma_values, axis=1)
-        max_poss_value = self._compute_summarystat(max_ma_values)
-        # Set up histogram with bins from 0 to max value + one bin
-        N_BINS = 10000
-        bins_max = max_poss_value + (max_poss_value / (N_BINS - 1))  # one extra bin
-        self.null_distributions_["histogram_bins"] = np.linspace(0, bins_max, num=N_BINS)
+        # MKDA maps are binary, so we only have k + 1 bins in the final
+        # histogram, where k is the number of studies. We can analytically
+        # compute the null distribution by convolution.
+        prop_active = ma_values.mean(1)
+        ss_hist = 1.
+        for exp_prop in prop_active:
+            ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
 
-        ma_hists = np.zeros(
-            (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
-        )
-        for i_exp in range(ma_values.shape[0]):
-            # Remember that histogram uses bin edges (not centers), so it
-            # returns a 1xhist_bins-1 array
-            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
-            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 0] = n_zeros
-            ma_hists[i_exp, 1:] = np.histogram(
-                a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
-            )[0]
-
-        # Inverse of step size in histBins (0.0001) = 10000
-        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
-
-        # Null distribution to convert ALE to p-values.
-        stat_hist = ma_hists[0, :]
-        for i_exp in range(1, ma_hists.shape[0]):
-            temp_hist = np.copy(stat_hist)
-            ma_hist = np.copy(ma_hists[i_exp, :])
-
-            # Find histogram bins with nonzero values for each histogram.
-            ale_idx = np.where(temp_hist > 0)[0]
-            exp_idx = np.where(ma_hist > 0)[0]
-
-            # Normalize histograms.
-            temp_hist /= np.sum(temp_hist)
-            ma_hist /= np.sum(ma_hist)
-
-            # Perform weighted convolution of histograms.
-            stat_hist = np.zeros(self.null_distributions_["histogram_bins"].shape[0])
-            for j_idx in exp_idx:
-                # Compute probabilities of observing each ALE value in histBins
-                # by randomly combining maps represented by maHist and aleHist.
-                # Add observed probabilities to corresponding bins in ALE
-                # histogram.
-                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - self.null_distributions_["histogram_bins"][j_idx]) * (
-                    1 - self.null_distributions_["histogram_bins"][ale_idx]
-                )
-                score_idx = np.floor(ale_scores * step).astype(int)
-                np.add.at(stat_hist, score_idx, probabilities)
-
-        # Convert aleHist into null distribution. The value in each bin
-        # represents the probability of finding an ALE value (stored in
-        # histBins) of that value or lower.
-        null_distribution = stat_hist / np.sum(stat_hist)
-        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+        null_distribution = np.cumsum(ss_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
         self.null_distributions_["histogram_weights"] = null_distribution
 
