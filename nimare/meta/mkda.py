@@ -823,7 +823,9 @@ class KDA(CBMAEstimator):
 
         # Determine null distributions for summary stat (OF) to p conversion
         if self.null_method == "analytic":
-            self._compute_null_analytic(ma_values)
+            # assumes that groupby results in same order as MA maps
+            n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
+            self._compute_null_analytic(ma_values, n_foci_per_study)
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
@@ -892,7 +894,7 @@ class KDA(CBMAEstimator):
             null_distribution[i_iter] = iter_ss_value
         self.null_distributions_["empirical_null"] = null_distribution
 
-    def _compute_null_analytic(self, ma_maps):
+    def _compute_null_analytic(self, ma_maps, n_foci_per_study):
         """Compute uncorrected null distribution using analytic solution.
 
         Parameters
@@ -921,10 +923,6 @@ class KDA(CBMAEstimator):
         for i_study in range(n_studies):
             temp_ma_values = ma_values[i_study, :]
             min_ma_values[i_study] = np.min(temp_ma_values[temp_ma_values != 0])
-
-        # assuming ten foci per study
-        # TODO: Find a real solution for this!
-        n_foci_per_study = np.full(n_studies, 10)
 
         max_ma_values = min_ma_values * n_foci_per_study
         max_poss_value = self._compute_summarystat(max_ma_values)
