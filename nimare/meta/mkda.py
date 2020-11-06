@@ -892,6 +892,99 @@ class KDA(CBMAEstimator):
             null_distribution[i_iter] = iter_ss_value
         self.null_distributions_["empirical_null"] = null_distribution
 
+    def _compute_null_analytic(self, ma_maps):
+        """Compute uncorrected null distribution using analytic solution.
+
+        Parameters
+        ----------
+        ma_maps : list of imgs or numpy.ndarray
+            MA maps.
+
+        Notes
+        -----
+        This method adds two entries to the null_distributions_ dict attribute:
+        "histogram_bins" and "histogram_weights".
+        """
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+
+        # Determine bins for null distribution histogram
+        # The maximum possible MA value for each study is the weighting factor (generally 1)
+        # times the number of foci in the study.
+        # To get the weighting factor, we find the minimum value in each MA map, ignoring zeros.
+        n_studies = ma_values.shape[0]
+        min_ma_values = np.zeros(n_studies)
+        for i_study in range(n_studies):
+            temp_ma_values = ma_values[i_study, :]
+            min_ma_values[i_study] = np.min(temp_ma_values[temp_ma_values != 0])
+
+        # assuming ten foci per study
+        # TODO: Find a real solution for this!
+        n_foci_per_study = np.fill(10, n_studies)
+
+        max_ma_values = min_ma_values * n_foci_per_study
+        max_poss_value = self._compute_summarystat(max_ma_values)
+        # Set up histogram with bins from 0 to max value + one bin
+        N_BINS = 10000
+        bins_max = max_poss_value + (max_poss_value / (N_BINS - 1))  # one extra bin
+        self.null_distributions_["histogram_bins"] = np.linspace(0, bins_max, num=N_BINS)
+
+        ma_hists = np.zeros(
+            (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
+        )
+        for i_exp in range(ma_values.shape[0]):
+            # Remember that histogram uses bin edges (not centers), so it
+            # returns a 1xhist_bins-1 array
+            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
+            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
+            ma_hists[i_exp, 0] = n_zeros
+            ma_hists[i_exp, 1:] = np.histogram(
+                a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
+            )[0]
+
+        # Inverse of step size in histBins (0.0001) = 10000
+        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+
+        # Null distribution to convert ALE to p-values.
+        stat_hist = ma_hists[0, :]
+        for i_exp in range(1, ma_hists.shape[0]):
+            temp_hist = np.copy(stat_hist)
+            ma_hist = np.copy(ma_hists[i_exp, :])
+
+            # Find histogram bins with nonzero values for each histogram.
+            ale_idx = np.where(temp_hist > 0)[0]
+            exp_idx = np.where(ma_hist > 0)[0]
+
+            # Normalize histograms.
+            temp_hist /= np.sum(temp_hist)
+            ma_hist /= np.sum(ma_hist)
+
+            # Perform weighted convolution of histograms.
+            stat_hist = np.zeros(self.null_distributions_["histogram_bins"].shape[0])
+            for j_idx in exp_idx:
+                # Compute probabilities of observing each ALE value in histBins
+                # by randomly combining maps represented by maHist and aleHist.
+                # Add observed probabilities to corresponding bins in ALE
+                # histogram.
+                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
+                ale_scores = 1 - (1 - self.null_distributions_["histogram_bins"][j_idx]) * (
+                    1 - self.null_distributions_["histogram_bins"][ale_idx]
+                )
+                score_idx = np.floor(ale_scores * step).astype(int)
+                np.add.at(stat_hist, score_idx, probabilities)
+
+        # Convert aleHist into null distribution. The value in each bin
+        # represents the probability of finding an ALE value (stored in
+        # histBins) of that value or lower.
+        null_distribution = stat_hist / np.sum(stat_hist)
+        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+        null_distribution /= np.max(null_distribution)
+        self.null_distributions_["histogram_weights"] = null_distribution
+
     def _summarystat_to_p(self, stat_values, null_method="analytic"):
         """
         Compute p- and z-values from summary statistics (e.g., ALE scores) and
