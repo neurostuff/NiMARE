@@ -161,16 +161,10 @@ class MKDADensity(CBMAEstimator):
         "empirical_null".
         """
         n_studies, n_voxels = ma_maps.shape
-        null_distribution = np.zeros(n_iters)
-        for i_iter in range(n_iters):
-            # One random MA value per study
-            null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
-            iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
-            # Calculate summary statistic
-            iter_ss_value = self._compute_summarystat(iter_ma_values)
-            # Retain value in null distribution
-            null_distribution[i_iter] = iter_ss_value
-        self.null_distributions_["empirical_null"] = null_distribution
+        null_ijk = np.random.choice(np.arange(n_voxels), (self.n_iters, n_studies))
+        iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
+        null_dist = self._compute_summarystat(iter_ma_values)
+        self.null_distributions_["empirical_null"] = null_dist
 
     def _compute_null_analytic(self, ma_maps):
         """Compute uncorrected null distribution using analytic solution.
