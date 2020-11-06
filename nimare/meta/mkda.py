@@ -823,7 +823,7 @@ class KDA(CBMAEstimator):
 
         # Determine null distributions for summary stat (OF) to p conversion
         if self.null_method == "analytic":
-            raise ValueError("'analytic' null distribution estimation is not yet supported.")
+            self._compute_null_analytic(ma_values)
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
