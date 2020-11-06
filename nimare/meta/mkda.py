@@ -924,7 +924,7 @@ class KDA(CBMAEstimator):
 
         # assuming ten foci per study
         # TODO: Find a real solution for this!
-        n_foci_per_study = np.fill(10, n_studies)
+        n_foci_per_study = np.full(n_studies, 10)
 
         max_ma_values = min_ma_values * n_foci_per_study
         max_poss_value = self._compute_summarystat(max_ma_values)
