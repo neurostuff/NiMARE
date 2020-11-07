@@ -351,6 +351,7 @@ def p_to_z(p, tail="two"):
         z = stats.norm.isf(p / 2)
     elif tail == "one":
         z = stats.norm.isf(p)
+        z = np.array(z)
         z[z < 0] = 0
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
