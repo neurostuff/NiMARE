@@ -240,7 +240,7 @@ def _create_foci(
     for study_signal_ijks, study in zip_longest(paired_signal_ijks, range(n_studies)):
         if study_signal_ijks is None:
             study_signal_ijks = np.array([[]])
-            n_noise_foci = 1
+            n_noise_foci = max(1, n_noise_foci)
 
         if n_noise_foci > 0:
             noise_ijks = possible_ijks[
