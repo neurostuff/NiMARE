@@ -68,9 +68,11 @@ def signal_masks(simulatedata_cbma):
 @pytest.fixture(
     scope="session",
     params=[
-        pytest.param(ale.ALE, id="ale"),
-        pytest.param(mkda.MKDADensity, id="mkda"),
-        pytest.param(mkda.KDA, id="kda"),
+        pytest.param((ale.ALE, {"null_method": "empirical"}), id="ale+empirical"),
+        pytest.param((ale.ALE, {"null_method": "analytic"}), id="ale+analytic"),
+        pytest.param((mkda.MKDADensity, {"null_method": "empirical"}), id="mkda+empirical"),
+        pytest.param((mkda.MKDADensity, {"null_method": "analytic"}), id="mkda+analytic"),
+        pytest.param((mkda.KDA, {}), id="kda"),
     ],
 )
 def meta_est(request):
@@ -136,6 +138,7 @@ def corr_small(request):
 ###########################################
 @pytest.fixture(scope="session")
 def meta(simulatedata_cbma, meta_est, kern):
+    meta, kwargs = meta_est
     fwhm, (_, _) = simulatedata_cbma
     if kern == kernel.KDAKernel or kern == kernel.MKDAKernel:
         kern = kern(r=fwhm / 2)
@@ -143,7 +146,7 @@ def meta(simulatedata_cbma, meta_est, kern):
         kern = kern()
 
     # instantiate meta-analysis estimator
-    return meta_est(kern)
+    return meta(kern, **kwargs)
 
 
 ###########################################
@@ -159,7 +162,11 @@ def meta_res(simulatedata_cbma, meta):
     if isinstance(meta.kernel_transformer, kernel.Peaks2MapsKernel):
         # AttributeError: 'DataFrame' object has no attribute 'masker'
         meta_expectation = pytest.raises(AttributeError)
-    elif isinstance(meta, ale.ALE) and isinstance(meta.kernel_transformer, kernel.KDAKernel):
+    elif (
+        isinstance(meta, ale.ALE)
+        and isinstance(meta.kernel_transformer, kernel.KDAKernel)
+        and meta.get_params().get("null_method") == "analytic"
+    ):
         meta_expectation = pytest.raises(IndexError)
     else:
         meta_expectation = does_not_raise()
@@ -214,6 +221,12 @@ def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
         meta_res.estimator.kernel_transformer, kernel.MKDAKernel
     ):
         good_performance = False
+    elif (
+        isinstance(meta_res.estimator, ale.ALE)
+        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
+        and meta_res.estimator.get_params().get("null_method") == "empirical"
+    ):
+        good_performance = False
     else:
         good_performance = True
     _check_p_values(
@@ -252,6 +265,12 @@ def test_corr_transform_p_values(meta_cres, corr, signal_masks, simulatedata_cbm
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
         and isinstance(corr, (FDRCorrector, FWECorrector))
+    ):
+        good_performance = False
+    elif (
+        isinstance(meta_cres.estimator, ale.ALE)
+        and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
+        and meta_cres.estimator.get_params().get("null_method") == "empirical"
     ):
         good_performance = False
     else:
@@ -383,6 +402,7 @@ def _transform_res(meta, meta_res, corr):
         isinstance(meta, ale.ALE)
         and isinstance(meta.kernel_transformer, kernel.KDAKernel)
         and corr.method == "montecarlo"
+        and meta.get_params().get("null_method") == "analytic"
     ):
         # IndexError: index 20000 is out of bounds for axis 0 with size 10010
         corr_expectation = pytest.raises(IndexError)
