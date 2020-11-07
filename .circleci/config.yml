@@ -61,6 +61,7 @@ jobs:
             python setup.py install --user
       - run:
           name: Run tests
+          no_output_timeout: 30m
           command:  |
             source activate py38_env
             py.test nimare
@@ -89,6 +90,7 @@ jobs:
             python setup.py install --user
       - run:
           name: Run tests
+          no_output_timeout: 30m
           command:  |
             source activate py37_env
             py.test nimare
@@ -139,6 +141,7 @@ jobs:
           key: deps9-{{ checksum "nimare/info.py" }}
       - run:
           name: Run tests and compile coverage
+          no_output_timeout: 30m
           command:  |
             apt-get install -yqq curl
             source activate py36_env
