@@ -136,8 +136,8 @@ def null_to_p(test_value, null_array, tail="two"):
     P-values are clipped based on the number of elements in the null array.
     Therefore no p-values of 0 or 1 should be produced.
     """
-    test_value = np.array(test_value)
-    p = np.array(stats.percentileofscore(null_array, test_value, 'strict') for v in test_value)
+    test_value = np.atleast_1d(test_value)
+    p = np.array([stats.percentileofscore(null_array, v, 'strict') for v in test_value])
     p /= 100.
     if tail == "two":
         p = (0.5 - np.abs(p - 0.5)) * 2
