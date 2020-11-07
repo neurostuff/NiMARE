@@ -294,13 +294,12 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value, sum_overlap=False):
         representing the modeled activation map.
     """
     kernel_data = np.zeros(shape, dtype=type(value))
+    n_dim = ijks.shape[1]
+    xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
+    cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
+    kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
     for peak in ijks:
-        xx, yy, zz = [
-            slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(peak))
-        ]
-        cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-        sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
-        sphere = np.round(sphere.T + peak)
+        sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
         sphere = sphere[idx, :].astype(int)
         if sum_overlap:
