@@ -219,7 +219,6 @@ class MKDADensity(CBMAEstimator):
             P- and Z-values for statistic values.
             Same shape as stat_values.
         """
-        p_values = np.ones(stat_values.shape)
 
         if null_method == "analytic":
             assert "histogram_bins" in self.null_distributions_.keys()
@@ -228,12 +227,13 @@ class MKDADensity(CBMAEstimator):
             step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
             # Determine p- and z-values from stat values and null distribution.
+            p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
-
             p_values = null_to_p(
                     stat_values,
                     self.null_distributions_["empirical_null"],
