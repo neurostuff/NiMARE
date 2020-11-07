@@ -234,9 +234,8 @@ class MKDADensity(CBMAEstimator):
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
 
-            for i_voxel in range(stat_values.shape[0]):
-                p_values[i_voxel] = null_to_p(
-                    stat_values[i_voxel],
+            p_values = null_to_p(
+                    stat_values,
                     self.null_distributions_["empirical_null"],
                     tail="upper",
                 )
