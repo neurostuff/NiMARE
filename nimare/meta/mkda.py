@@ -47,9 +47,7 @@ class MKDADensity(CBMAEstimator):
       cognitive and affective neuroscience 2.2 (2007): 150-158.
       https://doi.org/10.1093/scan/nsm015
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self, kernel_transformer=MKDAKernel, null_method="empirical", n_iters=10000, **kwargs
@@ -107,11 +105,7 @@ class MKDADensity(CBMAEstimator):
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {
-            "stat": stat_values,
-            "p": p_values,
-            "z": z_values,
-        }
+        images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
 
     def _compute_summarystat(self, data):
@@ -235,10 +229,8 @@ class MKDADensity(CBMAEstimator):
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
             p_values = null_to_p(
-                    stat_values,
-                    self.null_distributions_["empirical_null"],
-                    tail="upper",
-                )
+                stat_values, self.null_distributions_["empirical_null"], tail="upper"
+            )
         else:
             raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
@@ -370,13 +362,11 @@ class MKDADensity(CBMAEstimator):
         z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
-        p_vfwe_values = np.ones(stat_values.shape)
-        for voxel in range(stat_values.shape[0]):
-            p_vfwe_values[voxel] = null_to_p(
-                stat_values[voxel],
-                self.null_distributions_["fwe_level-voxel_method-montecarlo"],
-                tail="upper",
-            )
+        p_vfwe_values = null_to_p(
+            stat_values,
+            self.null_distributions_["fwe_level-voxel_method-montecarlo"],
+            tail="upper",
+        )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
@@ -421,9 +411,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
       cognitive and affective neuroscience 2.2 (2007): 150-158.
       https://doi.org/10.1093/scan/nsm015
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
@@ -735,9 +723,7 @@ class KDA(CBMAEstimator):
         studies of shifting attention: a meta-analysis." Neuroimage 22.4
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self, kernel_transformer=KDAKernel, null_method="empirical", n_iters=10000, **kwargs
@@ -774,11 +760,7 @@ class KDA(CBMAEstimator):
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {
-            "stat": stat_values,
-            "p": p_values,
-            "z": z_values,
-        }
+        images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
 
     def _compute_summarystat(self, data):
@@ -872,13 +854,9 @@ class KDA(CBMAEstimator):
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
-
-            for i_voxel in range(stat_values.shape[0]):
-                p_values[i_voxel] = null_to_p(
-                    stat_values[i_voxel],
-                    self.null_distributions_["empirical_null"],
-                    tail="upper",
-                )
+            p_values = null_to_p(
+                stat_values, self.null_distributions_["empirical_null"], tail="upper"
+            )
         else:
             raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
