@@ -68,7 +68,7 @@ def signal_masks(simulatedata_cbma):
 @pytest.fixture(
     scope="session",
     params=[
-        pytest.param((ale.ALE, {"null_method": "empirical"}), id="ale+empirical"),
+        pytest.param((ale.ALE, {"null_method": "empirical", "n_iters": 1000}), id="ale+empirical"),
         pytest.param((ale.ALE, {"null_method": "analytic"}), id="ale+analytic"),
         pytest.param((mkda.MKDADensity, {"null_method": "empirical"}), id="mkda+empirical"),
         pytest.param((mkda.MKDADensity, {"null_method": "analytic"}), id="mkda+analytic"),
