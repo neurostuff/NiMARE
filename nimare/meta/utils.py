@@ -266,7 +266,7 @@ def peaks2maps(
     return niis
 
 
-def compute_kda_ma(shape, vox_dims, ijks, r, value, exp_idx=None, sum_overlap=False):
+def compute_kda_ma(shape, vox_dims, ijks, r, value=1., exp_idx=None, sum_overlap=False):
     """
     Compute (M)KDA modeled activation (MA) map.
     Replaces the values around each focus in ijk with binary sphere.
@@ -298,7 +298,7 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value, exp_idx=None, sum_overlap=Fa
         3d or 4d array. If `exp_idx` is none, a 3d array in the same shape as
         the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
-        unique studies, and the remaining 3 dimensions are equal to `shape`.
+        unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
     squeeze = exp_idx is None
     if exp_idx is None:
@@ -317,10 +317,11 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value, exp_idx=None, sum_overlap=Fa
         sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
         sphere = sphere[idx, :].astype(int)
+        exp = exp_idx[i]
         if sum_overlap:
-            kernel_data[i][tuple(sphere.T)] += value
+            kernel_data[exp][tuple(sphere.T)] += value
         else:
-            kernel_data[i][tuple(sphere.T)] = value
+            kernel_data[exp][tuple(sphere.T)] = value
 
     if squeeze:
         kernel_data = np.squeeze(kernel_data, axis=0)
