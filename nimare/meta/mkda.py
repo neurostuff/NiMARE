@@ -320,7 +320,12 @@ class MKDADensity(CBMAEstimator):
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
 
-        conn = np.ones((3, 3, 3))
+        # Find number of voxels per cluster (includes 0, which is empty space in
+        # the matrix)
+        conn = np.zeros((3, 3, 3), int)
+        conn[:, :, 1] = 1
+        conn[:, 1, :] = 1
+        conn[1, :, :] = 1
 
         # Define parameters
         iter_conn = [conn] * n_iters
