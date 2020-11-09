@@ -204,8 +204,8 @@ def meta_cres_small(meta, meta_res, corr_small):
 def test_meta_fit_smoke(meta_res):
     assert isinstance(meta_res, MetaResult)
 
-
-def test_meta_fit_p_values(meta_res, signal_masks, simulatedata_cbma):
+@pytest.mark.performance
+def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
     _, (ground_truth_foci, _) = simulatedata_cbma
     mask = meta_res.masker.mask_img
     ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
@@ -245,7 +245,8 @@ def test_corr_transform_smoke(meta_cres_small):
     assert isinstance(meta_cres_small, MetaResult)
 
 
-def test_corr_transform_p_values(meta_cres, corr, signal_masks, simulatedata_cbma):
+@pytest.mark.performance
+def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_cbma):
     _, (ground_truth_foci, _) = simulatedata_cbma
     mask = meta_cres.masker.mask_img
     ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
