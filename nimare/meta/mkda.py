@@ -18,6 +18,7 @@ from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
 from ..utils import round2
 from .kernel import KDAKernel, MKDAKernel
+from .utils import compute_kda_ma
 
 LGR = logging.getLogger(__name__)
 
@@ -244,18 +245,21 @@ class MKDADensity(CBMAEstimator):
         """
         iter_ijk, iter_df, conn, voxel_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
-        iter_df[["i", "j", "k"]] = iter_ijk
-        iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="array"
+        dims = self.masker.mask_img.shape
+        vox_dims = self.masker.mask_img.header.get_zooms()
+        r = self.kernel_transformer.r
+
+        # Pass all experiments in parallel; this way compute_kda_ma return a
+        # 4-d array, where the first dimension is experiments.
+        iter_ma_maps = compute_kda_ma(
+            dims, vox_dims, iter_ijk, r, 1., exp_idx=iter_df["id"].values
         )
-        iter_ma_maps = iter_ma_maps * self.weight_vec_
+        iter_ma_maps *= self.weight_vec_[:, None, None]
         iter_of_map = np.sum(iter_ma_maps, axis=0)
         iter_max_value = np.max(iter_of_map)
-        iter_of_map = self.masker.inverse_transform(iter_of_map)
-        vthresh_iter_of_map = iter_of_map.get_fdata().copy()
-        vthresh_iter_of_map[vthresh_iter_of_map < voxel_thresh] = 0
+        iter_of_map[iter_of_map < voxel_thresh] = 0
 
-        labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
+        labeled_matrix = ndimage.measurements.label(iter_of_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
         if clust_sizes:
