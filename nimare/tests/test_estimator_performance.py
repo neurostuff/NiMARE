@@ -204,6 +204,7 @@ def meta_cres_small(meta, meta_res, corr_small):
 def test_meta_fit_smoke(meta_res):
     assert isinstance(meta_res, MetaResult)
 
+
 @pytest.mark.performance
 def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
     _, (ground_truth_foci, _) = simulatedata_cbma
