@@ -39,13 +39,13 @@ def test_mkda_density_kernel_instance(testdata_cbma):
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_mkda_density_analytic_null(testdata_cbma):
+def test_mkda_density_analytic_null(testdata_cbma_full):
     """
     Smoke test for MKDADensity
     """
     meta = mkda.MKDADensity(null="analytic")
-    res = meta.fit(testdata_cbma)
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
+    res = meta.fit(testdata_cbma_full)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=1, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
