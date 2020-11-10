@@ -99,17 +99,18 @@ class MKDADensity(CBMAEstimator):
         # This will need to be distinct from the kernel_transformer-based kind
         # done in CBMAEstimator._preprocess_input
         ids_df = self.inputs_["coordinates"].groupby("id").first()
-        if "sample_size" in ids_df.columns and "inference" not in ids_df.columns:
-            ids_n = ids_df["sample_size"].astype(float).values
-            weight_vec = np.sqrt(ids_n)[:, None] / np.sum(np.sqrt(ids_n))
-        elif "sample_size" in ids_df.columns and "inference" in ids_df.columns:
-            ids_n = ids_df["sample_size"].astype(float).values
-            ids_inf = ids_df["inference"].map({"ffx": 0.75, "rfx": 1.0}).values
-            weight_vec = (np.sqrt(ids_n)[:, None] * ids_inf[:, None]) / np.sum(
-                np.sqrt(ids_n) * ids_inf
-            )
-        else:
-            weight_vec = np.ones((ma_values.shape[0], 1))
+
+        # Default to unit weighting for missing inference or sample size
+        if "inference" not in ids_df.columns:
+            ids_df["inference"] = "rfx"
+        if "sample_size" not in ids_df.columns:
+            ids_df["sample_size"] = 1.
+
+        n = ids_df["sample_size"].astype(float).values
+        inf = ids_df["inference"].map({"ffx": 0.75, "rfx": 1.0}).values
+
+        weight_vec = ((np.sqrt(n) * inf) / np.sum(np.sqrt(n) * inf))[:, None]
+
         assert weight_vec.shape[0] == ma_values.shape[0]
         return weight_vec
 
@@ -143,8 +144,6 @@ class MKDADensity(CBMAEstimator):
 
         # Apply weights before returning
         return ma_values.T.dot(self.weight_vec_).ravel()
-
-        return stat_values
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
         """Compute uncorrected null distribution using empirical method.
