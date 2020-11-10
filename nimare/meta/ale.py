@@ -85,9 +85,7 @@ class ALE(CBMAEstimator):
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
@@ -153,7 +151,7 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+        stat_values = 1. - np.prod(1. - ma_values, axis=0)
         return stat_values
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
@@ -198,59 +196,48 @@ class ALE(CBMAEstimator):
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
         max_poss_ale = self._compute_summarystat(max_ma_values)
-        self.null_distributions_["histogram_bins"] = np.round(
-            np.arange(0, max_poss_ale + 0.001, 0.0001), 4
-        )
+        step_size = 0.0001
+        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
+        self.null_distributions_["histogram_bins"] = hist_bins
 
-        ma_hists = np.zeros(
-            (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
-        )
-        for i_exp in range(ma_values.shape[0]):
-            # Remember that histogram uses bin edges (not centers), so it
-            # returns a 1xhist_bins-1 array
-            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
+        ma_hists = np.zeros((ma_values.shape[0], hist_bins.shape[0]))
+
+        n_zeros = np.sum(ma_values == 0, 1)
+        ma_hists[:, 0] = n_zeros
+
+        for i_exp in range(len(ma_values)):
             reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 0] = n_zeros
-            ma_hists[i_exp, 1:] = np.histogram(
-                a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
-            )[0]
+            ma_hists[i_exp, 1:] = np.histogram(reduced_ma_values, bins=hist_bins, density=False)[0]
 
-        # Inverse of step size in histBins (0.0001) = 10000
-        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+        inv_step_size = int(np.ceil(1 / step_size))
 
-        # Null distribution to convert ALE to p-values.
-        ale_hist = ma_hists[0, :]
+        # Normalize MA histograms to get probabilities
+        ma_hists /= ma_hists.sum(1)[:, None]
+
+        ale_hist = ma_hists[0, :].copy()
+
         for i_exp in range(1, ma_hists.shape[0]):
-            temp_hist = np.copy(ale_hist)
-            ma_hist = np.copy(ma_hists[i_exp, :])
+
+            exp_hist = ma_hists[i_exp, :]
 
             # Find histogram bins with nonzero values for each histogram.
-            ale_idx = np.where(temp_hist > 0)[0]
-            exp_idx = np.where(ma_hist > 0)[0]
+            ale_idx = np.where(ale_hist > 0)[0]
+            exp_idx = np.where(exp_hist > 0)[0]
 
-            # Normalize histograms.
-            temp_hist /= np.sum(temp_hist)
-            ma_hist /= np.sum(ma_hist)
+            # Compute output MA values, ale_hist indices, and probabilities
+            ale_scores = 1 - np.outer(1 - hist_bins[exp_idx], 1 - hist_bins[ale_idx]).ravel()
+            score_idx = np.floor(ale_scores * inv_step_size).astype(int)
+            probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
-            # Perform weighted convolution of histograms.
-            ale_hist = np.zeros(self.null_distributions_["histogram_bins"].shape[0])
-            for j_idx in exp_idx:
-                # Compute probabilities of observing each ALE value in histBins
-                # by randomly combining maps represented by maHist and aleHist.
-                # Add observed probabilities to corresponding bins in ALE
-                # histogram.
-                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - self.null_distributions_["histogram_bins"][j_idx]) * (
-                    1 - self.null_distributions_["histogram_bins"][ale_idx]
-                )
-                score_idx = np.floor(ale_scores * step).astype(int)
-                np.add.at(ale_hist, score_idx, probabilities)
+            # Reset histogram and set probabilities. Use at() because there can
+            # be redundant values in score_idx.
+            ale_hist = np.zeros((inv_step_size,))
+            np.add.at(ale_hist, score_idx, probabilities)
 
         # Convert aleHist into null distribution. The value in each bin
         # represents the probability of finding an ALE value (stored in
         # histBins) of that value or lower.
-        null_distribution = ale_hist / np.sum(ale_hist)
-        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+        null_distribution = np.cumsum(ale_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
         self.null_distributions_["histogram_weights"] = null_distribution
 
@@ -501,9 +488,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
@@ -616,9 +601,7 @@ class SCALE(CBMAEstimator):
       revisited: controlling for activation base rates." NeuroImage 99
       (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self,
