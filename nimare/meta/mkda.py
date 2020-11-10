@@ -77,7 +77,23 @@ class MKDADensity(CBMAEstimator):
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
 
-        # Weight each SCM by square root of sample size
+        self.weight_vec_ = self._compute_weights(ma_values)
+
+        stat_values = self._compute_summarystat(ma_values)
+
+        # Determine null distributions for summary stat (OF) to p conversion
+        if self.null_method == "analytic":
+            self._compute_null_analytic(ma_values)
+        else:
+            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
+        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
+
+        images = {"stat": stat_values, "p": p_values, "z": z_values}
+        return images
+
+    def _compute_weights(self, ma_values):
+        """ Determine experiment-wise weights per the conventional MKDA approach.
+        """
         # TODO: Incorporate sample-size and inference metadata extraction and
         # merging into df.
         # This will need to be distinct from the kernel_transformer-based kind
@@ -94,20 +110,8 @@ class MKDADensity(CBMAEstimator):
             )
         else:
             weight_vec = np.ones((ma_values.shape[0], 1))
-        self.weight_vec_ = weight_vec  # C x 1 array
-        assert self.weight_vec_.shape[0] == ma_values.shape[0]
-        ma_values = ma_values * self.weight_vec_
-        stat_values = self._compute_summarystat(ma_values)
-
-        # Determine null distributions for summary stat (OF) to p conversion
-        if self.null_method == "analytic":
-            self._compute_null_analytic(ma_values)
-        else:
-            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
-
-        images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
+        assert weight_vec.shape[0] == ma_values.shape[0]
+        return weight_vec
 
     def _compute_summarystat(self, data):
         """Compute OF scores from data.
@@ -133,12 +137,13 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
         elif isinstance(data, np.ndarray):
-            ma_values = data.copy()
-        else:
+            ma_values = data
+        elif not isinstance(data, np.ndarray):
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        # OF is just a sum of MA values.
-        stat_values = np.sum(ma_values, axis=0)
+        # Apply weights before returning
+        return ma_values.T.dot(self.weight_vec_).ravel()
+
         return stat_values
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
@@ -244,19 +249,14 @@ class MKDADensity(CBMAEstimator):
         between vFWE and cFWE.
         """
         iter_ijk, iter_df, conn, voxel_thresh = params
-        iter_ijk = np.squeeze(iter_ijk)
-        dims = self.masker.mask_img.shape
-        vox_dims = self.masker.mask_img.header.get_zooms()
-        r = self.kernel_transformer.r
 
-        # Pass all experiments in parallel; this way compute_kda_ma return a
-        # 4-d array, where the first dimension is experiments.
-        iter_ma_maps = compute_kda_ma(
-            dims, vox_dims, iter_ijk, r, 1., exp_idx=iter_df["id"].values
+        iter_ma_maps = self.kernel_transformer.transform(
+            iter_df, masker=self.masker, return_type="array"
         )
-        iter_ma_maps *= self.weight_vec_[:, None, None]
-        iter_of_map = np.sum(iter_ma_maps, axis=0)
+
+        iter_of_map = self._compute_summarystat(iter_ma_maps)
         iter_max_value = np.max(iter_of_map)
+        iter_of_map = self.masker.inverse_transform(iter_of_map).get_fdata().copy()
         iter_of_map[iter_of_map < voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(iter_of_map, conn)[0]
