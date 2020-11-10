@@ -138,7 +138,7 @@ def null_to_p(test_value, null_array, tail="two"):
     """
     test_value = np.atleast_1d(test_value)
     # TODO: this runs in N^2 time; is there a more efficient alternative?
-    p = np.array([stats.percentileofscore(null_array, v, "strict") for v in test_value])
+    p = np.array([stats.percentileofscore(null_array, v, "rank") for v in test_value])
     p /= 100.
     if tail == "two":
         p = (0.5 - np.abs(p - 0.5)) * 2
