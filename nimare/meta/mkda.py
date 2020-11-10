@@ -954,7 +954,7 @@ class KDA(CBMAEstimator):
             ma_hist = np.copy(ma_hists[i_exp, :])
 
             # Find histogram bins with nonzero values for each histogram.
-            ale_idx = np.where(temp_hist > 0)[0]
+            stat_idx = np.where(temp_hist > 0)[0]
             exp_idx = np.where(ma_hist > 0)[0]
 
             # Normalize histograms.
@@ -964,15 +964,17 @@ class KDA(CBMAEstimator):
             # Perform weighted convolution of histograms.
             stat_hist = np.zeros(self.null_distributions_["histogram_bins"].shape[0])
             for j_idx in exp_idx:
-                # Compute probabilities of observing each ALE value in histBins
-                # by randomly combining maps represented by maHist and aleHist.
-                # Add observed probabilities to corresponding bins in ALE
-                # histogram.
-                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - self.null_distributions_["histogram_bins"][j_idx]) * (
-                    1 - self.null_distributions_["histogram_bins"][ale_idx]
+                # Compute probabilities of observing each summary value in
+                # histogram bins by randomly combining maps represented by
+                # the MA histogram and summary value histogram.
+                # Add observed probabilities to corresponding bins in summary
+                # value histogram.
+                probabilities = ma_hist[j_idx] * temp_hist[stat_idx]
+                stat_scores = (
+                    self.null_distributions_["histogram_bins"][j_idx]
+                    + self.null_distributions_["histogram_bins"][stat_idx]
                 )
-                score_idx = np.floor(ale_scores * step).astype(int)
+                score_idx = np.floor(stat_scores * step).astype(int)
                 np.add.at(stat_hist, score_idx, probabilities)
 
         # Convert aleHist into null distribution. The value in each bin
