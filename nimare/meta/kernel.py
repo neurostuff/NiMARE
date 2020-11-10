@@ -267,14 +267,11 @@ class MKDAKernel(KernelTransformer):
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
 
-        transformed = []
-        for id_, data in coordinates.groupby("id"):
-            ijks = np.vstack((data.i.values, data.j.values, data.k.values)).T
-            kernel_data = compute_kda_ma(
-                dims, vox_dims, ijks, r=self.r, value=self.value, sum_overlap=False
-            )
-            transformed.append((kernel_data, id_))
-        return transformed
+        ijks = coordinates[["i", "j", "k"]].values
+        exp_idx = coordinates["id"].values
+        transformed = compute_kda_ma(dims, vox_dims, ijks, self.r, self.value, exp_idx, False)
+        exp_ids = np.unique(exp_idx)
+        return transformed, exp_ids
 
 
 class KDAKernel(KernelTransformer):
