@@ -161,6 +161,12 @@ class KernelTransformer(Transformer):
 
         transformed_maps = self._transform(mask, coordinates)
 
+        if not isinstance(transformed_maps[0], (list, tuple)):
+            if return_type == "array":
+                return transformed_maps[0][:, mask_data]
+
+        transformed_maps = list(zip(*transformed_maps))
+
         imgs = []
         for (kernel_data, id_) in transformed_maps:
             if return_type == "array":
@@ -175,7 +181,6 @@ class KernelTransformer(Transformer):
                 out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
-
         if return_type == "array":
             return np.vstack(imgs)
         elif return_type == "image":
@@ -298,12 +303,7 @@ class KDAKernel(KernelTransformer):
         for id_, data in coordinates.groupby("id"):
             ijks = np.vstack((data.i.values, data.j.values, data.k.values)).T
             kernel_data = compute_kda_ma(
-                dims,
-                vox_dims,
-                ijks,
-                r=self.r,
-                value=self.value,
-                sum_overlap=True,
+                dims, vox_dims, ijks, r=self.r, value=self.value, sum_overlap=True
             )
             transformed.append((kernel_data, id_))
         return transformed
