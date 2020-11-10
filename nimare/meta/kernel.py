@@ -247,33 +247,6 @@ class ALEKernel(KernelTransformer):
         return transformed
 
 
-class MKDAKernel(KernelTransformer):
-    """
-    Generate MKDA modeled activation images from coordinates.
-
-    Parameters
-    ----------
-    r : :obj:`int`, optional
-        Sphere radius, in mm.
-    value : :obj:`int`, optional
-        Value for sphere.
-    """
-
-    def __init__(self, r=10, value=1):
-        self.r = float(r)
-        self.value = value
-
-    def _transform(self, mask, coordinates):
-        dims = mask.shape
-        vox_dims = mask.header.get_zooms()
-
-        ijks = coordinates[["i", "j", "k"]].values
-        exp_idx = coordinates["id"].values
-        transformed = compute_kda_ma(dims, vox_dims, ijks, self.r, self.value, exp_idx, False)
-        exp_ids = np.unique(exp_idx)
-        return transformed, exp_ids
-
-
 class KDAKernel(KernelTransformer):
     """
     Generate KDA modeled activation images from coordinates.
@@ -286,8 +259,9 @@ class KDAKernel(KernelTransformer):
         Value for sphere.
     """
 
-    def __init__(self, r=6, value=1):
-        # Set parameters
+    _sum_overlap = True
+
+    def __init__(self, r=10, value=1):
         self.r = float(r)
         self.value = value
 
@@ -295,15 +269,28 @@ class KDAKernel(KernelTransformer):
         dims = mask.shape
         vox_dims = mask.header.get_zooms()
 
-        # Create MA maps
-        transformed = []
-        for id_, data in coordinates.groupby("id"):
-            ijks = np.vstack((data.i.values, data.j.values, data.k.values)).T
-            kernel_data = compute_kda_ma(
-                dims, vox_dims, ijks, r=self.r, value=self.value, sum_overlap=True
-            )
-            transformed.append((kernel_data, id_))
-        return transformed
+        ijks = coordinates[["i", "j", "k"]].values
+        exp_idx = coordinates["id"].values
+        transformed = compute_kda_ma(
+            dims, vox_dims, ijks, self.r, self.value, exp_idx, sum_overlap=self._sum_overlap
+        )
+        exp_ids = np.unique(exp_idx)
+        return transformed, exp_ids
+
+
+class MKDAKernel(KDAKernel):
+    """
+    Generate MKDA modeled activation images from coordinates.
+
+    Parameters
+    ----------
+    r : :obj:`int`, optional
+        Sphere radius, in mm.
+    value : :obj:`int`, optional
+        Value for sphere.
+    """
+
+    _sum_overlap = False
 
 
 class Peaks2MapsKernel(KernelTransformer):
