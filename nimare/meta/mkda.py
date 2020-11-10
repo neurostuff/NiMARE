@@ -100,6 +100,8 @@ class MKDADensity(CBMAEstimator):
         # done in CBMAEstimator._preprocess_input
         ids_df = self.inputs_["coordinates"].groupby("id").first()
 
+        n_exp = len(ids_df)
+
         # Default to unit weighting for missing inference or sample size
         if "inference" not in ids_df.columns:
             ids_df["inference"] = "rfx"
@@ -109,7 +111,8 @@ class MKDADensity(CBMAEstimator):
         n = ids_df["sample_size"].astype(float).values
         inf = ids_df["inference"].map({"ffx": 0.75, "rfx": 1.0}).values
 
-        weight_vec = ((np.sqrt(n) * inf) / np.sum(np.sqrt(n) * inf))[:, None]
+        weight_vec = n_exp * ((np.sqrt(n) * inf) / np.sum(np.sqrt(n) * inf))
+        weight_vec = weight_vec[:, None]
 
         assert weight_vec.shape[0] == ma_values.shape[0]
         return weight_vec
@@ -192,7 +195,6 @@ class MKDADensity(CBMAEstimator):
         ss_hist = 1.
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
-
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
         null_distribution = np.cumsum(ss_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
