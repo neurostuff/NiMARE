@@ -59,7 +59,7 @@ def signal_masks(simulatedata_cbma):
     ground_truth_foci_ijks = [
         tuple(mm2vox(focus, dataset.masker.mask_img.affine)) for focus in ground_truth_foci
     ]
-    return _create_signal_mask(ground_truth_foci_ijks, dataset.masker.mask_img)
+    return _create_signal_mask(np.array(ground_truth_foci_ijks), dataset.masker.mask_img)
 
 
 ##########################################
@@ -159,7 +159,7 @@ def meta_res(simulatedata_cbma, meta):
     if isinstance(meta.kernel_transformer, kernel.Peaks2MapsKernel):
         # AttributeError: 'DataFrame' object has no attribute 'masker'
         meta_expectation = pytest.raises(AttributeError)
-    elif isinstance(meta, ale.ALE) and isinstance(meta.kernel_transformer, kernel.KDAKernel):
+    elif isinstance(meta, ale.ALE) and isinstance(meta.kernel_transformer, kernel.KDAKernel) and not isinstance(meta.kernel_transformer, kernel.MKDAKernel):
         meta_expectation = pytest.raises(IndexError)
     else:
         meta_expectation = does_not_raise()
@@ -382,6 +382,7 @@ def _transform_res(meta, meta_res, corr):
     elif (
         isinstance(meta, ale.ALE)
         and isinstance(meta.kernel_transformer, kernel.KDAKernel)
+        and not isinstance(meta.kernel_transformer, kernel.MKDAKernel)
         and corr.method == "montecarlo"
     ):
         # IndexError: index 20000 is out of bounds for axis 0 with size 10010
