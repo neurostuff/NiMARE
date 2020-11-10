@@ -251,6 +251,9 @@ class MKDADensity(CBMAEstimator):
         """
         iter_ijk, iter_df, conn, voxel_thresh = params
 
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[["i", "j", "k"]] = iter_ijk
+
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
