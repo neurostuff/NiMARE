@@ -164,8 +164,8 @@ class KernelTransformer(Transformer):
         if not isinstance(transformed_maps[0], (list, tuple)):
             if return_type == "array":
                 return transformed_maps[0][:, mask_data]
-
-        transformed_maps = list(zip(*transformed_maps))
+            else:
+                transformed_maps = list(zip(*transformed_maps))
 
         imgs = []
         for (kernel_data, id_) in transformed_maps:
