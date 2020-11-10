@@ -286,7 +286,7 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1., exp_idx=None, sum_overlap
         Value for sphere.
     exp_idx : array_like
         Optional indices of experiments. If passed, must be of same length as
-        ijks. Each unique value identiies all coordinates in ijk that come from
+        ijks. Each unique value identifies all coordinates in ijk that come from
         the same experiment. If None passed, it is assumed that all coordinates
         come from the same experiment.
     sum_overlap : :obj:`bool`
