@@ -42,9 +42,11 @@ def create_coordinate_dataset(
         Number of studies to generate. (Default=30)
     n_noise_foci : :obj:`int`
         Number of foci considered to be noise in each study. (Default=0)
-    seed : :obj:`int`
+    seed : :obj:`int` or None
         Random state to reproducibly initialize random numbers.
-        (Default=None)
+        If seed is None, then the random state will try to be initialized
+        with data from /dev/urandom (or the Windows analogue) if available
+        or will initialize from the clock otherwise. (Default=None)
     space : :obj:`str`
         The template space the coordinates are reported in. (Default='MNI')
 
