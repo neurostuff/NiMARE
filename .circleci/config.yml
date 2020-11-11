@@ -63,7 +63,7 @@ jobs:
           name: Run tests
           command:  |
             source activate py38_env
-            py.test -m "not performance" nimare
+            make unittest
 
   test_py37:
     working_directory: /tmp/src/NiMARE
@@ -91,7 +91,7 @@ jobs:
           name: Run tests
           command:  |
             source activate py37_env
-            py.test -m "not performance" nimare
+            make unittest
 
   build_docs:
     working_directory: /tmp/src/NiMARE
@@ -142,7 +142,7 @@ jobs:
           command:  |
             apt-get install -yqq curl
             source activate py36_env
-            py.test -m "not performance" --cov-report xml:coverage.xml --cov=nimare nimare
+            make unittest
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
         
@@ -161,7 +161,7 @@ jobs:
           command:  |
             apt-get install -yqq curl
             source activate py36_env
-            py.test -m "performance" nimare
+            make performancetest
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
 
