@@ -62,6 +62,7 @@ jobs:
       - run:
           name: Run tests
           command:  |
+            apt-get install -yqq make
             source activate py38_env
             make unittest
 
@@ -90,6 +91,7 @@ jobs:
       - run:
           name: Run tests
           command:  |
+            apt-get install -yqq make
             source activate py37_env
             make unittest
 
@@ -140,6 +142,7 @@ jobs:
       - run:
           name: Run tests and compile coverage
           command:  |
+            apt-get install -yqq make
             apt-get install -yqq curl
             source activate py36_env
             make unittest
