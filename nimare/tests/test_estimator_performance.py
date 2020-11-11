@@ -229,6 +229,12 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
         and meta_res.estimator.get_params().get("null_method") == "empirical"
     ):
         good_performance = False
+    elif (
+        isinstance(meta_res.estimator, mkda.MKDADensity)
+        and isinstance(meta_res.estimator.kernel_transformer, kernel.ALEKernel)
+        and meta_res.estimator.get_params().get("null_method") == "analytic"
+    ):
+        good_performance = False
     else:
         good_performance = True
     _check_p_values(
@@ -274,6 +280,12 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and meta_cres.estimator.get_params().get("null_method") == "empirical"
+    ):
+        good_performance = False
+    elif (
+        isinstance(meta_cres.estimator, mkda.MKDADensity)
+        and isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)
+        and meta_cres.estimator.get_params().get("null_method") == "analytic"
     ):
         good_performance = False
     else:
