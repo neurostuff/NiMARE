@@ -16,7 +16,7 @@ def create_coordinate_dataset(
     sample_size=30,
     n_studies=30,
     n_noise_foci=0,
-    seed=42,
+    seed=None,
     space="MNI",
 ):
     """Generate coordinate based dataset for meta analysis.
