@@ -118,35 +118,7 @@ class ALE(CBMAEstimator):
         images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
 
-    def _compute_summarystat(self, data):
-        """Compute ALE scores from data.
-
-        Parameters
-        ----------
-        data : (S [x V]) array, pandas.DataFrame, or list of img_like
-            Data from which to estimate ALE scores.
-            The data can be:
-            (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            (2) a DataFrame containing coordinates to produce MA values,
-            or (3) a list of imgs containing MA values.
-
-        Returns
-        -------
-        stat_values : 1d array
-            ALE values. One value per voxel.
-        """
-        if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_transformer.transform(
-                data, masker=self.masker, return_type="array"
-            )
-        elif isinstance(data, list):
-            ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
-            assert data.ndim in (1, 2)
-            ma_values = data.copy()
-        else:
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
-
+    def _compute_summarystat(self, ma_values):
         stat_values = 1. - np.prod(1. - ma_values, axis=0)
         return stat_values
 

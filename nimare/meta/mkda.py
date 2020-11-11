@@ -117,34 +117,7 @@ class MKDADensity(CBMAEstimator):
         assert weight_vec.shape[0] == ma_values.shape[0]
         return weight_vec
 
-    def _compute_summarystat(self, data):
-        """Compute OF scores from data.
-
-        Parameters
-        ----------
-        data : array, pandas.DataFrame, or list of img_like
-            Data from which to estimate ALE scores.
-            The data can be:
-            (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            (2) a DataFrame containing coordinates to produce MA values,
-            or (3) a list of imgs containing MA values.
-
-        Returns
-        -------
-        stat_values : 1d array
-            OF values. One value per voxel.
-        """
-        if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_transformer.transform(
-                data, masker=self.masker, return_type="array"
-            )
-        elif isinstance(data, list):
-            ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
-            ma_values = data
-        elif not isinstance(data, np.ndarray):
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
-
+    def _compute_summary_stat(self, ma_values):
         # Apply weights before returning
         return ma_values.T.dot(self.weight_vec_).ravel()
 
