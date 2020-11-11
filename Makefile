@@ -12,7 +12,7 @@ lint:
 	@flake8 nimare
 
 unittest:
-	@py.test -m "not performance" --cov-append --cov-report term-missing --cov=nimare nimare
+	@py.test -m "not performance" --cov-append --cov-report xml --cov-report term-missing --cov=nimare nimare
 
 performancetest:
-	@py.test -m "performance" --cov-append --cov-report term-missing --cov=nimare nimare
+	@py.test -m "performance" --cov-append --cov-report xml --cov-report term-missing --cov=nimare nimare
