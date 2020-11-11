@@ -18,7 +18,7 @@ from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
 from ..utils import round2
 from .kernel import KDAKernel, MKDAKernel
-from .utils import compute_kda_ma
+
 
 LGR = logging.getLogger(__name__)
 
