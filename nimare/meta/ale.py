@@ -115,11 +115,7 @@ class ALE(CBMAEstimator):
             self._compute_null_empirical(ma_maps, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {
-            "stat": stat_values,
-            "p": p_values,
-            "z": z_values,
-        }
+        images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
 
     def _compute_summarystat(self, data):
@@ -276,10 +272,8 @@ class ALE(CBMAEstimator):
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
             p_values = null_to_p(
-                    stat_values,
-                    self.null_distributions_["empirical_null"],
-                    tail="upper",
-                )
+                stat_values, self.null_distributions_["empirical_null"], tail="upper"
+            )
         else:
             raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
@@ -671,8 +665,7 @@ class SCALE(CBMAEstimator):
                 )
             else:
                 perm_scale_values = np.zeros(
-                    (self.n_iters, stat_values.shape[0]),
-                    dtype=stat_values.dtype,
+                    (self.n_iters, stat_values.shape[0]), dtype=stat_values.dtype
                 )
             for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
                 perm_scale_values[i_iter, :] = self._run_permutation(pp)
@@ -694,11 +687,7 @@ class SCALE(CBMAEstimator):
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
         # Write out unthresholded value images
-        images = {
-            "stat": stat_values,
-            "logp": logp_values,
-            "z": z_values,
-        }
+        images = {"stat": stat_values, "logp": logp_values, "z": z_values}
         return images
 
     def _compute_summarystat(self, data):

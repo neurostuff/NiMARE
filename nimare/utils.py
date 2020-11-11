@@ -112,17 +112,9 @@ def dict_to_coordinates(data, masker, space):
 
     # Now to apply transformations!
     if "mni" in space.lower() or "ale" in space.lower():
-        transform = {
-            "MNI": None,
-            "TAL": tal2mni,
-            "Talairach": tal2mni,
-        }
+        transform = {"MNI": None, "TAL": tal2mni, "Talairach": tal2mni}
     elif "tal" in space.lower():
-        transform = {
-            "MNI": mni2tal,
-            "TAL": None,
-            "Talairach": None,
-        }
+        transform = {"MNI": mni2tal, "TAL": None, "Talairach": None}
     else:
         raise ValueError("Unrecognized space: {0}".format(space))
 

@@ -56,10 +56,7 @@ class Fishers(MetaEstimator):
         est = pymare.estimators.Fishers(input="z")
         est.fit(pymare_dset)
         est_summary = est.summary()
-        results = {
-            "z": est_summary.z,
-            "p": est_summary.p,
-        }
+        results = {"z": est_summary.z, "p": est_summary.p}
         return results
 
 
@@ -102,9 +99,7 @@ class Stouffers(MetaEstimator):
         The PyMARE estimator called by this class.
     """
 
-    _required_inputs = {
-        "z_maps": ("image", "z"),
-    }
+    _required_inputs = {"z_maps": ("image", "z")}
 
     def __init__(self, use_sample_size=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -124,10 +119,7 @@ class Stouffers(MetaEstimator):
         est = pymare.estimators.Stouffers(input="z")
         est.fit(pymare_dset)
         est_summary = est.summary()
-        results = {
-            "z": est_summary.z,
-            "p": est_summary.p,
-        }
+        results = {"z": est_summary.z, "p": est_summary.p}
         return results
 
 
@@ -167,10 +159,7 @@ class WeightedLeastSquares(MetaEstimator):
         The PyMARE estimator called by this class.
     """
 
-    _required_inputs = {
-        "beta_maps": ("image", "beta"),
-        "varcope_maps": ("image", "varcope"),
-    }
+    _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
     def __init__(self, tau2=0, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -221,10 +210,7 @@ class DerSimonianLaird(MetaEstimator):
         The PyMARE estimator called by this class.
     """
 
-    _required_inputs = {
-        "beta_maps": ("image", "beta"),
-        "varcope_maps": ("image", "varcope"),
-    }
+    _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -270,10 +256,7 @@ class Hedges(MetaEstimator):
         The PyMARE estimator called by this class.
     """
 
-    _required_inputs = {
-        "beta_maps": ("image", "beta"),
-        "varcope_maps": ("image", "varcope"),
-    }
+    _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -403,10 +386,7 @@ class VarianceBasedLikelihood(MetaEstimator):
         The PyMARE estimator called by this class.
     """
 
-    _required_inputs = {
-        "beta_maps": ("image", "beta"),
-        "varcope_maps": ("image", "varcope"),
-    }
+    _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
     def __init__(self, method="ml", *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -461,9 +441,7 @@ class PermutedOLS(MetaEstimator):
     nilearn.mass_univariate.permuted_ols : The function used for this IBMA.
     """
 
-    _required_inputs = {
-        "z_maps": ("image", "z"),
-    }
+    _required_inputs = {"z_maps": ("image", "z")}
 
     def __init__(self, two_sided=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -551,8 +529,5 @@ class PermutedOLS(MetaEstimator):
         sign = np.sign(t_map)
         sign[sign == 0] = 1
         z_map = p_to_z(p_map, tail="two") * sign
-        images = {
-            "logp_level-voxel": log_p_map,
-            "z_level-voxel": z_map,
-        }
+        images = {"logp_level-voxel": log_p_map, "z_level-voxel": z_map}
         return images
