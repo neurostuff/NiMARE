@@ -39,13 +39,13 @@ def test_mkda_density_kernel_instance(testdata_cbma):
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_mkda_density_analytic_null(testdata_cbma):
+def test_mkda_density_analytic_null(testdata_cbma_full):
     """
     Smoke test for MKDADensity
     """
     meta = mkda.MKDADensity(null="analytic")
-    res = meta.fit(testdata_cbma)
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
+    res = meta.fit(testdata_cbma_full)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=1, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
@@ -114,3 +114,20 @@ def test_kda_density_fwe_1core(testdata_cbma):
         cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array").dtype
         == np.float64
     )
+
+
+def test_analytic_empirical_convergence(testdata_cbma_full):
+    est_a = mkda.MKDADensity(null_method="analytic")
+    n_iter = 10000
+    est_e = mkda.MKDADensity(null_method="empirical", n_iter=n_iter)
+    res_a = est_a.fit(testdata_cbma_full)
+    res_e = est_e.fit(testdata_cbma_full)
+    # Get smallest p-value above 0 from the empirical estimator; above this,
+    # the two should converge reasonably closely.
+    min_p = 1 / n_iter
+    p_idx = res_e.maps["p"] > min_p
+    p_analytical = res_a.maps["p"][p_idx]
+    p_empirical = res_e.maps["p"][p_idx]
+    # Correlation must be near unity and mean difference should be tiny
+    assert np.corrcoef(p_analytical, p_empirical)[0, 1] > 0.98
+    assert (p_analytical - p_empirical).mean() < 1e-3

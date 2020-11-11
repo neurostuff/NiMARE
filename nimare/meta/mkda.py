@@ -19,6 +19,7 @@ from ..transforms import p_to_z
 from ..utils import round2
 from .kernel import KDAKernel, MKDAKernel
 
+
 LGR = logging.getLogger(__name__)
 
 
@@ -47,9 +48,7 @@ class MKDADensity(CBMAEstimator):
       cognitive and affective neuroscience 2.2 (2007): 150-158.
       https://doi.org/10.1093/scan/nsm015
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self, kernel_transformer=MKDAKernel, null_method="empirical", n_iters=10000, **kwargs
@@ -78,26 +77,8 @@ class MKDADensity(CBMAEstimator):
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
 
-        # Weight each SCM by square root of sample size
-        # TODO: Incorporate sample-size and inference metadata extraction and
-        # merging into df.
-        # This will need to be distinct from the kernel_transformer-based kind
-        # done in CBMAEstimator._preprocess_input
-        ids_df = self.inputs_["coordinates"].groupby("id").first()
-        if "sample_size" in ids_df.columns and "inference" not in ids_df.columns:
-            ids_n = ids_df["sample_size"].astype(float).values
-            weight_vec = np.sqrt(ids_n)[:, None] / np.sum(np.sqrt(ids_n))
-        elif "sample_size" in ids_df.columns and "inference" in ids_df.columns:
-            ids_n = ids_df["sample_size"].astype(float).values
-            ids_inf = ids_df["inference"].map({"ffx": 0.75, "rfx": 1.0}).values
-            weight_vec = (np.sqrt(ids_n)[:, None] * ids_inf[:, None]) / np.sum(
-                np.sqrt(ids_n) * ids_inf
-            )
-        else:
-            weight_vec = np.ones((ma_values.shape[0], 1))
-        self.weight_vec_ = weight_vec  # C x 1 array
-        assert self.weight_vec_.shape[0] == ma_values.shape[0]
-        ma_values = ma_values * self.weight_vec_
+        self.weight_vec_ = self._compute_weights(ma_values)
+
         stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
@@ -107,12 +88,34 @@ class MKDADensity(CBMAEstimator):
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {
-            "stat": stat_values,
-            "p": p_values,
-            "z": z_values,
-        }
+        images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
+
+    def _compute_weights(self, ma_values):
+        """ Determine experiment-wise weights per the conventional MKDA approach.
+        """
+        # TODO: Incorporate sample-size and inference metadata extraction and
+        # merging into df.
+        # This will need to be distinct from the kernel_transformer-based kind
+        # done in CBMAEstimator._preprocess_input
+        ids_df = self.inputs_["coordinates"].groupby("id").first()
+
+        n_exp = len(ids_df)
+
+        # Default to unit weighting for missing inference or sample size
+        if "inference" not in ids_df.columns:
+            ids_df["inference"] = "rfx"
+        if "sample_size" not in ids_df.columns:
+            ids_df["sample_size"] = 1.
+
+        n = ids_df["sample_size"].astype(float).values
+        inf = ids_df["inference"].map({"ffx": 0.75, "rfx": 1.0}).values
+
+        weight_vec = n_exp * ((np.sqrt(n) * inf) / np.sum(np.sqrt(n) * inf))
+        weight_vec = weight_vec[:, None]
+
+        assert weight_vec.shape[0] == ma_values.shape[0]
+        return weight_vec
 
     def _compute_summarystat(self, data):
         """Compute OF scores from data.
@@ -138,13 +141,12 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
         elif isinstance(data, np.ndarray):
-            ma_values = data.copy()
-        else:
+            ma_values = data
+        elif not isinstance(data, np.ndarray):
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        # OF is just a sum of MA values.
-        stat_values = np.sum(ma_values, axis=0)
-        return stat_values
+        # Apply weights before returning
+        return ma_values.T.dot(self.weight_vec_).ravel()
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
         """Compute uncorrected null distribution using empirical method.
@@ -161,16 +163,10 @@ class MKDADensity(CBMAEstimator):
         "empirical_null".
         """
         n_studies, n_voxels = ma_maps.shape
-        null_distribution = np.zeros(n_iters)
-        for i_iter in range(n_iters):
-            # One random MA value per study
-            null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
-            iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
-            # Calculate summary statistic
-            iter_ss_value = self._compute_summarystat(iter_ma_values)
-            # Retain value in null distribution
-            null_distribution[i_iter] = iter_ss_value
-        self.null_distributions_["empirical_null"] = null_distribution
+        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
+        iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
+        null_dist = self._compute_summarystat(iter_ma_values)
+        self.null_distributions_["empirical_null"] = null_dist
 
     def _compute_null_analytic(self, ma_maps):
         """Compute uncorrected null distribution using analytic solution.
@@ -192,63 +188,15 @@ class MKDADensity(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
-        # Determine bins for null distribution histogram
-        max_ma_values = np.max(ma_values, axis=1)
-        max_poss_value = self._compute_summarystat(max_ma_values)
-        # Set up histogram with bins from 0 to max value + one bin
-        N_BINS = 10000
-        bins_max = max_poss_value + (max_poss_value / (N_BINS - 1))  # one extra bin
-        self.null_distributions_["histogram_bins"] = np.linspace(0, bins_max, num=N_BINS)
-
-        ma_hists = np.zeros(
-            (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
-        )
-        for i_exp in range(ma_values.shape[0]):
-            # Remember that histogram uses bin edges (not centers), so it
-            # returns a 1xhist_bins-1 array
-            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
-            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 0] = n_zeros
-            ma_hists[i_exp, 1:] = np.histogram(
-                a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
-            )[0]
-
-        # Inverse of step size in histBins (0.0001) = 10000
-        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
-
-        # Null distribution to convert ALE to p-values.
-        stat_hist = ma_hists[0, :]
-        for i_exp in range(1, ma_hists.shape[0]):
-            temp_hist = np.copy(stat_hist)
-            ma_hist = np.copy(ma_hists[i_exp, :])
-
-            # Find histogram bins with nonzero values for each histogram.
-            ale_idx = np.where(temp_hist > 0)[0]
-            exp_idx = np.where(ma_hist > 0)[0]
-
-            # Normalize histograms.
-            temp_hist /= np.sum(temp_hist)
-            ma_hist /= np.sum(ma_hist)
-
-            # Perform weighted convolution of histograms.
-            stat_hist = np.zeros(self.null_distributions_["histogram_bins"].shape[0])
-            for j_idx in exp_idx:
-                # Compute probabilities of observing each ALE value in histBins
-                # by randomly combining maps represented by maHist and aleHist.
-                # Add observed probabilities to corresponding bins in ALE
-                # histogram.
-                probabilities = ma_hist[j_idx] * temp_hist[ale_idx]
-                ale_scores = 1 - (1 - self.null_distributions_["histogram_bins"][j_idx]) * (
-                    1 - self.null_distributions_["histogram_bins"][ale_idx]
-                )
-                score_idx = np.floor(ale_scores * step).astype(int)
-                np.add.at(stat_hist, score_idx, probabilities)
-
-        # Convert aleHist into null distribution. The value in each bin
-        # represents the probability of finding an ALE value (stored in
-        # histBins) of that value or lower.
-        null_distribution = stat_hist / np.sum(stat_hist)
-        null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+        # MKDA maps are binary, so we only have k + 1 bins in the final
+        # histogram, where k is the number of studies. We can analytically
+        # compute the null distribution by convolution.
+        prop_active = ma_values.mean(1)
+        ss_hist = 1.
+        for exp_prop in prop_active:
+            ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
+        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+        null_distribution = np.cumsum(ss_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
         self.null_distributions_["histogram_weights"] = null_distribution
 
@@ -272,7 +220,6 @@ class MKDADensity(CBMAEstimator):
             P- and Z-values for statistic values.
             Same shape as stat_values.
         """
-        p_values = np.ones(stat_values.shape)
 
         if null_method == "analytic":
             assert "histogram_bins" in self.null_distributions_.keys()
@@ -281,18 +228,16 @@ class MKDADensity(CBMAEstimator):
             step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
             # Determine p- and z-values from stat values and null distribution.
+            p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
-
-            for i_voxel in range(stat_values.shape[0]):
-                p_values[i_voxel] = null_to_p(
-                    stat_values[i_voxel],
-                    self.null_distributions_["empirical_null"],
-                    tail="upper",
-                )
+            p_values = null_to_p(
+                stat_values, self.null_distributions_["empirical_null"], tail="upper"
+            )
         else:
             raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
@@ -305,19 +250,20 @@ class MKDADensity(CBMAEstimator):
         between vFWE and cFWE.
         """
         iter_ijk, iter_df, conn, voxel_thresh = params
+
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
+
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ma_maps = iter_ma_maps * self.weight_vec_
-        iter_of_map = np.sum(iter_ma_maps, axis=0)
-        iter_max_value = np.max(iter_of_map)
-        iter_of_map = self.masker.inverse_transform(iter_of_map)
-        vthresh_iter_of_map = iter_of_map.get_fdata().copy()
-        vthresh_iter_of_map[vthresh_iter_of_map < voxel_thresh] = 0
 
-        labeled_matrix = ndimage.measurements.label(vthresh_iter_of_map, conn)[0]
+        iter_of_map = self._compute_summarystat(iter_ma_maps)
+        iter_max_value = np.max(iter_of_map)
+        iter_of_map = self.masker.inverse_transform(iter_of_map).get_fdata().copy()
+        iter_of_map[iter_of_map < voxel_thresh] = 0
+
+        labeled_matrix = ndimage.measurements.label(iter_of_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
         if clust_sizes:
@@ -382,7 +328,12 @@ class MKDADensity(CBMAEstimator):
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
 
-        conn = np.ones((3, 3, 3))
+        # Find number of voxels per cluster (includes 0, which is empty space in
+        # the matrix)
+        conn = np.zeros((3, 3, 3), int)
+        conn[:, :, 1] = 1
+        conn[:, 1, :] = 1
+        conn[1, :, :] = 1
 
         # Define parameters
         iter_conn = [conn] * n_iters
@@ -424,13 +375,11 @@ class MKDADensity(CBMAEstimator):
         z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
-        p_vfwe_values = np.ones(stat_values.shape)
-        for voxel in range(stat_values.shape[0]):
-            p_vfwe_values[voxel] = null_to_p(
-                stat_values[voxel],
-                self.null_distributions_["fwe_level-voxel_method-montecarlo"],
-                tail="upper",
-            )
+        p_vfwe_values = null_to_p(
+            stat_values,
+            self.null_distributions_["fwe_level-voxel_method-montecarlo"],
+            tail="upper",
+        )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
@@ -475,9 +424,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
       cognitive and affective neuroscience 2.2 (2007): 150-158.
       https://doi.org/10.1093/scan/nsm015
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
@@ -789,9 +736,7 @@ class KDA(CBMAEstimator):
         studies of shifting attention: a meta-analysis." Neuroimage 22.4
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
-    _required_inputs = {
-        "coordinates": ("coordinates", None),
-    }
+    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self, kernel_transformer=KDAKernel, null_method="empirical", n_iters=10000, **kwargs
@@ -828,11 +773,7 @@ class KDA(CBMAEstimator):
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {
-            "stat": stat_values,
-            "p": p_values,
-            "z": z_values,
-        }
+        images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
 
     def _compute_summarystat(self, data):
@@ -926,13 +867,9 @@ class KDA(CBMAEstimator):
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
-
-            for i_voxel in range(stat_values.shape[0]):
-                p_values[i_voxel] = null_to_p(
-                    stat_values[i_voxel],
-                    self.null_distributions_["empirical_null"],
-                    tail="upper",
-                )
+            p_values = null_to_p(
+                stat_values, self.null_distributions_["empirical_null"], tail="upper"
+            )
         else:
             raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
