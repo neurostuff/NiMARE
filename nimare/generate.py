@@ -44,7 +44,7 @@ def create_coordinate_dataset(
         Number of foci considered to be noise in each study. (Default=0)
     seed : :obj:`int`
         Random state to reproducibly initialize random numbers.
-        (Default=42)
+        (Default=None)
     space : :obj:`str`
         The template space the coordinates are reported in. (Default='MNI')
 
