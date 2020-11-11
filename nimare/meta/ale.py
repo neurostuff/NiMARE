@@ -227,7 +227,7 @@ class ALE(CBMAEstimator):
 
             # Reset histogram and set probabilities. Use at() because there can
             # be redundant values in score_idx.
-            ale_hist = np.zeros((inv_step_size,))
+            ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
         # Convert aleHist into null distribution. The value in each bin
