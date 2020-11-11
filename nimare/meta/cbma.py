@@ -5,6 +5,7 @@ import os
 import logging
 import multiprocessing as mp
 from abc import abstractmethod
+import inspect
 
 import nibabel as nib
 import numpy as np
@@ -13,8 +14,7 @@ from scipy import ndimage
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import CBMAEstimator, PairwiseCBMAEstimator
-from ..due import due
+from ..base import MetaEstimator
 from ..stats import null_to_p
 from ..transforms import p_to_z
 from ..utils import round2
@@ -48,7 +48,7 @@ class CBMAEstimator(MetaEstimator):
         }
 
         # Allow both instances and classes for the kernel transformer input.
-        from .meta.kernel import KernelTransformer
+        from .kernel import KernelTransformer
 
         if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
             kernel_transformer, KernelTransformer
@@ -105,7 +105,7 @@ class CBMAEstimator(MetaEstimator):
                     "argument, if possible."
                 )
 
-    def compute_summary_stat(self, data):
+    def compute_summarystat(self, data):
         """Compute OF scores from data.
 
         Parameters
@@ -134,8 +134,8 @@ class CBMAEstimator(MetaEstimator):
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
         # Apply weights before returning
-        return self._compute_summary_stat(ma_values)
+        return self._compute_summarystat(ma_values)
 
     @abstractmethod
-    def _compute_summary_stat(self, ma_values):
+    def _compute_summarystat(self, ma_values):
         pass

@@ -12,11 +12,12 @@ from scipy import ndimage
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import CBMAEstimator, PairwiseCBMAEstimator
+from ..base import PairwiseCBMAEstimator
 from ..due import due
 from ..stats import null_to_p
 from ..transforms import p_to_z
 from ..utils import round2
+from .cbma import CBMAEstimator
 from .kernel import ALEKernel
 
 LGR = logging.getLogger(__name__)
@@ -106,7 +107,7 @@ class ALE(CBMAEstimator):
         ma_maps = self.kernel_transformer.transform(
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
-        stat_values = self._compute_summarystat(ma_maps)
+        stat_values = self.compute_summarystat(ma_maps)
 
         # Determine null distributions for summary stat (ALE) to p conversion
         if self.null_method == "analytic":
@@ -138,7 +139,7 @@ class ALE(CBMAEstimator):
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self._compute_summarystat(iter_ma_values)
+        null_dist = self.compute_summarystat(iter_ma_values)
         self.null_distributions_["empirical_null"] = null_dist
 
     def _compute_null_analytic(self, ma_maps):
@@ -163,7 +164,7 @@ class ALE(CBMAEstimator):
 
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
-        max_poss_ale = self._compute_summarystat(max_ma_values)
+        max_poss_ale = self.compute_summarystat(max_ma_values)
         step_size = 0.0001
         hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
         self.null_distributions_["histogram_bins"] = hist_bins
@@ -260,7 +261,7 @@ class ALE(CBMAEstimator):
         iter_df, iter_ijk, conn, z_thresh = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
-        stat_values = self._compute_summarystat(iter_df)
+        stat_values = self.compute_summarystat(iter_df)
         _, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
         iter_max_value = np.max(stat_values)
 

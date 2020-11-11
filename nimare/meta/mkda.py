@@ -12,11 +12,12 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import CBMAEstimator, PairwiseCBMAEstimator
+from ..base import PairwiseCBMAEstimator
 from ..due import due
 from ..stats import null_to_p, one_way, two_way
 from ..transforms import p_to_z
 from ..utils import round2
+from .cbma import CBMAEstimator
 from .kernel import KDAKernel, MKDAKernel
 
 
@@ -79,7 +80,7 @@ class MKDADensity(CBMAEstimator):
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
-        stat_values = self._compute_summarystat(ma_values)
+        stat_values = self.compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
         if self.null_method == "analytic":
@@ -117,7 +118,7 @@ class MKDADensity(CBMAEstimator):
         assert weight_vec.shape[0] == ma_values.shape[0]
         return weight_vec
 
-    def _compute_summary_stat(self, ma_values):
+    def _compute_summarystat(self, ma_values):
         # Apply weights before returning
         return ma_values.T.dot(self.weight_vec_).ravel()
 
@@ -138,7 +139,7 @@ class MKDADensity(CBMAEstimator):
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self._compute_summarystat(iter_ma_values)
+        null_dist = self.compute_summarystat(iter_ma_values)
         self.null_distributions_["empirical_null"] = null_dist
 
     def _compute_null_analytic(self, ma_maps):
@@ -231,7 +232,7 @@ class MKDADensity(CBMAEstimator):
             iter_df, masker=self.masker, return_type="array"
         )
 
-        iter_of_map = self._compute_summarystat(iter_ma_maps)
+        iter_of_map = self.compute_summarystat(iter_ma_maps)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = self.masker.inverse_transform(iter_of_map).get_fdata().copy()
         iter_of_map[iter_of_map < voxel_thresh] = 0
