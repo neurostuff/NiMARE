@@ -162,7 +162,7 @@ jobs:
           name: Test reasonable output for combinations of estimators/kernels/correctors
           no_output_timeout: 30m
           command:  |
-            apt-get install -yqq curl
+            apt-get install -yqq make
             source activate py36_env
             make performancetest
       - codecov/upload:
