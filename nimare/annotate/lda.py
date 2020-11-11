@@ -85,12 +85,7 @@ class LDAModel(NiMAREBase):
         elif not isinstance(alpha, float):
             raise ValueError('Argument alpha must be float or "auto"')
 
-        self.params = {
-            "n_topics": n_topics,
-            "n_iters": n_iters,
-            "alpha": alpha,
-            "beta": beta,
-        }
+        self.params = {"n_topics": n_topics, "n_iters": n_iters, "alpha": alpha, "beta": beta}
         self.model_dir = model_dir
 
         # Check for presence of text files and convert if necessary

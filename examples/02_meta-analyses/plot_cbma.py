@@ -35,11 +35,7 @@ mask_img = dset.masker.mask_img
 ###############################################################################
 # MKDA density analysis
 # --------------------------------------------------
-mkda = nimare.meta.mkda.MKDADensity(
-    kernel__r=10,
-    null_method="empirical",
-    n_iters=100
-)
+mkda = nimare.meta.mkda.MKDADensity(kernel__r=10, null_method="empirical", n_iters=100)
 mkda.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
@@ -85,11 +81,7 @@ plot_stat_map(
 ###############################################################################
 # KDA
 # --------------------------------------------------
-kda = nimare.meta.mkda.KDA(
-    kernel__r=10,
-    null_method="empirical",
-    n_iters=100
-)
+kda = nimare.meta.mkda.KDA(kernel__r=10, null_method="empirical", n_iters=100)
 kda.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(kda.results)

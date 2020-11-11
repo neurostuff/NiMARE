@@ -69,8 +69,7 @@ def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
     cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
-        cres.get_map("z_corr-FWE_method-bonferroni", return_type="image"),
-        nib.Nifti1Image,
+        cres.get_map("z_corr-FWE_method-bonferroni", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(
         cres.get_map("z_corr-FWE_method-bonferroni", return_type="array"), np.ndarray
@@ -81,8 +80,7 @@ def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
-        cres.get_map("z_corr-FDR_method-indep", return_type="image"),
-        nib.Nifti1Image,
+        cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(cres.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray)
 
@@ -143,8 +141,7 @@ def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
     cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
-        cres.get_map("z_corr-FWE_method-bonferroni", return_type="image"),
-        nib.Nifti1Image,
+        cres.get_map("z_corr-FWE_method-bonferroni", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(
         cres.get_map("z_corr-FWE_method-bonferroni", return_type="array"), np.ndarray
@@ -155,8 +152,7 @@ def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
-        cres.get_map("z_corr-FDR_method-indep", return_type="image"),
-        nib.Nifti1Image,
+        cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(cres.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray)
 
@@ -173,8 +169,7 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
     assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"),
-        nib.Nifti1Image,
+        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(
         sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
@@ -196,8 +191,7 @@ def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
     assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"),
-        nib.Nifti1Image,
+        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(
         sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
@@ -218,10 +212,7 @@ def test_SCALE_smoke(testdata_cbma):
     res = meta.fit(dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert "z" in res.maps.keys()
-    assert isinstance(
-        res.get_map("z", return_type="image"),
-        nib.Nifti1Image,
-    )
+    assert isinstance(res.get_map("z", return_type="image"), nib.Nifti1Image)
     assert isinstance(res.get_map("z", return_type="array"), np.ndarray)
 
 
@@ -236,8 +227,5 @@ def test_SCALE_smoke_lowmem(testdata_cbma):
     res = meta.fit(dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert "z" in res.maps.keys()
-    assert isinstance(
-        res.get_map("z", return_type="image"),
-        nib.Nifti1Image,
-    )
+    assert isinstance(res.get_map("z", return_type="image"), nib.Nifti1Image)
     assert isinstance(res.get_map("z", return_type="array"), np.ndarray)

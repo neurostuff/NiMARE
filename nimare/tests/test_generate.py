@@ -2,7 +2,7 @@ import pytest
 from contextlib import ExitStack as does_not_raise
 from numpy.random import RandomState
 
-from ..generate import create_coordinate_dataset, _create_source, _create_foci
+from ..generate import create_coordinate_dataset, _create_source, _create_foci, _array_like
 from ..dataset import Dataset
 
 
@@ -82,7 +82,7 @@ def test_create_source():
         ),
         pytest.param(
             {
-                "foci": 2,
+                "foci": [(0, 0, 0), (0, 10, 10)],
                 "foci_percentage": "100%",
                 "fwhm": 10.0,
                 "sample_size": [30] * 5,
@@ -213,3 +213,13 @@ def test_create_coordinate_dataset(kwargs, expectation):
     if isinstance(expectation, does_not_raise):
         assert isinstance(dataset, Dataset)
         assert len(dataset.ids) == kwargs["n_studies"]
+        # test if the number of observed coordinates in the dataset is correct
+        if _array_like(kwargs["foci"]):
+            n_foci = len(kwargs["foci"])
+        else:
+            n_foci = kwargs["foci"]
+        expected_coordinate_number = max(
+            kwargs["n_studies"],
+            (kwargs["n_studies"] * n_foci) + (kwargs["n_studies"] * kwargs["n_noise_foci"]),
+        )
+        assert len(dataset.coordinates) == expected_coordinate_number

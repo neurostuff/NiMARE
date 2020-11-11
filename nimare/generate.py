@@ -94,13 +94,7 @@ def create_coordinate_dataset(
         sample_size = rng.randint(sample_size_lower_limit, sample_size_upper_limit, size=n_studies)
 
     ground_truth_foci, foci_dict = _create_foci(
-        foci,
-        foci_percentage,
-        fwhm,
-        n_studies,
-        n_noise_foci,
-        rng,
-        space,
+        foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, space
     )
 
     source_dict = _create_source(foci_dict, sample_size, space)
@@ -138,9 +132,7 @@ def _create_source(foci, sample_sizes, space="MNI"):
                         "y": [c[1] for c in study_foci],
                         "z": [c[2] for c in study_foci],
                     },
-                    "metadata": {
-                        "sample_sizes": [sample_size],
-                    },
+                    "metadata": {"sample_sizes": [sample_size]},
                 }
             }
         }
@@ -148,15 +140,7 @@ def _create_source(foci, sample_sizes, space="MNI"):
     return source
 
 
-def _create_foci(
-    foci,
-    foci_percentage,
-    fwhm,
-    n_studies,
-    n_noise_foci,
-    rng,
-    space,
-):
+def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, space):
     """Generate study specific foci.
 
     Parameters
@@ -240,7 +224,7 @@ def _create_foci(
     for study_signal_ijks, study in zip_longest(paired_signal_ijks, range(n_studies)):
         if study_signal_ijks is None:
             study_signal_ijks = np.array([[]])
-            n_noise_foci = 1
+            n_noise_foci = max(1, n_noise_foci)
 
         if n_noise_foci > 0:
             noise_ijks = possible_ijks[
@@ -249,10 +233,7 @@ def _create_foci(
 
             # add the noise foci ijks to the existing signal ijks
             foci_ijks = (
-                np.unique(
-                    np.vstack([study_signal_ijks, noise_ijks]),
-                    axis=0,
-                )
+                np.unique(np.vstack([study_signal_ijks, noise_ijks]), axis=0)
                 if np.any(study_signal_ijks)
                 else noise_ijks
             )
