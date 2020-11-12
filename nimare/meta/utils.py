@@ -266,7 +266,7 @@ def peaks2maps(
     return niis
 
 
-def compute_kda_ma(shape, vox_dims, ijks, r, value=1., exp_idx=None, sum_overlap=False):
+def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False):
     """
     Compute (M)KDA modeled activation (MA) map.
     Replaces the values around each focus in ijk with binary sphere.

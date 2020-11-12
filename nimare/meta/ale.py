@@ -147,7 +147,7 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        stat_values = 1. - np.prod(1. - ma_values, axis=0)
+        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
