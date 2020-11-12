@@ -96,7 +96,7 @@ class CBMAEstimator(MetaEstimator):
         images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
 
-    def _compute_weights(ma_values):
+    def _compute_weights(self, ma_values):
         return None
 
     def _preprocess_input(self, dataset):

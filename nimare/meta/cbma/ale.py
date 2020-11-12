@@ -99,27 +99,6 @@ class ALE(CBMAEstimator):
         self.dataset = None
         self.results = None
 
-    def _fit(self, dataset):
-        """Estimator-specific fitting function."""
-        self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        self.null_distributions_ = {}
-
-        ma_maps = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="array"
-        )
-        stat_values = self.compute_summarystat(ma_maps)
-
-        # Determine null distributions for summary stat (ALE) to p conversion
-        if self.null_method == "analytic":
-            self._compute_null_analytic(ma_maps)
-        else:
-            self._compute_null_empirical(ma_maps, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
-
-        images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
-
     def _compute_summarystat(self, ma_values):
         stat_values = 1. - np.prod(1. - ma_values, axis=0)
         return stat_values
