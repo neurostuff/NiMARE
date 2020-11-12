@@ -5,10 +5,8 @@ import os
 import logging
 import multiprocessing as mp
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
-from scipy import ndimage
 from tqdm.auto import tqdm
 
 from ... import references

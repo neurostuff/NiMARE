@@ -142,7 +142,6 @@ def null_to_p(test_value, null_array, tail="two"):
     # values through percentileofscore(), and then reconstruct.
     if len(test_value) > 1000:
         reconstruct = True
-        tmp_tv = test_value
         test_value, uniq_idx = np.unique(test_value, return_inverse=True)
     else:
         reconstruct = False

@@ -10,7 +10,6 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
 import numpy as np
-import pandas as pd
 
 from .results import MetaResult
 from .utils import get_masker

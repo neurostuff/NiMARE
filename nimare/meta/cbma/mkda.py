@@ -4,10 +4,9 @@ CBMA methods from the multilevel kernel density analysis (MKDA) family
 import logging
 import multiprocessing as mp
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
-from scipy import ndimage, special
+from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
@@ -85,9 +84,9 @@ class MKDADensity(CBMAEstimator):
         return weight_vec
 
     def _compute_summarystat(self, ma_values):
-        ## Note: .dot should be faster, but causes multiprocessing to stall
-        ## on some (Mac) architectures. If this is ever resolved, we can
-        ## replace with the commented line.
+        # Note: .dot should be faster, but causes multiprocessing to stall
+        # on some (Mac) architectures. If this is ever resolved, we can
+        # replace with the commented line.
         # return ma_values.T.dot(self.weight_vec_).ravel()
         weighted_ma_vals = ma_values * self.weight_vec_
         return weighted_ma_vals.sum(0)
