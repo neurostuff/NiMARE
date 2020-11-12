@@ -492,7 +492,7 @@ class KDA(CBMAEstimator):
         stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
-        if self.null_method == "analytic":
+        if self.null_method.startswith("analytic"):
             raise ValueError("'analytic' null distribution estimation is not yet supported.")
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
@@ -580,7 +580,7 @@ class KDA(CBMAEstimator):
         """
         p_values = np.ones(stat_values.shape)
 
-        if null_method == "analytic":
+        if null_method.startswith("analytic"):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 

@@ -90,7 +90,7 @@ class CBMAEstimator(MetaEstimator):
         stat_values = self.compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
-        if self.null_method == "analytic":
+        if self.null_method.startswith("analytic"):
             self._compute_null_analytic(ma_values)
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
@@ -216,7 +216,7 @@ class CBMAEstimator(MetaEstimator):
             Same shape as stat_values.
         """
 
-        if null_method == "analytic":
+        if null_method.startswith("analytic"):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
@@ -261,7 +261,7 @@ class CBMAEstimator(MetaEstimator):
         if null_method is None:
             null_method = self.null_method
 
-        if null_method == "analytic":
+        if null_method.startswith("analytic"):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
