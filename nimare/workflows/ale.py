@@ -10,7 +10,7 @@ import numpy as np
 
 from ..correct import FWECorrector
 from ..io import convert_sleuth_to_dataset
-from ..meta.ale import ALE, ALESubtraction
+from ..meta import ALE, ALESubtraction
 
 LGR = logging.getLogger(__name__)
 

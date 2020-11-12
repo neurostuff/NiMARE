@@ -1,7 +1,6 @@
 """
 CBMA methods from the ALE and MKDA families.
 """
-import os
 import logging
 import multiprocessing as mp
 from abc import abstractmethod
@@ -13,12 +12,12 @@ import pandas as pd
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from .. import references
-from ..base import MetaEstimator
-from ..stats import null_to_p
-from ..transforms import p_to_z
-from ..utils import round2
-from .kernel import ALEKernel
+from ... import references
+from ...base import MetaEstimator
+from ...stats import null_to_p
+from ...transforms import p_to_z
+from ...utils import round2
+from ..kernel import ALEKernel
 
 LGR = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class CBMAEstimator(MetaEstimator):
         }
 
         # Allow both instances and classes for the kernel transformer input.
-        from .kernel import KernelTransformer
+        from ..kernel import KernelTransformer
 
         if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
             kernel_transformer, KernelTransformer

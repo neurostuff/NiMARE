@@ -11,14 +11,15 @@ import pandas as pd
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from .. import references
-from ..base import PairwiseCBMAEstimator
-from ..due import due
-from ..stats import null_to_p
-from ..transforms import p_to_z
-from ..utils import round2
-from .cbma import CBMAEstimator
-from .kernel import ALEKernel
+from ... import references
+from ...base import PairwiseCBMAEstimator
+from ...due import due
+from ...stats import null_to_p
+from ...transforms import p_to_z
+from ...utils import round2
+from ..kernel import ALEKernel
+from .base import CBMAEstimator
+
 
 LGR = logging.getLogger(__name__)
 

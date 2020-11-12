@@ -8,7 +8,7 @@ from shutil import copyfile
 
 from ..correct import FWECorrector
 from ..dataset import Dataset
-from ..meta.ale import ALE
+from ..meta import ALE
 
 LGR = logging.getLogger(__name__)
 
