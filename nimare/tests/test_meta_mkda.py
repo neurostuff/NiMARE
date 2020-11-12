@@ -14,7 +14,7 @@ def test_mkda_density_kernel_instance_with_kwargs(testdata_cbma):
     arguments provided, which should result in a warning, but the original
     object's parameters should remain untouched.
     """
-    kern = kernel.MKDAKernel(r=2)
+    kern = MKDAKernel(r=2)
     meta = MKDADensity(kern, kernel__r=6, null_method="empirical", n_iters=100)
 
     assert meta.kernel_transformer.get_params().get("r") == 2
@@ -24,7 +24,7 @@ def test_mkda_density_kernel_class(testdata_cbma):
     """
     Smoke test for MKDADensity with a kernel transformer class.
     """
-    meta = MKDADensity(kernel.MKDAKernel, kernel__r=5, null_method="empirical", n_iters=100)
+    meta = MKDADensity(MKDAKernel, kernel__r=5, null_method="empirical", n_iters=100)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
 
@@ -33,7 +33,7 @@ def test_mkda_density_kernel_instance(testdata_cbma):
     """
     Smoke test for MKDADensity with a kernel transformer object.
     """
-    kern = kernel.MKDAKernel(r=5)
+    kern = MKDAKernel(r=5)
     meta = MKDADensity(kern, null_method="empirical", n_iters=100)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
