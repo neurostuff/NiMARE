@@ -52,10 +52,13 @@ class Fishers(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
         est = pymare.estimators.FisherCombinationTest()
-        est.fit(self.inputs_["z_maps"])
+        est.fit_dataset(pymare_dset)
+        est_summary = est.summary()
         results = {
-            "p": est.params_["p"],
+            "z": est_summary.z,
+            "p": est_summary.p,
         }
         return results
 
@@ -116,12 +119,16 @@ class Stouffers(MetaEstimator):
             sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
             weights = np.sqrt(sample_sizes)
             weight_maps = np.tile(weights, (self.inputs_["z_maps"].shape[1], 1)).T
-            est.fit(self.inputs_["z_maps"], w=weight_maps)
+            pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=weight_maps)
         else:
-            est.fit(self.inputs_["z_maps"])
+            pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
+
+        est.fit_dataset(pymare_dset)
+        est_summary = est.summary()
 
         results = {
-            "p": est.params_["p"],
+            "z": est_summary.z,
+            "p": est_summary.p,
         }
         return results
 
