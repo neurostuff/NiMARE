@@ -889,12 +889,12 @@ class KDA(CBMAEstimator):
             ma_hists[i_exp, :-1] = np.histogram(
                 a=ma_values[i_exp, :],
                 bins=self.null_distributions_["histogram_bins"],
-                density=False
+                density=False,
             )[0]
 
         # Inverse of step size in histBins (0.0001) = 10000
         step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
-        self.null_distributions_["histogram_bins"] += (ma_scalar / 2)
+        self.null_distributions_["histogram_bins"] += ma_scalar / 2
 
         # Null distribution to convert ALE to p-values.
         stat_hist = ma_hists[0, :]
@@ -1160,4 +1160,3 @@ class KDA(CBMAEstimator):
             "z_level-cluster": z_cfwe_values,
         }
         return images
-
