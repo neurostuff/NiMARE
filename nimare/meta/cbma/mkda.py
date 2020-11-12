@@ -86,8 +86,12 @@ class MKDADensity(CBMAEstimator):
         return weight_vec
 
     def _compute_summarystat(self, ma_values):
-        # Apply weights before returning
-        return ma_values.T.dot(self.weight_vec_).ravel()
+        ## Note: .dot should be faster, but causes multiprocessing to stall
+        ## on some (Mac) architectures. If this is ever resolved, we can
+        ## replace with the commented line.
+        # return ma_values.T.dot(self.weight_vec_).ravel()
+        weighted_ma_vals = ma_values * self.weight_vec_
+        return weighted_ma_vals.sum(0)
 
     def _compute_null_analytic(self, ma_maps):
         """Compute uncorrected null distribution using analytic solution.

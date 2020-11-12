@@ -295,7 +295,6 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-
         iter_of_map = self.compute_summarystat(iter_ma_maps)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = self.masker.inverse_transform(iter_of_map).get_fdata().copy()
