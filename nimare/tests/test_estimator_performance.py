@@ -12,9 +12,6 @@ from ..meta import ale, kernel, mkda
 from ..meta.utils import compute_kda_ma
 from ..transforms import mm2vox
 
-# set random state so that errors are consistent
-np.random.seed(seed=1)
-
 # set significance levels used for testing.
 ALPHA = 0.05
 
@@ -26,6 +23,14 @@ else:
 
 # PRECOMPUTED FIXTURES
 # --------------------
+
+##########################################
+# random state
+##########################################
+@pytest.fixture(scope="session")
+def random():
+    np.random.seed(1938)
+
 
 ##########################################
 # simulated dataset(s)
@@ -153,7 +158,7 @@ def meta(simulatedata_cbma, meta_est, kern):
 # meta-analysis estimator results
 ###########################################
 @pytest.fixture(scope="session")
-def meta_res(simulatedata_cbma, meta):
+def meta_res(simulatedata_cbma, meta, random):
     _, (_, dataset) = simulatedata_cbma
     ####################################
     # CHECK IF META/KERNEL WORK TOGETHER
@@ -185,7 +190,7 @@ def meta_res(simulatedata_cbma, meta):
 # corrected results (testing)
 ###########################################
 @pytest.fixture(scope="session")
-def meta_cres(meta, meta_res, corr):
+def meta_cres(meta, meta_res, corr, random):
     return _transform_res(meta, meta_res, corr)
 
 
@@ -193,7 +198,7 @@ def meta_cres(meta, meta_res, corr):
 # corrected results (smoke)
 ###########################################
 @pytest.fixture(scope="session")
-def meta_cres_small(meta, meta_res, corr_small):
+def meta_cres_small(meta, meta_res, corr_small, random):
     return _transform_res(meta, meta_res, corr_small)
 
 
@@ -280,12 +285,6 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and meta_cres.estimator.get_params().get("null_method") == "empirical"
-    ):
-        good_performance = False
-    elif (
-        isinstance(meta_cres.estimator, mkda.MKDADensity)
-        and isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)
-        and meta_cres.estimator.get_params().get("null_method") == "analytic"
     ):
         good_performance = False
     else:
