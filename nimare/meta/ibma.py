@@ -42,7 +42,7 @@ class Fishers(MetaEstimator):
 
     See also
     --------
-    :class:`pymare.estimators.Fishers`:
+    :class:`pymare.estimators.FisherCombinationTest`:
         The PyMARE estimator called by this class.
     """
 
@@ -95,7 +95,7 @@ class Stouffers(MetaEstimator):
 
     See also
     --------
-    :class:`pymare.estimators.Stouffers`:
+    :class:`pymare.estimators.StoufferCombinationTest`:
         The PyMARE estimator called by this class.
     """
 
