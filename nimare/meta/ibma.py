@@ -52,13 +52,10 @@ class Fishers(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
-        pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
-        est = pymare.estimators.Fishers(input="z")
-        est.fit(pymare_dset)
-        est_summary = est.summary()
+        est = pymare.estimators.FisherCombinationTest()
+        est.fit(self.inputs_["z_maps"])
         results = {
-            "z": est_summary.z,
-            "p": est_summary.p,
+            "p": est.params_["p"],
         }
         return results
 
@@ -113,20 +110,18 @@ class Stouffers(MetaEstimator):
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
     def _fit(self, dataset):
+        est = pymare.estimators.StoufferCombinationTest()
+
         if self.use_sample_size:
             sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
             weights = np.sqrt(sample_sizes)
             weight_maps = np.tile(weights, (self.inputs_["z_maps"].shape[1], 1)).T
-            pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=weight_maps)
+            est.fit(self.inputs_["z_maps"], w=weight_maps)
         else:
-            pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
+            est.fit(self.inputs_["z_maps"])
 
-        est = pymare.estimators.Stouffers(input="z")
-        est.fit(pymare_dset)
-        est_summary = est.summary()
         results = {
-            "z": est_summary.z,
-            "p": est_summary.p,
+            "p": est.params_["p"],
         }
         return results
 
@@ -179,7 +174,7 @@ class WeightedLeastSquares(MetaEstimator):
     def _fit(self, dataset):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
-        est.fit(pymare_dset)
+        est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
@@ -232,7 +227,7 @@ class DerSimonianLaird(MetaEstimator):
     def _fit(self, dataset):
         est = pymare.estimators.DerSimonianLaird()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
-        est.fit(pymare_dset)
+        est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
@@ -281,7 +276,7 @@ class Hedges(MetaEstimator):
     def _fit(self, dataset):
         est = pymare.estimators.Hedges()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
-        est.fit(pymare_dset)
+        est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
@@ -346,7 +341,7 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         n_maps = np.tile(sample_sizes, (self.inputs_["beta_maps"].shape[1], 1)).T
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], n=n_maps)
         est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
-        est.fit(pymare_dset)
+        est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
@@ -416,7 +411,7 @@ class VarianceBasedLikelihood(MetaEstimator):
         est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
 
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
-        est.fit(pymare_dset)
+        est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
