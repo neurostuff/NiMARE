@@ -53,7 +53,7 @@ REQUIRES = [
     "fuzzywuzzy",
     "matplotlib",
     "nibabel>=3.0.0",
-    "nilearn @ git+https://github.com/nilearn/nilearn.git@e26312be96fe5c0211da28889ddd3ab1bd0ddc49",
+    "nilearn>=0.7.0",
     "numpy",
     "pandas",
     "pymare>=0.0.2",
