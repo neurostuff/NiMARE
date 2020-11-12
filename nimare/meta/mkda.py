@@ -777,13 +777,13 @@ class KDA(CBMAEstimator):
         images = {"stat": stat_values, "p": p_values, "z": z_values}
         return images
 
-    def _compute_summarystat(self, data):
-        """Compute OF scores from data.
+    def compute_summarystat(self, data):
+        """Compute summary statistics from data.
 
         Parameters
         ----------
         data : array, pandas.DataFrame, or list of img_like
-            Data from which to estimate ALE scores.
+            Data from which to estimate summary statistics.
             The data can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
             (2) a DataFrame containing coordinates to produce MA values,
@@ -792,7 +792,7 @@ class KDA(CBMAEstimator):
         Returns
         -------
         stat_values : 1d array
-            OF values. One value per voxel.
+            Summary statistic values. One value per voxel.
         """
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
@@ -801,13 +801,15 @@ class KDA(CBMAEstimator):
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
         elif isinstance(data, np.ndarray):
-            ma_values = data.copy()
-        else:
+            ma_values = data
+        elif not isinstance(data, np.ndarray):
             raise ValueError('Unsupported data type "{}"'.format(type(data)))
 
-        # OF is just a sum of MA values.
-        stat_values = np.sum(ma_values, axis=0)
-        return stat_values
+        # Apply weights before returning
+        return self._compute_summarystat(ma_values)
+
+    def _compute_summarystat(self, ma_values):
+        return ma_values.sum(0)
 
     def _compute_null_empirical(self, ma_maps, n_iters=10000):
         """Compute uncorrected null distribution using empirical method.
@@ -886,6 +888,7 @@ class KDA(CBMAEstimator):
 
         # Inverse of step size in histBins (0.0001) = 10000
         step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+        self.null_distributions_["histogram_bins"] += (ma_scalar / 2)
 
         # Null distribution to convert ALE to p-values.
         stat_hist = ma_hists[0, :]
@@ -945,18 +948,19 @@ class KDA(CBMAEstimator):
             P- and Z-values for statistic values.
             Same shape as stat_values.
         """
-        p_values = np.ones(stat_values.shape)
 
-        if null_method == "analytic":
+        if null_method.startswith("analytic"):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
             step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
-            # Determine p- and z-values from ALE values and null distribution.
+            # Determine p- and z-values from stat values and null distribution.
+            p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
             p_values = null_to_p(
@@ -968,21 +972,77 @@ class KDA(CBMAEstimator):
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 
+    def _p_to_summarystat(self, p, null_method=None):
+        """
+        Compute a summary statistic threshold that corresponds to the provided p-value
+        using either histograms from analytic null or null distribution from empirical
+        null.
+
+        Parameters
+        ----------
+        p : The p-value that corresponds to the summary statistic threshold
+        null_method : {None, "analytic", "empirical"}, optional
+            Whether to use analytic null or empirical null. If None, defaults to using
+            whichever method was set at initialization.
+
+        Returns
+        -------
+        ss : float
+            A float giving the summary statistic value corresponding to the passed p.
+        """
+
+        if null_method is None:
+            null_method = self.null_method
+
+        if null_method.startswith("analytic"):
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histogram_weights" in self.null_distributions_.keys()
+
+            hist_weights = self.null_distributions_["histogram_weights"]
+            # Desired bin is the first one _before_ the target p-value (for consistency
+            # with the empirical null).
+            ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
+            ss = self.null_distributions_["histogram_bins"][ss_idx]
+
+        elif null_method == "empirical":
+            assert "empirical_null" in self.null_distributions_.keys()
+            null_dist = np.sort(self.null_distributions_["empirical_null"])
+            n_vals = len(null_dist)
+            ss_idx = np.floor(p * n_vals).astype(int)
+            ss = null_dist[-ss_idx]
+        else:
+            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
+
+        return ss
+
     def _run_fwe_permutation(self, params):
         """
-        Run a single Monte Carlo permutation of a dataset. Does vFWE, but not cFWE.
+        Run a single Monte Carlo permutation of a dataset. Does the shared work
+        between vFWE and cFWE.
         """
-        iter_ijk, iter_df = params
+        iter_ijk, iter_df, conn, voxel_thresh = params
+
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
+
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_of_map = np.sum(iter_ma_maps, axis=0)
-        iter_max_value = np.max(iter_of_map)
-        return iter_max_value
+        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_max_value = np.max(iter_ss_map)
+        iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
+        iter_ss_map[iter_ss_map <= voxel_thresh] = 0
 
-    def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
+        labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
+        u, clust_sizes = np.unique(labeled_matrix, return_counts=True)
+        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+        if clust_sizes.size:
+            iter_max_cluster = np.max(clust_sizes)
+        else:
+            iter_max_cluster = 0
+        return iter_max_value, iter_max_cluster
+
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """
         Perform FWE correction using the max-value permutation method.
         Only call this method from within a Corrector.
@@ -991,8 +1051,10 @@ class KDA(CBMAEstimator):
         ----------
         result : :obj:`nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
+        voxel_thresh : :obj:`float`, optional
+            Cluster-defining p-value threshold. Default is 0.001.
         n_iters : :obj:`int`, optional
-            Number of iterations to build the vFWE null distribution.
+            Number of iterations to build the vFWE and cFWE null distributions.
             Default is 10000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
@@ -1003,7 +1065,7 @@ class KDA(CBMAEstimator):
         images : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked images generated by
             the correction procedure. The following arrays are generated by
-            this method: 'logp_level-voxel'.
+            this method: 'vthresh', 'logp_level-cluster', and 'logp_level-voxel'.
 
         See Also
         --------
@@ -1013,13 +1075,17 @@ class KDA(CBMAEstimator):
         --------
         >>> meta = KDA()
         >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
+        >>> corrector = FWECorrector(method='montecarlo', voxel_thresh=0.01,
+                                     n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
         stat_values = result.get_map("stat", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
         n_cores = self._check_ncores(n_cores)
+
+        # Identify summary statistic corresponding to intensity threshold
+        ss_thresh = self._p_to_summarystat(voxel_thresh)
 
         rand_idx = np.random.choice(
             null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
@@ -1028,9 +1094,18 @@ class KDA(CBMAEstimator):
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
 
+        # Find number of voxels per cluster (includes 0, which is empty space in
+        # the matrix)
+        conn = np.zeros((3, 3, 3), int)
+        conn[:, :, 1] = 1
+        conn[:, 1, :] = 1
+        conn[1, :, :] = 1
+
         # Define parameters
+        iter_conn = [conn] * n_iters
         iter_dfs = [iter_df] * n_iters
-        params = zip(iter_ijks, iter_dfs)
+        iter_ss_thresh = [ss_thresh] * n_iters
+        params = zip(iter_ijks, iter_dfs, iter_conn, iter_ss_thresh)
 
         if n_cores == 1:
             perm_results = []
@@ -1040,13 +1115,43 @@ class KDA(CBMAEstimator):
             with mp.Pool(n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
 
-        perm_max_values = perm_results
+        fwe_voxel_max, fwe_clust_max = zip(*perm_results)
+
+        # Cluster-level FWE
+        thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
+        thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
+        labeled_matrix, n_clusters = ndimage.measurements.label(thresh_stat_values, conn)
+
+        u, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
+        # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
+        # with 0, which gives us a p-value of 1.
+        sizes[0] = 0
+        p_vals = null_to_p(sizes, fwe_clust_max, "upper")
+        p_cfwe_map = p_vals[np.reshape(idx, labeled_matrix.shape)]
+
+        p_cfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
+        )
+        logp_cfwe_values = -np.log10(p_cfwe_values)
+        logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log10(np.finfo(float).eps)
+        z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
-        vfwe_map = np.empty(stat_values.shape, dtype=float)
-        for i_vox, val in enumerate(stat_values):
-            vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
-        vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
+        p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
 
-        images = {"logp_level-voxel": vfwe_map}
+        self.null_distributions_["fwe_level-voxel_method-montecarlo"] = fwe_voxel_max
+        self.null_distributions_["fwe_level-cluster_method-montecarlo"] = fwe_clust_max
+
+        z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
+        logp_vfwe_values = -np.log10(p_vfwe_values)
+        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
+
+        # Write out unthresholded value images
+        images = {
+            "logp_level-voxel": logp_vfwe_values,
+            "z_level-voxel": z_vfwe_values,
+            "logp_level-cluster": logp_cfwe_values,
+            "z_level-cluster": z_cfwe_values,
+        }
         return images
+
