@@ -12,13 +12,12 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
 from ... import references
-from ...base import PairwiseCBMAEstimator
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
 from ...utils import round2
 from ..kernel import KDAKernel, MKDAKernel
-from .base import CBMAEstimator
+from .base import CBMAEstimator, PairwiseCBMAEstimator
 
 
 LGR = logging.getLogger(__name__)
