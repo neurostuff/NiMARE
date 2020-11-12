@@ -346,7 +346,6 @@ class CBMAEstimator(MetaEstimator):
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        z_values = result.get_map("z", return_type="array")
         stat_values = result.get_map("stat", return_type="array")
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
