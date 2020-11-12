@@ -746,6 +746,10 @@ class KDA(CBMAEstimator):
     def __init__(
         self, kernel_transformer=KDAKernel, null_method="empirical", n_iters=10000, **kwargs
     ):
+        LGR.warning(
+            "The KDA estimator should almost never be used. "
+            "Please double check that it is necessary."
+        )
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
