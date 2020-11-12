@@ -42,10 +42,7 @@ def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000
         n_jobs=1,
         verbose=0,
     )
-    res = {
-        "logp": log_p_map,
-        "t": t_map,
-    }
+    res = {"logp": log_p_map, "t": t_map}
 
     res = MetaResult(permuted_ols, maps=res, mask=mask_img)
 

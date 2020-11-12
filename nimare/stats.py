@@ -114,8 +114,8 @@ def null_to_p(test_value, null_array, tail="two"):
 
     Parameters
     ----------
-    test_value : :obj:`float`
-        Value for which to determine p-value.
+    test_value : 1D array_like
+        Values for which to determine p-value.
     null_array : 1D array_like
         Null distribution against which test_value is compared.
     tail : {'two', 'upper', 'lower'}, optional
@@ -136,24 +136,22 @@ def null_to_p(test_value, null_array, tail="two"):
     P-values are clipped based on the number of elements in the null array.
     Therefore no p-values of 0 or 1 should be produced.
     """
+    test_value = np.atleast_1d(test_value)
+    # TODO: this runs in N^2 time; is there a more efficient alternative?
+    p = np.array([stats.percentileofscore(null_array, v, "strict") for v in test_value])
+    p /= 100.0
     if tail == "two":
-        p_value = (
-            (50 - np.abs(stats.percentileofscore(null_array, test_value) - 50.0)) * 2.0 / 100.0
-        )
+        p = (0.5 - np.abs(p - 0.5)) * 2
     elif tail == "upper":
-        p_value = 1 - (stats.percentileofscore(null_array, test_value) / 100.0)
-    elif tail == "lower":
-        p_value = stats.percentileofscore(null_array, test_value) / 100.0
-    else:
-        raise ValueError('Argument "tail" must be one of ["two", "upper", ' '"lower"]')
+        p = 1 - p
+    elif tail != "lower":
+        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
 
     smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
 
     # ensure p_value in the following range:
     # smallest_value <= p_value <= (1.0 - smallest_value)
-    p_value = max(smallest_value, min(p_value, 1.0 - smallest_value))
-
-    return p_value
+    return np.maximum(smallest_value, np.minimum(p, 1.0 - smallest_value))
 
 
 def fdr(p, q=0.05):
