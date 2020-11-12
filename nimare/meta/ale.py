@@ -210,49 +210,6 @@ class ALE(CBMAEstimator):
         null_distribution /= np.max(null_distribution)
         self.null_distributions_["histogram_weights"] = null_distribution
 
-    def _summarystat_to_p(self, stat_values, null_method="analytic"):
-        """
-        Compute p- and z-values from summary statistics (e.g., ALE scores) and
-        either histograms from analytic null or null distribution from
-        empirical null.
-
-        Parameters
-        ----------
-        stat_values : 1D array_like
-            Array of summary statistic values from estimator.
-        null_method : {"analytic", "empirical"}, optional
-            Whether to use analytic null or empirical null.
-            Default is "analytic".
-
-        Returns
-        -------
-        p_values, z_values : 1D array
-            P- and Z-values for statistic values.
-            Same shape as stat_values.
-        """
-        if null_method == "analytic":
-            assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histogram_weights" in self.null_distributions_.keys()
-
-            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
-
-            # Determine p- and z-values from ALE values and null distribution.
-            p_values = np.ones(stat_values.shape)
-            idx = np.where(stat_values > 0)[0]
-            stat_bins = round2(stat_values[idx] * step)
-            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
-
-        elif null_method == "empirical":
-            assert "empirical_null" in self.null_distributions_.keys()
-            p_values = null_to_p(
-                stat_values, self.null_distributions_["empirical_null"], tail="upper"
-            )
-        else:
-            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
-
-        z_values = p_to_z(p_values, tail="one")
-        return p_values, z_values
-
     def _run_fwe_permutation(self, params):
         """
         Run a single Monte Carlo permutation of a dataset. Does the shared work
