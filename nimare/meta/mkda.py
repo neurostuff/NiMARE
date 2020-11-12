@@ -707,8 +707,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 @due.dcite(references.KDA1, description="Introduces the KDA algorithm.")
 @due.dcite(references.KDA2, description="Also introduces the KDA algorithm.")
 class KDA(CBMAEstimator):
-    r"""
-    Kernel density analysis.
+    r"""Kernel density analysis.
 
     Parameters
     ----------
@@ -725,6 +724,12 @@ class KDA(CBMAEstimator):
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
+    Warnings
+    --------
+    The KDA algorithm has been replaced in the literature with the MKDA algorithm.
+    As such, this estimator should almost never be used, outside of systematic
+    comparisons between algorithms.
+
     References
     ----------
     .. [1] Wager, Tor D., et al. "Valence, gender, and lateralization of
@@ -735,6 +740,7 @@ class KDA(CBMAEstimator):
         studies of shifting attention: a meta-analysis." Neuroimage 22.4
         (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
     """
+
     _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
