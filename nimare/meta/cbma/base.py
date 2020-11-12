@@ -171,7 +171,6 @@ class CBMAEstimator(MetaEstimator):
         # Apply weights before returning
         return self._compute_summarystat(ma_values)
 
-    @abstractmethod
     def _compute_summarystat(self, ma_values):
         pass
 
