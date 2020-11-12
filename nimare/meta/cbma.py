@@ -232,7 +232,7 @@ class CBMAEstimator(MetaEstimator):
 
             hist_weights = self.null_distributions_["histogram_weights"]
             # Desired bin is the first one at or below the target p-value
-            ss_idx = np.where(hist_weights <= p)[0]
+            ss_idx = np.where(hist_weights <= p)[0][0]
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
         elif null_method == "empirical":
