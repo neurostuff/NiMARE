@@ -14,6 +14,7 @@ from tqdm.auto import tqdm
 
 from ... import references
 from ...base import MetaEstimator
+from ...results import MetaResult
 from ...stats import null_to_p
 from ...transforms import p_to_z
 from ...utils import round2
