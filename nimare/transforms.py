@@ -6,7 +6,6 @@ import os.path as op
 import nibabel as nib
 import numpy as np
 from scipy import stats
-from scipy.special import ndtri
 
 from . import references, utils
 from .due import due
@@ -347,14 +346,11 @@ def p_to_z(p, tail="two"):
     z : array_like
         Z-statistics (unsigned)
     """
-    eps = np.spacing(1)
     p = np.array(p)
-    p[p < eps] = eps
     if tail == "two":
-        z = ndtri(1 - (p / 2))
-        z = np.array(z)
+        z = stats.norm.isf(p / 2)
     elif tail == "one":
-        z = ndtri(1 - p)
+        z = stats.norm.isf(p)
         z = np.array(z)
         z[z < 0] = 0
     else:

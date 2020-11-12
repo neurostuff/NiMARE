@@ -188,7 +188,7 @@ sphinx_gallery_conf = {
     "ignore_patterns": ["utils/"],
     "reference_url": {
         # The module you locally document uses None
-        "nimare": None,
+        "nimare": None
     },
 }
 
@@ -210,7 +210,7 @@ texinfo_documents = [
         "project-template",
         "One line description of project.",
         "Miscellaneous",
-    ),
+    )
 ]
 
 
