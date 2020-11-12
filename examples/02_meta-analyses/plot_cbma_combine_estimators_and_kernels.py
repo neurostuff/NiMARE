@@ -47,14 +47,10 @@ kernel_transformers = {
 for kt_name, kt in kernel_transformers.items():
     try:
         mkda = nimare.meta.mkda.MKDADensity(
-            kernel_transformer=kt,
-            null_method="empirical",
-            n_iters=100
+            kernel_transformer=kt, null_method="empirical", n_iters=100
         )
         mkda.fit(dset)
-        corr = nimare.correct.FWECorrector(
-            method="montecarlo", n_iters=10, n_cores=1
-        )
+        corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(mkda.results)
         plot_stat_map(
             cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo"),
@@ -79,14 +75,10 @@ for kt_name, kt in kernel_transformers.items():
         dset1 = dset.slice(dset.ids)
         dset2 = dset.slice(dset.ids)
         mkda.fit(dset1, dset2)
-        corr = nimare.correct.FWECorrector(
-            method="montecarlo", n_iters=10, n_cores=1
-        )
+        corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(mkda.results)
         plot_stat_map(
-            cres.get_map(
-                "z_desc-consistency_level-voxel_corr-FWE_method-montecarlo"
-            ),
+            cres.get_map("z_desc-consistency_level-voxel_corr-FWE_method-montecarlo"),
             threshold=1.65,
             cut_coords=[0, 0, -8],
             draw_cross=False,
@@ -105,15 +97,9 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        kda = nimare.meta.mkda.KDA(
-            kernel_transformer=kt,
-            null_method="empirical",
-            n_iters=100
-        )
+        kda = nimare.meta.mkda.KDA(kernel_transformer=kt, null_method="empirical", n_iters=100)
         kda.fit(dset)
-        corr = nimare.correct.FWECorrector(
-            method="montecarlo", n_iters=10, n_cores=1
-        )
+        corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(kda.results)
         plot_stat_map(
             cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo"),
@@ -125,8 +111,7 @@ for kt_name, kt in kernel_transformers.items():
 
     except IndexError:
         print(
-            "\nError: the %s does not currently work with the KDA meta-analysis method\n"
-            % kt_name
+            "\nError: the %s does not currently work with the KDA meta-analysis method\n" % kt_name
         )
 
 ###############################################################################
@@ -136,9 +121,7 @@ for kt_name, kt in kernel_transformers.items():
     try:
         ale = nimare.meta.ale.ALE(kernel_transformer=kt)
         ale.fit(dset)
-        corr = nimare.correct.FWECorrector(
-            method="montecarlo", n_iters=10, n_cores=1
-        )
+        corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(ale.results)
         plot_stat_map(
             cres.get_map("logp_level-cluster_corr-FWE_method-montecarlo"),
@@ -150,6 +133,5 @@ for kt_name, kt in kernel_transformers.items():
 
     except IndexError:
         print(
-            "\nError: the %s does not currently work with the ALE meta-analysis method\n"
-            % kt_name
+            "\nError: the %s does not currently work with the ALE meta-analysis method\n" % kt_name
         )

@@ -101,5 +101,8 @@ ENV/
 # Rope project settings
 .ropeproject
 
+# profiling
+prof/
+
 *.DS_Store
 *.orig

@@ -32,9 +32,7 @@ def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=Fal
 
     # get the z coordinates
     if ground_truth_foci:
-        stat_map_kwargs = {
-            "cut_coords": [c[2] for c in ground_truth_foci],
-        }
+        stat_map_kwargs = {"cut_coords": [c[2] for c in ground_truth_foci]}
     else:
         stat_map_kwargs = {}
 
@@ -70,11 +68,7 @@ def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=Fal
 # so some studies may have fewer than 30 participants and some
 # more.
 
-ground_truth_foci, dset = create_coordinate_dataset(
-    foci=4,
-    sample_size=(20, 40),
-    n_studies=30,
-)
+ground_truth_foci, dset = create_coordinate_dataset(foci=4, sample_size=(20, 40), n_studies=30)
 
 ###############################################################################
 # Analyze and plot simple dataset
@@ -106,11 +100,7 @@ sample_sizes[0] = 300
 n_noise_foci = 10
 
 _, manual_dset = create_coordinate_dataset(
-    foci=foci,
-    fwhm=fwhm,
-    sample_size=sample_sizes,
-    n_studies=n_studies,
-    n_noise_foci=n_noise_foci,
+    foci=foci, fwhm=fwhm, sample_size=sample_sizes, n_studies=n_studies, n_noise_foci=n_noise_foci
 )
 
 ###############################################################################
@@ -128,11 +118,7 @@ analyze_and_plot(manual_dset, ground_truth_foci)
 # is selected around the ground truth foci.
 
 _, perc_foci_dset = create_coordinate_dataset(
-    foci=ground_truth_foci[0:2],
-    foci_percentage="50%",
-    fwhm=10.0,
-    sample_size=30,
-    n_studies=30,
+    foci=ground_truth_foci[0:2], foci_percentage="50%", fwhm=10.0, sample_size=30, n_studies=30
 )
 
 ###############################################################################
@@ -151,10 +137,7 @@ analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
 # distributed foci.
 
 _, no_foci_dset = create_coordinate_dataset(
-    foci=0,
-    sample_size=(20, 30),
-    n_studies=30,
-    n_noise_foci=100,
+    foci=0, sample_size=(20, 30), n_studies=30, n_noise_foci=100
 )
 
 ###############################################################################

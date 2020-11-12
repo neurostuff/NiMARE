@@ -266,7 +266,7 @@ def peaks2maps(
     return niis
 
 
-def compute_kda_ma(shape, vox_dims, ijks, r, value, sum_overlap=False):
+def compute_kda_ma(shape, vox_dims, ijks, r, value=1., exp_idx=None, sum_overlap=False):
     """
     Compute (M)KDA modeled activation (MA) map.
     Replaces the values around each focus in ijk with binary sphere.
@@ -284,30 +284,47 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value, sum_overlap=False):
         Sphere radius, in mm.
     value : :obj:`int`
         Value for sphere.
+    exp_idx : array_like
+        Optional indices of experiments. If passed, must be of same length as
+        ijks. Each unique value identifies all coordinates in ijk that come from
+        the same experiment. If None passed, it is assumed that all coordinates
+        come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
 
     Returns
     -------
     kernel_data : :obj:`numpy.array`
-        Array in the same shape as the input parameter
-        representing the modeled activation map.
+        3d or 4d array. If `exp_idx` is none, a 3d array in the same shape as
+        the `shape` argument is returned. If `exp_idx` is passed, a 4d array
+        is returned, where the first dimension has size equal to the number of
+        unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
-    kernel_data = np.zeros(shape, dtype=type(value))
-    for peak in ijks:
-        xx, yy, zz = [
-            slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(len(peak))
-        ]
-        cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
-        sphere = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
-        sphere = np.round(sphere.T + peak)
+    squeeze = exp_idx is None
+    if exp_idx is None:
+        exp_idx = np.ones(len(ijks))
+
+    uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
+    n_studies = len(uniq)
+
+    kernel_data = np.zeros([n_studies] + list(shape), dtype=type(value))
+    n_dim = ijks.shape[1]
+    xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
+    cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
+    kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
+
+    for i, peak in enumerate(ijks):
+        sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
         sphere = sphere[idx, :].astype(int)
+        exp = exp_idx[i]
         if sum_overlap:
-            kernel_data[tuple(sphere.T)] += value
+            kernel_data[exp][tuple(sphere.T)] += value
         else:
-            kernel_data[tuple(sphere.T)] = value
+            kernel_data[exp][tuple(sphere.T)] = value
 
+    if squeeze:
+        kernel_data = np.squeeze(kernel_data, axis=0)
     return kernel_data
 
 
