@@ -29,7 +29,7 @@ else:
 ##########################################
 @pytest.fixture(scope="session")
 def random():
-    np.random.seed(1938)
+    np.random.seed(1939)
 
 
 ##########################################
@@ -42,7 +42,7 @@ def random():
             {
                 "foci": 5,
                 "fwhm": 10.0,
-                "n_studies": 30,
+                "n_studies": 40,
                 "sample_size": 30,
                 "n_noise_foci": 20,
                 "seed": 1939,
@@ -160,7 +160,6 @@ def meta(simulatedata_cbma, meta_est, kern):
 @pytest.fixture(scope="session")
 def meta_res(simulatedata_cbma, meta, random):
     _, (_, dataset) = simulatedata_cbma
-    ####################################
     # CHECK IF META/KERNEL WORK TOGETHER
     ####################################
     # peaks2MapsKernel does not work with any meta-analysis estimator
@@ -285,6 +284,13 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and meta_cres.estimator.get_params().get("null_method") == "empirical"
+    ):
+        good_performance = False
+    elif (
+        isinstance(meta_cres.estimator, mkda.MKDADensity)
+        and isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)
+        and meta_cres.estimator.get_params().get("null_method") == "analytic"
+        and corr.method != "montecarlo"
     ):
         good_performance = False
     else:
