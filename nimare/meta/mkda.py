@@ -122,26 +122,6 @@ class MKDADensity(CBMAEstimator):
         # Apply weights before returning
         return ma_values.T.dot(self.weight_vec_).ravel()
 
-    def _compute_null_empirical(self, ma_maps, n_iters=10000):
-        """Compute uncorrected null distribution using empirical method.
-
-        Parameters
-        ----------
-        ma_maps : (C x V) array
-            Contrast by voxel array of MA values, after weighting with
-            weight_vec.
-
-        Notes
-        -----
-        This method adds one entry to the null_distributions_ dict attribute:
-        "empirical_null".
-        """
-        n_studies, n_voxels = ma_maps.shape
-        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
-        iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self.compute_summarystat(iter_ma_values)
-        self.null_distributions_["empirical_null"] = null_dist
-
     def _compute_null_analytic(self, ma_maps):
         """Compute uncorrected null distribution using analytic solution.
 
