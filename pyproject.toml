@@ -25,3 +25,8 @@ exclude = '''
   | nimare/due.py
 )
 '''
+
+[tool.pytest.ini_options]
+markers = [
+    "performance: mark tests that measure performance (deselect with '-m \"not performance\"')",
+]
