@@ -171,7 +171,7 @@ class MKDADensity(CBMAEstimator):
         iter_of_map = self.compute_summarystat(iter_ma_maps)
         iter_max_value = np.max(iter_of_map)
         iter_of_map = self.masker.inverse_transform(iter_of_map).get_fdata().copy()
-        iter_of_map[iter_of_map < voxel_thresh] = 0
+        iter_of_map[iter_of_map <= voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(iter_of_map, conn)[0]
         clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
@@ -225,11 +225,8 @@ class MKDADensity(CBMAEstimator):
 
         n_cores = self._check_ncores(n_cores)
 
-        # Begin cluster-extent thresholding by thresholding matrix at cluster-
-        # defining voxel-level threshold
-        z_thresh = p_to_z(voxel_thresh, tail="one")
-        vthresh_z_values = z_values.copy()
-        vthresh_z_values[np.abs(vthresh_z_values) < z_thresh] = 0
+        # Identify summary statistic corresponding to intensity threshold
+        ss_thresh = self._p_to_summarystat(voxel_thresh)
 
         rand_idx = np.random.choice(
             null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
@@ -248,8 +245,8 @@ class MKDADensity(CBMAEstimator):
         # Define parameters
         iter_conn = [conn] * n_iters
         iter_dfs = [iter_df] * n_iters
-        iter_voxel_thresh = [voxel_thresh] * n_iters
-        params = zip(iter_ijks, iter_dfs, iter_conn, iter_voxel_thresh)
+        iter_ss_thresh = [ss_thresh] * n_iters
+        params = zip(iter_ijks, iter_dfs, iter_conn, iter_ss_thresh)
 
         if n_cores == 1:
             perm_results = []
@@ -259,24 +256,20 @@ class MKDADensity(CBMAEstimator):
             with mp.Pool(n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
 
-        (
-            self.null_distributions_["fwe_level-voxel_method-montecarlo"],
-            self.null_distributions_["fwe_level-cluster_method-montecarlo"],
-        ) = zip(*perm_results)
+        fwe_voxel_max, fwe_clust_max = zip(*perm_results)
 
         # Cluster-level FWE
-        vthresh_z_map = self.masker.inverse_transform(vthresh_z_values).get_fdata()
-        labeled_matrix, n_clusters = ndimage.measurements.label(vthresh_z_map, conn)
-        p_cfwe_map = np.ones(self.masker.mask_img.shape)
-        for i_clust in range(1, n_clusters + 1):
-            clust_size = np.sum(labeled_matrix == i_clust)
-            clust_idx = np.where(labeled_matrix == i_clust)
-            p_cfwe_map[clust_idx] = null_to_p(
-                clust_size,
-                self.null_distributions_["fwe_level-cluster_method-montecarlo"],
-                "upper",
-            )
-        p_cfwe_map[np.isinf(p_cfwe_map)] = -np.log10(np.finfo(float).eps)
+        thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
+        thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
+        labeled_matrix, n_clusters = ndimage.measurements.label(thresh_stat_values, conn)
+
+        u, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
+        # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
+        # with 0, which gives us a p-value of 1.
+        sizes[0] = 0
+        p_vals = null_to_p(sizes, fwe_clust_max, "upper")
+        p_cfwe_map = p_vals[np.reshape(idx, labeled_matrix.shape)]
+
         p_cfwe_values = np.squeeze(
             self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
         )
@@ -285,11 +278,10 @@ class MKDADensity(CBMAEstimator):
         z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
-        p_vfwe_values = null_to_p(
-            stat_values,
-            self.null_distributions_["fwe_level-voxel_method-montecarlo"],
-            tail="upper",
-        )
+        p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
+
+        self.null_distributions_["fwe_level-voxel_method-montecarlo"] = fwe_voxel_max
+        self.null_distributions_["fwe_level-cluster_method-montecarlo"] = fwe_clust_max
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
