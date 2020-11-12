@@ -98,7 +98,7 @@ class ALE(CBMAEstimator):
         self.results = None
 
     def _compute_summarystat(self, ma_values):
-        stat_values = 1. - np.prod(1. - ma_values, axis=0)
+        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
     def _compute_null_analytic(self, ma_maps):
@@ -159,7 +159,7 @@ class ALE(CBMAEstimator):
 
             # Reset histogram and set probabilities. Use at() because there can
             # be redundant values in score_idx.
-            ale_hist = np.zeros((inv_step_size,))
+            ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
         # Convert aleHist into null distribution. The value in each bin

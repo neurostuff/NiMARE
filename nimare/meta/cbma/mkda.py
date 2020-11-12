@@ -60,8 +60,7 @@ class MKDADensity(CBMAEstimator):
         self.results = None
 
     def _compute_weights(self, ma_values):
-        """ Determine experiment-wise weights per the conventional MKDA approach.
-        """
+        """Determine experiment-wise weights per the conventional MKDA approach."""
         # TODO: Incorporate sample-size and inference metadata extraction and
         # merging into df.
         # This will need to be distinct from the kernel_transformer-based kind
@@ -74,7 +73,7 @@ class MKDADensity(CBMAEstimator):
         if "inference" not in ids_df.columns:
             ids_df["inference"] = "rfx"
         if "sample_size" not in ids_df.columns:
-            ids_df["sample_size"] = 1.
+            ids_df["sample_size"] = 1.0
 
         n = ids_df["sample_size"].astype(float).values
         inf = ids_df["inference"].map({"ffx": 0.75, "rfx": 1.0}).values
@@ -117,7 +116,7 @@ class MKDADensity(CBMAEstimator):
         # histogram, where k is the number of studies. We can analytically
         # compute the null distribution by convolution.
         prop_active = ma_values.mean(1)
-        ss_hist = 1.
+        ss_hist = 1.0
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
