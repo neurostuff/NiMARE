@@ -203,3 +203,45 @@ class CBMAEstimator(MetaEstimator):
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
+
+    def _p_to_summarystat(self, p, null_method=None):
+        """
+        Compute a summary statistic threshold that corresponds to the provided p-value
+        using either histograms from analytic null or null distribution from empirical
+        null.
+
+        Parameters
+        ----------
+        p : The p-value that corresponds to the summary statistic threshold
+        null_method : {None, "analytic", "empirical"}, optional
+            Whether to use analytic null or empirical null. If None, defaults to using
+            whichever method was set at initialization.
+
+        Returns
+        -------
+        ss : float
+            A float giving the summary statistic value corresponding to the passed p.
+        """
+
+        if null_method is None:
+            null_method = self.null_method
+
+        if null_method == "analytic":
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histogram_weights" in self.null_distributions_.keys()
+
+            hist_weights = self.null_distributions_["histogram_weights"]
+            # Desired bin is the first one at or below the target p-value
+            ss_idx = np.where(hist_weights <= p)[0]
+            ss = self.null_distributions_["histogram_bins"][ss_idx]
+
+        elif null_method == "empirical":
+            assert "empirical_null" in self.null_distributions_.keys()
+            null_dist = np.sort(self.null_distributions_["empirical_null"])
+            n_vals = len(null_dist)
+            ss_idx = np.floor(p * n_vals).astype(int)
+            ss = null_dist[-ss_idx]
+        else:
+            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
+
+        return ss
