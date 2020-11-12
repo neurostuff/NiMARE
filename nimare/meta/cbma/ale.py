@@ -86,7 +86,6 @@ class ALE(CBMAEstimator):
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
-    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
@@ -215,8 +214,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
         https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
-    _required_inputs = {"coordinates": ("coordinates", None)}
-
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
@@ -328,7 +325,6 @@ class SCALE(CBMAEstimator):
       revisited: controlling for activation base rates." NeuroImage 99
       (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
     """
-    _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(
         self,

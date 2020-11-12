@@ -38,6 +38,8 @@ class CBMAEstimator(MetaEstimator):
         __init__ (called automatically).
     """
 
+    _required_inputs = {"coordinates": ("coordinates", None)}
+
     def __init__(self, kernel_transformer, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
