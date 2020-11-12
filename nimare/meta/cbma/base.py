@@ -295,12 +295,12 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_of_map = self.compute_summarystat(iter_ma_maps)
-        iter_max_value = np.max(iter_of_map)
-        iter_of_map = self.masker.inverse_transform(iter_of_map).get_fdata().copy()
-        iter_of_map[iter_of_map <= voxel_thresh] = 0
+        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_max_value = np.max(iter_ss_map)
+        iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
+        iter_ss_map[iter_ss_map <= voxel_thresh] = 0
 
-        labeled_matrix = ndimage.measurements.label(iter_of_map, conn)[0]
+        labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
         u, clust_sizes = np.unique(labeled_matrix, return_counts=True)
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
         if clust_sizes.size:
