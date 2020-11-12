@@ -61,37 +61,6 @@ class MKDADensity(CBMAEstimator):
         self.dataset = None
         self.results = None
 
-    def _fit(self, dataset):
-        """
-        Perform MKDA density meta-analysis on dataset.
-
-        Parameters
-        ----------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Dataset to analyze.
-        """
-        self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        self.null_distributions_ = {}
-
-        ma_values = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="array"
-        )
-
-        self.weight_vec_ = self._compute_weights(ma_values)
-
-        stat_values = self.compute_summarystat(ma_values)
-
-        # Determine null distributions for summary stat (OF) to p conversion
-        if self.null_method == "analytic":
-            self._compute_null_analytic(ma_values)
-        else:
-            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
-
-        images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
-
     def _compute_weights(self, ma_values):
         """ Determine experiment-wise weights per the conventional MKDA approach.
         """

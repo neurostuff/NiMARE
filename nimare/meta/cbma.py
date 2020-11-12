@@ -66,6 +66,40 @@ class CBMAEstimator(MetaEstimator):
             kernel_transformer = kernel_transformer(**kernel_args)
         self.kernel_transformer = kernel_transformer
 
+    def _fit(self, dataset):
+        """
+        Perform coordinate-based meta-analysis on dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
+        """
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        self.null_distributions_ = {}
+
+        ma_values = self.kernel_transformer.transform(
+            self.inputs_["coordinates"], masker=self.masker, return_type="array"
+        )
+
+        self.weight_vec_ = self._compute_weights(ma_values)
+
+        stat_values = self.compute_summarystat(ma_values)
+
+        # Determine null distributions for summary stat (OF) to p conversion
+        if self.null_method == "analytic":
+            self._compute_null_analytic(ma_values)
+        else:
+            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
+        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
+
+        images = {"stat": stat_values, "p": p_values, "z": z_values}
+        return images
+
+    def _compute_weights(ma_values):
+        return None
+
     def _preprocess_input(self, dataset):
         """Mask required input images using either the dataset's mask or the
         estimator's. Also, insert required metadata into coordinates DataFrame.
