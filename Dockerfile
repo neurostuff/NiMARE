@@ -24,6 +24,7 @@ RUN export ND_ENTRYPOINT="/neurodocker/startup.sh" \
            locales \
            unzip \
            git \
+           make \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
