@@ -866,13 +866,11 @@ class KDA(CBMAEstimator):
 
         ma_scalar = np.mean(min_ma_values)
         max_ma_values = min_ma_values * n_foci_per_study
-        raise Exception("{} {}".format(n_studies, n_foci_per_study))
         max_poss_value = self._compute_summarystat(max_ma_values)
         # Weighting is not supported yet, so I'm going to build my bins around the min MA value.
         self.null_distributions_["histogram_bins"] = np.arange(
-            0, max_poss_value + ma_scalar + 0.001, ma_scalar
+            -ma_scalar / 2, max_poss_value + (ma_scalar * 1.5) + 0.001, ma_scalar
         )
-        raise Exception(self.null_distributions_["histogram_bins"])
 
         ma_hists = np.zeros(
             (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
@@ -880,11 +878,10 @@ class KDA(CBMAEstimator):
         for i_exp in range(ma_values.shape[0]):
             # Remember that histogram uses bin edges (not centers), so it
             # returns a 1xhist_bins-1 array
-            n_zeros = len(np.where(ma_values[i_exp, :] == 0)[0])
-            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 0] = n_zeros
-            ma_hists[i_exp, 1:] = np.histogram(
-                a=reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
+            ma_hists[i_exp, :-1] = np.histogram(
+                a=ma_values[i_exp, :],
+                bins=self.null_distributions_["histogram_bins"],
+                density=False
             )[0]
 
         # Inverse of step size in histBins (0.0001) = 10000
