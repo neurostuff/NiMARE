@@ -302,9 +302,9 @@ class CBMAEstimator(MetaEstimator):
         iter_of_map[iter_of_map <= voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(iter_of_map, conn)[0]
-        clust_sizes = [np.sum(labeled_matrix == val) for val in np.unique(labeled_matrix)]
+        u, clust_sizes = np.unique(labeled_matrix, return_counts=True)
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        if clust_sizes:
+        if clust_sizes.size:
             iter_max_cluster = np.max(clust_sizes)
         else:
             iter_max_cluster = 0
