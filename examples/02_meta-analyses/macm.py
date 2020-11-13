@@ -12,14 +12,11 @@ Meta-analytic coactivation modeling (MACM) is a common coordinate-based
 analysis in which task-independent "connectivity" is assessed by selecting
 studies within a larger database based on locations of report coordinates.
 """
-import os
-
 import nibabel as nib
 import numpy as np
 from nilearn import datasets, image, plotting
 
 import nimare
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load Dataset
@@ -62,7 +59,7 @@ print("{}/{} studies report zero coordinates in the " "ROI".format(len(no_roi_id
 ###############################################################################
 # MKDA Chi2 with FWE correction
 # --------------------------------------------------
-mkda = nimare.meta.mkda.MKDAChi2(kernel__r=10)
+mkda = nimare.meta.MKDAChi2(kernel__r=10)
 mkda.fit(dset_sel, dset_unsel)
 
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10000)
@@ -86,6 +83,6 @@ plotting.plot_stat_map(
 # First, we must define our null model of reported coordinates in the literature.
 # We will use the IJK coordinates in Neurosynth
 ijk = dset.coordinates[["i", "j", "k"]].values
-scale = nimare.meta.ale.SCALE(ijk=ijk, n_iters=10000, kernel__n=20)
+scale = nimare.meta.SCALE(ijk=ijk, n_iters=10000, kernel__n=20)
 scale.fit(dset_sel)
 plotting.plot_stat_map(scale.results.get_map("z_vthresh"), draw_cross=False, cmap="RdBu_r")

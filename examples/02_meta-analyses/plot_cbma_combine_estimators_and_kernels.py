@@ -46,7 +46,7 @@ kernel_transformers = {
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        mkda = nimare.meta.mkda.MKDADensity(
+        mkda = nimare.meta.MKDADensity(
             kernel_transformer=kt, null_method="empirical", n_iters=100
         )
         mkda.fit(dset)
@@ -71,7 +71,7 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        mkda = nimare.meta.mkda.MKDAChi2(kernel_transformer=kt)
+        mkda = nimare.meta.MKDAChi2(kernel_transformer=kt)
         dset1 = dset.slice(dset.ids)
         dset2 = dset.slice(dset.ids)
         mkda.fit(dset1, dset2)
@@ -97,7 +97,7 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        kda = nimare.meta.mkda.KDA(kernel_transformer=kt, null_method="empirical", n_iters=100)
+        kda = nimare.meta.KDA(kernel_transformer=kt, null_method="empirical", n_iters=100)
         kda.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(kda.results)
@@ -119,7 +119,7 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        ale = nimare.meta.ale.ALE(kernel_transformer=kt)
+        ale = nimare.meta.ALE(kernel_transformer=kt)
         ale.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(ale.results)
