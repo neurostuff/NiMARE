@@ -1,6 +1,4 @@
-"""
-CBMA methods from the ALE and MKDA families.
-"""
+"""CBMA methods from the ALE and MKDA families."""
 import logging
 import multiprocessing as mp
 import inspect
@@ -103,8 +101,9 @@ class CBMAEstimator(MetaEstimator):
         return None
 
     def _preprocess_input(self, dataset):
-        """Mask required input images using either the dataset's mask or the
-        estimator's. Also, insert required metadata into coordinates DataFrame.
+        """Mask required input images using either the dataset's mask or the estimator's.
+
+        Also, insert required metadata into coordinates DataFrame.
         """
         super()._preprocess_input(dataset)
 
@@ -200,10 +199,9 @@ class CBMAEstimator(MetaEstimator):
         self.null_distributions_["empirical_null"] = null_dist
 
     def _summarystat_to_p(self, stat_values, null_method="analytic"):
-        """
-        Compute p- and z-values from summary statistics (e.g., ALE scores) and
-        either histograms from analytic null or null distribution from
-        empirical null.
+        """Compute p- and z-values from summary statistics (e.g., ALE scores).
+
+        Uses either histograms from analytic null or null distribution from empirical null.
 
         Parameters
         ----------
@@ -219,7 +217,6 @@ class CBMAEstimator(MetaEstimator):
             P- and Z-values for statistic values.
             Same shape as stat_values.
         """
-
         if null_method.startswith("analytic"):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
@@ -244,10 +241,9 @@ class CBMAEstimator(MetaEstimator):
         return p_values, z_values
 
     def _p_to_summarystat(self, p, null_method=None):
-        """
-        Compute a summary statistic threshold that corresponds to the provided p-value
-        using either histograms from analytic null or null distribution from empirical
-        null.
+        """Compute a summary statistic threshold that corresponds to the provided p-value.
+
+        Uses either histograms from analytic null or null distribution from empirical null.
 
         Parameters
         ----------
@@ -261,7 +257,6 @@ class CBMAEstimator(MetaEstimator):
         ss : float
             A float giving the summary statistic value corresponding to the passed p.
         """
-
         if null_method is None:
             null_method = self.null_method
 
@@ -287,9 +282,9 @@ class CBMAEstimator(MetaEstimator):
         return ss
 
     def _run_fwe_permutation(self, params):
-        """
-        Run a single Monte Carlo permutation of a dataset. Does the shared work
-        between vFWE and cFWE.
+        """Run a single Monte Carlo permutation of a dataset.
+
+        Does the shared work between vFWE and cFWE.
 
         Parameters
         ----------
@@ -327,8 +322,8 @@ class CBMAEstimator(MetaEstimator):
         return iter_max_value, iter_max_cluster
 
     def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
-        """
-        Perform FWE correction using the max-value permutation method.
+        """Perform FWE correction using the max-value permutation method.
+
         Only call this method from within a Corrector.
 
         Parameters

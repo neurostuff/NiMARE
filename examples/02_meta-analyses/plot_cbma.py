@@ -35,7 +35,7 @@ mask_img = dset.masker.mask_img
 ###############################################################################
 # MKDA density analysis
 # --------------------------------------------------
-mkda = nimare.meta.mkda.MKDADensity(kernel__r=10, null_method="empirical", n_iters=100)
+mkda = nimare.meta.MKDADensity(kernel__r=10, null_method="empirical", n_iters=100)
 mkda.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
@@ -49,7 +49,7 @@ plot_stat_map(
 ###############################################################################
 # MKDA Chi2 with FDR correction
 # --------------------------------------------------
-mkda = nimare.meta.mkda.MKDAChi2(kernel__r=10)
+mkda = nimare.meta.MKDAChi2(kernel__r=10)
 dset1 = dset.slice(dset.ids)
 dset2 = dset.slice(dset.ids)
 mkda.fit(dset1, dset2)
@@ -81,7 +81,7 @@ plot_stat_map(
 ###############################################################################
 # KDA
 # --------------------------------------------------
-kda = nimare.meta.mkda.KDA(kernel__r=10, null_method="empirical", n_iters=100)
+kda = nimare.meta.KDA(kernel__r=10, null_method="empirical", n_iters=100)
 kda.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(kda.results)
@@ -95,7 +95,7 @@ plot_stat_map(
 ###############################################################################
 # ALE
 # --------------------------------------------------
-ale = nimare.meta.ale.ALE()
+ale = nimare.meta.ALE()
 ale.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(ale.results)

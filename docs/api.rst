@@ -35,9 +35,10 @@ API
    :template: module.rst
 
    meta.ibma
+   meta.cbma.ale
+   meta.cbma.mkda
+   meta.cbma.base
    meta.kernel
-   meta.ale
-   meta.mkda
 
 .. _api_results_ref:
 
@@ -285,7 +286,6 @@ API
    base.NiMAREBase
    base.Estimator
    base.MetaEstimator
-   base.CBMAEstimator
    base.Transformer
    base.KernelTransformer
    base.Decoder
