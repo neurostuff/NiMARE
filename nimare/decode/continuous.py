@@ -12,7 +12,7 @@ from nilearn.masking import apply_mask
 from .. import references
 from ..base import Decoder
 from ..due import due
-from ..meta.mkda import MKDAChi2
+from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
 from .utils import weight_priors
 

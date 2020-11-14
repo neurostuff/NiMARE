@@ -137,6 +137,15 @@ def null_to_p(test_value, null_array, tail="two"):
     Therefore no p-values of 0 or 1 should be produced.
     """
     test_value = np.atleast_1d(test_value)
+
+    # For efficiency's sake, if there are more than 1000 values, pass only the unique
+    # values through percentileofscore(), and then reconstruct.
+    if len(test_value) > 1000:
+        reconstruct = True
+        test_value, uniq_idx = np.unique(test_value, return_inverse=True)
+    else:
+        reconstruct = False
+
     # TODO: this runs in N^2 time; is there a more efficient alternative?
     p = np.array([stats.percentileofscore(null_array, v, "strict") for v in test_value])
     p /= 100.0
@@ -151,7 +160,12 @@ def null_to_p(test_value, null_array, tail="two"):
 
     # ensure p_value in the following range:
     # smallest_value <= p_value <= (1.0 - smallest_value)
-    return np.maximum(smallest_value, np.minimum(p, 1.0 - smallest_value))
+    result = np.maximum(smallest_value, np.minimum(p, 1.0 - smallest_value))
+
+    if reconstruct:
+        result = result[uniq_idx]
+
+    return result
 
 
 def fdr(p, q=0.05):
