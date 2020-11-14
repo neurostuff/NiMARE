@@ -546,7 +546,7 @@ class KDA(CBMAEstimator):
         ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
 
         # Shift the bins to correspond to actual values instead of centers of bins of values.
-        hist_bins += np.min(hist_bins)
+        hist_bins -= np.min(hist_bins)
         self.null_distributions_["histogram_bins"] = hist_bins
 
         # Normalize MA histograms to get probabilities
