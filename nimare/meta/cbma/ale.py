@@ -1,6 +1,4 @@
-"""
-CBMA methods from the activation likelihood estimation (ALE) family
-"""
+"""CBMA methods from the activation likelihood estimation (ALE) family."""
 import os
 import logging
 import multiprocessing as mp
@@ -35,8 +33,7 @@ LGR = logging.getLogger(__name__)
     "distribution for significance testing.",
 )
 class ALE(CBMAEstimator):
-    r"""
-    Activation likelihood estimation
+    r"""Activation likelihood estimation.
 
     Parameters
     ----------
@@ -344,9 +341,7 @@ class SCALE(CBMAEstimator):
         self.low_memory = low_memory
 
     def _fit(self, dataset):
-        """
-        Perform specific coactivation likelihood estimation meta-analysis
-        on dataset.
+        """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
         Parameters
         ----------
@@ -418,8 +413,8 @@ class SCALE(CBMAEstimator):
         return images
 
     def _compute_summarystat(self, data):
-        """
-        Generate ALE-value array and null distribution from list of contrasts.
+        """Generate ALE-value array and null distribution from list of contrasts.
+
         For ALEs on the original dataset, computes the null distribution.
         For permutation ALEs and all SCALEs, just computes ALE values.
         Returns masked array of ALE values and 1XnBins null distribution.
@@ -490,9 +485,9 @@ class SCALE(CBMAEstimator):
         return p_values, z_values
 
     def _make_hist(self, oned_arr):
-        """
-        Make a histogram from a 1d array and histogram bins. Meant to be applied
-        along an axis to a 2d array.
+        """Make a histogram from a 1d array and histogram bins.
+
+        Meant to be applied along an axis to a 2d array.
         """
         hist_ = np.histogram(
             a=oned_arr,
@@ -506,9 +501,7 @@ class SCALE(CBMAEstimator):
         return hist_
 
     def _run_permutation(self, params):
-        """
-        Run a single random SCALE permutation of a dataset.
-        """
+        """Run a single random SCALE permutation of a dataset."""
         iter_df, iter_ijk = params
         iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
