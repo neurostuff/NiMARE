@@ -5,7 +5,6 @@ import logging
 import multiprocessing as mp
 
 import numpy as np
-import pandas as pd
 from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
@@ -14,7 +13,6 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import round2
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -537,7 +535,9 @@ class KDA(CBMAEstimator):
         # Weighting is not supported yet, so I'm going to build my bins around the min MA value.
         # Remember that numpy histogram bins are bin edges, not centers.
         # Assuming values of 0, 1, 2, etc., bins are -0.5-0.5, 0.5-1.0, etc.
-        hist_bins = np.arange(-step_size / 2, max_poss_value + (step_size * 1.5) + 0.001, step_size)
+        hist_bins = np.arange(
+            -step_size / 2, max_poss_value + (step_size * 1.5) + 0.001, step_size
+        )
 
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""

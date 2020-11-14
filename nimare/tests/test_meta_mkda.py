@@ -103,7 +103,7 @@ def test_kda_density_analytic_null(testdata_cbma):
     """
     Smoke test for KDA with analytical null and FWE correction.
     """
-    meta = mkda.KDA(null_method="analytic")
+    meta = KDA(null_method="analytic")
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
