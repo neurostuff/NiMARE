@@ -1,11 +1,8 @@
-"""
-CBMA methods from the multilevel kernel density analysis (MKDA) family
-"""
+"""CBMA methods from the multilevel kernel density analysis (MKDA) family."""
 import logging
 import multiprocessing as mp
 
 import numpy as np
-import pandas as pd
 from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
@@ -14,7 +11,6 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import round2
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -282,8 +278,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return iter_pAgF_chi2, iter_pFgA_chi2
 
     def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=-1):
-        """
-        Perform FWE correction using the max-value permutation method.
+        """Perform FWE correction using the max-value permutation method.
+
         Only call this method from within a Corrector.
 
         Parameters
@@ -381,8 +377,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return images
 
     def correct_fdr_bh(self, result, alpha=0.05):
-        """
-        Perform FDR correction using the Benjamini-Hochberg method.
+        """Perform FDR correction using the Benjamini-Hochberg method.
+
         Only call this method from within a Corrector.
 
         Parameters
