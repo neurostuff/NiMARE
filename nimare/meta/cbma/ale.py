@@ -83,12 +83,13 @@ class ALE(CBMAEstimator):
     """
 
     def __init__(
-        self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
+        self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, n_cores=1, **kwargs
     ):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
+        self.n_cores = n_cores
         self.dataset = None
         self.results = None
 

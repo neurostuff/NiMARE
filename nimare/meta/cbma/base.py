@@ -89,7 +89,7 @@ class CBMAEstimator(MetaEstimator):
         if self.null_method.startswith("approximate"):
             self._compute_null_approximate(ma_values)
         else:
-            self._compute_null_montecarlo(n_iters=self.n_iters, n_cores=1)
+            self._compute_null_montecarlo(n_iters=self.n_iters, n_cores=self.n_cores)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
@@ -296,7 +296,7 @@ class CBMAEstimator(MetaEstimator):
             iter_df, masker=self.masker, return_type="array"
         )
         iter_ss_map = self.compute_summarystat(iter_ma_maps)
-        counts = np.histogram(
+        counts, _ = np.histogram(
             iter_ss_map, bins=self.null_distributions_["histogram_bins"], density=False
         )
         return counts
@@ -385,11 +385,11 @@ class CBMAEstimator(MetaEstimator):
         )
 
         def where(arr1d):
-            try:
-                res = np.where(arr1d)[0][-1]
-            except IndexError:
-                res = 0
-            return res
+            if any(arr1d):
+                last_bin = np.where(arr1d)[0][-1]
+            else:
+                last_bin = 0
+            return last_bin
 
         fwe_voxel_max = np.apply_along_axis(where, 1, perm_histograms)
         self.null_distributions_[
