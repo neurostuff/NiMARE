@@ -89,7 +89,7 @@ class CBMAEstimator(MetaEstimator):
         if self.null_method.startswith("approximate"):
             self._compute_null_approximate(ma_values)
         else:
-            self._compute_null_montecarlo(ma_values, n_iters=self.n_iters)
+            self._compute_null_montecarlo(n_iters=self.n_iters, n_cores=1)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
@@ -179,18 +179,18 @@ class CBMAEstimator(MetaEstimator):
         has K dimensions, the output has K - 1 dimensions.)"""
         pass
 
-    def _summarystat_to_p(self, stat_values, null_method="analytic"):
+    def _summarystat_to_p(self, stat_values, null_method="approximate"):
         """Compute p- and z-values from summary statistics (e.g., ALE scores).
 
-        Uses either histograms from analytic null or null distribution from empirical null.
+        Uses either histograms from approximate null or null distribution from montecarlo null.
 
         Parameters
         ----------
         stat_values : 1D array_like
             Array of summary statistic values from estimator.
-        null_method : {"analytic", "empirical"}, optional
-            Whether to use analytic null or empirical null.
-            Default is "analytic".
+        null_method : {"approximate", "montecarlo"}, optional
+            Whether to use approximate null or montecarlo null.
+            Default is "approximate".
 
         Returns
         -------
@@ -198,7 +198,7 @@ class CBMAEstimator(MetaEstimator):
             P- and Z-values for statistic values.
             Same shape as stat_values.
         """
-        if null_method.startswith("analytic"):
+        if null_method.startswith("approximate"):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-approximate" in self.null_distributions_.keys()
 
@@ -212,7 +212,7 @@ class CBMAEstimator(MetaEstimator):
                 stat_bins
             ]
 
-        elif null_method == "empirical":
+        elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
             p_values = null_to_p(
@@ -229,7 +229,7 @@ class CBMAEstimator(MetaEstimator):
     def _p_to_summarystat(self, p, null_method=None):
         """Compute a summary statistic threshold that corresponds to the provided p-value.
 
-        Uses either histograms from analytic null or null distribution from empirical null.
+        Uses either histograms from approximate null or null distribution from montecarlo null.
 
         Parameters
         ----------
@@ -253,7 +253,7 @@ class CBMAEstimator(MetaEstimator):
 
             hist_weights = self.null_distributions_["histweights_corr-none_method-approximate"]
             # Desired bin is the first one _before_ the target p-value (for consistency
-            # with the empirical null).
+            # with the montecarlo null).
             ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
@@ -297,7 +297,7 @@ class CBMAEstimator(MetaEstimator):
         )
         iter_ss_map = self.compute_summarystat(iter_ma_maps)
         counts = np.histogram(
-            iter_ss_map, bins=np.null_distributions_["histogram_bins"], density=False
+            iter_ss_map, bins=self.null_distributions_["histogram_bins"], density=False
         )
         return counts
 

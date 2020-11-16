@@ -13,14 +13,14 @@ from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
 
 
-def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
+def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     """
-    Unit test for ALE with analytic null_method
+    Unit test for ALE with approximate null_method
     """
     tmpdir = tmp_path_factory.mktemp("test_ALE_analytic_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null_method="analytic")
+    meta = ale.ALE(null_method="approximate")
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
@@ -85,14 +85,14 @@ def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
     assert isinstance(cres.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray)
 
 
-def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
+def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     """
     Unit test for ALE with an empirical null_method
     """
     tmpdir = tmp_path_factory.mktemp("test_ALE_empirical_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null_method="empirical", n_iters=1000)
+    meta = ale.ALE(null_method="montecarlo", n_iters=1000)
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()

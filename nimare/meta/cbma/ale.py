@@ -193,7 +193,7 @@ class ALE(CBMAEstimator):
         # histBins) of that value or lower.
         null_distribution = np.cumsum(ale_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histweights_corr-none_method-approximate"] = null_distribution
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
