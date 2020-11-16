@@ -85,10 +85,11 @@ class CBMAEstimator(MetaEstimator):
         stat_values = self.compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
+        self._determine_histogram_bins(ma_values)
         if self.null_method.startswith("approximate"):
-            self._compute_null_analytic(ma_values)
+            self._compute_null_approximate(ma_values)
         else:
-            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
+            self._compute_null_montecarlo(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
@@ -178,26 +179,6 @@ class CBMAEstimator(MetaEstimator):
         has K dimensions, the output has K - 1 dimensions.)"""
         pass
 
-    def _compute_null_empirical(self, ma_maps, n_iters=10000):
-        """Compute uncorrected null distribution using empirical method.
-
-        Parameters
-        ----------
-        ma_maps : (C x V) array
-            Contrast by voxel array of MA values, after weighting with
-            weight_vec.
-
-        Notes
-        -----
-        This method adds one entry to the null_distributions_ dict attribute:
-        "empirical_null".
-        """
-        n_studies, n_voxels = ma_maps.shape
-        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
-        iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self.compute_summarystat(iter_ma_values)
-        self.null_distributions_["histweights_corr-none_method-montecarlo"] = null_dist
-
     def _summarystat_to_p(self, stat_values, null_method="analytic"):
         """Compute p- and z-values from summary statistics (e.g., ALE scores).
 
@@ -227,13 +208,17 @@ class CBMAEstimator(MetaEstimator):
             p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
-            p_values[idx] = self.null_distributions_["histweights_corr-none_method-approximate"][stat_bins]
+            p_values[idx] = self.null_distributions_["histweights_corr-none_method-approximate"][
+                stat_bins
+            ]
 
         elif null_method == "empirical":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
             p_values = null_to_p(
-                stat_values, self.null_distributions_["histweights_corr-none_method-montecarlo"], tail="upper"
+                stat_values,
+                self.null_distributions_["histweights_corr-none_method-montecarlo"],
+                tail="upper",
             )
         else:
             raise ValueError("Argument 'null_method' must be one of: 'approximate', 'montecarlo'.")
@@ -275,7 +260,9 @@ class CBMAEstimator(MetaEstimator):
         elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
-            null_dist = np.sort(self.null_distributions_["histweights_corr-none_method-montecarlo"])
+            null_dist = np.sort(
+                self.null_distributions_["histweights_corr-none_method-montecarlo"]
+            )
             n_vals = len(null_dist)
             ss_idx = np.floor(p * n_vals).astype(int)
             ss = null_dist[-ss_idx]
@@ -309,7 +296,9 @@ class CBMAEstimator(MetaEstimator):
             iter_df, masker=self.masker, return_type="array"
         )
         iter_ss_map = self.compute_summarystat(iter_ma_maps)
-        counts = np.histogram(iter_ss_map, bins=np.null_distributions_["histogram_bins"], density=False)
+        counts = np.histogram(
+            iter_ss_map, bins=np.null_distributions_["histogram_bins"], density=False
+        )
         return counts
 
     def _run_montecarlo_permutation_fwe(self, params):
@@ -387,10 +376,13 @@ class CBMAEstimator(MetaEstimator):
                 perm_histograms.append(self._run_montecarlo_permutation(pp))
         else:
             with mp.Pool(n_cores) as p:
-                perm_histograms = list(tqdm(p.imap(self._run_montecarlo_permutation, params),
-                                            total=n_iters))
+                perm_histograms = list(
+                    tqdm(p.imap(self._run_montecarlo_permutation, params), total=n_iters)
+                )
         perm_histograms = np.vstack(perm_histograms)
-        self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(perm_histograms, axis=0)
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
+            perm_histograms, axis=0
+        )
 
         def where(arr1d):
             try:
@@ -398,10 +390,15 @@ class CBMAEstimator(MetaEstimator):
             except IndexError:
                 res = 0
             return res
-        fwe_voxel_max = np.apply_along_axis(where, 1, perm_histograms)
-        self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
 
-    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
+        fwe_voxel_max = np.apply_along_axis(where, 1, perm_histograms)
+        self.null_distributions_[
+            "histweights_level-voxel_corr-fwe_method-montecarlo"
+        ] = fwe_voxel_max
+
+    def correct_fwe_montecarlo(
+        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1, vfwe_only=False
+    ):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -439,64 +436,9 @@ class CBMAEstimator(MetaEstimator):
         >>> cresult = corrector.transform(result)
         """
         stat_values = result.get_map("stat", return_type="array")
-        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+        if vfwe_only:
+            assert self.null_method == "montecarlo"
 
-        n_cores = self._check_ncores(n_cores)
-
-        # Identify summary statistic corresponding to intensity threshold
-        ss_thresh = self._p_to_summarystat(voxel_thresh)
-
-        rand_idx = np.random.choice(
-            null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
-        )
-        rand_ijk = null_ijk[rand_idx, :]
-        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = self.inputs_["coordinates"].copy()
-        iter_dfs = [iter_df] * n_iters
-
-        # Find number of voxels per cluster (includes 0, which is empty space in
-        # the matrix)
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
-
-        # Define parameters
-        iter_conn = [conn] * n_iters
-        iter_ss_thresh = [ss_thresh] * n_iters
-        params = zip(iter_ijks, iter_dfs, iter_conn, iter_ss_thresh)
-
-        if n_cores == 1:
-            perm_results = []
-            for pp in tqdm(params, total=n_iters):
-                perm_results.append(self._run_montecarlo_permutation_fwe(pp))
-        else:
-            with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._run_montecarlo_permutation_fwe, params), total=n_iters))
-
-        fwe_voxel_max, fwe_clust_max = zip(*perm_results)
-
-        # Cluster-level FWE
-        thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
-        thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-        labeled_matrix, n_clusters = ndimage.measurements.label(thresh_stat_values, conn)
-
-        u, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
-        # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
-        # with 0, which gives us a p-value of 1.
-        sizes[0] = 0
-        p_vals = null_to_p(sizes, fwe_clust_max, "upper")
-        p_cfwe_map = p_vals[np.reshape(idx, labeled_matrix.shape)]
-
-        p_cfwe_values = np.squeeze(
-            self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
-        )
-        logp_cfwe_values = -np.log10(p_cfwe_values)
-        logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log10(np.finfo(float).eps)
-        z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
-
-        # Voxel-level FWE
-        if self.null_method == "montecarlo":
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
             step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
@@ -508,23 +450,92 @@ class CBMAEstimator(MetaEstimator):
                 "histweights_level-voxel_corr-fwe_method-montecarlo"
             ][stat_bins]
         else:
+            null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+
+            n_cores = self._check_ncores(n_cores)
+
+            # Identify summary statistic corresponding to intensity threshold
+            ss_thresh = self._p_to_summarystat(voxel_thresh)
+
+            rand_idx = np.random.choice(
+                null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
+            )
+            rand_ijk = null_ijk[rand_idx, :]
+            iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+            iter_df = self.inputs_["coordinates"].copy()
+            iter_dfs = [iter_df] * n_iters
+
+            # Find number of voxels per cluster (includes 0, which is empty space in
+            # the matrix)
+            conn = np.zeros((3, 3, 3), int)
+            conn[:, :, 1] = 1
+            conn[:, 1, :] = 1
+            conn[1, :, :] = 1
+
+            # Define parameters
+            iter_conn = [conn] * n_iters
+            iter_ss_thresh = [ss_thresh] * n_iters
+            params = zip(iter_ijks, iter_dfs, iter_conn, iter_ss_thresh)
+
+            if n_cores == 1:
+                perm_results = []
+                for pp in tqdm(params, total=n_iters):
+                    perm_results.append(self._run_montecarlo_permutation_fwe(pp))
+            else:
+                with mp.Pool(n_cores) as p:
+                    perm_results = list(
+                        tqdm(p.imap(self._run_montecarlo_permutation_fwe, params), total=n_iters)
+                    )
+
+            fwe_voxel_max, fwe_clust_max = zip(*perm_results)
+
+            # Cluster-level FWE
+            thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
+            thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
+            labeled_matrix, n_clusters = ndimage.measurements.label(thresh_stat_values, conn)
+
+            u, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
+            # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
+            # with 0, which gives us a p-value of 1.
+            sizes[0] = 0
+            p_vals = null_to_p(sizes, fwe_clust_max, "upper")
+            p_cfwe_map = p_vals[np.reshape(idx, labeled_matrix.shape)]
+
+            p_cfwe_values = np.squeeze(
+                self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
+            )
+            logp_cfwe_values = -np.log10(p_cfwe_values)
+            logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log10(np.finfo(float).eps)
+            z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
+
+            # Voxel-level FWE
             LGR.info("Using null distribution for voxel-level FWE correction.")
             p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
-            self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
-
-        self.null_distributions_["values_level-cluster_corr-fwe_method-montecarlo"] = fwe_clust_max
+            self.null_distributions_[
+                "values_level-voxel_corr-fwe_method-montecarlo"
+            ] = fwe_voxel_max
+            self.null_distributions_[
+                "values_level-cluster_corr-fwe_method-montecarlo"
+            ] = fwe_clust_max
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
         logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
 
-        # Write out unthresholded value images
-        images = {
-            "logp_level-voxel": logp_vfwe_values,
-            "z_level-voxel": z_vfwe_values,
-            "logp_level-cluster": logp_cfwe_values,
-            "z_level-cluster": z_cfwe_values,
-        }
+        if vfwe_only:
+            # Write out unthresholded value images
+            images = {
+                "logp_level-voxel": logp_vfwe_values,
+                "z_level-voxel": z_vfwe_values,
+            }
+        else:
+            # Write out unthresholded value images
+            images = {
+                "logp_level-voxel": logp_vfwe_values,
+                "z_level-voxel": z_vfwe_values,
+                "logp_level-cluster": logp_cfwe_values,
+                "z_level-cluster": z_cfwe_values,
+            }
         return images
 
 

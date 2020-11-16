@@ -96,8 +96,33 @@ class ALE(CBMAEstimator):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
-    def _compute_null_analytic(self, ma_maps):
-        """Compute uncorrected ALE null distribution using analytic solution.
+    def _determine_histogram_bins(self, ma_maps):
+        """Determine histogram bins for null distribution methods.
+
+        Parameters
+        ----------
+        ma_maps
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
+        """
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+
+        # Determine bins for null distribution histogram
+        max_ma_values = np.max(ma_values, axis=1)
+        max_poss_ale = self.compute_summarystat(max_ma_values)
+        step_size = 0.0001
+        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
+        self.null_distributions_["histogram_bins"] = hist_bins
+
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected ALE null distribution using approximate solution.
 
         Parameters
         ----------
@@ -116,22 +141,22 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
-        # Determine bins for null distribution histogram
-        max_ma_values = np.max(ma_values, axis=1)
-        max_poss_ale = self.compute_summarystat(max_ma_values)
-        step_size = 0.0001
-        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
-        self.null_distributions_["histogram_bins"] = hist_bins
+        assert "histogram_bins" in self.null_distributions_.keys()
 
-        ma_hists = np.zeros((ma_values.shape[0], hist_bins.shape[0]))
+        ma_hists = np.zeros(
+            (ma_values.shape[0], self.null_distributions_["histogram_bins"].shape[0])
+        )
 
         n_zeros = np.sum(ma_values == 0, 1)
         ma_hists[:, 0] = n_zeros
 
         for i_exp in range(len(ma_values)):
             reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 1:] = np.histogram(reduced_ma_values, bins=hist_bins, density=False)[0]
+            ma_hists[i_exp, 1:] = np.histogram(
+                reduced_ma_values, bins=self.null_distributions_["histogram_bins"], density=False
+            )[0]
 
+        step_size = np.diff(self.null_distributions_["histogram_bins"])[0]
         inv_step_size = int(np.ceil(1 / step_size))
 
         # Normalize MA histograms to get probabilities
@@ -148,7 +173,13 @@ class ALE(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = 1 - np.outer(1 - hist_bins[exp_idx], 1 - hist_bins[ale_idx]).ravel()
+            ale_scores = (
+                1
+                - np.outer(
+                    1 - self.null_distributions_["histogram_bins"][exp_idx],
+                    1 - self.null_distributions_["histogram_bins"][ale_idx],
+                ).ravel()
+            )
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
             probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
