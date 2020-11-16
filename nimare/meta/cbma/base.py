@@ -85,7 +85,7 @@ class CBMAEstimator(MetaEstimator):
         stat_values = self.compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
-        if self.null_method.startswith("analytic"):
+        if self.null_method.startswith("approximate"):
             self._compute_null_analytic(ma_values)
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
@@ -196,7 +196,7 @@ class CBMAEstimator(MetaEstimator):
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
         null_dist = self.compute_summarystat(iter_ma_values)
-        self.null_distributions_["empirical_null"] = null_dist
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = null_dist
 
     def _summarystat_to_p(self, stat_values, null_method="analytic"):
         """Compute p- and z-values from summary statistics (e.g., ALE scores).
@@ -219,7 +219,7 @@ class CBMAEstimator(MetaEstimator):
         """
         if null_method.startswith("analytic"):
             assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histogram_weights" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-approximate" in self.null_distributions_.keys()
 
             step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
@@ -227,15 +227,16 @@ class CBMAEstimator(MetaEstimator):
             p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * step)
-            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+            p_values[idx] = self.null_distributions_["histweights_corr-none_method-approximate"][stat_bins]
 
         elif null_method == "empirical":
-            assert "empirical_null" in self.null_distributions_.keys()
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
             p_values = null_to_p(
-                stat_values, self.null_distributions_["empirical_null"], tail="upper"
+                stat_values, self.null_distributions_["histweights_corr-none_method-montecarlo"], tail="upper"
             )
         else:
-            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError("Argument 'null_method' must be one of: 'approximate', 'montecarlo'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
@@ -247,9 +248,10 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        p : The p-value that corresponds to the summary statistic threshold
-        null_method : {None, "analytic", "empirical"}, optional
-            Whether to use analytic null or empirical null. If None, defaults to using
+        p : float
+            The p-value that corresponds to the summary statistic threshold
+        null_method : {None, "approximate", "montecarlo"}, optional
+            Whether to use approximate null or Monte Carlo null. If None, defaults to using
             whichever method was set at initialization.
 
         Returns
@@ -260,29 +262,58 @@ class CBMAEstimator(MetaEstimator):
         if null_method is None:
             null_method = self.null_method
 
-        if null_method.startswith("analytic"):
+        if null_method.startswith("approximate"):
             assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histogram_weights" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-approximate" in self.null_distributions_.keys()
 
-            hist_weights = self.null_distributions_["histogram_weights"]
+            hist_weights = self.null_distributions_["histweights_corr-none_method-approximate"]
             # Desired bin is the first one _before_ the target p-value (for consistency
             # with the empirical null).
             ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
-        elif null_method == "empirical":
-            assert "empirical_null" in self.null_distributions_.keys()
-            null_dist = np.sort(self.null_distributions_["empirical_null"])
+        elif null_method == "montecarlo":
+            assert "histogram_bins" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
+            null_dist = np.sort(self.null_distributions_["histweights_corr-none_method-montecarlo"])
             n_vals = len(null_dist)
             ss_idx = np.floor(p * n_vals).astype(int)
             ss = null_dist[-ss_idx]
         else:
-            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError("Argument 'null_method' must be one of: 'approximate', 'montecarlo'.")
 
         return ss
 
-    def _run_fwe_permutation(self, params):
+    def _run_montecarlo_permutation(self, params):
         """Run a single Monte Carlo permutation of a dataset.
+
+        Does the shared work between uncorrected stat-to-p conversion and vFWE.
+
+        Parameters
+        ----------
+        params : tuple
+            A tuple containing 2 elements, respectively providing (1) the permuted
+            coordinates and (2) the original coordinate DataFrame.
+
+        Returns
+        -------
+        counts : 1D array_like
+            Weights associated with the attribute `null_distributions_["histogram_bins"]`.
+        """
+        iter_ijk, iter_df = params
+
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[["i", "j", "k"]] = iter_ijk
+
+        iter_ma_maps = self.kernel_transformer.transform(
+            iter_df, masker=self.masker, return_type="array"
+        )
+        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        counts = np.histogram(iter_ss_map, bins=np.null_distributions_["histogram_bins"], density=False)
+        return counts
+
+    def _run_montecarlo_permutation_fwe(self, params):
+        """Run a single Monte Carlo permutation of a dataset, specifically for FWE correction.
 
         Does the shared work between vFWE and cFWE.
 
@@ -320,6 +351,55 @@ class CBMAEstimator(MetaEstimator):
         else:
             iter_max_cluster = 0
         return iter_max_value, iter_max_cluster
+
+    def _compute_null_montecarlo(self, n_iters, n_cores):
+        """Compute uncorrected null distribution using Monte Carlo method.
+
+        Parameters
+        ----------
+        n_iters : int
+            Number of permutations.
+        n_cores : int
+            Number of cores to use.
+
+        Notes
+        -----
+        This method adds two entries to the null_distributions_ dict attribute:
+        "histweights_corr-none_method-montecarlo" and
+        "histweights_level-voxel_corr-fwe_method-montecarlo".
+        """
+        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+
+        n_cores = self._check_ncores(n_cores)
+
+        rand_idx = np.random.choice(
+            null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
+        )
+        rand_ijk = null_ijk[rand_idx, :]
+        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+        iter_df = self.inputs_["coordinates"].copy()
+        iter_dfs = [iter_df] * n_iters
+
+        params = zip(iter_ijks, iter_dfs)
+        if n_cores == 1:
+            perm_histograms = []
+            for pp in tqdm(params, total=n_iters):
+                perm_histograms.append(self._run_montecarlo_permutation(pp))
+        else:
+            with mp.Pool(n_cores) as p:
+                perm_histograms = list(tqdm(p.imap(self._run_montecarlo_permutation, params),
+                                            total=n_iters))
+        perm_histograms = np.vstack(perm_histograms)
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(perm_histograms, axis=0)
+
+        def where(arr1d):
+            try:
+                res = np.where(arr1d)[0][-1]
+            except IndexError:
+                res = 0
+            return res
+        fwe_voxel_max = np.apply_along_axis(where, 1, perm_histograms)
+        self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
 
     def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1):
         """Perform FWE correction using the max-value permutation method.
@@ -372,6 +452,7 @@ class CBMAEstimator(MetaEstimator):
         rand_ijk = null_ijk[rand_idx, :]
         iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
+        iter_dfs = [iter_df] * n_iters
 
         # Find number of voxels per cluster (includes 0, which is empty space in
         # the matrix)
@@ -382,17 +463,16 @@ class CBMAEstimator(MetaEstimator):
 
         # Define parameters
         iter_conn = [conn] * n_iters
-        iter_dfs = [iter_df] * n_iters
         iter_ss_thresh = [ss_thresh] * n_iters
         params = zip(iter_ijks, iter_dfs, iter_conn, iter_ss_thresh)
 
         if n_cores == 1:
             perm_results = []
             for pp in tqdm(params, total=n_iters):
-                perm_results.append(self._run_fwe_permutation(pp))
+                perm_results.append(self._run_montecarlo_permutation_fwe(pp))
         else:
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
+                perm_results = list(tqdm(p.imap(self._run_montecarlo_permutation_fwe, params), total=n_iters))
 
         fwe_voxel_max, fwe_clust_max = zip(*perm_results)
 
@@ -416,10 +496,23 @@ class CBMAEstimator(MetaEstimator):
         z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
 
         # Voxel-level FWE
-        p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
+        if self.null_method == "montecarlo":
+            LGR.info("Using precalculated histogram for voxel-level FWE correction.")
+            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
-        self.null_distributions_["fwe_level-voxel_method-montecarlo"] = fwe_voxel_max
-        self.null_distributions_["fwe_level-cluster_method-montecarlo"] = fwe_clust_max
+            # Determine p- and z-values from stat values and null distribution.
+            p_vfwe_values = np.ones(stat_values.shape)
+            idx = np.where(stat_values > 0)[0]
+            stat_bins = round2(stat_values[idx] * step)
+            p_vfwe_values[idx] = self.null_distributions_[
+                "histweights_level-voxel_corr-fwe_method-montecarlo"
+            ][stat_bins]
+        else:
+            LGR.info("Using null distribution for voxel-level FWE correction.")
+            p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
+            self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
+
+        self.null_distributions_["values_level-cluster_corr-fwe_method-montecarlo"] = fwe_clust_max
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
