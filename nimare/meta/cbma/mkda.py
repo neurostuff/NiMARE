@@ -47,7 +47,7 @@ class MKDADensity(CBMAEstimator):
     """
 
     def __init__(
-        self, kernel_transformer=MKDAKernel, null_method="empirical", n_iters=10000, **kwargs
+        self, kernel_transformer=MKDAKernel, null_method="montecarlo", n_iters=10000, **kwargs
     ):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
@@ -89,8 +89,29 @@ class MKDADensity(CBMAEstimator):
         weighted_ma_vals = ma_values * self.weight_vec_
         return weighted_ma_vals.sum(0)
 
-    def _compute_null_analytic(self, ma_maps):
-        """Compute uncorrected null distribution using analytic solution.
+    def _determine_histogram_bins(self, ma_maps):
+        """Determine histogram bins for null distribution methods.
+
+        Parameters
+        ----------
+        ma_maps
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
+        """
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+
+        prop_active = ma_values.mean(1)
+        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected null distribution using approximate solution.
 
         Parameters
         ----------
@@ -99,8 +120,8 @@ class MKDADensity(CBMAEstimator):
 
         Notes
         -----
-        This method adds two entries to the null_distributions_ dict attribute:
-        "histogram_bins" and "histogram_weights".
+        This method adds one entry to the null_distributions_ dict attribute:
+        "histweights_corr-none_method-approximate".
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
@@ -116,10 +137,9 @@ class MKDADensity(CBMAEstimator):
         ss_hist = 1.0
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
-        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
         null_distribution = np.cumsum(ss_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histweights_corr-none_method-approximate"] = null_distribution
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
