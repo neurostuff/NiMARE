@@ -22,8 +22,6 @@ def test_Dataset_gzipped_mask_xfail(testdata_cbma, tmp_path_factory):
 
     # The dataset, with a gzipped masker, cannot
     tmp_dset.masker = maskfile
-    with pytest.raises(TypeError):
-        tmp_dset.copy()
+    tmp_dset2 = tmp_dset.copy()
 
-    with pytest.raises(TypeError):
-        tmp_dset.save(out_file)
+    tmp_dset.save(out_file)
