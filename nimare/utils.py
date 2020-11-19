@@ -247,7 +247,7 @@ def get_template(space="mni152_2mm", mask=None):
         else:
             # Not the same as the nilearn brain mask, but should correspond to
             # the default "more conservative" MNI152 mask in GingerALE.
-            img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii.gz"))
+            img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii"))
     else:
         raise ValueError("Space {0} not supported".format(space))
     return img
