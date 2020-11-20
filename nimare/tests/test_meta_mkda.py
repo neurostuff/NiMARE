@@ -150,7 +150,7 @@ def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
     assert (p_analytical - p_empirical).mean() < 1e-3
 
 
-def test_kkda_analytic_empirical_convergence(testdata_cbma_full):
+def test_kda_analytic_empirical_convergence(testdata_cbma_full):
     est_a = KDA(null_method="analytic")
     n_iter = 10000
     est_e = KDA(null_method="empirical", n_iter=n_iter)
