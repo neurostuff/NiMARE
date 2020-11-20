@@ -153,7 +153,7 @@ def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
 def test_kkda_analytic_empirical_convergence(testdata_cbma_full):
     est_a = KDA(null_method="analytic")
     n_iter = 10000
-    est_e = MKDADensity(null_method="empirical", n_iter=n_iter)
+    est_e = KDA(null_method="empirical", n_iter=n_iter)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
     # Get smallest p-value above 0 from the empirical estimator; above this,
