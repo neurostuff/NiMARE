@@ -419,9 +419,6 @@ def _transform_res(meta, meta_res, corr):
     with corr_expectation:
         cres = corr.transform(meta_res)
 
-    if corr.method == "montecarlo" and not corr.parameters.get("voxel_thresh"):
-        corr.parameters["voxel_thresh"] = voxel_thresh
-
     # if multiple correction failed (expected) do not continue
     if isinstance(corr_expectation, type(pytest.raises(ValueError))):
         pytest.xfail("this meta-analysis & corrector combo fails")
