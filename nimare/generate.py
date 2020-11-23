@@ -1,6 +1,9 @@
 """Utilities for generating data for testing"""
 from itertools import zip_longest
+import gzip
 
+import nibabel as nib
+import requests
 import numpy as np
 import nilearn
 
@@ -255,3 +258,87 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
 def _array_like(obj):
     """Test if obj is array-like"""
     return isinstance(obj, (list, tuple, np.ndarray))
+
+WHITE_LIST = [
+    "spatial",
+    "language",
+    "visual",
+    "auditory",
+    "motor",
+    "taste",
+    "perception",
+    "emotions",
+    "thoughts",
+    "sensation",
+    "reward",
+    "navigation",
+    "interoceptive",
+    "episodic",
+    "planning",
+    "attention",
+    "working%20memory",
+    "executive",
+    "pain",
+    "touch",
+    "speech",
+]
+
+
+def create_image_based_dataset(signal_map=True, noise_maps=10, n_studies, n_participants):
+    """create an image dataset for meta-analysis
+
+    Parameters
+    ----------
+    signal_map: :obj:`bool` or :obj:`str`
+        The map used to indicate consistency between studies,
+        if `True`, a map will be selected randomly, if `str`,
+        the map associated with the concept will be used.
+    noise_maps: :obj:`int` or :obj:`list`
+        The number of noise maps to include (randomly selected),
+        or a specific list of images to include.
+
+    Returns
+    -------
+    ground_truth_img: :class:`nibabel.Nifti1Image`
+    dataset : :class:`nimare.Dataset`
+    """
+
+    if isinstance(signal_map, str) and signal_map in WHITE_LIST:
+        download_term = signal_map.replace(" ", "%20")
+        signal_img = _download_img(download_term)
+    elif signal_map is True:
+        download_term = np.choice(np.array(WHITE_LIST), size=1)
+        signal_img = _download_img(download_term)
+    elif signal_map is False:
+        download_term = None
+        signal_img = None
+    else:
+        raise ValueError(
+            "signal map must be a boolean or string in this list:",
+            WHITE_LIST,
+        )
+
+    if isinstance(noise_maps, list):
+        noise_terms = np.array([noise_maps] * n_studies)
+    elif isinstance(noise_maps, int):
+        noise_terms = np.choice(WHITE_LIST, size=(noise_maps, n_studies))
+
+
+def _download_img(term):
+
+    base_url = "https://neurosynth.org"
+    term_url = "/api/analyses/{}/images/"
+
+    image_query = base_url + term_url.format(term)
+    images_list = requests.get(image_query).json()['data']
+    image_url = next(x['url'] for x in images_list if "uniformity test" in x['name'])
+
+    download_image_query = base_url + image_url
+
+    img = nib.Nifti1Image.from_bytes(
+        gzip.decompress(
+            requests.get(download_image_query).content
+        )
+    )
+
+    return img
