@@ -1,6 +1,8 @@
 """Utilities for generating data for testing"""
 from itertools import zip_longest
 import gzip
+import tempfile
+from pathlib import Path
 
 import nibabel as nib
 import requests
@@ -10,6 +12,30 @@ import nilearn
 from .dataset import Dataset
 from .meta.utils import compute_ale_ma, get_ale_kernel
 from .transforms import vox2mm, mm2vox
+
+NEUROSYNTH_WHITE_LIST = [
+    "spatial",
+    "language",
+    "visual",
+    "auditory",
+    "motor",
+    "taste",
+    "perception",
+    "emotions",
+    "thoughts",
+    "sensation",
+    "reward",
+    "navigation",
+    "interoceptive",
+    "episodic",
+    "planning",
+    "attention",
+    "working%20memory",
+    "executive",
+    "pain",
+    "touch",
+    "speech",
+]
 
 
 def create_coordinate_dataset(
@@ -106,6 +132,237 @@ def create_coordinate_dataset(
     dataset = Dataset(source_dict)
 
     return ground_truth_foci, dataset
+
+
+def create_image_dataset(
+    signal_map=True, noise_maps=10, n_studies=5, n_participants=5,
+    standard_error=5, img_dir=None, seed=None
+):
+    """create an image dataset for meta-analysis
+
+    Parameters
+    ----------
+    signal_map: :obj:`bool` or :obj:`str`
+        The map used to indicate consistency between studies,
+        if `True`, a map will be selected randomly, if `str`,
+        the map associated with the concept will be used.
+    noise_maps: :obj:`int`
+        The number of noise maps to include (randomly selected),
+        or a specific list of images to include.
+
+    Returns
+    -------
+    ground_truth_img: :class:`nibabel.Nifti1Image`
+    dataset : :class:`nimare.Dataset`
+    """
+    rng = np.random.default_rng(seed=seed)
+
+    terms_list = NEUROSYNTH_WHITE_LIST.copy()
+    if isinstance(signal_map, str) and signal_map in NEUROSYNTH_WHITE_LIST:
+        download_term = signal_map.replace(" ", "%20")
+        signal_data = _download_img(download_term)
+        terms_list.remove(download_term)
+    elif signal_map is True:
+        download_term = rng.choice(terms_list)
+        signal_data = _download_img(download_term)
+        terms_list.remove(download_term)
+    elif signal_map is False:
+        download_term = None
+        signal_data = None
+    else:
+        raise ValueError(
+            "signal map must be a boolean or string in this list:",
+            NEUROSYNTH_WHITE_LIST,
+        )
+    if img_dir is None:
+        img_dir = Path(tempfile.mkdtemp(prefix="simulation"))
+    else:
+        img_dir = Path(img_dir)
+        img_dir.ensure_dir()
+
+    mni_img = nilearn.datasets.load_mni152_brain_mask()
+    mni_mask = mni_img.get_fdata().astype(bool)
+    noise_terms = rng.choice(terms_list, size=(noise_maps, n_studies))
+    noise_weights = rng.random(size=(noise_maps, n_studies))
+
+    noise_arr = np.zeros(mni_mask[mni_mask].shape)
+    used_terms = np.unique(noise_terms)
+    term_dict = {
+        term: idx for idx, term in enumerate(used_terms)
+    }
+
+    term_data = np.vstack([_download_img(term)[mni_mask] for term in used_terms])
+
+    dataset_dict = {}
+    for study_idx in range(n_studies):
+        term_idxs = [term_dict[term] for term in noise_terms[:, study_idx]]
+        study_data = term_data[term_idxs, :]
+        sign_shuffle = rng.choice([-1, 1], study_data.shape)
+        noise_arr = (
+            study_data * sign_shuffle * np.atleast_2d(noise_weights[:, study_idx]).T
+        ).sum(axis=0)
+        # brain_betas[mni_mask] = noise_arr.sum(axis=0)
+        if signal_data is not None:
+            signal_arr = signal_data[mni_mask]
+            betas_arr = noise_arr + signal_arr
+        else:
+            betas_arr = noise_arr
+        beta_path = _create_nii_file(
+            betas_arr, mni_mask, mni_img.affine, img_dir, f"study-{study_idx}_beta"
+        )
+
+        # standard_error data
+        std_err_arr = np.full(betas_arr.shape, standard_error)
+        se_path = _create_nii_file(
+            std_err_arr, mni_mask, mni_img.affine, img_dir, f"study-{study_idx}_se"
+        )
+
+        # t-statistic data
+        tstat_arr = betas_arr / std_err_arr
+        tstat_path = _create_nii_file(
+            tstat_arr, mni_mask, mni_img.affine, img_dir, f"study-{study_idx}_tstat"
+        )
+
+        # z-statistic data
+        zstat_arr = (betas_arr - betas_arr.mean()) / std_err_arr
+        zstat_path = _create_nii_file(
+            zstat_arr, mni_mask, mni_img.affine, img_dir, f"study-{study_idx}_zstat"
+        )
+
+        dataset_dict[f'study-{study_idx}'] = {
+            "contrasts": {
+                "1": {
+                    "images": {
+                        "beta": beta_path,
+                        "se": se_path,
+                        "t": tstat_path,
+                        "z": zstat_path,
+                        "varcope": se_path,
+                    },
+                    "sample_sizes": [
+                        n_participants,
+                    ],
+                }
+            }
+        }
+
+    dataset = Dataset(dataset_dict)
+
+    return signal_data, dataset
+
+
+def create_simple_image_dataset(
+    signal_voxels=0.10, n_studies=5, n_participants=5,
+    standard_error=5, img_dir=None, seed=None
+):
+    """create an image dataset for meta-analysis
+
+    Parameters
+    ----------
+    signal_map: :obj:`bool` or :obj:`str`
+        The map used to indicate consistency between studies,
+        if `True`, a map will be selected randomly, if `str`,
+        the map associated with the concept will be used.
+    noise_maps: :obj:`int`
+        The number of noise maps to include (randomly selected),
+        or a specific list of images to include.
+
+    Returns
+    -------
+    ground_truth_img: :class:`nibabel.Nifti1Image`
+    dataset : :class:`nimare.Dataset`
+    """
+    rng = np.random.default_rng(seed=seed)
+
+    # check sample_size argument
+    if _array_like(n_participants) and len(n_participants) != n_studies and len(n_participants) != 2:
+        raise ValueError("sample_size must be the same length as n_studies or list of 2 items")
+    elif not _array_like(n_participants) and not isinstance(n_participants, int):
+        raise ValueError("sample_size must be array like or integer")
+
+    # process sample_size argument
+    if isinstance(n_participants, int):
+        n_participants = [n_participants] * n_studies
+    elif _array_like(n_participants) and len(n_participants) == 2 and n_studies != 2:
+        sample_size_lower_limit = n_participants[0]
+        sample_size_upper_limit = n_participants[1]
+        n_participants = rng.uniform(
+            sample_size_lower_limit, sample_size_upper_limit, size=n_studies
+        )
+
+    n_voxels = 1000
+    lower_stat = -10
+    upper_stat = 10
+    signal_magnitude = 3
+    num_sig_voxels = int(n_voxels * signal_voxels)
+    data_arr = rng.uniform(lower_stat, upper_stat, (n_studies, n_voxels))
+    signal_arr = np.zeros(n_voxels)
+    signal_arr[:num_sig_voxels] = signal_magnitude
+    data_arr[:, :num_sig_voxels] += signal_magnitude
+    mask_arr = np.ones(n_voxels).astype(bool)
+
+    if img_dir is None:
+        img_dir = Path(tempfile.mkdtemp(prefix="simulation"))
+    else:
+        img_dir = Path(img_dir)
+        img_dir.ensure_dir()
+
+    dataset_dict = {}
+    for n_part, (study_idx, betas_arr) in zip(n_participants, enumerate(data_arr)):
+        # write betas to file
+        beta_path = _create_nii_file(
+            betas_arr, np.atleast_3d(mask_arr),
+            np.eye(4) * 2, img_dir, f"study-{study_idx}_beta"
+        )
+
+        # standard_error data
+        std_err_arr = np.full(betas_arr.shape, standard_error)
+        se_path = _create_nii_file(
+            std_err_arr, np.atleast_3d(mask_arr),
+            np.eye(4) * 2, img_dir, f"study-{study_idx}_se"
+        )
+
+        # t-statistic data
+        tstat_arr = betas_arr / std_err_arr
+        tstat_path = _create_nii_file(
+            tstat_arr, np.atleast_3d(mask_arr),
+            np.eye(4) * 2, img_dir, f"study-{study_idx}_tstat"
+        )
+
+        # z-statistic data
+        zstat_arr = (betas_arr - betas_arr.mean()) / std_err_arr
+        zstat_path = _create_nii_file(
+            zstat_arr, np.atleast_3d(mask_arr),
+            np.eye(4) * 2, img_dir, f"study-{study_idx}_zstat"
+        )
+
+        dataset_dict[f'study-{study_idx}'] = {
+            "contrasts": {
+                "1": {
+                    "images": {
+                        "beta": beta_path,
+                        "se": se_path,
+                        "t": tstat_path,
+                        "z": zstat_path,
+                        "varcope": se_path,
+                    },
+                    "sample_sizes": [
+                        n_part,
+                    ],
+                    "metadata": {
+                        "sample_sizes": [
+                            n_part,
+                        ]
+                    }
+                }
+            }
+        }
+
+    # create mask
+    mask_path = _create_nii_file(mask_arr, np.atleast_3d(mask_arr), np.eye(4) * 2, img_dir, "mask")
+    dataset = Dataset(dataset_dict, mask=mask_path)
+
+    return np.atleast_3d(signal_arr), dataset
 
 
 def _create_source(foci, sample_sizes, space="MNI"):
@@ -259,86 +516,27 @@ def _array_like(obj):
     """Test if obj is array-like"""
     return isinstance(obj, (list, tuple, np.ndarray))
 
-WHITE_LIST = [
-    "spatial",
-    "language",
-    "visual",
-    "auditory",
-    "motor",
-    "taste",
-    "perception",
-    "emotions",
-    "thoughts",
-    "sensation",
-    "reward",
-    "navigation",
-    "interoceptive",
-    "episodic",
-    "planning",
-    "attention",
-    "working%20memory",
-    "executive",
-    "pain",
-    "touch",
-    "speech",
-]
 
+def _create_nii_file(arr, mask, affine, out_dir, prefix):
+    brain_stat = np.zeros(mask.shape)
+    brain_stat[mask] = arr
+    stat_img = nib.Nifti1Image(brain_stat, affine)
+    stat_path = out_dir / (prefix + ".nii.gz")
+    stat_img.to_filename(stat_path)
 
-def create_image_based_dataset(signal_map=True, noise_maps=10, n_studies, n_participants):
-    """create an image dataset for meta-analysis
-
-    Parameters
-    ----------
-    signal_map: :obj:`bool` or :obj:`str`
-        The map used to indicate consistency between studies,
-        if `True`, a map will be selected randomly, if `str`,
-        the map associated with the concept will be used.
-    noise_maps: :obj:`int` or :obj:`list`
-        The number of noise maps to include (randomly selected),
-        or a specific list of images to include.
-
-    Returns
-    -------
-    ground_truth_img: :class:`nibabel.Nifti1Image`
-    dataset : :class:`nimare.Dataset`
-    """
-
-    if isinstance(signal_map, str) and signal_map in WHITE_LIST:
-        download_term = signal_map.replace(" ", "%20")
-        signal_img = _download_img(download_term)
-    elif signal_map is True:
-        download_term = np.choice(np.array(WHITE_LIST), size=1)
-        signal_img = _download_img(download_term)
-    elif signal_map is False:
-        download_term = None
-        signal_img = None
-    else:
-        raise ValueError(
-            "signal map must be a boolean or string in this list:",
-            WHITE_LIST,
-        )
-
-    if isinstance(noise_maps, list):
-        noise_terms = np.array([noise_maps] * n_studies)
-    elif isinstance(noise_maps, int):
-        noise_terms = np.choice(WHITE_LIST, size=(noise_maps, n_studies))
+    return str(stat_path)
 
 
 def _download_img(term):
 
-    base_url = "https://neurosynth.org"
-    term_url = "/api/analyses/{}/images/"
+    url = "https://neurosynth.org/api/analyses/{}/images/association"
 
-    image_query = base_url + term_url.format(term)
-    images_list = requests.get(image_query).json()['data']
-    image_url = next(x['url'] for x in images_list if "uniformity test" in x['name'])
+    image_query = url.format(term)
 
-    download_image_query = base_url + image_url
-
-    img = nib.Nifti1Image.from_bytes(
+    data = nib.Nifti1Image.from_bytes(
         gzip.decompress(
-            requests.get(download_image_query).content
+            requests.get(image_query).content
         )
-    )
+    ).get_fdata()
 
-    return img
+    return data
