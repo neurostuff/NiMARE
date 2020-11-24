@@ -47,7 +47,7 @@ def random():
                 "n_noise_foci": 20,
                 "seed": 1939,
             },
-            id="normal_data",
+            id="coordinate_data",
         )
     ],
 )
