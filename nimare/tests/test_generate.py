@@ -2,7 +2,10 @@ import pytest
 from contextlib import ExitStack as does_not_raise
 from numpy.random import RandomState
 
-from ..generate import create_coordinate_dataset, _create_source, _create_foci, _array_like
+from ..generate import (
+    create_coordinate_dataset, _create_source, _create_foci, _array_like,
+    create_image_dataset, create_simple_image_dataset
+)
 from ..dataset import Dataset
 
 
@@ -223,3 +226,11 @@ def test_create_coordinate_dataset(kwargs, expectation):
             (kwargs["n_studies"] * n_foci) + (kwargs["n_studies"] * kwargs["n_noise_foci"]),
         )
         assert len(dataset.coordinates) == expected_coordinate_number
+
+
+def test_create_image_dataset():
+    create_image_dataset(signal_map=True, noise_maps=10, n_studies=2, n_participants=10)
+
+
+def test_create_simple_image_dataset():
+    create_simple_image_dataset()
