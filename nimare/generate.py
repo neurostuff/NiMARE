@@ -239,9 +239,11 @@ def create_image_dataset(
                         "z": zstat_path,
                         "varcope": se_path,
                     },
-                    "sample_sizes": [
-                        n_participants,
-                    ],
+                    "metadata": {
+                        "sample_sizes": [
+                            n_participants,
+                        ],
+                    }
                 }
             }
         }
@@ -322,6 +324,13 @@ def create_simple_image_dataset(
             np.eye(4) * 2, img_dir, f"study-{study_idx}_se"
         )
 
+        # varcope data
+        varcope_arr = std_err_arr ** 2
+        varcope_path = _create_nii_file(
+            varcope_arr, np.atleast_3d(mask_arr),
+            np.eye(4) * 2, img_dir, f"study-{study_idx}_varcope"
+        )
+
         # t-statistic data
         tstat_arr = betas_arr / std_err_arr
         tstat_path = _create_nii_file(
@@ -344,11 +353,8 @@ def create_simple_image_dataset(
                         "se": se_path,
                         "t": tstat_path,
                         "z": zstat_path,
-                        "varcope": se_path,
+                        "varcope": varcope_path,
                     },
-                    "sample_sizes": [
-                        n_part,
-                    ],
                     "metadata": {
                         "sample_sizes": [
                             n_part,
