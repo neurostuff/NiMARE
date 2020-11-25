@@ -584,7 +584,7 @@ class KDA(CBMAEstimator):
             p_values = nullhist_to_p(
                 stat_values,
                 self.null_distributions_["histogram_weights"],
-                self.null_distributions_["histogram_bins"]
+                self.null_distributions_["histogram_bins"],
             )
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()

@@ -457,9 +457,7 @@ class SCALE(CBMAEstimator):
         scale_hists[1:, :] = np.apply_along_axis(self._make_hist, 0, scale_values)
 
         p_values = nullhist_to_p(
-            stat_values,
-            scale_hists,
-            self.null_distributions_["histogram_bins"]
+            stat_values, scale_hists, self.null_distributions_["histogram_bins"]
         )
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
