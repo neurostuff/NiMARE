@@ -1,10 +1,11 @@
-"""Various statistical helper functions
-"""
+"""Various statistical helper functions."""
 import logging
 import warnings
 
 import numpy as np
 from scipy import stats
+
+from . import utils
 
 LGR = logging.getLogger(__name__)
 
@@ -166,6 +167,72 @@ def null_to_p(test_value, null_array, tail="two"):
         result = result[uniq_idx]
 
     return result
+
+
+def nullhist_to_p(test_values, histogram_weights, histogram_bins):
+    """Return p-value for test value against null histogram.
+
+    Parameters
+    ----------
+    test_values : (V) array_like
+        Values for which to determine p-value.
+    histogram_weights : (B [x V]) array
+        Histogram weights representing the null distribution against which test_value is compared.
+    histogram_bins : (B) array
+        Histogram bins
+
+    Returns
+    -------
+    p_value : :obj:`float`
+        P-value associated with the test value when compared against the null
+        distribution.
+
+    Notes
+    -----
+    P-values are clipped based on the number of elements in the null array.
+    Therefore no p-values of 0 or 1 should be produced.
+    """
+    assert test_values.ndim == 1
+    assert histogram_bins.ndim == 1
+    assert histogram_weights.shape[0] == histogram_bins.shape[0]
+    assert histogram_weights.ndim in (1, 2)
+    if histogram_weights.ndim == 2:
+        assert histogram_weights.shape[1] == test_values.shape[0]
+        voxelwise_null = True
+    else:
+        histogram_weights = histogram_weights[:, None]
+        voxelwise_null = False
+
+    smallest_value = np.finfo(float).eps
+    n_bins = len(histogram_bins)
+    inv_step = 1 / (histogram_bins[1] - histogram_bins[0])  # assume equal spacing
+
+    # Convert histograms to null distributions
+    # The value in each bin represents the probability of finding a test value
+    # (stored in histogram_bins) of that value or lower.
+
+    null_distribution = histogram_weights / np.sum(histogram_weights, axis=0)
+    null_distribution = np.cumsum(null_distribution[::-1, :], axis=0)[::-1, :]
+    null_distribution /= np.max(null_distribution, axis=0)
+    null_distribution = np.squeeze(null_distribution)
+
+    p_values = np.ones(test_values.shape)
+    # Get p-values by getting the binned_values-th value in null_distribution
+    if voxelwise_null:
+        binned_values = utils.round2(test_values * inv_step).astype(int)
+        binned_values[binned_values > n_bins] = n_bins
+        # Pair each test value with its associated null distribution
+        for i, (x, y) in enumerate(zip(null_distribution.transpose(), binned_values)):
+            p_values[i] = x[y]
+    else:
+        idx = np.where(test_values > 0)[0]
+        binned_values = utils.round2(test_values[idx] * inv_step)
+        p_values[idx] = null_distribution[binned_values]
+
+    # ensure p_value in the following range:
+    # smallest_value <= p_value <= (1.0 - smallest_value)
+    p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value))
+    return p_values
 
 
 def fdr(p, q=0.05):
