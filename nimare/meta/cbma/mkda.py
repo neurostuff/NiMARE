@@ -10,9 +10,8 @@ from tqdm.auto import tqdm
 
 from ... import references
 from ...due import due
-from ...stats import null_to_p, one_way, two_way
+from ...stats import null_to_p, nullhist_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import round2
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -117,9 +116,7 @@ class MKDADensity(CBMAEstimator):
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
-        null_distribution = np.cumsum(ss_hist[::-1])[::-1]
-        null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histogram_weights"] = ss_hist
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
@@ -584,12 +581,11 @@ class KDA(CBMAEstimator):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
-            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
-
-            # Determine p- and z-values from ALE values and null distribution.
-            idx = np.where(stat_values > 0)[0]
-            stat_bins = round2(stat_values[idx] * step)
-            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
+            p_values = nullhist_to_p(
+                stat_values,
+                self.null_distributions_["histogram_weights"],
+                self.null_distributions_["histogram_bins"]
+            )
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
             p_values = null_to_p(
