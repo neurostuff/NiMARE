@@ -12,11 +12,10 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn import image, masking
+from nilearn import image
 
 from ..base import Transformer
 from ..transforms import vox2mm
-from ..utils import get_masker
 from .utils import compute_ale_ma, compute_kda_ma, get_ale_kernel, peaks2maps
 
 LGR = logging.getLogger(__name__)
@@ -205,7 +204,7 @@ class KernelTransformer(Transformer):
 
         Returns
         -------
-        transformed : list of (3D array, str) tuples
+        transformed_maps : list of (3D array, str) tuples
             Transformed data, containing one element for each study.
             Each element is composed of a 3D array (the MA map) and the study's ID.
         """
