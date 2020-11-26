@@ -17,7 +17,7 @@ from nilearn import image, masking
 from ..base import Transformer
 from ..transforms import vox2mm
 from ..utils import get_masker
-from .utils import compute_ma, get_ale_kernel, peaks2maps, compute_kda_ma
+from .utils import compute_ale_ma, compute_kda_ma, get_ale_kernel, peaks2maps
 
 LGR = logging.getLogger(__name__)
 
@@ -259,7 +259,7 @@ class ALEKernel(KernelTransformer):
                     kernels[sample_size] = kern
                 else:
                     kern = kernels[sample_size]
-            kernel_data = compute_ma(mask.shape, ijk, kern)
+            kernel_data = compute_ale_ma(mask.shape, ijk, kern)
             transformed.append((kernel_data, id_))
 
         return transformed

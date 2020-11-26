@@ -328,7 +328,7 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overla
     return kernel_data
 
 
-def compute_ma(shape, ijk, kernel):
+def compute_ale_ma(shape, ijk, kernel):
     """
     Generate ALE modeled activation (MA) maps.
     Replaces the values around each focus in ijk with the contrast-specific
