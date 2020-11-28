@@ -5,7 +5,7 @@ import numpy as np
 import nilearn
 
 from .dataset import Dataset
-from .meta.utils import compute_ma, get_ale_kernel
+from .meta.utils import compute_ale_ma, get_ale_kernel
 from .transforms import vox2mm, mm2vox
 
 
@@ -196,7 +196,7 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
     # create a probability map for each peak
     kernel = get_ale_kernel(template_img, fwhm)[1]
     foci_prob_maps = {
-        tuple(peak): compute_ma(template_data.shape, np.atleast_2d(peak), kernel)
+        tuple(peak): compute_ale_ma(template_data.shape, np.atleast_2d(peak), kernel)
         for peak in ground_truth_foci_ijks
         if peak.size
     }
