@@ -126,9 +126,9 @@ class ALE(CBMAEstimator):
         max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
         max_poss_ale = self.compute_summarystat(max_ma_values)
         # create bin centers, then shift them into bin edges
-        hist_bins = np.round(
-            np.arange(0, max_poss_ale + step_size, step_size), 5
-        ) - (step_size / 2)
+        hist_bins = np.round(np.arange(0, max_poss_ale + step_size, step_size), 5) - (
+            step_size / 2
+        )
 
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""
@@ -137,7 +137,7 @@ class ALE(CBMAEstimator):
         ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
 
         # Shift the bins to correspond to centers instead of edges
-        hist_bins += (step_size / 2)
+        hist_bins += step_size / 2
         self.null_distributions_["histogram_bins"] = hist_bins
 
         # Normalize MA histograms to get probabilities
