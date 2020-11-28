@@ -227,12 +227,7 @@ class CBMAEstimator(MetaEstimator):
             p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * inv_step_size)
-            try:
-                p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
-            except:
-                raise Exception("Max possible value is {}, max observed is {}".format(
-                    self.max_poss_ale, np.max(stat_values))
-                )
+            p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
 
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
