@@ -119,8 +119,8 @@ class ALE(CBMAEstimator):
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
         max_poss_ale = self.compute_summarystat(max_ma_values)
-        step_size = 0.0001
-        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
+        step_size = 0.00001
+        hist_bins = np.round(np.arange(0, max_poss_ale + 0.0001, step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
 
         ma_hists = np.zeros((ma_values.shape[0], hist_bins.shape[0]))
