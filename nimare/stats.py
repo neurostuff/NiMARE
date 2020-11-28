@@ -174,8 +174,10 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
     Parameters
     ----------
-    test_values : (V) array_like
-        Values for which to determine p-value.
+    test_values : float or 1D array_like
+        Values for which to determine p-value. Can be a single value or a one-dimensional array.
+        If a one-dimensional array, it should have the same length as the histogram_weights' last
+        dimension.
     histogram_weights : (B [x V]) array
         Histogram weights representing the null distribution against which test_value is compared.
     histogram_bins : (B) array
@@ -192,6 +194,11 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     P-values are clipped based on the number of elements in the null array.
     Therefore no p-values of 0 or 1 should be produced.
     """
+    test_values = np.asarray(test_values)
+    return_value = False
+    if test_values.ndim == 0:
+        return_value = True
+        test_values = np.atleast_1d(test_values)
     assert test_values.ndim == 1
     assert histogram_bins.ndim == 1
     assert histogram_weights.shape[0] == histogram_bins.shape[0]
@@ -210,7 +217,6 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     # Convert histograms to null distributions
     # The value in each bin represents the probability of finding a test value
     # (stored in histogram_bins) of that value or lower.
-
     null_distribution = histogram_weights / np.sum(histogram_weights, axis=0)
     null_distribution = np.cumsum(null_distribution[::-1, :], axis=0)[::-1, :]
     null_distribution /= np.max(null_distribution, axis=0)
@@ -232,6 +238,8 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     # ensure p_value in the following range:
     # smallest_value <= p_value <= (1.0 - smallest_value)
     p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value))
+    if return_value:
+        p_values = p_values[0]
     return p_values
 
 
