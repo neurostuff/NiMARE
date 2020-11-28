@@ -117,22 +117,28 @@ class ALE(CBMAEstimator):
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
         # Determine bins for null distribution histogram
+        # Remember that numpy histogram bins are bin edges, not centers
+        # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.001, etc.
+        inv_step_size = 100000
+        step_size = 1 / inv_step_size
         max_ma_values = np.max(ma_values, axis=1)
+        # round up based on resolution
+        max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
         max_poss_ale = self.compute_summarystat(max_ma_values)
-        step_size = 0.00001
-        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 5)
+        # create bin centers, then shift them into bin edges
+        hist_bins = np.round(
+            np.arange(0, max_poss_ale + step_size, step_size), 5
+        ) - (step_size / 2)
+
+        def just_histogram(*args, **kwargs):
+            """Collect the first output (weights) from numpy histogram."""
+            return np.histogram(*args, **kwargs)[0].astype(float)
+
+        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
+
+        # Shift the bins to correspond to centers instead of edges
+        hist_bins += (step_size / 2)
         self.null_distributions_["histogram_bins"] = hist_bins
-
-        ma_hists = np.zeros((ma_values.shape[0], hist_bins.shape[0]))
-
-        n_zeros = np.sum(ma_values == 0, 1)
-        ma_hists[:, 0] = n_zeros
-
-        for i_exp in range(len(ma_values)):
-            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 1:] = np.histogram(reduced_ma_values, bins=hist_bins, density=False)[0]
-
-        inv_step_size = int(np.ceil(1 / step_size))
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
