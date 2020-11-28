@@ -16,7 +16,7 @@ from nilearn import image
 
 from ..base import Transformer
 from ..transforms import vox2mm
-from .utils import compute_ale_ma, compute_kda_ma, get_ale_kernel, peaks2maps
+from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
 
@@ -336,7 +336,7 @@ class Peaks2MapsKernel(KernelTransformer):
             coordinates_list.append(xyz)
             ids.append(id_)
 
-        imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
+        imgs = compute_p2m_ma(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
         resampled_imgs = []
         for img in imgs:
             resampled_imgs.append(image.resample_to_img(img, mask).get_fdata())
