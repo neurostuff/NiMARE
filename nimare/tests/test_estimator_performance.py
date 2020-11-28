@@ -163,10 +163,7 @@ def meta_res(simulatedata_cbma, meta, random):
     # CHECK IF META/KERNEL WORK TOGETHER
     ####################################
     # peaks2MapsKernel does not work with any meta-analysis estimator
-    if isinstance(meta.kernel_transformer, kernel.Peaks2MapsKernel):
-        # AttributeError: 'DataFrame' object has no attribute 'masker'
-        meta_expectation = pytest.raises(AttributeError)
-    elif (
+    if (
         isinstance(meta, ale.ALE)
         and isinstance(meta.kernel_transformer, kernel.KDAKernel)
         and meta.get_params().get("null_method") == "analytic"
