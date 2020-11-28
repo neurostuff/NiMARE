@@ -125,6 +125,7 @@ class ALE(CBMAEstimator):
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
         max_poss_ale = self.compute_summarystat(max_ma_values)
+        self.max_poss_ale = max_poss_ale
         # create bin centers, then shift them into bin edges
         hist_bins = np.round(np.arange(0, max_poss_ale + step_size, step_size), 5) - (
             step_size / 2
