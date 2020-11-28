@@ -360,7 +360,7 @@ class SCALE(CBMAEstimator):
         max_ma_values = np.max(ma_maps, axis=1)
         max_poss_ale = self._compute_summarystat(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
-            np.arange(0, max_poss_ale + 0.001, 0.0001), 4
+            np.arange(0, max_poss_ale + 0.0001, 0.00001), 5
         )
 
         stat_values = self._compute_summarystat(ma_maps)
