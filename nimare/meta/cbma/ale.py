@@ -118,7 +118,7 @@ class ALE(CBMAEstimator):
 
         # Determine bins for null distribution histogram
         # Remember that numpy histogram bins are bin edges, not centers
-        # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.001, etc.
+        # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
         inv_step_size = 100000
         step_size = 1 / inv_step_size
         max_ma_values = np.max(ma_values, axis=1)
