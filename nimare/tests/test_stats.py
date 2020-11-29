@@ -45,20 +45,12 @@ def test_nullhist_to_p():
     histogram_weights[-1] = 0
 
     assert math.isclose(
-        stats.nullhist_to_p(0, histogram_weights, histogram_bins),
-        1 - np.finfo(float).eps
+        stats.nullhist_to_p(0, histogram_weights, histogram_bins), 1 - np.finfo(float).eps
     )
+    assert math.isclose(stats.nullhist_to_p(1, histogram_weights, histogram_bins), 0.99)
+    assert math.isclose(stats.nullhist_to_p(99, histogram_weights, histogram_bins), 0.01)
     assert math.isclose(
-        stats.nullhist_to_p(1, histogram_weights, histogram_bins),
-        0.99
-    )
-    assert math.isclose(
-        stats.nullhist_to_p(99, histogram_weights, histogram_bins),
-        0.01
-    )
-    assert math.isclose(
-        stats.nullhist_to_p(100, histogram_weights, histogram_bins),
-        np.finfo(float).eps
+        stats.nullhist_to_p(100, histogram_weights, histogram_bins), np.finfo(float).eps
     )
     histogram_weights = np.ones((histogram_bins.shape[0], n_voxels))
     histogram_weights[-1, :] = 0
@@ -68,13 +60,13 @@ def test_nullhist_to_p():
     )
     assert np.allclose(
         stats.nullhist_to_p([1, 1, 1, 1, 1], histogram_weights, histogram_bins),
-        np.ones(n_voxels) * 0.99
+        np.ones(n_voxels) * 0.99,
     )
     assert np.allclose(
         stats.nullhist_to_p([99, 99, 99, 99, 99], histogram_weights, histogram_bins),
-        np.ones(n_voxels) * 0.01
+        np.ones(n_voxels) * 0.01,
     )
     assert np.allclose(
         stats.nullhist_to_p([100, 100, 100, 100, 100], histogram_weights, histogram_bins),
-        np.ones(n_voxels) * np.finfo(float).eps
+        np.ones(n_voxels) * np.finfo(float).eps,
     )
