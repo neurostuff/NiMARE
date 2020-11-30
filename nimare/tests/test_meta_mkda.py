@@ -99,6 +99,23 @@ def test_mkda_chi2_fwe_2core(testdata_cbma):
     assert isinstance(cres_2core, nimare.results.MetaResult)
 
 
+def test_kda_density_analytic_null(testdata_cbma):
+    """
+    Smoke test for KDA with analytical null and FWE correction.
+    """
+    meta = KDA(null_method="analytic")
+    res = meta.fit(testdata_cbma)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    cres = corr.transform(res)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert res.get_map("p", return_type="array").dtype == np.float64
+    assert isinstance(cres, nimare.results.MetaResult)
+    assert (
+        cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array").dtype
+        == np.float64
+    )
+
+
 def test_kda_density_fwe_1core(testdata_cbma):
     """
     Smoke test for KDA with empirical null and FWE correction.
@@ -116,10 +133,27 @@ def test_kda_density_fwe_1core(testdata_cbma):
     )
 
 
-def test_analytic_empirical_convergence(testdata_cbma_full):
+def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
     est_a = MKDADensity(null_method="analytic")
     n_iter = 10000
     est_e = MKDADensity(null_method="empirical", n_iter=n_iter)
+    res_a = est_a.fit(testdata_cbma_full)
+    res_e = est_e.fit(testdata_cbma_full)
+    # Get smallest p-value above 0 from the empirical estimator; above this,
+    # the two should converge reasonably closely.
+    min_p = 1 / n_iter
+    p_idx = res_e.maps["p"] > min_p
+    p_analytical = res_a.maps["p"][p_idx]
+    p_empirical = res_e.maps["p"][p_idx]
+    # Correlation must be near unity and mean difference should be tiny
+    assert np.corrcoef(p_analytical, p_empirical)[0, 1] > 0.98
+    assert (p_analytical - p_empirical).mean() < 1e-3
+
+
+def test_kda_analytic_empirical_convergence(testdata_cbma_full):
+    est_a = KDA(null_method="analytic")
+    n_iter = 10000
+    est_e = KDA(null_method="empirical", n_iter=n_iter)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
     # Get smallest p-value above 0 from the empirical estimator; above this,

@@ -3,14 +3,13 @@ import logging
 import multiprocessing as mp
 
 import numpy as np
-import pandas as pd
 from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
 from ... import references
 from ...due import due
-from ...stats import null_to_p, nullhist_to_p, one_way, two_way
+from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
@@ -470,35 +469,7 @@ class KDA(CBMAEstimator):
         self.dataset = None
         self.results = None
 
-    def _fit(self, dataset):
-        """
-        Perform KDA meta-analysis on dataset.
-
-        Parameters
-        ----------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Dataset to analyze.
-        """
-        self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        self.null_distributions_ = {}
-
-        ma_values = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="array"
-        )
-        stat_values = self._compute_summarystat(ma_values)
-
-        # Determine null distributions for summary stat (OF) to p conversion
-        if self.null_method.startswith("analytic"):
-            raise ValueError("'analytic' null distribution estimation is not yet supported.")
-        else:
-            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
-        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
-
-        images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
-
-    def _compute_summarystat(self, data):
+    def _compute_summarystat(self, ma_values):
         """Compute OF scores from data.
 
         Parameters
@@ -515,167 +486,92 @@ class KDA(CBMAEstimator):
         stat_values : 1d array
             OF values. One value per voxel.
         """
-        if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_transformer.transform(
-                data, masker=self.masker, return_type="array"
-            )
-        elif isinstance(data, list):
-            ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
-            ma_values = data.copy()
-        else:
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
-
         # OF is just a sum of MA values.
         stat_values = np.sum(ma_values, axis=0)
         return stat_values
 
-    def _compute_null_empirical(self, ma_maps, n_iters=10000):
-        """Compute uncorrected null distribution using empirical method.
+    def _compute_null_analytic(self, ma_maps):
+        """Compute uncorrected null distribution using analytic solution.
 
         Parameters
         ----------
-        ma_maps : (C x V) array
-            Contrast by voxel array of MA values.
+        ma_maps : list of imgs or numpy.ndarray
+            MA maps.
 
         Notes
         -----
-        This method adds one entry to the null_distributions_ dict attribute:
-        "empirical_null".
+        This method adds two entries to the null_distributions_ dict attribute:
+        "histogram_bins" and "histogram_weights".
         """
-        n_studies, n_voxels = ma_maps.shape
-        null_distribution = np.zeros(n_iters)
-        for i_iter in range(n_iters):
-            # One random MA value per study
-            null_ijk = np.random.choice(np.arange(n_voxels), n_studies)
-            iter_ma_values = ma_maps[np.arange(n_studies), null_ijk]
-            # Calculate summary statistic
-            iter_ss_value = self._compute_summarystat(iter_ma_values)
-            # Retain value in null distribution
-            null_distribution[i_iter] = iter_ss_value
-        self.null_distributions_["empirical_null"] = null_distribution
-
-    def _summarystat_to_p(self, stat_values, null_method="analytic"):
-        """
-        Compute p- and z-values from summary statistics (e.g., ALE scores) and
-        either histograms from analytic null or null distribution from
-        empirical null.
-
-        Parameters
-        ----------
-        stat_values : 1D array_like
-            Array of summary statistic values from estimator.
-        null_method : {"analytic", "empirical"}, optional
-            Whether to use analytic null or empirical null.
-            Default is "analytic".
-
-        Returns
-        -------
-        p_values, z_values : 1D array
-            P- and Z-values for statistic values.
-            Same shape as stat_values.
-        """
-        p_values = np.ones(stat_values.shape)
-
-        if null_method.startswith("analytic"):
-            assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histogram_weights" in self.null_distributions_.keys()
-
-            p_values = nullhist_to_p(
-                stat_values,
-                self.null_distributions_["histogram_weights"],
-                self.null_distributions_["histogram_bins"],
-            )
-        elif null_method == "empirical":
-            assert "empirical_null" in self.null_distributions_.keys()
-            p_values = null_to_p(
-                stat_values, self.null_distributions_["empirical_null"], tail="upper"
-            )
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
         else:
-            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
-        z_values = p_to_z(p_values, tail="one")
-        return p_values, z_values
+        # assumes that groupby results in same order as MA maps
+        n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
 
-    def _run_fwe_permutation(self, params):
-        """
-        Run a single Monte Carlo permutation of a dataset. Does vFWE, but not cFWE.
-        """
-        iter_ijk, iter_df = params
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[["i", "j", "k"]] = iter_ijk
-        iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="array"
+        # Determine bins for null distribution histogram
+        # The maximum possible MA value for each study is the weighting factor (generally 1)
+        # times the number of foci in the study.
+        # To get the weighting factor, we find the minimum value in each MA map, ignoring zeros.
+        n_studies = ma_values.shape[0]
+        min_ma_values = np.zeros(n_studies)
+        for i_study in range(n_studies):
+            temp_ma_values = ma_values[i_study, :]
+            min_ma_values[i_study] = np.min(temp_ma_values[temp_ma_values != 0])
+
+        step_size = np.mean(min_ma_values)  # typically 1
+        inv_step_size = int(np.ceil(1 / step_size))  # only useful when weight != 1
+
+        max_ma_values = min_ma_values * n_foci_per_study
+        max_poss_value = self._compute_summarystat(max_ma_values)
+        # Weighting is not supported yet, so I'm going to build my bins around the min MA value.
+        # Remember that numpy histogram bins are bin edges, not centers.
+        # Assuming values of 0, 1, 2, etc., bins are -0.5-0.5, 0.5-1.0, etc.
+        hist_bins = np.arange(
+            -step_size / 2, max_poss_value + (step_size * 1.5) + 0.001, step_size
         )
-        iter_of_map = np.sum(iter_ma_maps, axis=0)
-        iter_max_value = np.max(iter_of_map)
-        return iter_max_value
 
-    def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
-        """
-        Perform FWE correction using the max-value permutation method.
-        Only call this method from within a Corrector.
+        def just_histogram(*args, **kwargs):
+            """Collect the first output (weights) from numpy histogram."""
+            return np.histogram(*args, **kwargs)[0].astype(float)
 
-        Parameters
-        ----------
-        result : :obj:`nimare.results.MetaResult`
-            Result object from a KDA meta-analysis.
-        n_iters : :obj:`int`, optional
-            Number of iterations to build the vFWE null distribution.
-            Default is 10000.
-        n_cores : :obj:`int`, optional
-            Number of cores to use for parallelization.
-            If <=0, defaults to using all available cores. Default is -1.
+        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
 
-        Returns
-        -------
-        images : :obj:`dict`
-            Dictionary of 1D arrays corresponding to masked images generated by
-            the correction procedure. The following arrays are generated by
-            this method: 'logp_level-voxel'.
+        # Shift the bins to correspond to actual values instead of centers of bins of values.
+        hist_bins -= np.min(hist_bins)
+        self.null_distributions_["histogram_bins"] = hist_bins
 
-        See Also
-        --------
-        nimare.correct.FWECorrector : The Corrector from which to call this method.
+        # Normalize MA histograms to get probabilities
+        ma_hists /= ma_hists.sum(1)[:, None]
 
-        Examples
-        --------
-        >>> meta = KDA()
-        >>> result = meta.fit(dset)
-        >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
-        >>> cresult = corrector.transform(result)
-        """
-        stat_values = result.get_map("stat", return_type="array")
-        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+        # Null distribution to convert summary statistics to p-values.
+        stat_hist = ma_hists[0, :].copy()
 
-        n_cores = self._check_ncores(n_cores)
+        for i_exp in range(1, ma_hists.shape[0]):
 
-        rand_idx = np.random.choice(
-            null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
-        )
-        rand_ijk = null_ijk[rand_idx, :]
-        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-        iter_df = self.inputs_["coordinates"].copy()
+            exp_hist = ma_hists[i_exp, :]
 
-        # Define parameters
-        iter_dfs = [iter_df] * n_iters
-        params = zip(iter_ijks, iter_dfs)
+            # Find histogram bins with nonzero values for each histogram.
+            stat_idx = np.where(stat_hist > 0)[0]
+            exp_idx = np.where(exp_hist > 0)[0]
 
-        if n_cores == 1:
-            perm_results = []
-            for pp in tqdm(params, total=n_iters):
-                perm_results.append(self._run_fwe_permutation(pp))
-        else:
-            with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
+            # Compute output MA values, stat_hist indices, and probabilities
+            stat_scores = np.add.outer(hist_bins[exp_idx], hist_bins[stat_idx]).ravel()
+            score_idx = np.floor(stat_scores * inv_step_size).astype(int)
+            probabilities = np.outer(exp_hist[exp_idx], stat_hist[stat_idx]).ravel()
 
-        perm_max_values = perm_results
+            # Reset histogram and set probabilities. Use at() because there can
+            # be redundant values in score_idx.
+            stat_hist = np.zeros(stat_hist.shape)
+            np.add.at(stat_hist, score_idx, probabilities)
 
-        # Voxel-level FWE
-        vfwe_map = np.empty(stat_values.shape, dtype=float)
-        for i_vox, val in enumerate(stat_values):
-            vfwe_map[i_vox] = -np.log10(null_to_p(val, perm_max_values, "upper"))
-        vfwe_map[np.isinf(vfwe_map)] = -np.log10(np.finfo(float).eps)
-
-        images = {"logp_level-voxel": vfwe_map}
-        return images
+        # Convert stat_hist into null distribution. The value in each bin
+        # represents the probability of finding a summary statistic value
+        # (stored in histogram_bins) of that value or lower.
+        null_distribution = np.cumsum(stat_hist[::-1])[::-1]
+        null_distribution /= np.max(null_distribution)
+        self.null_distributions_["histogram_weights"] = null_distribution
