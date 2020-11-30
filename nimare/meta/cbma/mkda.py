@@ -542,7 +542,7 @@ class KDA(CBMAEstimator):
         ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
 
         # Shift the bins to correspond to bins centers instead of bin edges.
-        hist_bins -= np.min(hist_bins)
+        hist_bins += step_size / 2
         hist_bins = hist_bins[:-1]
         self.null_distributions_["histogram_bins"] = hist_bins
 
@@ -570,9 +570,4 @@ class KDA(CBMAEstimator):
             stat_hist = np.zeros(stat_hist.shape)
             np.add.at(stat_hist, score_idx, probabilities)
 
-        # Convert stat_hist into null distribution. The value in each bin
-        # represents the probability of finding a summary statistic value
-        # (stored in histogram_bins) of that value or lower.
-        null_distribution = np.cumsum(stat_hist[::-1])[::-1]
-        null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histogram_weights"] = stat_hist
