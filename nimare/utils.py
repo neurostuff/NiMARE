@@ -104,7 +104,17 @@ def dict_to_coordinates(data, masker, space):
             all_dfs.append(con_df)
 
     if not all_dfs:
-        return pd.DataFrame({"id": []})
+        return pd.DataFrame(
+            {
+                "id": [],
+                "study_id": [],
+                "contrast_id": [],
+                "x": [],
+                "y": [],
+                "z": [],
+                "space": [],
+            },
+        )
 
     df = pd.concat(all_dfs, axis=0, join="outer", sort=False)
     df = df[columns].reset_index(drop=True)
