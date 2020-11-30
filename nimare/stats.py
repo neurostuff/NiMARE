@@ -170,7 +170,7 @@ def null_to_p(test_value, null_array, tail="two"):
 
 
 def nullhist_to_p(test_values, histogram_weights, histogram_bins):
-    """Return p-value for test value against null histogram.
+    """Return one-sided p-value for test value against null histogram.
 
     Parameters
     ----------
@@ -180,14 +180,18 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
         dimension.
     histogram_weights : (B [x V]) array
         Histogram weights representing the null distribution against which test_value is compared.
+        These should be raw weights or counts, not a cumulatively-summed null distribution.
     histogram_bins : (B) array
-        Histogram bins
+        Histogram bin centers. Note that this differs from numpy.histogram's behavior, which uses
+        bin *edges*. Histogram bins created with numpy will need to be adjusted accordingly.
 
     Returns
     -------
     p_value : :obj:`float`
-        P-value associated with the test value when compared against the null
-        distribution.
+        P-value associated with the test value when compared against the null distribution.
+        P-values reflect the probability of a test value at or above the observed value if the
+        test value was drawn from the null distribution.
+        This is a one-sided p-value.
 
     Notes
     -----
