@@ -404,11 +404,7 @@ def _transform_res(meta, meta_res, corr):
     #######################################
     # all combinations of meta-analysis estimators and multiple comparison correctors
     # that do not work together
-    if isinstance(meta, mkda.KDA) and corr.method == "montecarlo":
-        # TypeError: correct_fwe_montecarlo() got an unexpected keyword argument 'voxel_thresh'
-        voxel_thresh = corr.parameters.pop("voxel_thresh")
-        corr_expectation = does_not_raise()
-    elif (
+    if (
         isinstance(meta, ale.ALE)
         and isinstance(meta.kernel_transformer, kernel.KDAKernel)
         and not isinstance(meta.kernel_transformer, kernel.MKDAKernel)
@@ -422,9 +418,6 @@ def _transform_res(meta, meta_res, corr):
 
     with corr_expectation:
         cres = corr.transform(meta_res)
-
-    if corr.method == "montecarlo" and not corr.parameters.get("voxel_thresh"):
-        corr.parameters["voxel_thresh"] = voxel_thresh
 
     # if multiple correction failed (expected) do not continue
     if isinstance(corr_expectation, type(pytest.raises(ValueError))):
