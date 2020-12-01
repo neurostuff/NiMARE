@@ -321,10 +321,11 @@ class Peaks2MapsKernel(KernelTransformer):
         Default is True.
     """
 
-    def __init__(self, model_dir="auto"):
+    def __init__(self, model_dir="auto", n_threads=-1):
         # Use private attribute to hide value from get_params.
         # get_params will find model_dir=None, which is *very important* when a path is provided.
         self._model_dir = model_dir
+        self.n_threads = n_threads
 
     def _transform(self, mask, coordinates):
         transformed = []
@@ -336,7 +337,10 @@ class Peaks2MapsKernel(KernelTransformer):
             coordinates_list.append(xyz)
             ids.append(id_)
 
-        imgs = compute_p2m_ma(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
+        imgs = compute_p2m_ma(
+            coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir,
+            n_threads=self.n_threads,
+        )
         resampled_imgs = []
         for img in imgs:
             resampled_imgs.append(image.resample_to_img(img, mask).get_fdata())

@@ -147,6 +147,8 @@ def meta(simulatedata_cbma, meta_est, kern):
     fwhm, (_, _) = simulatedata_cbma
     if kern == kernel.KDAKernel or kern == kernel.MKDAKernel:
         kern = kern(r=fwhm / 2)
+    elif kern == kernel.Peaks2MapsKernel:
+        kern = kern(n_threads=N_CORES)
     else:
         kern = kern()
 

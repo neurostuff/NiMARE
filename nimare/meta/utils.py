@@ -197,7 +197,8 @@ def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_boun
     "convolutional neural net.",
 )
 def compute_p2m_ma(
-    contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None, model_dir="auto"
+    contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None, model_dir="auto",
+    n_threads=-1,
 ):
     """Generate modeled activation (MA) maps using deep ConvNet model peaks2maps.
 
@@ -211,6 +212,9 @@ def compute_p2m_ma(
         Tensorflow verbosity logging level
     model_dir : str, optional
         Location of peaks2maps model. Default is "auto".
+    n_threads : int
+        Number of threads allocated to tensorflow. Default is -1,
+        (All available threads).
 
     Returns
     -------
@@ -227,6 +231,9 @@ def compute_p2m_ma(
             )
         else:
             raise
+
+    tf.config.threading.set_intra_op_parallelism_threads(n_threads)
+    tf.config.threading.set_inter_op_parallelism_threads(n_threads)
 
     if tf_verbosity_level is None:
         tf_verbosity_level = tf.compat.v1.logging.FATAL
