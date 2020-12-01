@@ -93,7 +93,7 @@ class LDAModel(NiMAREBase):
             LGR.info("Texts folder not found. Creating text files...")
             os.mkdir(text_dir)
             # Remove rows with empty text cells
-            #text_df.dropna(inplace=True)
+            #text_df.dropna(subset=[text_column],inplace=True)
             orig_ids = text_df["id"].tolist()
             text_df = text_df.fillna("")
             keep_ids = text_df.loc[text_df[text_column] != "", "id"]
