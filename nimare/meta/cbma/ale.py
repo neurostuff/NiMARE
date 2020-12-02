@@ -126,7 +126,7 @@ class ALE(CBMAEstimator):
         max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
         max_poss_ale = self.compute_summarystat(max_ma_values)
         # create bin centers, then shift them into bin edges
-        hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5) - (
+        hist_bins = np.round(np.arange(0, max_poss_ale + (2.5 * step_size), step_size), 5) - (
             step_size / 2
         )
 
