@@ -103,6 +103,19 @@ def dict_to_coordinates(data, masker, space):
             con_df = pd.DataFrame(temp_data.T, columns=exp_columns)
             all_dfs.append(con_df)
 
+    if not all_dfs:
+        return pd.DataFrame(
+            {
+                "id": [],
+                "study_id": [],
+                "contrast_id": [],
+                "x": [],
+                "y": [],
+                "z": [],
+                "space": [],
+            },
+        )
+
     df = pd.concat(all_dfs, axis=0, join="outer", sort=False)
     df = df[columns].reset_index(drop=True)
     df = df.replace(to_replace="None", value=np.nan)

@@ -32,3 +32,9 @@ def test_dataset_smoke():
     mask_data[40, 40, 40] = 1
     mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
     assert isinstance(dset.get_studies_by_mask(mask_img), list)
+
+
+def test_empty_dset():
+    # dictionary with no information
+    minimal_dict = {"study-0": {"contrasts": {"1": {}}}}
+    dataset.Dataset(minimal_dict)
