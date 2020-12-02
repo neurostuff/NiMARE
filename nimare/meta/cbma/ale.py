@@ -154,10 +154,13 @@ class ALE(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = 1 - np.outer(
-                (1 - hist_bins[exp_idx]).astype(min_dtype),
-                (1 - hist_bins[ale_idx]).astype(min_dtype)
-            ).ravel()
+            ale_scores = (
+                1
+                - np.outer(
+                    (1 - hist_bins[exp_idx]).astype(min_dtype),
+                    (1 - hist_bins[ale_idx]).astype(min_dtype),
+                ).ravel()
+            )
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
             probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
