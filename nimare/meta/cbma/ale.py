@@ -136,8 +136,9 @@ class ALE(CBMAEstimator):
 
         ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
 
-        # Shift the bins to correspond to centers instead of edges
+        # Shift and crop the bins to correspond to centers instead of edges
         hist_bins += step_size / 2
+        hist_bins = hist_bins[:-1]
         self.null_distributions_["histogram_bins"] = hist_bins
 
         # Normalize MA histograms to get probabilities
