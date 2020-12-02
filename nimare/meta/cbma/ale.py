@@ -140,7 +140,7 @@ class ALE(CBMAEstimator):
         ale_hist = ma_hists[0, :].copy()
 
         # Get minimum necessary datatype to save memory
-        min_dtype = np.min_scalar_datatype(step_size ** 2)
+        min_dtype = np.min_scalar_type(step_size ** 2)
 
         for i_exp in range(1, ma_hists.shape[0]):
 
