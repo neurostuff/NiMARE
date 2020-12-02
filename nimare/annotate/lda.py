@@ -92,14 +92,15 @@ class LDAModel(NiMAREBase):
         if not op.isdir(text_dir):
             LGR.info("Texts folder not found. Creating text files...")
             os.mkdir(text_dir)
+
             # Remove rows with empty text cells
-            #text_df.dropna(subset=[text_column],inplace=True)
             orig_ids = text_df["id"].tolist()
-            text_df = text_df.fillna("")
-            keep_ids = text_df.loc[text_df[text_column] != "", "id"]
-            text_df = text_df.loc[text_df["id"].isin(keep_ids)]
+            text_df = text_df.dropna(subset=[text_column])
+            keep_ids = text_df["id"].tolist()
+
             if len(keep_ids) != len(orig_ids):
                 LGR.info("Retaining {0}/{1} studies".format(len(keep_ids), len(orig_ids)))
+
             for id_ in text_df["id"].values:
                 text = text_df.loc[text_df["id"] == id_, text_column].values[0]
                 with open(op.join(text_dir, str(id_) + ".txt"), "w") as fo:
