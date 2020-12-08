@@ -221,12 +221,12 @@ class CBMAEstimator(MetaEstimator):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histogram_weights" in self.null_distributions_.keys()
 
-            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
+            inv_step_size = round2(1 / np.diff(self.null_distributions_["histogram_bins"])[0])
 
             # Determine p- and z-values from stat values and null distribution.
             p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
-            stat_bins = round2(stat_values[idx] * step)
+            stat_bins = round2(stat_values[idx] * inv_step_size)
             p_values[idx] = self.null_distributions_["histogram_weights"][stat_bins]
 
         elif null_method == "empirical":
