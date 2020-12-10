@@ -138,7 +138,7 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
                 errors.append("\n -{0} ({1})".format(path, short_error_message))
 
     raise OSError(
-        "NiMARE tried to store the dataset in the following " "directories, but:" + "".join(errors)
+        "NiMARE tried to store the dataset in the following directories, but: " + "".join(errors)
     )
 
 

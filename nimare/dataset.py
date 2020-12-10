@@ -118,7 +118,7 @@ class Dataset(NiMAREBase):
 
     @ids.setter
     def _ids(self, ids):
-        ids = np.asarray(ids)
+        ids = np.sort(np.asarray(ids))
         assert isinstance(ids, np.ndarray) and ids.ndim == 1
         self.__ids = ids
 
@@ -159,7 +159,7 @@ class Dataset(NiMAREBase):
     @annotations.setter
     def annotations(self, df):
         validate_df(df)
-        self.__annotations = df
+        self.__annotations = df.sort_values(by="id")
 
     @property
     def coordinates(self):
@@ -175,7 +175,7 @@ class Dataset(NiMAREBase):
     @coordinates.setter
     def coordinates(self, df):
         validate_df(df)
-        self.__coordinates = df
+        self.__coordinates = df.sort_values(by="id")
 
     @property
     def images(self):
@@ -197,7 +197,7 @@ class Dataset(NiMAREBase):
     @images.setter
     def images(self, df):
         validate_df(df)
-        self.__images = validate_images_df(df)
+        self.__images = validate_images_df(df).sort_values(by="id")
 
     @property
     def metadata(self):
@@ -211,7 +211,7 @@ class Dataset(NiMAREBase):
     @metadata.setter
     def metadata(self, df):
         validate_df(df)
-        self.__metadata = df
+        self.__metadata = df.sort_values(by="id")
 
     @property
     def texts(self):
@@ -225,7 +225,7 @@ class Dataset(NiMAREBase):
     @texts.setter
     def texts(self, df):
         validate_df(df)
-        self.__texts = df
+        self.__texts = df.sort_values(by="id")
 
     def slice(self, ids):
         """

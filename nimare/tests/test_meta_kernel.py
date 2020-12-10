@@ -6,8 +6,9 @@ import shutil
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
 
+import nimare
 from nimare.dataset import Dataset
-from nimare.meta import kernel
+from nimare.meta import kernel, MKDADensity
 from nimare import extract
 
 
@@ -358,7 +359,7 @@ def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
     """
     tmpdir = tmp_path_factory.mktemp("test_Peaks2MapsKernel")
 
-    model_dir = extract.download_peaks2maps_model(data_dir=str(tmpdir))
+    model_dir = extract.download_peaks2maps_model()
 
     testdata_cbma.update_path(tmpdir)
     kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
@@ -381,3 +382,18 @@ def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
     assert np.array_equal(ma_arr, ma_maps_from_dset_arr)
     assert np.array_equal(ma_arr, ma_arr_from_dset)
     shutil.rmtree(model_dir)
+
+
+def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
+    """Test that the Peaks2Maps kernel can work with an estimator."""
+    tmpdir = tmp_path_factory.mktemp("test_Peaks2MapsKernel_MKDADensity")
+
+    model_dir = extract.download_peaks2maps_model()
+
+    testdata_cbma.update_path(tmpdir)
+    kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
+
+    est = MKDADensity(kernel_transformer=kern, null_method="analytic")
+    res = est.fit(testdata_cbma)
+    assert isinstance(res, nimare.results.MetaResult)
+    assert res.get_map("p", return_type="array").dtype == np.float64

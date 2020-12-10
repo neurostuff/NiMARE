@@ -84,6 +84,13 @@ class ALE(CBMAEstimator):
     def __init__(
         self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
     ):
+        if not isinstance(kernel_transformer, ALEKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
@@ -116,22 +123,29 @@ class ALE(CBMAEstimator):
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
         # Determine bins for null distribution histogram
+        # Remember that numpy histogram bins are bin edges, not centers
+        # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
+        inv_step_size = 100000
+        step_size = 1 / inv_step_size
         max_ma_values = np.max(ma_values, axis=1)
+        # round up based on resolution
+        max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
         max_poss_ale = self.compute_summarystat(max_ma_values)
-        step_size = 0.0001
-        hist_bins = np.round(np.arange(0, max_poss_ale + 0.001, step_size), 4)
+        # create bin centers, then shift them into bin edges
+        hist_bins = np.round(np.arange(0, max_poss_ale + (2.5 * step_size), step_size), 5) - (
+            step_size / 2
+        )
+
+        def just_histogram(*args, **kwargs):
+            """Collect the first output (weights) from numpy histogram."""
+            return np.histogram(*args, **kwargs)[0].astype(float)
+
+        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
+
+        # Shift and crop the bins to correspond to centers instead of edges
+        hist_bins += step_size / 2
+        hist_bins = hist_bins[:-1]
         self.null_distributions_["histogram_bins"] = hist_bins
-
-        ma_hists = np.zeros((ma_values.shape[0], hist_bins.shape[0]))
-
-        n_zeros = np.sum(ma_values == 0, 1)
-        ma_hists[:, 0] = n_zeros
-
-        for i_exp in range(len(ma_values)):
-            reduced_ma_values = ma_values[i_exp, ma_values[i_exp, :] > 0]
-            ma_hists[i_exp, 1:] = np.histogram(reduced_ma_values, bins=hist_bins, density=False)[0]
-
-        inv_step_size = int(np.ceil(1 / step_size))
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
@@ -147,12 +161,13 @@ class ALE(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = 1 - np.outer(1 - hist_bins[exp_idx], 1 - hist_bins[ale_idx]).ravel()
+            ale_scores = 1 - np.outer((1 - hist_bins[exp_idx]), (1 - hist_bins[ale_idx])).ravel()
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
             probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
-            # Reset histogram and set probabilities. Use at() because there can
-            # be redundant values in score_idx.
+            # Reset histogram and set probabilities.
+            # Use at() instead of setting values directly (ale_hist[score_idx] = probabilities)
+            # because there can be redundant values in score_idx.
             ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
@@ -204,6 +219,13 @@ class ALESubtraction(PairwiseCBMAEstimator):
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
+        if not isinstance(kernel_transformer, ALEKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
@@ -325,6 +347,13 @@ class SCALE(CBMAEstimator):
         low_memory=False,
         **kwargs,
     ):
+        if not isinstance(kernel_transformer, ALEKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
