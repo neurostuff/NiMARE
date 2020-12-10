@@ -358,7 +358,7 @@ def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
     """
     tmpdir = tmp_path_factory.mktemp("test_Peaks2MapsKernel")
 
-    model_dir = extract.download_peaks2maps_model(data_dir=str(tmpdir))
+    model_dir = extract.download_peaks2maps_model()
 
     testdata_cbma.update_path(tmpdir)
     kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
