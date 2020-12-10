@@ -93,7 +93,6 @@ def meta_est(request):
         pytest.param(kernel.ALEKernel, id="ale_kernel"),
         pytest.param(kernel.MKDAKernel, id="mkda_kernel"),
         pytest.param(kernel.KDAKernel, id="kda_kernel"),
-        pytest.param(kernel.Peaks2MapsKernel, id="p2m_kernel"),
     ],
 )
 def kern(request):
