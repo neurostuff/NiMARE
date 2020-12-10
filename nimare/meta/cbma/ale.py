@@ -139,12 +139,6 @@ class ALE(CBMAEstimator):
 
         ale_hist = ma_hists[0, :].copy()
 
-        # Get minimum necessary datatype to save memory
-        # Histogram bin resolution is based on step_size, so the minimum detectable
-        min_dtype = float
-        if inv_step_size <= 100000:
-            min_dtype = np.float32
-
         for i_exp in range(1, ma_hists.shape[0]):
 
             exp_hist = ma_hists[i_exp, :]
@@ -154,13 +148,7 @@ class ALE(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = (
-                1
-                - np.outer(
-                    (1 - hist_bins[exp_idx]).astype(min_dtype),
-                    (1 - hist_bins[ale_idx]).astype(min_dtype),
-                ).ravel()
-            )
+            ale_scores = 1 - np.outer((1 - hist_bins[exp_idx]), (1 - hist_bins[ale_idx])).ravel()
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
             probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
