@@ -4,7 +4,7 @@ Utilities for coordinate-based meta-analysis estimators
 import logging
 import os
 
-import nibabel as nb
+import nibabel as nib
 import numpy as np
 import numpy.linalg as npl
 from scipy import ndimage
@@ -18,9 +18,7 @@ LGR = logging.getLogger(__name__)
 
 
 def model_fn(features, labels, mode, params):
-    """
-    Used internally by peaks2maps.
-    """
+    """Run model function used internally by peaks2maps."""
     import tensorflow as tf
     from tensorflow.python.estimator.export.export_output import PredictOutput
 
@@ -160,9 +158,7 @@ def model_fn(features, labels, mode, params):
 
 
 def _get_resize_arg(target_shape):
-    """
-    Used by peaks2maps.
-    """
+    """Get resizing arguments, as used by peaks2maps."""
     mni_shape_mm = np.array([148.0, 184.0, 156.0])
     target_resolution_mm = np.ceil(mni_shape_mm / np.array(target_shape)).astype(np.int32)
     target_affine = np.array(
@@ -180,15 +176,13 @@ def _get_resize_arg(target_shape):
 
 
 def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_bounds=False):
-    """
-    Used by peaks2maps.
-    """
+    """Get generator, as used by peaks2maps."""
 
     def generator():
         for contrast in contrasts_coordinates:
             encoded_coords = np.zeros(list(target_shape))
             for real_pt in contrast:
-                vox_pt = np.rint(nb.affines.apply_affine(npl.inv(affine), real_pt)).astype(int)
+                vox_pt = np.rint(nib.affines.apply_affine(npl.inv(affine), real_pt)).astype(int)
                 if skip_out_of_bounds and (vox_pt[0] >= 32 or vox_pt[1] >= 32 or vox_pt[2] >= 32):
                     continue
                 encoded_coords[vox_pt[0], vox_pt[1], vox_pt[2]] = 1
@@ -202,17 +196,16 @@ def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_boun
     description="Transforms coordinates of peaks to unthresholded maps using a deep "
     "convolutional neural net.",
 )
-def peaks2maps(
+def compute_p2m_ma(
     contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None, model_dir="auto"
 ):
-    """
-    Generate modeled activation (MA) maps using depp ConvNet model peaks2maps
+    """Generate modeled activation (MA) maps using deep ConvNet model peaks2maps.
 
     Parameters
     ----------
     contrasts_coordinates : list of lists that are len == 3
         List of contrasts and their coordinates
-    skip_out_of_bounds : aboolean, optional
+    skip_out_of_bounds : bool, optional
         Remove coordinates outside of the bounding box of the peaks2maps model
     tf_verbosity_level : int
         Tensorflow verbosity logging level
@@ -262,7 +255,7 @@ def peaks2maps(
     results = [result for result in results]
     assert len(results) == len(contrasts_coordinates), "returned %d" % len(results)
 
-    niis = [nb.Nifti1Image(np.squeeze(result), affine) for result in results]
+    niis = [nib.Nifti1Image(np.squeeze(result), affine) for result in results]
     return niis
 
 
@@ -328,7 +321,7 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overla
     return kernel_data
 
 
-def compute_ma(shape, ijk, kernel):
+def compute_ale_ma(shape, ijk, kernel):
     """
     Generate ALE modeled activation (MA) maps.
     Replaces the values around each focus in ijk with the contrast-specific

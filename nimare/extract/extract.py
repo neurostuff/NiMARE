@@ -384,6 +384,7 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
 
     temp_dataset_name = "peaks2maps_model_ohbm2018__temp"
+    data_dir = _get_dataset_dir("", data_dir=data_dir, verbose=verbose)
     temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
 
     dataset_name = "peaks2maps_model_ohbm2018"

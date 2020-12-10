@@ -16,8 +16,7 @@ from nilearn import image
 
 from ..base import Transformer
 from ..transforms import vox2mm
-from ..utils import get_masker
-from .utils import compute_ma, get_ale_kernel, peaks2maps, compute_kda_ma
+from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
 
@@ -191,6 +190,24 @@ class KernelTransformer(Transformer):
             return dataset
 
     def _transform(self, mask, coordinates):
+        """Apply the kernel's unique transformer.
+
+        Parameters
+        ----------
+        mask : niimg-like
+            Mask image. Should contain binary-like integer data.
+        coordinates : pandas.DataFrame
+            DataFrame containing IDs and coordinates.
+            The DataFrame must have the following columns: "id", "i", "j", "k".
+            Additionally, individual kernels may require other columns
+            (e.g., "sample_size" for ALE).
+
+        Returns
+        -------
+        transformed_maps : list of (3D array, str) tuples
+            Transformed data, containing one element for each study.
+            Each element is composed of a 3D array (the MA map) and the study's ID.
+        """
         pass
 
 
@@ -241,7 +258,7 @@ class ALEKernel(KernelTransformer):
                     kernels[sample_size] = kern
                 else:
                     kern = kernels[sample_size]
-            kernel_data = compute_ma(mask.shape, ijk, kern)
+            kernel_data = compute_ale_ma(mask.shape, ijk, kern)
             transformed.append((kernel_data, id_))
 
         return transformed
@@ -304,131 +321,24 @@ class Peaks2MapsKernel(KernelTransformer):
         Default is True.
     """
 
-    def __init__(self, resample_to_mask=True, model_dir="auto"):
-        self.resample_to_mask = resample_to_mask
+    def __init__(self, model_dir="auto"):
         # Use private attribute to hide value from get_params.
         # get_params will find model_dir=None, which is *very important* when a path is provided.
         self._model_dir = model_dir
 
-    def transform(self, dataset, masker=None, return_type="image"):
-        """
-        Generate peaks2maps modeled activation images for each Contrast in dataset.
-
-        Parameters
-        ----------
-        dataset : :obj:`nimare.dataset.Dataset`
-            Dataset for which to make images.
-        masker : img_like, optional
-            Only used if dataset is a DataFrame.
-        return_type : {'array', 'image', 'dataset'}, optional
-            Whether to return a numpy array ('array'), a list of niimgs ('image'), or
-            a Dataset with MA images saved as files ('dataset').
-            Default is 'dataset'.
-
-        Returns
-        -------
-        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` or\
-               :class:`nimare.dataset.Dataset`
-            If return_type is 'array', a 2D numpy array (C x V), where C is
-            contrast and V is voxel.
-            If return_type is 'image', a list of modeled activation images
-            (one for each of the Contrasts in the input dataset).
-            If return_type is 'dataset', a new Dataset object with modeled activation
-            images saved to files and referenced in the Dataset.images attribute.
-
-        Attributes
-        ----------
-        filename_pattern : str
-            Filename pattern for MA maps that will be saved by the transformer.
-        image_type : str
-            Name of the corresponding column in the Dataset.images DataFrame.
-        """
-        if return_type not in ("array", "image", "dataset"):
-            raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
-
-        # Inferred filenames are invalid if mask is resampled to peaks2maps image space
-        assert self.resample_to_mask or (
-            return_type != "dataset"
-        ), "Option resample_to_mask is required if return_type is 'dataset'."
-
-        if isinstance(dataset, pd.DataFrame):
-            assert (
-                masker is not None
-            ), 'Argument "masker" must be provided if dataset is a DataFrame'
-            mask = masker.mask_img
-            coordinates = dataset.copy()
-            assert (
-                return_type != "dataset"
-            ), "Input dataset must be a Dataset if return_type='dataset'."
-        else:
-            masker = dataset.masker if not masker else masker
-            mask = masker.mask_img
-            coordinates = dataset.coordinates
-
-            # Determine MA map filenames. Must happen after parameters are set.
-            self._infer_names(affine=md5(mask.affine).hexdigest())
-
-            # Check for existing MA maps
-            # Use coordinates to get IDs instead of Dataset.ids bc of possible mismatch
-            # between full Dataset and contrasts with coordinates.
-            if self.image_type in dataset.images.columns:
-                files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-                if all(f is not None for f in files):
-                    LGR.debug("Files already exist. Using them.")
-                    if return_type == "array":
-                        return masker.transform(files)
-                    elif return_type == "image":
-                        return [nib.load(f) for f in files]
-                    elif return_type == "dataset":
-                        return dataset.copy()
-
-        # Otherwise, generate the MA maps
-        if return_type == "dataset":
-            dataset = dataset.copy()
-            if dataset.basepath is None:
-                raise ValueError(
-                    "Dataset output path is not set. Set the path with Dataset.update_path()."
-                )
-            elif not os.path.isdir(dataset.basepath):
-                raise ValueError(
-                    "Output directory does not exist. "
-                    "Set the path to an existing folder with Dataset.update_path()."
-                )
-
-        # Core code
+    def _transform(self, mask, coordinates):
+        transformed = []
         coordinates_list = []
+        ids = []
         for id_, data in coordinates.groupby("id"):
-            mm_coords = []
-            for coord in np.vstack((data.i.values, data.j.values, data.k.values)).T:
-                mm_coords.append(vox2mm(coord, dataset.masker.mask_img.affine))
-            coordinates_list.append(mm_coords)
+            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
+            xyz = vox2mm(ijk, mask.affine)
+            coordinates_list.append(xyz)
+            ids.append(id_)
 
-        imgs = peaks2maps(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
-
-        if self.resample_to_mask:
-            resampled_imgs = []
-            for img in imgs:
-                resampled_imgs.append(image.resample_to_img(img, mask))
-            imgs = resampled_imgs
-        else:
-            # Resample mask to data instead of data to mask
-            mask = image.resample_to_img(mask, imgs[0], interpolation="nearest")
-            masker = get_masker(mask)
-
-        # Generic KernelTransformer code
-        if return_type == "array":
-            return masker.transform(imgs)
-        elif return_type == "image":
-            masked_imgs = []
-            for img in imgs:
-                masked_imgs.append(image.math_img("map*mask", map=img, mask=mask))
-            return masked_imgs
-        elif return_type == "dataset":
-            for i_id, (id_, _) in enumerate(coordinates.groupby("id")):
-                img = imgs[i_id]
-                out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
-                img.to_filename(out_file)
-                dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
-            # Infer relative path
-            dataset.images = dataset.images
-            return dataset
+        imgs = compute_p2m_ma(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
+        resampled_imgs = []
+        for img in imgs:
+            resampled_imgs.append(image.resample_to_img(img, mask).get_fdata())
+        transformed = list(zip(resampled_imgs, ids))
+        return transformed
