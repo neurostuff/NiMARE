@@ -198,7 +198,6 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     P-values are clipped based on the number of elements in the null array.
     Therefore no p-values of 0 or 1 should be produced.
     """
-    shape = histogram_weights.shape
     test_values = np.asarray(test_values)
     return_value = False
     if test_values.ndim == 0:

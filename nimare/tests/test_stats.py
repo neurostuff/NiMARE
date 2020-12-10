@@ -57,7 +57,7 @@ def test_nullhist_to_p():
     # When input is an array
     assert np.allclose(
         stats.nullhist_to_p([0, 1, 99, 100, 101], histogram_weights, histogram_bins),
-        np.array([1 - np.finfo(float).eps, 0.99, 0.01, np.finfo(float).eps, np.finfo(float).eps])
+        np.array([1 - np.finfo(float).eps, 0.99, 0.01, np.finfo(float).eps, np.finfo(float).eps]),
     )
 
     # Test voxel-wise null distributions
@@ -66,5 +66,5 @@ def test_nullhist_to_p():
 
     assert np.allclose(
         stats.nullhist_to_p([0, 1, 99, 100, 101], histogram_weights, histogram_bins),
-        np.array([1 - np.finfo(float).eps, 0.99, 0.01, np.finfo(float).eps, np.finfo(float).eps])
+        np.array([1 - np.finfo(float).eps, 0.99, 0.01, np.finfo(float).eps, np.finfo(float).eps]),
     )

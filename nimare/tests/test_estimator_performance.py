@@ -161,16 +161,7 @@ def meta_res(simulatedata_cbma, meta, random):
     _, (_, dataset) = simulatedata_cbma
     # CHECK IF META/KERNEL WORK TOGETHER
     ####################################
-    # peaks2MapsKernel does not work with any meta-analysis estimator
-    if (
-        isinstance(meta, ale.ALE)
-        and isinstance(meta.kernel_transformer, kernel.KDAKernel)
-        and meta.get_params().get("null_method") == "analytic"
-        and not isinstance(meta.kernel_transformer, kernel.MKDAKernel)
-    ):
-        meta_expectation = pytest.raises(IndexError)
-    else:
-        meta_expectation = does_not_raise()
+    meta_expectation = does_not_raise()
 
     with meta_expectation:
         res = meta.fit(dataset)
