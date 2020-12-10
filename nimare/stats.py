@@ -198,6 +198,7 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     P-values are clipped based on the number of elements in the null array.
     Therefore no p-values of 0 or 1 should be produced.
     """
+    shape = histogram_weights.shape
     test_values = np.asarray(test_values)
     return_value = False
     if test_values.ndim == 0:
@@ -227,17 +228,17 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     null_distribution = np.squeeze(null_distribution)
 
     p_values = np.ones(test_values.shape)
-    # Get p-values by getting the binned_values-th value in null_distribution
+    idx = np.where(test_values > 0)[0]
+    value_bins = utils.round2(test_values[idx] * inv_step)
+    value_bins[value_bins >= n_bins] = n_bins - 1  # limit to within null distribution
+
+    # Get p-values by getting the value_bins-th value in null_distribution
     if voxelwise_null:
-        binned_values = utils.round2(test_values * inv_step).astype(int)
-        binned_values[binned_values > n_bins] = n_bins
         # Pair each test value with its associated null distribution
-        for i, (x, y) in enumerate(zip(null_distribution.transpose(), binned_values)):
-            p_values[i] = x[y]
+        for i_voxel, voxel_idx in enumerate(idx):
+            p_values[voxel_idx] = null_distribution[value_bins[i_voxel], voxel_idx]
     else:
-        idx = np.where(test_values > 0)[0]
-        binned_values = utils.round2(test_values[idx] * inv_step)
-        p_values[idx] = null_distribution[binned_values]
+        p_values[idx] = null_distribution[value_bins]
 
     # ensure p_value in the following range:
     # smallest_value <= p_value <= (1.0 - smallest_value)
