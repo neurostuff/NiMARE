@@ -36,14 +36,15 @@ def test_null_to_p():
 
 
 def test_nullhist_to_p():
-    """
-    Test nimare.stats.nullhist_to_p.
-    """
+    """Test nimare.stats.nullhist_to_p."""
     n_voxels = 5
-    histogram_bins = np.arange(0, 101, 1)
-    histogram_weights = np.ones(histogram_bins.shape)
-    histogram_weights[-1] = 0
 
+    # Test cross-voxel null distribution
+    histogram_bins = np.arange(0, 101, 1)  # 101 bins
+    histogram_weights = np.ones(histogram_bins.shape)
+    histogram_weights[-1] = 0  # last bin is outside range, so there are 100 bins with values
+
+    # When input is a single value
     assert math.isclose(
         stats.nullhist_to_p(0, histogram_weights, histogram_bins), 1 - np.finfo(float).eps
     )
@@ -52,21 +53,18 @@ def test_nullhist_to_p():
     assert math.isclose(
         stats.nullhist_to_p(100, histogram_weights, histogram_bins), np.finfo(float).eps
     )
+
+    # When input is an array
+    assert np.allclose(
+        stats.nullhist_to_p([0, 1, 99, 100, 101], histogram_weights, histogram_bins),
+        np.array([1 - np.finfo(float).eps, 0.99, 0.01, np.finfo(float).eps, np.finfo(float).eps])
+    )
+
+    # Test voxel-wise null distributions
     histogram_weights = np.ones((histogram_bins.shape[0], n_voxels))
-    histogram_weights[-1, :] = 0
+    histogram_weights[-1, :] = 0  # last bin is outside range, so there are 100 bins with values
+
     assert np.allclose(
-        stats.nullhist_to_p([0, 0, 0, 0, 0], histogram_weights, histogram_bins),
-        np.ones(n_voxels) * (1 - np.finfo(float).eps),
-    )
-    assert np.allclose(
-        stats.nullhist_to_p([1, 1, 1, 1, 1], histogram_weights, histogram_bins),
-        np.ones(n_voxels) * 0.99,
-    )
-    assert np.allclose(
-        stats.nullhist_to_p([99, 99, 99, 99, 99], histogram_weights, histogram_bins),
-        np.ones(n_voxels) * 0.01,
-    )
-    assert np.allclose(
-        stats.nullhist_to_p([100, 100, 100, 100, 100], histogram_weights, histogram_bins),
-        np.ones(n_voxels) * np.finfo(float).eps,
+        stats.nullhist_to_p([0, 1, 99, 100, 101], histogram_weights, histogram_bins),
+        np.array([1 - np.finfo(float).eps, 0.99, 0.01, np.finfo(float).eps, np.finfo(float).eps])
     )
