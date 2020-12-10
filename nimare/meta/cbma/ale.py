@@ -162,12 +162,13 @@ class ALE(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = 1 - np.outer(1 - hist_bins[exp_idx], 1 - hist_bins[ale_idx]).ravel()
+            ale_scores = 1 - np.outer((1 - hist_bins[exp_idx]), (1 - hist_bins[ale_idx])).ravel()
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
             probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 
-            # Reset histogram and set probabilities. Use at() because there can
-            # be redundant values in score_idx.
+            # Reset histogram and set probabilities.
+            # Use at() instead of setting values directly (ale_hist[score_idx] = probabilities)
+            # because there can be redundant values in score_idx.
             ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
