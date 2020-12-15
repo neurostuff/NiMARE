@@ -456,7 +456,6 @@ class KDA(CBMAEstimator):
     Kernel density analysis was first introduced in [1]_ and [2]_.
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
-    
     Warning
     -------
     The KDA meta-analytic algorithm is objectively inferior to the MKDA algorithm.
