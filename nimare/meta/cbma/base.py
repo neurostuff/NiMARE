@@ -89,9 +89,7 @@ class CBMAEstimator(MetaEstimator):
             self._compute_null_analytic(ma_values)
 
         elif self.null_method == "empirical":
-            self._compute_null_empirical(
-                ma_values, n_iters=self.n_iters, n_cores=self.n_cores
-            )
+            self._compute_null_empirical(ma_values, n_iters=self.n_iters, n_cores=self.n_cores)
 
         else:
             self._compute_null_reduced_empirical(ma_values, n_iters=self.n_iters)
@@ -228,7 +226,7 @@ class CBMAEstimator(MetaEstimator):
             p_values = null_to_p(
                 stat_values,
                 self.null_distributions_["values_corr-none_method-reducedEmpirical"],
-                tail="upper"
+                tail="upper",
             )
 
         else:
@@ -537,8 +535,7 @@ class CBMAEstimator(MetaEstimator):
                 with mp.Pool(n_cores) as p:
                     perm_results = list(
                         tqdm(
-                            p.imap(self._correct_fwe_montecarlo_permutation, params),
-                            total=n_iters
+                            p.imap(self._correct_fwe_montecarlo_permutation, params), total=n_iters
                         )
                     )
 
