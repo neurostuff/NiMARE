@@ -7,7 +7,7 @@ orbs:
   codecov: codecov/codecov@1.0.5
 jobs:
 
-  build_py36:
+  make_py36_env:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -148,7 +148,7 @@ jobs:
             make unittest
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
-        
+
   test_performance:
     working_directory: /tmp/src/NiMARE
     docker:
@@ -194,19 +194,19 @@ workflows:
   version: 2.1
   run_tests:
     jobs:
-      - build_py36:
+      - make_py36_env:
           filters:
             tags:
               only: /.*/
       - test_py36_and_coverage:
           requires:
-            - build_py36
+            - make_py36_env
           filters:
             tags:
               only: /.*/
       - test_performance:
           requires:
-            - build_py36
+            - make_py36_env
           filters:
             tags:
               only: /.*/
@@ -220,13 +220,13 @@ workflows:
               only: /.*/
       - build_docs:
           requires:
-            - build_py36
+            - make_py36_env
           filters:
             tags:
               only: /.*/
       - style_check:
           requires:
-            - build_py36
+            - make_py36_env
           filters:
             tags:
               only: /.*/

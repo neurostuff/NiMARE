@@ -135,9 +135,8 @@ class MKDADensity(CBMAEstimator):
         ss_hist = 1.0
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
-        null_distribution = np.cumsum(ss_hist[::-1])[::-1]
-        null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histweights_corr-none_method-analytic"] = null_distribution
+        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+        self.null_distributions_["histweights_corr-none_method-analytic"] = ss_hist
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
@@ -622,9 +621,4 @@ class KDA(CBMAEstimator):
             stat_hist = np.zeros(stat_hist.shape)
             np.add.at(stat_hist, score_idx, probabilities)
 
-        # Convert stat_hist into null distribution. The value in each bin
-        # represents the probability of finding a summary statistic value
-        # (stored in histogram_bins) of that value or lower.
-        null_distribution = np.cumsum(stat_hist[::-1])[::-1]
-        null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histweights_corr-none_method-analytic"] = null_distribution
+        self.null_distributions_["histweights_corr-none_method-analytic"] = stat_hist

@@ -13,7 +13,6 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import round2
 
 LGR = logging.getLogger(__name__)
 
@@ -226,15 +225,11 @@ class CBMAEstimator(MetaEstimator):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-analytic" in self.null_distributions_.keys()
 
-            inv_step_size = round2(1 / np.diff(self.null_distributions_["histogram_bins"])[0])
-
-            # Determine p- and z-values from stat values and null distribution.
-            p_values = np.ones(stat_values.shape)
-            idx = np.where(stat_values > 0)[0]
-            stat_bins = round2(stat_values[idx] * inv_step_size)
-            p_values[idx] = self.null_distributions_["histweights_corr-none_method-analytic"][
-                stat_bins
-            ]
+            p_values = nullhist_to_p(
+                stat_values,
+                self.null_distributions_["histweights_corr-none_method-analytic"],
+                self.null_distributions_["histogram_bins"],
+            )
 
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
