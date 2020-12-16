@@ -86,7 +86,7 @@ class MKDADensity(CBMAEstimator):
         # return ma_values.T.dot(self.weight_vec_).ravel()
         weighted_ma_vals = ma_values * self.weight_vec_
         return weighted_ma_vals.sum(0)
-    
+
     def _determine_histogram_bins(self, ma_maps):
         """Determine histogram bins for null distribution methods.
 
@@ -104,7 +104,7 @@ class MKDADensity(CBMAEstimator):
             ma_values = ma_maps.copy()
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
-    
+
         prop_active = ma_values.mean(1)
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
 
@@ -525,7 +525,7 @@ class KDA(CBMAEstimator):
         # OF is just a sum of MA values.
         stat_values = np.sum(ma_values, axis=0)
         return stat_values
-    
+
     def _determine_histogram_bins(self, ma_maps):
         """Determine histogram bins for null distribution methods.
 
@@ -543,7 +543,7 @@ class KDA(CBMAEstimator):
             ma_values = ma_maps.copy()
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
-    
+
         # assumes that groupby results in same order as MA maps
         n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
 
@@ -558,15 +558,11 @@ class KDA(CBMAEstimator):
             min_ma_values[i_study] = np.min(temp_ma_values[temp_ma_values != 0])
 
         step_size = np.mean(min_ma_values)  # typically 1
-        inv_step_size = int(np.ceil(1 / step_size))  # only useful when weight != 1
-
         max_ma_values = min_ma_values * n_foci_per_study
         max_poss_value = self._compute_summarystat(max_ma_values)
         # Weighting is not supported yet, so I'm going to build my bins around the min MA value.
         # The histogram bins are bin *centers*, not edges.
-        hist_bins = np.arange(
-            0, max_poss_value + (step_size * 1.5) + 0.001, step_size
-        )
+        hist_bins = np.arange(0, max_poss_value + (step_size * 1.5) + 0.001, step_size)
         self.null_distributions_["histogram_bins"] = hist_bins
 
     def _compute_null_analytic(self, ma_maps):
@@ -617,7 +613,7 @@ class KDA(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, stat_hist indices, and probabilities
-            stat_scores = np.add.outer(hist_bins[exp_idx], hist_bins[stat_idx]).ravel()
+            stat_scores = np.add.outer(bin_centers[exp_idx], bin_centers[stat_idx]).ravel()
             score_idx = np.floor(stat_scores * inv_step_size).astype(int)
             probabilities = np.outer(exp_hist[exp_idx], stat_hist[stat_idx]).ravel()
 

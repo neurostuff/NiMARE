@@ -83,12 +83,12 @@ class ALE(CBMAEstimator):
     """
 
     def __init__(
-        self, 
-        kernel_transformer=ALEKernel, 
-        null_method="analytic", 
-        n_iters=10000, 
-        n_cores=1, 
-        **kwargs
+        self,
+        kernel_transformer=ALEKernel,
+        null_method="analytic",
+        n_iters=10000,
+        n_cores=1,
+        **kwargs,
     ):
         if not isinstance(kernel_transformer, ALEKernel):
             LGR.warning(
@@ -108,7 +108,7 @@ class ALE(CBMAEstimator):
     def _compute_summarystat(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
-    
+
     def _determine_histogram_bins(self, ma_maps):
         """Determine histogram bins for null distribution methods.
 
@@ -137,7 +137,7 @@ class ALE(CBMAEstimator):
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
         max_poss_ale = self.compute_summarystat(max_ma_values)
         # create bin centers
-        hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5))
+        hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
 
     def _compute_null_analytic(self, ma_maps):
@@ -165,7 +165,7 @@ class ALE(CBMAEstimator):
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""
             return np.histogram(*args, **kwargs)[0].astype(float)
-        
+
         # Derive bin edges from histogram bin centers for numpy histogram function
         bin_centers = self.null_distributions_["histogram_bins"]
         step_size = bin_centers[1] - bin_centers[0]
@@ -173,13 +173,7 @@ class ALE(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        ma_hists = np.apply_along_axis(
-            just_histogram, 
-            1, 
-            ma_values, 
-            bins=bin_edges, 
-            density=False
-        )
+        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=bin_edges, density=False)
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
@@ -195,7 +189,9 @@ class ALE(CBMAEstimator):
             exp_idx = np.where(exp_hist > 0)[0]
 
             # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = 1 - np.outer((1 - hist_bins[exp_idx]), (1 - hist_bins[ale_idx])).ravel()
+            ale_scores = (
+                1 - np.outer((1 - bin_centers[exp_idx]), (1 - bin_centers[ale_idx])).ravel()
+            )
             score_idx = np.floor(ale_scores * inv_step_size).astype(int)
             probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
 

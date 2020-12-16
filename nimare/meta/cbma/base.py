@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 
 from ...base import MetaEstimator
 from ...results import MetaResult
-from ...stats import null_to_p
+from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
 from ...utils import round2
 
@@ -89,7 +89,9 @@ class CBMAEstimator(MetaEstimator):
         if self.null_method.startswith("analytic"):
             self._compute_null_analytic(ma_values)
         elif self.null_method == "empirical_full":
-            self._compute_null_empirical_full(ma_values, n_iters=self.n_iters)
+            self._compute_null_empirical_full(
+                ma_values, n_iters=self.n_iters, n_cores=self.n_cores
+            )
         else:
             self._compute_null_empirical(ma_values, n_iters=self.n_iters)
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
@@ -230,7 +232,9 @@ class CBMAEstimator(MetaEstimator):
             p_values = np.ones(stat_values.shape)
             idx = np.where(stat_values > 0)[0]
             stat_bins = round2(stat_values[idx] * inv_step_size)
-            p_values[idx] = self.null_distributions_["histweights_corr-none_method-analytic"][stat_bins]
+            p_values[idx] = self.null_distributions_["histweights_corr-none_method-analytic"][
+                stat_bins
+            ]
 
         elif null_method == "empirical":
             assert "empirical_null" in self.null_distributions_.keys()
@@ -242,8 +246,8 @@ class CBMAEstimator(MetaEstimator):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-empirical" in self.null_distributions_.keys()
             p_values = nullhist_to_p(
-                stat_values, 
-                self.null_distributions_["histweights_corr-none_method-empirical"], 
+                stat_values,
+                self.null_distributions_["histweights_corr-none_method-empirical"],
                 self.null_distributions_["histogram_bins"],
             )
 
@@ -430,7 +434,7 @@ class CBMAEstimator(MetaEstimator):
         iter_ss_map[iter_ss_map <= voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
-        u, clust_sizes = np.unique(labeled_matrix, return_counts=True)
+        _, clust_sizes = np.unique(labeled_matrix, return_counts=True)
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
         if clust_sizes.size:
             iter_max_cluster = np.max(clust_sizes)
@@ -438,7 +442,9 @@ class CBMAEstimator(MetaEstimator):
             iter_max_cluster = 0
         return iter_max_value, iter_max_cluster
 
-    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1, vfwe_only=False):
+    def correct_fwe_montecarlo(
+        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1, vfwe_only=False
+    ):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -480,7 +486,6 @@ class CBMAEstimator(MetaEstimator):
             assert self.null_method == "empirical"
 
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
-            step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
 
             # Determine p- and z-values from stat values and null distribution.
             p_vfwe_values = nullhist_to_p(
@@ -533,9 +538,9 @@ class CBMAEstimator(MetaEstimator):
             # Cluster-level FWE
             thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
             thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-            labeled_matrix, n_clusters = ndimage.measurements.label(thresh_stat_values, conn)
+            labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
 
-            u, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
+            _, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
             # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
             # with 0, which gives us a p-value of 1.
             sizes[0] = 0
