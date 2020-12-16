@@ -135,13 +135,13 @@ def test_kda_density_fwe_1core(testdata_cbma):
 
 def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
     est_a = MKDADensity(null_method="analytic")
-    n_iter = 10000
-    est_e = MKDADensity(null_method="empirical", n_iter=n_iter)
+    n_iters = 100
+    est_e = MKDADensity(null_method="empirical", n_iters=n_iters)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
     # Get smallest p-value above 0 from the empirical estimator; above this,
     # the two should converge reasonably closely.
-    min_p = 1 / n_iter
+    min_p = 1 / n_iters
     p_idx = res_e.maps["p"] > min_p
     p_analytical = res_a.maps["p"][p_idx]
     p_empirical = res_e.maps["p"][p_idx]
@@ -152,13 +152,13 @@ def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
 
 def test_kda_analytic_empirical_convergence(testdata_cbma_full):
     est_a = KDA(null_method="analytic")
-    n_iter = 10000
-    est_e = KDA(null_method="empirical", n_iter=n_iter)
+    n_iters = 100
+    est_e = KDA(null_method="empirical", n_iters=n_iters)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
     # Get smallest p-value above 0 from the empirical estimator; above this,
     # the two should converge reasonably closely.
-    min_p = 1 / n_iter
+    min_p = 1 / n_iters
     p_idx = res_e.maps["p"] > min_p
     p_analytical = res_a.maps["p"][p_idx]
     p_empirical = res_e.maps["p"][p_idx]
