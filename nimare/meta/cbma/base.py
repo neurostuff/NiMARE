@@ -87,12 +87,15 @@ class CBMAEstimator(MetaEstimator):
         self._determine_histogram_bins(ma_values)
         if self.null_method.startswith("analytic"):
             self._compute_null_analytic(ma_values)
-        elif self.null_method == "empirical_full":
-            self._compute_null_empirical_full(
+
+        elif self.null_method == "empirical":
+            self._compute_null_empirical(
                 ma_values, n_iters=self.n_iters, n_cores=self.n_cores
             )
+
         else:
-            self._compute_null_empirical(ma_values, n_iters=self.n_iters)
+            self._compute_null_reduced_empirical(ma_values, n_iters=self.n_iters)
+
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
@@ -182,26 +185,6 @@ class CBMAEstimator(MetaEstimator):
         has K dimensions, the output has K - 1 dimensions.)"""
         pass
 
-    def _compute_null_empirical(self, ma_maps, n_iters=10000):
-        """Compute uncorrected null distribution using empirical method.
-
-        Parameters
-        ----------
-        ma_maps : (C x V) array
-            Contrast by voxel array of MA values, after weighting with
-            weight_vec.
-
-        Notes
-        -----
-        This method adds one entry to the null_distributions_ dict attribute:
-        "empirical_null".
-        """
-        n_studies, n_voxels = ma_maps.shape
-        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
-        iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self.compute_summarystat(iter_ma_values)
-        self.null_distributions_["empirical_null"] = null_dist
-
     def _summarystat_to_p(self, stat_values, null_method="analytic"):
         """Compute p- and z-values from summary statistics (e.g., ALE scores).
 
@@ -232,18 +215,20 @@ class CBMAEstimator(MetaEstimator):
             )
 
         elif null_method == "empirical":
-            assert "empirical_null" in self.null_distributions_.keys()
-            p_values = null_to_p(
-                stat_values, self.null_distributions_["empirical_null"], tail="upper"
-            )
-
-        elif null_method == "empirical_full":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-empirical" in self.null_distributions_.keys()
             p_values = nullhist_to_p(
                 stat_values,
                 self.null_distributions_["histweights_corr-none_method-empirical"],
                 self.null_distributions_["histogram_bins"],
+            )
+
+        elif null_method == "reduced_empirical":
+            assert "values_corr-none_method-reducedEmpirical" in self.null_distributions_.keys()
+            p_values = null_to_p(
+                stat_values,
+                self.null_distributions_["values_corr-none_method-reducedEmpirical"],
+                tail="upper"
             )
 
         else:
@@ -283,13 +268,6 @@ class CBMAEstimator(MetaEstimator):
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
         elif null_method == "empirical":
-            assert "empirical_null" in self.null_distributions_.keys()
-            null_dist = np.sort(self.null_distributions_["empirical_null"])
-            n_vals = len(null_dist)
-            ss_idx = np.floor(p * n_vals).astype(int)
-            ss = null_dist[-ss_idx]
-
-        elif null_method == "empirical_full":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-empirical" in self.null_distributions_.keys()
 
@@ -299,12 +277,45 @@ class CBMAEstimator(MetaEstimator):
             ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
+        elif null_method == "reduced_empirical":
+            assert "values_corr-none_method-reducedEmpirical" in self.null_distributions_.keys()
+            null_dist = np.sort(
+                self.null_distributions_["values_corr-none_method-reducedEmpirical"]
+            )
+            n_vals = len(null_dist)
+            ss_idx = np.floor(p * n_vals).astype(int)
+            ss = null_dist[-ss_idx]
+
         else:
             raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
 
         return ss
 
-    def _run_montecarlo_permutation(self, params):
+    def _compute_null_reduced_empirical(self, ma_maps, n_iters=10000):
+        """Compute uncorrected null distribution using the reduced empirical method.
+
+        This method is much faster than the full empirical approach, but is still slower than the
+        analytic method. Given that its resolution is roughly the same as the analytic method,
+        we recommend against using this method.
+
+        Parameters
+        ----------
+        ma_maps : (C x V) array
+            Contrast by voxel array of MA values, after weighting with
+            weight_vec.
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute:
+        "values_corr-none_method-reducedEmpirical".
+        """
+        n_studies, n_voxels = ma_maps.shape
+        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
+        iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
+        null_dist = self.compute_summarystat(iter_ma_values)
+        self.null_distributions_["values_corr-none_method-reducedEmpirical"] = null_dist
+
+    def _compute_null_empirical_permutation(self, params):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between uncorrected stat-to-p conversion and vFWE.
@@ -339,7 +350,7 @@ class CBMAEstimator(MetaEstimator):
         counts, _ = np.histogram(iter_ss_map, bins=bin_edges, density=False)
         return counts
 
-    def _compute_null_empirical_full(self, n_iters, n_cores):
+    def _compute_null_empirical(self, n_iters, n_cores):
         """Compute uncorrected null distribution using Monte Carlo method.
 
         Parameters
@@ -371,12 +382,12 @@ class CBMAEstimator(MetaEstimator):
         if n_cores == 1:
             perm_histograms = []
             for pp in tqdm(params, total=n_iters):
-                perm_histograms.append(self._run_montecarlo_permutation(pp))
+                perm_histograms.append(self._compute_null_empirical_permutation(pp))
 
         else:
             with mp.Pool(n_cores) as p:
                 perm_histograms = list(
-                    tqdm(p.imap(self._run_montecarlo_permutation, params), total=n_iters)
+                    tqdm(p.imap(self._compute_null_empirical_permutation, params), total=n_iters)
                 )
 
         perm_histograms = np.vstack(perm_histograms)
@@ -397,7 +408,7 @@ class CBMAEstimator(MetaEstimator):
             "histweights_level-voxel_corr-fwe_method-empirical"
         ] = fwe_voxel_max
 
-    def _run_fwe_permutation(self, params):
+    def _correct_fwe_montecarlo_permutation(self, params):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between vFWE and cFWE.
@@ -520,12 +531,15 @@ class CBMAEstimator(MetaEstimator):
             if n_cores == 1:
                 perm_results = []
                 for pp in tqdm(params, total=n_iters):
-                    perm_results.append(self._run_montecarlo_permutation_fwe(pp))
+                    perm_results.append(self._correct_fwe_montecarlo_permutation(pp))
 
             else:
                 with mp.Pool(n_cores) as p:
                     perm_results = list(
-                        tqdm(p.imap(self._run_montecarlo_permutation_fwe, params), total=n_iters)
+                        tqdm(
+                            p.imap(self._correct_fwe_montecarlo_permutation, params),
+                            total=n_iters
+                        )
                     )
 
             fwe_voxel_max, fwe_clust_max = zip(*perm_results)
@@ -553,10 +567,10 @@ class CBMAEstimator(MetaEstimator):
             LGR.info("Using null distribution for voxel-level FWE correction.")
             p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
             self.null_distributions_[
-                "values_level-voxel_corr-fwe_method-empirical"
+                "values_level-voxel_corr-fwe_method-montecarlo"
             ] = fwe_voxel_max
             self.null_distributions_[
-                "values_level-cluster_corr-fwe_method-empirical"
+                "values_level-cluster_corr-fwe_method-montecarlo"
             ] = fwe_clust_max
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
