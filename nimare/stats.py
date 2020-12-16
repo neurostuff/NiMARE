@@ -195,8 +195,8 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
     Notes
     -----
-    P-values are clipped based on the number of elements in the null array.
-    Therefore no p-values of 0 or 1 should be produced.
+    P-values are clipped based on the largest observed non-zero weight in the null histogram.
+    Therefore no p-values of 0 should be produced.
     """
     test_values = np.asarray(test_values)
     return_value = False
@@ -214,7 +214,6 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
         histogram_weights = histogram_weights[:, None]
         voxelwise_null = False
 
-    smallest_value = np.finfo(float).eps
     n_bins = len(histogram_bins)
     inv_step = 1 / (histogram_bins[1] - histogram_bins[0])  # assume equal spacing
 
@@ -225,6 +224,8 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     null_distribution = np.cumsum(null_distribution[::-1, :], axis=0)[::-1, :]
     null_distribution /= np.max(null_distribution, axis=0)
     null_distribution = np.squeeze(null_distribution)
+
+    smallest_value = np.min(null_distribution[null_distribution != 0])
 
     p_values = np.ones(test_values.shape)
     idx = np.where(test_values > 0)[0]
@@ -240,8 +241,8 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
         p_values[idx] = null_distribution[value_bins]
 
     # ensure p_value in the following range:
-    # smallest_value <= p_value <= (1.0 - smallest_value)
-    p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value))
+    # smallest_value <= p_value <= 1.0
+    p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0))
     if return_value:
         p_values = p_values[0]
     return p_values
