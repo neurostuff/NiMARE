@@ -89,7 +89,7 @@ class CBMAEstimator(MetaEstimator):
             self._compute_null_analytic(ma_values)
 
         elif self.null_method == "empirical":
-            self._compute_null_empirical(ma_values, n_iters=self.n_iters, n_cores=self.n_cores)
+            self._compute_null_empirical(n_iters=self.n_iters, n_cores=self.n_cores)
 
         else:
             self._compute_null_reduced_empirical(ma_values, n_iters=self.n_iters)
