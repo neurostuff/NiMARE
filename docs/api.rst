@@ -216,6 +216,7 @@ API
    stats.two_way
    stats.pearson
    stats.null_to_p
+   stats.nullhist_to_p
    stats.fdr
 
 
