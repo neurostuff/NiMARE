@@ -86,6 +86,27 @@ class MKDADensity(CBMAEstimator):
         # return ma_values.T.dot(self.weight_vec_).ravel()
         weighted_ma_vals = ma_values * self.weight_vec_
         return weighted_ma_vals.sum(0)
+    
+    def _determine_histogram_bins(self, ma_maps):
+        """Determine histogram bins for null distribution methods.
+
+        Parameters
+        ----------
+        ma_maps
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
+        """
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+    
+        prop_active = ma_values.mean(1)
+        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
 
     def _compute_null_analytic(self, ma_maps):
         """Compute uncorrected null distribution using analytic solution.
@@ -114,10 +135,9 @@ class MKDADensity(CBMAEstimator):
         ss_hist = 1.0
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
-        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
         null_distribution = np.cumsum(ss_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histweights_corr-none_method-analytic"] = null_distribution
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
@@ -505,6 +525,49 @@ class KDA(CBMAEstimator):
         # OF is just a sum of MA values.
         stat_values = np.sum(ma_values, axis=0)
         return stat_values
+    
+    def _determine_histogram_bins(self, ma_maps):
+        """Determine histogram bins for null distribution methods.
+
+        Parameters
+        ----------
+        ma_maps
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
+        """
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+    
+        # assumes that groupby results in same order as MA maps
+        n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
+
+        # Determine bins for null distribution histogram
+        # The maximum possible MA value for each study is the weighting factor (generally 1)
+        # times the number of foci in the study.
+        # To get the weighting factor, we find the minimum value in each MA map, ignoring zeros.
+        n_studies = ma_values.shape[0]
+        min_ma_values = np.zeros(n_studies)
+        for i_study in range(n_studies):
+            temp_ma_values = ma_values[i_study, :]
+            min_ma_values[i_study] = np.min(temp_ma_values[temp_ma_values != 0])
+
+        step_size = np.mean(min_ma_values)  # typically 1
+        inv_step_size = int(np.ceil(1 / step_size))  # only useful when weight != 1
+
+        max_ma_values = min_ma_values * n_foci_per_study
+        max_poss_value = self._compute_summarystat(max_ma_values)
+        # Weighting is not supported yet, so I'm going to build my bins around the min MA value.
+        # The histogram bins are bin *centers*, not edges.
+        hist_bins = np.arange(
+            0, max_poss_value + (step_size * 1.5) + 0.001, step_size
+        )
+        self.null_distributions_["histogram_bins"] = hist_bins
 
     def _compute_null_analytic(self, ma_maps):
         """Compute uncorrected null distribution using analytic solution.
@@ -526,40 +589,18 @@ class KDA(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
-        # assumes that groupby results in same order as MA maps
-        n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
-
-        # Determine bins for null distribution histogram
-        # The maximum possible MA value for each study is the weighting factor (generally 1)
-        # times the number of foci in the study.
-        # To get the weighting factor, we find the minimum value in each MA map, ignoring zeros.
-        n_studies = ma_values.shape[0]
-        min_ma_values = np.zeros(n_studies)
-        for i_study in range(n_studies):
-            temp_ma_values = ma_values[i_study, :]
-            min_ma_values[i_study] = np.min(temp_ma_values[temp_ma_values != 0])
-
-        step_size = np.mean(min_ma_values)  # typically 1
-        inv_step_size = int(np.ceil(1 / step_size))  # only useful when weight != 1
-
-        max_ma_values = min_ma_values * n_foci_per_study
-        max_poss_value = self._compute_summarystat(max_ma_values)
-        # Weighting is not supported yet, so I'm going to build my bins around the min MA value.
-        # Remember that numpy histogram bins are bin edges, not centers.
-        # Assuming values of 0, 1, 2, etc., bins are -0.5-0.5, 0.5-1.0, etc.
-        hist_bins = np.arange(
-            -step_size / 2, max_poss_value + (step_size * 1.5) + 0.001, step_size
-        )
-
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""
             return np.histogram(*args, **kwargs)[0].astype(float)
 
-        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
+        # Derive bin edges from histogram bin centers for numpy histogram function
+        bin_centers = self.null_distributions_["histogram_bins"]
+        step_size = bin_centers[1] - bin_centers[0]
+        inv_step_size = 1 / step_size
+        bin_edges = bin_centers - (step_size / 2)
+        bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        # Shift the bins to correspond to actual values instead of centers of bins of values.
-        hist_bins -= np.min(hist_bins)
-        self.null_distributions_["histogram_bins"] = hist_bins
+        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=bin_edges, density=False)
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
@@ -590,4 +631,4 @@ class KDA(CBMAEstimator):
         # (stored in histogram_bins) of that value or lower.
         null_distribution = np.cumsum(stat_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histweights_corr-none_method-analytic"] = null_distribution

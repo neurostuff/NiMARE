@@ -83,7 +83,12 @@ class ALE(CBMAEstimator):
     """
 
     def __init__(
-        self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
+        self, 
+        kernel_transformer=ALEKernel, 
+        null_method="analytic", 
+        n_iters=10000, 
+        n_cores=1, 
+        **kwargs
     ):
         if not isinstance(kernel_transformer, ALEKernel):
             LGR.warning(
@@ -96,12 +101,44 @@ class ALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
+        self.n_cores = n_cores
         self.dataset = None
         self.results = None
 
     def _compute_summarystat(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
+    
+    def _determine_histogram_bins(self, ma_maps):
+        """Determine histogram bins for null distribution methods.
+
+        Parameters
+        ----------
+        ma_maps
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
+        """
+        if isinstance(ma_maps, list):
+            ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps.copy()
+        else:
+            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+
+        # Determine bins for null distribution histogram
+        # Remember that numpy histogram bins are bin edges, not centers
+        # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
+        INV_STEP_SIZE = 100000
+        step_size = 1 / INV_STEP_SIZE
+        max_ma_values = np.max(ma_values, axis=1)
+        # round up based on resolution
+        max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
+        max_poss_ale = self.compute_summarystat(max_ma_values)
+        # create bin centers
+        hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5))
+        self.null_distributions_["histogram_bins"] = hist_bins
 
     def _compute_null_analytic(self, ma_maps):
         """Compute uncorrected ALE null distribution using analytic solution.
@@ -123,30 +160,26 @@ class ALE(CBMAEstimator):
         else:
             raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
 
-        # Determine bins for null distribution histogram
-        # Remember that numpy histogram bins are bin edges, not centers
-        # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
-        inv_step_size = 100000
-        step_size = 1 / inv_step_size
-        max_ma_values = np.max(ma_values, axis=1)
-        # round up based on resolution
-        max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
-        max_poss_ale = self.compute_summarystat(max_ma_values)
-        # create bin centers, then shift them into bin edges
-        hist_bins = np.round(np.arange(0, max_poss_ale + (2.5 * step_size), step_size), 5) - (
-            step_size / 2
-        )
+        assert "histogram_bins" in self.null_distributions_.keys()
 
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""
             return np.histogram(*args, **kwargs)[0].astype(float)
+        
+        # Derive bin edges from histogram bin centers for numpy histogram function
+        bin_centers = self.null_distributions_["histogram_bins"]
+        step_size = bin_centers[1] - bin_centers[0]
+        inv_step_size = 1 / step_size
+        bin_edges = bin_centers - (step_size / 2)
+        bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=hist_bins, density=False)
-
-        # Shift and crop the bins to correspond to centers instead of edges
-        hist_bins += step_size / 2
-        hist_bins = hist_bins[:-1]
-        self.null_distributions_["histogram_bins"] = hist_bins
+        ma_hists = np.apply_along_axis(
+            just_histogram, 
+            1, 
+            ma_values, 
+            bins=bin_edges, 
+            density=False
+        )
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
@@ -177,7 +210,7 @@ class ALE(CBMAEstimator):
         # histBins) of that value or lower.
         null_distribution = np.cumsum(ale_hist[::-1])[::-1]
         null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histweights_corr-none_method-analytic"] = null_distribution
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
