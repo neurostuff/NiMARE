@@ -45,14 +45,10 @@ def test_nullhist_to_p():
     histogram_weights[-1] = 0  # last bin is outside range, so there are 100 bins with values
 
     # When input is a single value
-    assert math.isclose(
-        stats.nullhist_to_p(0, histogram_weights, histogram_bins), 1.0
-    )
+    assert math.isclose(stats.nullhist_to_p(0, histogram_weights, histogram_bins), 1.0)
     assert math.isclose(stats.nullhist_to_p(1, histogram_weights, histogram_bins), 0.99)
     assert math.isclose(stats.nullhist_to_p(99, histogram_weights, histogram_bins), 0.01)
-    assert math.isclose(
-        stats.nullhist_to_p(100, histogram_weights, histogram_bins), 0.01
-    )
+    assert math.isclose(stats.nullhist_to_p(100, histogram_weights, histogram_bins), 0.01)
 
     # When input is an array
     assert np.allclose(
