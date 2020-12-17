@@ -462,6 +462,12 @@ class KDA(CBMAEstimator):
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
+    Warning
+    -------
+    The KDA algorithm has been replaced in the literature with the MKDA algorithm.
+    As such, this estimator should almost never be used, outside of systematic
+    comparisons between algorithms.
+
     References
     ----------
     .. [1] Wager, Tor D., et al. "Valence, gender, and lateralization of
@@ -476,6 +482,12 @@ class KDA(CBMAEstimator):
     def __init__(
         self, kernel_transformer=KDAKernel, null_method="empirical", n_iters=10000, **kwargs
     ):
+        LGR.warning(
+            "The KDA algorithm has been replaced in the literature with the MKDA algorithm. "
+            "As such, this estimator should almost never be used, outside of systematic "
+            "comparisons between algorithms."
+        )
+
         if not (isinstance(kernel_transformer, KDAKernel) or kernel_transformer == KDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
