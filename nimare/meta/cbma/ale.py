@@ -9,9 +9,8 @@ from tqdm.auto import tqdm
 
 from ... import references
 from ...due import due
-from ...stats import null_to_p
+from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import round2
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -85,7 +84,7 @@ class ALE(CBMAEstimator):
     def __init__(
         self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
     ):
-        if not isinstance(kernel_transformer, ALEKernel):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -172,12 +171,7 @@ class ALE(CBMAEstimator):
             ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
-        # Convert aleHist into null distribution. The value in each bin
-        # represents the probability of finding an ALE value (stored in
-        # histBins) of that value or lower.
-        null_distribution = np.cumsum(ale_hist[::-1])[::-1]
-        null_distribution /= np.max(null_distribution)
-        self.null_distributions_["histogram_weights"] = null_distribution
+        self.null_distributions_["histogram_weights"] = ale_hist
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
@@ -225,7 +219,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
-        if not isinstance(kernel_transformer, ALEKernel):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -353,7 +347,7 @@ class SCALE(CBMAEstimator):
         low_memory=False,
         **kwargs,
     ):
-        if not isinstance(kernel_transformer, ALEKernel):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -482,8 +476,6 @@ class SCALE(CBMAEstimator):
         -----
         This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
-        step = 1 / np.mean(np.diff(self.null_distributions_["histogram_bins"]))
-
         scale_zeros = scale_values == 0
         n_zeros = np.sum(scale_zeros, axis=0)
         scale_values[scale_values == 0] = np.nan
@@ -493,23 +485,9 @@ class SCALE(CBMAEstimator):
         scale_hists[0, :] = n_zeros
         scale_hists[1:, :] = np.apply_along_axis(self._make_hist, 0, scale_values)
 
-        # Convert voxel-wise histograms to voxel-wise null distributions.
-        null_distribution = scale_hists / np.sum(scale_hists, axis=0)
-        null_distribution = np.cumsum(null_distribution[::-1, :], axis=0)[::-1, :]
-        null_distribution /= np.max(null_distribution, axis=0)
-
-        # Get the hist bins associated with each voxel's ale value, in order to
-        # get the p-value from the associated bin in the null distribution.
-        n_bins = len(self.null_distributions_["histogram_bins"])
-        ale_bins = round2(stat_values * step).astype(int)
-        ale_bins[ale_bins > n_bins] = n_bins
-
-        # Get p-values by getting the ale_bin-th value in null_distribution
-        # per voxel.
-        p_values = np.empty_like(ale_bins).astype(float)
-        for i, (x, y) in enumerate(zip(null_distribution.transpose(), ale_bins)):
-            p_values[i] = x[y]
-
+        p_values = nullhist_to_p(
+            stat_values, scale_hists, self.null_distributions_["histogram_bins"]
+        )
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 

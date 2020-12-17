@@ -161,16 +161,7 @@ def meta_res(simulatedata_cbma, meta, random):
     _, (_, dataset) = simulatedata_cbma
     # CHECK IF META/KERNEL WORK TOGETHER
     ####################################
-    # peaks2MapsKernel does not work with any meta-analysis estimator
-    if (
-        isinstance(meta, ale.ALE)
-        and isinstance(meta.kernel_transformer, kernel.KDAKernel)
-        and meta.get_params().get("null_method") == "analytic"
-        and not isinstance(meta.kernel_transformer, kernel.MKDAKernel)
-    ):
-        meta_expectation = pytest.raises(IndexError)
-    else:
-        meta_expectation = does_not_raise()
+    meta_expectation = does_not_raise()
 
     with meta_expectation:
         res = meta.fit(dataset)
@@ -230,6 +221,12 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
     ):
         good_performance = False
     elif (
+        isinstance(meta_res.estimator, ale.ALE)
+        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
+        and meta_res.estimator.get_params().get("null_method") == "analytic"
+    ):
+        good_performance = False
+    elif (
         isinstance(meta_res.estimator, mkda.MKDADensity)
         and isinstance(meta_res.estimator.kernel_transformer, kernel.ALEKernel)
         and meta_res.estimator.get_params().get("null_method") == "analytic"
@@ -280,6 +277,12 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and meta_cres.estimator.get_params().get("null_method") == "empirical"
+    ):
+        good_performance = False
+    elif (
+        isinstance(meta_cres.estimator, ale.ALE)
+        and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
+        and meta_cres.estimator.get_params().get("null_method") == "analytic"
     ):
         good_performance = False
     elif (
@@ -400,17 +403,7 @@ def _transform_res(meta, meta_res, corr):
     #######################################
     # all combinations of meta-analysis estimators and multiple comparison correctors
     # that do not work together
-    if (
-        isinstance(meta, ale.ALE)
-        and isinstance(meta.kernel_transformer, kernel.KDAKernel)
-        and not isinstance(meta.kernel_transformer, kernel.MKDAKernel)
-        and corr.method == "montecarlo"
-        and meta.get_params().get("null_method") == "analytic"
-    ):
-        # IndexError: index 20000 is out of bounds for axis 0 with size 10010
-        corr_expectation = pytest.raises(IndexError)
-    else:
-        corr_expectation = does_not_raise()
+    corr_expectation = does_not_raise()
 
     with corr_expectation:
         cres = corr.transform(meta_res)
