@@ -58,7 +58,7 @@ for kt_name, kt in kernel_transformers.items():
             title="MKDA estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the MKDA meta-analysis method\n"
             % kt_name
@@ -84,7 +84,7 @@ for kt_name, kt in kernel_transformers.items():
             title="MKDA Chi2 estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the MKDA Chi2 meta-analysis method\n"
             % kt_name
@@ -107,7 +107,7 @@ for kt_name, kt in kernel_transformers.items():
             title="KDA estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the KDA meta-analysis method\n" % kt_name
         )
@@ -129,7 +129,7 @@ for kt_name, kt in kernel_transformers.items():
             title="ALE estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the ALE meta-analysis method\n" % kt_name
         )

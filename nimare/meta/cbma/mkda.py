@@ -543,17 +543,13 @@ class KDA(CBMAEstimator):
         Parameters
         ----------
         ma_maps
+            Modeled activation maps. Unused for this estimator.
 
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
-        else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+        _ = ma_maps  # this should prevent an unused variable warning
 
         # assumes that groupby results in same order as MA maps
         n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
@@ -561,19 +557,14 @@ class KDA(CBMAEstimator):
         # Determine bins for null distribution histogram
         # The maximum possible MA value for each study is the weighting factor (generally 1)
         # times the number of foci in the study.
-        # To get the weighting factor, we find the minimum value in each MA map, ignoring zeros.
-        n_studies = ma_values.shape[0]
-        min_ma_values = np.zeros(n_studies)
-        for i_study in range(n_studies):
-            temp_ma_values = ma_values[i_study, :]
-            min_ma_values[i_study] = np.min(temp_ma_values[temp_ma_values != 0])
+        # We grab the weighting factor from the kernel transformer.
+        step_size = self.kernel_transformer.value  # typically 1
 
-        step_size = np.mean(min_ma_values)  # typically 1
-        max_ma_values = min_ma_values * n_foci_per_study
+        max_ma_values = step_size * n_foci_per_study
         max_poss_value = self._compute_summarystat(max_ma_values)
         # Weighting is not supported yet, so I'm going to build my bins around the min MA value.
         # The histogram bins are bin *centers*, not edges.
-        hist_bins = np.arange(0, max_poss_value + (step_size * 1.5) + 0.001, step_size)
+        hist_bins = np.arange(0, max_poss_value + (step_size * 1.5), step_size)
         self.null_distributions_["histogram_bins"] = hist_bins
 
     def _compute_null_analytic(self, ma_maps):
