@@ -47,7 +47,7 @@ class MKDADensity(CBMAEstimator):
     def __init__(
         self,
         kernel_transformer=MKDAKernel,
-        null_method="empirical",
+        null_method="analytic",
         n_iters=10000,
         n_cores=1,
         **kwargs,
@@ -496,7 +496,7 @@ class KDA(CBMAEstimator):
     def __init__(
         self,
         kernel_transformer=KDAKernel,
-        null_method="empirical",
+        null_method="analytic",
         n_iters=10000,
         n_cores=1,
         **kwargs,
