@@ -456,10 +456,12 @@ class KDA(CBMAEstimator):
     Kernel density analysis was first introduced in [1]_ and [2]_.
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
+
     Warning
     -------
-    The KDA meta-analytic algorithm is objectively inferior to the MKDA algorithm.
-    Please do not use this Estimator for serious meta-analyses.
+    The KDA algorithm has been replaced in the literature with the MKDA algorithm.
+    As such, this estimator should almost never be used, outside of systematic
+    comparisons between algorithms.
 
     References
     ----------
@@ -476,8 +478,9 @@ class KDA(CBMAEstimator):
         self, kernel_transformer=KDAKernel, null_method="empirical", n_iters=10000, **kwargs
     ):
         LGR.warning(
-            "The KDA meta-analytic algorithm is objectively inferior to the MKDA algorithm. "
-            "Please do not use this Estimator for serious meta-analyses."
+            "The KDA algorithm has been replaced in the literature with the MKDA algorithm. "
+            "As such, this estimator should almost never be used, outside of systematic "
+            "comparisons between algorithms."
         )
         if not isinstance(kernel_transformer, KDAKernel):
             LGR.warning(
