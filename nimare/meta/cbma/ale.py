@@ -84,7 +84,7 @@ class ALE(CBMAEstimator):
     def __init__(
         self, kernel_transformer=ALEKernel, null_method="analytic", n_iters=10000, **kwargs
     ):
-        if not isinstance(kernel_transformer, ALEKernel):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -219,7 +219,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
-        if not isinstance(kernel_transformer, ALEKernel):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -347,7 +347,7 @@ class SCALE(CBMAEstimator):
         low_memory=False,
         **kwargs,
     ):
-        if not isinstance(kernel_transformer, ALEKernel):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "

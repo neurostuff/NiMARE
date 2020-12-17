@@ -47,6 +47,13 @@ class MKDADensity(CBMAEstimator):
     def __init__(
         self, kernel_transformer=MKDAKernel, null_method="empirical", n_iters=10000, **kwargs
     ):
+        if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
@@ -149,7 +156,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     """
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
-        if not isinstance(kernel_transformer, MKDAKernel):
+        if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -469,7 +476,7 @@ class KDA(CBMAEstimator):
     def __init__(
         self, kernel_transformer=KDAKernel, null_method="empirical", n_iters=10000, **kwargs
     ):
-        if not isinstance(kernel_transformer, KDAKernel):
+        if not (isinstance(kernel_transformer, KDAKernel) or kernel_transformer == KDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
