@@ -15,7 +15,7 @@ def test_mkda_density_kernel_instance_with_kwargs(testdata_cbma):
     object's parameters should remain untouched.
     """
     kern = MKDAKernel(r=2)
-    meta = MKDADensity(kern, kernel__r=6, null_method="empirical", n_iters=100)
+    meta = MKDADensity(kern, kernel__r=6, null_method="empirical", n_iters=10)
 
     assert meta.kernel_transformer.get_params().get("r") == 2
 
@@ -24,7 +24,7 @@ def test_mkda_density_kernel_class(testdata_cbma):
     """
     Smoke test for MKDADensity with a kernel transformer class.
     """
-    meta = MKDADensity(MKDAKernel, kernel__r=5, null_method="empirical", n_iters=100)
+    meta = MKDADensity(MKDAKernel, kernel__r=5, null_method="empirical", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
 
@@ -34,7 +34,7 @@ def test_mkda_density_kernel_instance(testdata_cbma):
     Smoke test for MKDADensity with a kernel transformer object.
     """
     kern = MKDAKernel(r=5)
-    meta = MKDADensity(kern, null_method="empirical", n_iters=100)
+    meta = MKDADensity(kern, null_method="empirical", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
 
@@ -55,7 +55,7 @@ def test_mkda_density(testdata_cbma):
     """
     Smoke test for MKDADensity
     """
-    meta = MKDADensity(null_method="empirical", n_iters=100)
+    meta = MKDADensity(null_method="empirical", n_iters=10)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
@@ -120,7 +120,7 @@ def test_kda_density_fwe_1core(testdata_cbma):
     """
     Smoke test for KDA with empirical null and FWE correction.
     """
-    meta = KDA(null_method="empirical", n_iters=100)
+    meta = KDA(null_method="empirical", n_iters=10)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
@@ -135,7 +135,7 @@ def test_kda_density_fwe_1core(testdata_cbma):
 
 def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
     est_a = MKDADensity(null_method="analytic")
-    n_iters = 100
+    n_iters = 10
     est_e = MKDADensity(null_method="empirical", n_iters=n_iters)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
@@ -152,7 +152,7 @@ def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
 
 def test_kda_analytic_empirical_convergence(testdata_cbma_full):
     est_a = KDA(null_method="analytic")
-    n_iters = 100
+    n_iters = 10
     est_e = KDA(null_method="empirical", n_iters=n_iters)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
