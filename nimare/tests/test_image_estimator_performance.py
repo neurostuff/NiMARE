@@ -5,12 +5,17 @@ from contextlib import ExitStack as does_not_raise
 import numpy as np
 
 from ..results import MetaResult
-from ..generate import create_simple_image_dataset
+from ..generate import create_image_dataset
 from ..correct import FDRCorrector, FWECorrector
 from ..meta.ibma import (
-    Fishers, Stouffers, WeightedLeastSquares,
-    DerSimonianLaird, Hedges, SampleSizeBasedLikelihood,
-    VarianceBasedLikelihood, PermutedOLS
+    Fishers,
+    Stouffers,
+    WeightedLeastSquares,
+    DerSimonianLaird,
+    Hedges,
+    SampleSizeBasedLikelihood,
+    VarianceBasedLikelihood,
+    PermutedOLS,
 )
 
 # set significance levels used for testing.
@@ -41,19 +46,20 @@ def random():
     params=[
         pytest.param(
             {
-                "signal_voxels": 0.10,
+                "percent_signal_voxels": 0.10,
                 "n_studies": 20,
                 "n_participants": (5, 31),
-                "standard_error": 5,
+                "variance": (1, 10),
                 "img_dir": None,
                 "seed": 1939,
+                "neurosynth": False,
             },
             id="image_data",
         )
     ],
 )
 def simulatedata_ibma(request):
-    return create_simple_image_dataset(**request.param)
+    return create_image_dataset(**request.param)
 
 
 ##########################################
@@ -85,7 +91,7 @@ def simulatedata_ibma(request):
             (VarianceBasedLikelihood, {"method": "reml"}),
             id="variancebasedlikelihood+reml",
         ),
-        pytest.param((PermutedOLS, {}), id="permutedols")
+        pytest.param((PermutedOLS, {}), id="permutedols"),
     ],
 )
 def meta_est(request):
@@ -153,7 +159,7 @@ def meta_result(simulatedata_ibma, meta_est, random):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_cres(meta_est, meta_result, corr, random):
-    return None
+    return _transform_res(meta_est[0], meta_result, corr)
 
 
 ###########################################
@@ -161,7 +167,7 @@ def meta_cres(meta_est, meta_result, corr, random):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_cres_small(meta_est, meta_result, corr_small, random):
-    return None
+    return _transform_res(meta_est[0], meta_result, corr_small)
 
 
 # --------------
@@ -179,8 +185,91 @@ def test_meta_fit_performance(meta_result, simulatedata_ibma):
 
 
 def test_corr_transform_smoke(meta_cres_small):
-    pass
+    assert isinstance(meta_cres_small, MetaResult)
+
 
 @pytest.mark.performance
 def test_corr_transform_performance(meta_cres, corr, simulatedata_ibma):
     pass
+
+
+def _transform_res(meta, meta_result, corr):
+    if (
+        isinstance(corr, FWECorrector)
+        and corr.method == "montecarlo"
+        and isinstance(
+            meta_result.estimator,
+            (
+                SampleSizeBasedLikelihood,
+                WeightedLeastSquares,
+                DerSimonianLaird,
+                Hedges,
+                VarianceBasedLikelihood,
+                WeightedLeastSquares,
+                Stouffers,
+                Fishers,
+            ),
+        )
+    ):
+        # ValueError: Unsupported fwe correction method "montecarlo"
+        corr_expectation = pytest.raises(ValueError)
+    elif (
+        isinstance(corr, FWECorrector)
+        and corr.method == "montecarlo"
+        and isinstance(meta_result.estimator, PermutedOLS)
+    ):
+        # Error: failed on setup with "TypeError:
+        # correct_fwe_montecarlo() got an unexpected keyword argument 'voxel_thresh'"
+        corr_expectation = pytest.raises(TypeError)
+    elif (
+        isinstance(corr, FWECorrector)
+        and corr.method == "bonferroni"
+        and isinstance(
+            meta_result.estimator,
+            (
+                WeightedLeastSquares,
+                DerSimonianLaird,
+                Hedges,
+                SampleSizeBasedLikelihood,
+                VarianceBasedLikelihood,
+            ),
+        )
+    ):
+        # Error: failed on setup with
+        # "IndexError: index 39 is out of bounds for axis 0 with size 1"
+        corr_expectation = pytest.raises(IndexError)
+    elif (
+        isinstance(corr, FWECorrector)
+        and corr.method == "bonferroni"
+        and isinstance(meta_result.estimator, (PermutedOLS,))
+    ):
+        # Error: failed on setup with "ValueError: <class 'nimare.correct.FWECorrector'>
+        # requires "p" maps to be present in the MetaResult, but none were found."
+        corr_expectation = pytest.raises(ValueError)
+    elif isinstance(corr, FDRCorrector) and isinstance(
+        meta_result.estimator,
+        (
+            WeightedLeastSquares,
+            DerSimonianLaird,
+            Hedges,
+            SampleSizeBasedLikelihood,
+            VarianceBasedLikelihood,
+        ),
+    ):
+        # pvals_corrected_[pvals_sortind] = pvals_corrected
+        # IndexError: index 39 is out of bounds for axis 0 with size 1
+        corr_expectation = pytest.raises(IndexError)
+    elif isinstance(corr, FDRCorrector) and isinstance(meta_result.estimator, PermutedOLS):
+        # Error: failed on setup with "ValueError: <class 'nimare.correct.FDRCorrector'>
+        # requires "p" maps to be present in the MetaResult, but none were found."
+        corr_expectation = pytest.raises(ValueError)
+    else:
+        corr_expectation = does_not_raise()
+
+    with corr_expectation:
+        cres = corr.transform(meta_result)
+
+    # if multiple correction failed (expected) do not continue
+    if isinstance(corr_expectation, type(pytest.raises(ValueError))):
+        pytest.xfail("this meta-analysis & corrector combo fails")
+    return cres
