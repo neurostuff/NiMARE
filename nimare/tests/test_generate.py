@@ -250,4 +250,4 @@ def test_create_coordinate_dataset(kwargs, expectation):
 )
 def test_create_image_dataset(kwargs):
     ground_truth_map, dset = create_image_dataset(**kwargs)
-    assert set(dset.get_images()) == set("beta", "se", "t", "z", "varcope")
+    assert set(dset.get_images()) == {"beta", "se", "t", "z", "varcope"}
