@@ -570,8 +570,10 @@ class KDA(CBMAEstimator):
             max_poss_value = self._compute_summarystat(max_ma_values)
         else:
             # Continuous-sphere kernels (ALE)
-            LGR.info("A non-binary kernel has been detected. Parameters for the null distribution "
-                     "will be guesstimated.")
+            LGR.info(
+                "A non-binary kernel has been detected. Parameters for the null distribution "
+                "will be guesstimated."
+            )
 
             N_BINS = 100000
             # The maximum possible MA value is the max value from each MA map,
