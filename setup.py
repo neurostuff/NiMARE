@@ -18,12 +18,6 @@ def main():
         exec(f.read())
     vars = locals()
 
-    # Collect resource files
-    data_folders = ["nimare/resources", "nimare/tests/data"]
-    data_files = [glob(op.join(d, "**"), recursive=True) for d in data_folders]
-    data_files = [item for sublist in data_files for item in sublist]
-    data_files = [f for f in data_files if op.isfile(f)]
-
     root_dir = op.dirname(op.abspath(getfile(currentframe())))
     cmdclass = versioneer.get_cmdclass()
 
@@ -46,7 +40,6 @@ def main():
         extras_require=vars["EXTRA_REQUIRES"],
         entry_points=vars["ENTRY_POINTS"],
         packages=find_packages(exclude=("tests",)),
-        data_files=[("nimare", data_files)],
         zip_safe=False,
         cmdclass=cmdclass,
     )
