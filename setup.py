@@ -46,7 +46,7 @@ def main():
         extras_require=vars["EXTRA_REQUIRES"],
         entry_points=vars["ENTRY_POINTS"],
         packages=find_packages(exclude=("tests",)),
-        data_files=data_files,
+        data_files=[("nimare", data_files)],
         zip_safe=False,
         cmdclass=cmdclass,
     )
