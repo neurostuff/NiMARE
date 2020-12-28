@@ -3,11 +3,13 @@
 """ NiMARE setup script """
 import os.path as op
 from glob import glob
-from inspect import getfile, currentframe
+from inspect import currentframe, getfile
 from io import open
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
 
 import versioneer
+
 
 def main():
     """ Install entry-point """
