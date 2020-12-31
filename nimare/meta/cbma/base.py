@@ -259,10 +259,16 @@ class CBMAEstimator(MetaEstimator):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-analytic" in self.null_distributions_.keys()
 
-            hist_weights = self.null_distributions_["histweights_corr-none_method-analytic"]
+            # Convert unnormalized histogram weights to null distribution
+            histogram_weights = self.null_distributions_["histweights_corr-none_method-analytic"]
+            null_distribution = histogram_weights / np.sum(histogram_weights)
+            null_distribution = np.cumsum(null_distribution[::-1])[::-1]
+            null_distribution /= np.max(null_distribution)
+            null_distribution = np.squeeze(null_distribution)
+
             # Desired bin is the first one _before_ the target p-value (for consistency
             # with the empirical null).
-            ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
+            ss_idx = np.maximum(0, np.where(null_distribution <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
         elif null_method == "empirical":

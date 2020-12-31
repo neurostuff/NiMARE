@@ -319,12 +319,21 @@ class Peaks2MapsKernel(KernelTransformer):
     resample_to_mask : :obj:`bool`, optional
         If True, will resample the MA maps to the mask's header.
         Default is True.
+
+    Warning
+    -------
+    Peaks2MapsKernel is not intended for serious research.
+    We strongly recommend against using it for any meaningful analyses.
     """
 
     def __init__(self, model_dir="auto"):
         # Use private attribute to hide value from get_params.
         # get_params will find model_dir=None, which is *very important* when a path is provided.
         self._model_dir = model_dir
+        LGR.warning(
+            "The Peaks2Maps kernel transformer is not intended for serious research. "
+            "We strongly recommend against using it for any meaningful analyses."
+        )
 
     def _transform(self, mask, coordinates):
         transformed = []

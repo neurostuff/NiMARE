@@ -52,6 +52,13 @@ class MKDADensity(CBMAEstimator):
         n_cores=1,
         **kwargs,
     ):
+        if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
@@ -176,7 +183,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     """
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
-        if not isinstance(kernel_transformer, MKDAKernel):
+        if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -482,6 +489,12 @@ class KDA(CBMAEstimator):
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
+    Warning
+    -------
+    The KDA algorithm has been replaced in the literature with the MKDA algorithm.
+    As such, this estimator should almost never be used, outside of systematic
+    comparisons between algorithms.
+
     References
     ----------
     .. [1] Wager, Tor D., et al. "Valence, gender, and lateralization of
@@ -501,7 +514,13 @@ class KDA(CBMAEstimator):
         n_cores=1,
         **kwargs,
     ):
-        if not isinstance(kernel_transformer, KDAKernel):
+        LGR.warning(
+            "The KDA algorithm has been replaced in the literature with the MKDA algorithm. "
+            "As such, this estimator should almost never be used, outside of systematic "
+            "comparisons between algorithms."
+        )
+
+        if not (isinstance(kernel_transformer, KDAKernel) or kernel_transformer == KDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
