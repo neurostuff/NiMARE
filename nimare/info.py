@@ -51,6 +51,7 @@ DOWNLOAD_URL = "https://github.com/neurostuff/{name}/archive/{ver}.tar.gz".forma
 REQUIRES = [
     "cognitiveatlas",
     "fuzzywuzzy",
+    "indexed_gzip>=1.4.0",
     "matplotlib",
     "nibabel>=3.0.0",
     "nilearn>=0.7.0",
