@@ -3,7 +3,13 @@ import pytest
 from contextlib import ExitStack as does_not_raise
 from numpy.random import RandomState
 
-from ..generate import create_coordinate_dataset, _create_source, _create_foci, _array_like
+from ..generate import (
+    create_coordinate_dataset,
+    _create_source,
+    _create_foci,
+    _array_like,
+    create_neurovault_dataset,
+)
 from ..dataset import Dataset
 
 
@@ -227,3 +233,9 @@ def test_create_coordinate_dataset(kwargs, expectation):
             (kwargs["n_studies"] * n_foci) + (kwargs["n_studies"] * kwargs["n_noise_foci"]),
         )
         assert len(dataset.coordinates) == expected_coordinate_number
+
+
+def test_create_neurovault_dataset():
+    dset = create_neurovault_dataset(collection_ids=(8836,), contrast="as-Animal")
+    expected_columns = {"beta", "t", "varcope", "z"}
+    assert expected_columns.issubset(dset.images.columns)

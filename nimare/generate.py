@@ -1,12 +1,23 @@
 """Utilities for generating data for testing."""
 from itertools import zip_longest
+import gzip
+import tempfile
+from pathlib import Path
 
+import nibabel as nib
+import requests
 import numpy as np
 import nilearn
 
 from .dataset import Dataset
 from .meta.utils import compute_ale_ma, get_ale_kernel
-from .transforms import vox2mm, mm2vox
+from .transforms import vox2mm, mm2vox, transform_images
+from .io import convert_neurovault_to_dataset
+
+
+# defaults for creating a neurovault dataset
+NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
+CONTRAST_OF_INTEREST = "as-Animal"
 
 
 def create_coordinate_dataset(
@@ -103,6 +114,20 @@ def create_coordinate_dataset(
     dataset = Dataset(source_dict)
 
     return ground_truth_foci, dataset
+
+
+def create_neurovault_dataset(collection_ids=NEUROVAULT_IDS, contrast=CONTRAST_OF_INTEREST, img_dir=None):
+    """
+    Create a dataset from neurovault collections, assuming the neurovault collections
+    have beta, t, and varcope maps, and z-maps need to be created.
+
+    """
+    dataset = convert_neurovault_to_dataset(collection_ids, contrast, img_dir)
+    dataset.images = transform_images(
+        dataset.images, target="z", masker=dataset.masker, metadata_df=dataset.metadata
+    )
+
+    return dataset
 
 
 def _create_source(foci, sample_sizes, space="MNI"):

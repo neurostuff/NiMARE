@@ -3,7 +3,11 @@ import json
 import re
 from itertools import groupby
 from operator import itemgetter
+import gzip
+import tempfile
+from pathlib import Path
 
+import requests
 import numpy as np
 import pandas as pd
 
@@ -265,3 +269,87 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
         )
     dict_ = convert_sleuth_to_dict(text_file)
     return Dataset(dict_, target=target)
+
+
+def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None):
+    """
+    Convert a group neurovault collections into a NiMARE Dataset.
+
+    Parameters
+    ----------
+    collection_ids : :obj:`list` of :obj:`int`
+        A list of collections on neurovault specified by their id.
+        The collection ids can accessed through the neurovault API
+        (i.e., https://neurovault.org/api/collections) or
+        their main website (i.e., https://neurovault.org/collections).
+        For example, in this URL https://neurovault.org/collections/8836/,
+        `8836` is the collection id.
+    contrast : :obj:`str`
+        String representing the name of the contrast you wish add to the dataset.
+        For example, under the `Name` column in this URL https://neurovault.org/collections/8836/,
+        a valid contrast could be "as-Animal"
+    img_dir : :obj:`str` or None
+        Base path to save all the downloaded images, by default the images
+        will be saved to a temporary directory with the prefix "neurovault"
+
+    """
+    if img_dir is None:
+        img_dir = Path(tempfile.mkdtemp(prefix="neurovault_"))
+    else:
+        img_dir = Path(img_dir)
+        img_dir.mkdir(parents=True, exist_ok=False)
+
+    map_type_conversion = {
+        "T map": "t",
+        "variance": "varcope",
+        "univariate-beta map": "beta",
+    }
+
+    dataset_dict = {}
+    for nv_coll in collection_ids:
+        nv_url = f'https://neurovault.org/api/collections/{nv_coll}/images/?format=json'
+        images = requests.get(nv_url).json()
+
+        dataset_dict[f"study-{nv_coll}"] = {
+            "contrasts": {
+                contrast: {
+                    "images": {
+                        "beta": None,
+                        "t": None,
+                        "varcope": None,
+                    },
+                    "metadata": {
+                        "sample_sizes": None
+                    },
+                }
+            }
+        }
+
+        for img_dict in images['results']:
+            if not ((img_dict['name'] == contrast or img_dict['name'].startswith(f"{contrast}_stat"))
+                    and img_dict['map_type'] in map_type_conversion):
+                continue
+            
+            filename = img_dir / Path(img_dict['file']).name
+
+            if not filename.exists():
+                r = requests.get(img_dict['file'])
+                with open(filename, 'wb') as f:
+                    f.write(r.content)
+
+            (dataset_dict[f"study-{nv_coll}"]
+                         ["contrasts"]
+                         [contrast]
+                         ["images"]
+                         [map_type_conversion[img_dict['map_type']]]) = filename.as_posix()
+
+        # take the sample size from the final image entry (they should all be the same)
+        (dataset_dict[f"study-{nv_coll}"]
+                         ["contrasts"]
+                         [contrast]
+                         ["metadata"]
+                         ["sample_sizes"]) = [img_dict['number_of_subjects']]
+
+    dataset = Dataset(dataset_dict)
+
+    return dataset
