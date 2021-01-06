@@ -6,18 +6,23 @@ labels: 'bug'
 assignees: ''
 
 ---
-<!--
+## Summary
+<!--What is the nature of the bug?-->
 
-For the Bug Report,
-Include this information:
--------------------------
-What version of NiMARE are you using?
-What were you trying to do?
-What did you expect will happen?
-What actually happened?
+## Additional details
+<!--Please fill in the following details-->
+- NiMARE version:
 
-List the steps you performed that revealed the bug to you.
-Include any code samples. Enclose them in triple back-ticks (```)
+### What were you trying to do?
+
+### What did you expect to happen?
+
+### What actually happened?
+
+## Reproducing the bug
+<!--Please share any steps you performed that revealed the bug-->
+<!--Please include any code snippets.
+Enclose them in triple back-ticks (```)
 Like this:
 
 ```
