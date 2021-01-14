@@ -1,6 +1,4 @@
-"""
-Image-based meta-analysis estimators
-"""
+"""Image-based meta-analysis estimators."""
 from __future__ import division
 
 import logging
@@ -17,8 +15,8 @@ LGR = logging.getLogger(__name__)
 
 
 class Fishers(MetaEstimator):
-    """
-    An image-based meta-analytic test using t- or z-statistic images.
+    """An image-based meta-analytic test using t- or z-statistic images.
+
     Requires z-statistic images, but will be extended to work with t-statistic
     images as well.
 
@@ -40,7 +38,7 @@ class Fishers(MetaEstimator):
       Statistical methods for research workers., (5th Ed).
       https://www.cabdirect.org/cabdirect/abstract/19351601205
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.FisherCombinationTest`:
         The PyMARE estimator called by this class.
@@ -64,8 +62,9 @@ class Fishers(MetaEstimator):
 
 
 class Stouffers(MetaEstimator):
-    """
-    A t-test on z-statistic images. Requires z-statistic images.
+    """A t-test on z-statistic images.
+
+    Requires z-statistic images.
 
     Parameters
     ----------
@@ -96,7 +95,7 @@ class Stouffers(MetaEstimator):
       biology, 24(8), 1836-1841.
       https://doi.org/10.1111/j.1420-9101.2011.02297.x
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.StoufferCombinationTest`:
         The PyMARE estimator called by this class.
@@ -132,8 +131,7 @@ class Stouffers(MetaEstimator):
 
 
 class WeightedLeastSquares(MetaEstimator):
-    """
-    Weighted least-squares meta-regression.
+    """Weighted least-squares meta-regression.
 
     Provides the weighted least-squares estimate of the fixed effects given
     known/assumed between-study variance tau^2.
@@ -161,7 +159,7 @@ class WeightedLeastSquares(MetaEstimator):
       methods for meta-analysis. Statistics in Medicine, 20(6), 825–840.
       https://doi.org/10.1002/sim.650
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.WeightedLeastSquares`:
         The PyMARE estimator called by this class.
@@ -188,8 +186,7 @@ class WeightedLeastSquares(MetaEstimator):
 
 
 class DerSimonianLaird(MetaEstimator):
-    """
-    DerSimonian-Laird meta-regression estimator.
+    """DerSimonian-Laird meta-regression estimator.
 
     Estimates the between-subject variance tau^2 using the DerSimonian-Laird
     (1986) method-of-moments approach.
@@ -212,7 +209,7 @@ class DerSimonianLaird(MetaEstimator):
       likelihood-based inference in meta-analysis and meta-regression.
       Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.DerSimonianLaird`:
         The PyMARE estimator called by this class.
@@ -238,8 +235,7 @@ class DerSimonianLaird(MetaEstimator):
 
 
 class Hedges(MetaEstimator):
-    """
-    Hedges meta-regression estimator.
+    """Hedges meta-regression estimator.
 
     Estimates the between-subject variance tau^2 using the Hedges & Olkin (1985)
     approach.
@@ -258,7 +254,7 @@ class Hedges(MetaEstimator):
     ----------
     * Hedges LV, Olkin I. 1985. Statistical Methods for Meta‐Analysis.
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.Hedges`:
         The PyMARE estimator called by this class.
@@ -284,9 +280,7 @@ class Hedges(MetaEstimator):
 
 
 class SampleSizeBasedLikelihood(MetaEstimator):
-    """
-    Likelihood-based estimator for estimates with known sample sizes but
-    unknown sampling variances.
+    """Method estimates with known sample sizes but unknown sampling variances.
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     betas using the specified likelihood-based estimator (ML or REML).
@@ -317,7 +311,7 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.SampleSizeBasedLikelihoodEstimator`:
         The PyMARE estimator called by this class.
@@ -349,8 +343,7 @@ class SampleSizeBasedLikelihood(MetaEstimator):
 
 
 class VarianceBasedLikelihood(MetaEstimator):
-    """
-    A likelihood-based meta-analysis method for estimates with known variances.
+    """A likelihood-based meta-analysis method for estimates with known variances.
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     coefficients using the specified likelihood-based estimator (ML or REML).
@@ -388,7 +381,7 @@ class VarianceBasedLikelihood(MetaEstimator):
       likelihood-based inference in meta-analysis and meta-regression.
       Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.VarianceBasedLikelihoodEstimator`:
         The PyMARE estimator called by this class.
@@ -416,8 +409,7 @@ class VarianceBasedLikelihood(MetaEstimator):
 
 
 class PermutedOLS(MetaEstimator):
-    r"""
-    An analysis with permuted ordinary least squares (OLS), using nilearn.
+    r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
 
     Parameters
     ----------
@@ -480,8 +472,8 @@ class PermutedOLS(MetaEstimator):
         return images
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
-        """
-        Perform FWE correction using the max-value permutation method.
+        """Perform FWE correction using the max-value permutation method.
+
         Only call this method from within a Corrector.
 
         Parameters

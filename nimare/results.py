@@ -1,6 +1,4 @@
-"""
-Base classes for datasets.
-"""
+"""Tools for managing meta-analytic results."""
 import copy
 import logging
 import os
@@ -11,8 +9,7 @@ LGR = logging.getLogger(__name__)
 
 
 class MetaResult(object):
-    """
-    Base class for meta-analytic results.
+    """Base class for meta-analytic results.
 
     Parameters
     ----------
@@ -39,8 +36,7 @@ class MetaResult(object):
         self.maps = maps or {}
 
     def get_map(self, name, return_type="image"):
-        """
-        Get stored map as image or array.
+        """Get stored map as image or array.
 
         Parameters
         ----------
@@ -56,8 +52,7 @@ class MetaResult(object):
         return self.masker.inverse_transform(m) if return_type == "image" else m
 
     def save_maps(self, output_dir=".", prefix="", prefix_sep="_", names=None):
-        """
-        Save results to files.
+        """Save results to files.
 
         Parameters
         ----------
@@ -92,8 +87,6 @@ class MetaResult(object):
             img.to_filename(outpath)
 
     def copy(self):
-        """
-        Returns copy of result object.
-        """
+        """Return copy of result object."""
         new = MetaResult(self.estimator, self.masker, copy.deepcopy(self.maps))
         return new

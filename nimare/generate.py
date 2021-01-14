@@ -1,4 +1,4 @@
-"""Utilities for generating data for testing"""
+"""Utilities for generating data for testing."""
 from itertools import zip_longest
 
 import numpy as np
@@ -106,7 +106,7 @@ def create_coordinate_dataset(
 
 
 def _create_source(foci, sample_sizes, space="MNI"):
-    """Create dictionary according to nimads(ish) specification
+    """Create dictionary according to nimads(ish) specification.
 
     Parameters
     ----------
@@ -253,5 +253,5 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
 
 
 def _array_like(obj):
-    """Test if obj is array-like"""
+    """Test if obj is array-like."""
     return isinstance(obj, (list, tuple, np.ndarray))

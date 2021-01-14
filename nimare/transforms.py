@@ -1,5 +1,4 @@
-"""Miscellaneous spatial and statistical transforms
-"""
+"""Miscellaneous spatial and statistical transforms."""
 import logging
 import os.path as op
 
@@ -14,9 +13,7 @@ LGR = logging.getLogger(__name__)
 
 
 def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
-    """
-    Generate images of a given type, depending on compatible images of other
-    types, and write out to files.
+    """Generate images of a given type from other image types and write out to files.
 
     Parameters
     ----------
@@ -89,8 +86,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
 
 
 def resolve_transforms(target, available_data, masker):
-    """Figure out the appropriate set of transforms for given available data
-    to a target image type, and apply them.
+    """Determine and apply the appropriate transforms to a target image type from available data.
 
     Parameters
     ----------
@@ -190,8 +186,7 @@ def resolve_transforms(target, available_data, masker):
 
 
 def sample_sizes_to_dof(sample_sizes):
-    """A simple heuristic for calculating degrees of freedom from a list of
-    sample sizes.
+    """Calculate degrees of freedom from a list of sample sizes using a simple heuristic.
 
     Parameters
     ----------
@@ -209,8 +204,7 @@ def sample_sizes_to_dof(sample_sizes):
 
 
 def sample_sizes_to_sample_size(sample_sizes):
-    """A simple heuristic for appropriate sample size from a list of sample
-    sizes.
+    """Calculate appropriate sample size from a list of sample sizes using a simple heuristic.
 
     Parameters
     ----------
@@ -268,21 +262,21 @@ def se_to_varcope(se):
 
 
 def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
-    """Convert "sample variance of the dataset" (variance of the individual
-    observations in a single sample) to "sampling variance" (variance of
-    sampling distribution for the parameter).
+    """Convert "sample variance of the dataset" to "sampling variance".
 
     Parameters
     ----------
     samplevar_dataset : array_like
-        Sample variance of the dataset (e.g., ``np.var(values)``).
+        Sample variance of the dataset (i.e., variance of the individual observations in a single
+        sample). Can be calculated with ``np.var``.
     sample_size : int
         Sample size
 
     Returns
     -------
     varcope : array_like
-        Sampling variance of the parameter
+        Sampling variance of the parameter (i.e., variance of sampling distribution for the
+        parameter).
 
     Notes
     -----
@@ -364,8 +358,7 @@ def p_to_z(p, tail="two"):
 @due.dcite(references.T2Z_TRANSFORM, description="Introduces T-to-Z transform.")
 @due.dcite(references.T2Z_IMPLEMENTATION, description="Python implementation of T-to-Z transform.")
 def t_to_z(t_values, dof):
-    """
-    Convert t-statistics to z-statistics.
+    """Convert t-statistics to z-statistics.
 
     An implementation of [1]_ from Vanessa Sochat's TtoZ package [2]_.
 
@@ -420,8 +413,7 @@ def t_to_z(t_values, dof):
 
 
 def z_to_t(z_values, dof):
-    """
-    Convert z-statistics to t-statistics.
+    """Convert z-statistics to t-statistics.
 
     An inversion of the t_to_z implementation of [1]_ from Vanessa Sochat's
     TtoZ package [2]_.
@@ -477,8 +469,7 @@ def z_to_t(z_values, dof):
 
 
 def vox2mm(ijk, affine):
-    """
-    Convert matrix subscripts to coordinates.
+    """Convert matrix subscripts to coordinates.
 
     Parameters
     ----------
@@ -503,8 +494,7 @@ def vox2mm(ijk, affine):
 
 
 def mm2vox(xyz, affine):
-    """
-    Convert coordinates to matrix subscripts.
+    """Convert coordinates to matrix subscripts.
 
     Parameters
     ----------
@@ -539,8 +529,7 @@ def mm2vox(xyz, affine):
     description="Validates the Lancaster MNI-to-Talairach and " "Talairach-to-MNI transforms.",
 )
 def tal2mni(coords):
-    """
-    Convert coordinates from Talairach space to MNI space.
+    """Convert coordinates from Talairach space to MNI space.
 
     Parameters
     ----------
@@ -614,8 +603,7 @@ def tal2mni(coords):
     description="Validates the Lancaster MNI-to-Talairach and " "Talairach-to-MNI transforms.",
 )
 def mni2tal(coords):
-    """
-    Convert coordinates from MNI space Talairach space.
+    """Convert coordinates from MNI space Talairach space.
 
     Parameters
     ----------

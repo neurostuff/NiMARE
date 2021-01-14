@@ -249,8 +249,7 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
 
 def fdr(p, q=0.05):
-    """Determine FDR threshold given a p value array and desired false
-    discovery rate q.
+    """Determine FDR threshold given a p value array and desired false discovery rate q.
 
     Parameters
     ----------

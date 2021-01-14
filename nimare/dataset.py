@@ -1,6 +1,4 @@
-"""
-Classes for representing datasets of images and/or coordinates.
-"""
+"""Classes for representing datasets of images and/or coordinates."""
 import copy
 import json
 import logging
@@ -26,9 +24,7 @@ LGR = logging.getLogger(__name__)
 
 
 class Dataset(NiMAREBase):
-    """
-    Storage container for a coordinate- and/or image-based meta-analytic
-    dataset/database.
+    """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
 
     Parameters
     ----------
@@ -124,8 +120,9 @@ class Dataset(NiMAREBase):
 
     @property
     def masker(self):
-        """:class:`nilearn.input_data.NiftiMasker` or similar: Masker object
-        defining the space and location of the area of interest (e.g., 'brain').
+        """:class:`nilearn.input_data.NiftiMasker` or similar: Masker object.
+
+        Defines the space and location of the area of interest (e.g., 'brain').
         """
         return self.__masker
 
@@ -228,8 +225,7 @@ class Dataset(NiMAREBase):
         self.__texts = df.sort_values(by="id")
 
     def slice(self, ids):
-        """
-        Create a new dataset with only requested IDs.
+        """Create a new dataset with only requested IDs.
 
         Parameters
         ----------
@@ -251,9 +247,9 @@ class Dataset(NiMAREBase):
         return new_dset
 
     def update_path(self, new_path):
-        """
-        Update paths to images. Prepends new path to the relative path for
-        files in Dataset.images.
+        """Update paths to images.
+
+        Prepends new path to the relative path for files in Dataset.images.
 
         Parameters
         ----------
@@ -275,8 +271,7 @@ class Dataset(NiMAREBase):
         return copy.deepcopy(self)
 
     def get(self, dict_):
-        """
-        Retrieve files and/or metadata from the current Dataset.
+        """Retrieve files and/or metadata from the current Dataset.
 
         Parameters
         ----------
@@ -324,8 +319,7 @@ class Dataset(NiMAREBase):
         return results
 
     def get_labels(self, ids=None):
-        """
-        Extract list of labels for which studies in Dataset have annotations.
+        """Extract list of labels for which studies in Dataset have annotations.
 
         Parameters
         ----------
@@ -350,8 +344,7 @@ class Dataset(NiMAREBase):
         return result
 
     def get_texts(self, ids=None, text_type=None):
-        """
-        Extract list of texts of a given type for selected IDs.
+        """Extract list of texts of a given type for selected IDs.
 
         Parameters
         ----------
@@ -405,8 +398,7 @@ class Dataset(NiMAREBase):
         return result
 
     def get_metadata(self, ids=None, field=None):
-        """
-        Get metadata from Dataset.
+        """Get metadata from Dataset.
 
         Parameters
         ----------
@@ -458,8 +450,7 @@ class Dataset(NiMAREBase):
             return result
 
     def get_images(self, ids=None, imtype=None):
-        """
-        Get images of a certain type for a subset of studies in the dataset.
+        """Get images of a certain type for a subset of studies in the dataset.
 
         Parameters
         ----------
@@ -514,8 +505,7 @@ class Dataset(NiMAREBase):
             return result
 
     def get_studies_by_label(self, labels=None, label_threshold=0.5):
-        """
-        Extract list of studies with a given label.
+        """Extract list of studies with a given label.
 
         Parameters
         ----------
@@ -549,8 +539,7 @@ class Dataset(NiMAREBase):
         return found_ids
 
     def get_studies_by_mask(self, mask):
-        """
-        Extract list of studies with at least one coordinate in mask.
+        """Extract list of studies with at least one coordinate in mask.
 
         Parameters
         ----------
@@ -579,9 +568,7 @@ class Dataset(NiMAREBase):
         return found_ids
 
     def get_studies_by_coordinate(self, xyz, r=20):
-        """
-        Extract list of studies with at least one focus within radius r of
-        requested coordinates.
+        """Extract list of studies with at least one focus within radius of requested coordinates.
 
         Parameters
         ----------

@@ -1,6 +1,4 @@
-"""
-Dataset and trained model downloading functions
-"""
+"""Dataset and trained model downloading functions."""
 import warnings
 
 from .extract import (

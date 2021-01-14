@@ -1,6 +1,4 @@
-"""
-Base classes for datasets.
-"""
+"""Base classes for NiMARE."""
 import gzip
 import inspect
 import logging
@@ -18,22 +16,18 @@ LGR = logging.getLogger(__name__)
 
 
 class NiMAREBase(metaclass=ABCMeta):
-    """
-    Base class for NiMARE.
+    """Base class for NiMARE.
+
+    TODO: Actually write/refactor class methods. They mostly come directly from sklearn
+    https://github.com/scikit-learn/scikit-learn/blob/
+    2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
     """
 
     def __init__(self):
-        """
-        TODO: Actually write/refactor class methods. They mostly come directly from sklearn
-        https://github.com/scikit-learn/scikit-learn/blob/
-        2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
-        """
         pass
 
     def _check_ncores(self, n_cores):
-        """
-        Check number of cores used for method.
-        """
+        """Check number of cores used for method."""
         if n_cores == -1:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
@@ -46,7 +40,7 @@ class NiMAREBase(metaclass=ABCMeta):
 
     @classmethod
     def _get_param_names(cls):
-        """Get parameter names for the estimator"""
+        """Get parameter names for the estimator."""
         # fetch the constructor or the original constructor before
         # deprecation wrapping if any
         init = getattr(cls.__init__, "deprecated_original", cls.__init__)
@@ -137,8 +131,7 @@ class NiMAREBase(metaclass=ABCMeta):
         return self
 
     def save(self, filename, compress=True):
-        """
-        Pickle the class instance to the provided file.
+        """Pickle the class instance to the provided file.
 
         Parameters
         ----------
@@ -157,8 +150,7 @@ class NiMAREBase(metaclass=ABCMeta):
 
     @classmethod
     def load(cls, filename, compressed=True):
-        """
-        Load a pickled class instance from file.
+        """Load a pickled class instance from file.
 
         Parameters
         ----------
@@ -198,16 +190,14 @@ class NiMAREBase(metaclass=ABCMeta):
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults"""
+    """Estimators take in Datasets and return MetaResults."""
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
     _required_inputs = {}
 
     def _validate_input(self, dataset):
-        """
-        Search for, and validate, required inputs as necessary.
-        """
+        """Search for, and validate, required inputs as necessary."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 'Argument "dataset" must be a valid Dataset '
@@ -226,14 +216,11 @@ class Estimator(NiMAREBase):
                 self.inputs_[k] = v
 
     def _preprocess_input(self, dataset):
-        """
-        Perform any additional preprocessing steps on data in self.inputs_
-        """
+        """Perform any additional preprocessing steps on data in self.inputs_."""
         pass
 
     def fit(self, dataset):
-        """
-        Fit Estimator to Dataset.
+        """Fit Estimator to Dataset.
 
         Parameters
         ----------
@@ -266,10 +253,10 @@ class Estimator(NiMAREBase):
 
     @abstractmethod
     def _fit(self, dataset):
-        """
-        Apply estimation to dataset and output results. Must return a
-        dictionary of results, where keys are names of images and values are
-        ndarrays.
+        """Apply estimation to dataset and output results.
+
+        Must return a dictionary of results, where keys are names of images
+        and values are ndarrays.
         """
         pass
 
@@ -305,7 +292,7 @@ class MetaEstimator(Estimator):
 
 
 class Transformer(NiMAREBase):
-    """Transformers take in Datasets and return Datasets
+    """Transformers take in Datasets and return Datasets.
 
     Initialize with hyperparameters.
     """
@@ -329,9 +316,10 @@ class Decoder(NiMAREBase):
     __id_cols = ["id", "study_id", "contrast_id"]
 
     def _preprocess_input(self, dataset):
-        """
-        Select features for model based on requested features and feature_group, as well as
-        which features have at least one study in the Dataset with the feature.
+        """Select features for model based on requested features and feature_group.
+
+        This also takes into account which features have at least one study in the
+        Dataset with the feature.
         """
         # Reduce feature list as desired
         if self.feature_group is not None:
@@ -357,8 +345,7 @@ class Decoder(NiMAREBase):
         self.features_ = features
 
     def fit(self, dataset):
-        """
-        Fit Estimator to Dataset.
+        """Fit Decoder to Dataset.
 
         Parameters
         ----------
@@ -368,12 +355,12 @@ class Decoder(NiMAREBase):
         Returns
         -------
         :obj:`nimare.results.MetaResult`
-            Results of Estimator fitting.
+            Results of Decoder fitting.
 
         Notes
         -----
         The `fit` method is a light wrapper that runs input validation and
-        preprocessing before fitting the actual model. Estimators' individual
+        preprocessing before fitting the actual model. Decoders' individual
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
 
@@ -385,8 +372,8 @@ class Decoder(NiMAREBase):
 
     @abstractmethod
     def _fit(self, dataset):
-        """
-        Apply decoding to dataset and output results.
+        """Apply decoding to dataset and output results.
+
         Must return a DataFrame, with one row for each feature.
         """
         pass

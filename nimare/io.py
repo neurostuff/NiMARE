@@ -1,6 +1,4 @@
-"""
-Input/Output operations.
-"""
+"""Input/Output operations."""
 import json
 import re
 from itertools import groupby
@@ -13,8 +11,7 @@ from .dataset import Dataset
 
 
 def convert_neurosynth_to_dict(text_file, annotations_file=None):
-    """
-    Convert Neurosynth database files to a dictionary.
+    """Convert Neurosynth database files to a dictionary.
 
     Parameters
     ----------
@@ -73,8 +70,7 @@ def convert_neurosynth_to_dict(text_file, annotations_file=None):
 
 
 def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
-    """
-    Convert Neurosynth dataset text file to a NiMARE json file.
+    """Convert Neurosynth dataset text file to a NiMARE json file.
 
     Parameters
     ----------
@@ -92,9 +88,7 @@ def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
 
 
 def convert_neurosynth_to_dataset(text_file, annotations_file=None, target="mni152_2mm"):
-    """
-    Convert Neurosynth database files into dictionary and create NiMARE Dataset
-    with dictionary.
+    """Convert Neurosynth database files into NiMARE Dataset.
 
     Parameters
     ----------
@@ -116,8 +110,7 @@ def convert_neurosynth_to_dataset(text_file, annotations_file=None, target="mni1
 
 
 def convert_sleuth_to_dict(text_file):
-    """
-    Convert Sleuth text file to a dictionary.
+    """Convert Sleuth text file to a dictionary.
 
     Parameters
     ----------
@@ -229,8 +222,7 @@ def convert_sleuth_to_dict(text_file):
 
 
 def convert_sleuth_to_json(text_file, out_file):
-    """
-    Convert Sleuth output text file into json.
+    """Convert Sleuth output text file into json.
 
     Parameters
     ----------
@@ -251,9 +243,7 @@ def convert_sleuth_to_json(text_file, out_file):
 
 
 def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
-    """
-    Convert Sleuth output text file into dictionary and create NiMARE Dataset
-    with dictionary.
+    """Convert Sleuth output text file into NiMARE Dataset.
 
     Parameters
     ----------

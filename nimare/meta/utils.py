@@ -1,6 +1,4 @@
-"""
-Utilities for coordinate-based meta-analysis estimators
-"""
+"""Utilities for coordinate-based meta-analysis estimators."""
 import logging
 import os
 
@@ -260,8 +258,8 @@ def compute_p2m_ma(
 
 
 def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False):
-    """
-    Compute (M)KDA modeled activation (MA) map.
+    """Compute (M)KDA modeled activation (MA) map.
+
     Replaces the values around each focus in ijk with binary sphere.
 
     Parameters
@@ -322,8 +320,8 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overla
 
 
 def compute_ale_ma(shape, ijk, kernel):
-    """
-    Generate ALE modeled activation (MA) maps.
+    """Generate ALE modeled activation (MA) maps.
+
     Replaces the values around each focus in ijk with the contrast-specific
     kernel. Takes the element-wise maximum when looping through foci, which
     accounts for foci which are near to one another and may have overlapping
@@ -384,10 +382,7 @@ def compute_ale_ma(shape, ijk, kernel):
 
 @due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
 def get_ale_kernel(img, sample_size=None, fwhm=None):
-    """
-    Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given
-    sample size (sample_size) or fwhm (in mm).
-    """
+    """Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given sample size or fwhm."""
     if sample_size is not None and fwhm is not None:
         raise ValueError('Only one of "sample_size" and "fwhm" may be specified')
     elif sample_size is None and fwhm is None:

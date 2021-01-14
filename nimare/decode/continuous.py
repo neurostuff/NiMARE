@@ -1,6 +1,4 @@
-"""
-Methods for decoding unthresholded brain maps into text.
-"""
+"""Methods for decoding unthresholded brain maps into text."""
 import inspect
 import logging
 
@@ -21,10 +19,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(references.GCLDA_DECODING, description="Describes decoding methods using GC-LDA.")
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
-    r"""
-    Perform image-to-text decoding for continuous inputs (e.g.,
-    unthresholded statistical maps), according to the method described in
-    Rubin et al. (2017).
+    r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
     Parameters
     ----------
@@ -116,8 +111,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
 @due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class CorrelationDecoder(Decoder):
-    """Decode an unthresholded image by correlating the image with
-    meta-analytic maps corresponding to specific features.
+    """Decode an unthresholded image by correlating the image with meta-analytic maps.
 
     Parameters
     ----------
@@ -159,8 +153,7 @@ class CorrelationDecoder(Decoder):
         self.results = None
 
     def _fit(self, dataset):
-        """
-        Generate feature-specific meta-analytic maps for dataset.
+        """Generate feature-specific meta-analytic maps for dataset.
 
         Parameters
         ----------
@@ -227,8 +220,7 @@ class CorrelationDecoder(Decoder):
 
 
 class CorrelationDistributionDecoder(Decoder):
-    """Decode an unthresholded image by correlating the image with
-    images from all studies labeled with specific features.
+    """Decode an unthresholded image by correlating the image with study-wise images.
 
     Parameters
     ----------
@@ -258,9 +250,7 @@ class CorrelationDistributionDecoder(Decoder):
         self.results = None
 
     def _fit(self, dataset):
-        """
-        Collect sets of maps from the Dataset corresponding to each requested
-        feature.
+        """Collect sets of maps from the Dataset corresponding to each requested feature.
 
         Parameters
         ----------

@@ -1,3 +1,4 @@
+"""Coordinate-based meta-analytic estimators."""
 from .ale import ALE, ALESubtraction, SCALE
 from .mkda import MKDADensity, MKDAChi2, KDA
 

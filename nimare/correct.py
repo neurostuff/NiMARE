@@ -1,6 +1,4 @@
-"""
-Multiple comparisons correction methods
-"""
+"""Multiple comparisons correction methods."""
 import inspect
 import logging
 from abc import ABCMeta, abstractmethod, abstractproperty
@@ -15,9 +13,7 @@ LGR = logging.getLogger(__name__)
 
 
 class Corrector(metaclass=ABCMeta):
-    """
-    Base class for multiple comparison correction methods in :mod:`nimare.correct`.
-    """
+    """Base class for multiple comparison correction methods in :mod:`nimare.correct`."""
 
     # The name of the method that must be implemented in an Estimator class
     # in order to override the default correction method.
@@ -78,8 +74,7 @@ class Corrector(metaclass=ABCMeta):
         return corr_maps
 
     def transform(self, result):
-        """
-        Apply the multiple comparisons correction method to a MetaResult object.
+        """Apply the multiple comparisons correction method to a MetaResult object.
 
         Parameters
         ----------
@@ -127,8 +122,7 @@ class Corrector(metaclass=ABCMeta):
 
 
 class FWECorrector(Corrector):
-    """
-    Perform family-wise error rate correction on a meta-analysis.
+    """Perform family-wise error rate correction on a meta-analysis.
 
     Parameters
     ----------
@@ -168,8 +162,7 @@ class FWECorrector(Corrector):
 
 
 class FDRCorrector(Corrector):
-    """
-    Perform false discovery rate correction on a meta-analysis.
+    """Perform false discovery rate correction on a meta-analysis.
 
     Parameters
     ----------

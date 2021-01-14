@@ -1,6 +1,4 @@
-"""
-Workflow for running an ALE meta-analysis from a Sleuth text file.
-"""
+"""Workflow for running an ALE meta-analysis from a Sleuth text file."""
 import logging
 import os
 import pathlib
@@ -25,9 +23,7 @@ def ale_sleuth_workflow(
     fwhm=None,
     n_cores=-1,
 ):
-    """
-    Perform ALE meta-analysis from Sleuth text file.
-    """
+    """Perform ALE meta-analysis from Sleuth text file."""
     LGR.info("Loading coordinates...")
 
     if fwhm:
