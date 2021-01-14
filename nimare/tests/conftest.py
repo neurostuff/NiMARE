@@ -1,6 +1,4 @@
-"""
-Runs before tests
-"""
+"""Generate fixtures for tests."""
 import os
 from shutil import copyfile
 
@@ -14,9 +12,7 @@ from ..utils import get_resource_path
 
 @pytest.fixture(scope="session")
 def testdata_ibma(tmp_path_factory):
-    """
-    Load data from dataset into global variables.
-    """
+    """Load data from dataset into global variables."""
     tmpdir = tmp_path_factory.mktemp("testdata_ibma")
 
     # Load dataset
@@ -65,9 +61,7 @@ def testdata_cbma_full():
 
 @pytest.fixture(scope="session")
 def testdata_laird():
-    """
-    Load data from dataset into global variables.
-    """
+    """Load data from dataset into global variables."""
     testdata_laird = nimare.dataset.Dataset.load(
         os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
     )
