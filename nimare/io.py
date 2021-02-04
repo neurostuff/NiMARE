@@ -299,6 +299,14 @@ def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None,
         Dictionary whose keys are what you expect the `map_type` name to
         be in neurovault and the values are the name of the respective
         statistic map in a nimare dataset. Default = None.
+    dset_kwargs : :obj:`dict`
+        Keyword arguments to pass in when creating the Dataset object.
+        see :obj:`nimare.dataset.Dataset` for details.
+
+    Returns
+    -------
+    :obj:`nimare.dataset.Dataset`
+        Dataset object containing experiment information from neurovault.
     """
     if img_dir is None:
         img_dir = Path(tempfile.mkdtemp(prefix="neurovault_"))
