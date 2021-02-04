@@ -10,6 +10,7 @@ from pathlib import Path
 import requests
 import numpy as np
 import pandas as pd
+from nilearn.datasets import fetch_neurovault_ids
 
 from .dataset import Dataset
 
@@ -271,19 +272,22 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     return Dataset(dict_, target=target)
 
 
-def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None):
+def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None,
+                                  map_type_conversion=None, **dset_kwargs):
     """
     Convert a group neurovault collections into a NiMARE Dataset.
 
     Parameters
     ----------
-    collection_ids : :obj:`list` of :obj:`int`
+    collection_ids : :obj:`list` of :obj:`int` or :obj:`dict`
         A list of collections on neurovault specified by their id.
         The collection ids can accessed through the neurovault API
         (i.e., https://neurovault.org/api/collections) or
         their main website (i.e., https://neurovault.org/collections).
         For example, in this URL https://neurovault.org/collections/8836/,
         `8836` is the collection id.
+        collection_ids can also be a dictionary to give the collections
+        more informative names in the dataset.
     contrast : :obj:`str`
         String representing the name of the contrast you wish add to the dataset.
         For example, under the `Name` column in this URL https://neurovault.org/collections/8836/,
@@ -291,26 +295,32 @@ def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None):
     img_dir : :obj:`str` or None
         Base path to save all the downloaded images, by default the images
         will be saved to a temporary directory with the prefix "neurovault"
-
+    map_type_conversion : :obj:`dict` or None
+        Dictionary whose keys are what you expect the `map_type` name to
+        be in neurovault and the values are the name of the respective
+        statistic map in a nimare dataset. Default = None.
     """
     if img_dir is None:
         img_dir = Path(tempfile.mkdtemp(prefix="neurovault_"))
     else:
-        img_dir = Path(img_dir)
-        img_dir.mkdir(parents=True, exist_ok=False)
+        img_dir = Path(img_dir, exist_ok=True)
+        img_dir.mkdir(parents=True, exist_ok=True)
 
-    map_type_conversion = {
-        "T map": "t",
-        "variance": "varcope",
-        "univariate-beta map": "beta",
-    }
+    if map_type_conversion is None:
+        map_type_conversion = {
+            "T map": "t",
+            "variance": "varcope",
+            "univariate-beta map": "beta",
+        }
+    if not isinstance(collection_ids, dict):
+        collection_ids = {nv_coll: nv_coll for nv_coll in collection_ids}
 
     dataset_dict = {}
-    for nv_coll in collection_ids:
+    for coll_name, nv_coll in collection_ids.items():
         nv_url = f'https://neurovault.org/api/collections/{nv_coll}/images/?format=json'
         images = requests.get(nv_url).json()
 
-        dataset_dict[f"study-{nv_coll}"] = {
+        dataset_dict[f"study-{coll_name}"] = {
             "contrasts": {
                 contrast: {
                     "images": {
@@ -337,19 +347,19 @@ def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None):
                 with open(filename, 'wb') as f:
                     f.write(r.content)
 
-            (dataset_dict[f"study-{nv_coll}"]
+            (dataset_dict[f"study-{coll_name}"]
                          ["contrasts"]
                          [contrast]
                          ["images"]
                          [map_type_conversion[img_dict['map_type']]]) = filename.as_posix()
 
         # take the sample size from the final image entry (they should all be the same)
-        (dataset_dict[f"study-{nv_coll}"]
+        (dataset_dict[f"study-{coll_name}"]
                          ["contrasts"]
                          [contrast]
                          ["metadata"]
                          ["sample_sizes"]) = [img_dict['number_of_subjects']]
 
-    dataset = Dataset(dataset_dict)
+    dataset = Dataset(dataset_dict, **dset_kwargs)
 
     return dataset
