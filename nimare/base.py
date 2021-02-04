@@ -9,6 +9,10 @@ import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
+from nilearn.image import resample_to_img
+from nilearn._utils.niimg_conversions import _check_same_fov
+
+import nibabel as nb
 import numpy as np
 
 from .results import MetaResult
@@ -283,14 +287,35 @@ class MetaEstimator(Estimator):
             mask = get_masker(mask)
         self.masker = mask
 
-    def _preprocess_input(self, dataset):
+    def _preprocess_input(self, dataset, resample=False, **resample_kwargs):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
         masker = self.masker or dataset.masker
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
                 # Mask required input images using either the dataset's mask or
                 # the estimator's.
-                temp_arr = masker.transform(self.inputs_[name])
+                # make this explicit instead of implicit
+                # resample_imgs = True
+                # If no resampling is requested, check if resampling is required
+                if not resample:
+                    check_imgs = {img: nb.load(img) for img in self.inputs_[name]}
+                    check_imgs['reference_masker'] = masker.mask_img
+                    _check_same_fov(**check_imgs, raise_error=True)
+
+                # defaults for resampling images (nilearn's defaults do not work well)
+                if not resample_kwargs:
+                    resample_kwargs = {'clip': True, interpolation: 'linear'}
+
+                # resampling will only occur if shape/affines are different
+                # making this harmless if all img shapes/affines are the same
+                # as the reference
+                imgs = [
+                    resample_to_img(nb.load(img), masker.mask_img, **resample_kwargs)
+                    for img in self.inputs_[name]
+                ]
+                temp_arr = np.vstack(
+                    [masker.transform(img) for img in imgs]
+                )
 
                 # An intermediate step to mask out bad voxels. Can be dropped
                 # once PyMARE is able to handle masked arrays or missing data.
