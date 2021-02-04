@@ -116,13 +116,15 @@ def create_coordinate_dataset(
     return ground_truth_foci, dataset
 
 
-def create_neurovault_dataset(collection_ids=NEUROVAULT_IDS, contrast=CONTRAST_OF_INTEREST, img_dir=None):
+def create_neurovault_dataset(
+    collection_ids=NEUROVAULT_IDS, contrast=CONTRAST_OF_INTEREST, img_dir=None,
+    **dset_kwargs):
     """
     Create a dataset from neurovault collections, assuming the neurovault collections
     have beta, t, and varcope maps, and z-maps need to be created.
 
     """
-    dataset = convert_neurovault_to_dataset(collection_ids, contrast, img_dir)
+    dataset = convert_neurovault_to_dataset(collection_ids, contrast, img_dir, **dset_kwargs)
     dataset.images = transform_images(
         dataset.images, target="z", masker=dataset.masker, metadata_df=dataset.metadata
     )
