@@ -93,6 +93,9 @@ def testdata_ibma_resample(tmp_path_factory):
     mask_file = os.path.join(dset_dir, "mask.nii.gz")
     dset = nimare.dataset.Dataset(dset_file, mask=mask_file)
     dset.update_path(dset_dir)
+
+    # create reproducible random number generator for resampling
+    rng = np.random.default_rng(seed=123)
     # Move image contents of Dataset to temporary directory
     for c in dset.images.columns:
         if c.endswith("__relative"):
@@ -108,7 +111,7 @@ def testdata_ibma_resample(tmp_path_factory):
                 os.makedirs(dirname)
             # create random affine to make images different shapes
             affine = np.eye(3)
-            np.fill_diagonal(affine, np.random.choice([1, 2, 3]))
+            np.fill_diagonal(affine, rng.choice([1, 2, 3]))
             img = resample_img(
                 nib.load(f),
                 target_affine=affine,
