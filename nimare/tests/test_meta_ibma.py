@@ -145,11 +145,15 @@ def test_ibma_with_custom_masker(testdata_ibma):
         (False, {}, pytest.raises(ValueError)),
         (None, {}, pytest.raises(ValueError)),
         (True, {}, does_not_raise()),
-        (True, {"clip": False, "interpolation": "continuous"}, does_not_raise()),
+        (
+            True,
+            {"resample__clip": False, "resample__interpolation": "continuous"},
+            does_not_raise(),
+        ),
     ],
 )
 def test_ibma_resampling(testdata_ibma_resample, resample, resample_kwargs, expectation):
-    meta = ibma.Fishers(resample=resample, resample_kwargs=resample_kwargs)
+    meta = ibma.Fishers(resample=resample, **resample_kwargs)
     with expectation:
         meta.fit(testdata_ibma_resample)
     if isinstance(expectation, does_not_raise):

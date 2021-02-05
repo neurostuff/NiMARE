@@ -290,9 +290,9 @@ class MetaEstimator(Estimator):
         self.resample = kwargs.get("resample", False)
 
         # defaults for resampling images (nilearn's defaults do not work well)
-        self.resample_kwargs = kwargs.get(
-            "resample_kwargs", {"clip": True, "interpolation": "linear"}
-        )
+        self.resample_kwargs = {
+            k.split("resample__")[1]: v for k, v in kwargs.items() if k.startswith("resample__")
+        } or {"clip": True, "interpolation": "linear"}
 
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
