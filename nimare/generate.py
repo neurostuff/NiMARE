@@ -117,14 +117,49 @@ def create_coordinate_dataset(
 
 
 def create_neurovault_dataset(
-    collection_ids=NEUROVAULT_IDS, contrast=CONTRAST_OF_INTEREST, img_dir=None,
-    **dset_kwargs):
+    collection_ids=NEUROVAULT_IDS,
+    contrast=CONTRAST_OF_INTEREST,
+    img_dir=None,
+    map_type_conversion=None,
+    **dset_kwargs,
+):
     """
-    Create a dataset from neurovault collections, assuming the neurovault collections
-    have beta, t, and varcope maps, and z-maps need to be created.
+    Parameters
+    ----------
+    collection_ids : :obj:`list` of :obj:`int` or :obj:`dict`
+        A list of collections on neurovault specified by their id.
+        The collection ids can accessed through the neurovault API
+        (i.e., https://neurovault.org/api/collections) or
+        their main website (i.e., https://neurovault.org/collections).
+        For example, in this URL https://neurovault.org/collections/8836/,
+        `8836` is the collection id.
+        collection_ids can also be a dictionary whose keys are the informative
+        study name and the values are collection ids to give the collections
+        more informative names in the dataset.
+    contrast : :obj:`str`
+        String representing the name of the contrast you wish add to the dataset.
+        For example, under the `Name` column in this URL https://neurovault.org/collections/8836/,
+        a valid contrast could be "as-Animal"
+    img_dir : :obj:`str` or None
+        Base path to save all the downloaded images, by default the images
+        will be saved to a temporary directory with the prefix "neurovault"
+    map_type_conversion : :obj:`dict` or None
+        Dictionary whose keys are what you expect the `map_type` name to
+        be in neurovault and the values are the name of the respective
+        statistic map in a nimare dataset. Default = None.
+    **dset_kwargs : keyword arguments passed to Dataset
+        Keyword arguments to pass in when creating the Dataset object.
+        see :obj:`nimare.dataset.Dataset` for details.
 
+    Returns
+    -------
+    :obj:`nimare.dataset.Dataset`
+        Dataset object containing experiment information from neurovault.
     """
-    dataset = convert_neurovault_to_dataset(collection_ids, contrast, img_dir, **dset_kwargs)
+
+    dataset = convert_neurovault_to_dataset(
+        collection_ids, contrast, img_dir, map_type_conversion, **dset_kwargs
+    )
     dataset.images = transform_images(
         dataset.images, target="z", masker=dataset.masker, metadata_df=dataset.metadata
     )
