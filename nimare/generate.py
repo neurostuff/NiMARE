@@ -12,7 +12,7 @@ from .io import convert_neurovault_to_dataset
 
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
-CONTRAST_OF_INTEREST = "as-Animal"
+CONTRAST_OF_INTEREST = {"animal": "as-Animal"}
 
 
 def create_coordinate_dataset(
@@ -113,7 +113,7 @@ def create_coordinate_dataset(
 
 def create_neurovault_dataset(
     collection_ids=NEUROVAULT_IDS,
-    contrast=CONTRAST_OF_INTEREST,
+    contrasts=CONTRAST_OF_INTEREST,
     img_dir=None,
     map_type_conversion=None,
     **dset_kwargs,
@@ -131,10 +131,14 @@ def create_neurovault_dataset(
         collection_ids can also be a dictionary whose keys are the informative
         study name and the values are collection ids to give the collections
         more informative names in the dataset.
-    contrast : :obj:`str`
-        String representing the name of the contrast you wish add to the dataset.
-        For example, under the `Name` column in this URL https://neurovault.org/collections/8836/,
-        a valid contrast could be "as-Animal"
+    contrasts : :obj:`dict`
+        Dictionary whose keys represent the name of the contrast in
+        the dataset and whose values represent how that contrast is identified
+        in neurovault.
+        For example, under the ``Name`` column in this URL
+        https://neurovault.org/collections/8836/,
+        a valid contrast could be "as-Animal", which will be called "animal" in the created
+        dataset if the contrasts argument is ``{'animal': ["as-Animal"]}``.
     img_dir : :obj:`str` or None
         Base path to save all the downloaded images, by default the images
         will be saved to a temporary directory with the prefix "neurovault"
@@ -153,7 +157,7 @@ def create_neurovault_dataset(
     """
 
     dataset = convert_neurovault_to_dataset(
-        collection_ids, contrast, img_dir, map_type_conversion, **dset_kwargs
+        collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
     )
     dataset.images = transform_images(
         dataset.images, target="z", masker=dataset.masker, metadata_df=dataset.metadata
