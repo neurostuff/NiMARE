@@ -297,21 +297,29 @@ class MetaEstimator(Estimator):
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
         masker = self.masker or dataset.masker
+
+        mask_img = masker.mask_img or masker.labels_img
+        if isinstance(mask_img, str):
+            mask_img = nb.load(mask_img)
+
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
                 # If no resampling is requested, check if resampling is required
                 if not self.resample:
                     check_imgs = {img: nb.load(img) for img in self.inputs_[name]}
-                    check_imgs["reference_masker"] = masker.mask_img
+                    check_imgs["reference_masker"] = mask_img
                     _check_same_fov(**check_imgs, raise_error=True)
-
-                # resampling will only occur if shape/affines are different
-                # making this harmless if all img shapes/affines are the same
-                # as the reference
-                imgs = [
-                    resample_to_img(nb.load(img), masker.mask_img, **resample_kwargs)
-                    for img in self.inputs_[name]
-                ]
+                    # remove the reference image
+                    del check_imgs["reference_masker"]
+                    imgs = list(check_imgs.values())
+                else:
+                    # resampling will only occur if shape/affines are different
+                    # making this harmless if all img shapes/affines are the same
+                    # as the reference
+                    imgs = [
+                        resample_to_img(nb.load(img), mask_img, **self.resample_kwargs)
+                        for img in self.inputs_[name]
+                    ]
 
                 # Mask required input images using either the dataset's mask or
                 # the estimator's.
