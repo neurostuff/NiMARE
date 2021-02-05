@@ -2,8 +2,10 @@
 Test nimare.meta.ibma (image-based meta-analytic estimators).
 """
 import os.path as op
+from contextlib import ExitStack as does_not_raise
 
 from nilearn.input_data import NiftiLabelsMasker
+import pytest
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -135,3 +137,20 @@ def test_ibma_with_custom_masker(testdata_ibma):
     meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
     assert meta.results.maps["z"].shape == (5,)
+
+
+@pytest.mark.parametrize(
+    "resample,resample_kwargs,expectation",
+    [
+        (False, {}, pytest.raises(ValueError)),
+        (None, {}, pytest.raises(ValueError)),
+        (True, {}, does_not_raise()),
+        (True, {"clip": False, "interpolation": "continuous"}, does_not_raise()),
+    ],
+)
+def test_ibma_resampling(testdata_ibma_resample, resample, resample_kwargs, expectation):
+    meta = ibma.Fishers(resample=resample, resample_kwargs=resample_kwargs)
+    with expectation:
+        meta.fit(testdata_ibma_resample)
+    if isinstance(expectation, does_not_raise):
+        assert isinstance(meta.results, nimare.results.MetaResult)
