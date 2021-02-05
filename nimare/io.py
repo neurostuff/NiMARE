@@ -3,14 +3,12 @@ import json
 import re
 from itertools import groupby
 from operator import itemgetter
-import gzip
 import tempfile
 from pathlib import Path
 
 import requests
 import numpy as np
 import pandas as pd
-from nilearn.datasets import fetch_neurovault_ids
 
 from .dataset import Dataset
 
@@ -294,7 +292,8 @@ def convert_neurovault_to_dataset(
         Dictionary whose keys represent the name of the contrast in
         the dataset and whose values represent how that contrast is identified
         in neurovault.
-        For example, under the ``Name`` column in this URL https://neurovault.org/collections/8836/,
+        For example, under the ``Name`` column in this URL
+        https://neurovault.org/collections/8836/,
         a valid contrast could be "as-Animal", which will be called "animal" in the created
         dataset if the contrasts argument is ``{'animal': ["as-Animal"]}``.
     img_dir : :obj:`str` or None

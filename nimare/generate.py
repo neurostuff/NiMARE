@@ -1,11 +1,6 @@
 """Utilities for generating data for testing."""
 from itertools import zip_longest
-import gzip
-import tempfile
-from pathlib import Path
 
-import nibabel as nib
-import requests
 import numpy as np
 import nilearn
 
