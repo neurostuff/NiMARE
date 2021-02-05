@@ -272,8 +272,9 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     return Dataset(dict_, target=target)
 
 
-def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None,
-                                  map_type_conversion=None, **dset_kwargs):
+def convert_neurovault_to_dataset(
+    collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs
+):
     """
     Convert a group neurovault collections into a NiMARE Dataset.
 
@@ -286,12 +287,16 @@ def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None,
         their main website (i.e., https://neurovault.org/collections).
         For example, in this URL https://neurovault.org/collections/8836/,
         `8836` is the collection id.
-        collection_ids can also be a dictionary to give the collections
+        collection_ids can also be a dictionary whose keys are the informative
+        study name and the values are collection ids to give the collections
         more informative names in the dataset.
-    contrast : :obj:`str`
-        String representing the name of the contrast you wish add to the dataset.
-        For example, under the `Name` column in this URL https://neurovault.org/collections/8836/,
-        a valid contrast could be "as-Animal"
+    contrasts : :obj:`dict`
+        Dictionary whose keys represent the name of the contrast in
+        the dataset and whose values represent how that contrast is identified
+        in neurovault.
+        For example, under the ``Name`` column in this URL https://neurovault.org/collections/8836/,
+        a valid contrast could be "as-Animal", which will be called "animal" in the created
+        dataset if the contrasts argument is ``{'animal': ["as-Animal"]}``.
     img_dir : :obj:`str` or None
         Base path to save all the downloaded images, by default the images
         will be saved to a temporary directory with the prefix "neurovault"
@@ -299,7 +304,7 @@ def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None,
         Dictionary whose keys are what you expect the `map_type` name to
         be in neurovault and the values are the name of the respective
         statistic map in a nimare dataset. Default = None.
-    dset_kwargs : :obj:`dict`
+    **dset_kwargs : keyword arguments passed to Dataset
         Keyword arguments to pass in when creating the Dataset object.
         see :obj:`nimare.dataset.Dataset` for details.
 
@@ -320,53 +325,66 @@ def convert_neurovault_to_dataset(collection_ids, contrast, img_dir=None,
             "variance": "varcope",
             "univariate-beta map": "beta",
         }
+
     if not isinstance(collection_ids, dict):
         collection_ids = {nv_coll: nv_coll for nv_coll in collection_ids}
 
     dataset_dict = {}
     for coll_name, nv_coll in collection_ids.items():
-        nv_url = f'https://neurovault.org/api/collections/{nv_coll}/images/?format=json'
-        images = requests.get(nv_url).json()
+        for contrast_name, contrast_ids in contrasts.items():
+            nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
+            images = requests.get(nv_url).json()
 
-        dataset_dict[f"study-{coll_name}"] = {
-            "contrasts": {
-                contrast: {
-                    "images": {
-                        "beta": None,
-                        "t": None,
-                        "varcope": None,
-                    },
-                    "metadata": {
-                        "sample_sizes": None
-                    },
+            dataset_dict[f"study-{coll_name}"] = {
+                "contrasts": {
+                    contrast_name: {
+                        "images": {
+                            "beta": None,
+                            "t": None,
+                            "varcope": None,
+                        },
+                        "metadata": {"sample_sizes": None},
+                    }
                 }
             }
-        }
 
-        for img_dict in images['results']:
-            if not ((img_dict['name'] == contrast or img_dict['name'].startswith(f"{contrast}_stat"))
-                    and img_dict['map_type'] in map_type_conversion):
-                continue
-            
-            filename = img_dir / Path(img_dict['file']).name
+            for img_dict in images["results"]:
+                if not (
+                    (
+                        img_dict["name"] in contrast_ids
+                        or any(
+                            [
+                                img_dict["name"].startswith(f"{contrast}_stat")
+                                for contrast in contrast_ids
+                            ]
+                        )
+                    )
+                    and img_dict["map_type"] in map_type_conversion
+                ):
+                    continue
 
-            if not filename.exists():
-                r = requests.get(img_dict['file'])
-                with open(filename, 'wb') as f:
-                    f.write(r.content)
+                filename = img_dir / Path(img_dict["file"]).name
 
-            (dataset_dict[f"study-{coll_name}"]
-                         ["contrasts"]
-                         [contrast]
-                         ["images"]
-                         [map_type_conversion[img_dict['map_type']]]) = filename.as_posix()
+                if not filename.exists():
+                    r = requests.get(img_dict["file"])
+                    with open(filename, "wb") as f:
+                        f.write(r.content)
 
-        # take the sample size from the final image entry (they should all be the same)
-        (dataset_dict[f"study-{coll_name}"]
-                         ["contrasts"]
-                         [contrast]
-                         ["metadata"]
-                         ["sample_sizes"]) = [img_dict['number_of_subjects']]
+                (
+                    dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name]["images"][
+                        map_type_conversion[img_dict["map_type"]]
+                    ]
+                ) = filename.as_posix()
+
+                # temporary sample size
+                sample_size = img_dict["number_of_subjects"]
+
+            # take the sample size from the final valid image entry (they should all be the same)
+            (
+                dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name]["metadata"][
+                    "sample_sizes"
+                ]
+            ) = [sample_size]
 
     dataset = Dataset(dataset_dict, **dset_kwargs)
 
