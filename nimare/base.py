@@ -9,11 +9,10 @@ import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
-from nilearn.image import resample_to_img, concat_imgs
-from nilearn._utils.niimg_conversions import _check_same_fov
-
 import nibabel as nb
 import numpy as np
+from nilearn._utils.niimg_conversions import _check_same_fov
+from nilearn.image import concat_imgs, resample_to_img
 
 from .results import MetaResult
 from .utils import get_masker
