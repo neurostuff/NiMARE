@@ -9,7 +9,7 @@ import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
-from nilearn.image import resample_to_img
+from nilearn.image import resample_to_img, concat_imgs
 from nilearn._utils.niimg_conversions import _check_same_fov
 
 import nibabel as nb
@@ -321,9 +321,12 @@ class MetaEstimator(Estimator):
                         for img in self.inputs_[name]
                     ]
 
+                # input to NiFtiLabelsMasker must be 4d
+                img4d = concat_imgs(imgs, ensure_ndim=4)
+
                 # Mask required input images using either the dataset's mask or
                 # the estimator's.
-                temp_arr = np.vstack([masker.transform(img) for img in imgs])
+                temp_arr = masker.transform(img4d)
 
                 # An intermediate step to mask out bad voxels. Can be dropped
                 # once PyMARE is able to handle masked arrays or missing data.
