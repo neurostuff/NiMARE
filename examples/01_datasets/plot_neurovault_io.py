@@ -14,13 +14,15 @@ Using Neurovault Statistical Maps in NiMARE
 # unthresholded statistical maps, including group statistical maps.
 # NiMARE can read these statistical maps when given a list of collection_ids.
 # I search "working memory" on neurovault, and find these relevant collections:
-# * `2884 https://neurovault.org/collections/2884/`_,
-# * `2621 https://neurovault.org/collections/2621/`_,
-# * `3085 https://neurovault.org/collections/3085/`_,
-# * `5623 https://neurovault.org/collections/5623/`_,
-# * `3264 https://neurovault.org/collections/3264/`_,
-# * `3192 https://neurovault.org/collections/3192/`_,
-# * `457 https://neurovault.org/collections/457/`_.
+#
+# * `2884 <https://neurovault.org/collections/2884/>`_,
+# * `2621 <https://neurovault.org/collections/2621/>`_,
+# * `3085 <https://neurovault.org/collections/3085/>`_,
+# * `5623 <https://neurovault.org/collections/5623/>`_,
+# * `3264 <https://neurovault.org/collections/3264/>`_,
+# * `3192 <https://neurovault.org/collections/3192/>`_,
+# * `457 <https://neurovault.org/collections/457/>`_.
+# 
 # I can load specific statistical maps from these collections
 # into a NiMARE dataset:
 from nimare.io import convert_neurovault_to_dataset
