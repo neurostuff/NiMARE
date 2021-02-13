@@ -674,3 +674,102 @@ def neurosynth_decode(
     )
     out_df.index.name = "Term"
     return out_df
+
+
+@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
+class ROIAssociationDecoder(Decoder):
+    """Perform discrete functional decoding according to Neurosynth's ROI association method.
+
+    Parameters
+    ----------
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
+    features : :obj:`list`, optional
+        List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the
+        feature group prefix.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
+        Default is None, which uses all features available.
+    frequency_threshold : :obj:`float`, optional
+        Threshold to apply to dataset annotations. Values greater than or
+        equal to the threshold as assigned as label+, while values below
+        the threshold are considered label-. Default is 0.001.
+    prior : :obj:`float`, optional
+        Uniform prior probability of each label being active in a study in
+        the absence of evidence (labels or selection) from the study.
+        Default is 0.5 (50%).
+    u : :obj:`float`, optional
+        Alpha level for multiple comparisons correction. Default is 0.05.
+    correction : :obj:`str` or None, optional
+        Multiple comparisons correction method to apply. Corresponds to
+        available options for :func:`statsmodels.stats.multitest.multipletests`.
+        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+
+    References
+    ----------
+    * Yarkoni, Tal, et al. "Large-scale automated synthesis of human
+      functional neuroimaging data." Nature methods 8.8 (2011): 665.
+      https://doi.org/10.1038/nmeth.1635
+    """
+
+    def __init__(
+        self,
+        mask,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        prior=0.5,
+        u=0.05,
+        correction="fdr_bh",
+    ):
+        self.mask_img = mask
+        self.feature_group = feature_group
+        self.features = features
+        self.frequency_threshold = frequency_threshold
+        self.prior = prior
+        self.u = u
+        self.correction = correction
+        self.results = None
+
+    def _fit(self, dataset):
+        self.inputs_ = {"coordinates": dataset.coordinates, "annotations": dataset.annotations}
+
+    def transform(self, ids, ids2=None):
+        """
+        Apply the decoding method to a Dataset.
+
+        Parameters
+        ----------
+        ids : :obj:`list`
+            Subset of studies in coordinates/annotations dataframes indicating
+            target for decoding. Examples include studies reporting at least one
+            peak in an ROI, or studies selected from a clustering analysis.
+        ids2 : :obj:`list` or None, optional
+            Second subset of studies, representing "unselected" studies. If None,
+            then all studies in Dataset **not** in
+            ``ids`` will be used.
+
+        Returns
+        -------
+        results : :class:`pandas.DataFrame`
+            Table with each label and the following values associated with each
+            label: 'correlation'.
+        """
+        results = neurosynth_decode(
+            self.inputs_["coordinates"],
+            self.inputs_["annotations"],
+            ids=ids,
+            ids2=ids2,
+            features=self.features_,
+            frequency_threshold=self.frequency_threshold,
+            prior=self.prior,
+            u=self.u,
+            correction=self.correction,
+        )
+        self.results = results
+        return results
