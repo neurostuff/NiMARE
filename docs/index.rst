@@ -67,6 +67,12 @@ To install NiMARE check out our `installation guide`_.
   cli
   outputs
 
+.. toctree::
+   :hidden:
+   :name: hiddentoc
+
+   methods/decoding.rst
+
 Indices and tables
 ------------------
 
