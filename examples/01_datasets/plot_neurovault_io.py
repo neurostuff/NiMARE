@@ -22,7 +22,7 @@ Using Neurovault Statistical Maps in NiMARE
 # * `3264 <https://neurovault.org/collections/3264/>`_,
 # * `3192 <https://neurovault.org/collections/3192/>`_,
 # * `457 <https://neurovault.org/collections/457/>`_.
-# 
+#
 # I can load specific statistical maps from these collections
 # into a NiMARE dataset:
 from nimare.io import convert_neurovault_to_dataset
@@ -35,15 +35,15 @@ collection_ids = (2884, 2621, 3085, 5623, 3264, 3192, 457)
 # named in the dataset and what their respective group
 # statistical maps are named on neurovault
 contrasts = {
-    "working_memory": [
-        "Working memory load of 2 faces versus 1 face - NT2_Tstat",
-        "t-value contrast 2-back minus 0-back",
-        "Searchlight multivariate Decoding 2: visual working memory",
-        "Context-dependent group-specific WM information",
-        "WM working memory zstat1",
-        "WM task over CRT task map",
-        "tfMRI WM 2BK PLACE zstat1",
-    ]
+    "working_memory": (
+        "Working memory load of 2 faces versus 1 face - NT2_Tstat|"
+        "t-value contrast 2-back minus 0-back|"
+        "Searchlight multivariate Decoding 2: visual working memory|"
+        "Context-dependent group-specific WM information|"
+        "WM working memory zstat1|"
+        "WM task over CRT task map|"
+        "tfMRI WM 2BK PLACE zstat1"
+    )
 }
 
 # Convert how the statistical maps on neurovault are represented

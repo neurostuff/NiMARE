@@ -2,6 +2,7 @@
 import json
 import re
 from itertools import groupby
+import logging
 from operator import itemgetter
 import tempfile
 from pathlib import Path
@@ -11,6 +12,16 @@ import numpy as np
 import pandas as pd
 
 from .dataset import Dataset
+
+LGR = logging.getLogger(__name__)
+
+DEFAULT_MAP_TYPE_CONVERSION = {
+    "T map": "t",
+    "variance": "varcope",
+    "univariate-beta map": "beta",
+    "Z map": "z",
+    "p map": "p"
+}
 
 
 def convert_neurosynth_to_dict(text_file, annotations_file=None):
@@ -290,15 +301,15 @@ def convert_neurovault_to_dataset(
         more informative names in the dataset.
     contrasts : :obj:`dict`
         Dictionary whose keys represent the name of the contrast in
-        the dataset and whose values represent how that contrast is identified
-        in neurovault.
+        the dataset and whose values represent a regular expression that would
+        match the names represented in NeuroVault.
         For example, under the ``Name`` column in this URL
         https://neurovault.org/collections/8836/,
         a valid contrast could be "as-Animal", which will be called "animal" in the created
-        dataset if the contrasts argument is ``{'animal': ["as-Animal"]}``.
+        dataset if the contrasts argument is ``{'animal': "as-Animal"}``.
     img_dir : :obj:`str` or None
         Base path to save all the downloaded images, by default the images
-        will be saved to a temporary directory with the prefix "neurovault"
+        will be saved to a temporary directory with the prefix "neurovault".
     map_type_conversion : :obj:`dict` or None
         Dictionary whose keys are what you expect the `map_type` name to
         be in neurovault and the values are the name of the respective
@@ -319,45 +330,34 @@ def convert_neurovault_to_dataset(
         img_dir.mkdir(parents=True, exist_ok=True)
 
     if map_type_conversion is None:
-        map_type_conversion = {
-            "T map": "t",
-            "variance": "varcope",
-            "univariate-beta map": "beta",
-        }
+        map_type_conversion = DEFAULT_MAP_TYPE_CONVERSION
 
     if not isinstance(collection_ids, dict):
         collection_ids = {nv_coll: nv_coll for nv_coll in collection_ids}
 
     dataset_dict = {}
     for coll_name, nv_coll in collection_ids.items():
-        for contrast_name, contrast_ids in contrasts.items():
-            nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
-            images = requests.get(nv_url).json()
 
-            dataset_dict[f"study-{coll_name}"] = {
-                "contrasts": {
-                    contrast_name: {
-                        "images": {
-                            "beta": None,
-                            "t": None,
-                            "varcope": None,
-                        },
-                        "metadata": {"sample_sizes": None},
-                    }
-                }
+        nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
+        images = requests.get(nv_url).json()
+
+        dataset_dict[f"study-{coll_name}"] = {
+            "contrasts": {}
+        }
+        for contrast_name, contrast_regex in contrasts.items():
+            dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name] = {
+                "images": {
+                    "beta": None,
+                    "t": None,
+                    "varcope": None,
+                },
+                "metadata": {"sample_sizes": None},
             }
 
+            sample_sizes = []
             for img_dict in images["results"]:
                 if not (
-                    (
-                        img_dict["name"] in contrast_ids
-                        or any(
-                            [
-                                img_dict["name"].startswith(f"{contrast}_stat")
-                                for contrast in contrast_ids
-                            ]
-                        )
-                    )
+                    re.match(contrast_regex, img_dict["name"])
                     and img_dict["map_type"] in map_type_conversion
                 ):
                     continue
@@ -375,10 +375,19 @@ def convert_neurovault_to_dataset(
                     ]
                 ) = filename.as_posix()
 
-                # temporary sample size
-                sample_size = img_dict["number_of_subjects"]
+                # aggregate sample sizes (should all be the same)
+                sample_sizes.append(img_dict["number_of_subjects"])
 
-            # take the sample size from the final valid image entry (they should all be the same)
+            # take modal sample size (raise warning if there are multiple values)
+            if len(set(sample_sizes)) > 1:
+                sample_size = max(set(sample_sizes), key=sample_sizes.count)
+                LGR.warning((
+                    f"Multiple sample sizes were found for neurovault collection: {nv_coll}"
+                    f"for contrast: {contrast_name}, sample sizes: {set(sample_sizes)}"
+                    f", selecting modal sample size: {sample_size}"
+                ))
+            else:
+                sample_size = sample_sizes[0]
             (
                 dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name]["metadata"][
                     "sample_sizes"
