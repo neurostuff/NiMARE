@@ -289,9 +289,10 @@ class MetaEstimator(Estimator):
         self.resample = kwargs.get("resample", False)
 
         # defaults for resampling images (nilearn's defaults do not work well)
-        self.resample_kwargs = {
-            k.split("resample__")[1]: v for k, v in kwargs.items() if k.startswith("resample__")
-        } or {"clip": True, "interpolation": "linear"}
+        self._resample_kwargs = {"clip": True, "interpolation": "linear"}
+        self._resample_kwargs.update(
+            {k.split("resample__")[1]: v for k, v in kwargs.items() if k.startswith("resample__")}
+        )
 
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
@@ -306,17 +307,14 @@ class MetaEstimator(Estimator):
                 # If no resampling is requested, check if resampling is required
                 if not self.resample:
                     check_imgs = {img: nb.load(img) for img in self.inputs_[name]}
-                    check_imgs["reference_masker"] = mask_img
-                    _check_same_fov(**check_imgs, raise_error=True)
-                    # remove the reference image
-                    del check_imgs["reference_masker"]
+                    _check_same_fov(**check_imgs, reference_masker=mask_img, raise_error=True)
                     imgs = list(check_imgs.values())
                 else:
                     # resampling will only occur if shape/affines are different
                     # making this harmless if all img shapes/affines are the same
                     # as the reference
                     imgs = [
-                        resample_to_img(nb.load(img), mask_img, **self.resample_kwargs)
+                        resample_to_img(nb.load(img), mask_img, **self._resample_kwargs)
                         for img in self.inputs_[name]
                     ]
 
