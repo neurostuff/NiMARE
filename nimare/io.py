@@ -20,7 +20,7 @@ DEFAULT_MAP_TYPE_CONVERSION = {
     "variance": "varcope",
     "univariate-beta map": "beta",
     "Z map": "z",
-    "p map": "p"
+    "p map": "p",
 }
 
 
@@ -341,9 +341,7 @@ def convert_neurovault_to_dataset(
         nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
         images = requests.get(nv_url).json()
 
-        dataset_dict[f"study-{coll_name}"] = {
-            "contrasts": {}
-        }
+        dataset_dict[f"study-{coll_name}"] = {"contrasts": {}}
         for contrast_name, contrast_regex in contrasts.items():
             dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name] = {
                 "images": {
@@ -381,11 +379,13 @@ def convert_neurovault_to_dataset(
             # take modal sample size (raise warning if there are multiple values)
             if len(set(sample_sizes)) > 1:
                 sample_size = max(set(sample_sizes), key=sample_sizes.count)
-                LGR.warning((
-                    f"Multiple sample sizes were found for neurovault collection: {nv_coll}"
-                    f"for contrast: {contrast_name}, sample sizes: {set(sample_sizes)}"
-                    f", selecting modal sample size: {sample_size}"
-                ))
+                LGR.warning(
+                    (
+                        f"Multiple sample sizes were found for neurovault collection: {nv_coll}"
+                        f"for contrast: {contrast_name}, sample sizes: {set(sample_sizes)}"
+                        f", selecting modal sample size: {sample_size}"
+                    )
+                )
             else:
                 sample_size = sample_sizes[0]
             (
