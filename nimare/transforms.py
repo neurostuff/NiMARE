@@ -669,10 +669,3 @@ def mni2tal(coords):
     if use_dim == 1:
         out_coords = out_coords.transpose()
     return out_coords
-
-
-from nilearn.reporting import get_clusters_table
-
-
-def images_to_coordinates(dataset):
-    pass
