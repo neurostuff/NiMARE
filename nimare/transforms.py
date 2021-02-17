@@ -124,7 +124,7 @@ def resolve_transforms(target, available_data, masker):
             z = p_to_z(p)
         else:
             return None
-        z = masker.inverse_transform(z)
+        z = masker.inverse_transform(z.squeeze())
         return z
     elif target == "t":
         # will return none given no transform/target exists
@@ -136,7 +136,7 @@ def resolve_transforms(target, available_data, masker):
             dof = sample_sizes_to_dof(available_data["sample_sizes"])
             z = masker.transform(available_data["z"])
             t = z_to_t(z, dof)
-            t = masker.inverse_transform(t)
+            t = masker.inverse_transform(t.squeeze())
             return t
         else:
             return None
@@ -156,7 +156,7 @@ def resolve_transforms(target, available_data, masker):
             t = masker.transform(available_data["t"])
             varcope = masker.transform(available_data["varcope"])
             beta = t_and_varcope_to_beta(t, varcope)
-            beta = masker.inverse_transform(beta)
+            beta = masker.inverse_transform(beta.squeeze())
             return beta
         else:
             return None
@@ -164,14 +164,12 @@ def resolve_transforms(target, available_data, masker):
         if "se" in available_data.keys():
             se = masker.transform(available_data["se"])
             varcope = se_to_varcope(se)
-            varcope = masker.inverse_transform(varcope)
         elif ("samplevar_dataset" in available_data.keys()) and (
             "sample_sizes" in available_data.keys()
         ):
             sample_size = sample_sizes_to_sample_size(available_data["sample_sizes"])
             samplevar_dataset = masker.transform(available_data["samplevar_dataset"])
             varcope = samplevar_dataset_to_varcope(samplevar_dataset, sample_size)
-            varcope = masker.inverse_transform(varcope)
         elif ("sd" in available_data.keys()) and ("sample_sizes" in available_data.keys()):
             sample_size = sample_sizes_to_sample_size(available_data["sample_sizes"])
             sd = masker.transform(available_data["sd"])
@@ -181,9 +179,9 @@ def resolve_transforms(target, available_data, masker):
             t = masker.transform(available_data["t"])
             beta = masker.transform(available_data["beta"])
             varcope = t_and_beta_to_varcope(t, beta)
-            varcope = masker.inverse_transform(varcope)
         else:
             return None
+        varcope = masker.inverse_transform(varcope.squeeze())
         return varcope
     else:
         return None
@@ -671,3 +669,7 @@ def mni2tal(coords):
     if use_dim == 1:
         out_coords = out_coords.transpose()
     return out_coords
+
+from nilearn.reporting import get_clusters_table
+def images_to_coordinates(dataset):
+    pass
