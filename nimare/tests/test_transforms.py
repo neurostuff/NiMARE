@@ -2,6 +2,7 @@
 Test nimare.transforms
 """
 import numpy as np
+import nibabel as nib
 
 from nimare import transforms, utils
 
@@ -15,6 +16,8 @@ def test_transform_images(testdata_ibma):
     )
     new_z_files = new_images["z"].tolist()
     assert z_files[:-1] == new_z_files[:-1]
+    # new z statistic map should have 3 dimensions
+    assert len(nib.load(new_z_files[-1]).shape) == 3
     assert all([nzf is not None for nzf in new_z_files])
 
     varcope_files = dset.images["varcope"].tolist()
