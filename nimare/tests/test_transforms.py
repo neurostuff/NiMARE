@@ -103,9 +103,6 @@ def test_images_to_coordinates(testdata_ibma):
         dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
     )
     coordinates = transforms.images_to_coordinates(
-        pd.DataFrame(new_images.iloc[-1, :]).T,
-        3.3,
-        dset.space,
-        dset.masker
+        pd.DataFrame(new_images.iloc[-1, :]).T, 3.3, dset.space, dset.masker
     )
     assert isinstance(coordinates, pd.DataFrame)

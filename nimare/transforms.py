@@ -185,7 +185,12 @@ def resolve_transforms(target, available_data, masker):
 
 
 def images_to_coordinates(
-    images_df, z_threshold, space, masker, cluster_threshold=None, min_distance=8.0,
+    images_df,
+    z_threshold,
+    space,
+    masker,
+    cluster_threshold=None,
+    min_distance=8.0,
 ):
     """Extract peak statistical coordinates from statistical z or p maps
 
@@ -214,25 +219,19 @@ def images_to_coordinates(
     for _, row in images_df.iterrows():
         if row.get("z"):
             clusters = get_clusters_table(
-                nib.load(row.get("z")),
-                z_threshold,
-                cluster_threshold,
-                min_distance
+                nib.load(row.get("z")), z_threshold, cluster_threshold, min_distance
             )
         elif row.get("p"):
             LGR.warning(f"No Z map for {row['id']}, using p map")
             p_threshold = z_to_p(z_threshold)
             clusters = get_clusters_table(
-                nib.load(row.get("p")),
-                p_threshold,
-                cluster_threshold,
-                min_distance
+                nib.load(row.get("p")), p_threshold, cluster_threshold, min_distance
             )
         else:
             raise ValueError(f"{row['id']} needs either a Z map or p map")
-        coordinates_dict[row['study_id']] = {
+        coordinates_dict[row["study_id"]] = {
             "contrasts": {
-                row['contrast_id']: {
+                row["contrast_id"]: {
                     "coords": {
                         "space": space,
                         "x": list(clusters["X"]),
