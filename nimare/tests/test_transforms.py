@@ -94,3 +94,13 @@ def test_mm2vox():
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(transforms.mm2vox(test, aff), true)
+
+
+def test_images_to_coordinates(testdata_ibma):
+    coordinates = transforms.images_to_coordinates(
+        testdata_ibma.images,
+        3.3,
+        testdata_ibma.space,
+        testdata_ibma.masker
+    )
+    coordinates

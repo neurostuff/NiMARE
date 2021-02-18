@@ -5,6 +5,7 @@ import os.path as op
 import nibabel as nib
 import numpy as np
 from scipy import stats
+from nilearn.reporting import get_clusters_table
 
 from . import references, utils
 from .due import due
@@ -183,6 +184,68 @@ def resolve_transforms(target, available_data, masker):
         return None
 
 
+def images_to_coordinates(
+    images_df, z_threshold, space, masker, cluster_threshold=None, min_distance=8.0,
+):
+    """Extract peak statistical coordinates from statistical z or p maps
+
+    Parameters
+    ----------
+    images_df : :class:`pandas.DataFrame`
+        DataFrame with paths to images for studies in Dataset.
+    z_threshold : :obj:`float`
+        Cluster forming z-scale threshold in `stat_img`.
+    space : :obj:`string`
+        the final frontier
+    masker : :class:`nilearn.input_data.NiftiMasker`
+        masker for dataset
+    cluster_threshold : :obj:`int` or `None`, optional
+        Cluster size threshold, in voxels.
+    min_distance : :obj:`float`, optional
+        Minimum distance between subpeaks in mm. Default=8mm.
+
+    Returns
+    -------
+    coordinates_df : :class:`pandas.DataFrame`
+        DataFrame containing statistical peaks.
+    """
+
+    coordinates_dict = {}
+    for _, row in images_df.iterrows():
+        if row.get("z"):
+            clusters = get_clusters_table(
+                nib.load(row.get("z")),
+                z_threshold,
+                cluster_threshold,
+                min_distance
+            )
+        elif row.get("p"):
+            LGR.warning(f"No Z map for {row['id']}, using p map")
+            p_threshold = z_to_p(z_threshold)
+            clusters = get_clusters_table(
+                nib.load(row.get("p")),
+                p_threshold,
+                cluster_threshold,
+                min_distance
+            )
+        else:
+            raise ValueError(f"{row['id']} needs either a Z map or p map")
+        coordinates_dict[row['study_id']] = {
+            "contrasts": {
+                row['contrast_id']: {
+                    "coords": {
+                        "space": space,
+                        "x": list(clusters["X"]),
+                        "y": list(clusters["Y"]),
+                        "z": list(clusters["Z"]),
+                    },
+                }
+            }
+        }
+
+    return utils.dict_to_coordinates(coordinates_dict, masker, space)
+
+
 def sample_sizes_to_dof(sample_sizes):
     """Calculate degrees of freedom from a list of sample sizes using a simple heuristic.
 
@@ -320,6 +383,35 @@ def t_and_beta_to_varcope(t, beta):
     """
     varcope = (beta / t) ** 2
     return varcope
+
+
+def z_to_p(z, tail="two"):
+    """Convert z-values to p-values
+
+    Parameters
+    ----------
+    z : array_like
+        Z-statistics (unsigned)
+    tail : {'one', 'two'}, optional
+        Whether p-values come from one-tailed or two-tailed test. Default is
+        'two'.
+
+    Returns
+    -------
+    p : array_like
+        P-values
+    """
+    z = np.array(z)
+    if tail == "two":
+        p = stats.norm.sf(abs(z)) * 2
+    elif tail == "one":
+        p = stats.norm.sf(abs(z))
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    if p.shape == ():
+        p = p[()]
+    return p
 
 
 def p_to_z(p, tail="two"):
