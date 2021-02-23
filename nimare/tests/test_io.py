@@ -132,3 +132,15 @@ def test_convert_neurovault_to_dataset(kwargs):
     if kwargs.get("map_type_conversion"):
         for img_type in kwargs.get("map_type_conversion").values():
             assert not dset.images[img_type].empty
+
+
+@pytest.mark.parametrize(
+    "sample_sizes,expected_sample_size",
+    [
+        ([1, 2, 1], 1),
+        ([None, None, 1], 1),
+        ([1, 1, 2, 2], 1),
+    ],
+)
+def test_resolve_sample_sizes(sample_sizes, expected_sample_size):
+    assert io._resolve_sample_size(sample_sizes) == expected_sample_size

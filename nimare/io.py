@@ -6,6 +6,7 @@ import logging
 from operator import itemgetter
 import tempfile
 from pathlib import Path
+from collections import Counter
 
 import requests
 import numpy as np
@@ -378,7 +379,7 @@ def convert_neurovault_to_dataset(
 
             # take modal sample size (raise warning if there are multiple values)
             if len(set(sample_sizes)) > 1:
-                sample_size = max(set(sample_sizes), key=sample_sizes.count)
+                sample_size = _resolve_sample_size(sample_sizes)
                 LGR.warning(
                     (
                         f"Multiple sample sizes were found for neurovault collection: {nv_coll}"
@@ -397,3 +398,12 @@ def convert_neurovault_to_dataset(
     dataset = Dataset(dataset_dict, **dset_kwargs)
 
     return dataset
+
+
+def _resolve_sample_size(sample_sizes):
+    """choose modal sample_size if there are multiple to choose from"""
+    sample_size_counts = Counter(sample_sizes)
+    if None in sample_size_counts:
+        sample_size_counts.pop(None)
+
+    return sample_size_counts.most_common()[0][0]
