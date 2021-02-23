@@ -6,6 +6,8 @@ from shutil import copyfile
 
 import pytest
 import nibabel as nib
+import numpy as np
+from nilearn.image import resample_img
 
 import nimare
 from nimare.tests.utils import get_test_data_path
@@ -79,3 +81,43 @@ def mni_mask():
     return nib.load(
         os.path.join(get_resource_path(), "templates", "MNI152_2x2x2_brainmask.nii.gz")
     )
+
+
+@pytest.fixture(scope="session")
+def testdata_ibma_resample(tmp_path_factory):
+    tmpdir = tmp_path_factory.mktemp("testdata_ibma_resample")
+
+    # Load dataset
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+    dset_dir = os.path.join(get_test_data_path(), "test_pain_dataset")
+    mask_file = os.path.join(dset_dir, "mask.nii.gz")
+    dset = nimare.dataset.Dataset(dset_file, mask=mask_file)
+    dset.update_path(dset_dir)
+
+    # create reproducible random number generator for resampling
+    rng = np.random.default_rng(seed=123)
+    # Move image contents of Dataset to temporary directory
+    for c in dset.images.columns:
+        if c.endswith("__relative"):
+            continue
+        for f in dset.images[c].values:
+            if (f is None) or not os.path.isfile(f):
+                continue
+            new_f = f.replace(
+                dset_dir.rstrip(os.path.sep), str(tmpdir.absolute()).rstrip(os.path.sep)
+            )
+            dirname = os.path.dirname(new_f)
+            if not os.path.isdir(dirname):
+                os.makedirs(dirname)
+            # create random affine to make images different shapes
+            affine = np.eye(3)
+            np.fill_diagonal(affine, rng.choice([1, 2, 3]))
+            img = resample_img(
+                nib.load(f),
+                target_affine=affine,
+                interpolation="linear",
+                clip=True,
+            )
+            nib.save(img, new_f)
+    dset.update_path(tmpdir)
+    return dset
