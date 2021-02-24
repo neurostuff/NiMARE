@@ -111,7 +111,7 @@ def pearson(x, y):
 
 
 def null_to_p(test_value, null_array, tail="two"):
-    """Return p-value for test value against null array.
+    """Return p-value for test value(s) against null array.
 
     Parameters
     ----------
@@ -137,7 +137,13 @@ def null_to_p(test_value, null_array, tail="two"):
     P-values are clipped based on the number of elements in the null array.
     Therefore no p-values of 0 or 1 should be produced.
     """
+
+    if tail not in {'two', 'upper', 'lower'}:
+        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
+
+    return_first = isinstance(test_value, (float, int))
     test_value = np.atleast_1d(test_value)
+    null_array = np.array(null_array)
 
     # For efficiency's sake, if there are more than 1000 values, pass only the unique
     # values through percentileofscore(), and then reconstruct.
@@ -147,26 +153,26 @@ def null_to_p(test_value, null_array, tail="two"):
     else:
         reconstruct = False
 
-    # TODO: this runs in N^2 time; is there a more efficient alternative?
-    p = np.array([stats.percentileofscore(null_array, v, "strict") for v in test_value])
-    p /= 100.0
     if tail == "two":
-        p = (0.5 - np.abs(p - 0.5)) * 2
-    elif tail == "upper":
-        p = 1 - p
-    elif tail != "lower":
-        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
+        test_value = np.abs(test_value)
+        null_array = np.abs(null_array)
+    elif tail == "lower":
+        test_value *= -1
+        null_array *= -1
 
-    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
+    null_array = np.sort(null_array)
+    idx = np.searchsorted(null_array, test_value, side='left').astype(float)
+    p = 1 - idx / len(null_array)
 
     # ensure p_value in the following range:
     # smallest_value <= p_value <= (1.0 - smallest_value)
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
     result = np.maximum(smallest_value, np.minimum(p, 1.0 - smallest_value))
 
     if reconstruct:
         result = result[uniq_idx]
 
-    return result
+    return result[0] if return_first else result
 
 
 def nullhist_to_p(test_values, histogram_weights, histogram_bins):
