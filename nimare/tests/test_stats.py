@@ -3,7 +3,6 @@ Test nimare.stats
 """
 import math
 
-import pytest
 import numpy as np
 
 from nimare.stats import null_to_p, nullhist_to_p
@@ -37,8 +36,8 @@ def test_null_to_p_float():
 
     # Test that 1/n(null) is preserved with extreme values
     nulldist = np.random.normal(size=10000)
-    assert math.isclose(null_to_p(20, nulldist, "two"), 1/10000)
-    assert math.isclose(null_to_p(20, nulldist, "lower"), 1 - 1/10000)
+    assert math.isclose(null_to_p(20, nulldist, "two"), 1 / 10000)
+    assert math.isclose(null_to_p(20, nulldist, "lower"), 1 - 1 / 10000)
 
 
 def test_null_to_p_float_symmetric():
@@ -71,7 +70,7 @@ def test_null_to_p_array():
     assert (p > 0).all()
     # Resulting distribution should be roughly uniform
     assert np.abs(p.mean() - 0.5) < 0.02
-    assert np.abs(p.var() - 1/12) < 0.02
+    assert np.abs(p.var() - 1 / 12) < 0.02
 
 
 def test_nullhist_to_p():

@@ -3,7 +3,6 @@ import logging
 import warnings
 
 import numpy as np
-from scipy import stats
 
 from . import utils
 
@@ -149,7 +148,7 @@ def null_to_p(test_value, null_array, tail="two", symmetric=False):
     approximately twice as efficient computationally, and has lower variance.
     """
 
-    if tail not in {'two', 'upper', 'lower'}:
+    if tail not in {"two", "upper", "lower"}:
         raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
 
     return_first = isinstance(test_value, (float, int))
@@ -166,7 +165,7 @@ def null_to_p(test_value, null_array, tail="two", symmetric=False):
 
     def compute_p(t, null):
         null = np.sort(null)
-        idx = np.searchsorted(null, t, side='left').astype(float)
+        idx = np.searchsorted(null, t, side="left").astype(float)
         return 1 - idx / len(null)
 
     if tail == "two":
