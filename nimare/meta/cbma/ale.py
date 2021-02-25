@@ -316,7 +316,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         p_arr = np.ones(n_voxels)
         for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(
-                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two"
+                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=True
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
 
