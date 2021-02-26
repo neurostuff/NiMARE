@@ -1,13 +1,11 @@
-"""
-Test nimare.transforms
-"""
+"""Test nimare.transforms."""
 import numpy as np
 
 from nimare import transforms, utils
 
 
 def test_transform_images(testdata_ibma):
-    """Smoke test on transforms.transform_images"""
+    """Smoke test on transforms.transform_images."""
     dset = testdata_ibma
     z_files = dset.images["z"].tolist()
     new_images = transforms.transform_images(
@@ -27,7 +25,7 @@ def test_transform_images(testdata_ibma):
 
 
 def test_sample_sizes_to_dof():
-    """Unit tests for transforms.sample_sizes_to_dof"""
+    """Unit tests for transforms.sample_sizes_to_dof."""
     sample_sizes = [20, 20, 20]
     dof = 57
     assert transforms.sample_sizes_to_dof(sample_sizes) == dof
@@ -37,7 +35,7 @@ def test_sample_sizes_to_dof():
 
 
 def test_sample_sizes_to_sample_size():
-    """Unit tests for transforms.sample_sizes_to_sample_size"""
+    """Unit tests for transforms.sample_sizes_to_sample_size."""
     sample_sizes = [20, 20, 20]
     sample_size = 60
     assert transforms.sample_sizes_to_sample_size(sample_sizes) == sample_size
@@ -47,7 +45,7 @@ def test_sample_sizes_to_sample_size():
 
 
 def test_t_to_z():
-    """Smoke test"""
+    """Smoke test for transforms.t_to_z."""
     t_arr = np.random.random(100)
     z_arr = transforms.t_to_z(t_arr, dof=20)
     assert z_arr.shape == t_arr.shape
@@ -56,9 +54,7 @@ def test_t_to_z():
 
 
 def test_tal2mni():
-    """
-    TODO: Get converted coords from official site.
-    """
+    """Unit test for transforms.tal2mni."""
     test = np.array([[-44, 31, 27], [20, -32, 14], [28, -76, 28]])
     true = np.array(
         [
@@ -71,9 +67,7 @@ def test_tal2mni():
 
 
 def test_mni2tal():
-    """
-    TODO: Get converted coords from official site.
-    """
+    """Unit test for transforms.mni2tal."""
     test = np.array([[-44, 31, 27], [20, -32, 14], [28, -76, 28]])
     true = np.array(
         [[-42.3176, 26.0594, 29.7364], [17.4781, -32.6076, 14.0009], [24.7353, -75.0184, 23.3283]]
@@ -82,9 +76,7 @@ def test_mni2tal():
 
 
 def test_vox2mm():
-    """
-    Test vox2mm
-    """
+    """Unit test for transforms.vox2mm."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
     true = np.array([[50.0, -86.0, -32.0], [90.0, -126.0, -72.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
@@ -93,9 +85,7 @@ def test_vox2mm():
 
 
 def test_mm2vox():
-    """
-    Test mm2vox
-    """
+    """Unit test for transforms.mm2vox."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
     true = np.array([[35.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)

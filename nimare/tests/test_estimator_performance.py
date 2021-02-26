@@ -1,3 +1,4 @@
+"""Test estimator, kerneltransformer, and multiple comparisons corrector performance."""
 import os
 
 import pytest
@@ -194,11 +195,13 @@ def meta_cres_small(meta, meta_res, corr_small, random):
 
 
 def test_meta_fit_smoke(meta_res):
+    """Smoke test for meta-analytic estimator fit."""
     assert isinstance(meta_res, MetaResult)
 
 
 @pytest.mark.performance
 def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
+    """Test meta-analytic estimator fit performance."""
     _, (ground_truth_foci, _) = simulatedata_cbma
     mask = meta_res.masker.mask_img
     ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
@@ -247,11 +250,13 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
 
 
 def test_corr_transform_smoke(meta_cres_small):
+    """Smoke test for corrector transform."""
     assert isinstance(meta_cres_small, MetaResult)
 
 
 @pytest.mark.performance
 def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_cbma):
+    """Test corrector transform performance."""
     _, (ground_truth_foci, _) = simulatedata_cbma
     mask = meta_cres.masker.mask_img
     ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
@@ -313,10 +318,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
 
 
 def _create_signal_mask(ground_truth_foci_ijks, mask):
-    """
-    Creates complementary binary images to
-    identify areas of likely significance and areas
-    far from the likely results.
+    """Create complementary binary images to identify areas of likely significance and nonsignificance.
 
     Parameters
     ----------
@@ -361,6 +363,7 @@ def _check_p_values(
     n_iters=None,
     good_performance=True,
 ):
+    """Check if p-values are within the correct range."""
     ################################################
     # CHECK IF P-VALUES ARE WITHIN THE CORRECT RANGE
     ################################################
@@ -398,6 +401,7 @@ def _check_p_values(
 
 
 def _transform_res(meta, meta_res, corr):
+    """Evaluate whether meta estimator and corrector work together."""
     #######################################
     # CHECK IF META/CORRECTOR WORK TOGETHER
     #######################################

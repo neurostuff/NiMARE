@@ -41,6 +41,7 @@ def testdata_ibma(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def testdata_cbma():
+    """Generate coordinate-based dataset for tests."""
     dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
     dset = nimare.dataset.Dataset(dset_file)
 
@@ -53,7 +54,10 @@ def testdata_cbma():
 
 @pytest.fixture(scope="session")
 def testdata_cbma_full():
-    """Same as above, except returns all coords, not just one per study."""
+    """Generate more complete coordinate-based dataset for tests.
+
+    Same as above, except returns all coords, not just one per study.
+    """
     dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
     dset = nimare.dataset.Dataset(dset_file)
     return dset
@@ -70,6 +74,7 @@ def testdata_laird():
 
 @pytest.fixture(scope="session")
 def mni_mask():
+    """Load MNI mask for testing."""
     return nib.load(
         os.path.join(get_resource_path(), "templates", "MNI152_2x2x2_brainmask.nii.gz")
     )
