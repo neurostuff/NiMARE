@@ -1,6 +1,4 @@
-"""
-Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms).
-"""
+"""Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms)."""
 import os
 import pickle
 
@@ -14,9 +12,7 @@ from nimare.meta import ale
 
 
 def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
-    """
-    Unit test for ALE with analytic null_method
-    """
+    """Unit test for ALE with analytic null_method."""
     tmpdir = tmp_path_factory.mktemp("test_ALE_analytic_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
@@ -86,9 +82,7 @@ def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
 
 
 def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
-    """
-    Unit test for ALE with an empirical null_method
-    """
+    """Unit test for ALE with an empirical null_method."""
     tmpdir = tmp_path_factory.mktemp("test_ALE_empirical_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
@@ -158,9 +152,7 @@ def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
 
 
 def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
-    """
-    Smoke test for ALESubtraction
-    """
+    """Smoke test for ALESubtraction."""
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
@@ -180,9 +172,7 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
 
 
 def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
-    """
-    Smoke test for ALESubtraction with low memory settings.
-    """
+    """Smoke test for ALESubtraction with low memory settings."""
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke_lowmem")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
@@ -202,9 +192,7 @@ def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
 
 
 def test_SCALE_smoke(testdata_cbma):
-    """
-    Smoke test for SCALE
-    """
+    """Smoke test for SCALE."""
     dset = testdata_cbma.slice(testdata_cbma.ids[:3])
     ijk = np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T
     ijk = ijk[:, :20]
@@ -217,9 +205,7 @@ def test_SCALE_smoke(testdata_cbma):
 
 
 def test_SCALE_smoke_lowmem(testdata_cbma):
-    """
-    Smoke test for SCALE with low memory settings.
-    """
+    """Smoke test for SCALE with low memory settings."""
     dset = testdata_cbma.slice(testdata_cbma.ids[:3])
     ijk = np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T
     ijk = ijk[:, :20]

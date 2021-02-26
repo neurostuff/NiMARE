@@ -1,6 +1,4 @@
-"""
-Test nimare.meta.ibma (image-based meta-analytic estimators).
-"""
+"""Test nimare.meta.ibma (image-based meta-analytic estimators)."""
 import os.path as op
 
 from nilearn.input_data import NiftiLabelsMasker
@@ -13,9 +11,7 @@ from .utils import get_test_data_path
 
 
 def test_Fishers(testdata_ibma):
-    """
-    Smoke test for Fisher's.
-    """
+    """Smoke test for Fisher's."""
     meta = ibma.Fishers()
     res = meta.fit(testdata_ibma)
     corr = FDRCorrector(method="indep", alpha=0.001)
@@ -26,9 +22,7 @@ def test_Fishers(testdata_ibma):
 
 
 def test_Stouffers(testdata_ibma):
-    """
-    Smoke test for Stouffer's, not weighted by sample size.
-    """
+    """Smoke test for Stouffer's, not weighted by sample size."""
     meta = ibma.Stouffers(use_sample_size=False)
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -36,9 +30,7 @@ def test_Stouffers(testdata_ibma):
 
 
 def test_Stouffers_weighted(testdata_ibma):
-    """
-    Smoke test for Stouffer's, weighted by sample size.
-    """
+    """Smoke test for Stouffer's, weighted by sample size."""
     meta = ibma.Stouffers(use_sample_size=True)
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -46,9 +38,7 @@ def test_Stouffers_weighted(testdata_ibma):
 
 
 def test_WeightedLeastSquares(testdata_ibma):
-    """
-    Smoke test for WeightedLeastSquares.
-    """
+    """Smoke test for WeightedLeastSquares."""
     meta = ibma.WeightedLeastSquares(tau2=0)
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -56,9 +46,7 @@ def test_WeightedLeastSquares(testdata_ibma):
 
 
 def test_DerSimonianLaird(testdata_ibma):
-    """
-    Smoke test for DerSimonianLaird.
-    """
+    """Smoke test for DerSimonianLaird."""
     meta = ibma.DerSimonianLaird()
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -66,9 +54,7 @@ def test_DerSimonianLaird(testdata_ibma):
 
 
 def test_Hedges(testdata_ibma):
-    """
-    Smoke test for Hedges.
-    """
+    """Smoke test for Hedges."""
     meta = ibma.Hedges()
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -76,9 +62,7 @@ def test_Hedges(testdata_ibma):
 
 
 def test_SampleSizeBasedLikelihood_ml(testdata_ibma):
-    """
-    Smoke test for SampleSizeBasedLikelihood with ML.
-    """
+    """Smoke test for SampleSizeBasedLikelihood with ML."""
     meta = ibma.SampleSizeBasedLikelihood(method="ml")
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -86,9 +70,7 @@ def test_SampleSizeBasedLikelihood_ml(testdata_ibma):
 
 
 def test_SampleSizeBasedLikelihood_reml(testdata_ibma):
-    """
-    Smoke test for SampleSizeBasedLikelihood with REML.
-    """
+    """Smoke test for SampleSizeBasedLikelihood with REML."""
     meta = ibma.SampleSizeBasedLikelihood(method="reml")
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -96,9 +78,7 @@ def test_SampleSizeBasedLikelihood_reml(testdata_ibma):
 
 
 def test_VarianceBasedLikelihood_ml(testdata_ibma):
-    """
-    Smoke test for VarianceBasedLikelihood with ML.
-    """
+    """Smoke test for VarianceBasedLikelihood with ML."""
     meta = ibma.VarianceBasedLikelihood(method="ml")
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -106,9 +86,7 @@ def test_VarianceBasedLikelihood_ml(testdata_ibma):
 
 
 def test_VarianceBasedLikelihood_reml(testdata_ibma):
-    """
-    Smoke test for VarianceBasedLikelihood with REML.
-    """
+    """Smoke test for VarianceBasedLikelihood with REML."""
     meta = ibma.VarianceBasedLikelihood(method="reml")
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
@@ -116,9 +94,7 @@ def test_VarianceBasedLikelihood_reml(testdata_ibma):
 
 
 def test_PermutedOLS(testdata_ibma):
-    """
-    Smoke test for PermutedOLS with FWE correction.
-    """
+    """Smoke test for PermutedOLS with FWE correction."""
     meta = ibma.PermutedOLS(two_sided=True)
     meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.base.MetaResult)
@@ -128,7 +104,7 @@ def test_PermutedOLS(testdata_ibma):
 
 
 def test_ibma_with_custom_masker(testdata_ibma):
-    """ Ensure voxel-to-ROI reduction works. """
+    """Ensure voxel-to-ROI reduction works."""
     atlas = op.join(get_test_data_path(), "test_pain_dataset", "atlas.nii.gz")
     masker = NiftiLabelsMasker(atlas)
     meta = ibma.Fishers(mask=masker)

@@ -1,6 +1,4 @@
-"""
-Test nimare.extract.
-"""
+"""Test nimare.extract."""
 import os
 from glob import glob
 
@@ -8,8 +6,8 @@ import nimare
 
 
 def test_fetch_neurosynth(tmp_path_factory):
-    """
-    Smoke test for extract.fetch_neurosynth.
+    """Smoke test for extract.fetch_neurosynth.
+
     Taken from the Neurosynth Python package.
     """
     tmpdir = tmp_path_factory.mktemp("test_fetch_neurosynth")

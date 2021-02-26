@@ -1,6 +1,4 @@
-"""
-Test nimare.annotate.cogat (Cognitive Atlas extraction methods).
-"""
+"""Test nimare.annotate.cogat (Cognitive Atlas extraction methods)."""
 import os.path as op
 
 import pandas as pd
@@ -12,9 +10,7 @@ from .utils import get_test_data_path
 
 
 def test_cogat():
-    """
-    A smoke test for CogAt-related functions.
-    """
+    """A smoke test for CogAt-related functions."""
     # A small test dataset with abstracts
     ns_dset_laird = nimare.dataset.Dataset.load(
         op.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
@@ -32,9 +28,7 @@ def test_cogat():
 
 
 def test_CogAtLemmatizer():
-    """
-    A smoke test for CogAtLemmatizer.
-    """
+    """A smoke test for CogAtLemmatizer."""
     cogat = extract.download_cognitive_atlas(data_dir=get_test_data_path(), overwrite=False)
     id_df = pd.read_csv(cogat["ids"])
     id_df = id_df.loc[id_df["id"] == "trm_4aae62e4ad209"]

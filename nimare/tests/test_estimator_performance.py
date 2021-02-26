@@ -30,6 +30,7 @@ else:
 ##########################################
 @pytest.fixture(scope="session")
 def random():
+    """Set random state for the tests."""
     np.random.seed(1939)
 
 
@@ -53,6 +54,7 @@ def random():
     ],
 )
 def simulatedata_cbma(request):
+    """Set the simulated CBMA data according to parameters."""
     return request.param["fwhm"], create_coordinate_dataset(**request.param)
 
 
@@ -61,6 +63,7 @@ def simulatedata_cbma(request):
 ##########################################
 @pytest.fixture(scope="session")
 def signal_masks(simulatedata_cbma):
+    """Define masks of signal and non-signal for performance evaluation."""
     _, (ground_truth_foci, dataset) = simulatedata_cbma
     ground_truth_foci_ijks = [
         tuple(mm2vox(focus, dataset.masker.mask_img.affine)) for focus in ground_truth_foci
@@ -82,6 +85,7 @@ def signal_masks(simulatedata_cbma):
     ],
 )
 def meta_est(request):
+    """Define meta-analysis estimators for tests."""
     return request.param
 
 
@@ -97,6 +101,7 @@ def meta_est(request):
     ],
 )
 def kern(request):
+    """Define kernel transformers for tests."""
     return request.param
 
 
@@ -116,6 +121,7 @@ def kern(request):
     ],
 )
 def corr(request):
+    """Define multiple comparisons correctors for tests."""
     return request.param
 
 
@@ -135,6 +141,7 @@ def corr(request):
     ],
 )
 def corr_small(request):
+    """Define multiple comparisons correctors for tests."""
     return request.param
 
 
@@ -143,6 +150,7 @@ def corr_small(request):
 ###########################################
 @pytest.fixture(scope="session")
 def meta(simulatedata_cbma, meta_est, kern):
+    """Define estimator/kernel combinations for tests."""
     meta, kwargs = meta_est
     fwhm, (_, _) = simulatedata_cbma
     if kern == kernel.KDAKernel or kern == kernel.MKDAKernel:
@@ -159,6 +167,7 @@ def meta(simulatedata_cbma, meta_est, kern):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_res(simulatedata_cbma, meta, random):
+    """Define estimators for tests."""
     _, (_, dataset) = simulatedata_cbma
     # CHECK IF META/KERNEL WORK TOGETHER
     ####################################
@@ -178,6 +187,7 @@ def meta_res(simulatedata_cbma, meta, random):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_cres(meta, meta_res, corr, random):
+    """Define corrected results for tests."""
     return _transform_res(meta, meta_res, corr)
 
 
@@ -186,6 +196,7 @@ def meta_cres(meta, meta_res, corr, random):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_cres_small(meta, meta_res, corr_small, random):
+    """Define corrected results for tests."""
     return _transform_res(meta, meta_res, corr_small)
 
 

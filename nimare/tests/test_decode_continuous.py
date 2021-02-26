@@ -1,5 +1,4 @@
-"""
-Test nimare.decode.continuous.
+"""Test nimare.decode.continuous.
 
 Tests for nimare.decode.continuous.gclda_decode_map are in test_annotate_gclda.
 """
@@ -11,9 +10,7 @@ from nimare.meta import mkda, kernel
 
 
 def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
-    """
-    Smoke test for continuous.CorrelationDecoder
-    """
+    """Smoke test for continuous.CorrelationDecoder."""
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDecoder")
 
     testdata_laird = testdata_laird.copy()
@@ -37,9 +34,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
 
 
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
-    """
-    Smoke test for continuous.CorrelationDistributionDecoder
-    """
+    """Smoke test for continuous.CorrelationDistributionDecoder."""
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDistributionDecoder")
 
     testdata_laird = testdata_laird.copy()

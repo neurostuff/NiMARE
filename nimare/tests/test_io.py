@@ -1,6 +1,4 @@
-"""
-Test nimare.io (Dataset IO/transformations).
-"""
+"""Test nimare.io (Dataset IO/transformations)."""
 import os
 
 import pytest
@@ -11,9 +9,7 @@ from nimare.tests.utils import get_test_data_path
 
 
 def test_convert_sleuth_to_dataset_smoke():
-    """
-    Smoke test for Sleuth text file conversion.
-    """
+    """Smoke test for Sleuth text file conversion."""
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
     sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
     sleuth_file3 = os.path.join(get_test_data_path(), "test_sleuth_file3.txt")
@@ -44,9 +40,7 @@ def test_convert_sleuth_to_dataset_smoke():
 
 
 def test_convert_sleuth_to_json_smoke():
-    """
-    Smoke test for Sleuth text file conversion.
-    """
+    """Smoke test for Sleuth text file conversion."""
     out_file = os.path.abspath("temp.json")
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
     sleuth_file2 = os.path.join(get_test_data_path(), "test_sleuth_file2.txt")
@@ -82,9 +76,7 @@ def test_convert_sleuth_to_json_smoke():
 
 
 def test_convert_neurosynth_to_dataset_smoke():
-    """
-    Smoke test for Neurosynth file conversion.
-    """
+    """Smoke test for Neurosynth file conversion."""
     db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
     features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")
     dset = io.convert_neurosynth_to_dataset(db_file, features_file)
@@ -92,9 +84,7 @@ def test_convert_neurosynth_to_dataset_smoke():
 
 
 def test_convert_neurosynth_to_json_smoke():
-    """
-    Smoke test for Neurosynth file conversion.
-    """
+    """Smoke test for Neurosynth file conversion."""
     out_file = os.path.abspath("temp.json")
     db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
     features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")

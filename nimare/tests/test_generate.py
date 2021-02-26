@@ -1,3 +1,4 @@
+"""Tests for the nimare.generate module."""
 import pytest
 from contextlib import ExitStack as does_not_raise
 from numpy.random import RandomState
@@ -51,6 +52,7 @@ from ..dataset import Dataset
     ],
 )
 def test_create_foci(kwargs, expectation):
+    """Smoke test for _create_foci."""
     with expectation:
         ground_truth_foci, foci_dict = _create_foci(**kwargs)
     if isinstance(expectation, does_not_raise):
@@ -59,6 +61,7 @@ def test_create_foci(kwargs, expectation):
 
 
 def test_create_source():
+    """Smoke test for _create_source."""
     source_dict = _create_source(foci={0: [(0, 0, 0)]}, sample_sizes=[25])
     assert source_dict["study-0"]["contrasts"]["1"]["metadata"]["sample_sizes"] == [25]
 
@@ -208,6 +211,7 @@ def test_create_source():
     ],
 )
 def test_create_coordinate_dataset(kwargs, expectation):
+    """Create a coordinate Dataset according to parameters."""
     with expectation:
         ground_truth_foci, dataset = create_coordinate_dataset(**kwargs)
     if isinstance(expectation, does_not_raise):

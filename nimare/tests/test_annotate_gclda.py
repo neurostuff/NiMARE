@@ -1,6 +1,4 @@
-"""
-Test nimare.annotate.gclda (GCLDA).
-"""
+"""Test nimare.annotate.gclda (GCLDA)."""
 import os.path as op
 
 import nibabel as nib
@@ -14,9 +12,7 @@ from .utils import get_test_data_path
 
 
 def test_gclda():
-    """
-    A smoke test for GCLDA.
-    """
+    """A smoke test for GCLDA."""
     # A small test dataset with abstracts
     dset = nimare.dataset.Dataset.load(
         op.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")

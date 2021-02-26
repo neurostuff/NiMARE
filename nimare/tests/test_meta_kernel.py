@@ -1,6 +1,4 @@
-"""
-Test nimare.meta.kernel (CBMA kernel estimators).
-"""
+"""Test nimare.meta.kernel (CBMA kernel estimators)."""
 import shutil
 
 import numpy as np
@@ -13,9 +11,7 @@ from nimare import extract
 
 
 def test_alekernel_smoke(testdata_cbma):
-    """
-    Smoke test for nimare.meta.kernel.ALEKernel
-    """
+    """Smoke test for nimare.meta.kernel.ALEKernel."""
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
     # automatically by the Estimator
@@ -37,9 +33,8 @@ def test_alekernel_smoke(testdata_cbma):
 
 
 def test_alekernel_1mm(testdata_cbma):
-    """
-    Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
-    masked out).
+    """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
+
     Test on 1mm template.
     """
     # Manually override dataset coordinates file sample sizes
@@ -60,9 +55,8 @@ def test_alekernel_1mm(testdata_cbma):
 
 
 def test_alekernel_2mm(testdata_cbma):
-    """
-    Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
-    masked out).
+    """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
+
     Test on 2mm template.
     """
     # Manually override dataset coordinates file sample sizes
@@ -84,9 +78,8 @@ def test_alekernel_2mm(testdata_cbma):
 
 
 def test_alekernel_inputdataset_returnimages(testdata_cbma):
-    """
-    Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
-    masked out).
+    """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
+
     Test on Dataset object.
     """
     # Manually override dataset coordinates file sample sizes
@@ -110,9 +103,8 @@ def test_alekernel_inputdataset_returnimages(testdata_cbma):
 
 
 def test_alekernel_fwhm(testdata_cbma):
-    """
-    Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
-    masked out).
+    """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
+
     Test with explicit FWHM.
     """
     coordinates = testdata_cbma.coordinates.copy()
@@ -130,9 +122,8 @@ def test_alekernel_fwhm(testdata_cbma):
 
 
 def test_alekernel_sample_size(testdata_cbma):
-    """
-    Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't
-    masked out).
+    """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
+
     Test with explicit sample size.
     """
     coordinates = testdata_cbma.coordinates.copy()
@@ -150,10 +141,7 @@ def test_alekernel_sample_size(testdata_cbma):
 
 
 def test_alekernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
-    """
-    Check that the different return types produce equivalent results
-    (minus the masking element).
-    """
+    """Check that all return types produce equivalent results (minus the masking element)."""
     tmpdir = tmp_path_factory.mktemp("test_alekernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
     kern = kernel.ALEKernel(sample_size=20)
@@ -176,9 +164,7 @@ def test_alekernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
 
 
 def test_mkdakernel_smoke(testdata_cbma):
-    """
-    Smoke test for nimare.meta.kernel.MKDAKernel, using Dataset object.
-    """
+    """Smoke test for nimare.meta.kernel.MKDAKernel, using Dataset object."""
     kern = kernel.MKDAKernel()
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     assert len(ma_maps) == len(testdata_cbma.ids)
@@ -187,9 +173,9 @@ def test_mkdakernel_smoke(testdata_cbma):
 
 
 def test_mkdakernel_1mm(testdata_cbma):
-    """
-    COMs of MKDA kernel maps should match the foci fed in (assuming focus isn't
-    masked out and spheres don't overlap).
+    """Centers of mass of MKDA kernel maps should match the foci fed in.
+
+    This assumes the focus isn't masked out and spheres don't overlap.
     Test on 1mm template.
     """
     id_ = "pain_01.nidm-1"
@@ -205,9 +191,9 @@ def test_mkdakernel_1mm(testdata_cbma):
 
 
 def test_mkdakernel_2mm(testdata_cbma):
-    """
-    COMs of MKDA kernel maps should match the foci fed in (assuming focus isn't
-    masked out and spheres don't overlap).
+    """Centers of mass of MKDA kernel maps should match the foci fed in.
+
+    This assumes the focus isn't masked out and spheres don't overlap.
     Test on 2mm template.
     """
     id_ = "pain_01.nidm-1"
@@ -223,10 +209,7 @@ def test_mkdakernel_2mm(testdata_cbma):
 
 
 def test_mkdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
-    """
-    Check that the different return types produce equivalent results
-    (minus the masking element).
-    """
+    """Check that all return types produce equivalent results (minus the masking element)."""
     tmpdir = tmp_path_factory.mktemp("test_mkdakernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
     kern = kernel.MKDAKernel(r=4, value=1)
@@ -249,9 +232,7 @@ def test_mkdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
 
 
 def test_kdakernel_smoke(testdata_cbma):
-    """
-    Smoke test for nimare.meta.kernel.KDAKernel
-    """
+    """Smoke test for nimare.meta.kernel.KDAKernel."""
     kern = kernel.KDAKernel()
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
     assert len(ma_maps) == len(testdata_cbma.ids)
@@ -260,9 +241,9 @@ def test_kdakernel_smoke(testdata_cbma):
 
 
 def test_kdakernel_1mm(testdata_cbma):
-    """
-    COMs of KDA kernel maps should match the foci fed in (assuming focus isn't
-    masked out and spheres don't overlap).
+    """Centers of mass of KDA kernel maps should match the foci fed in.
+
+    This assumes focus isn't masked out and spheres don't overlap.
     Test on 1mm template.
     """
     id_ = "pain_01.nidm-1"
@@ -278,9 +259,9 @@ def test_kdakernel_1mm(testdata_cbma):
 
 
 def test_kdakernel_2mm(testdata_cbma):
-    """
-    COMs of KDA kernel maps should match the foci fed in (assuming focus isn't
-    masked out and spheres don't overlap).
+    """Centers of mass of KDA kernel maps should match the foci fed in.
+
+    This assumes focus isn't masked out and spheres don't overlap.
     Test on 2mm template.
     """
     id_ = "pain_01.nidm-1"
@@ -296,9 +277,9 @@ def test_kdakernel_2mm(testdata_cbma):
 
 
 def test_kdakernel_inputdataset_returnimages(testdata_cbma):
-    """
-    COMs of KDA kernel maps should match the foci fed in (assuming focus isn't
-    masked out and spheres don't overlap).
+    """Centers of mass of KDA kernel maps should match the foci fed in.
+
+    This assumes focus isn't masked out and spheres don't overlap.
     Test on Dataset object.
     """
     id_ = "pain_01.nidm-1"
@@ -314,10 +295,7 @@ def test_kdakernel_inputdataset_returnimages(testdata_cbma):
 
 
 def test_kdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
-    """
-    Check that the different return types produce equivalent results
-    (minus the masking element).
-    """
+    """Check that the different return types produce equivalent results (minus masking)."""
     tmpdir = tmp_path_factory.mktemp("test_kdakernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
     kern = kernel.KDAKernel(r=4, value=1)
@@ -342,9 +320,7 @@ def test_kdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
 
 
 def test_kdakernel_transform_attributes(testdata_cbma):
-    """
-    Check that attributes are added at transform.
-    """
+    """Check that attributes are added at transform."""
     kern = kernel.KDAKernel(r=4, value=1)
     assert not hasattr(kern, "filename_pattern")
     assert not hasattr(kern, "image_type")
@@ -354,9 +330,7 @@ def test_kdakernel_transform_attributes(testdata_cbma):
 
 
 def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
-    """
-    Test Peaks2MapsKernel
-    """
+    """Test Peaks2MapsKernel."""
     tmpdir = tmp_path_factory.mktemp("test_Peaks2MapsKernel")
 
     model_dir = extract.download_peaks2maps_model()
