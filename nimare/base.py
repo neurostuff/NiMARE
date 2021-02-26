@@ -7,7 +7,10 @@ import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
+import nibabel as nb
 import numpy as np
+from nilearn._utils.niimg_conversions import _check_same_fov
+from nilearn.image import concat_imgs, resample_to_img
 
 from .results import MetaResult
 from .utils import get_masker
@@ -270,14 +273,44 @@ class MetaEstimator(Estimator):
             mask = get_masker(mask)
         self.masker = mask
 
+        self.resample = kwargs.get("resample", False)
+
+        # defaults for resampling images (nilearn's defaults do not work well)
+        self._resample_kwargs = {"clip": True, "interpolation": "linear"}
+        self._resample_kwargs.update(
+            {k.split("resample__")[1]: v for k, v in kwargs.items() if k.startswith("resample__")}
+        )
+
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
         masker = self.masker or dataset.masker
+
+        mask_img = masker.mask_img or masker.labels_img
+        if isinstance(mask_img, str):
+            mask_img = nb.load(mask_img)
+
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
+                # If no resampling is requested, check if resampling is required
+                if not self.resample:
+                    check_imgs = {img: nb.load(img) for img in self.inputs_[name]}
+                    _check_same_fov(**check_imgs, reference_masker=mask_img, raise_error=True)
+                    imgs = list(check_imgs.values())
+                else:
+                    # resampling will only occur if shape/affines are different
+                    # making this harmless if all img shapes/affines are the same
+                    # as the reference
+                    imgs = [
+                        resample_to_img(nb.load(img), mask_img, **self._resample_kwargs)
+                        for img in self.inputs_[name]
+                    ]
+
+                # input to NiFtiLabelsMasker must be 4d
+                img4d = concat_imgs(imgs, ensure_ndim=4)
+
                 # Mask required input images using either the dataset's mask or
                 # the estimator's.
-                temp_arr = masker.transform(self.inputs_[name])
+                temp_arr = masker.transform(img4d)
 
                 # An intermediate step to mask out bad voxels. Can be dropped
                 # once PyMARE is able to handle masked arrays or missing data.

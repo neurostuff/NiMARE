@@ -103,6 +103,7 @@ API
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
+For more information about functional characterization analysis, see :ref:`Meta-analytic functional decoding <decoding methods>`.
 
 .. automodule:: nimare.decode
    :no-members:

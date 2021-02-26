@@ -168,75 +168,22 @@ jobs:
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
 
-  deploy:
-    docker:
-      - image: continuumio/miniconda3
-    steps:
-      - checkout
-      - run:
-          name: init .pypirc
-          command: |
-            echo -e "[pypi]" >> ~/.pypirc
-            echo -e "username = $PYPI_USER" >> ~/.pypirc
-            echo -e "password = $PYPI_PASSWORD" >> ~/.pypirc
-      - run:
-          name: create package
-          command: |
-            python setup.py sdist
-            python setup.py bdist_wheel
-      - run:
-          name: upload to pypi
-          command: |
-            pip install twine
-            twine upload dist/*
-
 workflows:
   version: 2.1
   run_tests:
     jobs:
-      - make_py36_env:
-          filters:
-            tags:
-              only: /.*/
+      - make_py36_env
       - test_py36_and_coverage:
           requires:
             - make_py36_env
-          filters:
-            tags:
-              only: /.*/
       - test_performance:
           requires:
             - make_py36_env
-          filters:
-            tags:
-              only: /.*/
-      - test_py37:
-          filters:
-            tags:
-              only: /.*/
-      - test_py38:
-          filters:
-            tags:
-              only: /.*/
+      - test_py37
+      - test_py38
       - build_docs:
           requires:
             - make_py36_env
-          filters:
-            tags:
-              only: /.*/
       - style_check:
           requires:
             - make_py36_env
-          filters:
-            tags:
-              only: /.*/
-      - deploy:
-          requires:
-            - test_py36_and_coverage
-            - test_py37
-            - test_py38
-          filters:
-            tags:
-              only: /[0-9]+(\.[0-9]+)*/
-            branches:
-              ignore: /.*/

@@ -26,7 +26,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     decoder.fit(testdata_laird)
 
     # Make an image to decode
-    meta = mkda.KDA()
+    meta = mkda.KDA(null_method="analytic")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
     decoded_df = decoder.transform(img)
@@ -58,7 +58,7 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     decoder.fit(dset)
 
     # Make an image to decode
-    meta = mkda.KDA()
+    meta = mkda.KDA(null_method="analytic")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
     decoded_df = decoder.transform(img)
