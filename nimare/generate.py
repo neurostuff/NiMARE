@@ -130,15 +130,15 @@ def create_neurovault_dataset(
         `8836` is the collection id.
         collection_ids can also be a dictionary whose keys are the informative
         study name and the values are collection ids to give the collections
-        more informative names in the dataset.
+        human readable names in the dataset.
     contrasts : :obj:`dict`
         Dictionary whose keys represent the name of the contrast in
-        the dataset and whose values represent how that contrast is identified
-        in neurovault.
+        the dataset and whose values represent a regular expression that would
+        match the names represented in NeuroVault.
         For example, under the ``Name`` column in this URL
         https://neurovault.org/collections/8836/,
         a valid contrast could be "as-Animal", which will be called "animal" in the created
-        dataset if the contrasts argument is ``{'animal': ["as-Animal"]}``.
+        dataset if the contrasts argument is ``{'animal': "as-Animal"}``.
     img_dir : :obj:`str` or None
         Base path to save all the downloaded images, by default the images
         will be saved to a temporary directory with the prefix "neurovault"
