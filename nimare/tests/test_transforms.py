@@ -1,7 +1,6 @@
 """Test nimare.transforms."""
 import nibabel as nib
 import numpy as np
-import pandas as pd
 
 from nimare import transforms, utils
 
@@ -98,11 +97,7 @@ def test_mm2vox():
 
 
 def test_images_to_coordinates(testdata_ibma):
-    dset = testdata_ibma
-    new_images = transforms.transform_images(
-        dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
-    )
-    coordinates = transforms.images_to_coordinates(
-        pd.DataFrame(new_images.iloc[-1, :]).T, 3.3, dset.space, dset.masker
-    )
-    assert isinstance(coordinates, pd.DataFrame)
+    img2coord = transforms.CoordinateGenerator(overwrite=True)
+    new_dset = img2coord.transform(testdata_ibma)
+
+    assert isinstance(new_dset, type(testdata_ibma))

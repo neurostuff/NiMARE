@@ -1,4 +1,6 @@
 """Miscellaneous spatial and statistical transforms."""
+
+import copy
 import logging
 import os.path as op
 
@@ -9,6 +11,7 @@ from nilearn.reporting import get_clusters_table
 
 from . import references, utils
 from .due import due
+from .base import Transformer
 
 LGR = logging.getLogger(__name__)
 
@@ -182,6 +185,70 @@ def resolve_transforms(target, available_data, masker):
         return varcope
     else:
         return None
+
+
+class CoordinateGenerator(Transformer):
+
+    def __init__(self, cluster_threshold=None, min_distance=8.0, overwrite=False, z_threshold=3.1):
+        self.cluster_threshold = cluster_threshold
+        self.min_distance = min_distance
+        self.overwrite = overwrite
+        self.z_threshold = z_threshold
+
+    def transform(self, dataset):
+        # relevant variables from dataset
+        space = dataset.space
+        masker = dataset.masker
+        images_df = dataset.images
+
+        coordinates_dict = {}
+        for _, row in images_df.iterrows():
+
+            if row['id'] in dataset.coordinate_df['id'] and not self.overwrite:
+                continue
+
+            if row.get("z"):
+                clusters = get_clusters_table(
+                    nib.load(row.get("z")), self.z_threshold,
+                    self.cluster_threshold, self.min_distance,
+                )
+            elif row.get("p"):
+                LGR.warning(f"No Z map for {row['id']}, using p map")
+                p_threshold = z_to_p(self.z_threshold)
+                clusters = get_clusters_table(
+                    nib.load(row.get("p")), p_threshold, self.cluster_threshold, self.min_distance
+                )
+            else:
+                LGR.warning(f"No Z or p map for {row['id']}, skipping...")
+                continue
+
+            # skip entry if no clusters are found
+            if clusters.empty:
+                LGR.warning(
+                    f"No clusters were found for {row['id']} at a threshold of {self.z_threshold}"
+                )
+                continue
+
+            coordinates_dict[row["study_id"]] = {
+                "contrasts": {
+                    row["contrast_id"]: {
+                        "coords": {
+                            "space": space,
+                            "x": list(clusters["X"]),
+                            "y": list(clusters["Y"]),
+                            "z": list(clusters["Z"]),
+                        },
+                    }
+                }
+            }
+
+        coordinates_df = utils.dict_to_coordinates(coordinates_dict, masker, space)
+        # merge existing
+        coordinates_df = coordinates_df.merge(dataset.coordinates, how='left', on='id')
+        new_dataset = copy.deepcopy(dataset)
+        new_dataset.coordinates = coordinates_df
+
+        return new_dataset
 
 
 def images_to_coordinates(
