@@ -185,8 +185,12 @@ def resolve_transforms(target, available_data, masker):
         varcope = masker.inverse_transform(varcope.squeeze())
         return varcope
     elif target == "p":
-
-        if "z" in available_data.keys():
+        if ("t" in available_data.keys()) and ("sample_sizes" in available_data.keys()):
+            dof = sample_sizes_to_dof(available_data["sample_sizes"])
+            t = masker.transform(available_data["t"])
+            z = t_to_z(t, dof)
+            p = z_to_p(z)
+        elif "z" in available_data.keys():
             z = masker.transform(available_data["z"])
             p = z_to_p(z)
         else:
@@ -198,6 +202,26 @@ def resolve_transforms(target, available_data, masker):
 
 
 class CoordinateGenerator(Transformer):
+    """Extract peak statistical coordinates from statistical z or p maps
+
+    Parameters
+    ----------
+    cluster_threshold : :obj:`int` or `None`, optional
+        Cluster size threshold, in voxels. Default=None
+    min_distance : :obj:`float`, optional
+        Minimum distance between subpeaks in mm. Default=8mm.
+    overwrite : :obj:`bool`
+        If true, overwrites existing coordinate reports for study contrasts
+        with statistical images. Default=False.
+    z_threshold : :obj:`float`
+        Cluster forming z-scale threshold. Default=3.1.
+
+    Returns
+    -------
+    coordinates_df : :class:`pandas.DataFrame`
+        DataFrame containing statistical peaks.
+    """
+
     def __init__(self, cluster_threshold=None, min_distance=8.0, overwrite=False, z_threshold=3.1):
         self.cluster_threshold = cluster_threshold
         self.min_distance = min_distance
@@ -205,12 +229,14 @@ class CoordinateGenerator(Transformer):
         self.z_threshold = z_threshold
 
     def transform(self, dataset):
+        """Create coordinate peaks from statistical images"""
+
         # relevant variables from dataset
         space = dataset.space
         masker = dataset.masker
         images_df = dataset.images
 
-        # how space is represented in the specification
+        # conform space specification
         if "mni" in space.lower() or "ale" in space.lower():
             coordinate_space = "MNI"
         elif "tal" in space.lower():
@@ -279,67 +305,6 @@ class CoordinateGenerator(Transformer):
         new_dataset.coordinates = coordinates_df
 
         return new_dataset
-
-
-def images_to_coordinates(
-    images_df,
-    z_threshold,
-    space,
-    masker,
-    cluster_threshold=None,
-    min_distance=8.0,
-):
-    """Extract peak statistical coordinates from statistical z or p maps
-
-    Parameters
-    ----------
-    images_df : :class:`pandas.DataFrame`
-        DataFrame with paths to images for studies in Dataset.
-    z_threshold : :obj:`float`
-        Cluster forming z-scale threshold in `stat_img`.
-    space : :obj:`string`
-        the final frontier
-    masker : :class:`nilearn.input_data.NiftiMasker`
-        masker for dataset
-    cluster_threshold : :obj:`int` or `None`, optional
-        Cluster size threshold, in voxels.
-    min_distance : :obj:`float`, optional
-        Minimum distance between subpeaks in mm. Default=8mm.
-
-    Returns
-    -------
-    coordinates_df : :class:`pandas.DataFrame`
-        DataFrame containing statistical peaks.
-    """
-
-    coordinates_dict = {}
-    for _, row in images_df.iterrows():
-        if row.get("z"):
-            clusters = get_clusters_table(
-                nib.load(row.get("z")), z_threshold, cluster_threshold, min_distance
-            )
-        elif row.get("p"):
-            LGR.warning(f"No Z map for {row['id']}, using p map")
-            p_threshold = z_to_p(z_threshold)
-            clusters = get_clusters_table(
-                nib.load(row.get("p")), p_threshold, cluster_threshold, min_distance
-            )
-        else:
-            raise ValueError(f"{row['id']} needs either a Z map or p map")
-        coordinates_dict[row["study_id"]] = {
-            "contrasts": {
-                row["contrast_id"]: {
-                    "coords": {
-                        "space": space,
-                        "x": list(clusters["X"]),
-                        "y": list(clusters["Y"]),
-                        "z": list(clusters["Z"]),
-                    },
-                }
-            }
-        }
-
-    return utils.dict_to_coordinates(coordinates_dict, masker, space)
 
 
 def sample_sizes_to_dof(sample_sizes):
@@ -487,7 +452,7 @@ def z_to_p(z, tail="two"):
     Parameters
     ----------
     z : array_like
-        Z-statistics (unsigned)
+        Z-statistics
     tail : {'one', 'two'}, optional
         Whether p-values come from one-tailed or two-tailed test. Default is
         'two'.
