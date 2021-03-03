@@ -4,6 +4,7 @@ import os
 import os.path as op
 
 import nibabel as nib
+import numpy as np
 import pytest
 
 from nimare import utils
@@ -122,3 +123,51 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
         assert not os.path.isfile(my_class.memmap_filenames[0])
         # test when a function is called a new memmap file is created
         assert first_memmap_filename != my_class.memmap_filenames[0]
+
+
+def test_tal2mni():
+    """
+    TODO: Get converted coords from official site.
+    """
+    test = np.array([[-44, 31, 27], [20, -32, 14], [28, -76, 28]])
+    true = np.array(
+        [
+            [-45.83997568, 35.97904559, 23.55194326],
+            [22.69248975, -31.34145016, 13.91284087],
+            [31.53113226, -76.61685748, 33.22105166],
+        ]
+    )
+    assert np.allclose(utils.tal2mni(test), true)
+
+
+def test_mni2tal():
+    """
+    TODO: Get converted coords from official site.
+    """
+    test = np.array([[-44, 31, 27], [20, -32, 14], [28, -76, 28]])
+    true = np.array(
+        [[-42.3176, 26.0594, 29.7364], [17.4781, -32.6076, 14.0009], [24.7353, -75.0184, 23.3283]]
+    )
+    assert np.allclose(utils.mni2tal(test), true)
+
+
+def test_vox2mm():
+    """
+    Test vox2mm
+    """
+    test = np.array([[20, 20, 20], [0, 0, 0]])
+    true = np.array([[50.0, -86.0, -32.0], [90.0, -126.0, -72.0]])
+    img = utils.get_template(space="mni152_2mm", mask=None)
+    aff = img.affine
+    assert np.array_equal(utils.vox2mm(test, aff), true)
+
+
+def test_mm2vox():
+    """
+    Test mm2vox
+    """
+    test = np.array([[20, 20, 20], [0, 0, 0]])
+    true = np.array([[35.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
+    img = utils.get_template(space="mni152_2mm", mask=None)
+    aff = img.affine
+    assert np.array_equal(utils.mm2vox(test, aff), true)
