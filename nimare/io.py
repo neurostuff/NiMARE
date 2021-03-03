@@ -4,7 +4,6 @@ import re
 from itertools import groupby
 import logging
 from operator import itemgetter
-import tempfile
 from pathlib import Path
 from collections import Counter
 
@@ -13,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from .dataset import Dataset
+from .extract.utils import _get_dataset_dir
 
 LGR = logging.getLogger(__name__)
 
@@ -324,11 +324,7 @@ def convert_neurovault_to_dataset(
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from neurovault.
     """
-    if img_dir is None:
-        img_dir = Path(tempfile.mkdtemp(prefix="neurovault_"))
-    else:
-        img_dir = Path(img_dir, exist_ok=True)
-        img_dir.mkdir(parents=True, exist_ok=True)
+    img_dir = Path(_get_dataset_dir("_".join(contrasts.keys()), data_dir=img_dir))
 
     if map_type_conversion is None:
         map_type_conversion = DEFAULT_MAP_TYPE_CONVERSION
@@ -401,7 +397,7 @@ def convert_neurovault_to_dataset(
 
 
 def _resolve_sample_size(sample_sizes):
-    """choose modal sample_size if there are multiple to choose from"""
+    """Choose modal sample_size if there are multiple sample_sizes to choose from."""
     sample_size_counts = Counter(sample_sizes)
     if None in sample_size_counts:
         sample_size_counts.pop(None)

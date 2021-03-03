@@ -117,6 +117,7 @@ def test_convert_neurosynth_to_json_smoke():
     ],
 )
 def test_convert_neurovault_to_dataset(kwargs):
+    """Test conversion of neurovault collection to a dataset."""
     dset = io.convert_neurovault_to_dataset(**kwargs)
 
     # check if names are propagated into Dataset
@@ -143,4 +144,5 @@ def test_convert_neurovault_to_dataset(kwargs):
     ],
 )
 def test_resolve_sample_sizes(sample_sizes, expected_sample_size):
+    """Test modal sample size heuristic."""
     assert io._resolve_sample_size(sample_sizes) == expected_sample_size
