@@ -147,7 +147,6 @@ def null_to_p(test_value, null_array, tail="two", symmetric=False):
     and two-tailed p-values are desired, use symmetric=True, as it is
     approximately twice as efficient computationally, and has lower variance.
     """
-
     if tail not in {"two", "upper", "lower"}:
         raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
 
@@ -271,8 +270,7 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
 
 def fdr(p, q=0.05):
-    """Determine FDR threshold given a p value array and desired false
-    discovery rate q.
+    """Determine FDR threshold given a p value array and desired false discovery rate q.
 
     Parameters
     ----------

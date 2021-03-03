@@ -1,4 +1,5 @@
-"""
+"""Kernel transformers for CBMA algorithms.
+
 Methods for estimating thresholded cluster maps from neuroimaging contrasts
 (Contrasts) from sets of foci and optional additional information (e.g., sample
 size and test statistic values).
@@ -22,8 +23,7 @@ LGR = logging.getLogger(__name__)
 
 
 class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods in
-    :mod:`nimare.meta.kernel`.
+    """Base class for modeled activation-generating methods in :mod:`nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -39,12 +39,10 @@ class KernelTransformer(Transformer):
     """
 
     def _infer_names(self, **kwargs):
-        """
-        Determine the filename pattern for image files created with this
-        transformer, as well as the image type (i.e., the column for the
-        Dataset.images DataFrame). The parameters used to construct the
-        filenames come from the transformer's parameters (attributes saved in
-        `__init__()`).
+        """Determine filename pattern and image type for files created with this transformer.
+
+        The parameters used to construct the filenames come from the transformer's
+        parameters (attributes saved in ``__init__()``).
 
         Parameters
         ----------
@@ -73,8 +71,7 @@ class KernelTransformer(Transformer):
         self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
 
     def transform(self, dataset, masker=None, return_type="image"):
-        """
-        Generate modeled activation images for each Contrast in dataset.
+        """Generate modeled activation images for each Contrast in dataset.
 
         Parameters
         ----------
@@ -212,8 +209,7 @@ class KernelTransformer(Transformer):
 
 
 class ALEKernel(KernelTransformer):
-    """
-    Generate ALE modeled activation images from coordinates and sample size.
+    """Generate ALE modeled activation images from coordinates and sample size.
 
     Parameters
     ----------
@@ -265,8 +261,7 @@ class ALEKernel(KernelTransformer):
 
 
 class KDAKernel(KernelTransformer):
-    """
-    Generate KDA modeled activation images from coordinates.
+    """Generate KDA modeled activation images from coordinates.
 
     Parameters
     ----------
@@ -296,8 +291,7 @@ class KDAKernel(KernelTransformer):
 
 
 class MKDAKernel(KDAKernel):
-    """
-    Generate MKDA modeled activation images from coordinates.
+    """Generate MKDA modeled activation images from coordinates.
 
     Parameters
     ----------
@@ -311,8 +305,7 @@ class MKDAKernel(KDAKernel):
 
 
 class Peaks2MapsKernel(KernelTransformer):
-    """
-    Generate peaks2maps modeled activation images from coordinates.
+    """Generate peaks2maps modeled activation images from coordinates.
 
     Parameters
     ----------

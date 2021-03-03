@@ -1,6 +1,4 @@
-"""
-Runs before tests
-"""
+"""Generate fixtures for tests."""
 import os
 from shutil import copyfile
 
@@ -16,9 +14,7 @@ from ..utils import get_resource_path
 
 @pytest.fixture(scope="session")
 def testdata_ibma(tmp_path_factory):
-    """
-    Load data from dataset into global variables.
-    """
+    """Load data from dataset into global variables."""
     tmpdir = tmp_path_factory.mktemp("testdata_ibma")
 
     # Load dataset
@@ -47,6 +43,7 @@ def testdata_ibma(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def testdata_cbma():
+    """Generate coordinate-based dataset for tests."""
     dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
     dset = nimare.dataset.Dataset(dset_file)
 
@@ -59,7 +56,10 @@ def testdata_cbma():
 
 @pytest.fixture(scope="session")
 def testdata_cbma_full():
-    """Same as above, except returns all coords, not just one per study."""
+    """Generate more complete coordinate-based dataset for tests.
+
+    Same as above, except returns all coords, not just one per study.
+    """
     dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
     dset = nimare.dataset.Dataset(dset_file)
     return dset
@@ -67,9 +67,7 @@ def testdata_cbma_full():
 
 @pytest.fixture(scope="session")
 def testdata_laird():
-    """
-    Load data from dataset into global variables.
-    """
+    """Load data from dataset into global variables."""
     testdata_laird = nimare.dataset.Dataset.load(
         os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
     )
@@ -78,6 +76,7 @@ def testdata_laird():
 
 @pytest.fixture(scope="session")
 def mni_mask():
+    """Load MNI mask for testing."""
     return nib.load(
         os.path.join(get_resource_path(), "templates", "MNI152_2x2x2_brainmask.nii.gz")
     )
@@ -85,6 +84,7 @@ def mni_mask():
 
 @pytest.fixture(scope="session")
 def testdata_ibma_resample(tmp_path_factory):
+    """Create dataset for image-based resampling tests."""
     tmpdir = tmp_path_factory.mktemp("testdata_ibma_resample")
 
     # Load dataset

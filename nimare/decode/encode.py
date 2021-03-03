@@ -1,6 +1,4 @@
-"""
-Methods for encoding text into brain maps.
-"""
+"""Methods for encoding text into brain maps."""
 import numpy as np
 from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
@@ -32,9 +30,7 @@ def text2brain():
 
 @due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA encoding.")
 def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0):
-    r"""
-    Perform text-to-image encoding according to the method described in
-    Rubin et al. (2017).
+    r"""Perform text-to-image encoding according to the method described in Rubin et al. (2017).
 
     Parameters
     ----------

@@ -1,6 +1,4 @@
-"""
-Topic modeling with latent Dirichlet allocation via MALLET.
-"""
+"""Topic modeling with latent Dirichlet allocation via MALLET."""
 import logging
 import os
 import os.path as op

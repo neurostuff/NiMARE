@@ -100,9 +100,12 @@ class CBMAEstimator(MetaEstimator):
         return images
 
     def _compute_weights(self, ma_values):
-        """Optional weight computation routine. Takes an array of meta-analysis
-        values as input and returns an array of the same shape, weighted as
-        desired. Can be ignored by algorithms that don't support weighting."""
+        """Perform optional weight computation routine.
+
+        Takes an array of meta-analysis values as input and returns an array
+        of the same shape, weighted as desired.
+        Can be ignored by algorithms that don't support weighting.
+        """
         return None
 
     def _preprocess_input(self, dataset):
@@ -177,10 +180,13 @@ class CBMAEstimator(MetaEstimator):
         return self._compute_summarystat(ma_values)
 
     def _compute_summarystat(self, ma_values):
-        """Core summary statistic computation logic. Must be overriden by
-        subclasses. Input and output are both numpy arrays; the output must
-        aggregate over the 0th dimension of the input. (I.e., if the input
-        has K dimensions, the output has K - 1 dimensions.)"""
+        """Compute summary statistic according to estimator-specific method.
+
+        Must be overriden by subclasses.
+        Input and output are both numpy arrays; the output must
+        aggregate over the 0th dimension of the input.
+        (i.e., if the input has K dimensions, the output has K - 1 dimensions.)
+        """
         pass
 
     def _summarystat_to_p(self, stat_values, null_method="analytic"):
@@ -400,7 +406,7 @@ class CBMAEstimator(MetaEstimator):
         )
 
         def get_last_bin(arr1d):
-            """Index the last location in a 1D array with a non-zero value"""
+            """Index the last location in a 1D array with a non-zero value."""
             if np.any(arr1d):
                 last_bin = np.where(arr1d)[0][-1]
             else:

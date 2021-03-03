@@ -1,6 +1,4 @@
-"""
-Functional decoding tools
-"""
+"""Functional decoding tools."""
 
 from . import continuous
 from . import discrete

@@ -1,6 +1,4 @@
-"""
-Utilities
-"""
+"""Utility functions for NiMARE."""
 import logging
 import os.path as op
 import re
@@ -17,8 +15,7 @@ LGR = logging.getLogger(__name__)
 
 
 def dict_to_df(id_df, data, key="labels"):
-    """
-    Load a given data type in NIMADS-format dictionary into DataFrame.
+    """Load a given data type in NIMADS-format dictionary into DataFrame.
 
     Parameters
     ----------
@@ -56,9 +53,7 @@ def dict_to_df(id_df, data, key="labels"):
 
 
 def dict_to_coordinates(data, masker, space):
-    """
-    Load coordinates in NIMADS-format dictionary into DataFrame.
-    """
+    """Load coordinates in NIMADS-format dictionary into DataFrame."""
     # Required columns
     columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]
     core_columns = columns[:]  # Used in contrast for loop
@@ -157,8 +152,7 @@ def validate_df(df):
 
 
 def validate_images_df(image_df):
-    """
-    Check and update image paths in DataFrame.
+    """Check and update image paths in DataFrame.
 
     Parameters
     ----------
@@ -213,8 +207,7 @@ def validate_images_df(image_df):
 
 
 def get_template(space="mni152_2mm", mask=None):
-    """
-    Load template file.
+    """Load template file.
 
     Parameters
     ----------
@@ -267,8 +260,7 @@ def get_template(space="mni152_2mm", mask=None):
 
 
 def get_masker(mask):
-    """
-    Get an initialized, fitted nilearn Masker instance from passed argument.
+    """Get an initialized, fitted nilearn Masker instance from passed argument.
 
     Parameters
     ----------
@@ -298,17 +290,17 @@ def get_masker(mask):
 
 
 def listify(obj):
-    """
-    Wraps all non-list or tuple objects in a list; provides a simple way
-    to accept flexible arguments.
+    """Wrap all non-list or tuple objects in a list.
+
+    This provides a simple way to accept flexible arguments.
     """
     return obj if isinstance(obj, (list, tuple, type(None), np.ndarray)) else [obj]
 
 
 def round2(ndarray):
-    """
-    Numpy rounds X.5 values to nearest even integer. We want to round to the
-    nearest integer away from zero.
+    """Round X.5 to the nearest integer away from zero.
+
+    Numpy rounds X.5 values to nearest even integer.
     """
     onedarray = ndarray.flatten()
     signs = np.sign(onedarray)  # pylint: disable=no-member
@@ -322,18 +314,18 @@ def round2(ndarray):
 
 
 def get_resource_path():
-    """
-    Returns the path to general resources, terminated with separator. Resources
-    are kept outside package folder in "datasets".
+    """Return the path to general resources, terminated with separator.
+
+    Resources are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
     return op.abspath(op.join(op.dirname(__file__), "resources") + op.sep)
 
 
 def try_prepend(value, prefix):
-    """
-    Try to prepend a value to a string with a separator ('/'). If not a string,
-    will just return the original value.
+    """Try to prepend a value to a string with a separator ('/').
+
+    If not a string, will just return the original value.
     """
     if isinstance(value, str):
         return op.join(prefix, value)
@@ -342,8 +334,7 @@ def try_prepend(value, prefix):
 
 
 def find_stem(arr):
-    """
-    Find longest common substring in array of strings.
+    """Find longest common substring in array of strings.
 
     From https://www.geeksforgeeks.org/longest-common-substring-array-strings/
     """
@@ -375,8 +366,7 @@ def find_stem(arr):
 
 
 def uk_to_us(text):
-    """
-    Convert UK spellings to US based on a converter.
+    """Convert UK spellings to US based on a converter.
 
     english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
 

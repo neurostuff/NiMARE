@@ -1,6 +1,4 @@
-"""
-Perform MACM with ALE algorithm.
-"""
+"""Perform MACM with ALE algorithm."""
 import logging
 import os
 import pathlib
@@ -16,9 +14,7 @@ LGR = logging.getLogger(__name__)
 def macm_workflow(
     dataset_file, mask_file, output_dir=None, prefix=None, n_iters=10000, v_thr=0.001, n_cores=-1
 ):
-    """
-    Perform MACM with ALE algorithm.
-    """
+    """Perform MACM with ALE algorithm."""
     LGR.info("Loading coordinates...")
     dset = Dataset(dataset_file)
     sel_ids = dset.get_studies_by_mask(mask_file)

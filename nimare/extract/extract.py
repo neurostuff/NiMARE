@@ -1,6 +1,4 @@
-"""
-Tools for downloading datasets.
-"""
+"""Tools for downloading datasets."""
 import logging
 import math
 import os
@@ -33,8 +31,7 @@ LGR = logging.getLogger(__name__)
 
 
 def fetch_neurosynth(path=".", url=None, unpack=False):
-    """
-    Download the latest data files from NeuroSynth.
+    """Download the latest data files from NeuroSynth.
 
     Parameters
     ----------
@@ -49,7 +46,6 @@ def fetch_neurosynth(path=".", url=None, unpack=False):
     -----
     This function was originally neurosynth.base.dataset.download().
     """
-
     if url is None:
         url = (
             "https://github.com/neurosynth/neurosynth-data/blob/master/current_data.tar.gz?"
@@ -87,8 +83,7 @@ def fetch_neurosynth(path=".", url=None, unpack=False):
 
 
 def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download NIDM Results for 21 pain studies from NeuroVault for tests.
+    """Download NIDM Results for 21 pain studies from NeuroVault for tests.
 
     Parameters
     ----------
@@ -143,8 +138,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_mallet(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download the MALLET toolbox for LDA topic modeling.
+    """Download the MALLET toolbox for LDA topic modeling.
 
     Parameters
     ----------
@@ -195,9 +189,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download Cognitive Atlas ontology and combine Concepts, Tasks, and
-    Disorders to create ID and relationship DataFrames.
+    """Download Cognitive Atlas ontology and extract IDs and relationships.
 
     Parameters
     ----------
@@ -305,9 +297,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_abstracts(dataset, email):
-    """
-    Download the abstracts for a list of PubMed IDs. Uses the BioPython
-    package.
+    """Download the abstracts for a list of PubMed IDs. Uses the BioPython package.
 
     Parameters
     ----------
@@ -362,8 +352,7 @@ def download_abstracts(dataset, email):
 
 
 def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download the trained Peaks2Maps model from OHBM 2018.
+    """Download the trained Peaks2Maps model from OHBM 2018.
 
     Parameters
     ----------

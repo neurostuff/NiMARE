@@ -1,6 +1,4 @@
-"""
-Topic modeling with generalized correspondence latent Dirichlet allocation.
-"""
+"""Topic modeling with generalized correspondence latent Dirichlet allocation."""
 import logging
 import os.path as op
 
@@ -19,9 +17,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(references.GCLDAMODEL)
 class GCLDAModel(NiMAREBase):
-    """
-    Generate a generalized correspondence latent Dirichlet allocation
-    (GCLDA) topic model.
+    """Generate a generalized correspondence latent Dirichlet allocation (GCLDA) topic model.
 
     Parameters
     ----------
@@ -348,8 +344,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["n_word_tokens_doc_by_topic"][doc, topic] += 1
 
     def fit(self, n_iters=10000, loglikely_freq=10, verbose=1):
-        """
-        Run multiple iterations.
+        """Run multiple iterations.
 
         Parameters
         ----------
@@ -381,8 +376,7 @@ class GCLDAModel(NiMAREBase):
         self.p_word_g_topic_ = p_word_g_topic
 
     def _update(self, loglikely_freq=1, verbose=2):
-        """
-        Run a complete update cycle (sample z, sample y&r, update regions).
+        """Run a complete update cycle (sample z, sample y&r, update regions).
 
         Parameters
         ----------
@@ -428,8 +422,7 @@ class GCLDAModel(NiMAREBase):
                 )
 
     def _update_word_topic_assignments(self, randseed):
-        """
-        Update wtoken_topic_idx (z) indicator variables assigning words->topics.
+        """Update wtoken_topic_idx (z) indicator variables assigning words->topics.
 
         Parameters
         ----------
@@ -479,8 +472,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["n_word_tokens_doc_by_topic"][doc, topic] += 1
 
     def _update_peak_assignments(self, randseed):
-        """
-        Update y / r indicator variables assigning peaks->topics/subregions.
+        """Update y / r indicator variables assigning peaks->topics/subregions.
 
         Parameters
         ----------
@@ -576,9 +568,8 @@ class GCLDAModel(NiMAREBase):
             self.topics["peak_region_idx"][i_ptoken] = region  # Update y->subregion assignment
 
     def _update_regions(self):
-        """
-        Update spatial distribution parameters (Gaussians params for all
-        subregions).
+        """Update spatial distribution parameters (Gaussians params for all subregions).
+
         Updates regions_mu and regions_sigma, indicating location and
         distribution of each subregion.
         """
@@ -705,8 +696,7 @@ class GCLDAModel(NiMAREBase):
         description="Describes method for computing log-likelihood " "used in model.",
     )
     def compute_log_likelihood(self, model=None, update_vectors=True):
-        """
-        Compute log-likelihood of a model object given current model.
+        """Compute log-likelihood of a model object given current model.
 
         Computes the log-likelihood of data in any model object (either train
         or test) given the posterior predictive distributions over peaks and
@@ -836,9 +826,9 @@ class GCLDAModel(NiMAREBase):
         return (x_loglikely, w_loglikely, tot_loglikely)
 
     def _get_peak_probs(self, model):
-        """
-        Compute a matrix giving p(x|r,t), using all x values in a model
-        object, and each topic's spatial parameters.
+        """Compute a matrix giving p(x|r,t).
+
+        This uses all x values in a model object, and each topic's spatial parameters.
 
         Returns
         -------
@@ -861,9 +851,8 @@ class GCLDAModel(NiMAREBase):
         return peak_probs
 
     def _compute_prop_multinomial_from_zy_vectors(self, z, y):
-        """
-        Compute proportional multinomial probabilities of current x vector
-        given current y vector, for all proposed y_i values.
+        """Compute proportional multinomial probabilities of x vector given y vector for y_i.
+
         Note that this only returns values proportional to the relative
         probabilities of all proposals for y_i.
 
@@ -887,9 +876,7 @@ class GCLDAModel(NiMAREBase):
         return p
 
     def get_probs(self):
-        """
-        Get conditional probability of selecting each voxel in the brain mask
-        given each topic.
+        """Get conditional probability of selecting each voxel in the brain mask given each topic.
 
         Returns
         -------

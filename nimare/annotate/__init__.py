@@ -1,6 +1,4 @@
-"""
-Automated annotation tools
-"""
+"""Automated annotation tools."""
 
 from . import cogat
 from . import gclda

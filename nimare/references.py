@@ -1,7 +1,4 @@
-"""
-References to be imported and injected at relevant places throughout the
-library.
-"""
+"""References to be imported and injected at relevant places throughout the library."""
 from .due import BibTeX, Doi
 
 TEXT2BRAIN = Doi("https://doi.org/10.1007/978-3-030-00931-1_67")

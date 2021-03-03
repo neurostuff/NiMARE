@@ -1,3 +1,4 @@
+"""Test estimator, kerneltransformer, and multiple comparisons corrector performance."""
 import os
 
 import pytest
@@ -29,6 +30,7 @@ else:
 ##########################################
 @pytest.fixture(scope="session")
 def random():
+    """Set random state for the tests."""
     np.random.seed(1939)
 
 
@@ -52,6 +54,7 @@ def random():
     ],
 )
 def simulatedata_cbma(request):
+    """Set the simulated CBMA data according to parameters."""
     return request.param["fwhm"], create_coordinate_dataset(**request.param)
 
 
@@ -60,6 +63,7 @@ def simulatedata_cbma(request):
 ##########################################
 @pytest.fixture(scope="session")
 def signal_masks(simulatedata_cbma):
+    """Define masks of signal and non-signal for performance evaluation."""
     _, (ground_truth_foci, dataset) = simulatedata_cbma
     ground_truth_foci_ijks = [
         tuple(mm2vox(focus, dataset.masker.mask_img.affine)) for focus in ground_truth_foci
@@ -79,6 +83,7 @@ def signal_masks(simulatedata_cbma):
     ],
 )
 def meta_est(request):
+    """Define meta-analysis estimators for tests."""
     return request.param
 
 
@@ -94,6 +99,7 @@ def meta_est(request):
     ],
 )
 def meta_params(request):
+    """Define meta-analysis Estimator parameters for tests."""
     return request.param
 
 
@@ -109,6 +115,7 @@ def meta_params(request):
     ],
 )
 def kern(request):
+    """Define kernel transformers for tests."""
     return request.param
 
 
@@ -128,6 +135,7 @@ def kern(request):
     ],
 )
 def corr(request):
+    """Define multiple comparisons correctors for tests."""
     return request.param
 
 
@@ -147,6 +155,7 @@ def corr(request):
     ],
 )
 def corr_small(request):
+    """Define multiple comparisons correctors for tests."""
     return request.param
 
 
@@ -155,6 +164,7 @@ def corr_small(request):
 ###########################################
 @pytest.fixture(scope="session")
 def meta(simulatedata_cbma, meta_est, kern, meta_params):
+    """Define estimator/kernel combinations for tests."""
     fwhm, (_, _) = simulatedata_cbma
     if kern == kernel.KDAKernel or kern == kernel.MKDAKernel:
         kern = kern(r=fwhm / 2)
@@ -170,6 +180,7 @@ def meta(simulatedata_cbma, meta_est, kern, meta_params):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_res(simulatedata_cbma, meta, random):
+    """Define estimators for tests."""
     _, (_, dataset) = simulatedata_cbma
     # CHECK IF META/KERNEL WORK TOGETHER
     ####################################
@@ -189,6 +200,7 @@ def meta_res(simulatedata_cbma, meta, random):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_cres(meta, meta_res, corr, random):
+    """Define corrected results for tests."""
     return _transform_res(meta, meta_res, corr)
 
 
@@ -197,6 +209,7 @@ def meta_cres(meta, meta_res, corr, random):
 ###########################################
 @pytest.fixture(scope="session")
 def meta_cres_small(meta, meta_res, corr_small, random):
+    """Define corrected results for tests."""
     return _transform_res(meta, meta_res, corr_small)
 
 
@@ -206,11 +219,13 @@ def meta_cres_small(meta, meta_res, corr_small, random):
 
 
 def test_meta_fit_smoke(meta_res):
+    """Smoke test for meta-analytic estimator fit."""
     assert isinstance(meta_res, MetaResult)
 
 
 @pytest.mark.performance
 def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
+    """Test meta-analytic estimator fit performance."""
     _, (ground_truth_foci, _) = simulatedata_cbma
     mask = meta_res.masker.mask_img
     ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
@@ -275,11 +290,13 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
 
 
 def test_corr_transform_smoke(meta_cres_small):
+    """Smoke test for corrector transform."""
     assert isinstance(meta_cres_small, MetaResult)
 
 
 @pytest.mark.performance
 def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_cbma):
+    """Test corrector transform performance."""
     _, (ground_truth_foci, _) = simulatedata_cbma
     mask = meta_cres.masker.mask_img
     ground_truth_foci_ijks = [tuple(mm2vox(focus, mask.affine)) for focus in ground_truth_foci]
@@ -369,10 +386,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
 
 
 def _create_signal_mask(ground_truth_foci_ijks, mask):
-    """
-    Creates complementary binary images to
-    identify areas of likely significance and areas
-    far from the likely results.
+    """Create complementary binary images to identify areas of likely significance and nonsignificance.
 
     Parameters
     ----------
@@ -418,6 +432,7 @@ def _check_p_values(
     good_sensitivity=True,
     good_specificity=True,
 ):
+    """Check if p-values are within the correct range."""
     ################################################
     # CHECK IF P-VALUES ARE WITHIN THE CORRECT RANGE
     ################################################
@@ -455,6 +470,7 @@ def _check_p_values(
 
 
 def _transform_res(meta, meta_res, corr):
+    """Evaluate whether meta estimator and corrector work together."""
     #######################################
     # CHECK IF META/CORRECTOR WORK TOGETHER
     #######################################

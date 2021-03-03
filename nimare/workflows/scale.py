@@ -1,6 +1,4 @@
-"""
-Workflow for running a SCALE meta-analysis from a Sleuth text file.
-"""
+"""Workflow for running a SCALE meta-analysis from a Sleuth text file."""
 import logging
 import os
 import pathlib
@@ -24,8 +22,7 @@ def scale_workflow(
     v_thr=0.001,
     n_cores=-1,
 ):
-    """
-    Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
+    """Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
 
     Warnings
     --------

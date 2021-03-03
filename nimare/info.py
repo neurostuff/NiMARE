@@ -65,7 +65,15 @@ REQUIRES = [
     "tqdm",
 ]
 
-TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8-black", "pytest", "pytest-cov"]
+TESTS_REQUIRES = [
+    "codecov",
+    "coverage",
+    "coveralls",
+    "flake8-black",
+    "flake8-docstrings",
+    "pytest",
+    "pytest-cov",
+]
 
 EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],

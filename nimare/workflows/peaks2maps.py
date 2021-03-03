@@ -1,7 +1,4 @@
-"""
-Workflow for contrast permutation meta-analysis on images constructed from
-coordinates using the Peaks2Maps kernel.
-"""
+"""Perform meta-analysis on images constructed from coordinates using the Peaks2Maps kernel."""
 import logging
 import os
 import pathlib
@@ -19,7 +16,7 @@ LGR = logging.getLogger(__name__)
 
 
 def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000):
-    """peaks2maps workflow"""
+    """Run the peaks2maps workflow."""
     LGR.info("Loading coordinates...")
     dset = convert_sleuth_to_dataset(sleuth_file)
 
