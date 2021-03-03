@@ -130,3 +130,20 @@ def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_d
     # since testdata_ibma already has coordinate data for every study
     # this transformation should retain the same number of unique ids.
     assert set(new_dset.coordinates["id"]) == set(tst_dset.coordinates["id"])
+
+
+@pytest.mark.parametrize(
+    "z,tail,expected_p",
+    [
+        (0.0, "two", 1.0),
+        (0.0, "one", 0.5),
+        (1.959963, "two", 0.05),
+        (1.959963, "one", 0.025),
+        (-1.959963, "two", 0.05),
+        ([0.0, 1.959963, -1.959963], "two", [1.0, 0.05, 0.05]),
+    ]
+)
+def test_z_to_p(z, tail, expected_p):
+    p = transforms.z_to_p(z, tail)
+
+    assert np.all(np.isclose(p, expected_p))
