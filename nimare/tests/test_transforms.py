@@ -105,7 +105,7 @@ def test_mm2vox():
         ({"overwrite": True, "z_threshold": 2.3}, "z", "p"),
         ({"overwrite": True, "z_threshold": 3.1}, None, None),
         ({"overwrite": False}, None, None),
-    ]
+    ],
 )
 def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_data):
     img2coord = transforms.CoordinateGenerator(**kwargs)
@@ -113,7 +113,11 @@ def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_d
     if add_data:
         tst_dset = copy.deepcopy(testdata_ibma)
         tst_dset.images = transforms.transform_images(
-            tst_dset.images, add_data, tst_dset.masker, tst_dset.metadata, tmp_path,
+            tst_dset.images,
+            add_data,
+            tst_dset.masker,
+            tst_dset.metadata,
+            tmp_path,
         )
     else:
         tst_dset = testdata_ibma
@@ -125,4 +129,4 @@ def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_d
 
     # since testdata_ibma already has coordinate data for every study
     # this transformation should retain the same number of unique ids.
-    assert set(new_dset.coordinates['id']) == set(tst_dset.coordinates['id'])
+    assert set(new_dset.coordinates["id"]) == set(tst_dset.coordinates["id"])

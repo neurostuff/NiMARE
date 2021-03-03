@@ -198,7 +198,6 @@ def resolve_transforms(target, available_data, masker):
 
 
 class CoordinateGenerator(Transformer):
-
     def __init__(self, cluster_threshold=None, min_distance=8.0, overwrite=False, z_threshold=3.1):
         self.cluster_threshold = cluster_threshold
         self.min_distance = min_distance
@@ -222,13 +221,15 @@ class CoordinateGenerator(Transformer):
         coordinates_dict = {}
         for _, row in images_df.iterrows():
 
-            if row['id'] in list(dataset.coordinates['id']) and not self.overwrite:
+            if row["id"] in list(dataset.coordinates["id"]) and not self.overwrite:
                 continue
 
             if row.get("z"):
                 clusters = get_clusters_table(
                     nib.funcs.squeeze_image(nib.load(row.get("z"))),
-                    self.z_threshold, self.cluster_threshold, self.min_distance,
+                    self.z_threshold,
+                    self.cluster_threshold,
+                    self.min_distance,
                 )
             elif row.get("p"):
                 LGR.warning(f"No Z map for {row['id']}, using p map")
@@ -236,7 +237,10 @@ class CoordinateGenerator(Transformer):
                 nimg = nib.funcs.squeeze_image(nib.load(row.get("p")))
                 inv_nimg = nib.Nifti1Image(1 - nimg.get_fdata(), nimg.affine, nimg.header)
                 clusters = get_clusters_table(
-                    inv_nimg, p_threshold, self.cluster_threshold, self.min_distance,
+                    inv_nimg,
+                    p_threshold,
+                    self.cluster_threshold,
+                    self.min_distance,
                 )
                 # Peak stat p-values are reported as 1 - p in get_clusters_table
                 clusters["Peak Stat"] = p_to_z(1 - clusters["Peak Stat"])
@@ -268,7 +272,7 @@ class CoordinateGenerator(Transformer):
         coordinates_df = utils.dict_to_coordinates(coordinates_dict, masker, space)
         # merge pre-existing coordinates if they do not exist in the new dataset
         old_coordinates_df = dataset.coordinates[
-            ~dataset.coordinates['id'].isin(coordinates_df['id'])
+            ~dataset.coordinates["id"].isin(coordinates_df["id"])
         ]
         coordinates_df = coordinates_df.append(old_coordinates_df, ignore_index=True)
         new_dataset = copy.deepcopy(dataset)
