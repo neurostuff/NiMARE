@@ -118,10 +118,11 @@ def create_neurovault_dataset(
     map_type_conversion=None,
     **dset_kwargs,
 ):
-    """
+    """Download images from NeuroVault and use them to create a Dataset.
+
     Parameters
     ----------
-    collection_ids : :obj:`list` of :obj:`int` or :obj:`dict`
+    collection_ids : :obj:`list` of :obj:`int` or :obj:`dict`, optional
         A list of collections on neurovault specified by their id.
         The collection ids can accessed through the neurovault API
         (i.e., https://neurovault.org/api/collections) or
@@ -131,7 +132,7 @@ def create_neurovault_dataset(
         collection_ids can also be a dictionary whose keys are the informative
         study name and the values are collection ids to give the collections
         human readable names in the dataset.
-    contrasts : :obj:`dict`
+    contrasts : :obj:`dict`, optional
         Dictionary whose keys represent the name of the contrast in
         the dataset and whose values represent a regular expression that would
         match the names represented in NeuroVault.
@@ -139,10 +140,10 @@ def create_neurovault_dataset(
         https://neurovault.org/collections/8836/,
         a valid contrast could be "as-Animal", which will be called "animal" in the created
         dataset if the contrasts argument is ``{'animal': "as-Animal"}``.
-    img_dir : :obj:`str` or None
+    img_dir : :obj:`str` or None, optional
         Base path to save all the downloaded images, by default the images
         will be saved to a temporary directory with the prefix "neurovault"
-    map_type_conversion : :obj:`dict` or None
+    map_type_conversion : :obj:`dict` or None, optional
         Dictionary whose keys are what you expect the `map_type` name to
         be in neurovault and the values are the name of the respective
         statistic map in a nimare dataset. Default = None.

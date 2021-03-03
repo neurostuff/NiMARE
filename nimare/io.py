@@ -286,7 +286,7 @@ def convert_neurovault_to_dataset(
     collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs
 ):
     """
-    Convert a group neurovault collections into a NiMARE Dataset.
+    Convert a group of NeuroVault collections into a NiMARE Dataset.
 
     Parameters
     ----------
@@ -308,10 +308,10 @@ def convert_neurovault_to_dataset(
         https://neurovault.org/collections/8836/,
         a valid contrast could be "as-Animal", which will be called "animal" in the created
         dataset if the contrasts argument is ``{'animal': "as-Animal"}``.
-    img_dir : :obj:`str` or None
+    img_dir : :obj:`str` or None, optional
         Base path to save all the downloaded images, by default the images
         will be saved to a temporary directory with the prefix "neurovault".
-    map_type_conversion : :obj:`dict` or None
+    map_type_conversion : :obj:`dict` or None, optional
         Dictionary whose keys are what you expect the `map_type` name to
         be in neurovault and the values are the name of the respective
         statistic map in a nimare dataset. Default = None.
