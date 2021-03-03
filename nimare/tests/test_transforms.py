@@ -1,6 +1,9 @@
 """Test nimare.transforms."""
+import copy
+
 import nibabel as nib
 import numpy as np
+import pytest
 
 from nimare import transforms, utils
 
@@ -96,8 +99,30 @@ def test_mm2vox():
     assert np.array_equal(transforms.mm2vox(test, aff), true)
 
 
-def test_images_to_coordinates(testdata_ibma):
-    img2coord = transforms.CoordinateGenerator(overwrite=True)
-    new_dset = img2coord.transform(testdata_ibma)
+@pytest.mark.parametrize(
+    "kwargs,drop_data,add_data",
+    [
+        ({"overwrite": True, "z_threshold": 2.3}, "z", "p"),
+        ({"overwrite": True, "z_threshold": 3.1}, None, None),
+        ({"overwrite": False}, None, None),
+    ]
+)
+def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_data):
+    img2coord = transforms.CoordinateGenerator(**kwargs)
 
-    assert isinstance(new_dset, type(testdata_ibma))
+    if add_data:
+        tst_dset = copy.deepcopy(testdata_ibma)
+        tst_dset.images = transforms.transform_images(
+            tst_dset.images, add_data, tst_dset.masker, tst_dset.metadata, tmp_path,
+        )
+    else:
+        tst_dset = testdata_ibma
+
+    if drop_data:
+        tst_dset.images = tst_dset.images.drop(columns=drop_data)
+
+    new_dset = img2coord.transform(tst_dset)
+
+    # since testdata_ibma already has coordinate data for every study
+    # this transformation should retain the same number of unique ids.
+    assert set(new_dset.coordinates['id']) == set(tst_dset.coordinates['id'])
