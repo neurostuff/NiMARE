@@ -141,7 +141,7 @@ def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_d
         (1.959963, "one", 0.025),
         (-1.959963, "two", 0.05),
         ([0.0, 1.959963, -1.959963], "two", [1.0, 0.05, 0.05]),
-    ]
+    ],
 )
 def test_z_to_p(z, tail, expected_p):
     p = transforms.z_to_p(z, tail)
