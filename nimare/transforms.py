@@ -10,6 +10,7 @@ from scipy import stats
 from nilearn.reporting import get_clusters_table
 
 from . import references, utils
+from .results import get_masker
 from .due import due
 from .base import Transformer
 
@@ -23,7 +24,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     ----------
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to images for studies in Dataset.
-    target : {'z', 'beta', 'varcope'}
+    target : {'z', 'p', 'beta', 'varcope'}
         Target data type.
     masker : :class:`nilearn.input_data.NiftiMasker` or similar
         Masker used to define orientation and resolution of images.
@@ -43,13 +44,13 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     """
     images_df = images_df.copy()
 
-    valid_targets = ["z", "beta", "varcope"]
+    valid_targets = ["z", "p", "beta", "varcope"]
     if target not in valid_targets:
         raise ValueError("Target type must be one of: {}".format(", ".join(valid_targets)))
     mask_img = masker.mask_img
     new_mask = np.ones(mask_img.shape, int)
     new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)
-    new_masker = utils.get_masker(new_mask)
+    new_masker = get_masker(new_mask)
     res = masker.mask_img.header.get_zooms()
     res = "x".join([str(r) for r in res])
     if target not in images_df.columns:
@@ -94,7 +95,7 @@ def resolve_transforms(target, available_data, masker):
 
     Parameters
     ----------
-    target : {'z', 't', 'beta', 'varcope'}
+    target : {'z', 'p', 't', 'beta', 'varcope'}
         Target image type.
     available_data : dict
         Dictionary mapping data types to their values. Images in the dictionary
@@ -183,6 +184,15 @@ def resolve_transforms(target, available_data, masker):
             return None
         varcope = masker.inverse_transform(varcope.squeeze())
         return varcope
+    elif target == "p":
+
+        if "z" in available_data.keys():
+            z = masker.transform(available_data["z"])
+            p = z_to_p(z)
+        else:
+            return None
+        p = masker.inverse_transform(p.squeeze())
+        return p
     else:
         return None
 
@@ -201,6 +211,14 @@ class CoordinateGenerator(Transformer):
         masker = dataset.masker
         images_df = dataset.images
 
+        # how space is represented in the specification
+        if "mni" in space.lower() or "ale" in space.lower():
+            coordinate_space = "MNI"
+        elif "tal" in space.lower():
+            coordinate_space = "TAL"
+        else:
+            coordinate_space = None
+
         coordinates_dict = {}
         for _, row in images_df.iterrows():
 
@@ -209,15 +227,19 @@ class CoordinateGenerator(Transformer):
 
             if row.get("z"):
                 clusters = get_clusters_table(
-                    nib.load(row.get("z")), self.z_threshold,
-                    self.cluster_threshold, self.min_distance,
+                    nib.funcs.squeeze_image(nib.load(row.get("z"))),
+                    self.z_threshold, self.cluster_threshold, self.min_distance,
                 )
             elif row.get("p"):
                 LGR.warning(f"No Z map for {row['id']}, using p map")
-                p_threshold = z_to_p(self.z_threshold)
+                p_threshold = 1 - z_to_p(self.z_threshold)
+                nimg = nib.funcs.squeeze_image(nib.load(row.get("p")))
+                inv_nimg = nib.Nifti1Image(1 - nimg.get_fdata(), nimg.affine, nimg.header)
                 clusters = get_clusters_table(
-                    nib.load(row.get("p")), p_threshold, self.cluster_threshold, self.min_distance
+                    inv_nimg, p_threshold, self.cluster_threshold, self.min_distance,
                 )
+                # Peak stat p-values are reported as 1 - p in get_clusters_table
+                clusters["Peak Stat"] = p_to_z(1 - clusters["Peak Stat"])
             else:
                 LGR.warning(f"No Z or p map for {row['id']}, skipping...")
                 continue
@@ -233,18 +255,22 @@ class CoordinateGenerator(Transformer):
                 "contrasts": {
                     row["contrast_id"]: {
                         "coords": {
-                            "space": space,
+                            "space": coordinate_space,
                             "x": list(clusters["X"]),
                             "y": list(clusters["Y"]),
                             "z": list(clusters["Z"]),
+                            "z_stat": list(clusters["Peak Stat"]),
                         },
                     }
                 }
             }
 
         coordinates_df = utils.dict_to_coordinates(coordinates_dict, masker, space)
-        # merge existing
-        coordinates_df = coordinates_df.merge(dataset.coordinates, how='left', on='id')
+        # merge pre-existing coordinates if they do not exist in the new dataset
+        old_coordinates_df = dataset.coordinates[
+            ~dataset.coordinates['id'].isin(coordinates_df['id'])
+        ]
+        coordinates_df = coordinates_df.append(old_coordinates_df, ignore_index=True)
         new_dataset = copy.deepcopy(dataset)
         new_dataset.coordinates = coordinates_df
 
