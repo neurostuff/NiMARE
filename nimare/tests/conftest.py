@@ -84,6 +84,7 @@ def mni_mask():
 
 @pytest.fixture(scope="session")
 def testdata_ibma_resample(tmp_path_factory):
+    """Create dataset for image-based resampling tests."""
     tmpdir = tmp_path_factory.mktemp("testdata_ibma_resample")
 
     # Load dataset

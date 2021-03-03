@@ -129,6 +129,7 @@ def test_ibma_with_custom_masker(testdata_ibma):
     ],
 )
 def test_ibma_resampling(testdata_ibma_resample, resample, resample_kwargs, expectation):
+    """Test image-based resampling performance."""
     meta = ibma.Fishers(resample=resample, **resample_kwargs)
     with expectation:
         meta.fit(testdata_ibma_resample)

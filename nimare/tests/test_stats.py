@@ -8,7 +8,6 @@ from nimare.stats import null_to_p, nullhist_to_p
 
 def test_null_to_p_float():
     """Test null_to_p with single float input, assuming asymmetric null dist."""
-
     null = [-10, -9, -9, -3, -2, -1, -1, 0, 1, 1, 1, 2, 3, 3, 4, 4, 7, 8, 8, 9]
 
     # Two-tailed
@@ -40,7 +39,6 @@ def test_null_to_p_float():
 
 def test_null_to_p_float_symmetric():
     """Test null_to_p with single float input, assuming symmetric null dist."""
-
     null = [-10, -9, -9, -3, -2, -1, -1, 0, 1, 1, 1, 2, 3, 3, 4, 4, 7, 8, 8, 9]
 
     # Only need to test two-tailed; symmetry is irrelevant for one-tailed

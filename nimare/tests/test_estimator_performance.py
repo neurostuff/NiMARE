@@ -99,6 +99,7 @@ def meta_est(request):
     ],
 )
 def meta_params(request):
+    """Define meta-analysis Estimator parameters for tests."""
     return request.param
 
 

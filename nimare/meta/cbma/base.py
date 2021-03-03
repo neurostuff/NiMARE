@@ -406,7 +406,7 @@ class CBMAEstimator(MetaEstimator):
         )
 
         def get_last_bin(arr1d):
-            """Index the last location in a 1D array with a non-zero value"""
+            """Index the last location in a 1D array with a non-zero value."""
             if np.any(arr1d):
                 last_bin = np.where(arr1d)[0][-1]
             else:

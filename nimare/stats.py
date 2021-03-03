@@ -147,7 +147,6 @@ def null_to_p(test_value, null_array, tail="two", symmetric=False):
     and two-tailed p-values are desired, use symmetric=True, as it is
     approximately twice as efficient computationally, and has lower variance.
     """
-
     if tail not in {"two", "upper", "lower"}:
         raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
 
