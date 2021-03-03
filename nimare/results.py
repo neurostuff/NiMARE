@@ -3,9 +3,9 @@ import copy
 import logging
 import os
 
+import nibabel as nib
 from nibabel.funcs import squeeze_image
-
-from .utils import get_masker
+from nilearn.input_data import NiftiMasker
 
 LGR = logging.getLogger(__name__)
 
@@ -98,3 +98,34 @@ class MetaResult(object):
         """Return copy of result object."""
         new = MetaResult(self.estimator, self.masker, copy.deepcopy(self.maps))
         return new
+
+
+def get_masker(mask):
+    """
+    Get an initialized, fitted nilearn Masker instance from passed argument.
+
+    Parameters
+    ----------
+    mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
+
+    Returns
+    -------
+    masker : an initialized, fitted instance of a subclass of
+        `nilearn.input_data.base_masker.BaseMasker`
+    """
+    if isinstance(mask, str):
+        mask = nib.load(mask)
+
+    if isinstance(mask, nib.nifti1.Nifti1Image):
+        mask = NiftiMasker(mask)
+
+    if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
+        raise ValueError(
+            "mask argument must be a string, a nibabel image," " or a Nilearn Masker instance."
+        )
+
+    # Fit the masker if needed
+    if not hasattr(mask, "mask_img_"):
+        mask.fit()
+
+    return mask

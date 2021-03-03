@@ -12,7 +12,6 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from nilearn import datasets
-from nilearn.input_data import NiftiMasker
 
 from .transforms import mm2vox, mni2tal, tal2mni
 

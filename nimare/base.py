@@ -13,8 +13,7 @@ import numpy as np
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
-from .results import MetaResult
-from .utils import get_masker
+from .results import MetaResult, get_masker
 
 LGR = logging.getLogger(__name__)
 

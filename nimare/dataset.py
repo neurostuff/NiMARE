@@ -9,10 +9,10 @@ import pandas as pd
 from nilearn._utils import load_niimg
 
 from .base import NiMAREBase
+from .results import get_masker
 from .utils import (
     dict_to_coordinates,
     dict_to_df,
-    get_masker,
     get_template,
     listify,
     mm2vox,
