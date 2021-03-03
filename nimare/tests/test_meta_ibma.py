@@ -24,21 +24,21 @@ from .utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
-            {'use_sample_size': False},
+            {"use_sample_size": False},
             None,
             {},
             id="Stouffers",
         ),
         pytest.param(
             ibma.Stouffers,
-            {'use_sample_size': True},
+            {"use_sample_size": True},
             None,
             {},
             id="Stouffers_weighted",
         ),
         pytest.param(
             ibma.WeightedLeastSquares,
-            {'tau2': 0},
+            {"tau2": 0},
             None,
             {},
             id="WeightedLeastSquares",
@@ -92,12 +92,10 @@ from .utils import get_test_data_path
             {"method": "montecarlo", "n_iters": 100, "n_cores": 1},
             id="PermutedOLS",
         ),
-    ]
+    ],
 )
 def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwargs):
-    """
-    Smoke test for Fisher's.
-    """
+    """Smoke test for IBMA estimators."""
     meta = meta(**meta_kwargs)
     res = meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
