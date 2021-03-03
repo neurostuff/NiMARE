@@ -202,7 +202,7 @@ def resolve_transforms(target, available_data, masker):
 
 
 class CoordinateGenerator(Transformer):
-    """Extract peak statistical coordinates from statistical z or p maps
+    """Extract peak statistical coordinates from statistical z or p maps.
 
     Parameters
     ----------
@@ -229,8 +229,7 @@ class CoordinateGenerator(Transformer):
         self.z_threshold = z_threshold
 
     def transform(self, dataset):
-        """Create coordinate peaks from statistical images"""
-
+        """Create coordinate peaks from statistical images."""
         # relevant variables from dataset
         space = dataset.space
         masker = dataset.masker
@@ -447,7 +446,7 @@ def t_and_beta_to_varcope(t, beta):
 
 
 def z_to_p(z, tail="two"):
-    """Convert z-values to p-values
+    """Convert z-values to p-values.
 
     Parameters
     ----------

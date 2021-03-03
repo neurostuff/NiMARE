@@ -126,9 +126,7 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
 
 
 def test_tal2mni():
-    """
-    TODO: Get converted coords from official site.
-    """
+    """TODO: Get converted coords from official site."""
     test = np.array([[-44, 31, 27], [20, -32, 14], [28, -76, 28]])
     true = np.array(
         [
@@ -141,9 +139,7 @@ def test_tal2mni():
 
 
 def test_mni2tal():
-    """
-    TODO: Get converted coords from official site.
-    """
+    """TODO: Get converted coords from official site."""
     test = np.array([[-44, 31, 27], [20, -32, 14], [28, -76, 28]])
     true = np.array(
         [[-42.3176, 26.0594, 29.7364], [17.4781, -32.6076, 14.0009], [24.7353, -75.0184, 23.3283]]
@@ -152,9 +148,7 @@ def test_mni2tal():
 
 
 def test_vox2mm():
-    """
-    Test vox2mm
-    """
+    """Test vox2mm."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
     true = np.array([[50.0, -86.0, -32.0], [90.0, -126.0, -72.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
@@ -163,9 +157,7 @@ def test_vox2mm():
 
 
 def test_mm2vox():
-    """
-    Test mm2vox
-    """
+    """Test mm2vox."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
     true = np.array([[35.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)

@@ -5,7 +5,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from nimare import transforms, utils
+from nimare import transforms
 
 
 def test_transform_images(testdata_ibma):
@@ -68,6 +68,7 @@ def test_t_to_z():
     ],
 )
 def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_data):
+    """Test conversion of statistical images to coordinates."""
     img2coord = transforms.CoordinateGenerator(**kwargs)
 
     if add_data:
@@ -104,6 +105,7 @@ def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_d
     ],
 )
 def test_z_to_p(z, tail, expected_p):
+    """Test z to p conversion."""
     p = transforms.z_to_p(z, tail)
 
     assert np.all(np.isclose(p, expected_p))
