@@ -204,7 +204,7 @@ class CoordinateGenerator(Transformer):
         coordinates_dict = {}
         for _, row in images_df.iterrows():
 
-            if row['id'] in dataset.coordinate_df['id'] and not self.overwrite:
+            if row['id'] in list(dataset.coordinates['id']) and not self.overwrite:
                 continue
 
             if row.get("z"):
