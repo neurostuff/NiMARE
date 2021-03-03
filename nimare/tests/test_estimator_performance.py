@@ -11,7 +11,7 @@ from ..generate import create_coordinate_dataset
 from ..meta import ale, kernel, mkda
 from ..meta.utils import compute_kda_ma
 from ..results import MetaResult
-from ..transforms import mm2vox
+from ..utils import mm2vox
 
 # set significance levels used for testing.
 ALPHA = 0.05
