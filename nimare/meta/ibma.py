@@ -178,9 +178,9 @@ class WeightedLeastSquares(MetaEstimator):
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
@@ -227,9 +227,9 @@ class DerSimonianLaird(MetaEstimator):
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
@@ -272,9 +272,9 @@ class Hedges(MetaEstimator):
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
@@ -335,9 +335,9 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
@@ -401,9 +401,9 @@ class VarianceBasedLikelihood(MetaEstimator):
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
@@ -468,7 +468,7 @@ class PermutedOLS(MetaEstimator):
         # Convert t to z, preserving signs
         dof = self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
         z_map = t_to_z(t_map, dof)
-        images = {"t": t_map, "z": z_map}
+        images = {"t": t_map.squeeze(), "z": z_map.squeeze()}
         return images
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
@@ -529,5 +529,5 @@ class PermutedOLS(MetaEstimator):
         sign = np.sign(t_map)
         sign[sign == 0] = 1
         z_map = p_to_z(p_map, tail="two") * sign
-        images = {"logp_level-voxel": log_p_map, "z_level-voxel": z_map}
+        images = {"logp_level-voxel": log_p_map.squeeze(), "z_level-voxel": z_map.squeeze()}
         return images
