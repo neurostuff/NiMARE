@@ -236,6 +236,7 @@ def test_create_coordinate_dataset(kwargs, expectation):
 
 
 def test_create_neurovault_dataset():
+    """Test creating a neurovault dataset."""
     dset = create_neurovault_dataset(
         collection_ids=(8836,),
         contrasts={"animal": "as-Animal"},

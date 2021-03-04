@@ -118,7 +118,7 @@ def create_neurovault_dataset(
     map_type_conversion=None,
     **dset_kwargs,
 ):
-    """Download images from NeuroVault and use them to create a Dataset.
+    """Download images from NeuroVault and use them to create a dataset.
 
     Parameters
     ----------
@@ -156,7 +156,6 @@ def create_neurovault_dataset(
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from neurovault.
     """
-
     dataset = convert_neurovault_to_dataset(
         collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
     )
