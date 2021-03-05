@@ -6,6 +6,7 @@ import pytest
 import nimare
 from nimare import io
 from nimare.tests.utils import get_test_data_path
+from nimare.utils import get_template
 
 
 def test_convert_sleuth_to_dataset_smoke():
@@ -93,3 +94,55 @@ def test_convert_neurosynth_to_json_smoke():
     assert os.path.isfile(out_file)
     assert isinstance(dset, nimare.dataset.Dataset)
     os.remove(out_file)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        (
+            {
+                "collection_ids": (8836,),
+                "contrasts": {"animal": "as-Animal"},
+            }
+        ),
+        (
+            {
+                "collection_ids": {"informative_name": 8836},
+                "contrasts": {"animal": "as-Animal"},
+                "map_type_conversion": {"T map": "t"},
+                "target": "mni152_2mm",
+                "mask": get_template("mni152_2mm", mask="brain"),
+            }
+        ),
+    ],
+)
+def test_convert_neurovault_to_dataset(kwargs):
+    """Test conversion of neurovault collection to a dataset."""
+    dset = io.convert_neurovault_to_dataset(**kwargs)
+
+    # check if names are propagated into Dataset
+    if isinstance(kwargs.get("collection_ids"), dict):
+        study_ids = set(kwargs["collection_ids"].keys())
+    else:
+        study_ids = set(map(str, kwargs["collection_ids"]))
+    dset_ids = {id_.split("-")[1] for id_ in dset.ids}
+
+    assert study_ids == dset_ids
+
+    # check if images were downloaded
+    if kwargs.get("map_type_conversion"):
+        for img_type in kwargs.get("map_type_conversion").values():
+            assert not dset.images[img_type].empty
+
+
+@pytest.mark.parametrize(
+    "sample_sizes,expected_sample_size",
+    [
+        ([1, 2, 1], 1),
+        ([None, None, 1], 1),
+        ([1, 1, 2, 2], 1),
+    ],
+)
+def test_resolve_sample_sizes(sample_sizes, expected_sample_size):
+    """Test modal sample size heuristic."""
+    assert io._resolve_sample_size(sample_sizes) == expected_sample_size
