@@ -224,11 +224,12 @@ class ALEKernel(KernelTransformer):
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
     """
 
-    def __init__(self, fwhm=None, sample_size=None):
+    def __init__(self, fwhm=None, sample_size=None, low_memory=False):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
+        self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
         transformed = []
@@ -273,9 +274,10 @@ class KDAKernel(KernelTransformer):
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1):
+    def __init__(self, r=10, value=1, low_memory=False):
         self.r = float(r)
         self.value = value
+        self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
         dims = mask.shape
@@ -284,7 +286,14 @@ class KDAKernel(KernelTransformer):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims, vox_dims, ijks, self.r, self.value, exp_idx, sum_overlap=self._sum_overlap
+            dims,
+            vox_dims,
+            ijks,
+            self.r,
+            self.value,
+            exp_idx,
+            sum_overlap=self._sum_overlap,
+            low_memory=self.low_memory,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
