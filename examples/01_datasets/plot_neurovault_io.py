@@ -15,13 +15,13 @@ Using Neurovault Statistical Maps in NiMARE
 # NiMARE can read these statistical maps when given a list of collection_ids.
 # I search "working memory" on neurovault, and find these relevant collections:
 #
-# * `2884 <https://neurovault.org/collections/2884/>`_,
-# * `2621 <https://neurovault.org/collections/2621/>`_,
-# * `3085 <https://neurovault.org/collections/3085/>`_,
-# * `5623 <https://neurovault.org/collections/5623/>`_,
-# * `3264 <https://neurovault.org/collections/3264/>`_,
-# * `3192 <https://neurovault.org/collections/3192/>`_,
-# * `457 <https://neurovault.org/collections/457/>`_.
+# * `2884 <https://neurovault.org/collections/2884/>`_
+# * `2621 <https://neurovault.org/collections/2621/>`_
+# * `3085 <https://neurovault.org/collections/3085/>`_
+# * `5623 <https://neurovault.org/collections/5623/>`_
+# * `3264 <https://neurovault.org/collections/3264/>`_
+# * `3192 <https://neurovault.org/collections/3192/>`_
+# * `457 <https://neurovault.org/collections/457/>`_
 #
 # I can load specific statistical maps from these collections
 # into a NiMARE dataset:
@@ -47,7 +47,7 @@ contrasts = {
 }
 
 # Convert how the statistical maps on neurovault are represented
-# in a NiMARE dataset
+# in a NiMARE dataset.
 map_type_conversion = {"Z map": "z", "T map": "t"}
 
 dset = convert_neurovault_to_dataset(
@@ -62,7 +62,7 @@ dset = convert_neurovault_to_dataset(
 # ------------------------------
 # Some of the statistical maps are T statistics and others are Z statistics.
 # To perform a Fisher's meta analysis, we need all Z maps.
-# Luckily, NiMARE has a function named ``transform_images`` that will
+# Thoughtfully, NiMARE has a function named ``transform_images`` that will
 # help us.
 from nimare.transforms import transform_images
 
