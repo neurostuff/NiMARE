@@ -120,6 +120,9 @@ def create_neurovault_dataset(
 ):
     """Download images from NeuroVault and use them to create a dataset.
 
+    This function will also attempt to generate Z images for any contrasts
+    for which this is possible.
+
     Parameters
     ----------
     collection_ids : :obj:`list` of :obj:`int` or :obj:`dict`, optional
