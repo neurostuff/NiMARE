@@ -241,7 +241,7 @@ class ALEKernel(KernelTransformer):
         kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
 
-        transformed_shape = mask.shape + (len(exp_ids),)
+        transformed_shape = (len(exp_ids),) + mask.shape
         if self.low_memory:
             from tempfile import mkdtemp
 
@@ -280,7 +280,7 @@ class ALEKernel(KernelTransformer):
                 else:
                     kern = kernels[sample_size]
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-            transformed[:, :, :, i_exp] = kernel_data
+            transformed[i_exp, :, :, :] = kernel_data
             if self.low_memory:
                 # Write changes to disk
                 transformed.flush()
