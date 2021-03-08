@@ -167,9 +167,9 @@ def meta(simulatedata_cbma, meta_est, kern, meta_params):
     """Define estimator/kernel combinations for tests."""
     fwhm, (_, _) = simulatedata_cbma
     if kern == kernel.KDAKernel or kern == kernel.MKDAKernel:
-        kern = kern(r=fwhm / 2)
+        kern = kern(r=fwhm / 2, low_memory=True)
     else:
-        kern = kern()
+        kern = kern(low_memory=True)
 
     # instantiate meta-analysis estimator
     return meta_est(kern, **meta_params)
