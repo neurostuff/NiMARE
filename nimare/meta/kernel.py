@@ -241,14 +241,16 @@ class ALEKernel(KernelTransformer):
         kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
 
-        transformed_shape = (len(exp_ids),) + mask.shape
         if self.low_memory:
+            # Use a memmapped 4D array
             from tempfile import mkdtemp
 
             filename = os.path.join(mkdtemp(), "kda_ma_values.dat")
+            transformed_shape = (len(exp_ids),) + mask.shape
             transformed = np.memmap(filename, dtype=float, mode="w+", shape=transformed_shape)
         else:
-            transformed = np.zeros(transformed_shape, dtype=float)
+            # Use a list of tuples
+            transformed = []
 
         for i_exp, id_ in enumerate(exp_ids):
             data = coordinates.loc[coordinates["id"] == id_]
@@ -262,28 +264,26 @@ class ALEKernel(KernelTransformer):
             if self.fwhm is not None:
                 assert np.isfinite(self.fwhm), "FWHM must be finite number"
                 if self.fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(
-                        mask,
-                        fwhm=self.fwhm,
-                    )
+                    _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
                     kernels[self.fwhm] = kern
                 else:
                     kern = kernels[self.fwhm]
             else:
                 assert np.isfinite(sample_size), "Sample size must be finite number"
                 if sample_size not in kernels.keys():
-                    _, kern = get_ale_kernel(
-                        mask,
-                        sample_size=sample_size,
-                    )
+                    _, kern = get_ale_kernel(mask, sample_size=sample_size)
                     kernels[sample_size] = kern
                 else:
                     kern = kernels[sample_size]
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-            transformed[i_exp, :, :, :] = kernel_data
+
             if self.low_memory:
+                transformed[i_exp, :, :, :] = kernel_data
+
                 # Write changes to disk
                 transformed.flush()
+            else:
+                transformed.append((kernel_data, id_))
 
         return transformed, exp_ids
 
