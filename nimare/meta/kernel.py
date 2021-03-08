@@ -225,6 +225,9 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
     def __init__(self, fwhm=None, sample_size=None, low_memory=False):
@@ -243,9 +246,7 @@ class ALEKernel(KernelTransformer):
             from tempfile import mkdtemp
 
             filename = os.path.join(mkdtemp(), "kda_ma_values.dat")
-            transformed = np.memmap(
-                filename, dtype=float, mode="w+", shape=transformed_shape
-            )
+            transformed = np.memmap(filename, dtype=float, mode="w+", shape=transformed_shape)
         else:
             transformed = np.zeros(transformed_shape, dtype=float)
 
@@ -284,8 +285,6 @@ class ALEKernel(KernelTransformer):
                 # Write changes to disk
                 transformed.flush()
 
-            exp_ids.append(id_)
-
         return transformed, exp_ids
 
 
@@ -298,6 +297,9 @@ class KDAKernel(KernelTransformer):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
     _sum_overlap = True
@@ -336,6 +338,9 @@ class MKDAKernel(KDAKernel):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
     _sum_overlap = False
