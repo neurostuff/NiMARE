@@ -245,7 +245,7 @@ class ALEKernel(KernelTransformer):
             # Use a memmapped 4D array
             from tempfile import mkdtemp
 
-            filename = os.path.join(mkdtemp(), "kda_ma_values.dat")
+            filename = os.path.join(mkdtemp(), "ale_ma_values.dat")
             transformed_shape = (len(exp_ids),) + mask.shape
             transformed = np.memmap(filename, dtype=float, mode="w+", shape=transformed_shape)
         else:
@@ -285,7 +285,10 @@ class ALEKernel(KernelTransformer):
             else:
                 transformed.append((kernel_data, id_))
 
-        return transformed, exp_ids
+        if self.low_memory:
+            return transformed, exp_ids
+        else:
+            return transformed
 
 
 class KDAKernel(KernelTransformer):
