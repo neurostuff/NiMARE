@@ -257,7 +257,9 @@ def compute_p2m_ma(
     return niis
 
 
-def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False, low_memory=False):
+def compute_kda_ma(
+    shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False, low_memory=False
+):
     """Compute (M)KDA modeled activation (MA) map.
 
     Replaces the values around each focus in ijk with binary sphere.
@@ -298,14 +300,12 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overla
     uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(uniq)
 
-    kernel_shape = [n_studies] + list(shape)
+    kernel_shape = (n_studies,) + shape
     if low_memory:
         from tempfile import mkdtemp
 
         filename = os.path.join(mkdtemp(), "kda_ma_values.dat")
-        kernel_data = np.memmap(
-            filename, dtype=type(value), mode="w+", shape=kernel_shape
-        )
+        kernel_data = np.memmap(filename, dtype=type(value), mode="w+", shape=kernel_shape)
     else:
         kernel_data = np.zeros(kernel_shape, dtype=type(value))
 

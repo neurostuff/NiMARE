@@ -144,7 +144,7 @@ def test_alekernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """Check that all return types produce equivalent results (minus the masking element)."""
     tmpdir = tmp_path_factory.mktemp("test_alekernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
-    kern = kernel.ALEKernel(sample_size=20)
+    kern = kernel.ALEKernel(sample_size=20, low_memory=True)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     ma_arr = kern.transform(testdata_cbma, return_type="array")
     dset = kern.transform(testdata_cbma, return_type="dataset")
@@ -179,7 +179,7 @@ def test_mkdakernel_1mm(testdata_cbma):
     Test on 1mm template.
     """
     id_ = "pain_01.nidm-1"
-    kern = kernel.MKDAKernel(r=4, value=1)
+    kern = kernel.MKDAKernel(r=4, value=1, low_memory=True)
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]

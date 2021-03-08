@@ -177,11 +177,14 @@ class KernelTransformer(Transformer):
                 out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
+
         if return_type == "array":
             return np.vstack(imgs)
         elif return_type == "image":
+            del transformed_maps
             return imgs
         elif return_type == "dataset":
+            del transformed_maps
             # Infer relative path
             dataset.images = dataset.images
             return dataset
@@ -232,9 +235,23 @@ class ALEKernel(KernelTransformer):
         self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
-        transformed = []
         kernels = {}  # retain kernels in dictionary to speed things up
-        for id_, data in coordinates.groupby("id"):
+        exp_ids = coordinates["id"].unique()
+
+        transformed_shape = mask.shape + (len(exp_ids),)
+        if self.low_memory:
+            from tempfile import mkdtemp
+
+            filename = os.path.join(mkdtemp(), "kda_ma_values.dat")
+            transformed = np.memmap(
+                filename, dtype=float, mode="w+", shape=transformed_shape
+            )
+        else:
+            transformed = np.zeros(transformed_shape, dtype=float)
+
+        for i_exp, id_ in enumerate(exp_ids):
+            data = coordinates.loc[coordinates["id"] == id_]
+
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if self.sample_size is not None:
                 sample_size = self.sample_size
@@ -244,21 +261,32 @@ class ALEKernel(KernelTransformer):
             if self.fwhm is not None:
                 assert np.isfinite(self.fwhm), "FWHM must be finite number"
                 if self.fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
+                    _, kern = get_ale_kernel(
+                        mask,
+                        fwhm=self.fwhm,
+                    )
                     kernels[self.fwhm] = kern
                 else:
                     kern = kernels[self.fwhm]
             else:
                 assert np.isfinite(sample_size), "Sample size must be finite number"
                 if sample_size not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, sample_size=sample_size)
+                    _, kern = get_ale_kernel(
+                        mask,
+                        sample_size=sample_size,
+                    )
                     kernels[sample_size] = kern
                 else:
                     kern = kernels[sample_size]
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-            transformed.append((kernel_data, id_))
+            transformed[:, :, :, i_exp] = kernel_data
+            if self.low_memory:
+                # Write changes to disk
+                transformed.flush()
 
-        return transformed
+            exp_ids.append(id_)
+
+        return transformed, exp_ids
 
 
 class KDAKernel(KernelTransformer):
