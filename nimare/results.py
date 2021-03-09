@@ -3,6 +3,8 @@ import copy
 import logging
 import os
 
+from nibabel.funcs import squeeze_image
+
 from .utils import get_masker
 
 LGR = logging.getLogger(__name__)
@@ -49,7 +51,13 @@ class MetaResult(object):
         m = self.maps.get(name)
         if m is None:
             raise ValueError("No map with name '{}' found.".format(name))
-        return self.masker.inverse_transform(m) if return_type == "image" else m
+        if return_type == 'image':
+            # pending resolution of https://github.com/nilearn/nilearn/issues/2724
+            try:
+                return self.masker.inverse_transform(m)
+            except IndexError:
+                return squeeze_image(self.masker.inverse_transform([m]))
+        return m
 
     def save_maps(self, output_dir=".", prefix="", prefix_sep="_", names=None):
         """Save results to files.

@@ -117,6 +117,7 @@ def test_ibma_with_custom_masker(testdata_ibma):
     meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
     assert meta.results.maps["z"].shape == (5,)
+    assert meta.results.get_map("z").shape == (10, 10, 10)
 
 
 @pytest.mark.parametrize(
