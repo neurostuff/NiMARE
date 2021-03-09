@@ -2,6 +2,7 @@
 import shutil
 
 import numpy as np
+import pytest
 from scipy.ndimage.measurements import center_of_mass
 
 import nimare
@@ -144,7 +145,7 @@ def test_alekernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """Check that all return types produce equivalent results (minus the masking element)."""
     tmpdir = tmp_path_factory.mktemp("test_alekernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
-    kern = kernel.ALEKernel(sample_size=20)
+    kern = kernel.ALEKernel(sample_size=20, low_memory=True)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     ma_arr = kern.transform(testdata_cbma, return_type="array")
     dset = kern.transform(testdata_cbma, return_type="dataset")
@@ -179,7 +180,7 @@ def test_mkdakernel_1mm(testdata_cbma):
     Test on 1mm template.
     """
     id_ = "pain_01.nidm-1"
-    kern = kernel.MKDAKernel(r=4, value=1)
+    kern = kernel.MKDAKernel(r=4, value=1, low_memory=True)
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
@@ -371,3 +372,21 @@ def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
     res = est.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
     assert res.get_map("p", return_type="array").dtype == np.float64
+
+
+@pytest.mark.parametrize(
+    "kern, kwargs",
+    [
+        (kernel.ALEKernel, {"sample_size": 20}),
+        (kernel.KDAKernel, {}),
+        (kernel.MKDAKernel, {}),
+    ],
+)
+def test_kernel_low_high_memory(testdata_cbma, tmp_path_factory, kern, kwargs):
+    """Compare kernel results when low_memory is used vs. not."""
+    kern_low_mem = kern(low_memory=True, **kwargs)
+    kern_high_mem = kern(low_memory=False, **kwargs)
+    trans_kwargs = {"dataset": testdata_cbma, "return_type": "array"}
+    assert np.all(
+        kern_low_mem.transform(**trans_kwargs) == kern_high_mem.transform(**trans_kwargs)
+    )

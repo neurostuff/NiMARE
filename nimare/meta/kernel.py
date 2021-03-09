@@ -177,11 +177,14 @@ class KernelTransformer(Transformer):
                 out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
+
         if return_type == "array":
             return np.vstack(imgs)
         elif return_type == "image":
+            del transformed_maps
             return imgs
         elif return_type == "dataset":
+            del transformed_maps
             # Infer relative path
             dataset.images = dataset.images
             return dataset
@@ -222,18 +225,36 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
-    def __init__(self, fwhm=None, sample_size=None):
+    def __init__(self, fwhm=None, sample_size=None, low_memory=False):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
+        self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
-        transformed = []
         kernels = {}  # retain kernels in dictionary to speed things up
-        for id_, data in coordinates.groupby("id"):
+        exp_ids = coordinates["id"].unique()
+
+        if self.low_memory:
+            # Use a memmapped 4D array
+            from tempfile import mkdtemp
+
+            filename = os.path.join(mkdtemp(), "ale_ma_values.dat")
+            transformed_shape = (len(exp_ids),) + mask.shape
+            transformed = np.memmap(filename, dtype=float, mode="w+", shape=transformed_shape)
+        else:
+            # Use a list of tuples
+            transformed = []
+
+        for i_exp, id_ in enumerate(exp_ids):
+            data = coordinates.loc[coordinates["id"] == id_]
+
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if self.sample_size is not None:
                 sample_size = self.sample_size
@@ -255,9 +276,19 @@ class ALEKernel(KernelTransformer):
                 else:
                     kern = kernels[sample_size]
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-            transformed.append((kernel_data, id_))
 
-        return transformed
+            if self.low_memory:
+                transformed[i_exp, :, :, :] = kernel_data
+
+                # Write changes to disk
+                transformed.flush()
+            else:
+                transformed.append((kernel_data, id_))
+
+        if self.low_memory:
+            return transformed, exp_ids
+        else:
+            return transformed
 
 
 class KDAKernel(KernelTransformer):
@@ -269,13 +300,17 @@ class KDAKernel(KernelTransformer):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1):
+    def __init__(self, r=10, value=1, low_memory=False):
         self.r = float(r)
         self.value = value
+        self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
         dims = mask.shape
@@ -284,7 +319,14 @@ class KDAKernel(KernelTransformer):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims, vox_dims, ijks, self.r, self.value, exp_idx, sum_overlap=self._sum_overlap
+            dims,
+            vox_dims,
+            ijks,
+            self.r,
+            self.value,
+            exp_idx,
+            sum_overlap=self._sum_overlap,
+            low_memory=self.low_memory,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
@@ -299,6 +341,9 @@ class MKDAKernel(KDAKernel):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
     _sum_overlap = False
