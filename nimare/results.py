@@ -51,7 +51,7 @@ class MetaResult(object):
         m = self.maps.get(name)
         if m is None:
             raise ValueError("No map with name '{}' found.".format(name))
-        if return_type == 'image':
+        if return_type == "image":
             # pending resolution of https://github.com/nilearn/nilearn/issues/2724
             try:
                 return self.masker.inverse_transform(m)
