@@ -98,10 +98,12 @@ def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwarg
     """Smoke test for IBMA estimators."""
     meta = meta(**meta_kwargs)
     res = meta.fit(testdata_ibma)
+    z_img = res.get_map("z")
     assert isinstance(meta.results, nimare.results.MetaResult)
     assert isinstance(res, nimare.results.MetaResult)
     assert res.get_map("z", return_type="array").ndim == 1
-    assert res.get_map("z").ndim == 3
+    assert z_img.ndim == 3
+    assert z_img.shape == (10, 10, 10)
     if corrector:
         corr = corrector(**corrector_kwargs)
         cres = corr.transform(res)
@@ -117,6 +119,7 @@ def test_ibma_with_custom_masker(testdata_ibma):
     meta.fit(testdata_ibma)
     assert isinstance(meta.results, nimare.results.MetaResult)
     assert meta.results.maps["z"].shape == (5,)
+    assert meta.results.get_map("z").shape == (10, 10, 10)
 
 
 @pytest.mark.parametrize(
