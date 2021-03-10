@@ -114,6 +114,13 @@ def test_convert_neurosynth_to_json_smoke():
                 "mask": get_template("mni152_2mm", mask="brain"),
             }
         ),
+        (
+            {
+                "collection_ids": (6348, 6419),
+                "contrasts": {"action": "action"},
+                "map_type_conversion": {"univariate-beta map": "beta"},
+            }
+        ),
     ],
 )
 def test_convert_neurovault_to_dataset(kwargs):
@@ -129,10 +136,11 @@ def test_convert_neurovault_to_dataset(kwargs):
 
     assert study_ids == dset_ids
 
-    # check if images were downloaded
+    # check if images were downloaded and are unique
     if kwargs.get("map_type_conversion"):
         for img_type in kwargs.get("map_type_conversion").values():
             assert not dset.images[img_type].empty
+            assert len(set(dset.images[img_type])) == len(dset.images[img_type])
 
 
 @pytest.mark.parametrize(
