@@ -358,7 +358,7 @@ def convert_neurovault_to_dataset(
                     continue
 
                 filename = img_dir / (
-                    f"collection-{img_dict['collection_id']}_" + Path(img_dict["file"]).name
+                    f"collection-{nv_coll}_id-{img_dict['id']}_" + Path(img_dict["file"]).name
                 )
 
                 if not filename.exists():
