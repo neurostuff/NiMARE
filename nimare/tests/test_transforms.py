@@ -1,5 +1,6 @@
 """Test nimare.transforms."""
 import copy
+import re
 
 import nibabel as nib
 import numpy as np
@@ -59,16 +60,30 @@ def test_t_to_z():
     assert np.allclose(t_arr, t_arr2)
 
 
+NO_OUTPUT_PATTERN = re.compile(
+    (
+        r"^No clusters were found for ([\w-]+) at a threshold of [0-9]+\.[0-9]+$|"
+        r"No Z or p map for ([\w-]+), skipping..."
+    )
+)
+
+
 @pytest.mark.parametrize(
     "kwargs,drop_data,add_data",
     [
-        ({"overwrite": True, "z_threshold": 2.3}, "z", "p"),
-        ({"overwrite": True, "z_threshold": 3.1}, None, None),
-        ({"overwrite": False}, None, None),
+        ({"merge_strategy": "fill"}, "z", "p"),
+        ({"merge_strategy": "replace"}, None, None),
+        ({"merge_strategy": "demolish"}, None, None),
+        ({"merge_strategy": "fill", "two_sided": True}, "z", "p"),
+        ({"merge_strategy": "demolish", "two_sided": True, "z_threshold": 1.9}, None, None),
+        ({"merge_strategy": "fill", "z_threshold": 10.0}, None, None),
     ],
 )
-def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_data):
+def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_data, add_data):
     """Test conversion of statistical images to coordinates."""
+    # only catch warnings from the transforms logger
+    caplog.set_level("WARNING", logger=transforms.LGR.name)
+
     img2coord = transforms.CoordinateGenerator(**kwargs)
 
     if add_data:
@@ -88,9 +103,102 @@ def test_images_to_coordinates(tmp_path, testdata_ibma, kwargs, drop_data, add_d
 
     new_dset = img2coord.transform(tst_dset)
 
+    # get the studies that did not generate coordinates
+    # either because the threshold was too high or
+    # because there were no images to generate coordinates
+    studies_without_coordinates = []
+    for msg in caplog.messages:
+        match = NO_OUTPUT_PATTERN.match(msg)
+        if match:
+            studies_without_coordinates.append(
+                match.group(1) if match.group(1) else match.group(2)
+            )
+
+    # if there is not a z map for a study contrast, raise a warning
+    # unless the strategy is fill since all studies already have coordinates
+    if drop_data == "z" and add_data == "p" and img2coord.merge_strategy != "fill":
+        assert "No Z map for" in caplog.messages[0]
+
+        # if someone is trying to use two-sided on a study contrast with a p map
+        # raise a warning
+        if img2coord.two_sided:
+            assert "Cannot use two_sided threshold using a p map for" in caplog.messages[0]
+
+    # if two_sided was specified and z maps were used, there
+    # should be peaks with negative values.
+    if img2coord.two_sided and not drop_data and not add_data:
+        assert np.any(new_dset.coordinates["z_stat"] < 0.0)
+
     # since testdata_ibma already has coordinate data for every study
-    # this transformation should retain the same number of unique ids.
-    assert set(new_dset.coordinates["id"]) == set(tst_dset.coordinates["id"])
+    # this transformation should retain the same number of unique ids
+    # unless the merge_strategy was demolish
+    if img2coord.merge_strategy == "demolish":
+        expected_studies_with_coordinates = set(tst_dset.coordinates["id"]) - set(
+            studies_without_coordinates
+        )
+    else:
+        expected_studies_with_coordinates = set(tst_dset.coordinates["id"])
+
+    assert set(new_dset.coordinates["id"]) == expected_studies_with_coordinates
+
+
+def test_images_to_coordinates_merge_strategy(testdata_ibma):
+    """Test different merging strategies."""
+    img2coord = transforms.CoordinateGenerator(z_threshold=1.9)
+
+    # keep pain_01-1, pain_02-1, and pain_03-1
+    tst_dset = testdata_ibma.slice(["pain_01-1", "pain_02-1", "pain_03-1"])
+    # remove coordinate data for pain_02-1
+    tst_dset.coordinates = tst_dset.coordinates.query("id != 'pain_02-1'")
+    # remove image data for pain_01-1
+    tst_dset.images = tst_dset.images.query("id != 'pain_01-1'")
+
+    # |  study  | image | coordinate |
+    # |---------|-------|------------|
+    # | pain_01 | no    | yes        |
+    # | pain_02 | yes   | no         |
+    # | pain_03 | yes   | yes        |
+
+    # test 'fill' strategy
+    # only pain_02 should have new data, pain_01 and pain_03 should remain the same
+    img2coord.merge_strategy = "fill"
+    fill_dset = img2coord.transform(tst_dset)
+    # pain_01 and pain_03 should be unchaged
+    assert set(fill_dset.coordinates.query("id != 'pain_02-1'")["x"]) == set(
+        tst_dset.coordinates["x"]
+    )
+    # pain_02 should be in the coordinates now
+    assert "pain_02-1" in fill_dset.coordinates["id"].unique()
+
+    # test 'replace' strategy
+    # pain_02 and pain_03 should have new data, but pain_01 should remain the same
+    img2coord.merge_strategy = "replace"
+    replace_dset = img2coord.transform(tst_dset)
+
+    # pain_01 should remain the same
+    assert set(replace_dset.coordinates.query("id == 'pain_01-1'")["x"]) == set(
+        tst_dset.coordinates.query("id == 'pain_01-1'")["x"]
+    )
+    # pain_02 should be new
+    assert "pain_02-1" in replace_dset.coordinates["id"].unique()
+    # pain_03 should be new (and have different coordinates from the old version)
+    assert set(replace_dset.coordinates.query("id == 'pain_03-1'")["x"]) != set(
+        tst_dset.coordinates.query("id == 'pain_03-1'")["x"]
+    )
+
+    # test 'demolish' strategy
+    # pain_01 will be removed, and pain_02, and pain_03 will be new
+    img2coord.merge_strategy = "demolish"
+    demolish_dset = img2coord.transform(tst_dset)
+
+    # pain_01 should not be in the dset
+    assert "pain_01-1" not in demolish_dset.coordinates["id"].unique()
+    # pain_02 should be new
+    assert "pain_02-1" in demolish_dset.coordinates["id"].unique()
+    # pain_03 should be new (and have different coordinates from the old version)
+    assert set(demolish_dset.coordinates.query("id == 'pain_03-1'")["x"]) != set(
+        tst_dset.coordinates.query("id == 'pain_03-1'")["x"]
+    )
 
 
 @pytest.mark.parametrize(
