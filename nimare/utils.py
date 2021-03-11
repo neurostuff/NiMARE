@@ -62,7 +62,7 @@ def dict_to_coordinates(data, masker, space):
     """Load coordinates in NIMADS-format dictionary into DataFrame."""
     # Required columns
     columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]
-    core_columns = columns[:]  # Used in contrast for loop
+    core_columns = columns.copy()  # Used in contrast for loop
 
     all_dfs = []
     for pid in data.keys():
@@ -70,7 +70,7 @@ def dict_to_coordinates(data, masker, space):
             if "coords" not in data[pid]["contrasts"][expid].keys():
                 continue
 
-            exp_columns = core_columns[:]
+            exp_columns = core_columns.copy()
             exp = data[pid]["contrasts"][expid]
 
             # Required info (ids, x, y, z, space)
@@ -90,7 +90,7 @@ def dict_to_coordinates(data, masker, space):
             )
 
             # Optional information
-            for k in list(set(exp["coords"].keys()) - set(columns)):
+            for k in list(set(exp["coords"].keys()) - set(core_columns)):
                 k_data = exp["coords"][k]
                 if not isinstance(k_data, list):
                     k_data = np.array([k_data] * n_coords)
