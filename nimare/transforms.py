@@ -206,7 +206,7 @@ class CoordinateGenerator(Transformer):
 
     Parameters
     ----------
-    merge_strategy : :obj:`str`, choice of 'fill', 'replace', or 'demolish'
+    merge_strategy : {'fill', 'replace', 'demolish'}, optional
         strategy on how to incorporate the generated coordinates
         with possible pre-existing coordinates.
         The three different strategies are 'fill', 'replace',

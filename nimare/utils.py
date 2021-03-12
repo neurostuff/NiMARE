@@ -610,7 +610,7 @@ def mm2vox(xyz, affine):
 )
 @due.dcite(
     references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and " "Talairach-to-MNI transforms.",
+    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
 )
 def tal2mni(coords):
     """
@@ -642,7 +642,7 @@ def tal2mni(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row " "vectors (Nx3).")
+        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError("Input must be an Nx3 or 3xN matrix.")
@@ -685,7 +685,7 @@ def tal2mni(coords):
 )
 @due.dcite(
     references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and " "Talairach-to-MNI transforms.",
+    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
 )
 def mni2tal(coords):
     """
@@ -715,7 +715,7 @@ def mni2tal(coords):
     # Find which dimensions are of size 3
     shape = np.array(coords.shape)
     if all(shape == 3):
-        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row " "vectors (Nx3).")
+        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
         use_dim = 1
     elif not any(shape == 3):
         raise AttributeError("Input must be an Nx3 or 3xN matrix.")
