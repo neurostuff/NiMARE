@@ -331,6 +331,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         del iter_diff_values
         if self.low_memory:
             # Get rid of memmap
+            LGR.info(f"Removing {filename}")
             os.remove(filename)
 
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
