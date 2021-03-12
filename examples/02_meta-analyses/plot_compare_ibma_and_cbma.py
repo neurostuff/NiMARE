@@ -35,7 +35,7 @@ dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 
-# Calculate missing images
+# Calculate missing statistical images from the available stats.
 dset.images = transform_images(
     dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
 )
@@ -44,7 +44,7 @@ dset.images = nimare.transforms.transform_images(
 )
 
 # create coordinates from statistical maps
-coord_gen = CoordinateGenerator(overwrite=True)
+coord_gen = CoordinateGenerator()
 dset = coord_gen.transform(dset)
 
 ###############################################################################

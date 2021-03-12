@@ -251,7 +251,7 @@ class CoordinateGenerator(Transformer):
         self.two_sided = two_sided
         self.z_threshold = z_threshold
 
-    def transform(self, dataset):
+    def transform(self, dataset, seed=None):
         """Create coordinate peaks from statistical images."""
         # relevant variables from dataset
         space = dataset.space
