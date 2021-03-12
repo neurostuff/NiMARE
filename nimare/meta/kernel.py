@@ -161,8 +161,12 @@ class KernelTransformer(Transformer):
             if return_type == "array":
                 masked_ma_arr = transformed_maps[0][:, mask_data]
                 if isinstance(transformed_maps[0], np.memmap):
+                    temp_dir = os.path.dirname(transformed_maps[0].filename)
                     LGR.info(f"Removing {transformed_maps[0].filename}")
                     os.remove(transformed_maps[0].filename)
+                    if len(os.listdir(temp_dir)) == 0:
+                        LGR.info(f"Removing empty directory {temp_dir}")
+                        os.rmdir(temp_dir)
 
                 return masked_ma_arr
             else:
@@ -184,8 +188,14 @@ class KernelTransformer(Transformer):
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
         if isinstance(kernel_data, np.memmap):
+            temp_dir = os.path.dirname(kernel_data.filename)
             LGR.info(f"Removing {kernel_data.filename}")
             os.remove(kernel_data.filename)
+            if len(os.listdir(temp_dir)) == 0:
+                LGR.info(f"Removing empty directory {temp_dir}")
+                os.rmdir(temp_dir)
+
+        del kernel_data
 
         if return_type == "array":
             return np.vstack(imgs)

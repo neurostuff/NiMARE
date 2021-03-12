@@ -328,11 +328,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
 
-        del iter_diff_values
-        if self.low_memory:
+        if isinstance(iter_diff_values, np.memmap):
             # Get rid of memmap
-            LGR.info(f"Removing {filename}")
-            os.remove(filename)
+            LGR.info(f"Removing {iter_diff_values.filename}")
+            os.remove(iter_diff_values.filename)
+            temp_dir = os.path.dirname(iter_diff_values.filename)
+            if len(os.listdir(temp_dir)) == 0:
+                LGR.info(f"Removing empty directory {temp_dir}")
+                os.rmdir(temp_dir)
+
+        del iter_diff_values
 
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
 
@@ -437,9 +442,15 @@ class SCALE(CBMAEstimator):
 
         if self.n_cores == 1:
             if self.low_memory:
+                import datetime
                 from tempfile import mkdtemp
+                from ...extract.utils import _get_dataset_dir
 
-                filename = os.path.join(mkdtemp(), "perm_scale_values.dat")
+                start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+                dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
+                temp_dir = mkdtemp(prefix="ALESubtraction", dir=dataset_dir)
+                filename = os.path.join(temp_dir, f"SCALE_{start_time}.dat")
+
                 perm_scale_values = np.memmap(
                     filename,
                     dtype=stat_values.dtype,
@@ -463,9 +474,17 @@ class SCALE(CBMAEstimator):
             perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
-        if self.low_memory:
-            del perm_scale_values
-            os.remove(filename)
+
+        if isinstance(perm_scale_values, np.memmap):
+            LGR.info(f"Removing {perm_scale_values.filename}")
+            os.remove(perm_scale_values.filename)
+            temp_dir = os.path.dirname(perm_scale_values.filename)
+            if len(os.listdir(temp_dir)) == 0:
+                LGR.info(f"Removing empty directory {temp_dir}")
+                os.rmdir(temp_dir)
+
+        del perm_scale_values
+
         logp_values = -np.log10(p_values)
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
