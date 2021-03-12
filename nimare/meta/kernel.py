@@ -242,10 +242,14 @@ class ALEKernel(KernelTransformer):
         exp_ids = coordinates["id"].unique()
 
         if self.low_memory:
-            # Use a memmapped 4D array
-            from tempfile import mkdtemp
+            import datetime
+            from ..extract.utils import _get_dataset_dir
 
-            filename = os.path.join(mkdtemp(), "ale_ma_values.dat")
+            start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+            dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
+            filename = os.path.join(dataset_dir, f"ALEKernel_{start_time}.dat")
+
+            # Use a memmapped 4D array
             transformed_shape = (len(exp_ids),) + mask.shape
             transformed = np.memmap(filename, dtype=float, mode="w+", shape=transformed_shape)
         else:

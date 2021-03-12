@@ -293,9 +293,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         # Calculate null distribution for each voxel based on group-assignment randomization
         if self.low_memory:
-            from tempfile import mkdtemp
+            import datetime
+            from ...extract.utils import _get_dataset_dir
 
-            filename = os.path.join(mkdtemp(), "iter_diff_values.dat")
+            start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+            dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
+            filename = os.path.join(dataset_dir, f"ALESubtraction_{start_time}.dat")
             iter_diff_values = np.memmap(
                 filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
             )

@@ -302,9 +302,14 @@ def compute_kda_ma(
 
     kernel_shape = (n_studies,) + shape
     if low_memory:
-        from tempfile import mkdtemp
+        import datetime
+        from ..extract.utils import _get_dataset_dir
 
-        filename = os.path.join(mkdtemp(), "kda_ma_values.dat")
+        start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+        object_name = "KDAKernel" if sum_overlap else "MKDAKernel"
+        dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
+
+        filename = os.path.join(dataset_dir, f"{object_name}_{start_time}.dat")
         kernel_data = np.memmap(filename, dtype=type(value), mode="w+", shape=kernel_shape)
     else:
         kernel_data = np.zeros(kernel_shape, dtype=type(value))
