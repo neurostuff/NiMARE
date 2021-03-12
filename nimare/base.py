@@ -6,6 +6,7 @@ import multiprocessing as mp
 import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
+from hashlib import md5
 
 import nibabel as nb
 import numpy as np
@@ -321,6 +322,14 @@ class MetaEstimator(Estimator):
 
                 self.inputs_[name] = temp_arr
             elif type_ == "coordinates":
+                # Try to load existing MA maps
+                if hasattr(self, "kernel_transformer"):
+                    self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
+                    col = self.kernel_transformer.image_type
+                    if col in dataset.images.columns:
+                        self.inputs_["ma_maps"] = dataset.images[col].tolist()
+
+                # Set the coordinates directly as well
                 self.inputs_[name] = dataset.coordinates.copy()
 
 

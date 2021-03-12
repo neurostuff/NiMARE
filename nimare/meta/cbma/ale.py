@@ -269,12 +269,27 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
 
-        ma_maps1 = self.kernel_transformer.transform(
-            self.inputs_["coordinates1"], masker=self.masker, return_type="array"
-        )
-        ma_maps2 = self.kernel_transformer.transform(
-            self.inputs_["coordinates2"], masker=self.masker, return_type="array"
-        )
+        if "ma_maps1" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            LGR.debug("Loading pre-generated MA maps for sample 1.")
+            ma_maps1 = self.masker.transform(self.inputs_["ma_maps1"])
+        else:
+            ma_maps1 = self.kernel_transformer.transform(
+                self.inputs_["coordinates1"],
+                masker=self.masker,
+                return_type="array",
+            )
+
+        if "ma_maps2" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            LGR.debug("Loading pre-generated MA maps for sample 2.")
+            ma_maps1 = self.masker.transform(self.inputs_["ma_maps2"])
+        else:
+            ma_maps2 = self.kernel_transformer.transform(
+                self.inputs_["coordinates2"],
+                masker=self.masker,
+                return_type="array",
+            )
 
         n_grp1 = ma_maps1.shape[0]
         ma_arr = np.vstack((ma_maps1, ma_maps2))
