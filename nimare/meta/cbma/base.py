@@ -79,6 +79,8 @@ class CBMAEstimator(MetaEstimator):
         ma_values = self.kernel_transformer.transform(
             self.inputs_["coordinates"], masker=self.masker, return_type="array"
         )
+        if isinstance(ma_values, np.memmap):
+            raise Exception("Output of transformer is a memmap!")
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
@@ -94,9 +96,6 @@ class CBMAEstimator(MetaEstimator):
 
         else:
             self._compute_null_reduced_empirical(ma_values, n_iters=self.n_iters)
-
-        if self.kernel_transformer.low_memory:
-            os.remove(ma_values.filename)
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
