@@ -82,7 +82,10 @@ def test_ALE_analytic_null_unit(testdata_cbma, tmp_path_factory):
 
 
 def test_ALE_empirical_null_unit(testdata_cbma, tmp_path_factory):
-    """Unit test for ALE with an empirical null_method."""
+    """Unit test for ALE with an empirical null_method.
+
+    This test is run with low-memory kernel transformation as well.
+    """
     tmpdir = tmp_path_factory.mktemp("test_ALE_empirical_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 

@@ -159,7 +159,12 @@ class KernelTransformer(Transformer):
 
         if not isinstance(transformed_maps[0], (list, tuple)):
             if return_type == "array":
-                return transformed_maps[0][:, mask_data]
+                masked_ma_arr = transformed_maps[0][:, mask_data]
+                if isinstance(transformed_maps[0], np.memmap):
+                    LGR.info(f"Removing {transformed_maps[0].filename}")
+                    os.remove(transformed_maps[0].filename)
+
+                return masked_ma_arr
             else:
                 transformed_maps = list(zip(*transformed_maps))
 
@@ -177,6 +182,10 @@ class KernelTransformer(Transformer):
                 out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
+
+        if isinstance(kernel_data, np.memmap):
+            LGR.info(f"Removing {kernel_data.filename}")
+            os.remove(kernel_data.filename)
 
         if return_type == "array":
             return np.vstack(imgs)
