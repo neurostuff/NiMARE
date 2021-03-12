@@ -299,6 +299,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
             start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
             dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
             filename = os.path.join(dataset_dir, f"ALESubtraction_{start_time}.dat")
+            LGR.info(f"Temporary file written to {filename}")
+
+            # Use a memmapped 4D array
             iter_diff_values = np.memmap(
                 filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
             )

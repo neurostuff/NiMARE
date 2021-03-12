@@ -308,8 +308,10 @@ def compute_kda_ma(
         start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         object_name = "KDAKernel" if sum_overlap else "MKDAKernel"
         dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
-
         filename = os.path.join(dataset_dir, f"{object_name}_{start_time}.dat")
+        LGR.info(f"Temporary file written to {filename}")
+
+        # Use a memmapped 4D array
         kernel_data = np.memmap(filename, dtype=type(value), mode="w+", shape=kernel_shape)
     else:
         kernel_data = np.zeros(kernel_shape, dtype=type(value))
