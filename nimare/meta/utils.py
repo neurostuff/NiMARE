@@ -303,12 +303,14 @@ def compute_kda_ma(
     kernel_shape = (n_studies,) + shape
     if low_memory:
         import datetime
+        from tempfile import mkdtemp
         from ..extract.utils import _get_dataset_dir
 
         start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         object_name = "KDAKernel" if sum_overlap else "MKDAKernel"
         dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
-        filename = os.path.join(dataset_dir, f"{object_name}_{start_time}.dat")
+        temp_dir = mkdtemp(prefix=object_name, dir=dataset_dir)
+        filename = os.path.join(temp_dir, f"{object_name}_{start_time}.dat")
         LGR.info(f"Temporary file written to {filename}")
 
         # Use a memmapped 4D array
