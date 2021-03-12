@@ -201,12 +201,27 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
-        ma_maps1 = self.kernel_transformer.transform(
-            self.inputs_["coordinates1"], masker=self.masker, return_type="array"
-        )
-        ma_maps2 = self.kernel_transformer.transform(
-            self.inputs_["coordinates2"], masker=self.masker, return_type="array"
-        )
+        if "ma_maps1" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            LGR.debug("Loading pre-generated MA maps for Dataset 1.")
+            ma_maps1 = self.masker.transform(self.inputs_["ma_maps1"])
+        else:
+            ma_maps1 = self.kernel_transformer.transform(
+                self.inputs_["coordinates1"],
+                masker=self.masker,
+                return_type="array",
+            )
+
+        if "ma_maps2" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            LGR.debug("Loading pre-generated MA maps for Dataset 2.")
+            ma_maps2 = self.masker.transform(self.inputs_["ma_maps2"])
+        else:
+            ma_maps2 = self.kernel_transformer.transform(
+                self.inputs_["coordinates2"],
+                masker=self.masker,
+                return_type="array",
+            )
 
         # Calculate different count variables
         n_selected = ma_maps1.shape[0]
