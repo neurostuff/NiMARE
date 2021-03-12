@@ -1,6 +1,7 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
 import multiprocessing as mp
+import os
 import inspect
 
 import nibabel as nib
@@ -93,6 +94,9 @@ class CBMAEstimator(MetaEstimator):
 
         else:
             self._compute_null_reduced_empirical(ma_values, n_iters=self.n_iters)
+
+        if self.kernel_transformer.low_memory:
+            os.remove(ma_values.filename)
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
