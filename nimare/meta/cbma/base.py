@@ -1,7 +1,6 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
 import multiprocessing as mp
-import os
 import inspect
 
 import nibabel as nib
