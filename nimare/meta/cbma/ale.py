@@ -283,7 +283,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         if "ma_maps2" in self.inputs_.keys():
             # Grab pre-generated MA maps
             LGR.debug("Loading pre-generated MA maps for sample 2.")
-            ma_maps1 = self.masker.transform(self.inputs_["ma_maps2"])
+            ma_maps2 = self.masker.transform(self.inputs_["ma_maps2"])
         else:
             ma_maps2 = self.kernel_transformer.transform(
                 self.inputs_["coordinates2"],
