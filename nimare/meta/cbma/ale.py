@@ -1,5 +1,4 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
-import os
 import logging
 import multiprocessing as mp
 
@@ -7,6 +6,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
+from ...utils import use_memmap
 from ... import references
 from ...due import due
 from ...stats import null_to_p, nullhist_to_p
@@ -264,6 +264,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.n_iters = n_iters
         self.low_memory = low_memory
 
+    @use_memmap(LGR)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
@@ -293,19 +294,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         # Calculate null distribution for each voxel based on group-assignment randomization
         if self.low_memory:
-            import datetime
-            from tempfile import mkdtemp
-            from ...extract.utils import _get_dataset_dir
-
-            start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-            dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
-            temp_dir = mkdtemp(prefix="ALESubtraction", dir=dataset_dir)
-            filename = os.path.join(temp_dir, f"ALESubtraction_{start_time}.dat")
-            LGR.info(f"Temporary file written to {filename}")
-
             # Use a memmapped 4D array
             iter_diff_values = np.memmap(
-                filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
+                self.memmap_filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
             )
         else:
             iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
@@ -327,15 +318,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=True
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
-
-        if isinstance(iter_diff_values, np.memmap):
-            # Get rid of memmap
-            LGR.info(f"Removing {iter_diff_values.filename}")
-            os.remove(iter_diff_values.filename)
-            temp_dir = os.path.dirname(iter_diff_values.filename)
-            if len(os.listdir(temp_dir)) == 0:
-                LGR.info(f"Removing empty directory {temp_dir}")
-                os.rmdir(temp_dir)
 
         del iter_diff_values
 
@@ -406,6 +388,7 @@ class SCALE(CBMAEstimator):
         self.n_cores = self._check_ncores(n_cores)
         self.low_memory = low_memory
 
+    @use_memmap(LGR)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
@@ -442,17 +425,8 @@ class SCALE(CBMAEstimator):
 
         if self.n_cores == 1:
             if self.low_memory:
-                import datetime
-                from tempfile import mkdtemp
-                from ...extract.utils import _get_dataset_dir
-
-                start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-                dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
-                temp_dir = mkdtemp(prefix="ALESubtraction", dir=dataset_dir)
-                filename = os.path.join(temp_dir, f"SCALE_{start_time}.dat")
-
                 perm_scale_values = np.memmap(
-                    filename,
+                    self.memmap_filename,
                     dtype=stat_values.dtype,
                     mode="w+",
                     shape=(self.n_iters, stat_values.shape[0]),
@@ -474,14 +448,6 @@ class SCALE(CBMAEstimator):
             perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
-
-        if isinstance(perm_scale_values, np.memmap):
-            LGR.info(f"Removing {perm_scale_values.filename}")
-            os.remove(perm_scale_values.filename)
-            temp_dir = os.path.dirname(perm_scale_values.filename)
-            if len(os.listdir(temp_dir)) == 0:
-                LGR.info(f"Removing empty directory {temp_dir}")
-                os.rmdir(temp_dir)
 
         del perm_scale_values
 

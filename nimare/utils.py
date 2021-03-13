@@ -2,6 +2,10 @@
 import logging
 import os.path as op
 import re
+import datetime
+from tempfile import mkstemp
+from functools import wraps
+import os
 
 import nibabel as nib
 import numpy as np
@@ -386,3 +390,35 @@ def uk_to_us(text):
         pattern = re.compile(r"\b(" + "|".join(SPELL_DICT.keys()) + r")\b")
         text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
     return text
+
+
+def use_memmap(logger):
+    """Woo."""
+    from .extract.utils import _get_dataset_dir
+
+    def inner_function(function):
+
+        @wraps(function)
+        def memmap_context(self, *args, **kwargs):
+            if self.low_memory:
+                start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+                dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
+                _, filename = mkstemp(
+                    prefix=self.__class__.__name__, suffix=start_time, dir=dataset_dir
+                )
+                logger.info(f"Temporary file written to {filename}")
+                self.memmap_filename = filename
+            else:
+                filename = self.memmap_filename = None
+            try:
+                return function(self, *args, **kwargs)
+            except:
+                logger.error(f"{function.__name__} failed, removing {filename}")
+                raise
+            finally:
+                if self.low_memory and os.path.isfile(filename):
+                    logger.info(f"Removing temporary file: {filename}")
+                    os.remove(filename)
+
+        return memmap_context
+    return inner_function

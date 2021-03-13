@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from nilearn import image
 
+from ..utils import use_memmap
 from ..base import Transformer
 from ..transforms import vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
@@ -70,6 +71,7 @@ class KernelTransformer(Transformer):
         )
         self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
 
+    @use_memmap(LGR)
     def transform(self, dataset, masker=None, return_type="image"):
         """Generate modeled activation images for each Contrast in dataset.
 
@@ -160,14 +162,6 @@ class KernelTransformer(Transformer):
         if not isinstance(transformed_maps[0], (list, tuple)):
             if return_type == "array":
                 masked_ma_arr = transformed_maps[0][:, mask_data]
-                if isinstance(transformed_maps[0], np.memmap):
-                    temp_dir = os.path.dirname(transformed_maps[0].filename)
-                    LGR.info(f"Removing {transformed_maps[0].filename}")
-                    os.remove(transformed_maps[0].filename)
-                    if len(os.listdir(temp_dir)) == 0:
-                        LGR.info(f"Removing empty directory {temp_dir}")
-                        os.rmdir(temp_dir)
-
                 return masked_ma_arr
             else:
                 transformed_maps = list(zip(*transformed_maps))
@@ -186,14 +180,6 @@ class KernelTransformer(Transformer):
                 out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
-
-        if isinstance(kernel_data, np.memmap):
-            temp_dir = os.path.dirname(kernel_data.filename)
-            LGR.info(f"Removing {kernel_data.filename}")
-            os.remove(kernel_data.filename)
-            if len(os.listdir(temp_dir)) == 0:
-                LGR.info(f"Removing empty directory {temp_dir}")
-                os.rmdir(temp_dir)
 
         del kernel_data
 
@@ -261,19 +247,11 @@ class ALEKernel(KernelTransformer):
         exp_ids = coordinates["id"].unique()
 
         if self.low_memory:
-            import datetime
-            from tempfile import mkdtemp
-            from ..extract.utils import _get_dataset_dir
-
-            start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-            dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
-            temp_dir = mkdtemp(prefix="ALEKernel", dir=dataset_dir)
-            filename = os.path.join(temp_dir, f"ALEKernel_{start_time}.dat")
-            LGR.info(f"Temporary file written to {filename}")
-
             # Use a memmapped 4D array
             transformed_shape = (len(exp_ids),) + mask.shape
-            transformed = np.memmap(filename, dtype=float, mode="w+", shape=transformed_shape)
+            transformed = np.memmap(
+                self.memmap_filename, dtype=float, mode="w+", shape=transformed_shape
+            )
         else:
             # Use a list of tuples
             transformed = []
@@ -352,7 +330,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            low_memory=self.low_memory,
+            memmap_filename=self.memmap_filename
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
