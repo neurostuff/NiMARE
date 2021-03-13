@@ -75,11 +75,16 @@ class CBMAEstimator(MetaEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_values = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="array"
-        )
-        if isinstance(ma_values, np.memmap):
-            raise Exception("Output of transformer is a memmap!")
+        if "ma_maps" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            LGR.debug("Loading pre-generated MA maps.")
+            ma_values = self.masker.transform(self.inputs_["ma_maps"])
+        else:
+            ma_values = self.kernel_transformer.transform(
+                self.inputs_["coordinates"],
+                masker=self.masker,
+                return_type="array",
+            )
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
@@ -646,11 +651,21 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         """
         self._validate_input(dataset1)
         self._validate_input(dataset2)
+
         # grab and override
         self._preprocess_input(dataset1)
+        if "ma_maps" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            self.inputs_["ma_maps1"] = self.inputs_.pop("ma_maps")
+
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
+
         # grab and override
         self._preprocess_input(dataset2)
+        if "ma_maps" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            self.inputs_["ma_maps2"] = self.inputs_.pop("ma_maps")
+
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         maps = self._fit(dataset1, dataset2)
