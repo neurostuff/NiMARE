@@ -397,7 +397,6 @@ def use_memmap(logger):
     from .extract.utils import _get_dataset_dir
 
     def inner_function(function):
-
         @wraps(function)
         def memmap_context(self, *args, **kwargs):
             if self.low_memory:
@@ -421,4 +420,5 @@ def use_memmap(logger):
                     os.remove(filename)
 
         return memmap_context
+
     return inner_function

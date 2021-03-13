@@ -330,7 +330,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            memmap_filename=self.memmap_filename
+            memmap_filename=self.memmap_filename,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids

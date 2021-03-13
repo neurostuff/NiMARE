@@ -258,7 +258,14 @@ def compute_p2m_ma(
 
 
 def compute_kda_ma(
-    shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False, memmap_filename=None,
+    shape,
+    vox_dims,
+    ijks,
+    r,
+    value=1.0,
+    exp_idx=None,
+    sum_overlap=False,
+    memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
@@ -305,9 +312,7 @@ def compute_kda_ma(
     kernel_shape = (n_studies,) + shape
     if memmap_filename:
         # Use a memmapped 4D array
-        kernel_data = np.memmap(
-            memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape
-        )
+        kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
     else:
         kernel_data = np.zeros(kernel_shape, dtype=type(value))
 
