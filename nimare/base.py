@@ -325,9 +325,13 @@ class MetaEstimator(Estimator):
                 # Try to load existing MA maps
                 if hasattr(self, "kernel_transformer"):
                     self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
-                    col = self.kernel_transformer.image_type
-                    if col in dataset.images.columns:
-                        self.inputs_["ma_maps"] = dataset.images[col].tolist()
+                    if self.kernel_transformer.image_type in dataset.images.columns:
+                        files = dataset.get_images(
+                            ids=dataset.ids,
+                            imtype=self.kernel_transformer.image_type,
+                        )
+                        if all(f is not None for f in files):
+                            self.inputs_["ma_maps"] = files
 
                 # Set the coordinates directly as well
                 self.inputs_[name] = dataset.coordinates.copy()
