@@ -393,13 +393,13 @@ def uk_to_us(text):
 
 
 def use_memmap(logger):
-    """Woo."""
+    """Memory-map array to a file, and perform cleanup after."""
     from .extract.utils import _get_dataset_dir
 
     def inner_function(function):
         @wraps(function)
         def memmap_context(self, *args, **kwargs):
-            if self.low_memory:
+            if hasattr(self, "low_memory") and self.low_memory:
                 start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
                 dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
                 _, filename = mkstemp(
@@ -409,13 +409,14 @@ def use_memmap(logger):
                 self.memmap_filename = filename
             else:
                 filename = self.memmap_filename = None
+
             try:
                 return function(self, *args, **kwargs)
             except:
                 logger.error(f"{function.__name__} failed, removing {filename}")
                 raise
             finally:
-                if self.low_memory and os.path.isfile(filename):
+                if hasattr(self, "low_memory") and self.low_memory and os.path.isfile(filename):
                     logger.info(f"Removing temporary file: {filename}")
                     os.remove(filename)
 
