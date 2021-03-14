@@ -258,7 +258,14 @@ def compute_p2m_ma(
 
 
 def compute_kda_ma(
-    shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False, low_memory=False
+    shape,
+    vox_dims,
+    ijks,
+    r,
+    value=1.0,
+    exp_idx=None,
+    sum_overlap=False,
+    memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
@@ -284,6 +291,8 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
+    memmap_filename : :obj:`str`, optional
+        If passed, use this file for memory mapping arrays
 
     Returns
     -------
@@ -301,11 +310,9 @@ def compute_kda_ma(
     n_studies = len(uniq)
 
     kernel_shape = (n_studies,) + shape
-    if low_memory:
-        from tempfile import mkdtemp
-
-        filename = os.path.join(mkdtemp(), "kda_ma_values.dat")
-        kernel_data = np.memmap(filename, dtype=type(value), mode="w+", shape=kernel_shape)
+    if memmap_filename:
+        # Use a memmapped 4D array
+        kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
     else:
         kernel_data = np.zeros(kernel_shape, dtype=type(value))
 
@@ -324,7 +331,7 @@ def compute_kda_ma(
         else:
             kernel_data[exp][tuple(sphere.T)] = value
 
-        if low_memory:
+        if memmap_filename:
             # Write changes to disk
             kernel_data.flush()
 

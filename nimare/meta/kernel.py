@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from nilearn import image
 
+from ..utils import use_memmap
 from ..base import Transformer
 from ..transforms import vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
@@ -70,6 +71,7 @@ class KernelTransformer(Transformer):
         )
         self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
 
+    @use_memmap(LGR)
     def transform(self, dataset, masker=None, return_type="image"):
         """Generate modeled activation images for each Contrast in dataset.
 
@@ -178,6 +180,8 @@ class KernelTransformer(Transformer):
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
+        del kernel_data
+
         if return_type == "array":
             return np.vstack(imgs)
         elif return_type == "image":
@@ -243,11 +247,10 @@ class ALEKernel(KernelTransformer):
 
         if self.low_memory:
             # Use a memmapped 4D array
-            from tempfile import mkdtemp
-
-            filename = os.path.join(mkdtemp(), "ale_ma_values.dat")
             transformed_shape = (len(exp_ids),) + mask.shape
-            transformed = np.memmap(filename, dtype=float, mode="w+", shape=transformed_shape)
+            transformed = np.memmap(
+                self.memmap_filename, dtype=float, mode="w+", shape=transformed_shape
+            )
         else:
             # Use a list of tuples
             transformed = []
@@ -326,7 +329,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            low_memory=self.low_memory,
+            memmap_filename=self.memmap_filename,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
