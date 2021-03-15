@@ -274,6 +274,12 @@ def get_masker(mask):
     -------
     masker : an initialized, fitted instance of a subclass of
         `nilearn.input_data.base_masker.BaseMasker`
+
+    Notes
+    -----
+    Due to issues with averaging across voxels in image-based meta-analyses,
+    only non-aggregative maskers (i.e., NiftiMaskers) are allowed.
+    See https://github.com/neurostuff/NiMARE/issues/466 for more information.
     """
     if isinstance(mask, str):
         mask = nib.load(mask)
@@ -281,9 +287,9 @@ def get_masker(mask):
     if isinstance(mask, nib.nifti1.Nifti1Image):
         mask = NiftiMasker(mask)
 
-    if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
+    if not isinstance(mask, NiftiMasker):
         raise ValueError(
-            "mask argument must be a string, a nibabel image," " or a Nilearn Masker instance."
+            "mask argument must be a string, a nibabel image, or a nilearn NiftiMasker instance."
         )
 
     # Fit the masker if needed
