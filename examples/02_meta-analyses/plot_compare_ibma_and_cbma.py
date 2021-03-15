@@ -44,7 +44,7 @@ dset.images = nimare.transforms.transform_images(
 )
 
 # create coordinates from statistical maps
-coord_gen = CoordinateGenerator()
+coord_gen = CoordinateGenerator(merge_strategy='replace')
 dset = coord_gen.transform(dset)
 
 ###############################################################################
