@@ -327,10 +327,13 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 iter_diff_values.flush()
 
         # Determine p-values based on voxel-wise null distributions
+        # In cases with differently-sized groups,
+        # the ALE-difference values will be biased and skewed,
+        # but the null distributions will be too, so symmetric should be False.
         p_arr = np.ones(n_voxels)
         for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(
-                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=True
+                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=False
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
 
@@ -338,7 +341,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
 
-        images = {"z_desc-group1MinusGroup2": z_arr}
+        images = {
+            "z_desc-group1MinusGroup2": z_arr,
+            "p_desc-group1MinusGroup2": p_arr,
+        }
         return images
 
 
