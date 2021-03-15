@@ -338,7 +338,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
 
-        images = {"z_desc-group1MinusGroup2": z_arr}
+        images = {
+            "z_desc-group1MinusGroup2": z_arr,
+            "p_desc-group1MinusGroup2": p_arr,
+        }
         return images
 
 
