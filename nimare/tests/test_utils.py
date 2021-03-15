@@ -5,6 +5,7 @@ import os.path as op
 
 import nibabel as nib
 import pytest
+from nilearn import input_data
 
 from nimare import utils
 
@@ -79,3 +80,16 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
         assert not os.path.isfile(my_class.memmap_filename)
         # test when a function is called a new memmap file is created
         assert first_memmap_filename != my_class.memmap_filename
+
+
+def test_get_masker():
+    """Smoke test for get_masker."""
+    img = utils.get_template(space="mni152_2mm", mask="brain")
+    masker = utils.get_masker(img)
+    assert isinstance(masker, input_data.NiftiMasker)
+    masker_ = input_data.NiftiMasker(img)
+    masker = utils.get_masker(masker_)
+    assert isinstance(masker, input_data.NiftiMasker)
+    masker_ = input_data.NiftiLabelsMasker(img)
+    with pytest.raises(ValueError):
+        masker = utils.get_masker(masker_)
