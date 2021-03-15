@@ -1,15 +1,11 @@
 """Test nimare.meta.ibma (image-based meta-analytic estimators)."""
-import os.path as op
 from contextlib import ExitStack as does_not_raise
 
-from nilearn.input_data import NiftiLabelsMasker
 import pytest
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ibma
-
-from .utils import get_test_data_path
 
 
 @pytest.mark.parametrize(
@@ -109,17 +105,6 @@ def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwarg
         cres = corr.transform(res)
         assert cres.get_map("z", return_type="array").ndim == 1
         assert cres.get_map("z").ndim == 3
-
-
-def test_ibma_with_custom_masker(testdata_ibma):
-    """Ensure voxel-to-ROI reduction works."""
-    atlas = op.join(get_test_data_path(), "test_pain_dataset", "atlas.nii.gz")
-    masker = NiftiLabelsMasker(atlas)
-    meta = ibma.Fishers(mask=masker)
-    meta.fit(testdata_ibma)
-    assert isinstance(meta.results, nimare.results.MetaResult)
-    assert meta.results.maps["z"].shape == (5,)
-    assert meta.results.get_map("z").shape == (10, 10, 10)
 
 
 @pytest.mark.parametrize(
