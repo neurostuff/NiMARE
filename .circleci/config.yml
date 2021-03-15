@@ -18,7 +18,7 @@ jobs:
           paths:
               - src/NiMARE
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -110,6 +110,7 @@ jobs:
             source activate py36_env
             apt-get install -yqq make
             make -C docs html
+          no_output_timeout: 30m
       - store_artifacts:
           path: /tmp/src/NiMARE/docs/_build/html
 
