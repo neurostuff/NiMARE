@@ -327,6 +327,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 iter_diff_values.flush()
 
         # Determine p-values based on voxel-wise null distributions
+        # In cases with differently-sized groups,
+        # the ALE-difference values will be biased and skewed,
+        # but the null distributions will be too, so symmetric should be False.
         p_arr = np.ones(n_voxels)
         for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(
