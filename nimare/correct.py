@@ -69,7 +69,7 @@ class Corrector(metaclass=ABCMeta):
         p = corr_maps["p"]
         if "z" in result.maps:
             corr_maps["z"] = p_to_z(p) * np.sign(result.maps["z"])
-        if "log_p" in result.maps:
+        if "logp" in result.maps:
             corr_maps["logp"] = -np.log10(p)
         return corr_maps
 
