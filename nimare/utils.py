@@ -170,6 +170,8 @@ def validate_images_df(image_df):
         DataFrame with updated paths and columns.
     """
     valid_suffixes = [".brik", ".head", ".nii", ".img", ".hed"]
+
+    # Find columns in the DataFrame with images
     file_cols = []
     for col in image_df.columns:
         vals = [v for v in image_df[col].values if isinstance(v, str)]
@@ -177,7 +179,7 @@ def validate_images_df(image_df):
         if fc:
             file_cols.append(col)
 
-    # Clean up image_df
+    # Clean up DataFrame
     # Find out which columns have full paths and which have relative paths
     abs_cols = []
     for col in file_cols:
@@ -191,7 +193,7 @@ def validate_images_df(image_df):
         else:
             raise ValueError(
                 "Mix of absolute and relative paths detected "
-                'for images in column "{}"'.format(col)
+                "for images in column '{}'".format(col)
             )
 
     # Set relative paths from absolute ones
@@ -202,7 +204,7 @@ def validate_images_df(image_df):
         # Get parent *directory* if shared path includes common prefix.
         if not shared_path.endswith(op.sep):
             shared_path = op.dirname(shared_path) + op.sep
-        LGR.info('Shared path detected: "{0}"'.format(shared_path))
+        LGR.info("Shared path detected: '{0}'".format(shared_path))
         for abs_col in abs_cols:
             image_df[abs_col + "__relative"] = image_df[abs_col].apply(
                 lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
@@ -343,28 +345,26 @@ def find_stem(arr):
     From https://www.geeksforgeeks.org/longest-common-substring-array-strings/
     """
     # Determine size of the array
-    n = len(arr)
+    n_items_in_array = len(arr)
 
-    # Take first word from array
-    # as reference
-    s = arr[0]
-    ll = len(s)
+    # Take first word from array as reference
+    reference_string = arr[0]
+    n_chars_in_first_item = len(reference_string)
 
     res = ""
-    for i in range(ll):
-        for j in range(i + 1, ll + 1):
-            # generating all possible substrings of our ref string arr[0] i.e s
-            stem = s[i:j]
-            k = 1
-            for k in range(1, n):
-                # Check if the generated stem is common to to all words
-                if stem not in arr[k]:
-                    break
+    for i_char in range(n_chars_in_first_item):
+        # Generate all starting substrings of our reference string
+        stem = reference_string[:i_char]
 
-            # If current substring is present in all strings and its length is
-            # greater than current result
-            if k + 1 == n and len(res) < len(stem):
-                res = stem
+        for j_item in range(1, n_items_in_array):
+            # Check if the generated stem is common to to all words
+            if not arr[j_item].startswith(stem):
+                break
+
+        # If current substring is present in all strings and its length is
+        # greater than current result
+        if (j_item + 1 == n_items_in_array) and (len(res) < len(stem)):
+            res = stem
 
     return res
 
