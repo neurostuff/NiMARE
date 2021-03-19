@@ -9,6 +9,49 @@ import pytest
 from nimare import utils
 
 
+def test_find_stem():
+    """Test nimare.utils.find_stem."""
+    test_array = [
+        "/home/data/dataset/file1.nii.gz",
+        "/home/data/dataset/file2.nii.gz",
+        "/home/data/dataset/file3.nii.gz",
+        "/home/data/dataset/file4.nii.gz",
+        "/home/data/dataset/file5.nii.gz",
+    ]
+    stem = utils.find_stem(test_array)
+    assert stem == "/home/data/dataset/file"
+
+    test_array = [
+        "/home/data/dataset/subfolder1/file1.nii.gz",
+        "/home/data/dataset/subfolder1/file2.nii.gz",
+        "/home/data/dataset/subfolder2/file3.nii.gz",
+        "/home/data/dataset/subfolder2/file4.nii.gz",
+        "/home/data/dataset/subfolder3/file5.nii.gz",
+    ]
+    stem = utils.find_stem(test_array)
+    assert stem == "/home/data/dataset/subfolder"
+
+    test_array = [
+        "/home/data/file1_test-filename_test.nii.gz",
+        "/home/data/file2_test-filename_test.nii.gz",
+        "/home/data/file3_test-filename_test.nii.gz",
+        "/home/data/file4_test-filename_test.nii.gz",
+        "/home/data/file5_test-filename_test.nii.gz",
+    ]
+    stem = utils.find_stem(test_array)
+    assert stem == "/home/data/file"
+
+    test_array = [
+        "souse",
+        "youse",
+        "house",
+        "mouse",
+        "louse",
+    ]
+    stem = utils.find_stem(test_array)
+    assert stem == ""
+
+
 def test_get_template():
     """Test nimare.utils.get_template."""
     img = utils.get_template(space="mni152_1mm", mask=None)
