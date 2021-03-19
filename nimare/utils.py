@@ -356,6 +356,7 @@ def find_stem(arr):
         # Generate all starting substrings of our reference string
         stem = reference_string[:i_char]
 
+        j_item = 1  # Retained in case of an array with only one item
         for j_item in range(1, n_items_in_array):
             # Check if the generated stem is common to to all words
             if not arr[j_item].startswith(stem):
