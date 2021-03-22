@@ -2,6 +2,7 @@
 import copy
 import json
 import logging
+import os.path as op
 
 import nibabel as nib
 import numpy as np
@@ -256,14 +257,14 @@ class Dataset(NiMAREBase):
         new_path : :obj:`str`
             Path to prepend to relative paths of files in Dataset.images.
         """
-        self.basepath = new_path
+        self.basepath = op.abspath(new_path)
         df = self.images
         relative_path_cols = [c for c in df if c.endswith("__relative")]
         for col in relative_path_cols:
             abs_col = col.replace("__relative", "")
             if abs_col in df.columns:
                 LGR.info("Overwriting images column {}".format(abs_col))
-            df[abs_col] = df[col].apply(try_prepend, prefix=new_path)
+            df[abs_col] = df[col].apply(try_prepend, prefix=self.basepath)
         self.images = df
 
     def copy(self):
