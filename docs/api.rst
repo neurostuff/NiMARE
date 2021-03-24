@@ -170,10 +170,6 @@ For more information about functional characterization analysis, see :ref:`Meta-
    transforms.p_to_z
    transforms.t_to_z
    transforms.z_to_t
-   transforms.vox2mm
-   transforms.mm2vox
-   transforms.tal2mni
-   transforms.mni2tal
 
 
 .. _api_extract_ref:
