@@ -6,7 +6,7 @@ from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import MKDAKernel, MKDADensity, MKDAChi2, KDA
 
 
-def test_mkda_density_kernel_instance_with_kwargs(testdata_cbma):
+def test_MKDADensity_kernel_instance_with_kwargs(testdata_cbma):
     """Smoke test for MKDADensity with a kernel transformer object.
 
     With kernel arguments provided, which should result in a warning, but the original
@@ -18,14 +18,14 @@ def test_mkda_density_kernel_instance_with_kwargs(testdata_cbma):
     assert meta.kernel_transformer.get_params().get("r") == 2
 
 
-def test_mkda_density_kernel_class(testdata_cbma):
+def test_MKDADensity_kernel_class(testdata_cbma):
     """Smoke test for MKDADensity with a kernel transformer class."""
     meta = MKDADensity(MKDAKernel, kernel__r=5, null_method="empirical", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_mkda_density_kernel_instance(testdata_cbma):
+def test_MKDADensity_kernel_instance(testdata_cbma):
     """Smoke test for MKDADensity with a kernel transformer object."""
     kern = MKDAKernel(r=5)
     meta = MKDADensity(kern, null_method="empirical", n_iters=10)
@@ -33,7 +33,7 @@ def test_mkda_density_kernel_instance(testdata_cbma):
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_mkda_density_analytic_null(testdata_cbma_full):
+def test_MKDADensity_analytic_null(testdata_cbma_full):
     """Smoke test for MKDADensity."""
     meta = MKDADensity(null="analytic")
     res = meta.fit(testdata_cbma_full)
@@ -43,7 +43,7 @@ def test_mkda_density_analytic_null(testdata_cbma_full):
     assert isinstance(cres, nimare.results.MetaResult)
 
 
-def test_mkda_density(testdata_cbma):
+def test_MKDADensity(testdata_cbma):
     """Smoke test for MKDADensity."""
     meta = MKDADensity(null_method="empirical", n_iters=10)
     res = meta.fit(testdata_cbma)
@@ -53,7 +53,16 @@ def test_mkda_density(testdata_cbma):
     assert isinstance(cres, nimare.results.MetaResult)
 
 
-def test_mkda_chi2_fdr(testdata_cbma):
+def test_MKDADensity_low_memory(testdata_cbma):
+    """Smoke test for MKDADensity with low_memory option."""
+    meta = MKDADensity(null_method="empirical", n_iters=10, low_memory=True)
+    res = meta.fit(testdata_cbma)
+    assert meta.low_memory
+    assert not meta.kernel_transformer.low_memory
+    assert isinstance(res, nimare.results.MetaResult)
+
+
+def test_MKDAChi2_fdr(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
@@ -63,7 +72,7 @@ def test_mkda_chi2_fdr(testdata_cbma):
     assert isinstance(cres, nimare.results.MetaResult)
 
 
-def test_mkda_chi2_fwe_1core(testdata_cbma):
+def test_MKDAChi2_fwe_1core(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
@@ -73,7 +82,7 @@ def test_mkda_chi2_fwe_1core(testdata_cbma):
     assert isinstance(cres, nimare.results.MetaResult)
 
 
-def test_mkda_chi2_fwe_2core(testdata_cbma):
+def test_MKDAChi2_fwe_2core(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
@@ -83,7 +92,16 @@ def test_mkda_chi2_fwe_2core(testdata_cbma):
     assert isinstance(cres_2core, nimare.results.MetaResult)
 
 
-def test_kda_density_analytic_null(testdata_cbma):
+def test_MKDAChi2_low_memory(testdata_cbma):
+    """Smoke test for MKDAChi2 with low_memory option."""
+    meta = MKDAChi2(low_memory=True)
+    res = meta.fit(testdata_cbma, testdata_cbma)
+    assert meta.low_memory
+    assert not meta.kernel_transformer.low_memory
+    assert isinstance(res, nimare.results.MetaResult)
+
+
+def test_KDA_analytic_null(testdata_cbma):
     """Smoke test for KDA with analytical null and FWE correction."""
     meta = KDA(null_method="analytic")
     res = meta.fit(testdata_cbma)
@@ -98,7 +116,7 @@ def test_kda_density_analytic_null(testdata_cbma):
     )
 
 
-def test_kda_density_fwe_1core(testdata_cbma):
+def test_KDA_fwe_1core(testdata_cbma):
     """Smoke test for KDA with empirical null and FWE correction."""
     meta = KDA(null_method="empirical", n_iters=10)
     res = meta.fit(testdata_cbma)
@@ -113,7 +131,7 @@ def test_kda_density_fwe_1core(testdata_cbma):
     )
 
 
-def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
+def test_MKDADensity_analytic_empirical_convergence(testdata_cbma_full):
     """Evaluate convergence between analytic and empirical null methods in MKDA."""
     est_a = MKDADensity(null_method="analytic")
     n_iters = 10
@@ -131,7 +149,7 @@ def test_mkda_analytic_empirical_convergence(testdata_cbma_full):
     assert (p_analytical - p_empirical).mean() < 1e-3
 
 
-def test_kda_analytic_empirical_convergence(testdata_cbma_full):
+def test_KDA_analytic_empirical_convergence(testdata_cbma_full):
     """Evaluate convergence between analytic and empirical null methods in KDA."""
     est_a = KDA(null_method="analytic")
     n_iters = 10
