@@ -143,7 +143,7 @@ class CorrelationDecoder(Decoder):
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2(kernel__low_memory=True)
+            meta_estimator = MKDAChi2(low_memory=True, kernel__low_memory=True)
 
         self.feature_group = feature_group
         self.features = features

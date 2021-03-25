@@ -11,6 +11,7 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
+from ...utils import use_memmap
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -195,6 +196,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         self.prior = prior
 
+    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2

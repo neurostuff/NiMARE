@@ -32,13 +32,13 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     meta = ale.ALE(kernel__sample_size=20)
     with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         meta.fit(testdata_cbma)
-    assert "Loading pre-generated MA maps." not in caplog.text
+    assert "Loading pre-generated MA maps" not in caplog.text
 
     # The Dataset with the images will re-use them,
     # as evidenced by the logger message.
     with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         meta.fit(dset)
-    assert "Loading pre-generated MA maps." in caplog.text
+    assert "Loading pre-generated MA maps" in caplog.text
 
 
 def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
@@ -56,13 +56,13 @@ def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     # The Dataset without the images will generate them from scratch.
     sub_meta = ale.ALESubtraction(n_iters=10, kernel__sample_size=20)
 
-    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.ale"):
+    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         sub_meta.fit(testdata_cbma, testdata_cbma)
     assert "Loading pre-generated MA maps" not in caplog.text
 
     # The Dataset with the images will re-use them,
     # as evidenced by the logger message.
-    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.ale"):
+    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         sub_meta.fit(dset, dset)
     assert "Loading pre-generated MA maps" in caplog.text
 

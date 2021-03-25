@@ -650,7 +650,6 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         __init__ (called automatically).
     """
 
-    @use_memmap(LGR, n_files=2)
     def fit(self, dataset1, dataset2):
         """
         Fit Estimator to two Datasets.
