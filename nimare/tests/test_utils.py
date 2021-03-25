@@ -93,14 +93,14 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
 
         @utils.use_memmap(LGR)
         def test_decorator(self):
-            assert hasattr(self, "memmap_filename")
+            assert hasattr(self, "memmap_filenames")
             if self.has_low_memory:
                 assert hasattr(self, "low_memory")
                 if self.low_memory:
-                    assert os.path.isfile(self.memmap_filename)
+                    assert os.path.isfile(self.memmap_filenames[0])
                 else:
-                    assert self.memmap_filename is None
-            return self.memmap_filename
+                    assert self.memmap_filenames[0] is None
+            return self.memmap_filenames
 
         @utils.use_memmap(LGR)
         def bad_justin_timberlake(self):
@@ -110,7 +110,7 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
 
     # make sure memmap file has been deleted
     my_class.test_decorator()
-    first_memmap_filename = my_class.memmap_filename
+    first_memmap_filename = my_class.memmap_filenames[0]
 
     # run bad function
     with pytest.raises(ValueError):
@@ -119,6 +119,6 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
 
     if hasattr(my_class, "low_memory") and my_class.low_memory:
         assert not os.path.isfile(first_memmap_filename)
-        assert not os.path.isfile(my_class.memmap_filename)
+        assert not os.path.isfile(my_class.memmap_filenames[0])
         # test when a function is called a new memmap file is created
-        assert first_memmap_filename != my_class.memmap_filename
+        assert first_memmap_filename != my_class.memmap_filenames[0]

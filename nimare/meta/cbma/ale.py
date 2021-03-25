@@ -311,7 +311,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         if self.low_memory:
             # Use a memmapped 4D array
             iter_diff_values = np.memmap(
-                self.memmap_filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
+                self.memmap_filenames[0],
+                dtype=ma_arr.dtype,
+                mode="w+",
+                shape=(self.n_iters, n_voxels),
             )
         else:
             iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
@@ -447,7 +450,7 @@ class SCALE(CBMAEstimator):
         if self.n_cores == 1:
             if self.low_memory:
                 perm_scale_values = np.memmap(
-                    self.memmap_filename,
+                    self.memmap_filenames[0],
                     dtype=stat_values.dtype,
                     mode="w+",
                     shape=(self.n_iters, stat_values.shape[0]),
