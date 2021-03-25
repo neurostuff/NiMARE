@@ -50,9 +50,7 @@ class CBMAEstimator(MetaEstimator):
         if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
             kernel_transformer, KernelTransformer
         ):
-            raise ValueError(
-                "Argument 'kernel_transformer' must be a kind of KernelTransformer"
-            )
+            raise ValueError("Argument 'kernel_transformer' must be a kind of KernelTransformer")
         elif not inspect.isclass(kernel_transformer) and kernel_args:
             LGR.warning(
                 "Argument 'kernel_transformer' has already been initialized, so kernel arguments "
