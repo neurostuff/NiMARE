@@ -429,3 +429,44 @@ def use_memmap(logger, n_files=1):
         return memmap_context
 
     return inner_function
+
+
+def add_metadata_to_dataframe(
+    dataset,
+    dataframe,
+    metadata_field,
+    target_column,
+    filter_func=np.mean,
+):
+    """Add metadata from a Dataset to a DataFrame.
+
+    This is particularly useful for kernel transformers or estimators where a given metadata field
+    is necessary (e.g., ALEKernel with "sample_size"), but we want to just use the coordinates
+    DataFrame instead of passing the full Dataset.
+    """
+    if metadata_field in dataset.get_metadata():
+        metadata = dataset.get_metadata(field=metadata_field, ids=dataset.ids)
+        metadata = [[m] for m in metadata]
+        metadata = pd.DataFrame(
+            index=dataset.ids,
+            data=metadata,
+            columns=[metadata_field],
+        )
+        metadata[target_column] = metadata[metadata_field].apply(filter_func)
+        # Merge metadata df into coordinates df
+        dataframe = dataframe.merge(
+            right=metadata,
+            left_on="id",
+            right_index=True,
+            sort=False,
+            validate="many_to_one",
+            suffixes=(False, False),
+            how="left",
+        )
+    else:
+        LGR.warning(
+            f"Metadata field '{metadata_field}' not found. "
+            "Set a constant value for this field as an argument, if possible."
+        )
+
+    return dataframe

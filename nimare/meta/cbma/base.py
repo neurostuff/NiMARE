@@ -13,6 +13,7 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
+from ...utils import add_metadata_to_dataframe
 
 LGR = logging.getLogger(__name__)
 
@@ -129,31 +130,13 @@ class CBMAEstimator(MetaEstimator):
         # Integrate "sample_size" from metadata into DataFrame so that
         # kernel_transformer can access it.
         if "sample_size" in kt_args:
-            if "sample_sizes" in dataset.get_metadata():
-                # Extract sample sizes and make DataFrame
-                sample_sizes = dataset.get_metadata(field="sample_sizes", ids=dataset.ids)
-                # we need an extra layer of lists
-                sample_sizes = [[ss] for ss in sample_sizes]
-                sample_sizes = pd.DataFrame(
-                    index=dataset.ids, data=sample_sizes, columns=["sample_sizes"]
-                )
-                sample_sizes["sample_size"] = sample_sizes["sample_sizes"].apply(np.mean)
-                # Merge sample sizes df into coordinates df
-                self.inputs_["coordinates"] = self.inputs_["coordinates"].merge(
-                    right=sample_sizes,
-                    left_on="id",
-                    right_index=True,
-                    sort=False,
-                    validate="many_to_one",
-                    suffixes=(False, False),
-                    how="left",
-                )
-            else:
-                LGR.warning(
-                    'Metadata field "sample_sizes" not found. '
-                    "Set a constant sample size as a kernel transformer "
-                    "argument, if possible."
-                )
+            self.inputs_["coordinates"] = add_metadata_to_dataframe(
+                dataset,
+                self.inputs_["coordinates"],
+                metadata_field="sample_sizes",
+                target_column="sample_size",
+                filter_func=np.mean,
+            )
 
     def compute_summarystat(self, data):
         """Compute OF scores from data.
