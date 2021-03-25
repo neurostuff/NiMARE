@@ -11,7 +11,7 @@ from nimare.meta import kernel, MKDADensity
 from nimare import extract
 
 
-def test_alekernel_smoke(testdata_cbma):
+def test_ALEKernel_smoke(testdata_cbma):
     """Smoke test for nimare.meta.kernel.ALEKernel."""
     # Manually override dataset coordinates file sample sizes
     # This column would be extracted from metadata and added to coordinates
@@ -33,7 +33,7 @@ def test_alekernel_smoke(testdata_cbma):
     assert np.array_equal(ma_maps1, ma_maps2)
 
 
-def test_alekernel_1mm(testdata_cbma):
+def test_ALEKernel_1mm(testdata_cbma):
     """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
 
     Test on 1mm template.
@@ -55,7 +55,7 @@ def test_alekernel_1mm(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel_2mm(testdata_cbma):
+def test_ALEKernel_2mm(testdata_cbma):
     """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
 
     Test on 2mm template.
@@ -78,7 +78,7 @@ def test_alekernel_2mm(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel_inputdataset_returnimages(testdata_cbma):
+def test_ALEKernel_inputdataset_returnimages(testdata_cbma):
     """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
 
     Test on Dataset object.
@@ -103,7 +103,7 @@ def test_alekernel_inputdataset_returnimages(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel_fwhm(testdata_cbma):
+def test_ALEKernel_fwhm(testdata_cbma):
     """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
 
     Test with explicit FWHM.
@@ -122,7 +122,7 @@ def test_alekernel_fwhm(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel_sample_size(testdata_cbma):
+def test_ALEKernel_sample_size(testdata_cbma):
     """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
 
     Test with explicit sample size.
@@ -141,9 +141,9 @@ def test_alekernel_sample_size(testdata_cbma):
     assert np.array_equal(ijk, max_ijk)
 
 
-def test_alekernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
+def test_ALEKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """Check that all return types produce equivalent results (minus the masking element)."""
-    tmpdir = tmp_path_factory.mktemp("test_alekernel_inputdataset_returndataset")
+    tmpdir = tmp_path_factory.mktemp("test_ALEKernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
     kern = kernel.ALEKernel(sample_size=20, low_memory=True)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
@@ -164,7 +164,7 @@ def test_alekernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     assert np.array_equal(ma_arr, ma_arr_from_dset)
 
 
-def test_mkdakernel_smoke(testdata_cbma):
+def test_MKDAKernel_smoke(testdata_cbma):
     """Smoke test for nimare.meta.kernel.MKDAKernel, using Dataset object."""
     kern = kernel.MKDAKernel()
     ma_maps = kern.transform(testdata_cbma, return_type="image")
@@ -173,7 +173,7 @@ def test_mkdakernel_smoke(testdata_cbma):
     assert ma_maps.shape[0] == len(testdata_cbma.ids)
 
 
-def test_mkdakernel_1mm(testdata_cbma):
+def test_MKDAKernel_1mm(testdata_cbma):
     """Centers of mass of MKDA kernel maps should match the foci fed in.
 
     This assumes the focus isn't masked out and spheres don't overlap.
@@ -191,7 +191,7 @@ def test_mkdakernel_1mm(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_mkdakernel_2mm(testdata_cbma):
+def test_MKDAKernel_2mm(testdata_cbma):
     """Centers of mass of MKDA kernel maps should match the foci fed in.
 
     This assumes the focus isn't masked out and spheres don't overlap.
@@ -209,9 +209,9 @@ def test_mkdakernel_2mm(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_mkdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
+def test_MKDAKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """Check that all return types produce equivalent results (minus the masking element)."""
-    tmpdir = tmp_path_factory.mktemp("test_mkdakernel_inputdataset_returndataset")
+    tmpdir = tmp_path_factory.mktemp("test_MKDAKernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
     kern = kernel.MKDAKernel(r=4, value=1)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
@@ -232,7 +232,7 @@ def test_mkdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     assert np.array_equal(ma_arr, ma_arr_from_dset)
 
 
-def test_kdakernel_smoke(testdata_cbma):
+def test_KDAKernel_smoke(testdata_cbma):
     """Smoke test for nimare.meta.kernel.KDAKernel."""
     kern = kernel.KDAKernel()
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
@@ -241,7 +241,7 @@ def test_kdakernel_smoke(testdata_cbma):
     assert ma_maps.shape[0] == len(testdata_cbma.ids)
 
 
-def test_kdakernel_1mm(testdata_cbma):
+def test_KDAKernel_1mm(testdata_cbma):
     """Centers of mass of KDA kernel maps should match the foci fed in.
 
     This assumes focus isn't masked out and spheres don't overlap.
@@ -259,7 +259,7 @@ def test_kdakernel_1mm(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_kdakernel_2mm(testdata_cbma):
+def test_KDAKernel_2mm(testdata_cbma):
     """Centers of mass of KDA kernel maps should match the foci fed in.
 
     This assumes focus isn't masked out and spheres don't overlap.
@@ -277,7 +277,7 @@ def test_kdakernel_2mm(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_kdakernel_inputdataset_returnimages(testdata_cbma):
+def test_KDAKernel_inputdataset_returnimages(testdata_cbma):
     """Centers of mass of KDA kernel maps should match the foci fed in.
 
     This assumes focus isn't masked out and spheres don't overlap.
@@ -295,9 +295,9 @@ def test_kdakernel_inputdataset_returnimages(testdata_cbma):
     assert np.array_equal(ijk, com)
 
 
-def test_kdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
+def test_KDAKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """Check that the different return types produce equivalent results (minus masking)."""
-    tmpdir = tmp_path_factory.mktemp("test_kdakernel_inputdataset_returndataset")
+    tmpdir = tmp_path_factory.mktemp("test_KDAKernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
     kern = kernel.KDAKernel(r=4, value=1)
     # MA map generation from transformer
@@ -320,7 +320,7 @@ def test_kdakernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     assert np.array_equal(ma_arr, ma_arr_from_dset)
 
 
-def test_kdakernel_transform_attributes(testdata_cbma):
+def test_KDAKernel_transform_attributes(testdata_cbma):
     """Check that attributes are added at transform."""
     kern = kernel.KDAKernel(r=4, value=1)
     assert not hasattr(kern, "filename_pattern")

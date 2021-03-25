@@ -11,7 +11,6 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import use_memmap
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -196,58 +195,22 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         self.prior = prior
 
-    @use_memmap(LGR)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
-        if "ma_maps1" in self.inputs_.keys():
-            # Grab pre-generated MA maps
-            LGR.debug("Loading pre-generated MA maps for Dataset 1.")
-            if self.low_memory:
-                temp = self.masker.transform(self.inputs_["ma_maps1"][0])
-                unmasked_shape = (len(self.inputs_["ma_maps1"]), temp.size)
-                ma_maps1 = np.memmap(
-                    self.memmap_filenames[0],
-                    dtype=temp.dtype,
-                    mode="w+",
-                    shape=unmasked_shape,
-                )
-                for i, f in enumerate(self.inputs_["ma_maps1"]):
-                    ma_maps1[i, :] = self.masker.transform(f)
-            else:
-                ma_maps1 = self.masker.transform(self.inputs_["ma_maps1"])
-        else:
-            ma_maps1 = self.kernel_transformer.transform(
-                self.inputs_["coordinates1"],
-                masker=self.masker,
-                return_type="array",
-            )
-
-        if "ma_maps2" in self.inputs_.keys():
-            # Grab pre-generated MA maps
-            LGR.debug("Loading pre-generated MA maps for Dataset 2.")
-            if self.low_memory:
-                temp = self.masker.transform(self.inputs_["ma_maps2"][0])
-                unmasked_shape = (len(self.inputs_["ma_maps2"]), temp.size)
-                ma_maps2 = np.memmap(
-                    self.memmap_filenames[1],
-                    dtype=temp.dtype,
-                    mode="w+",
-                    shape=unmasked_shape,
-                )
-                for i, f in enumerate(self.inputs_["ma_maps2"]):
-                    ma_maps2[i, :] = self.masker.transform(f)
-            else:
-                ma_maps2 = self.masker.transform(self.inputs_["ma_maps2"])
-        else:
-            ma_maps2 = self.kernel_transformer.transform(
-                self.inputs_["coordinates2"],
-                masker=self.masker,
-                return_type="array",
-            )
+        ma_maps1 = self._collect_ma_maps(
+            maps_key="ma_maps1",
+            coords_key="coordinates1",
+            fname_idx=0,
+        )
+        ma_maps2 = self._collect_ma_maps(
+            maps_key="ma_maps2",
+            coords_key="coordinates2",
+            fname_idx=1,
+        )
 
         # Calculate different count variables
         n_selected = ma_maps1.shape[0]

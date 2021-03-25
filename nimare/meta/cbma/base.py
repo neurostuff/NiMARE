@@ -74,28 +74,11 @@ class CBMAEstimator(MetaEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        if "ma_maps" in self.inputs_.keys():
-            # Grab pre-generated MA maps
-            LGR.debug("Loading pre-generated MA maps.")
-            if self.low_memory:
-                temp = self.masker.transform(self.inputs_["ma_maps"][0])
-                unmasked_shape = (len(self.inputs_["ma_maps"]), temp.size)
-                ma_values = np.memmap(
-                    self.memmap_filenames[0],
-                    dtype=temp.dtype,
-                    mode="w+",
-                    shape=unmasked_shape,
-                )
-                for i, f in enumerate(self.inputs_["ma_maps"]):
-                    ma_values[i, :] = self.masker.transform(f)
-            else:
-                ma_values = self.masker.transform(self.inputs_["ma_maps"])
-        else:
-            ma_values = self.kernel_transformer.transform(
-                self.inputs_["coordinates"],
-                masker=self.masker,
-                return_type="array",
-            )
+        ma_values = self._collect_ma_maps(
+            coords_key="coordinates",
+            maps_key="ma_maps",
+            fname_idx=0,
+        )
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
@@ -147,6 +130,52 @@ class CBMAEstimator(MetaEstimator):
                 target_column="sample_size",
                 filter_func=np.mean,
             )
+
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", fname_idx=0):
+        """Collect modeled activation maps from Estimator inputs.
+
+        Parameters
+        ----------
+        coords_key : :obj:`str`, optional
+            Key to Estimator.inputs_ dictionary containing coordinates DataFrame.
+            This key should **always** be present.
+        maps_key : :obj:`str`, optional
+            Key to Estimator.inputs_ dictionary containing list of MA map files.
+            This key should only be present if the kernel transformer was already fitted to the
+            input Dataset.
+        fname_idx : :obj:`int`, optional
+            When the Estimator is set with ``low_memory = True``, there is a ``memmap_filenames``
+            attribute that is a list of filenames or Nones. This parameter specifies which item
+            in that list should be used for a memory-mapped array.
+
+        Returns
+        -------
+        ma_maps : :obj:`numpy.ndarray`
+            2D numpy array of shape (n_studies, n_voxels) with MA values.
+        """
+        if maps_key in self.inputs_.keys():
+            LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
+            if self.low_memory:
+                temp = self.masker.transform(self.inputs_[maps_key][0])
+                unmasked_shape = (len(self.inputs_[maps_key]), temp.size)
+                ma_maps = np.memmap(
+                    self.memmap_filenames[fname_idx],
+                    dtype=temp.dtype,
+                    mode="w+",
+                    shape=unmasked_shape,
+                )
+                for i, f in enumerate(self.inputs_[maps_key]):
+                    ma_maps[i, :] = self.masker.transform(f)
+            else:
+                ma_maps = self.masker.transform(self.inputs_[maps_key])
+        else:
+            LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
+            ma_maps = self.kernel_transformer.transform(
+                self.inputs_[coords_key],
+                masker=self.masker,
+                return_type="array",
+            )
+        return ma_maps
 
     def compute_summarystat(self, data):
         """Compute OF scores from data.
@@ -621,6 +650,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         __init__ (called automatically).
     """
 
+    @use_memmap(LGR, n_files=2)
     def fit(self, dataset1, dataset2):
         """
         Fit Estimator to two Datasets.

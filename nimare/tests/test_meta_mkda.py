@@ -101,6 +101,23 @@ def test_MKDAChi2_low_memory(testdata_cbma):
     assert isinstance(res, nimare.results.MetaResult)
 
 
+def test_MKDAChi2_low_memory_reuse(testdata_cbma, tmp_path_factory):
+    """Smoke test for MKDAChi2 with low_memory option, in which a memory-mapped array is used."""
+    tmpdir = tmp_path_factory.mktemp("test_MKDAChi2_low_memory_reuse")
+
+    # Generate MKDAKernel MA maps as files in the Dataset
+    testdata_cbma.update_path(tmpdir)
+    kern = MKDAKernel()
+    dset = kern.transform(testdata_cbma, return_type="dataset")
+
+    # Reuse the MA files, loading them as a memory-mapped array
+    meta = MKDAChi2(low_memory=True)
+    res = meta.fit(dset, dset)
+    assert meta.low_memory
+    assert not meta.kernel_transformer.low_memory
+    assert isinstance(res, nimare.results.MetaResult)
+
+
 def test_KDA_analytic_null(testdata_cbma):
     """Smoke test for KDA with analytical null and FWE correction."""
     meta = KDA(null_method="analytic")
