@@ -230,6 +230,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             # Grab pre-generated MA maps
             LGR.debug("Loading pre-generated MA maps for Dataset 2.")
             if self.low_memory:
+                temp = self.masker.transform(self.inputs_["ma_maps2"][0])
                 unmasked_shape = (len(self.inputs_["ma_maps2"]), temp.size)
                 ma_maps2 = np.memmap(
                     self.memmap_filenames[1],

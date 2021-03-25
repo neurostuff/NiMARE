@@ -13,7 +13,7 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import add_metadata_to_dataframe
+from ...utils import add_metadata_to_dataframe, use_memmap
 
 LGR = logging.getLogger(__name__)
 
@@ -55,14 +55,14 @@ class CBMAEstimator(MetaEstimator):
             )
         elif not inspect.isclass(kernel_transformer) and kernel_args:
             LGR.warning(
-                'Argument "kernel_transformer" has already been '
-                "initialized, so kernel arguments will be ignored: "
-                "{}".format(", ".join(kernel_args.keys()))
+                "Argument 'kernel_transformer' has already been initialized, so kernel arguments "
+                "will be ignored: {}".format(", ".join(kernel_args.keys()))
             )
         elif inspect.isclass(kernel_transformer):
             kernel_transformer = kernel_transformer(**kernel_args)
         self.kernel_transformer = kernel_transformer
 
+    @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
         """
         Perform coordinate-based meta-analysis on dataset.
@@ -79,7 +79,19 @@ class CBMAEstimator(MetaEstimator):
         if "ma_maps" in self.inputs_.keys():
             # Grab pre-generated MA maps
             LGR.debug("Loading pre-generated MA maps.")
-            ma_values = self.masker.transform(self.inputs_["ma_maps"])
+            if self.low_memory:
+                temp = self.masker.transform(self.inputs_["ma_maps"][0])
+                unmasked_shape = (len(self.inputs_["ma_maps"]), temp.size)
+                ma_values = np.memmap(
+                    self.memmap_filenames[0],
+                    dtype=temp.dtype,
+                    mode="w+",
+                    shape=unmasked_shape,
+                )
+                for i, f in enumerate(self.inputs_["ma_maps"]):
+                    ma_values[i, :] = self.masker.transform(f)
+            else:
+                ma_values = self.masker.transform(self.inputs_["ma_maps"])
         else:
             ma_values = self.kernel_transformer.transform(
                 self.inputs_["coordinates"],
