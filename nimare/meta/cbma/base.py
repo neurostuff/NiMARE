@@ -50,7 +50,7 @@ class CBMAEstimator(MetaEstimator):
             kernel_transformer, KernelTransformer
         ):
             raise ValueError(
-                'Argument "kernel_transformer" must be a kind of ' "KernelTransformer"
+                "Argument 'kernel_transformer' must be a kind of KernelTransformer"
             )
         elif not inspect.isclass(kernel_transformer) and kernel_args:
             LGR.warning(

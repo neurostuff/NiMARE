@@ -393,7 +393,7 @@ def uk_to_us(text):
     return text
 
 
-def use_memmap(logger):
+def use_memmap(logger, n_files=1):
     """Memory-map array to a file, and perform cleanup after."""
     from .extract.utils import _get_dataset_dir
 
@@ -401,25 +401,30 @@ def use_memmap(logger):
         @wraps(function)
         def memmap_context(self, *args, **kwargs):
             if hasattr(self, "low_memory") and self.low_memory:
-                start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-                dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
-                _, filename = mkstemp(
-                    prefix=self.__class__.__name__, suffix=start_time, dir=dataset_dir
-                )
-                logger.info(f"Temporary file written to {filename}")
-                self.memmap_filename = filename
+                self.memmap_filenames, filenames = [], []
+                for i_file in range(n_files):
+                    start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+                    dataset_dir = _get_dataset_dir("temporary_files", data_dir=None)
+                    _, filename = mkstemp(
+                        prefix=self.__class__.__name__, suffix=start_time, dir=dataset_dir
+                    )
+                    logger.info(f"Temporary file written to {filename}")
+                    self.memmap_filenames.append(filename)
+                    filenames.append(filename)
             else:
-                filename = self.memmap_filename = None
+                filenames = self.memmap_filenames = [None]
 
             try:
                 return function(self, *args, **kwargs)
             except:
-                logger.error(f"{function.__name__} failed, removing {filename}")
+                for filename in filenames:
+                    logger.error(f"{function.__name__} failed, removing {filename}")
                 raise
             finally:
                 if hasattr(self, "low_memory") and self.low_memory and os.path.isfile(filename):
-                    logger.info(f"Removing temporary file: {filename}")
-                    os.remove(filename)
+                    for filename in filenames:
+                        logger.info(f"Removing temporary file: {filename}")
+                        os.remove(filename)
 
         return memmap_context
 
