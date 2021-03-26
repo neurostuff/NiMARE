@@ -264,33 +264,22 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.n_iters = n_iters
         self.low_memory = low_memory
 
-    @use_memmap(LGR)
+    @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
 
-        if "ma_maps1" in self.inputs_.keys():
-            # Grab pre-generated MA maps
-            LGR.debug("Loading pre-generated MA maps for Dataset 1.")
-            ma_maps1 = self.masker.transform(self.inputs_["ma_maps1"])
-        else:
-            ma_maps1 = self.kernel_transformer.transform(
-                self.inputs_["coordinates1"],
-                masker=self.masker,
-                return_type="array",
-            )
-
-        if "ma_maps2" in self.inputs_.keys():
-            # Grab pre-generated MA maps
-            LGR.debug("Loading pre-generated MA maps for Dataset 2.")
-            ma_maps2 = self.masker.transform(self.inputs_["ma_maps2"])
-        else:
-            ma_maps2 = self.kernel_transformer.transform(
-                self.inputs_["coordinates2"],
-                masker=self.masker,
-                return_type="array",
-            )
+        ma_maps1 = self._collect_ma_maps(
+            maps_key="ma_maps1",
+            coords_key="coordinates1",
+            fname_idx=0,
+        )
+        ma_maps2 = self._collect_ma_maps(
+            maps_key="ma_maps2",
+            coords_key="coordinates2",
+            fname_idx=1,
+        )
 
         n_grp1 = ma_maps1.shape[0]
         ma_arr = np.vstack((ma_maps1, ma_maps2))
@@ -311,7 +300,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         if self.low_memory:
             # Use a memmapped 4D array
             iter_diff_values = np.memmap(
-                self.memmap_filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
+                self.memmap_filenames[2],
+                dtype=ma_arr.dtype,
+                mode="w+",
+                shape=(self.n_iters, n_voxels),
             )
         else:
             iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
@@ -409,7 +401,7 @@ class SCALE(CBMAEstimator):
         self.n_cores = self._check_ncores(n_cores)
         self.low_memory = low_memory
 
-    @use_memmap(LGR)
+    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
@@ -422,18 +414,20 @@ class SCALE(CBMAEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_maps = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="array"
+        ma_values = self._collect_ma_maps(
+            coords_key="coordinates",
+            maps_key="ma_maps",
+            fname_idx=0,
         )
 
         # Determine bins for null distribution histogram
-        max_ma_values = np.max(ma_maps, axis=1)
+        max_ma_values = np.max(ma_values, axis=1)
         max_poss_ale = self._compute_summarystat(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
 
-        stat_values = self._compute_summarystat(ma_maps)
+        stat_values = self._compute_summarystat(ma_values)
 
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.ijk.shape[0], size=(iter_df.shape[0], self.n_iters))
@@ -447,7 +441,7 @@ class SCALE(CBMAEstimator):
         if self.n_cores == 1:
             if self.low_memory:
                 perm_scale_values = np.memmap(
-                    self.memmap_filename,
+                    self.memmap_filenames[1],
                     dtype=stat_values.dtype,
                     mode="w+",
                     shape=(self.n_iters, stat_values.shape[0]),

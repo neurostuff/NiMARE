@@ -13,6 +13,7 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
+from ...utils import add_metadata_to_dataframe, use_memmap
 
 LGR = logging.getLogger(__name__)
 
@@ -49,19 +50,17 @@ class CBMAEstimator(MetaEstimator):
         if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
             kernel_transformer, KernelTransformer
         ):
-            raise ValueError(
-                'Argument "kernel_transformer" must be a kind of ' "KernelTransformer"
-            )
+            raise ValueError("Argument 'kernel_transformer' must be a kind of KernelTransformer")
         elif not inspect.isclass(kernel_transformer) and kernel_args:
             LGR.warning(
-                'Argument "kernel_transformer" has already been '
-                "initialized, so kernel arguments will be ignored: "
-                "{}".format(", ".join(kernel_args.keys()))
+                "Argument 'kernel_transformer' has already been initialized, so kernel arguments "
+                "will be ignored: {}".format(", ".join(kernel_args.keys()))
             )
         elif inspect.isclass(kernel_transformer):
             kernel_transformer = kernel_transformer(**kernel_args)
         self.kernel_transformer = kernel_transformer
 
+    @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
         """
         Perform coordinate-based meta-analysis on dataset.
@@ -75,16 +74,11 @@ class CBMAEstimator(MetaEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        if "ma_maps" in self.inputs_.keys():
-            # Grab pre-generated MA maps
-            LGR.debug("Loading pre-generated MA maps.")
-            ma_values = self.masker.transform(self.inputs_["ma_maps"])
-        else:
-            ma_values = self.kernel_transformer.transform(
-                self.inputs_["coordinates"],
-                masker=self.masker,
-                return_type="array",
-            )
+        ma_values = self._collect_ma_maps(
+            coords_key="coordinates",
+            maps_key="ma_maps",
+            fname_idx=0,
+        )
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
@@ -129,31 +123,59 @@ class CBMAEstimator(MetaEstimator):
         # Integrate "sample_size" from metadata into DataFrame so that
         # kernel_transformer can access it.
         if "sample_size" in kt_args:
-            if "sample_sizes" in dataset.get_metadata():
-                # Extract sample sizes and make DataFrame
-                sample_sizes = dataset.get_metadata(field="sample_sizes", ids=dataset.ids)
-                # we need an extra layer of lists
-                sample_sizes = [[ss] for ss in sample_sizes]
-                sample_sizes = pd.DataFrame(
-                    index=dataset.ids, data=sample_sizes, columns=["sample_sizes"]
+            self.inputs_["coordinates"] = add_metadata_to_dataframe(
+                dataset,
+                self.inputs_["coordinates"],
+                metadata_field="sample_sizes",
+                target_column="sample_size",
+                filter_func=np.mean,
+            )
+
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", fname_idx=0):
+        """Collect modeled activation maps from Estimator inputs.
+
+        Parameters
+        ----------
+        coords_key : :obj:`str`, optional
+            Key to Estimator.inputs_ dictionary containing coordinates DataFrame.
+            This key should **always** be present.
+        maps_key : :obj:`str`, optional
+            Key to Estimator.inputs_ dictionary containing list of MA map files.
+            This key should only be present if the kernel transformer was already fitted to the
+            input Dataset.
+        fname_idx : :obj:`int`, optional
+            When the Estimator is set with ``low_memory = True``, there is a ``memmap_filenames``
+            attribute that is a list of filenames or Nones. This parameter specifies which item
+            in that list should be used for a memory-mapped array.
+
+        Returns
+        -------
+        ma_maps : :obj:`numpy.ndarray`
+            2D numpy array of shape (n_studies, n_voxels) with MA values.
+        """
+        if maps_key in self.inputs_.keys():
+            LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
+            if self.low_memory:
+                temp = self.masker.transform(self.inputs_[maps_key][0])
+                unmasked_shape = (len(self.inputs_[maps_key]), temp.size)
+                ma_maps = np.memmap(
+                    self.memmap_filenames[fname_idx],
+                    dtype=temp.dtype,
+                    mode="w+",
+                    shape=unmasked_shape,
                 )
-                sample_sizes["sample_size"] = sample_sizes["sample_sizes"].apply(np.mean)
-                # Merge sample sizes df into coordinates df
-                self.inputs_["coordinates"] = self.inputs_["coordinates"].merge(
-                    right=sample_sizes,
-                    left_on="id",
-                    right_index=True,
-                    sort=False,
-                    validate="many_to_one",
-                    suffixes=(False, False),
-                    how="left",
-                )
+                for i, f in enumerate(self.inputs_[maps_key]):
+                    ma_maps[i, :] = self.masker.transform(f)
             else:
-                LGR.warning(
-                    'Metadata field "sample_sizes" not found. '
-                    "Set a constant sample size as a kernel transformer "
-                    "argument, if possible."
-                )
+                ma_maps = self.masker.transform(self.inputs_[maps_key])
+        else:
+            LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
+            ma_maps = self.kernel_transformer.transform(
+                self.inputs_[coords_key],
+                masker=self.masker,
+                return_type="array",
+            )
+        return ma_maps
 
     def compute_summarystat(self, data):
         """Compute OF scores from data.

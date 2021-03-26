@@ -249,7 +249,10 @@ class ALEKernel(KernelTransformer):
             # Use a memmapped 4D array
             transformed_shape = (len(exp_ids),) + mask.shape
             transformed = np.memmap(
-                self.memmap_filename, dtype=float, mode="w+", shape=transformed_shape
+                self.memmap_filenames[0],
+                dtype=float,
+                mode="w+",
+                shape=transformed_shape,
             )
         else:
             # Use a list of tuples
@@ -329,7 +332,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            memmap_filename=self.memmap_filename,
+            memmap_filename=self.memmap_filenames[0],
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
