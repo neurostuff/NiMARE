@@ -73,9 +73,17 @@ NO_OUTPUT_PATTERN = re.compile(
     [
         ({"merge_strategy": "fill"}, "z", "p"),
         ({"merge_strategy": "replace"}, None, None),
-        ({"merge_strategy": "demolish", 'remove_subpeaks': True}, None, None),
+        ({"merge_strategy": "demolish", "remove_subpeaks": True}, None, None),
         ({"merge_strategy": "fill", "two_sided": True}, "z", "p"),
-        ({"merge_strategy": "demolish", "two_sided": True, "z_threshold": 1.9,}, None, None),
+        (
+            {
+                "merge_strategy": "demolish",
+                "two_sided": True,
+                "z_threshold": 1.9,
+            },
+            None,
+            None,
+        ),
         ({"merge_strategy": "fill", "z_threshold": 10.0}, None, None),
     ],
 )

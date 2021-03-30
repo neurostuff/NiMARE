@@ -237,7 +237,7 @@ class ImagesToCoordinates(Transformer):
     -------
     coordinates_df : :class:`pandas.DataFrame`
         DataFrame containing statistical peaks.
-    
+
     Notes
     -----
     The raw Z and/or P maps are not corrected for multiple comparisons,
@@ -262,13 +262,13 @@ class ImagesToCoordinates(Transformer):
 
     def transform(self, dataset):
         """Create coordinate peaks from statistical images.
-        
+
         Parameters
         ----------
         dataset : :obj:`nimare.dataset.Dataset`
             Dataset with z maps and/or p maps
             that can be converted to coordinates.
-        
+
         Returns
         -------
         dataset : :obj:`nimare.dataset.Dataset`
@@ -332,13 +332,13 @@ class ImagesToCoordinates(Transformer):
                     f"No clusters were found for {row['id']} at a threshold of {self.z_threshold}"
                 )
                 continue
-            
+
             if self.remove_subpeaks:
                 # subpeaks are identified as 1a, 1b, etc
                 # while peaks are kept as 1, 2, 3, etc,
                 # so removing all non-int rows will
                 # keep main peaks while removing subpeaks
-                clusters = clusters[clusters["Cluster ID"].apply(lambda x: isinstance(x,int))]
+                clusters = clusters[clusters["Cluster ID"].apply(lambda x: isinstance(x, int))]
 
             coordinates_dict[row["study_id"]] = {
                 "contrasts": {
