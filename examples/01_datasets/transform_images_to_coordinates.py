@@ -135,7 +135,7 @@ print(
 ###############################################################################
 # ALE (CBMA)
 # -----------------------------------------------------------------------------
-# Run a meta analysis using each of the strategies
+# Run a meta analysis using each of the strategies.
 # The biggest difference is between 'fill' and the other two strategies.
 # The difference is because in 'fill' most of the original coordinates
 # in the dataset are used, whereas with 'replace' and 'demolish' the
