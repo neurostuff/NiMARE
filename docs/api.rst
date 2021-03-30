@@ -247,7 +247,10 @@ For more information about functional characterization analysis, see :ref:`Meta-
    utils.use_memmap
    utils.add_metadata_to_dataframe
    utils.check_type
-
+   utils.vox2mm
+   utils.mm2vox
+   utils.tal2mni
+   utils.mni2tal
 
 .. _api_workflows_ref:
 
