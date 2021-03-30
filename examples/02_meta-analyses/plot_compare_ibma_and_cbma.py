@@ -18,7 +18,7 @@ import pandas as pd
 from nilearn.plotting import plot_stat_map
 
 import nimare
-from nimare.transforms import CoordinateGenerator, transform_images
+from nimare.transforms import ImagesToCoordinates, transform_images
 from nimare.meta.ibma import DerSimonianLaird
 from nimare.meta.cbma import ALE
 from nimare.tests.utils import get_test_data_path
@@ -44,7 +44,7 @@ dset.images = nimare.transforms.transform_images(
 )
 
 # create coordinates from statistical maps
-coord_gen = CoordinateGenerator(merge_strategy="replace")
+coord_gen = ImagesToCoordinates(merge_strategy="replace")
 dset = coord_gen.transform(dset)
 
 ###############################################################################

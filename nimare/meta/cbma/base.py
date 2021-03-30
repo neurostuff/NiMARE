@@ -23,7 +23,7 @@ class CBMAEstimator(MetaEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
@@ -625,7 +625,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args

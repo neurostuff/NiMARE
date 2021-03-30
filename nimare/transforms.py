@@ -201,8 +201,8 @@ def resolve_transforms(target, available_data, masker):
         return None
 
 
-class CoordinateGenerator(Transformer):
-    """Extract peak statistical coordinates from statistical z or p maps.
+class ImagesToCoordinates(Transformer):
+    """Transformer from images to coordinates.
 
     Parameters
     ----------
@@ -210,7 +210,7 @@ class CoordinateGenerator(Transformer):
         strategy on how to incorporate the generated coordinates
         with possible pre-existing coordinates.
         The three different strategies are 'fill', 'replace',
-        and 'demolish'. Default='fill'
+        and 'demolish'. Default='fill'.
         - 'fill': only add coordinates to study contrasts that
           do not have coordinates. If a study contrast has both
           image and coordinate data, the original coordinate data
@@ -222,8 +222,10 @@ class CoordinateGenerator(Transformer):
         - 'demolish': only keep generated coordinates and discard
           any study contrasts with coordinate data, but no images.
     cluster_threshold : :obj:`int` or `None`, optional
-        Cluster size threshold, in voxels. Default=None
-    two_sided : :obj:`bool`
+        Cluster size threshold, in voxels. Default=None.
+    remove_subpeaks : :obj:`bool`, optional
+        If True, removes subpeaks from the cluster results. Default=False.
+    two_sided : :obj:`bool`, optional
         Whether to employ two-sided thresholding or to evaluate positive values
         only. Default=False.
     min_distance : :obj:`float`, optional
@@ -235,24 +237,44 @@ class CoordinateGenerator(Transformer):
     -------
     coordinates_df : :class:`pandas.DataFrame`
         DataFrame containing statistical peaks.
+    
+    Notes
+    -----
+    The raw Z and/or P maps are not corrected for multiple comparisons,
+    uncorrected z-values and/or p-values are used for thresholding.
     """
 
     def __init__(
         self,
         merge_strategy="fill",
         cluster_threshold=None,
+        remove_subpeaks=False,
         two_sided=False,
         min_distance=8.0,
         z_threshold=3.1,
     ):
         self.merge_strategy = merge_strategy
         self.cluster_threshold = cluster_threshold
+        self.remove_subpeaks = remove_subpeaks
         self.min_distance = min_distance
         self.two_sided = two_sided
         self.z_threshold = z_threshold
 
-    def transform(self, dataset, seed=None):
-        """Create coordinate peaks from statistical images."""
+    def transform(self, dataset):
+        """Create coordinate peaks from statistical images.
+        
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset with z maps and/or p maps
+            that can be converted to coordinates.
+        
+        Returns
+        -------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset with coordinates generated from
+            images.
+        """
         # relevant variables from dataset
         space = dataset.space
         masker = dataset.masker
@@ -281,7 +303,12 @@ class CoordinateGenerator(Transformer):
                     self.min_distance,
                 )
             elif row.get("p"):
-                LGR.warning(f"No Z map for {row['id']}, using p map")
+                LGR.info(
+                    (
+                        f"No Z map for {row['id']}, using p map "
+                        "(p-values will be treated as positive z-values)"
+                    )
+                )
                 if self.two_sided:
                     LGR.warning(f"Cannot use two_sided threshold using a p map for {row['id']}")
                 p_threshold = 1 - z_to_p(self.z_threshold)
@@ -305,6 +332,13 @@ class CoordinateGenerator(Transformer):
                     f"No clusters were found for {row['id']} at a threshold of {self.z_threshold}"
                 )
                 continue
+            
+            if self.remove_subpeaks:
+                # subpeaks are identified as 1a, 1b, etc
+                # while peaks are kept as 1, 2, 3, etc,
+                # so removing all non-int rows will
+                # keep main peaks while removing subpeaks
+                clusters = clusters[clusters["Cluster ID"].apply(lambda x: isinstance(x,int))]
 
             coordinates_dict[row["study_id"]] = {
                 "contrasts": {

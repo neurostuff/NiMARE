@@ -4,6 +4,7 @@ import logging
 import os
 
 from nibabel.funcs import squeeze_image
+
 from .utils import get_masker
 
 LGR = logging.getLogger(__name__)

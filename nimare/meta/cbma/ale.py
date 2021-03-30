@@ -35,7 +35,7 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     null_method : {"analytic", "empirical"}, optional
@@ -208,7 +208,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset.
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
@@ -360,7 +360,7 @@ class SCALE(CBMAEstimator):
         Tab-delimited file of coordinates from database or numpy array with ijk
         coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
         are the three columnns.
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`nimare.meta.kernel.ALEKernel`.
     **kwargs

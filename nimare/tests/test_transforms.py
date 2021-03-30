@@ -73,9 +73,9 @@ NO_OUTPUT_PATTERN = re.compile(
     [
         ({"merge_strategy": "fill"}, "z", "p"),
         ({"merge_strategy": "replace"}, None, None),
-        ({"merge_strategy": "demolish"}, None, None),
+        ({"merge_strategy": "demolish", 'remove_subpeaks': True}, None, None),
         ({"merge_strategy": "fill", "two_sided": True}, "z", "p"),
-        ({"merge_strategy": "demolish", "two_sided": True, "z_threshold": 1.9}, None, None),
+        ({"merge_strategy": "demolish", "two_sided": True, "z_threshold": 1.9,}, None, None),
         ({"merge_strategy": "fill", "z_threshold": 10.0}, None, None),
     ],
 )
@@ -84,7 +84,7 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
     # only catch warnings from the transforms logger
     caplog.set_level("WARNING", logger=transforms.LGR.name)
 
-    img2coord = transforms.CoordinateGenerator(**kwargs)
+    img2coord = transforms.ImagesToCoordinates(**kwargs)
 
     if add_data:
         tst_dset = copy.deepcopy(testdata_ibma)
@@ -144,7 +144,7 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
 
 def test_images_to_coordinates_merge_strategy(testdata_ibma):
     """Test different merging strategies."""
-    img2coord = transforms.CoordinateGenerator(z_threshold=1.9)
+    img2coord = transforms.ImagesToCoordinates(z_threshold=1.9)
 
     # keep pain_01-1, pain_02-1, and pain_03-1
     tst_dset = testdata_ibma.slice(["pain_01-1", "pain_02-1", "pain_03-1"])
