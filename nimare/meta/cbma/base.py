@@ -8,12 +8,12 @@ import pandas as pd
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from ..kernel import KernelTransformer
 from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
 from ...utils import add_metadata_to_dataframe, check_type, use_memmap
+from ..kernel import KernelTransformer
 
 LGR = logging.getLogger(__name__)
 

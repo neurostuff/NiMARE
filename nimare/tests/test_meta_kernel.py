@@ -6,9 +6,9 @@ import pytest
 from scipy.ndimage.measurements import center_of_mass
 
 import nimare
-from nimare.dataset import Dataset
-from nimare.meta import kernel, MKDADensity
 from nimare import extract
+from nimare.dataset import Dataset
+from nimare.meta import MKDADensity, kernel
 
 
 def test_ALEKernel_smoke(testdata_cbma):

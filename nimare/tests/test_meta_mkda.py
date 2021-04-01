@@ -3,7 +3,7 @@ import numpy as np
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
-from nimare.meta import MKDAKernel, MKDADensity, MKDAChi2, KDA
+from nimare.meta import KDA, MKDAChi2, MKDADensity, MKDAKernel
 
 
 def test_MKDADensity_kernel_instance_with_kwargs(testdata_cbma):

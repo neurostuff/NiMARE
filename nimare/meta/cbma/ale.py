@@ -6,14 +6,13 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from ...utils import use_memmap
 from ... import references
 from ...due import due
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
+from ...utils import use_memmap
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
-
 
 LGR = logging.getLogger(__name__)
 

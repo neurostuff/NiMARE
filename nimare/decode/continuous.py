@@ -4,8 +4,8 @@ import logging
 
 import numpy as np
 import pandas as pd
-from nilearn.masking import apply_mask
 from nilearn._utils import load_niimg
+from nilearn.masking import apply_mask
 
 from .. import references
 from ..base import Decoder
@@ -13,8 +13,8 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from .utils import weight_priors
 from ..utils import check_type
+from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
 

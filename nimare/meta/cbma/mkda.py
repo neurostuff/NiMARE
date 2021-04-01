@@ -15,7 +15,6 @@ from ...utils import use_memmap
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
-
 LGR = logging.getLogger(__name__)
 
 

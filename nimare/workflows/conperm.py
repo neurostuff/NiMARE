@@ -3,9 +3,9 @@ import logging
 import os
 import pathlib
 
+import numpy as np
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
-import numpy as np
 
 from ..results import MetaResult
 from ..utils import get_template

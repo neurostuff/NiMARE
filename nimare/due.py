@@ -43,7 +43,7 @@ def _donothing_func(*args, **kwargs):
 
 
 try:
-    from duecredit import due, BibTeX, Doi, Url
+    from duecredit import BibTeX, Doi, Url, due
 
     if "due" in locals() and not hasattr(due, "cite"):
         raise RuntimeError("Imported due lacks .cite. DueCredit is now disabled")

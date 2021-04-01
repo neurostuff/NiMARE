@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from nimare.decode import continuous
-from nimare.meta import mkda, kernel
+from nimare.meta import kernel, mkda
 
 
 def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):

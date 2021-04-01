@@ -1,15 +1,15 @@
 """Input/Output operations."""
 import json
-import re
-from itertools import groupby
 import logging
+import re
+from collections import Counter
+from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
-from collections import Counter
 
-import requests
 import numpy as np
 import pandas as pd
+import requests
 
 from .dataset import Dataset
 from .extract.utils import _get_dataset_dir

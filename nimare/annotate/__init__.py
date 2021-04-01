@@ -1,9 +1,5 @@
 """Automated annotation tools."""
 
-from . import cogat
-from . import gclda
-from . import lda
-from . import text
-from . import utils
+from . import cogat, gclda, lda, text, utils
 
 __all__ = ["cogat", "gclda", "lda", "text", "utils"]

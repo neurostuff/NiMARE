@@ -211,7 +211,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
         The 'relationships' file contains associations between CogAt items,
         with three columns: input, output, and rel_type (relationship type).
     """
-    from cognitiveatlas.api import get_concept, get_task, get_disorder
+    from cognitiveatlas.api import get_concept, get_disorder, get_task
 
     dataset_name = "cognitive_atlas"
     data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
