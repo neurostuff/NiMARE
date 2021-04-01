@@ -207,8 +207,7 @@ class CorrelationDecoder(Decoder):
         Returns
         -------
         out_df : :obj:`pandas.DataFrame`
-            DataFrame with one row for each feature and two columns:
-            "feature" and "r".
+            DataFrame with one row for each feature, an index named "feature", and one column: "r".
         """
         img_vec = self.masker.transform(img)
         corrs = pearson(img_vec, self.images_)
@@ -294,8 +293,8 @@ class CorrelationDistributionDecoder(Decoder):
         Returns
         -------
         out_df : :obj:`pandas.DataFrame`
-            DataFrame with one row for each feature and two columns:
-            "feature" and "r".
+            DataFrame with one row for each feature, an index named "feature", and two columns:
+            "mean" and "std".
         """
         img_vec = self.masker.transform(img)
         out_df = pd.DataFrame(
