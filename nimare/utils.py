@@ -1,12 +1,12 @@
 """Utility functions for NiMARE."""
+import datetime
 import inspect
 import logging
+import os
 import os.path as op
 import re
-import datetime
-from tempfile import mkstemp
 from functools import wraps
-import os
+from tempfile import mkstemp
 
 import nibabel as nib
 import numpy as np
