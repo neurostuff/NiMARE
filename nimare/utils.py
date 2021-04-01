@@ -1,4 +1,5 @@
 """Utility functions for NiMARE."""
+import inspect
 import logging
 import os.path as op
 import re
@@ -516,3 +517,33 @@ def add_metadata_to_dataframe(
         )
 
     return dataframe
+
+
+def check_type(obj, clss, **kwargs):
+    """Check variable type and initialize if necessary.
+
+    Parameters
+    ----------
+    obj
+        Object to check and initialized if necessary.
+    clss
+        Target class of the object.
+    kwargs
+        Dictionary of keyword arguments that can be used when initializing the object.
+
+    Returns
+    -------
+    obj
+        Initialized version of the object.
+    """
+    # Allow both instances and classes for the input.
+    if not issubclass(type(obj), clss) and not issubclass(obj, clss):
+        raise ValueError(f"Argument {type(obj)} must be a kind of {clss}")
+    elif not inspect.isclass(obj) and kwargs:
+        LGR.warning(
+            f"Argument {type(obj)} has already been initialized, so arguments "
+            f"will be ignored: {', '.join(kwargs.keys())}"
+        )
+    elif inspect.isclass(obj):
+        obj = obj(**kwargs)
+    return obj

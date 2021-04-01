@@ -1,7 +1,6 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
 import multiprocessing as mp
-import inspect
 
 import nibabel as nib
 import numpy as np
@@ -9,11 +8,12 @@ import pandas as pd
 from scipy import ndimage
 from tqdm.auto import tqdm
 
+from ..kernel import KernelTransformer
 from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import add_metadata_to_dataframe, use_memmap
+from ...utils import add_metadata_to_dataframe, check_type, use_memmap
 
 LGR = logging.getLogger(__name__)
 
@@ -43,21 +43,7 @@ class CBMAEstimator(MetaEstimator):
         kernel_args = {
             k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
         }
-
-        # Allow both instances and classes for the kernel transformer input.
-        from ..kernel import KernelTransformer
-
-        if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
-            kernel_transformer, KernelTransformer
-        ):
-            raise ValueError("Argument 'kernel_transformer' must be a kind of KernelTransformer")
-        elif not inspect.isclass(kernel_transformer) and kernel_args:
-            LGR.warning(
-                "Argument 'kernel_transformer' has already been initialized, so kernel arguments "
-                "will be ignored: {}".format(", ".join(kernel_args.keys()))
-            )
-        elif inspect.isclass(kernel_transformer):
-            kernel_transformer = kernel_transformer(**kernel_args)
+        kernel_transformer = check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
     @use_memmap(LGR, n_files=1)

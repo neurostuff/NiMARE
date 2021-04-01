@@ -10,9 +10,11 @@ from nilearn.masking import apply_mask
 from .. import references
 from ..base import Decoder
 from ..due import due
+from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
 from .utils import weight_priors
+from ..utils import check_type
 
 LGR = logging.getLogger(__name__)
 
@@ -144,6 +146,8 @@ class CorrelationDecoder(Decoder):
 
         if meta_estimator is None:
             meta_estimator = MKDAChi2(low_memory=True, kernel__low_memory=True)
+        else:
+            meta_estimator = check_type(meta_estimator, CBMAEstimator)
 
         self.feature_group = feature_group
         self.features = features
