@@ -188,7 +188,7 @@ class NiMAREBase(metaclass=ABCMeta):
                     obj = pickle.load(file_object, encoding="latin")
 
         if not isinstance(obj, cls):
-            raise IOError("Pickled object must be {0}, " "not {1}".format(cls, type(obj)))
+            raise IOError("Pickled object must be {0}, not {1}".format(cls, type(obj)))
 
         return obj
 

@@ -20,7 +20,7 @@ LGR = logging.getLogger(__name__)
 @due.dcite(references.MALLET, description="Citation for MALLET toolbox")
 @due.dcite(
     references.LDAMODEL,
-    description="First use of LDA for automated annotation of " "neuroimaging literature.",
+    description="First use of LDA for automated annotation of neuroimaging literature.",
 )
 class LDAModel(NiMAREBase):
     """

@@ -120,7 +120,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     collection_folders = [f for f in glob(op.join(data_dir, "*")) if ".nidm" not in f]
     collection_folders = [f for f in collection_folders if op.isdir(f)]
     if len(collection_folders) > 1:
-        raise Exception("More than one folder found: " "{0}".format(", ".join(collection_folders)))
+        raise Exception("More than one folder found: {0}".format(", ".join(collection_folders)))
     else:
         folder = collection_folders[0]
     zip_files = glob(op.join(folder, "*.zip"))
@@ -319,7 +319,7 @@ def download_abstracts(dataset, email):
     try:
         from Bio import Entrez, Medline
     except ImportError:
-        raise Exception("Module biopython is required for downloading abstracts from " "PubMed.")
+        raise Exception("Module biopython is required for downloading abstracts from PubMed.")
 
     Entrez.email = email
 

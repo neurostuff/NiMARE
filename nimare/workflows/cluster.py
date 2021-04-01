@@ -20,7 +20,7 @@ from ..meta.kernel import ALEKernel, KDAKernel, MKDAKernel, Peaks2MapsKernel
 )
 @due.dcite(
     references.META_CLUSTER2,
-    description="Performs the specific meta-analytic clustering " "approach implemented here.",
+    description="Performs the specific meta-analytic clustering approach implemented here.",
 )
 def meta_cluster_workflow(
     dataset_file,

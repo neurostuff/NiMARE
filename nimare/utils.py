@@ -286,7 +286,7 @@ def get_masker(mask):
 
     if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
         raise ValueError(
-            "mask argument must be a string, a nibabel image," " or a Nilearn Masker instance."
+            "mask argument must be a string, a nibabel image, or a Nilearn Masker instance."
         )
 
     # Fit the masker if needed

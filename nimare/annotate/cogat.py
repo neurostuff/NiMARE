@@ -181,7 +181,7 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     c_not_w = set(counts_columns) - set(weights_columns)
     if c_not_w:
         raise Exception(
-            "Columns found in counts but not weights: " "{0}".format(", ".join(c_not_w))
+            "Columns found in counts but not weights: {0}".format(", ".join(c_not_w))
         )
 
     for col in w_not_c:

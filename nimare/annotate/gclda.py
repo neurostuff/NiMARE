@@ -130,7 +130,7 @@ class GCLDAModel(NiMAREBase):
         if (symmetric is True) and (n_regions != 2):
             # symmetric model only valid if R = 2
             raise ValueError(
-                "Cannot run a symmetric model unless # subregions " "(n_regions) == 2 !"
+                "Cannot run a symmetric model unless # subregions (n_regions) == 2 !"
             )
 
         # Initialize sampling parameters
@@ -690,7 +690,7 @@ class GCLDAModel(NiMAREBase):
 
     @due.dcite(
         references.LOG_LIKELIHOOD,
-        description="Describes method for computing log-likelihood " "used in model.",
+        description="Describes method for computing log-likelihood used in model.",
     )
     def compute_log_likelihood(self, model=None, update_vectors=True):
         """Compute log-likelihood of a model object given current model.
