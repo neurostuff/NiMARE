@@ -1,7 +1,7 @@
 """Methods for decoding subsets of voxels or experiments into text."""
-import nibabel as nib
 import numpy as np
 import pandas as pd
+from nilearn._utils import load_niimg
 from scipy import special
 from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
@@ -78,12 +78,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
       cognition." PLoS computational biology 13.10 (2017): e1005649.
       https://doi.org/10.1371/journal.pcbi.1005649
     """
-    if isinstance(roi, str):
-        roi = nib.load(roi)
-    elif not isinstance(roi, nib.Nifti1Image):
-        raise IOError(
-            "Input roi must be either a nifti image " "(nibabel.Nifti1Image) or a path to one."
-        )
+    roi = load_niimg(roi)
 
     dset_aff = model.mask.affine
     if not np.array_equal(roi.affine, dset_aff):

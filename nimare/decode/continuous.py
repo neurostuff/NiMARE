@@ -2,10 +2,10 @@
 import inspect
 import logging
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
 from nilearn.masking import apply_mask
+from nilearn._utils import load_niimg
 
 from .. import references
 from ..base import Decoder
@@ -86,12 +86,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
       cognition." PLoS computational biology 13.10 (2017): e1005649.
       https://doi.org/10.1371/journal.pcbi.1005649
     """
-    if isinstance(image, str):
-        image = nib.load(image)
-    elif not isinstance(image, nib.Nifti1Image):
-        raise IOError(
-            "Input image must be either a nifti image " "(nibabel.Nifti1Image) or a path to one."
-        )
+    image = load_niimg(image)
 
     # Load image file and get voxel values
     input_values = apply_mask(image, model.mask)
