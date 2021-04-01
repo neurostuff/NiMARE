@@ -129,9 +129,7 @@ class GCLDAModel(NiMAREBase):
         # --- Checking to make sure parameters are valid
         if (symmetric is True) and (n_regions != 2):
             # symmetric model only valid if R = 2
-            raise ValueError(
-                "Cannot run a symmetric model unless # subregions (n_regions) == 2 !"
-            )
+            raise ValueError("Cannot run a symmetric model unless # subregions (n_regions) == 2 !")
 
         # Initialize sampling parameters
         self.iter = 0  # Tracks the global sampling iteration of the model
