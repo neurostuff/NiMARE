@@ -53,7 +53,7 @@ print(
 # --------------------------------------------------------
 no_roi_ids = list(set(dset.ids).difference(roi_ids))
 dset_unsel = dset.slice(no_roi_ids)
-print("{}/{} studies report zero coordinates in the " "ROI".format(len(no_roi_ids), len(dset.ids)))
+print("{}/{} studies report zero coordinates in the ROI".format(len(no_roi_ids), len(dset.ids)))
 
 
 ###############################################################################

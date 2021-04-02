@@ -1,16 +1,16 @@
 """Test estimator, kerneltransformer, and multiple comparisons corrector performance."""
 import os
-
-import pytest
 from contextlib import ExitStack as does_not_raise
+
 import nibabel as nib
 import numpy as np
+import pytest
 
-from ..results import MetaResult
-from ..generate import create_coordinate_dataset
 from ..correct import FDRCorrector, FWECorrector
+from ..generate import create_coordinate_dataset
 from ..meta import ale, kernel, mkda
 from ..meta.utils import compute_kda_ma
+from ..results import MetaResult
 from ..transforms import mm2vox
 
 # set significance levels used for testing.

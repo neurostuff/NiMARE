@@ -91,7 +91,7 @@ def _get_parser():
         dest="n_cores",
         type=int,
         default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use " "all available cores."),
+        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
     # Contrast permutation workflow
@@ -111,7 +111,7 @@ def _get_parser():
         nargs="+",
         metavar="FILE",
         type=lambda x: _is_valid_file(parser, x),
-        help=("Data to analyze. May be a single 4D file or a list of 3D " "files."),
+        help=("Data to analyze. May be a single 4D file or a list of 3D files."),
     )
     conperm_parser.add_argument(
         "--mask",
@@ -228,7 +228,7 @@ def _get_parser():
         dest="n_cores",
         type=int,
         default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use " "all available cores."),
+        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
     # SCALE
@@ -281,7 +281,7 @@ def _get_parser():
         dest="n_cores",
         type=int,
         default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use " "all available cores."),
+        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
     # Meta-analytic clustering

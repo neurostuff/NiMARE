@@ -3,10 +3,9 @@ from __future__ import division
 
 import logging
 
-from nilearn.mass_univariate import permuted_ols
 import numpy as np
-
 import pymare
+from nilearn.mass_univariate import permuted_ols
 
 from ..base import MetaEstimator
 from ..transforms import p_to_z, t_to_z

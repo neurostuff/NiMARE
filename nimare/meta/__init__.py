@@ -1,9 +1,8 @@
 """Coordinate-, image-, and effect-size-based meta-analysis estimators."""
 
-from .cbma import ALE, ALESubtraction, SCALE, MKDADensity, MKDAChi2, KDA, ale, mkda
-from .kernel import MKDAKernel, ALEKernel, KDAKernel
-from . import kernel, ibma
-
+from . import ibma, kernel
+from .cbma import ALE, KDA, SCALE, ALESubtraction, MKDAChi2, MKDADensity, ale, mkda
+from .kernel import ALEKernel, KDAKernel, MKDAKernel
 
 __all__ = [
     "ALE",

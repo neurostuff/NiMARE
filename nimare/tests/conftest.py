@@ -2,13 +2,14 @@
 import os
 from shutil import copyfile
 
-import pytest
 import nibabel as nib
 import numpy as np
+import pytest
 from nilearn.image import resample_img
 
 import nimare
 from nimare.tests.utils import get_test_data_path
+
 from ..utils import get_resource_path
 
 

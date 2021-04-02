@@ -2,8 +2,8 @@
 import os.path as op
 from contextlib import ExitStack as does_not_raise
 
-from nilearn.input_data import NiftiLabelsMasker
 import pytest
+from nilearn.input_data import NiftiLabelsMasker
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector

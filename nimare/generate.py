@@ -1,14 +1,13 @@
 """Utilities for generating data for testing."""
 from itertools import zip_longest
 
-import numpy as np
 import nilearn
+import numpy as np
 
 from .dataset import Dataset
-from .meta.utils import compute_ale_ma, get_ale_kernel
-from .transforms import vox2mm, mm2vox, transform_images
 from .io import convert_neurovault_to_dataset
-
+from .meta.utils import compute_ale_ma, get_ale_kernel
+from .transforms import mm2vox, transform_images, vox2mm
 
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)

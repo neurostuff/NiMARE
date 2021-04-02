@@ -4,9 +4,9 @@ import json
 import logging
 import os.path as op
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
+from nilearn._utils import load_niimg
 
 from .base import NiMAREBase
 from .utils import (
@@ -554,8 +554,7 @@ class Dataset(NiMAREBase):
         """
         from scipy.spatial.distance import cdist
 
-        if isinstance(mask, str):
-            mask = nib.load(mask)
+        mask = load_niimg(mask)
 
         dset_mask = self.masker.mask_img
         if not np.array_equal(dset_mask.affine, mask.affine):

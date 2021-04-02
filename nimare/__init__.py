@@ -1,6 +1,6 @@
 """NiMARE: Neuroimaging Meta-Analysis Research Environment."""
-import warnings
 import logging
+import warnings
 
 from ._version import get_versions
 
@@ -8,17 +8,19 @@ logging.basicConfig(level=logging.INFO)
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("ignore")
-    from . import base
-    from . import dataset
-    from . import meta
-    from . import correct
-    from . import annotate
-    from . import decode
-    from . import resources
-    from . import io
-    from . import stats
-    from . import utils
-    from . import workflows
+    from . import (
+        annotate,
+        base,
+        correct,
+        dataset,
+        decode,
+        io,
+        meta,
+        resources,
+        stats,
+        utils,
+        workflows,
+    )
 
     __version__ = get_versions()["version"]
 

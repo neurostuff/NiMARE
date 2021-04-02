@@ -1,6 +1,6 @@
 """Test nimare.transforms."""
-import numpy as np
 import nibabel as nib
+import numpy as np
 
 from nimare import transforms, utils
 

@@ -5,6 +5,7 @@ import os.path as op
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from nilearn._utils import load_niimg
 from scipy.stats import multivariate_normal
 
 from .. import references
@@ -128,9 +129,7 @@ class GCLDAModel(NiMAREBase):
         # --- Checking to make sure parameters are valid
         if (symmetric is True) and (n_regions != 2):
             # symmetric model only valid if R = 2
-            raise ValueError(
-                "Cannot run a symmetric model unless # subregions " "(n_regions) == 2 !"
-            )
+            raise ValueError("Cannot run a symmetric model unless # subregions (n_regions) == 2 !")
 
         # Initialize sampling parameters
         self.iter = 0  # Tracks the global sampling iteration of the model
@@ -165,12 +164,8 @@ class GCLDAModel(NiMAREBase):
         # Prepare data
         if isinstance(mask, str) and not op.isfile(mask):
             self.mask = get_template(mask, mask="brain")
-        elif isinstance(mask, str) and op.isfile(mask):
-            self.mask = nib.load(mask)
-        elif isinstance(mask, nib.Nifti1Image):
-            self.mask = mask
         else:
-            raise Exception('Input "mask" could not be figured out.')
+            self.mask = load_niimg(mask)
 
         # Extract document and word indices from count_df
         docidx_mapper = {id_: i for (i, id_) in enumerate(ids)}
@@ -693,7 +688,7 @@ class GCLDAModel(NiMAREBase):
 
     @due.dcite(
         references.LOG_LIKELIHOOD,
-        description="Describes method for computing log-likelihood " "used in model.",
+        description="Describes method for computing log-likelihood used in model.",
     )
     def compute_log_likelihood(self, model=None, update_vectors=True):
         """Compute log-likelihood of a model object given current model.

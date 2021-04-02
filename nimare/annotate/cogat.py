@@ -5,11 +5,11 @@ import re
 import numpy as np
 import pandas as pd
 
-from . import utils
 from .. import references
 from ..due import due
 from ..extract import download_cognitive_atlas
 from ..utils import uk_to_us
+from . import utils
 
 LGR = logging.getLogger(__name__)
 
@@ -180,9 +180,7 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     w_not_c = set(weights_columns) - set(counts_columns)
     c_not_w = set(counts_columns) - set(weights_columns)
     if c_not_w:
-        raise Exception(
-            "Columns found in counts but not weights: " "{0}".format(", ".join(c_not_w))
-        )
+        raise Exception("Columns found in counts but not weights: {0}".format(", ".join(c_not_w)))
 
     for col in w_not_c:
         counts_df[col] = 0

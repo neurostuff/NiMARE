@@ -1,16 +1,17 @@
 """Tests for the nimare.generate module."""
-import pytest
 from contextlib import ExitStack as does_not_raise
+
+import pytest
 from numpy.random import RandomState
 
+from ..dataset import Dataset
 from ..generate import (
-    create_coordinate_dataset,
-    _create_source,
-    _create_foci,
     _array_like,
+    _create_foci,
+    _create_source,
+    create_coordinate_dataset,
     create_neurovault_dataset,
 )
-from ..dataset import Dataset
 
 
 @pytest.mark.parametrize(

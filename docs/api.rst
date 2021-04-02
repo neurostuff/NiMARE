@@ -245,8 +245,12 @@ For more information about functional characterization analysis, see :ref:`Meta-
    utils.listify
    utils.round2
    utils.get_resource_path
+   utils.try_prepend
    utils.find_stem
    utils.uk_to_us
+   utils.use_memmap
+   utils.add_metadata_to_dataframe
+   utils.check_type
 
 
 .. _api_workflows_ref:

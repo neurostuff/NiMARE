@@ -3,10 +3,10 @@ import logging
 import os
 import pathlib
 
+import numpy as np
 from nilearn.image import resample_to_img
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
-import numpy as np
 
 from ..base import MetaResult
 from ..io import convert_sleuth_to_dataset
