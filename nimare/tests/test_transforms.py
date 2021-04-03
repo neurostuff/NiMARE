@@ -84,7 +84,7 @@ NO_OUTPUT_PATTERN = re.compile(
             None,
             None,
         ),
-        ({"merge_strategy": "fill", "z_threshold": 10.0}, None, None),
+        ({"merge_strategy": "demolish", "z_threshold": 10.0}, None, None),
     ],
 )
 def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_data, add_data):
@@ -110,6 +110,9 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
         tst_dset.images = tst_dset.images.drop(columns=drop_data)
 
     new_dset = img2coord.transform(tst_dset)
+
+    # metadata column "coordinate_source" should exist
+    assert "coordinate_source" in new_dset.metadata.columns
 
     # get the studies that did not generate coordinates
     # either because the threshold was too high or
