@@ -10,6 +10,7 @@ from scipy import ndimage
 from .. import references
 from ..due import due
 from ..extract import download_peaks2maps_model
+from ..utils import determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
@@ -265,6 +266,7 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
+    low_memory=False,
     memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
@@ -321,6 +323,8 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
+    if low_memory:
+        chunk_size = determine_chunk_size(limit=low_memory, arr=ijks[0])
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
@@ -331,7 +335,7 @@ def compute_kda_ma(
         else:
             kernel_data[exp][tuple(sphere.T)] = value
 
-        if memmap_filename:
+        if memmap_filename and i % chunk_size == 0:
             # Write changes to disk
             kernel_data.flush()
 
