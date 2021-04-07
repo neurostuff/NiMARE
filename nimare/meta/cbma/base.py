@@ -150,8 +150,17 @@ class CBMAEstimator(MetaEstimator):
                     mode="w+",
                     shape=unmasked_shape,
                 )
-                for i, f in enumerate(self.inputs_[maps_key]):
-                    ma_maps[i, :] = self.masker.transform(f)
+
+                # perform transform on chunks of the input maps
+                chunk_size = int(self.low_memory)
+                map_chunks = [
+                    self.inputs_[maps_key][i:i + chunk_size] for i in range(0, len(self.inputs_[maps_key]), chunk_size)
+                ]
+                idx = 0
+                for map_chunk in map_chunks:
+                    end_idx = idx + len(map_chunk)
+                    ma_maps[idx:end_idx, :] = self.masker.transform(map_chunk)
+                    idx = end_idx
             else:
                 ma_maps = self.masker.transform(self.inputs_[maps_key])
         else:
