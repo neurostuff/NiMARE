@@ -385,8 +385,11 @@ def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
 def test_kernel_low_high_memory(testdata_cbma, tmp_path_factory, kern, kwargs):
     """Compare kernel results when low_memory is used vs. not."""
     kern_low_mem = kern(low_memory=True, **kwargs)
+    kern_spec_mem = kern(low_memory="2g", **kwargs)
     kern_high_mem = kern(low_memory=False, **kwargs)
     trans_kwargs = {"dataset": testdata_cbma, "return_type": "array"}
     assert np.all(
-        kern_low_mem.transform(**trans_kwargs) == kern_high_mem.transform(**trans_kwargs)
+        kern_low_mem.transform(**trans_kwargs)
+        == kern_high_mem.transform(**trans_kwargs)
+        == kern_spec_mem.transform(**trans_kwargs)
     )
