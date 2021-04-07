@@ -14,7 +14,8 @@ import pandas as pd
 from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
-from .transforms import mm2vox, mni2tal, tal2mni
+from .due import due
+from . import references
 
 LGR = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def dict_to_coordinates(data, masker, space):
     """Load coordinates in NIMADS-format dictionary into DataFrame."""
     # Required columns
     columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]
-    core_columns = columns[:]  # Used in contrast for loop
+    core_columns = columns.copy()  # Used in contrast for loop
 
     all_dfs = []
     for pid in data.keys():
@@ -69,7 +70,7 @@ def dict_to_coordinates(data, masker, space):
             if "coords" not in data[pid]["contrasts"][expid].keys():
                 continue
 
-            exp_columns = core_columns[:]
+            exp_columns = core_columns.copy()
             exp = data[pid]["contrasts"][expid]
 
             # Required info (ids, x, y, z, space)
@@ -89,7 +90,7 @@ def dict_to_coordinates(data, masker, space):
             )
 
             # Optional information
-            for k in list(set(exp["coords"].keys()) - set(columns)):
+            for k in list(set(exp["coords"].keys()) - set(core_columns)):
                 k_data = exp["coords"][k]
                 if not isinstance(k_data, list):
                     k_data = np.array([k_data] * n_coords)
@@ -547,3 +548,200 @@ def check_type(obj, clss, **kwargs):
     elif inspect.isclass(obj):
         obj = obj(**kwargs)
     return obj
+
+
+def vox2mm(ijk, affine):
+    """
+    Convert matrix subscripts to coordinates.
+
+    Parameters
+    ----------
+    ijk : (X, 3) :obj:`numpy.ndarray`
+        Matrix subscripts for coordinates being transformed.
+        One row for each coordinate, with three columns: i, j, and k.
+    affine : (4, 4) :obj:`numpy.ndarray`
+        Affine matrix from image.
+
+    Returns
+    -------
+    xyz : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in image-space.
+
+    Notes
+    -----
+    From here:
+    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
+    """
+    xyz = nib.affines.apply_affine(affine, ijk)
+    return xyz
+
+
+def mm2vox(xyz, affine):
+    """
+    Convert coordinates to matrix subscripts.
+
+    Parameters
+    ----------
+    xyz : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in image-space.
+        One row for each coordinate, with three columns: x, y, and z.
+    affine : (4, 4) :obj:`numpy.ndarray`
+        Affine matrix from image.
+
+    Returns
+    -------
+    ijk : (X, 3) :obj:`numpy.ndarray`
+        Matrix subscripts for coordinates being transformed.
+
+    Notes
+    -----
+    From here:
+    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
+    """
+    ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz).astype(int)
+    return ijk
+
+
+@due.dcite(
+    references.LANCASTER_TRANSFORM,
+    description="Introduces the Lancaster MNI-to-Talairach transform, "
+    "as well as its inverse, the Talairach-to-MNI "
+    "transform.",
+)
+@due.dcite(
+    references.LANCASTER_TRANSFORM_VALIDATION,
+    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
+)
+def tal2mni(coords):
+    """
+    Convert coordinates from Talairach space to MNI space.
+
+    Parameters
+    ----------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in Talairach space to convert.
+        Each row is a coordinate, with three columns.
+
+    Returns
+    -------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in MNI space.
+        Each row is a coordinate, with three columns.
+
+    Notes
+    -----
+    Python version of BrainMap's tal2icbm_other.m.
+
+    This function converts coordinates from Talairach space to MNI
+    space (normalized using templates other than those contained
+    in SPM and FSL) using the tal2icbm transform developed and
+    validated by Jack Lancaster at the Research Imaging Center in
+    San Antonio, Texas.
+    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
+    """
+    # Find which dimensions are of size 3
+    shape = np.array(coords.shape)
+    if all(shape == 3):
+        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
+        use_dim = 1
+    elif not any(shape == 3):
+        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
+    else:
+        use_dim = np.where(shape == 3)[0][0]
+
+    # Transpose if necessary
+    if use_dim == 1:
+        coords = coords.transpose()
+
+    # Transformation matrices, different for each software package
+    icbm_other = np.array(
+        [
+            [0.9357, 0.0029, -0.0072, -1.0423],
+            [-0.0065, 0.9396, -0.0726, -1.3940],
+            [0.0103, 0.0752, 0.8967, 3.6475],
+            [0.0000, 0.0000, 0.0000, 1.0000],
+        ]
+    )
+
+    # Invert the transformation matrix
+    icbm_other = np.linalg.inv(icbm_other)
+
+    # Apply the transformation matrix
+    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
+    coords = np.dot(icbm_other, coords)
+
+    # Format the output, transpose if necessary
+    out_coords = coords[:3, :]
+    if use_dim == 1:
+        out_coords = out_coords.transpose()
+    return out_coords
+
+
+@due.dcite(
+    references.LANCASTER_TRANSFORM,
+    description="Introduces the Lancaster MNI-to-Talairach transform, "
+    "as well as its inverse, the Talairach-to-MNI "
+    "transform.",
+)
+@due.dcite(
+    references.LANCASTER_TRANSFORM_VALIDATION,
+    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
+)
+def mni2tal(coords):
+    """
+    Convert coordinates from MNI space Talairach space.
+
+    Parameters
+    ----------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in MNI space to convert.
+        Each row is a coordinate, with three columns.
+
+    Returns
+    -------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in Talairach space.
+        Each row is a coordinate, with three columns.
+
+    Notes
+    -----
+    Python version of BrainMap's icbm_other2tal.m.
+    This function converts coordinates from MNI space (normalized using
+    templates other than those contained in SPM and FSL) to Talairach space
+    using the icbm2tal transform developed and validated by Jack Lancaster at
+    the Research Imaging Center in San Antonio, Texas.
+    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
+    """
+    # Find which dimensions are of size 3
+    shape = np.array(coords.shape)
+    if all(shape == 3):
+        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
+        use_dim = 1
+    elif not any(shape == 3):
+        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
+    else:
+        use_dim = np.where(shape == 3)[0][0]
+
+    # Transpose if necessary
+    if use_dim == 1:
+        coords = coords.transpose()
+
+    # Transformation matrices, different for each software package
+    icbm_other = np.array(
+        [
+            [0.9357, 0.0029, -0.0072, -1.0423],
+            [-0.0065, 0.9396, -0.0726, -1.3940],
+            [0.0103, 0.0752, 0.8967, 3.6475],
+            [0.0000, 0.0000, 0.0000, 1.0000],
+        ]
+    )
+
+    # Apply the transformation matrix
+    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
+    coords = np.dot(icbm_other, coords)
+
+    # Format the output, transpose if necessary
+    out_coords = coords[:3, :]
+    if use_dim == 1:
+        out_coords = out_coords.transpose()
+    return out_coords

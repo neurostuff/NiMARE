@@ -16,8 +16,7 @@ import pandas as pd
 from nilearn import image
 
 from ..base import Transformer
-from ..transforms import vox2mm
-from ..utils import use_memmap
+from ..utils import use_memmap, vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
