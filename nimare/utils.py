@@ -454,6 +454,46 @@ def use_memmap(logger, n_files=1):
     return inner_function
 
 
+BYTE = 2
+KILOBYTE = BYTE ** 10
+BYTE_CONVERSION = {
+    "kb": KILOBYTE,
+    "mb": KILOBYTE ** 2,
+    "gb": KILOBYTE ** 3,
+    "tb": KILOBYTE ** 4,
+}
+
+
+def determine_chunk_size(limit, arr, multiplier=1):
+    """Determine how many arrays can be read into memory at once.
+
+    Parameters
+    ----------
+    limit : :obj:`str`
+        String representation of memory limit, can use:
+        kb, mb, gb, and tb as suffix (e.g., "4gb").
+    arr : :obj:`numpy.array`
+        Representative numpy array.
+    multiplier : :obj:`int`
+        Adjustment for processes that have more or
+        less overhead than expected.
+    """
+    limit = limit.lower()
+    size, representation = re.search(r"([0-9]+)([a-z]+)", limit).groups()
+
+    limit_bytes = float(size) * BYTE_CONVERSION[representation] * multiplier
+
+    arr_bytes = arr.size * arr.itemsize
+
+    chunk_size = int(limit_bytes // arr_bytes)
+
+    if chunk_size == 0:
+        arr_size = arr_bytes // BYTE_CONVERSION["mb"]
+        raise RuntimeError(f"memory limit: {limit} too small for array with size {arr_size}mb")
+
+    return chunk_size
+
+
 def add_metadata_to_dataframe(
     dataset,
     dataframe,

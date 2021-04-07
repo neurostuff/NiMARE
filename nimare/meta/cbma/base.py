@@ -12,7 +12,7 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import add_metadata_to_dataframe, check_type, use_memmap
+from ...utils import add_metadata_to_dataframe, check_type, determine_chunk_size, use_memmap
 from ..kernel import KernelTransformer
 
 LGR = logging.getLogger(__name__)
@@ -152,9 +152,15 @@ class CBMAEstimator(MetaEstimator):
                 )
 
                 # perform transform on chunks of the input maps
-                chunk_size = int(self.low_memory)
+                if self.low_memory is True:
+                    limit = "1gb"
+                else:
+                    limit = self.low_memory
+
+                chunk_size = determine_chunk_size(limit, temp)
                 map_chunks = [
-                    self.inputs_[maps_key][i:i + chunk_size] for i in range(0, len(self.inputs_[maps_key]), chunk_size)
+                    self.inputs_[maps_key][i : i + chunk_size]
+                    for i in range(0, len(self.inputs_[maps_key]), chunk_size)
                 ]
                 idx = 0
                 for map_chunk in map_chunks:
