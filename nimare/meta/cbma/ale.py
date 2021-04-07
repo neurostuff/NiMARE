@@ -261,7 +261,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset2 = None
         self.results = None
         self.n_iters = n_iters
-        self.low_memory = low_memory
+        if low_memory is True:
+            self.low_memory = "1gb"
+        else:
+            self.low_memory = low_memory
 
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
@@ -398,7 +401,10 @@ class SCALE(CBMAEstimator):
         self.ijk = ijk
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.low_memory = low_memory
+        if low_memory is True:
+            self.low_memory = "1gb"
+        else:
+            self.low_memory = low_memory
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):

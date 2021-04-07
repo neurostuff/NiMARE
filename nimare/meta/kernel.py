@@ -228,7 +228,7 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-    low_memory : :obj:`bool`, optional
+    low_memory : :obj:`bool` or :obj:`int`, optional
         Whether to employ mem-mapped arrays to reduce memory usage or not.
         Default=False.
     """
@@ -238,7 +238,10 @@ class ALEKernel(KernelTransformer):
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
-        self.low_memory = low_memory
+        if low_memory is True:
+            self.low_memory = "1gb"
+        else:
+            self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
         kernels = {}  # retain kernels in dictionary to speed things up
@@ -315,7 +318,10 @@ class KDAKernel(KernelTransformer):
     def __init__(self, r=10, value=1, low_memory=False):
         self.r = float(r)
         self.value = value
-        self.low_memory = low_memory
+        if low_memory is True:
+            self.low_memory = "1gb"
+        else:
+            self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
         dims = mask.shape
@@ -331,6 +337,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
+            low_memory=self.low_memory,
             memmap_filename=self.memmap_filenames[0],
         )
         exp_ids = np.unique(exp_idx)
