@@ -152,11 +152,6 @@ class CBMAEstimator(MetaEstimator):
                 )
 
                 # perform transform on chunks of the input maps
-                if self.low_memory is True:
-                    limit = "1gb"
-                else:
-                    limit = self.low_memory
-
                 chunk_size = determine_chunk_size(limit, temp)
                 map_chunks = [
                     self.inputs_[maps_key][i : i + chunk_size]
