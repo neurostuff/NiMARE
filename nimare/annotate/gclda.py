@@ -174,7 +174,6 @@ class GCLDAModel(NiMAREBase):
 
         # Create docidx column
         count_df["docidx"] = count_df["id"].map(docidx_mapper)
-        count_df = count_df.dropna(subset=["docidx"])
         count_df = count_df.drop("id", 1)
 
         # Remove words not found anywhere in the corpus
@@ -210,7 +209,6 @@ class GCLDAModel(NiMAREBase):
 
         # Import all peak-indices into lists
         coordinates_df["docidx"] = coordinates_df["id"].astype(str).map(docidx_mapper)
-        coordinates_df = coordinates_df.dropna(subset=["docidx"])
         coordinates_df = coordinates_df[["docidx", "x", "y", "z"]]
         coordinates_df["docidx"] = coordinates_df["docidx"].astype(int)
 
