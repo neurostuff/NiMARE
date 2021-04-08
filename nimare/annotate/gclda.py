@@ -438,14 +438,14 @@ class GCLDAModel(NiMAREBase):
         np.random.seed(randseed)
 
         # Loop over all word tokens
-        for i_wtoken in range(len(self.data["wtoken_word_idx"])):
-            # Get indices for current token
-            word = self.data["wtoken_word_idx"][i_wtoken]  # w_i word-type
-            doc = self.data["wtoken_doc_idx"][i_wtoken]  # w_i doc-index
+        for i_wtoken, word in enumerate(self.data["wtoken_word_idx"]):
+            # Find document in which word token (not just word) appears
+            doc = self.data["wtoken_doc_idx"][i_wtoken]
             # current topic assignment for word token w_i
             topic = self.topics["wtoken_topic_idx"][i_wtoken]
 
             # Decrement count-matrices to remove current wtoken_topic_idx
+            # because wtoken will be reassigned to a new topic
             self.topics["n_word_tokens_word_by_topic"][word, topic] -= 1
             self.topics["total_n_word_tokens_by_topic"][0, topic] -= 1
             self.topics["n_word_tokens_doc_by_topic"][doc, topic] -= 1
@@ -457,7 +457,7 @@ class GCLDAModel(NiMAREBase):
                 self.topics["n_word_tokens_word_by_topic"][word, :] + self.params["beta"]
             ) / (
                 self.topics["total_n_word_tokens_by_topic"]
-                + self.params["beta"] * len(self.vocabulary)
+                + (self.params["beta"] * len(self.vocabulary))
             )
             p_topic_g_doc = (
                 self.topics["n_peak_tokens_doc_by_topic"][doc, :] + self.params["gamma"]
@@ -466,9 +466,11 @@ class GCLDAModel(NiMAREBase):
 
             # Sample a z_i assignment for the current word-token from the sampling distribution
             probs = np.squeeze(probs) / np.sum(probs)  # Normalize the sampling distribution
-            # Numpy returns a [1 x T] vector with a '1' in the index of sampled topic
-            vec = np.random.multinomial(1, probs)
-            topic = np.where(vec)[0][0]  # Extract selected topic from vector
+            # Numpy returns a binary [1 x T] vector with a '1' in the index of sampled topic
+            # and zeros everywhere else
+            assigned_topic_vec = np.random.multinomial(1, probs)
+            # Extract selected topic from vector
+            topic = np.where(assigned_topic_vec)[0][0]
 
             # Update the indices and the count matrices using the sampled z assignment
             self.topics["wtoken_topic_idx"][i_wtoken] = topic  # Update w_i topic-assignment
@@ -491,15 +493,13 @@ class GCLDAModel(NiMAREBase):
         peak_probs = self._get_peak_probs(self)
 
         # Iterate over all peaks x, and sample a new y and r assignment for each
-        for i_ptoken in range(len(self.data["ptoken_doc_idx"])):
-            doc = self.data["ptoken_doc_idx"][i_ptoken]
+        for i_ptoken, doc in enumerate(self.data["ptoken_doc_idx"]):
             topic = self.topics["peak_topic_idx"][i_ptoken]
             region = self.topics["peak_region_idx"][i_ptoken]
 
-            # Decrement count in Subregion x Topic count matrix
+            # Decrement count-matrices to remove current ptoken_topic_idx
+            # because ptoken will be reassigned to a new topic
             self.topics["n_peak_tokens_region_by_topic"][region, topic] -= 1
-
-            # Decrement count in Document x Topic count matrix
             self.topics["n_peak_tokens_doc_by_topic"][doc, topic] -= 1
 
             # Retrieve the probability of generating current x from all
@@ -511,9 +511,8 @@ class GCLDAModel(NiMAREBase):
             # Counts of subregions per topic + prior: p(r|t)
             p_region_g_topic = self.topics["n_peak_tokens_region_by_topic"] + self.params["delta"]
 
-            # Normalize the columns such that each topic's distribution over
-            # subregions sums to 1
-            p_region_g_topic = p_region_g_topic / np.sum(p_region_g_topic, axis=0)
+            # Normalize the columns such that each topic's distribution over subregions sums to 1
+            p_region_g_topic = p_region_g_topic / np.sum(p_region_g_topic, axis=0, keepdims=True)
 
             # Counts of topics per document + prior: p(t|d)
             p_topic_g_doc = (
@@ -521,7 +520,8 @@ class GCLDAModel(NiMAREBase):
             )
 
             # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
-            p_topic_g_doc = np.array([p_topic_g_doc] * self.params["n_regions"])
+            # Makes it the same shape as p_region_g_topic
+            p_topic_g_doc = np.tile(p_topic_g_doc, (self.params["n_regions"], 1))
 
             # Compute p(subregion | document): p(r|d) ~ p(r|t) * p(t|d)
             # [R x T] array of probs
@@ -530,45 +530,53 @@ class GCLDAModel(NiMAREBase):
             # Compute the multinomial probability: p(z|y)
             # Need the current vector of all z and y assignments for current doc
             # The multinomial from which z is sampled is proportional to number
-            # of y assigned to each topic, plus constant \gamma
-            doc_y_counts = self.topics["n_peak_tokens_doc_by_topic"][doc, :] + self.params["gamma"]
-            doc_z_counts = self.topics["n_word_tokens_doc_by_topic"][doc, :]
+            # of y assigned to each topic, plus constant gamma
             p_peak_g_topic = self._compute_prop_multinomial_from_zy_vectors(
-                doc_z_counts, doc_y_counts
+                self.topics["n_word_tokens_doc_by_topic"][doc, :],
+                self.topics["n_peak_tokens_doc_by_topic"][doc, :] + self.params["gamma"],
             )
 
             # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
-            p_peak_g_topic = np.array([p_peak_g_topic] * self.params["n_regions"])
+            p_peak_g_topic = np.tile(p_peak_g_topic, (self.params["n_regions"], 1))
 
             # Get the full sampling distribution:
             # [R x T] array containing the proportional probability of all y/r combinations
             probs_pdf = p_x_subregions * p_region_g_doc * p_peak_g_topic
 
             # Convert from a [R x T] matrix into a [R*T x 1] array we can sample from
-            probs_pdf = probs_pdf.transpose().ravel()
+            probs_pdf = np.reshape(probs_pdf, (self.params["n_regions"] * self.params["n_topics"]))
 
             # Normalize the sampling distribution
             probs_pdf = probs_pdf / np.sum(probs_pdf)
 
-            # Sample a single element (corresponding to a y_i and c_i assignment
-            # for the peak token) from the sampling distribution
-            # Returns a [1 x R*T] vector with a '1' in location that was sampled
-            vec = np.random.multinomial(1, probs_pdf)
-            sample_idx = np.where(vec)[0][0]  # Extract linear index value from vector
+            # Sample a single element (corresponding to a y_i and c_i assignment for the ptoken)
+            # from the sampling distribution
+            # Returns a binary [1 x R*T] vector with a '1' in location that was sampled
+            # and zeros everywhere else
+            assignment_vec = np.random.multinomial(1, probs_pdf)
 
+            # Reshape 1D back to [R x T] 2D
+            assignment_arr = np.reshape(
+                assignment_vec,
+                (self.params["n_regions"], self.params["n_topics"]),
+            )
             # Transform the linear index of the sampled element into the
             # subregion/topic (r/y) assignment indices
+            assignment_idx = np.where(assignment_arr)
             # Subregion sampled (r)
-            region = np.remainder(sample_idx, self.params["n_regions"])
-            topic = int(np.floor(sample_idx / self.params["n_regions"]))  # Topic sampled (y)
+            region = assignment_idx[0][0]
+            # Topic sampled (y)
+            topic = assignment_idx[1][0]
 
             # Update the indices and the count matrices using the sampled y/r assignments
             # Increment count in Subregion x Topic count matrix
             self.topics["n_peak_tokens_region_by_topic"][region, topic] += 1
             # Increment count in Document x Topic count matrix
             self.topics["n_peak_tokens_doc_by_topic"][doc, topic] += 1
-            self.topics["peak_topic_idx"][i_ptoken] = topic  # Update y->topic assignment
-            self.topics["peak_region_idx"][i_ptoken] = region  # Update y->subregion assignment
+            # Update y->topic assignment
+            self.topics["peak_topic_idx"][i_ptoken] = topic
+            # Update y->subregion assignment
+            self.topics["peak_region_idx"][i_ptoken] = region
 
     def _update_regions(self):
         """Update spatial distribution parameters (Gaussians params for all subregions).
@@ -579,83 +587,49 @@ class GCLDAModel(NiMAREBase):
         # Generate default ROI based on default_width
         default_roi = self.params["roi_size"] * np.eye(self.data["ptoken_coords"].shape[1])
 
-        if not self.params["symmetric"]:
-            # For each region, compute a mean and a regularized covariance matrix
-            for i_topic in range(self.params["n_topics"]):
-                for j_region in range(self.params["n_regions"]):
-                    # Get all peaks assigned to current topic & subregion
-                    idx = (self.topics["peak_topic_idx"] == i_topic) & (
-                        self.topics["peak_region_idx"] == j_region
-                    )
-                    vals = self.data["ptoken_coords"][idx]
-                    n_obs = self.topics["n_peak_tokens_region_by_topic"][j_region, i_topic]
-
-                    # Estimate mean
-                    # If there are no observations, we set mean equal to zeros,
-                    # otherwise take MLE
-                    if n_obs == 0:
-                        mu = np.zeros([self.data["ptoken_coords"].shape[1]])
-                    else:
-                        mu = np.mean(vals, axis=0)
-
-                    # Estimate covariance
-                    # if there are 1 or fewer observations, we set sigma_hat
-                    # equal to default ROI, otherwise take MLE
-                    if n_obs <= 1:
-                        c_hat = default_roi
-                    else:
-                        c_hat = np.cov(np.transpose(vals))
-
-                    # Regularize the covariance, using the ratio of observations
-                    # to dobs (default constant # observations)
-                    d_c = n_obs / (n_obs + self.params["dobs"])
-                    sigma = d_c * c_hat + (1 - d_c) * default_roi
-
-                    # Store estimates in model object
-                    self.topics["regions_mu"][i_topic, j_region, ...] = mu
-                    self.topics["regions_sigma"][i_topic, j_region, ...] = sigma
-        else:
-            # With symmetric subregions, we jointly compute all estimates for
-            # subregions 1 & 2, constraining the means to be symmetric w.r.t.
-            # the origin along x-dimension
+        if self.params["symmetric"]:
+            # With symmetric subregions, we jointly compute all estimates for subregions 1 & 2,
+            # constraining the means to be symmetric w.r.t. the origin along x-dimension
             for i_topic in range(self.params["n_topics"]):
                 # Get all peaks assigned to current topic & subregion 1
                 idx1 = (self.topics["peak_topic_idx"] == i_topic) & (
                     self.topics["peak_region_idx"] == 0
                 )
-                vals1 = self.data["ptoken_coords"][idx1]
+                idx1_xyz = self.data["ptoken_coords"][idx1, :]
                 n_obs1 = self.topics["n_peak_tokens_region_by_topic"][0, i_topic]
 
                 # Get all peaks assigned to current topic & subregion 2
                 idx2 = (self.topics["peak_topic_idx"] == i_topic) & (
                     self.topics["peak_region_idx"] == 1
                 )
-                vals2 = self.data["ptoken_coords"][idx2]
+                idx2_xyz = self.data["ptoken_coords"][idx2, :]
                 n_obs2 = self.topics["n_peak_tokens_region_by_topic"][1, i_topic]
 
                 # Get all peaks assigned to current topic & either subregion
-                allvals = self.data["ptoken_coords"][idx1 | idx2]
+                all_topic_peaks = idx1 | idx2
+                all_xyz = self.data["ptoken_coords"][all_topic_peaks, :]
 
                 # Estimate means
-                # If there are no observations, we set mean equal to zeros,
-                # otherwise take MLE
+                # If there are no observations, we set mean equal to zeros, otherwise take MLE
 
-                # Estimate independent mean for subregion 1
+                # Estimate independent mean (centroid of peaks) for subregion 1
                 if n_obs1 == 0:
-                    m = np.zeros([self.data["ptoken_coords"].shape[1]])
+                    reg1_center_xyz = np.zeros([self.data["ptoken_coords"].shape[1]])
                 else:
-                    m = np.mean(vals1, axis=0)
+                    reg1_center_xyz = np.mean(idx1_xyz, axis=0)
 
-                # Estimate independent mean for subregion 2
+                # Estimate independent mean (centroid of peaks) for subregion 2
                 if n_obs2 == 0:
-                    n = np.zeros([self.data["ptoken_coords"].shape[1]])
+                    reg2_center_xyz = np.zeros([self.data["ptoken_coords"].shape[1]])
                 else:
-                    n = np.mean(vals2, axis=0)
+                    reg2_center_xyz = np.mean(idx2_xyz, axis=0)
 
                 # Estimate the weighted means of all dims, where for dim1 we
                 # compute the mean w.r.t. absolute distance from the origin
-                weighted_mean_dim1 = (-m[0] * n_obs1 + n[0] * n_obs2) / (n_obs1 + n_obs2)
-                weighted_mean_otherdims = np.mean(allvals[:, 1:], axis=0)
+                weighted_mean_dim1 = (
+                    (-reg1_center_xyz[0] * n_obs1) + (reg2_center_xyz[0] * n_obs2)
+                ) / (n_obs1 + n_obs2)
+                weighted_mean_otherdims = np.mean(all_xyz[:, 1:], axis=0)
 
                 # Store weighted mean estimates
                 mu1 = np.zeros([1, self.data["ptoken_coords"].shape[1]])
@@ -671,28 +645,61 @@ class GCLDAModel(NiMAREBase):
 
                 # Estimate Covariances
                 # Covariances are estimated independently
-                # Cov for subregion 1
+                # Covariance for subregion 1
                 if n_obs1 <= 1:
                     c_hat1 = default_roi
                 else:
-                    c_hat1 = np.cov(np.transpose(vals1))
+                    c_hat1 = np.cov(idx1_xyz, rowvar=False)
 
-                # Cov for subregion 2
+                # Covariance for subregion 2
                 if n_obs2 <= 1:
                     c_hat2 = default_roi
                 else:
-                    c_hat2 = np.cov(np.transpose(vals2))
+                    c_hat2 = np.cov(idx2_xyz, rowvar=False)
 
-                # Regularize the covariances, using the ratio of observations
-                # to sample_constant
+                # Regularize the covariances, using the ratio of observations to sample_constant
                 d_c_1 = (n_obs1) / (n_obs1 + self.params["dobs"])
                 d_c_2 = (n_obs2) / (n_obs2 + self.params["dobs"])
-                sigma1 = d_c_1 * c_hat1 + (1 - d_c_1) * default_roi
-                sigma2 = d_c_2 * c_hat2 + (1 - d_c_2) * default_roi
+                sigma1 = (d_c_1 * c_hat1) + ((1 - d_c_1) * default_roi)
+                sigma2 = (d_c_2 * c_hat2) + ((1 - d_c_2) * default_roi)
 
                 # Store estimates in model object
                 self.topics["regions_sigma"][i_topic, 0, ...] = sigma1
                 self.topics["regions_sigma"][i_topic, 1, ...] = sigma2
+        else:
+            # For each region, compute a mean and a regularized covariance matrix
+            for i_topic in range(self.params["n_topics"]):
+                for j_region in range(self.params["n_regions"]):
+                    # Get all peaks assigned to current topic & subregion
+                    topic_region_peaks_idx = (self.topics["peak_topic_idx"] == i_topic) & (
+                        self.topics["peak_region_idx"] == j_region
+                    )
+                    topic_region_peaks_xyz = self.data["ptoken_coords"][topic_region_peaks_idx, :]
+                    n_obs = self.topics["n_peak_tokens_region_by_topic"][j_region, i_topic]
+
+                    # Estimate mean
+                    # If there are no observations, we set mean equal to zeros, otherwise take MLE
+                    if n_obs == 0:
+                        mu = np.zeros([self.data["ptoken_coords"].shape[1]])
+                    else:
+                        mu = np.mean(topic_region_peaks_xyz, axis=0)
+
+                    # Estimate covariance
+                    # if there are 1 or fewer observations, we set sigma_hat equal to default ROI,
+                    # otherwise take MLE
+                    if n_obs <= 1:
+                        c_hat = default_roi
+                    else:
+                        c_hat = np.cov(topic_region_peaks_xyz, rowvar=False)
+
+                    # Regularize the covariance, using the ratio of observations
+                    # to dobs (default constant # observations)
+                    d_c = n_obs / (n_obs + self.params["dobs"])
+                    sigma = (d_c * c_hat) + ((1 - d_c) * default_roi)
+
+                    # Store estimates in model object
+                    self.topics["regions_mu"][i_topic, j_region, ...] = mu
+                    self.topics["regions_sigma"][i_topic, j_region, ...] = sigma
 
     @due.dcite(
         references.LOG_LIKELIHOOD,
@@ -862,9 +869,9 @@ class GCLDAModel(NiMAREBase):
         Parameters
         ----------
         z : :obj:`numpy.ndarray` of :obj:`numpy.int64`
-            A 1-by-T vector of current z counts for document d.
+            A 1-by-T vector of current word-token counts (z) for document d.
         y : :obj:`numpy.ndarray` of :obj:`numpy.float64`
-            A 1-by-T vector of current y counts (plus gamma) for document d.
+            A 1-by-T vector of current peak-token counts (y) (plus gamma) for document d.
 
         Returns
         -------
@@ -874,8 +881,8 @@ class GCLDAModel(NiMAREBase):
         """
         # Compute the proportional probabilities in log-space
         logp = z * np.log((y + 1) / y)
-        p = np.exp(logp - np.max(logp))  # Add a constant before exponentiating
-        # to avoid any underflow issues
+        # Add a constant before exponentiating to avoid any underflow issues
+        p = np.exp(logp - np.max(logp))
         return p
 
     def get_probs(self):
