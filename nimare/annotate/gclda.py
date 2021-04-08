@@ -178,7 +178,14 @@ class GCLDAModel(NiMAREBase):
         count_df = count_df.drop("id", 1)
 
         # Remove words not found anywhere in the corpus
+        n_terms = len(count_df.columns) - 1  # number of columns minus one for docidx
         count_df = count_df.loc[:, (count_df != 0).any(axis=0)]
+        n_terms_in_corpus = len(count_df.columns) - 1
+        if n_terms_in_corpus != n_terms:
+            LGR.warning(
+                "Some terms in count_df do not appear in corpus. "
+                f"Retaining {n_terms}/{n_terms_in_corpus} terms."
+            )
 
         # Get updated vocabulary
         # List of word-strings (wtoken_word_idx values are indices into this list)
