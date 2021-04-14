@@ -117,7 +117,7 @@ class GCLDAModel(NiMAREBase):
         ids = sorted(list(set(count_ids).intersection(coord_ids)))
         if len(count_ids) != len(coord_ids) != len(ids):
             union_ids = sorted(list(set(count_ids + coord_ids)))
-            LGR.info(
+            LGR.warning(
                 "IDs mismatch detected: retaining {0} of {1} unique "
                 "IDs".format(len(ids), len(union_ids))
             )
@@ -183,7 +183,7 @@ class GCLDAModel(NiMAREBase):
         if n_terms_in_corpus != n_terms:
             LGR.warning(
                 "Some terms in count_df do not appear in corpus. "
-                f"Retaining {n_terms}/{n_terms_in_corpus} terms."
+                f"Retaining {n_terms_in_corpus/n_terms} terms."
             )
 
         # Get updated vocabulary
@@ -335,6 +335,7 @@ class GCLDAModel(NiMAREBase):
             # Sample a topic from p(t|d) for the z-assignment
             # Compute a cdf of the sampling distribution for z
             probs = np.cumsum(p_topic_g_doc)
+
             # How many elements of cdf are less than sample
             random_threshold = np.random.rand() * probs[-1]
             # z = # elements of cdf less than rand-sample
@@ -347,7 +348,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["total_n_word_tokens_by_topic"][0, topic] += 1
             self.topics["n_word_tokens_doc_by_topic"][doc, topic] += 1
 
-    def fit(self, n_iters=10000, loglikely_freq=10, verbose=1):
+    def fit(self, n_iters=10000, loglikely_freq=10):
         """Run multiple iterations.
 
         Parameters
@@ -357,9 +358,6 @@ class GCLDAModel(NiMAREBase):
         loglikely_freq : :obj:`int`, optional
             The frequency with which log-likelihood is updated. Default value
             is 1 (log-likelihood is updated every iteration).
-        verbose : {0, 1, 2}, optional
-            Determines how much info is printed to console. 0 = none,
-            1 = a little, 2 = a lot. Default value is 2.
         """
         if self.iter == 0:
             # Get Initial Spatial Parameter Estimates
@@ -370,16 +368,21 @@ class GCLDAModel(NiMAREBase):
             self.compute_log_likelihood()
 
         for i in range(self.iter, n_iters):
-            self._update(loglikely_freq=loglikely_freq, verbose=verbose)
+            self._update(loglikely_freq=loglikely_freq)
 
         # TODO: Handle this more elegantly
-        (p_topic_g_voxel, p_voxel_g_topic, p_topic_g_word, p_word_g_topic) = self.get_probs()
+        (
+            p_topic_g_voxel,
+            p_voxel_g_topic,
+            p_topic_g_word,
+            p_word_g_topic,
+        ) = self.get_probability_distributions()
         self.p_topic_g_voxel_ = p_topic_g_voxel
         self.p_voxel_g_topic_ = p_voxel_g_topic
         self.p_topic_g_word_ = p_topic_g_word
         self.p_word_g_topic_ = p_word_g_topic
 
-    def _update(self, loglikely_freq=1, verbose=2):
+    def _update(self, loglikely_freq=1):
         """Run a complete update cycle (sample z, sample y&r, update regions).
 
         Parameters
@@ -387,44 +390,36 @@ class GCLDAModel(NiMAREBase):
         loglikely_freq : :obj:`int`, optional
             The frequency with which log-likelihood is updated. Default value
             is 1 (log-likelihood is updated every iteration).
-        verbose : {0, 1, 2}, optional
-            Determines how much info is printed to console. 0 = none,
-            1 = a little, 2 = a lot. Default value is 2.
         """
         self.iter += 1  # Update total iteration count
 
-        if verbose == 2:
-            LGR.info("Iter {0:04d}: Sampling z".format(self.iter))
+        LGR.debug("Iter {0:04d}: Sampling z".format(self.iter))
         self.seed += 1
         self._update_word_topic_assignments(self.seed)  # Update z-assignments
 
-        if verbose == 2:
-            LGR.info("Iter {0:04d}: Sampling y|r".format(self.iter))
+        LGR.debug("Iter {0:04d}: Sampling y|r".format(self.iter))
         self.seed += 1
         self._update_peak_assignments(self.seed)  # Update y-assignments
 
-        if verbose == 2:
-            LGR.info("Iter {0:04d}: Updating spatial params".format(self.iter))
+        LGR.debug("Iter {0:04d}: Updating spatial params".format(self.iter))
         self._update_regions()  # Update gaussian estimates for all subregions
 
         # Only update log-likelihood every 'loglikely_freq' iterations
         # (Computing log-likelihood isn't necessary and slows things down a bit)
         if self.iter % loglikely_freq == 0:
-            if verbose == 2:
-                LGR.info("Iter {0:04d}: Computing log-likelihood".format(self.iter))
+            LGR.debug("Iter {0:04d}: Computing log-likelihood".format(self.iter))
 
             # Compute log-likelihood of model in current state
             self.compute_log_likelihood()
-            if verbose > 0:
-                LGR.info(
-                    "Iter {0:04d} Log-likely: x = {1:10.1f}, w = {2:10.1f}, "
-                    "tot = {3:10.1f}".format(
-                        self.iter,
-                        self.loglikelihood["x"][-1],
-                        self.loglikelihood["w"][-1],
-                        self.loglikelihood["total"][-1],
-                    )
+            LGR.info(
+                "Iter {0:04d} Log-likely: x = {1:10.1f}, w = {2:10.1f}, "
+                "tot = {3:10.1f}".format(
+                    self.iter,
+                    self.loglikelihood["x"][-1],
+                    self.loglikelihood["w"][-1],
+                    self.loglikelihood["total"][-1],
                 )
+            )
 
     def _update_word_topic_assignments(self, randseed):
         """Update wtoken_topic_idx (z) indicator variables assigning words->topics.
@@ -521,7 +516,7 @@ class GCLDAModel(NiMAREBase):
 
             # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
             # Makes it the same shape as p_region_g_topic
-            p_topic_g_doc = np.tile(p_topic_g_doc, (self.params["n_regions"], 1))
+            p_topic_g_doc = np.array([p_topic_g_doc] * self.params["n_regions"])
 
             # Compute p(subregion | document): p(r|d) ~ p(r|t) * p(t|d)
             # [R x T] array of probs
@@ -531,13 +526,16 @@ class GCLDAModel(NiMAREBase):
             # Need the current vector of all z and y assignments for current doc
             # The multinomial from which z is sampled is proportional to number
             # of y assigned to each topic, plus constant gamma
-            p_peak_g_topic = self._compute_prop_multinomial_from_zy_vectors(
-                self.topics["n_word_tokens_doc_by_topic"][doc, :],
-                self.topics["n_peak_tokens_doc_by_topic"][doc, :] + self.params["gamma"],
+            # Compute the proportional probabilities in log-space
+            logp = self.topics["n_word_tokens_doc_by_topic"][doc, :] * np.log(
+                (self.topics["n_peak_tokens_doc_by_topic"][doc, :] + self.params["gamma"] + 1)
+                / (self.topics["n_peak_tokens_doc_by_topic"][doc, :] + self.params["gamma"])
             )
+            # Add a constant before exponentiating to avoid any underflow issues
+            p_peak_g_topic = np.exp(logp - np.max(logp))
 
             # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
-            p_peak_g_topic = np.tile(p_peak_g_topic, (self.params["n_regions"], 1))
+            p_peak_g_topic = np.array([p_peak_g_topic] * self.params["n_regions"])
 
             # Get the full sampling distribution:
             # [R x T] array containing the proportional probability of all y/r combinations
@@ -860,32 +858,7 @@ class GCLDAModel(NiMAREBase):
                 peak_probs[:, i_topic, j_region] = pdf
         return peak_probs
 
-    def _compute_prop_multinomial_from_zy_vectors(self, z, y):
-        """Compute proportional multinomial probabilities of x vector given y vector for y_i.
-
-        Note that this only returns values proportional to the relative
-        probabilities of all proposals for y_i.
-
-        Parameters
-        ----------
-        z : :obj:`numpy.ndarray` of :obj:`numpy.int64`
-            A 1-by-T vector of current word-token counts (z) for document d.
-        y : :obj:`numpy.ndarray` of :obj:`numpy.float64`
-            A 1-by-T vector of current peak-token counts (y) (plus gamma) for document d.
-
-        Returns
-        -------
-        p : :obj:`numpy.ndarray` of :obj:`numpy.float64`
-            A 1-by-T vector giving the proportional probability of z, given
-            that topic t was incremented.
-        """
-        # Compute the proportional probabilities in log-space
-        logp = z * np.log((y + 1) / y)
-        # Add a constant before exponentiating to avoid any underflow issues
-        p = np.exp(logp - np.max(logp))
-        return p
-
-    def get_probs(self):
+    def get_probability_distributions(self):
         """Get conditional probability of selecting each voxel in the brain mask given each topic.
 
         Returns
