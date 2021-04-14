@@ -141,6 +141,7 @@ For more information about functional characterization analysis, see :ref:`Meta-
    io.convert_sleuth_to_dict
    io.convert_sleuth_to_json
    io.convert_sleuth_to_dataset
+   io.convert_neurovault_to_dataset
 
 
 .. _api_transforms_ref:
@@ -170,6 +171,11 @@ For more information about functional characterization analysis, see :ref:`Meta-
    transforms.p_to_z
    transforms.t_to_z
    transforms.z_to_t
+   transforms.z_to_p
+
+   :template: class.rst
+
+   transforms.ImagesToCoordinates
 
 
 .. _api_extract_ref:
@@ -215,6 +221,25 @@ For more information about functional characterization analysis, see :ref:`Meta-
    stats.null_to_p
    stats.nullhist_to_p
    stats.fdr
+
+
+.. _api_generate_ref:
+
+:mod:`nimare.generate`: Data generation functions
+-----------------------------------------------------
+
+.. automodule:: nimare.generate
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   generate.create_coordinate_dataset
+   generate.create_neurovault_dataset
 
 
 .. _api_utils_ref:
