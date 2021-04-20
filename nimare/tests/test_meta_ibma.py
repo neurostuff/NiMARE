@@ -113,40 +113,48 @@ def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwarg
 
 
 @pytest.mark.parametrize(
-    "estimator,expectation",
+    "estimator,expectation,masker_source",
     [
-        (ibma.Fishers, "error"),
-        (ibma.Stouffers, "error"),
-        (ibma.WeightedLeastSquares, "warning"),
-        (ibma.DerSimonianLaird, "warning"),
-        (ibma.Hedges, "warning"),
-        (ibma.SampleSizeBasedLikelihood, "no warning"),
-        (ibma.VarianceBasedLikelihood, "warning"),
-        (ibma.PermutedOLS, "no warning"),
+        (ibma.Fishers, "error", "estimator"),
+        (ibma.Stouffers, "error", "estimator"),
+        (ibma.WeightedLeastSquares, "warning", "estimator"),
+        (ibma.DerSimonianLaird, "warning", "estimator"),
+        (ibma.Hedges, "warning", "estimator"),
+        (ibma.SampleSizeBasedLikelihood, "no warning", "estimator"),
+        (ibma.VarianceBasedLikelihood, "warning", "estimator"),
+        (ibma.PermutedOLS, "no warning", "estimator"),
     ],
 )
-def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation):
-    """Ensure voxel-to-ROI reduction works, but only for Estimators that allow it."""
+def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation, masker_source):
+    """Ensure voxel-to-ROI reduction works, but only for Estimators that allow it.
+
+    Notes
+    -----
+    Currently masker_source is not used, but ultimately we will want to test cases where the
+    Dataset uses a NiftiLabelsMasker.
+    """
     atlas = op.join(get_test_data_path(), "test_pain_dataset", "atlas.nii.gz")
     masker = NiftiLabelsMasker(atlas)
 
+    dset = testdata_ibma
+    meta = estimator(mask=masker)
+
     if expectation == "error":
         with pytest.raises(ValueError):
-            meta = estimator(mask=masker)
+            meta.fit(dset)
     elif expectation == "warning":
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            meta = estimator(mask=masker)
+            meta.fit(dset)
             assert "will likely produce biased results" in caplog.text
         caplog.clear()
     else:
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            meta = estimator(mask=masker)
+            meta.fit(dset)
             assert "will likely produce biased results" not in caplog.text
         caplog.clear()
 
     # Only fit the estimator if it doesn't raise a ValueError
     if expectation != "error":
-        meta.fit(testdata_ibma)
         assert isinstance(meta.results, nimare.results.MetaResult)
         assert meta.results.maps["z"].shape == (5,)
         assert meta.results.get_map("z").shape == (10, 10, 10)
