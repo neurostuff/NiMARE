@@ -14,8 +14,8 @@ import pandas as pd
 from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
-from .due import due
 from . import references
+from .due import due
 
 LGR = logging.getLogger(__name__)
 

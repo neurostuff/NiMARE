@@ -71,6 +71,7 @@ TESTS_REQUIRES = [
     "coveralls",
     "flake8-black",
     "flake8-docstrings",
+    "flake8-isort",
     "pytest",
     "pytest-cov",
 ]

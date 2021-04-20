@@ -30,3 +30,7 @@ exclude = '''
 markers = [
     "performance: mark tests that measure performance (deselect with '-m \"not performance\"')",
 ]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
