@@ -5,8 +5,8 @@ import logging
 
 import numpy as np
 import pymare
-from nilearn.mass_univariate import permuted_ols
 from nilearn.input_data import NiftiMasker
+from nilearn.mass_univariate import permuted_ols
 
 from ..base import MetaEstimator
 from ..transforms import p_to_z, t_to_z
@@ -27,6 +27,9 @@ class Fishers(MetaEstimator):
     Warning
     -------
     This method does not currently calculate p-values correctly. Do not use.
+
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will result in invalid results. It cannot be used with these types of maskers.
 
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
@@ -85,6 +88,9 @@ class Stouffers(MetaEstimator):
     Warning
     -------
     This method does not currently calculate p-values correctly. Do not use.
+
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will result in invalid results. It cannot be used with these types of maskers.
 
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
@@ -162,6 +168,10 @@ class WeightedLeastSquares(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -217,6 +227,10 @@ class DerSimonianLaird(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -272,6 +286,10 @@ class Hedges(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -400,6 +418,10 @@ class VarianceBasedLikelihood(MetaEstimator):
     Likelihood-based estimators are not parallelized across voxels, so this
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
+
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
 
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
