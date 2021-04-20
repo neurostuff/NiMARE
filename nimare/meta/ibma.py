@@ -51,14 +51,17 @@ class Fishers(MetaEstimator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not isinstance(self.masker, NiftiMasker):
+
+    def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
             raise ValueError(
+                f"A {type(masker)} mask has been detected. "
                 "Only NiftiMaskers are allowed for this Estimator. "
                 "This is because aggregation, such as averaging values across ROIs, "
                 "will produce invalid results."
             )
 
-    def _fit(self, dataset):
         pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
         est = pymare.estimators.FisherCombinationTest()
         est.fit_dataset(pymare_dset)
@@ -117,18 +120,20 @@ class Stouffers(MetaEstimator):
 
     def __init__(self, use_sample_size=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not isinstance(self.masker, NiftiMasker):
-            raise ValueError(
-                "Only NiftiMaskers are allowed for this Estimator. "
-                "This is because aggregation, such as averaging values across ROIs, "
-                "will produce invalid results."
-            )
-
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator. "
+                "This is because aggregation, such as averaging values across ROIs, "
+                "will produce invalid results."
+            )
+
         est = pymare.estimators.StoufferCombinationTest()
 
         if self.use_sample_size:
@@ -192,16 +197,17 @@ class WeightedLeastSquares(MetaEstimator):
 
     def __init__(self, tau2=0, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not isinstance(self.masker, NiftiMasker):
+        self.tau2 = tau2
+
+    def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
             LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
+                f"A {type(masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
 
-        self.tau2 = tau2
-
-    def _fit(self, dataset):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit_dataset(pymare_dset)
@@ -253,14 +259,16 @@ class DerSimonianLaird(MetaEstimator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not isinstance(self.masker, NiftiMasker):
+
+    def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
             LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
+                f"A {type(masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
 
-    def _fit(self, dataset):
         est = pymare.estimators.DerSimonianLaird()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
@@ -308,14 +316,16 @@ class Hedges(MetaEstimator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not isinstance(self.masker, NiftiMasker):
+
+    def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
             LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
+                f"A {type(masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
 
-    def _fit(self, dataset):
         est = pymare.estimators.Hedges()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
@@ -445,16 +455,17 @@ class VarianceBasedLikelihood(MetaEstimator):
 
     def __init__(self, method="ml", *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not isinstance(self.masker, NiftiMasker):
+        self.method = method
+
+    def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
             LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
+                f"A {type(masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
 
-        self.method = method
-
-    def _fit(self, dataset):
         est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
 
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
