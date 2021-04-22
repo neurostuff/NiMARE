@@ -631,10 +631,12 @@ def t_to_z(t_values, dof):
 
     # Calculate p values for <=0
     p_values_t1 = stats.t.cdf(t1, df=dof)
+    p_values_t1[p_values_t1 < np.finfo(p_values_t1.dtype).eps] = np.finfo(p_values_t1.dtype).eps
     z_values_t1 = stats.norm.ppf(p_values_t1)
 
     # Calculate p values for > 0
     p_values_t2 = stats.t.cdf(-t2, df=dof)
+    p_values_t2[p_values_t2 < np.finfo(p_values_t2.dtype).eps] = np.finfo(p_values_t2.dtype).eps
     z_values_t2 = -stats.norm.ppf(p_values_t2)
     z_values_nonzero[k1] = z_values_t1
     z_values_nonzero[k2] = z_values_t2
