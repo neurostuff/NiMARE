@@ -128,9 +128,9 @@ class GCLDAModel(NiMAREBase):
         coordinates_df = coordinates_df.loc[coordinates_df["id"].isin(ids)]
 
         # --- Checking to make sure parameters are valid
-        if (symmetric is True) and (n_regions != 2):
+        if (symmetric is True) and (n_regions % 2 != 0):
             # symmetric model only valid if R = 2
-            raise ValueError("Cannot run a symmetric model unless # subregions (n_regions) == 2 !")
+            raise ValueError("Cannot run a symmetric model unless n_regions is even.")
 
         # Initialize sampling parameters
         # The global sampling iteration of the model
@@ -302,7 +302,13 @@ class GCLDAModel(NiMAREBase):
             # if symmetric model use deterministic assignment :
             #     if peak_val[0] > 0, r = 1, else r = 0
             # Namely, check whether x-coordinate is greater than zero.
-            self.topics["peak_region_idx"][:] = (self.data["ptoken_coords"][:, 0] > 0).astype(int)
+            n_pairs = int(self.params["n_regions"] / 2)
+            initial_assignments = np.random.randint(
+                n_pairs,
+                size=(len(self.data["ptoken_doc_idx"])),
+            )
+            signs = (self.data["ptoken_coords"][:, 0] > 0).astype(int)
+            self.topics["peak_region_idx"][:] = (initial_assignments * 2) + signs
         else:
             # if asymmetric model, randomly sample r ~ unif(1...n_regions)
             self.topics["peak_region_idx"][:] = np.random.randint(
@@ -586,84 +592,90 @@ class GCLDAModel(NiMAREBase):
         default_roi = self.params["roi_size"] * np.eye(self.data["ptoken_coords"].shape[1])
 
         if self.params["symmetric"]:
+            n_pairs = int(self.params["n_regions"] / 2)
+
             # With symmetric subregions, we jointly compute all estimates for subregions 1 & 2,
             # constraining the means to be symmetric w.r.t. the origin along x-dimension
             for i_topic in range(self.params["n_topics"]):
-                # Get all peaks assigned to current topic & subregion 1
-                idx1 = (self.topics["peak_topic_idx"] == i_topic) & (
-                    self.topics["peak_region_idx"] == 0
-                )
-                idx1_xyz = self.data["ptoken_coords"][idx1, :]
-                n_obs1 = self.topics["n_peak_tokens_region_by_topic"][0, i_topic]
+                for j_pair in range(n_pairs):
+                    region1, region2 = j_pair * 2, (j_pair * 2) + 1
 
-                # Get all peaks assigned to current topic & subregion 2
-                idx2 = (self.topics["peak_topic_idx"] == i_topic) & (
-                    self.topics["peak_region_idx"] == 1
-                )
-                idx2_xyz = self.data["ptoken_coords"][idx2, :]
-                n_obs2 = self.topics["n_peak_tokens_region_by_topic"][1, i_topic]
+                    # Get all peaks assigned to current topic & subregion 1
+                    idx1 = (self.topics["peak_topic_idx"] == i_topic) & (
+                        self.topics["peak_region_idx"] == region1
+                    )
+                    idx1_xyz = self.data["ptoken_coords"][idx1, :]
+                    n_obs1 = self.topics["n_peak_tokens_region_by_topic"][region1, i_topic]
 
-                # Get all peaks assigned to current topic & either subregion
-                all_topic_peaks = idx1 | idx2
-                all_xyz = self.data["ptoken_coords"][all_topic_peaks, :]
+                    # Get all peaks assigned to current topic & subregion 2
+                    idx2 = (self.topics["peak_topic_idx"] == i_topic) & (
+                        self.topics["peak_region_idx"] == region2
+                    )
+                    idx2_xyz = self.data["ptoken_coords"][idx2, :]
+                    n_obs2 = self.topics["n_peak_tokens_region_by_topic"][region2, i_topic]
 
-                # Estimate means
-                # If there are no observations, we set mean equal to zeros, otherwise take MLE
+                    # Get all peaks assigned to current topic & either subregion
+                    all_topic_peaks = idx1 | idx2
+                    all_xyz = self.data["ptoken_coords"][all_topic_peaks, :]
 
-                # Estimate independent mean (centroid of peaks) for subregion 1
-                if n_obs1 == 0:
-                    reg1_center_xyz = np.zeros([self.data["ptoken_coords"].shape[1]])
-                else:
-                    reg1_center_xyz = np.mean(idx1_xyz, axis=0)
+                    # Estimate means
+                    # If there are no observations, we set mean equal to zeros, otherwise take MLE
 
-                # Estimate independent mean (centroid of peaks) for subregion 2
-                if n_obs2 == 0:
-                    reg2_center_xyz = np.zeros([self.data["ptoken_coords"].shape[1]])
-                else:
-                    reg2_center_xyz = np.mean(idx2_xyz, axis=0)
+                    # Estimate independent mean (centroid of peaks) for subregion 1
+                    if n_obs1 == 0:
+                        reg1_center_xyz = np.zeros([self.data["ptoken_coords"].shape[1]])
+                    else:
+                        reg1_center_xyz = np.mean(idx1_xyz, axis=0)
 
-                # Estimate the weighted means of all dims, where for dim1 we
-                # compute the mean w.r.t. absolute distance from the origin
-                weighted_mean_dim1 = (
-                    (-reg1_center_xyz[0] * n_obs1) + (reg2_center_xyz[0] * n_obs2)
-                ) / (n_obs1 + n_obs2)
-                weighted_mean_otherdims = np.mean(all_xyz[:, 1:], axis=0)
+                    # Estimate independent mean (centroid of peaks) for subregion 2
+                    if n_obs2 == 0:
+                        reg2_center_xyz = np.zeros([self.data["ptoken_coords"].shape[1]])
+                    else:
+                        reg2_center_xyz = np.mean(idx2_xyz, axis=0)
 
-                # Store weighted mean estimates
-                mu1 = np.zeros([1, self.data["ptoken_coords"].shape[1]])
-                mu2 = np.zeros([1, self.data["ptoken_coords"].shape[1]])
-                mu1[0, 0] = -weighted_mean_dim1
-                mu1[0, 1:] = weighted_mean_otherdims
-                mu2[0, 0] = weighted_mean_dim1
-                mu2[0, 1:] = weighted_mean_otherdims
+                    # Estimate the weighted means of all dims, where for dim1 we
+                    # compute the mean w.r.t. absolute distance from the origin
+                    weighted_mean_dim1 = (
+                        (-reg1_center_xyz[0] * n_obs1) + (reg2_center_xyz[0] * n_obs2)
+                    ) / (n_obs1 + n_obs2)
+                    weighted_mean_otherdims = np.mean(all_xyz[:, 1:], axis=0)
 
-                # Store estimates in model object
-                self.topics["regions_mu"][i_topic, 0, ...] = mu1
-                self.topics["regions_mu"][i_topic, 1, ...] = mu2
+                    # Store weighted mean estimates
+                    mu1 = np.zeros([1, self.data["ptoken_coords"].shape[1]])
+                    mu2 = np.zeros([1, self.data["ptoken_coords"].shape[1]])
+                    mu1[0, 0] = -weighted_mean_dim1
+                    mu1[0, 1:] = weighted_mean_otherdims
+                    mu2[0, 0] = weighted_mean_dim1
+                    mu2[0, 1:] = weighted_mean_otherdims
 
-                # Estimate Covariances
-                # Covariances are estimated independently
-                # Covariance for subregion 1
-                if n_obs1 <= 1:
-                    c_hat1 = default_roi
-                else:
-                    c_hat1 = np.cov(idx1_xyz, rowvar=False)
+                    # Store estimates in model object
+                    self.topics["regions_mu"][i_topic, region1, ...] = mu1
+                    self.topics["regions_mu"][i_topic, region2, ...] = mu2
 
-                # Covariance for subregion 2
-                if n_obs2 <= 1:
-                    c_hat2 = default_roi
-                else:
-                    c_hat2 = np.cov(idx2_xyz, rowvar=False)
+                    # Estimate Covariances
+                    # Covariances are estimated independently
+                    # Covariance for subregion 1
+                    if n_obs1 <= 1:
+                        c_hat1 = default_roi
+                    else:
+                        c_hat1 = np.cov(idx1_xyz, rowvar=False)
 
-                # Regularize the covariances, using the ratio of observations to sample_constant
-                d_c_1 = (n_obs1) / (n_obs1 + self.params["dobs"])
-                d_c_2 = (n_obs2) / (n_obs2 + self.params["dobs"])
-                sigma1 = (d_c_1 * c_hat1) + ((1 - d_c_1) * default_roi)
-                sigma2 = (d_c_2 * c_hat2) + ((1 - d_c_2) * default_roi)
+                    # Covariance for subregion 2
+                    if n_obs2 <= 1:
+                        c_hat2 = default_roi
+                    else:
+                        c_hat2 = np.cov(idx2_xyz, rowvar=False)
 
-                # Store estimates in model object
-                self.topics["regions_sigma"][i_topic, 0, ...] = sigma1
-                self.topics["regions_sigma"][i_topic, 1, ...] = sigma2
+                    # Regularize the covariances, using the ratio of observations to
+                    # sample_constant
+                    d_c_1 = (n_obs1) / (n_obs1 + self.params["dobs"])
+                    d_c_2 = (n_obs2) / (n_obs2 + self.params["dobs"])
+                    sigma1 = (d_c_1 * c_hat1) + ((1 - d_c_1) * default_roi)
+                    sigma2 = (d_c_2 * c_hat2) + ((1 - d_c_2) * default_roi)
+
+                    # Store estimates in model object
+                    self.topics["regions_sigma"][i_topic, region1, ...] = sigma1
+                    self.topics["regions_sigma"][i_topic, region2, ...] = sigma2
         else:
             # For each region, compute a mean and a regularized covariance matrix
             for i_topic in range(self.params["n_topics"]):
