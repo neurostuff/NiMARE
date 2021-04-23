@@ -127,7 +127,7 @@ def test_convert_neurosynth_to_json_smoke():
                 "contrasts": {"action": "action"},
                 "map_type_conversion": {"univariate-beta map": "beta"},
             }
-        )
+        ),
     ],
 )
 def test_convert_neurovault_to_dataset(kwargs):
