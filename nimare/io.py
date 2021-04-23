@@ -337,6 +337,13 @@ def convert_neurovault_to_dataset(
 
         nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
         images = requests.get(nv_url).json()
+        if "Not found" in images.get("detail", ""):
+            raise ValueError(
+                f"Collection {nv_coll} not found. "
+                "Three likely causes are (1) the collection doesn't exist, "
+                "(2) the collection is private, or "
+                "(3) the provided ID corresponds to an image instead of a collection."
+            )
 
         dataset_dict[f"study-{coll_name}"] = {"contrasts": {}}
         for contrast_name, contrast_regex in contrasts.items():
