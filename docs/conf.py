@@ -50,6 +50,7 @@ extensions = [
     "sphinx.ext.intersphinx",  # links code to other packages
     "sphinx.ext.linkcode",  # links to code from api
     "sphinx.ext.napoleon",  # alternative to numpydoc
+    "sphinx_copybutton",  # for copying code snippets
     "sphinx_gallery.gen_gallery",  # example gallery
     "sphinxarg.ext",  # argparse
     "recommonmark",  # markdown parser

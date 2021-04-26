@@ -85,6 +85,7 @@ EXTRA_REQUIRES = {
         "recommonmark",
         "sphinx>=3.1.1",
         "sphinx-argparse",
+        "sphinx-copybutton",
         "sphinx_gallery",
         "sphinx_rtd_theme",
     ],
