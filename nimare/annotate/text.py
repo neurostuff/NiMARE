@@ -13,6 +13,11 @@ LGR = logging.getLogger(__name__)
 def generate_counts(text_df, text_column="abstract", tfidf=True, min_df=50, max_df=0.5):
     """Generate tf-idf weights for unigrams/bigrams derived from textual data.
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.2
+        [ENH] New parameter *text_column="abstract"*
+
     Parameters
     ----------
     text_df : (D x 2) :obj:`pandas.DataFrame`

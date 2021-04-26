@@ -20,6 +20,14 @@ LGR = logging.getLogger(__name__)
 class GCLDAModel(NiMAREBase):
     """Generate a generalized correspondence latent Dirichlet allocation (GCLDA) topic model.
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.2
+        [FIX] Remove duplicates in `coord_ids`
+
+    .. versionchanged:: 0.0.3
+        [ENH] Submodule was reorginized (`nimare.annotate.topic.gclda` in previous version)
+
     Parameters
     ----------
     count_df : :obj:`pandas.DataFrame`
@@ -351,6 +359,9 @@ class GCLDAModel(NiMAREBase):
     def fit(self, n_iters=10000, loglikely_freq=10):
         """Run multiple iterations.
 
+        .. versionchanged:: 0.0.8
+            [ENH] Remove ``verbose`` parameter.
+
         Parameters
         ----------
         n_iters : :obj:`int`, optional
@@ -384,6 +395,9 @@ class GCLDAModel(NiMAREBase):
 
     def _update(self, loglikely_freq=1):
         """Run a complete update cycle (sample z, sample y&r, update regions).
+
+        .. versionchanged:: 0.0.8
+            [ENH] Remove ``verbose`` parameter.
 
         Parameters
         ----------

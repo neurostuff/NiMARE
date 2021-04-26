@@ -26,6 +26,15 @@ class LDAModel(NiMAREBase):
     """
     Perform topic modeling using Latent Dirichlet Allocation (LDA).
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.3
+        [ENH] Submodule was reorginized (`nimare.annotate.topic.lda` in previous
+        version)
+
+    .. versionchanged:: 0.0.4
+        [FIX] Remove rows with empty *text_column* before running LDAModel
+
     Build an LDA [1]_ topic model with the Java toolbox MALLET [2]_, as
     performed in [3]_.
 
