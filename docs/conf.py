@@ -186,7 +186,7 @@ sphinx_gallery_conf = {
     # Modules for which function level galleries are created.  In
     # this case sphinx_gallery and numpy in a tuple of strings.
     "doc_module": ("nimare"),
-    "ignore_patterns": ["utils/"],
+    "ignore_pattern": r"utils/.",
     "reference_url": {
         # The module you locally document uses None
         "nimare": None
