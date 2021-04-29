@@ -18,6 +18,8 @@ from .utils import weight_priors
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     r"""Perform image-to-text decoding for discrete inputs using method from Rubin et al. (2017).
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     model : :obj:`nimare.annotate.topic.GCLDAModel`
@@ -112,6 +114,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 @due.dcite(references.BRAINMAP_DECODING, description="Citation for BrainMap-style decoding.")
 class BrainMapDecoder(Decoder):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -215,6 +219,11 @@ def brainmap_decode(
     correction="fdr_bh",
 ):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.3
+        [ENH] The function is run inside the class :class:`BrainMapDecoder`.
 
     Parameters
     ----------
@@ -381,6 +390,8 @@ def brainmap_decode(
 class NeurosynthDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
+    .. versionadded:: 0.0.3
+
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.
     Metadata (i.e., feature labels) for studies within the selected sample
@@ -498,6 +509,12 @@ def neurosynth_decode(
     correction="fdr_bh",
 ):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.3
+        [ENH] New parameter *feature_group=None*.
+        [ENH] The function is run inside the class :class:`NeurosynthDecoder`.
 
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.

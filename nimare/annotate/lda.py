@@ -30,7 +30,7 @@ class LDAModel(NiMAREBase):
 
     .. versionchanged:: 0.0.3
         [ENH] Submodule was reorginized (`nimare.annotate.topic.lda` in previous
-        version)
+        versions)
 
     .. versionchanged:: 0.0.4
         [FIX] Remove rows with empty *text_column* before running LDAModel

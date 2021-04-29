@@ -22,7 +22,7 @@ class CogAtLemmatizer(object):
 
     .. versionchanged:: 0.0.3
         [ENH] Submodule was reorginized (`nimare.annotate.ontology.cogat` in previous
-        version)
+        versions)
 
     Parameters
     ----------
@@ -104,7 +104,7 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
 
     .. versionchanged:: 0.0.3
         [ENH] Submodule was reorginized (`nimare.annotate.ontology.cogat` in previous
-        version)
+        versions)
 
     .. versionchanged:: 0.0.4
         [FIX] Operate on copy of df
@@ -174,7 +174,7 @@ def expand_counts(counts_df, rel_df=None, weights=None):
 
     .. versionchanged:: 0.0.3
         [ENH] Submodule was reorginized (`nimare.annotate.ontology.cogat` in previous
-        version)
+        versions)
 
     Parameters
     ----------

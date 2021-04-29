@@ -1,10 +1,8 @@
 """Utility functions for ontology tools."""
 import numpy as np
 import pandas as pd
-from deprecated.sphinx import versionadded
 
 
-@versionadded(version="0.0.3", reason="version < 0.0.3: nimare.annotate.ontology.utils")
 def _generate_weights(rel_df, weights):
     """Create an IDxID DataFrame linking weight value to each relationship type.
 

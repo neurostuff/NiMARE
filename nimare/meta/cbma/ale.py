@@ -33,6 +33,23 @@ LGR = logging.getLogger(__name__)
 class ALE(CBMAEstimator):
     r"""Activation likelihood estimation.
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.2
+        [REF] Rename correction method :func:`_fwe_correct_permutation` to
+        :func:`correct_fwe_permutation`.
+        [ENH] Return (:math:`-\log_{10} p\_fwe\_values`) instead.
+
+    .. versionchanged:: 0.0.3
+        [REF] Rename *kernel_estimator* attribute to *kernel_transformer*.
+        [REF] Rename correction method :func:`correct_fwe_permutation` to
+        :func:`correct_fwe_montecarlo`. [FIX] Preallocate ALE cFWE p-value
+        array with ones instead of zeros
+
+    .. versionchanged:: 0.0.4
+        [REF] Remove :func:`_fit()` from :class:`ALE`.
+        [ENH] Increase resolution of ALE analytic null histogram.
+
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -206,6 +223,19 @@ class ALESubtraction(PairwiseCBMAEstimator):
     r"""
     ALE subtraction analysis.
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.2
+        [FIX] Retain ALESubtraction results in :func:`_fit`.
+        [FIX] Output p-values.
+
+    .. versionchanged:: 0.0.3
+        [REF] Rename *kernel_estimator* attribute to *kernel_transformer*.
+        [FIX] Add *threshold* to :func:`_fit`.
+
+    .. versionchanged:: 0.0.8
+        [FIX] Assume non-symmetric null distribution.
+
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -346,6 +376,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""
     Specific coactivation likelihood estimation.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.3
+        [REF] Rename *kernel_estimator* attribute to *kernel_transformer*.
 
     Parameters
     ----------

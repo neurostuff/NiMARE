@@ -23,10 +23,13 @@ class GCLDAModel(NiMAREBase):
     .. versionadded:: 0.0.1
 
     .. versionchanged:: 0.0.2
-        [FIX] Remove duplicates in `coord_ids`
+        [FIX] Remove duplicates in `coord_ids`.
 
     .. versionchanged:: 0.0.3
-        [ENH] Submodule was reorginized (`nimare.annotate.topic.gclda` in previous version)
+        [ENH] Submodule was reorginized (`nimare.annotate.topic.gclda` in previous versions).
+
+    .. versionchanged:: 0.0.8
+        [ENH] Support symmetric GCLDA topics with more than two subregions.
 
     Parameters
     ----------
