@@ -5,6 +5,7 @@ import logging
 
 import numpy as np
 import pymare
+from nilearn.input_data import NiftiMasker
 from nilearn.mass_univariate import permuted_ols
 
 from ..base import MetaEstimator
@@ -26,6 +27,9 @@ class Fishers(MetaEstimator):
     Warning
     -------
     This method does not currently calculate p-values correctly. Do not use.
+
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will result in invalid results. It cannot be used with these types of maskers.
 
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
@@ -49,6 +53,15 @@ class Fishers(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator. "
+                "This is because aggregation, such as averaging values across ROIs, "
+                "will produce invalid results."
+            )
+
         pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
         est = pymare.estimators.FisherCombinationTest()
         est.fit_dataset(pymare_dset)
@@ -78,6 +91,9 @@ class Stouffers(MetaEstimator):
     Warning
     -------
     This method does not currently calculate p-values correctly. Do not use.
+
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will result in invalid results. It cannot be used with these types of maskers.
 
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
@@ -109,6 +125,15 @@ class Stouffers(MetaEstimator):
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator. "
+                "This is because aggregation, such as averaging values across ROIs, "
+                "will produce invalid results."
+            )
+
         est = pymare.estimators.StoufferCombinationTest()
 
         if self.use_sample_size:
@@ -148,6 +173,10 @@ class WeightedLeastSquares(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -171,6 +200,14 @@ class WeightedLeastSquares(MetaEstimator):
         self.tau2 = tau2
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit_dataset(pymare_dset)
@@ -196,6 +233,10 @@ class DerSimonianLaird(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -220,6 +261,14 @@ class DerSimonianLaird(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         est = pymare.estimators.DerSimonianLaird()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
@@ -245,6 +294,10 @@ class Hedges(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -265,6 +318,14 @@ class Hedges(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         est = pymare.estimators.Hedges()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
@@ -368,6 +429,10 @@ class VarianceBasedLikelihood(MetaEstimator):
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
 
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -393,6 +458,14 @@ class VarianceBasedLikelihood(MetaEstimator):
         self.method = method
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
 
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])

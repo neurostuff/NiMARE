@@ -66,6 +66,8 @@ model = annotate.gclda.GCLDAModel(
     dset.coordinates,
     mask=dset.masker.mask_img,
     n_topics=10,
+    n_regions=4,
+    symmetric=True,
 )
 model.fit(n_iters=100, loglikely_freq=20)
 model.save("gclda_model.pkl.gz")
