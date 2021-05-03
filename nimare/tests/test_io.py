@@ -121,11 +121,24 @@ def test_convert_neurosynth_to_json_smoke():
                 "map_type_conversion": {"univariate-beta map": "beta"},
             }
         ),
+        (
+            {
+                "collection_ids": (778,),  # collection not found
+                "contrasts": {"action": "action"},
+                "map_type_conversion": {"univariate-beta map": "beta"},
+            }
+        ),
     ],
 )
 def test_convert_neurovault_to_dataset(kwargs):
     """Test conversion of neurovault collection to a dataset."""
-    dset = io.convert_neurovault_to_dataset(**kwargs)
+    if 778 in kwargs["collection_ids"]:
+        with pytest.raises(ValueError) as excinfo:
+            dset = io.convert_neurovault_to_dataset(**kwargs)
+        assert "Collection 778 not found." in str(excinfo.value)
+        return
+    else:
+        dset = io.convert_neurovault_to_dataset(**kwargs)
 
     # check if names are propagated into Dataset
     if isinstance(kwargs.get("collection_ids"), dict):
