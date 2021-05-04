@@ -34,9 +34,6 @@ def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.2
-        [ENH] Rename function :func:`gclda_encode` (:func:`encode_gclda` in previous versions)
-
     Parameters
     ----------
     model : :obj:`nimare.annotate.topic.GCLDAModel`

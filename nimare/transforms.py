@@ -21,6 +21,8 @@ LGR = logging.getLogger(__name__)
 def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     """Generate images of a given type from other image types and write out to files.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     images_df : :class:`pandas.DataFrame`
@@ -93,6 +95,13 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
 
 def resolve_transforms(target, available_data, masker):
     """Determine and apply the appropriate transforms to a target image type from available data.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove unnecessary dimensions from output image object *img_like*. \
+                Now, the image object only has 3 dimensions.
 
     Parameters
     ----------
@@ -204,6 +213,8 @@ def resolve_transforms(target, available_data, masker):
 
 class ImagesToCoordinates(Transformer):
     """Transformer from images to coordinates.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
@@ -391,6 +402,8 @@ class ImagesToCoordinates(Transformer):
 def sample_sizes_to_dof(sample_sizes):
     """Calculate degrees of freedom from a list of sample sizes using a simple heuristic.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     sample_sizes : array_like
@@ -409,6 +422,8 @@ def sample_sizes_to_dof(sample_sizes):
 def sample_sizes_to_sample_size(sample_sizes):
     """Calculate appropriate sample size from a list of sample sizes using a simple heuristic.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     sample_sizes : array_like
@@ -425,6 +440,8 @@ def sample_sizes_to_sample_size(sample_sizes):
 
 def sd_to_varcope(sd, sample_size):
     """Convert standard deviation to sampling variance.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -446,6 +463,8 @@ def sd_to_varcope(sd, sample_size):
 def se_to_varcope(se):
     """Convert standard error values to sampling variance.
 
+    .. versionadded:: 0.0.3
+
     Parameters
     ----------
     se : array_like
@@ -466,6 +485,8 @@ def se_to_varcope(se):
 
 def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
     """Convert "sample variance of the dataset" to "sampling variance".
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -492,6 +513,8 @@ def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
 def t_and_varcope_to_beta(t, varcope):
     """Convert t-statistic to parameter estimate using sampling variance.
 
+    .. versionadded:: 0.0.3
+
     Parameters
     ----------
     t : array_like
@@ -511,6 +534,8 @@ def t_and_varcope_to_beta(t, varcope):
 def t_and_beta_to_varcope(t, beta):
     """Convert t-statistic to sampling variance using parameter estimate.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     t : array_like
@@ -529,6 +554,8 @@ def t_and_beta_to_varcope(t, beta):
 
 def z_to_p(z, tail="two"):
     """Convert z-values to p-values.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
@@ -558,6 +585,8 @@ def z_to_p(z, tail="two"):
 
 def p_to_z(p, tail="two"):
     """Convert p-values to (unsigned) z-values.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -591,6 +620,8 @@ def p_to_z(p, tail="two"):
 @due.dcite(references.T2Z_IMPLEMENTATION, description="Python implementation of T-to-Z transform.")
 def t_to_z(t_values, dof):
     """Convert t-statistics to z-statistics.
+
+    .. versionadded:: 0.0.3
 
     An implementation of [1]_ from Vanessa Sochat's TtoZ package [2]_.
 
@@ -648,6 +679,8 @@ def t_to_z(t_values, dof):
 
 def z_to_t(z_values, dof):
     """Convert z-statistics to t-statistics.
+
+    .. versionadded:: 0.0.3
 
     An inversion of the t_to_z implementation of [1]_ from Vanessa Sochat's
     TtoZ package [2]_.

@@ -8,10 +8,6 @@ def _generate_weights(rel_df, weights):
 
     .. versionadded:: 0.0.2
 
-    .. versionchanged:: 0.0.3
-        [ENH] Submodule was reorginized (`nimare.annotate.ontology.utils` in previous
-        version)
-
     Parameters
     ----------
     rel_df : (X x 3) :obj:`pandas.DataFrame`

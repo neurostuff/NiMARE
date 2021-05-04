@@ -20,10 +20,6 @@ class CogAtLemmatizer(object):
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.3
-        [ENH] Submodule was reorginized (`nimare.annotate.ontology.cogat` in previous
-        versions)
-
     Parameters
     ----------
     ontology_df : :obj:`pandas.DataFrame`, optional
@@ -99,16 +95,6 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.2
-        [ENH] New parameter *text_column="abstract"*
-
-    .. versionchanged:: 0.0.3
-        [ENH] Submodule was reorginized (`nimare.annotate.ontology.cogat` in previous
-        versions)
-
-    .. versionchanged:: 0.0.4
-        [FIX] Operate on copy of df
-
     Parameters
     ----------
     text_df : (D x 2) :obj:`pandas.DataFrame`
@@ -171,10 +157,6 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     """Perform hierarchical expansion of counts across labels.
 
     .. versionadded:: 0.0.1
-
-    .. versionchanged:: 0.0.3
-        [ENH] Submodule was reorginized (`nimare.annotate.ontology.cogat` in previous
-        versions)
 
     Parameters
     ----------

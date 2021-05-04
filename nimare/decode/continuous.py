@@ -114,15 +114,9 @@ class CorrelationDecoder(Decoder):
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.2
-        [ENH] Change the order of the first two parameters (img, dataset) -> (dataset, img).
-
-    .. versionchanged:: 0.0.3
-        [ENH] New parameter *feature_group=None*.
-        [ENH] Convert decoder :func:`corr_decode` to class :class:`CorrelationDecoder`.
-
     .. versionchanged:: 0.0.8
-        [ENH] Add *low-memory* option to :class:`meta_estimator`
+
+        * [ENH] Add *low-memory* option to :class:`meta_estimator`
 
     Parameters
     ----------
@@ -235,17 +229,6 @@ class CorrelationDistributionDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with study-wise images.
 
     .. versionadded:: 0.0.1
-
-    .. versionchanged:: 0.0.2
-        [ENH] Change the order of the first two parameters (img, dataset) -> (dataset, img)
-
-    .. versionchanged:: 0.0.3
-        [ENH] New parameter *feature_group=None*.
-        [ENH] Convert decoder :func:`corr_dist_decode` to class
-        :class:`CorrelationDistributionDecoder`.
-
-    .. versionchanged:: 0.0.4
-        [FIX] Bug in :obj:`out_df` data.
 
     Parameters
     ----------

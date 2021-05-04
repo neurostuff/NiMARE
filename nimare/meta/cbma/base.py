@@ -23,13 +23,10 @@ class CBMAEstimator(MetaEstimator):
 
     .. versionadded:: 0.0.3
 
-    .. versionchanged:: 0.0.5
-        [FIX] Convert the analytic null histogram weights to a null distribution before
-        calculating the appropriate summary statistic in :func:`_p_to_summarystat()`
-
     .. versionchanged:: 0.0.8
-        [REF] Use saved MA maps, when available.
-        [REF] Add low_memory option.
+
+        * [REF] Use saved MA maps, when available.
+        * [REF] Add *low_memory* option.
 
     Parameters
     ----------
@@ -636,8 +633,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
     .. versionadded:: 0.0.3
 
     .. versionchanged:: 0.0.8
-        [REF] Use saved MA maps, when available.
-        [REF] Add low_memory option.
+
+        * [REF] Use saved MA maps, when available.
 
     Parameters
     ----------

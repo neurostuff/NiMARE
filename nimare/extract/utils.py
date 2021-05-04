@@ -164,7 +164,6 @@ def _download_zipped_file(url, filename=None):
     .. versionadded:: 0.0.2
 
     """
-
     if filename is None:
         data_dir = op.abspath(op.getcwd())
         filename = op.join(data_dir, url.split("/")[-1])

@@ -25,16 +25,6 @@ class MKDADensity(CBMAEstimator):
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.2
-        [REF] Rename correction method :func:`_fwe_correct_permutation` to
-        :func:`correct_fwe_permutation`.
-
-    .. versionchanged:: 0.0.3
-        [REF] Rename *kernel_estimator* attribute to *kernel_transformer*.
-        [REF] Rename correction method :func:`correct_fwe_permutation` to
-        :func:`correct_fwe_montecarlo`.
-
-
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -171,16 +161,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.2
-        [REF] Rename correction method :func:`_fwe_correct_permutation` to
-        :func:`correct_fwe_permutation`.
-        [REF] Rename correction method :func:`_fdr_correct_fdr_bh` to
-        :func:`correct_fdr_bh`.
+    .. versionchanged:: 0.0.8
 
-    .. versionchanged:: 0.0.3
-        [REF] Rename *kernel_estimator* attribute to *kernel_transformer*.
-        [REF] Rename correction method :func:`correct_fwe_permutation` to
-        :func:`correct_fwe_montecarlo`.
+        * [REF] Use saved MA maps, when available.
 
     Parameters
     ----------
@@ -505,15 +488,6 @@ class KDA(CBMAEstimator):
     Kernel density analysis.
 
     .. versionadded:: 0.0.1
-
-    .. versionchanged:: 0.0.2
-        [REF] Rename correction method :func:`_fwe_correct_permutation` to
-        :func:`correct_fwe_permutation`.
-
-    .. versionchanged:: 0.0.3
-        [REF] Rename *kernel_estimator* attribute to *kernel_transformer*.
-        [REF] Rename correction method :func:`correct_fwe_permutation` to
-        :func:`correct_fwe_montecarlo`.
 
     Parameters
     ----------

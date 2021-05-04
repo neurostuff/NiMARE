@@ -24,6 +24,8 @@ def scale_workflow(
 ):
     """Perform SCALE meta-analysis from Sleuth text file or NiMARE json file.
 
+    .. versionadded:: 0.0.1
+
     Warnings
     --------
     This method is not yet implemented.

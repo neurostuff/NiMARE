@@ -222,9 +222,6 @@ def brainmap_decode(
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.3
-        [ENH] The function is run inside the class :class:`BrainMapDecoder`.
-
     Parameters
     ----------
     coordinates : :class:`pandas.DataFrame`
@@ -511,10 +508,6 @@ def neurosynth_decode(
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
     .. versionadded:: 0.0.1
-
-    .. versionchanged:: 0.0.3
-        [ENH] New parameter *feature_group=None*.
-        [ENH] The function is run inside the class :class:`NeurosynthDecoder`.
 
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.

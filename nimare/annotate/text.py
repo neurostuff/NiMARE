@@ -15,9 +15,6 @@ def generate_counts(text_df, text_column="abstract", tfidf=True, min_df=50, max_
 
     .. versionadded:: 0.0.1
 
-    .. versionchanged:: 0.0.2
-        [ENH] New parameter *text_column="abstract"*
-
     Parameters
     ----------
     text_df : (D x 2) :obj:`pandas.DataFrame`
