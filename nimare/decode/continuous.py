@@ -13,7 +13,7 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from ..utils import check_type
+from ..utils import check_type, safe_transform
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
@@ -239,12 +239,18 @@ class CorrelationDistributionDecoder(Decoder):
     """
 
     def __init__(
-        self, feature_group=None, features=None, frequency_threshold=0.001, target_image="z"
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        target_image="z",
+        memory_limit="1gb",
     ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
         self.target_image = target_image
+        self.memory_limit = memory_limit
         self.results = None
 
     def _fit(self, dataset):
@@ -274,7 +280,11 @@ class CorrelationDistributionDecoder(Decoder):
             test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
             test_imgs = list(filter(None, test_imgs))
             if len(test_imgs):
-                feature_arr = self.masker.transform(test_imgs)
+                feature_arr = safe_transform(
+                    test_imgs,
+                    self.masker,
+                    memory_limit=self.memory_limit,
+                )
                 images_[feature] = feature_arr
             else:
                 LGR.info('Skipping feature "{}". No images found.'.format(feature))

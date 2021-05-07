@@ -12,7 +12,7 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import add_metadata_to_dataframe, check_type, determine_chunk_size, use_memmap
+from ...utils import add_metadata_to_dataframe, check_type, safe_transform, use_memmap
 from ..kernel import KernelTransformer
 
 LGR = logging.getLogger(__name__)
@@ -142,26 +142,13 @@ class CBMAEstimator(MetaEstimator):
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
             if self.low_memory:
-                temp = self.masker.transform(self.inputs_[maps_key][0])
-                unmasked_shape = (len(self.inputs_[maps_key]), temp.size)
-                ma_maps = np.memmap(
-                    self.memmap_filenames[fname_idx],
-                    dtype=temp.dtype,
-                    mode="w+",
-                    shape=unmasked_shape,
-                )
-
                 # perform transform on chunks of the input maps
-                chunk_size = determine_chunk_size(limit, temp)
-                map_chunks = [
-                    self.inputs_[maps_key][i : i + chunk_size]
-                    for i in range(0, len(self.inputs_[maps_key]), chunk_size)
-                ]
-                idx = 0
-                for map_chunk in map_chunks:
-                    end_idx = idx + len(map_chunk)
-                    ma_maps[idx:end_idx, :] = self.masker.transform(map_chunk)
-                    idx = end_idx
+                ma_maps = safe_transform(
+                    self.inputs_[maps_key],
+                    masker=self.masker,
+                    memory_limit="1gb",
+                    memfile=self.memmap_filenames[fname_idx],
+                )
             else:
                 ma_maps = self.masker.transform(self.inputs_[maps_key])
         else:

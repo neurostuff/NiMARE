@@ -16,7 +16,7 @@ import pandas as pd
 from nilearn import image
 
 from ..base import Transformer
-from ..utils import use_memmap, vox2mm
+from ..utils import safe_transform, use_memmap, vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
@@ -132,7 +132,8 @@ class KernelTransformer(Transformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        return masker.transform(files)
+                        masked_data = safe_transform(files, masker)
+                        return masked_data
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":

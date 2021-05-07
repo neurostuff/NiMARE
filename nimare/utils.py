@@ -494,6 +494,59 @@ def determine_chunk_size(limit, arr, multiplier=1):
     return chunk_size
 
 
+def safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None):
+    """Apply a masker with limited memory usage.
+
+    Parameters
+    ----------
+    imgs : list of niimgs
+        List of images upon which to apply the masker.
+    masker : nilearn masker
+        Masker object to apply to images.
+    memory_limit : :obj:`str`, optional
+        String representation of memory limit, can use:
+        kb, mb, gb, and tb as suffix (e.g., "4gb").
+    dtype : :obj:`str`, optional
+        Target datatype of masked array.
+        Default is "auto", which uses the datatype of the niimgs.
+    memfile : :obj:`str` or None, optional
+        Name of a memory-mapped file. If None, memory-mapping will not be used.
+
+    Returns
+    -------
+    masked_data : :obj:`numpy.ndarray` or :obj:`numpy.memmap`
+        Masked data in a 2D array.
+        Either an ndarray (if memfile is None) or a memmap array (if memfile is a string).
+    """
+    assert isinstance(memfile, (type(None), str))
+
+    first_img_data = masker.transform(imgs[0])
+    masked_shape = (len(imgs), first_img_data.size)
+    if memfile:
+        masked_data = np.memmap(
+            memfile,
+            dtype=first_img_data.dtype if dtype == "auto" else dtype,
+            mode="w+",
+            shape=masked_shape,
+        )
+    else:
+        masked_data = np.empty(
+            masked_shape,
+            dtype=first_img_data.dtype if dtype == "auto" else dtype,
+        )
+
+    # perform transform on chunks of the input maps
+    chunk_size = determine_chunk_size(memory_limit, first_img_data)
+    map_chunks = [imgs[i : i + chunk_size] for i in range(0, len(imgs), chunk_size)]
+    idx = 0
+    for map_chunk in map_chunks:
+        end_idx = idx + len(map_chunk)
+        masked_data[idx:end_idx, :] = masker.transform(map_chunk)
+        idx = end_idx
+
+    return masked_data
+
+
 def add_metadata_to_dataframe(
     dataset,
     dataframe,
