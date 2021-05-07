@@ -325,6 +325,7 @@ def compute_kda_ma(
 
     if low_memory:
         chunk_size = determine_chunk_size(limit=low_memory, arr=ijks[0])
+
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
