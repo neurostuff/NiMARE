@@ -388,8 +388,11 @@ def test_kernel_low_high_memory(testdata_cbma, tmp_path_factory, kern, kwargs):
     kern_spec_mem = kern(low_memory="2gb", **kwargs)
     kern_high_mem = kern(low_memory=False, **kwargs)
     trans_kwargs = {"dataset": testdata_cbma, "return_type": "array"}
-    assert np.all(
-        kern_low_mem.transform(**trans_kwargs)
-        == kern_high_mem.transform(**trans_kwargs)
-        == kern_spec_mem.transform(**trans_kwargs)
+    assert np.array_equal(
+        kern_low_mem.transform(**trans_kwargs),
+        kern_high_mem.transform(**trans_kwargs),
+    )
+    assert np.array_equal(
+        kern_low_mem.transform(**trans_kwargs),
+        kern_spec_mem.transform(**trans_kwargs),
     )
