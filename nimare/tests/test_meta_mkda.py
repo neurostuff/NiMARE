@@ -13,14 +13,14 @@ def test_MKDADensity_kernel_instance_with_kwargs(testdata_cbma):
     object's parameters should remain untouched.
     """
     kern = MKDAKernel(r=2)
-    meta = MKDADensity(kern, kernel__r=6, null_method="empirical", n_iters=10)
+    meta = MKDADensity(kern, kernel__r=6, null_method="montecarlo", n_iters=10)
 
     assert meta.kernel_transformer.get_params().get("r") == 2
 
 
 def test_MKDADensity_kernel_class(testdata_cbma):
     """Smoke test for MKDADensity with a kernel transformer class."""
-    meta = MKDADensity(MKDAKernel, kernel__r=5, null_method="empirical", n_iters=10)
+    meta = MKDADensity(MKDAKernel, kernel__r=5, null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
 
@@ -28,14 +28,14 @@ def test_MKDADensity_kernel_class(testdata_cbma):
 def test_MKDADensity_kernel_instance(testdata_cbma):
     """Smoke test for MKDADensity with a kernel transformer object."""
     kern = MKDAKernel(r=5)
-    meta = MKDADensity(kern, null_method="empirical", n_iters=10)
+    meta = MKDADensity(kern, null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_MKDADensity_analytic_null(testdata_cbma_full):
+def test_MKDADensity_approximate_null(testdata_cbma_full):
     """Smoke test for MKDADensity."""
-    meta = MKDADensity(null="analytic")
+    meta = MKDADensity(null="approximate")
     res = meta.fit(testdata_cbma_full)
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=1, n_cores=1)
     cres = corr.transform(res)
@@ -45,7 +45,7 @@ def test_MKDADensity_analytic_null(testdata_cbma_full):
 
 def test_MKDADensity(testdata_cbma):
     """Smoke test for MKDADensity."""
-    meta = MKDADensity(null_method="empirical", n_iters=10)
+    meta = MKDADensity(null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
@@ -55,7 +55,7 @@ def test_MKDADensity(testdata_cbma):
 
 def test_MKDADensity_low_memory(testdata_cbma):
     """Smoke test for MKDADensity with low_memory option."""
-    meta = MKDADensity(null_method="empirical", n_iters=10, low_memory=True)
+    meta = MKDADensity(null_method="montecarlo", n_iters=10, low_memory=True)
     res = meta.fit(testdata_cbma)
     assert meta.low_memory
     assert not meta.kernel_transformer.low_memory
@@ -118,9 +118,9 @@ def test_MKDAChi2_low_memory_reuse(testdata_cbma, tmp_path_factory):
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_KDA_analytic_null(testdata_cbma):
-    """Smoke test for KDA with analytical null and FWE correction."""
-    meta = KDA(null_method="analytic")
+def test_KDA_approximate_null(testdata_cbma):
+    """Smoke test for KDA with approximate null and FWE correction."""
+    meta = KDA(null_method="approximate")
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
@@ -134,8 +134,8 @@ def test_KDA_analytic_null(testdata_cbma):
 
 
 def test_KDA_fwe_1core(testdata_cbma):
-    """Smoke test for KDA with empirical null and FWE correction."""
-    meta = KDA(null_method="empirical", n_iters=10)
+    """Smoke test for KDA with montecarlo null and FWE correction."""
+    meta = KDA(null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
@@ -148,37 +148,37 @@ def test_KDA_fwe_1core(testdata_cbma):
     )
 
 
-def test_MKDADensity_analytic_empirical_convergence(testdata_cbma_full):
-    """Evaluate convergence between analytic and empirical null methods in MKDA."""
-    est_a = MKDADensity(null_method="analytic")
+def test_MKDADensity_approximate_montecarlo_convergence(testdata_cbma_full):
+    """Evaluate convergence between approximate and montecarlo null methods in MKDA."""
+    est_a = MKDADensity(null_method="approximate")
     n_iters = 10
-    est_e = MKDADensity(null_method="empirical", n_iters=n_iters)
+    est_e = MKDADensity(null_method="montecarlo", n_iters=n_iters)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
-    # Get smallest p-value above 0 from the empirical estimator; above this,
+    # Get smallest p-value above 0 from the montecarlo estimator; above this,
     # the two should converge reasonably closely.
     min_p = 1 / n_iters
     p_idx = res_e.maps["p"] > min_p
-    p_analytical = res_a.maps["p"][p_idx]
-    p_empirical = res_e.maps["p"][p_idx]
+    p_approximate = res_a.maps["p"][p_idx]
+    p_montecarlo = res_e.maps["p"][p_idx]
     # Correlation must be near unity and mean difference should be tiny
-    assert np.corrcoef(p_analytical, p_empirical)[0, 1] > 0.98
-    assert (p_analytical - p_empirical).mean() < 1e-3
+    assert np.corrcoef(p_approximate, p_montecarlo)[0, 1] > 0.98
+    assert (p_approximate - p_montecarlo).mean() < 1e-3
 
 
-def test_KDA_analytic_empirical_convergence(testdata_cbma_full):
-    """Evaluate convergence between analytic and empirical null methods in KDA."""
-    est_a = KDA(null_method="analytic")
+def test_KDA_approximate_montecarlo_convergence(testdata_cbma_full):
+    """Evaluate convergence between approximate and montecarlo null methods in KDA."""
+    est_a = KDA(null_method="approximate")
     n_iters = 10
-    est_e = KDA(null_method="empirical", n_iters=n_iters)
+    est_e = KDA(null_method="montecarlo", n_iters=n_iters)
     res_a = est_a.fit(testdata_cbma_full)
     res_e = est_e.fit(testdata_cbma_full)
-    # Get smallest p-value above 0 from the empirical estimator; above this,
+    # Get smallest p-value above 0 from the montecarlo estimator; above this,
     # the two should converge reasonably closely.
     min_p = 1 / n_iters
     p_idx = res_e.maps["p"] > min_p
-    p_analytical = res_a.maps["p"][p_idx]
-    p_empirical = res_e.maps["p"][p_idx]
+    p_approximate = res_a.maps["p"][p_idx]
+    p_montecarlo = res_e.maps["p"][p_idx]
     # Correlation must be near unity and mean difference should be tiny
-    assert np.corrcoef(p_analytical, p_empirical)[0, 1] > 0.98
-    assert (p_analytical - p_empirical).mean() < 1e-3
+    assert np.corrcoef(p_approximate, p_montecarlo)[0, 1] > 0.98
+    assert (p_approximate - p_montecarlo).mean() < 1e-3
