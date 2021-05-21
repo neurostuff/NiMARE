@@ -18,7 +18,7 @@ from .utils import dict_to_coordinates, dict_to_df, get_masker
 LGR = logging.getLogger(__name__)
 
 
-def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
+def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, overwrite=False):
     """Generate images of a given type from other image types and write out to files.
 
     Parameters
@@ -37,6 +37,8 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     out_dir : :obj:`str` or :obj:`None`, optional
         Path to output directory. If None, use folder containing first image
         for each study in ``images_df``.
+    overwrite : :obj:`bool`, optional
+        Whether to overwrite existing files or not. Default is False.
 
     Returns
     -------
@@ -84,7 +86,9 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
         # Get converted data
         img = resolve_transforms(target, available_data, new_masker)
         if img is not None:
-            img.to_filename(new_file)
+            if overwrite or not op.isfile(new_file):
+                img.to_filename(new_file)
+
             images_df.loc[images_df["id"] == id_, target] = new_file
         else:
             images_df.loc[images_df["id"] == id_, target] = None
