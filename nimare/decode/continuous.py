@@ -217,7 +217,6 @@ class CorrelationDecoder(Decoder):
         return out_df
 
 
-@use_memmap(LGR, n_files=1)
 class CorrelationDistributionDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with study-wise images.
 
@@ -239,6 +238,7 @@ class CorrelationDistributionDecoder(Decoder):
     evaluate results based on significance.
     """
 
+    @use_memmap(LGR, n_files=1)
     def __init__(
         self,
         feature_group=None,
