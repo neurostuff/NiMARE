@@ -88,6 +88,8 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
         if img is not None:
             if overwrite or not op.isfile(new_file):
                 img.to_filename(new_file)
+            else:
+                LGR.debug("Image already exists. Not overwriting.")
 
             images_df.loc[images_df["id"] == id_, target] = new_file
         else:
