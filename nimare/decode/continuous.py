@@ -13,7 +13,7 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from ..utils import check_type, safe_transform
+from ..utils import check_type, safe_transform, use_memmap
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
@@ -217,6 +217,7 @@ class CorrelationDecoder(Decoder):
         return out_df
 
 
+@use_memmap(LGR, n_files=1)
 class CorrelationDistributionDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with study-wise images.
 
@@ -284,6 +285,7 @@ class CorrelationDistributionDecoder(Decoder):
                     test_imgs,
                     self.masker,
                     memory_limit=self.memory_limit,
+                    memfile=self.memmap_filenames[0],
                 )
                 images_[feature] = feature_arr
             else:
