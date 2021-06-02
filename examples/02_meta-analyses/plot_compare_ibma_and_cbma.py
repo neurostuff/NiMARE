@@ -40,7 +40,7 @@ z_transformer = ImageTransformer(target="z")
 dset = z_transformer.transform(dset)
 
 varcope_transformer = ImageTransformer(target="varcope")
-dset = varcope_transformer(dset)
+dset = varcope_transformer.transform(dset)
 
 # create coordinates from statistical maps
 coord_gen = ImagesToCoordinates(merge_strategy="replace")

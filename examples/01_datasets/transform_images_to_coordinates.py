@@ -40,7 +40,7 @@ dset.update_path(dset_dir)
 
 # ImagesToCoordinates uses z or p statistical maps
 z_transformer = ImageTransformer(target="z")
-dset = z_transformer(dset)
+dset = z_transformer.transform(dset)
 
 study_no_images = "pain_02.nidm-1"
 # delete images for study
@@ -128,7 +128,8 @@ assert study_no_images not in dset.coordinates["id"]
 # while studies with only coordinates (no images) are in 'replace',
 # they are removed from 'demolish'.
 print(
-    f"studies in 'replace', but not 'demolish': {set(dset_replace.coordinates['id']) - set(dset_demolish.coordinates['id'])}"
+    "studies in 'replace', but not 'demolish': "
+    f"{set(dset_replace.coordinates['id']) - set(dset_demolish.coordinates['id'])}"
 )
 
 ###############################################################################
