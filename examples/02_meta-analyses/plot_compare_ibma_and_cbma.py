@@ -18,7 +18,7 @@ import pandas as pd
 from nilearn.plotting import plot_stat_map
 
 import nimare
-from nimare.transforms import ImagesToCoordinates, transform_images
+from nimare.transforms import ImagesToCoordinates, ImageTransformer
 from nimare.meta.ibma import DerSimonianLaird
 from nimare.meta.cbma import ALE
 from nimare.tests.utils import get_test_data_path
@@ -36,12 +36,11 @@ dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 
 # Calculate missing statistical images from the available stats.
-dset.images = transform_images(
-    dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
-)
-dset.images = nimare.transforms.transform_images(
-    dset.images, target="varcope", masker=dset.masker, metadata_df=dset.metadata
-)
+z_transformer = ImageTransformer(target="z")
+dset = z_transformer.transform(dset)
+
+varcope_transformer = ImageTransformer(target="varcope")
+dset = varcope_transformer.transform(dset)
 
 # create coordinates from statistical maps
 coord_gen = ImagesToCoordinates(merge_strategy="replace")

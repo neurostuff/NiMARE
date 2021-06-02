@@ -37,12 +37,10 @@ dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 # Calculate missing images
-dset.images = nimare.transforms.transform_images(
-    dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
-)
-dset.images = nimare.transforms.transform_images(
-    dset.images, target="varcope", masker=dset.masker, metadata_df=dset.metadata
-)
+z_transformer = nimare.transforms.ImageTransformer(target="z")
+varcope_transformer = nimare.transforms.ImageTransformer(target="varcope")
+dset = z_transformer.transform(dset)
+dset = varcope_transformer.transform(dset)
 
 ###############################################################################
 # Stouffer's

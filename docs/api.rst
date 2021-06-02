@@ -157,6 +157,11 @@ For more information about functional characterization analysis, see :ref:`Meta-
 
 .. autosummary::
    :toctree: generated/
+   :template: class.rst
+
+   transforms.ImageTransformer
+   transforms.ImagesToCoordinates
+
    :template: function.rst
 
    transforms.transform_images
@@ -172,10 +177,6 @@ For more information about functional characterization analysis, see :ref:`Meta-
    transforms.t_to_z
    transforms.z_to_t
    transforms.z_to_p
-
-   :template: class.rst
-
-   transforms.ImagesToCoordinates
 
 
 .. _api_extract_ref:

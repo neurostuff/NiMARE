@@ -18,6 +18,58 @@ from .utils import dict_to_coordinates, dict_to_df, get_masker
 LGR = logging.getLogger(__name__)
 
 
+class ImageTransformer(Transformer):
+    """A class to create new images from existing ones within a Dataset.
+
+    This class is a light wrapper around :func:`nimare.transforms.transform_images`.
+
+    Parameters
+    ----------
+    target : {'z', 'p', 'beta', 'varcope'}
+        Target image type.
+    overwrite : :obj:`bool`, optional
+        Whether to overwrite existing files or not. Default is False.
+
+    See Also
+    --------
+    nimare.transforms.transform_images : The function called by this class.
+    """
+
+    def __init__(self, target, overwrite=False):
+        self.target = target
+        self.overwrite = overwrite
+
+    def transform(self, dataset):
+        """Generate images of the target type from other image types in a Dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            A Dataset containing images and relevant metadata.
+
+        Returns
+        -------
+        new_dataset : :obj:`nimare.dataset.Dataset`
+            A copy of the input Dataset, with new images added to its images attribute.
+        """
+        # Using attribute check instead of type check to allow fake Datasets for testing.
+        if not hasattr(dataset, "slice"):
+            raise ValueError(
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
+            )
+
+        new_dataset = dataset.copy()
+        new_dataset.images = transform_images(
+            dataset.images,
+            target=self.target,
+            masker=dataset.masker,
+            metadata_df=dataset.metadata,
+            out_dir=dataset.basepath,
+            overwrite=self.overwrite,
+        )
+        return new_dataset
+
+
 def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, overwrite=False):
     """Generate images of a given type from other image types and write out to files.
 
