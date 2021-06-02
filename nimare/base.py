@@ -350,6 +350,7 @@ class Transformer(NiMAREBase):
     @abstractmethod
     def transform(self, dataset):
         """Add stuff to transformer."""
+        # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 'Argument "dataset" must be a valid Dataset '

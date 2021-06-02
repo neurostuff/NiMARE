@@ -9,6 +9,26 @@ import pytest
 from nimare import transforms
 
 
+def test_ImageTransformer(testdata_ibma):
+    """Smoke test on transforms.ImageTransformer."""
+    dset = testdata_ibma
+    z_files = dset.images["z"].tolist()
+    z_transformer = transforms.ImageTransformer(target="z")
+    new_dset = z_transformer.transform(dset)
+    new_z_files = new_dset.images["z"].tolist()
+    assert z_files[:-1] == new_z_files[:-1]
+    # new z statistic map should have 3 dimensions
+    assert len(nib.load(new_z_files[-1]).shape) == 3
+    assert all([nzf is not None for nzf in new_z_files])
+
+    varcope_files = dset.images["varcope"].tolist()
+    varcope_transformer = transforms.ImageTransformer(target="varcope")
+    new_dset = varcope_transformer.transform(dset)
+    new_varcope_files = new_dset.images["varcope"].tolist()
+    assert not all([isinstance(vf, str) for vf in varcope_files])
+    assert all([isinstance(vf, str) for vf in new_varcope_files])
+
+
 def test_transform_images(testdata_ibma):
     """Smoke test on transforms.transform_images."""
     dset = testdata_ibma
