@@ -22,7 +22,7 @@ from nilearn.plotting import plot_stat_map
 import matplotlib.pyplot as plt
 
 import nimare
-from nimare.transforms import ImagesToCoordinates, transform_images
+from nimare.transforms import ImagesToCoordinates, ImageTransformer
 from nimare.meta.cbma import ALE
 from nimare.tests.utils import get_test_data_path
 
@@ -39,9 +39,8 @@ dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 
 # ImagesToCoordinates uses z or p statistical maps
-dset.images = transform_images(
-    dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
-)
+z_transformer = ImageTransformer(target="z")
+dset = z_transformer(dset)
 
 study_no_images = "pain_02.nidm-1"
 # delete images for study
