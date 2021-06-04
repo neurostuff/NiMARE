@@ -240,11 +240,10 @@ class Dataset(NiMAREBase):
         """
         new_dset = copy.deepcopy(self)
         new_dset._ids = ids
-        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations["id"].isin(ids)]
-        new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates["id"].isin(ids)]
-        new_dset.images = new_dset.images.loc[new_dset.images["id"].isin(ids)]
-        new_dset.metadata = new_dset.metadata.loc[new_dset.metadata["id"].isin(ids)]
-        new_dset.texts = new_dset.texts.loc[new_dset.texts["id"].isin(ids)]
+        for attribute in ("annotations", "coordinates", "images", "metadata", "texts"):
+            df = getattr(new_dset, attribute)
+            df = df.loc[df["id"].isin(ids)]
+            setattr(new_dset, attribute, df)
 
         return new_dset
 
