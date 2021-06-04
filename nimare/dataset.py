@@ -16,6 +16,7 @@ from .utils import (
     get_template,
     listify,
     mm2vox,
+    transform_coordinates_to_ijk,
     try_prepend,
     validate_df,
     validate_images_df,
@@ -277,6 +278,12 @@ class Dataset(NiMAREBase):
             new_df.reset_index(drop=True, inplace=True)
             new_df = new_df.where(~new_df.isna(), None)
             setattr(new_dset, attribute, new_df)
+
+        new_dset.coordinates = transform_coordinates_to_ijk(
+            new_dset.coordinates,
+            self.masker,
+            self.space,
+        )
 
         return new_dset
 
