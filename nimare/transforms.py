@@ -13,7 +13,7 @@ from scipy import stats
 from . import references
 from .base import Transformer
 from .due import due
-from .utils import dict_to_coordinates, dict_to_df, get_masker
+from .utils import dict_to_coordinates, dict_to_df, get_masker, listify
 
 LGR = logging.getLogger(__name__)
 
@@ -25,8 +25,8 @@ class ImageTransformer(Transformer):
 
     Parameters
     ----------
-    target : {'z', 'p', 'beta', 'varcope'}
-        Target image type.
+    target : {'z', 'p', 'beta', 'varcope'} or list
+        Target image type. Multiple target types may be specified as a list.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
 
@@ -36,7 +36,7 @@ class ImageTransformer(Transformer):
     """
 
     def __init__(self, target, overwrite=False):
-        self.target = target
+        self.target = listify(target)
         self.overwrite = overwrite
 
     def transform(self, dataset):
@@ -59,14 +59,18 @@ class ImageTransformer(Transformer):
             )
 
         new_dataset = dataset.copy()
-        new_dataset.images = transform_images(
-            dataset.images,
-            target=self.target,
-            masker=dataset.masker,
-            metadata_df=dataset.metadata,
-            out_dir=dataset.basepath,
-            overwrite=self.overwrite,
-        )
+        temp_images = dataset.images
+
+        for target_type in self.target:
+            temp_images = transform_images(
+                temp_images,
+                target=self.target,
+                masker=dataset.masker,
+                metadata_df=dataset.metadata,
+                out_dir=dataset.basepath,
+                overwrite=self.overwrite,
+            )
+        new_dataset.images = temp_images
         return new_dataset
 
 

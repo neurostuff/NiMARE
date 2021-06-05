@@ -22,11 +22,13 @@ def test_ImageTransformer(testdata_ibma):
     assert all([nzf is not None for nzf in new_z_files])
 
     varcope_files = dset.images["varcope"].tolist()
-    varcope_transformer = transforms.ImageTransformer(target="varcope")
-    new_dset = varcope_transformer.transform(dset)
+    varcope_p_transformer = transforms.ImageTransformer(target=["varcope", "p"])
+    new_dset = varcope_p_transformer.transform(dset)
     new_varcope_files = new_dset.images["varcope"].tolist()
     assert not all([isinstance(vf, str) for vf in varcope_files])
     assert all([isinstance(vf, str) for vf in new_varcope_files])
+    new_p_files = new_dset.images["p"].tolist()
+    assert all([isinstance(pf, str) for pf in new_p_files])
 
 
 def test_transform_images(testdata_ibma):
