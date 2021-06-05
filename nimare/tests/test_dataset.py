@@ -29,6 +29,12 @@ def test_dataset_smoke():
     mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
     assert isinstance(dset.get_studies_by_mask(mask_img), list)
 
+    dset1 = dset.slice(dset.ids[:5])
+    dset2 = dset.slice(dset.ids[5:])
+    assert isinstance(dset1, dataset.Dataset)
+    dset_merged = dset1.merge(dset2)
+    assert isinstance(dset_merged, dataset.Dataset)
+
 
 def test_empty_dset():
     """Smoke test for initialization with an empty Dataset."""

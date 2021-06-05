@@ -16,6 +16,7 @@ from .utils import (
     get_template,
     listify,
     mm2vox,
+    transform_coordinates_to_ijk,
     try_prepend,
     validate_df,
     validate_images_df,
@@ -240,11 +241,50 @@ class Dataset(NiMAREBase):
         """
         new_dset = copy.deepcopy(self)
         new_dset._ids = ids
-        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations["id"].isin(ids)]
-        new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates["id"].isin(ids)]
-        new_dset.images = new_dset.images.loc[new_dset.images["id"].isin(ids)]
-        new_dset.metadata = new_dset.metadata.loc[new_dset.metadata["id"].isin(ids)]
-        new_dset.texts = new_dset.texts.loc[new_dset.texts["id"].isin(ids)]
+        for attribute in ("annotations", "coordinates", "images", "metadata", "texts"):
+            df = getattr(new_dset, attribute)
+            df = df.loc[df["id"].isin(ids)]
+            setattr(new_dset, attribute, df)
+
+        return new_dset
+
+    def merge(self, right):
+        """Merge two Datasets.
+
+        Parameters
+        ----------
+        right : :obj:`nimare.dataset.Dataset`
+            Dataset to merge with.
+
+        Returns
+        -------
+        :obj:`nimare.dataset.Dataset`
+            A Dataset of the two merged Datasets.
+        """
+        assert isinstance(right, Dataset)
+        shared_ids = np.intersect1d(self.ids, right.ids)
+        if shared_ids.size:
+            raise Exception("Duplicate IDs detected in both datasets.")
+
+        all_ids = np.concatenate((self.ids, right.ids))
+        new_dset = copy.deepcopy(self)
+        new_dset._ids = all_ids
+
+        for attribute in ("annotations", "coordinates", "images", "metadata", "texts"):
+            df1 = getattr(self, attribute)
+            df2 = getattr(right, attribute)
+            new_df = df1.append(df2, ignore_index=True, sort=False)
+            new_df.sort_values(by="id", inplace=True)
+            new_df.reset_index(drop=True, inplace=True)
+            new_df = new_df.where(~new_df.isna(), None)
+            setattr(new_dset, attribute, new_df)
+
+        new_dset.coordinates = transform_coordinates_to_ijk(
+            new_dset.coordinates,
+            self.masker,
+            self.space,
+        )
+
         return new_dset
 
     def update_path(self, new_path):
