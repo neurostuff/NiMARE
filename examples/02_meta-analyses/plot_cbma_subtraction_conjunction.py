@@ -47,7 +47,7 @@ ale = ALE(null_method="approximate")
 res = ale.fit(dset)
 res2 = ale.fit(dset2)
 
-corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=1000)
+corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=1)
 cres = corr.transform(res)
 cres2 = corr.transform(res2)
 
@@ -76,7 +76,7 @@ plot_stat_map(
 ###############################################################################
 # Subtraction analysis
 # --------------------------------------------------
-sub = ALESubtraction(n_iters=1000, low_memory=False)
+sub = ALESubtraction(n_iters=100, low_memory=False)
 res_sub = sub.fit(dset, dset2)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
@@ -85,7 +85,6 @@ plot_stat_map(
     cut_coords=4,
     display_mode="z",
     title="Subtraction",
-    threshold=2.576,  # voxel-level p < .01, two-tailed
     cmap="RdBu_r",
     vmax=4,
 )
