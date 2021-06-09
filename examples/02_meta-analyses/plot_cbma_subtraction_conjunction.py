@@ -96,7 +96,10 @@ plot_stat_map(
 # To determine the overlap of the meta-analytic results, a conjunction image
 # can be computed by (a) identifying voxels that were statistically significant
 # in *both* individual group maps and (b) selecting, for each of these voxels,
-# the smaller of the two group-specific *z* values. [4]_
+# the smaller of the two group-specific *z* values. [4]_ Since this is simple
+# arithmetic on images, conjunction is not implemented as a seperate method in
+# :code:`NiMARE` but can easily be achieved with the :code:`math_img()`
+# function from :code:`nilearn.image`.
 formula = "np.where(img * img2 > 0, np.minimum(img, img2), 0)"
 img_conj = math_img(formula, img=img, img2=img2)
 
