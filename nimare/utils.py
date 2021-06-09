@@ -123,7 +123,27 @@ def dict_to_coordinates(data, masker, space):
     # replace nan with none
     df = df.where(pd.notnull(df), None)
     df[["x", "y", "z"]] = df[["x", "y", "z"]].astype(float)
+    df = transform_coordinates_to_ijk(df, masker, space)
+    return df
 
+
+def transform_coordinates_to_ijk(df, masker, space):
+    """Convert xyz coordinates in a DataFrame to ijk indices for a given target space.
+
+    Parameters
+    ----------
+    df : :obj:`pandas.DataFrame`
+    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        Masker object defining the space and location of the area of interest
+        (e.g., 'brain').
+    space : :obj:`str`
+        String describing the stereotactic space and resolution of the masker.
+
+    Returns
+    -------
+    df : :obj:`pandas.DataFrame`
+        DataFrame with IJK columns either added or overwritten.
+    """
     # Now to apply transformations!
     if "mni" in space.lower() or "ale" in space.lower():
         transform = {"MNI": None, "TAL": tal2mni, "Talairach": tal2mni}
@@ -146,8 +166,8 @@ def dict_to_coordinates(data, masker, space):
         df.loc[idx, "space"] = space
 
     xyz = df[["x", "y", "z"]].values
-    ijk = pd.DataFrame(mm2vox(xyz, masker.mask_img.affine), columns=["i", "j", "k"])
-    df = pd.concat([df, ijk], axis=1)
+    ijk = mm2vox(xyz, masker.mask_img.affine)
+    df[["i", "j", "k"]] = ijk
     return df
 
 
