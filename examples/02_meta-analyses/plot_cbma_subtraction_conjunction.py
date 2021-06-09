@@ -4,9 +4,9 @@
 
 .. _metas8:
 
-========================================================
+==========================================================
  Run coordinate-based subtraction and conjunction analyses
-========================================================
+==========================================================
 
 The (coordinate-based) ALE subtraction method tests at which voxels 
 the meta-analytic results from two groups of studies differ reliably from 
@@ -14,8 +14,8 @@ one another. [1]_:superscript:`,` [2]_
 """
 import os
 
-from nilearn.image.image import math_img
-from nilearn.plotting.img_plotting import plot_stat_map
+from nilearn.image import math_img
+from nilearn.plotting import plot_stat_map
 
 from nimare.correct import FWECorrector
 from nimare.io import convert_sleuth_to_dataset
