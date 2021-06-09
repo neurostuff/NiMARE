@@ -22,6 +22,8 @@ LGR = logging.getLogger(__name__)
 class NiMAREBase(metaclass=ABCMeta):
     """Base class for NiMARE.
 
+    .. versionadded:: 0.0.1
+
     TODO: Actually write/refactor class methods. They mostly come directly from sklearn
     https://github.com/scikit-learn/scikit-learn/blob/
     2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
@@ -194,7 +196,11 @@ class NiMAREBase(metaclass=ABCMeta):
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults."""
+    """Estimators take in Datasets and return MetaResults.
+
+    .. versionadded:: 0.0.1
+
+    """
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
@@ -266,7 +272,15 @@ class Estimator(NiMAREBase):
 
 
 class MetaEstimator(Estimator):
-    """Base class for meta-analysis methods in :mod:`nimare.meta`."""
+    """Base class for meta-analysis methods in :mod:`nimare.meta`.
+
+    .. versionadded:: 0.0.3
+
+    .. versionchanged:: 0.0.8
+
+        * [REF] Use saved MA maps, when available.
+
+    """
 
     def __init__(self, *args, **kwargs):
         mask = kwargs.get("mask")
@@ -341,6 +355,8 @@ class MetaEstimator(Estimator):
 class Transformer(NiMAREBase):
     """Transformers take in Datasets and return Datasets.
 
+    .. versionadded:: 0.0.1
+
     Initialize with hyperparameters.
     """
 
@@ -359,7 +375,11 @@ class Transformer(NiMAREBase):
 
 
 class Decoder(NiMAREBase):
-    """Base class for decoders in :mod:`nimare.decode`."""
+    """Base class for decoders in :mod:`nimare.decode`.
+
+    .. versionadded:: 0.0.3
+
+    """
 
     __id_cols = ["id", "study_id", "contrast_id"]
 

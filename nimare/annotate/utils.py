@@ -6,6 +6,8 @@ import pandas as pd
 def _generate_weights(rel_df, weights):
     """Create an IDxID DataFrame linking weight value to each relationship type.
 
+    .. versionadded:: 0.0.2
+
     Parameters
     ----------
     rel_df : (X x 3) :obj:`pandas.DataFrame`

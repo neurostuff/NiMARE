@@ -23,6 +23,8 @@ class MKDADensity(CBMAEstimator):
     r"""
     Multilevel kernel density analysis- Density analysis.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -156,6 +158,12 @@ class MKDADensity(CBMAEstimator):
 class MKDAChi2(PairwiseCBMAEstimator):
     r"""
     Multilevel kernel density analysis- Chi-square analysis.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.8
+
+        * [REF] Use saved MA maps, when available.
 
     Parameters
     ----------
@@ -478,6 +486,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
 class KDA(CBMAEstimator):
     r"""
     Kernel density analysis.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------

@@ -21,6 +21,13 @@ LGR = logging.getLogger(__name__)
 class CBMAEstimator(MetaEstimator):
     """Base class for coordinate-based meta-analysis methods.
 
+    .. versionadded:: 0.0.3
+
+    .. versionchanged:: 0.0.8
+
+        * [REF] Use saved MA maps, when available.
+        * [REF] Add *low_memory* option.
+
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -625,6 +632,12 @@ class CBMAEstimator(MetaEstimator):
 
 class PairwiseCBMAEstimator(CBMAEstimator):
     """Base class for pairwise coordinate-based meta-analysis methods.
+
+    .. versionadded:: 0.0.3
+
+    .. versionchanged:: 0.0.8
+
+        * [REF] Use saved MA maps, when available.
 
     Parameters
     ----------
