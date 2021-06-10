@@ -23,6 +23,8 @@ class ImageTransformer(Transformer):
 
     This class is a light wrapper around :func:`nimare.transforms.transform_images`.
 
+    .. versionadded:: 0.0.9
+
     Parameters
     ----------
     target : {'z', 'p', 'beta', 'varcope'} or list
@@ -78,6 +80,10 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """Generate images of a given type from other image types and write out to files.
 
     .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.9
+
+        * [ENH] Add overwrite option to transform_images
 
     Parameters
     ----------

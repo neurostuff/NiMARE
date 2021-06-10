@@ -34,6 +34,10 @@ class Dataset(NiMAREBase):
 
         * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
 
+    .. versionchanged:: 0.0.9
+
+        * [ENH] Add merge method to Dataset class
+
     Parameters
     ----------
     source : :obj:`str` or :obj:`dict`
@@ -256,6 +260,8 @@ class Dataset(NiMAREBase):
 
     def merge(self, right):
         """Merge two Datasets.
+
+        .. versionadded:: 0.0.9
 
         Parameters
         ----------
