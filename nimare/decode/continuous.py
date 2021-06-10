@@ -23,6 +23,8 @@ LGR = logging.getLogger(__name__)
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     model : :obj:`nimare.annotate.topic.GCLDAModel`
@@ -109,6 +111,12 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 @due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class CorrelationDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with meta-analytic maps.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add *low-memory* option to :class:`meta_estimator`
 
     Parameters
     ----------
@@ -219,6 +227,8 @@ class CorrelationDecoder(Decoder):
 
 class CorrelationDistributionDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with study-wise images.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------

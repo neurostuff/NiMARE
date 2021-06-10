@@ -13,7 +13,11 @@ LGR = logging.getLogger(__name__)
 
 
 class Corrector(metaclass=ABCMeta):
-    """Base class for multiple comparison correction methods in :mod:`nimare.correct`."""
+    """Base class for multiple comparison correction methods in :mod:`nimare.correct`.
+
+    .. versionadded:: 0.0.3
+
+    """
 
     # The name of the method that must be implemented in an Estimator class
     # in order to override the default correction method.
@@ -124,6 +128,8 @@ class Corrector(metaclass=ABCMeta):
 class FWECorrector(Corrector):
     """Perform family-wise error rate correction on a meta-analysis.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     method : :obj:`str`
@@ -163,6 +169,8 @@ class FWECorrector(Corrector):
 
 class FDRCorrector(Corrector):
     """Perform false discovery rate correction on a meta-analysis.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------

@@ -33,6 +33,8 @@ LGR = logging.getLogger(__name__)
 def fetch_neurosynth(path=".", url=None, unpack=False):
     """Download the latest data files from NeuroSynth.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     path : str
@@ -84,6 +86,8 @@ def fetch_neurosynth(path=".", url=None, unpack=False):
 
 def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     """Download NIDM Results for 21 pain studies from NeuroVault for tests.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -140,6 +144,8 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
 def download_mallet(data_dir=None, overwrite=False, verbose=1):
     """Download the MALLET toolbox for LDA topic modeling.
 
+    .. versionadded:: 0.0.2
+
     Parameters
     ----------
     data_dir : :obj:`str`, optional
@@ -190,6 +196,8 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
 
 def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
     """Download Cognitive Atlas ontology and extract IDs and relationships.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -299,6 +307,8 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
 def download_abstracts(dataset, email):
     """Download the abstracts for a list of PubMed IDs. Uses the BioPython package.
 
+    .. versionadded:: 0.0.2
+
     Parameters
     ----------
     dataset : :obj:`nimare.dataset.Dataset`
@@ -353,6 +363,8 @@ def download_abstracts(dataset, email):
 
 def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     """Download the trained Peaks2Maps model from OHBM 2018.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------

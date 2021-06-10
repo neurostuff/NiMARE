@@ -28,6 +28,12 @@ LGR = logging.getLogger(__name__)
 class Dataset(NiMAREBase):
     """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
+
     Parameters
     ----------
     source : :obj:`str` or :obj:`dict`

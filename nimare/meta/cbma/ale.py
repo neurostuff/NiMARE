@@ -33,6 +33,8 @@ LGR = logging.getLogger(__name__)
 class ALE(CBMAEstimator):
     r"""Activation likelihood estimation.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -206,6 +208,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
     r"""
     ALE subtraction analysis.
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Assume non-symmetric null distribution.
+
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -346,6 +358,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""
     Specific coactivation likelihood estimation.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------

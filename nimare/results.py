@@ -13,6 +13,8 @@ LGR = logging.getLogger(__name__)
 class MetaResult(object):
     """Base class for meta-analytic results.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     estimator : :class:`nimare.base.Estimator`

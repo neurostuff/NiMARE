@@ -23,6 +23,8 @@ LGR = logging.getLogger(__name__)
 def dict_to_df(id_df, data, key="labels"):
     """Load a given data type in NIMADS-format dictionary into DataFrame.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     id_df : :obj:`pandas.DataFrame`
@@ -59,7 +61,11 @@ def dict_to_df(id_df, data, key="labels"):
 
 
 def dict_to_coordinates(data, masker, space):
-    """Load coordinates in NIMADS-format dictionary into DataFrame."""
+    """Load coordinates in NIMADS-format dictionary into DataFrame.
+
+    .. versionadded:: 0.0.1
+
+    """
     # Required columns
     columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]
     core_columns = columns.copy()  # Used in contrast for loop
@@ -172,13 +178,19 @@ def transform_coordinates_to_ijk(df, masker, space):
 
 
 def validate_df(df):
-    """Check that an input is a DataFrame and has a column for 'id'."""
+    """Check that an input is a DataFrame and has a column for 'id'.
+
+    .. versionadded:: 0.0.1
+
+    """
     assert isinstance(df, pd.DataFrame)
     assert "id" in df.columns
 
 
 def validate_images_df(image_df):
     """Check and update image paths in DataFrame.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------
@@ -237,6 +249,8 @@ def validate_images_df(image_df):
 def get_template(space="mni152_2mm", mask=None):
     """Load template file.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     space : {'mni152_1mm', 'mni152_2mm', 'ale_2mm'}, optional
@@ -290,6 +304,8 @@ def get_template(space="mni152_2mm", mask=None):
 def get_masker(mask):
     """Get an initialized, fitted nilearn Masker instance from passed argument.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
@@ -320,6 +336,8 @@ def get_masker(mask):
 def listify(obj):
     """Wrap all non-list or tuple objects in a list.
 
+    .. versionadded:: 0.0.1
+
     This provides a simple way to accept flexible arguments.
     """
     return obj if isinstance(obj, (list, tuple, type(None), np.ndarray)) else [obj]
@@ -327,6 +345,8 @@ def listify(obj):
 
 def round2(ndarray):
     """Round X.5 to the nearest integer away from zero.
+
+    .. versionadded:: 0.0.1
 
     Numpy rounds X.5 values to nearest even integer.
     """
@@ -344,6 +364,8 @@ def round2(ndarray):
 def get_resource_path():
     """Return the path to general resources, terminated with separator.
 
+    .. versionadded:: 0.0.1
+
     Resources are kept outside package folder in "datasets".
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
@@ -352,6 +374,8 @@ def get_resource_path():
 
 def try_prepend(value, prefix):
     """Try to prepend a value to a string with a separator ('/').
+
+    .. versionadded:: 0.0.1
 
     If not a string, will just return the original value.
     """
@@ -363,6 +387,8 @@ def try_prepend(value, prefix):
 
 def find_stem(arr):
     """Find longest common substring in array of strings.
+
+    .. versionadded:: 0.0.1
 
     From https://www.geeksforgeeks.org/longest-common-substring-array-strings/
     """
@@ -395,6 +421,8 @@ def find_stem(arr):
 def uk_to_us(text):
     """Convert UK spellings to US based on a converter.
 
+    .. versionadded:: 0.0.2
+
     english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
 
     Parameters
@@ -417,6 +445,8 @@ def uk_to_us(text):
 
 def use_memmap(logger, n_files=1):
     """Memory-map array to a file, and perform cleanup after.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
@@ -483,6 +513,8 @@ def add_metadata_to_dataframe(
 ):
     """Add metadata from a Dataset to a DataFrame.
 
+    .. versionadded:: 0.0.8
+
     This is particularly useful for kernel transformers or estimators where a given metadata field
     is necessary (e.g., ALEKernel with "sample_size"), but we want to just use the coordinates
     DataFrame instead of passing the full Dataset.
@@ -543,6 +575,8 @@ def add_metadata_to_dataframe(
 def check_type(obj, clss, **kwargs):
     """Check variable type and initialize if necessary.
 
+    .. versionadded:: 0.0.8
+
     Parameters
     ----------
     obj
@@ -574,6 +608,12 @@ def vox2mm(ijk, affine):
     """
     Convert matrix subscripts to coordinates.
 
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
     Parameters
     ----------
     ijk : (X, 3) :obj:`numpy.ndarray`
@@ -599,6 +639,12 @@ def vox2mm(ijk, affine):
 def mm2vox(xyz, affine):
     """
     Convert coordinates to matrix subscripts.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------
@@ -635,6 +681,12 @@ def mm2vox(xyz, affine):
 def tal2mni(coords):
     """
     Convert coordinates from Talairach space to MNI space.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------
@@ -710,6 +762,12 @@ def tal2mni(coords):
 def mni2tal(coords):
     """
     Convert coordinates from MNI space Talairach space.
+
+    .. versionadded:: 0.0.1
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------

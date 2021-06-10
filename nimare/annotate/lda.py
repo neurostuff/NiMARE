@@ -26,6 +26,8 @@ class LDAModel(NiMAREBase):
     """
     Perform topic modeling using Latent Dirichlet Allocation (LDA).
 
+    .. versionadded:: 0.0.1
+
     Build an LDA [1]_ topic model with the Java toolbox MALLET [2]_, as
     performed in [3]_.
 

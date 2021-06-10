@@ -28,6 +28,8 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 def convert_neurosynth_to_dict(text_file, annotations_file=None):
     """Convert Neurosynth database files to a dictionary.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     text_file : :obj:`str`
@@ -87,6 +89,8 @@ def convert_neurosynth_to_dict(text_file, annotations_file=None):
 def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
     """Convert Neurosynth dataset text file to a NiMARE json file.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     text_file : :obj:`str`
@@ -104,6 +108,8 @@ def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
 
 def convert_neurosynth_to_dataset(text_file, annotations_file=None, target="mni152_2mm"):
     """Convert Neurosynth database files into NiMARE Dataset.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------
@@ -126,6 +132,8 @@ def convert_neurosynth_to_dataset(text_file, annotations_file=None, target="mni1
 
 def convert_sleuth_to_dict(text_file):
     """Convert Sleuth text file to a dictionary.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------
@@ -239,6 +247,8 @@ def convert_sleuth_to_dict(text_file):
 def convert_sleuth_to_json(text_file, out_file):
     """Convert Sleuth output text file into json.
 
+    .. versionadded:: 0.0.1
+
     Parameters
     ----------
     text_file : :obj:`str` or :obj:`list` of :obj:`str`
@@ -259,6 +269,8 @@ def convert_sleuth_to_json(text_file, out_file):
 
 def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     """Convert Sleuth output text file into NiMARE Dataset.
+
+    .. versionadded:: 0.0.1
 
     Parameters
     ----------
@@ -285,8 +297,9 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
 def convert_neurovault_to_dataset(
     collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs
 ):
-    """
-    Convert a group of NeuroVault collections into a NiMARE Dataset.
+    """Convert a group of NeuroVault collections into a NiMARE Dataset.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
