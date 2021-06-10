@@ -15,7 +15,6 @@ LGR = logging.getLogger(__name__)
 
 def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="", n_iters=10000):
     """Run a contrast permutation workflow."""
-
     if mask_image is None:
         target = "mni152_2mm"
         mask_image = get_template(target, mask="brain")

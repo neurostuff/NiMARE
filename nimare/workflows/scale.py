@@ -28,7 +28,6 @@ def scale_workflow(
     --------
     This method is not yet implemented.
     """
-
     if dataset_file.endswith(".json"):
         dset = Dataset(dataset_file, target="mni152_2mm")
     elif dataset_file.endswith(".txt"):
