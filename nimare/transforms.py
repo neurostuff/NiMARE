@@ -66,7 +66,7 @@ class ImageTransformer(Transformer):
         for target_type in self.target:
             temp_images = transform_images(
                 temp_images,
-                target=self.target,
+                target=target_type,
                 masker=dataset.masker,
                 metadata_df=dataset.metadata,
                 out_dir=dataset.basepath,
