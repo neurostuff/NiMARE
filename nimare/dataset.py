@@ -321,7 +321,7 @@ class Dataset(NiMAREBase):
         """Create a copy of the Dataset."""
         return copy.deepcopy(self)
 
-    def get(self, dict_, drop_invalid=False):
+    def get(self, dict_, drop_invalid=True):
         """Retrieve files and/or metadata from the current Dataset.
 
         Parameters
@@ -378,8 +378,8 @@ class Dataset(NiMAREBase):
                 results[k] = pd.concat(results[k])
         return results
 
-    def _generic_column_getter(self, attr, ids=None, column=None, ignore_colunns=None):
-        """A generic search method for extracting information from DataFrame-based attributes.
+    def _generic_column_getter(self, attr, ids=None, column=None, ignore_columns=None):
+        """Extract information from DataFrame-based attributes.
 
         Parameters
         ----------
@@ -409,22 +409,21 @@ class Dataset(NiMAREBase):
         df = getattr(self, attr)
         return_first = False
 
-        if isinstance(ids, str) and value is not None:
+        if isinstance(ids, str) and column is not None:
             return_first = True
         ids = listify(ids)
 
         available_types = [c for c in df.columns if c not in self._id_cols]
-        if (value is not None) and (value not in available_types):
+        if (column is not None) and (column not in available_types):
             raise ValueError(
-                f"{column} not found in {attr}.\n"
-                f"Available types: {', '.join(available_types)}"
+                f"{column} not found in {attr}.\nAvailable types: {', '.join(available_types)}"
             )
 
-        if value is not None:
+        if column is not None:
             if ids is not None:
-                result = df[value].loc[df["id"].isin(ids)].tolist()
+                result = df[column].loc[df["id"].isin(ids)].tolist()
             else:
-                result = df[value].tolist()
+                result = df[column].tolist()
         else:
             if ids is not None:
                 result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}

@@ -200,7 +200,7 @@ class Estimator(NiMAREBase):
     # attributes to set; values are strings indicating location in Dataset.
     _required_inputs = {}
 
-    def _validate_input(self, dataset, drop_invalid=drop_invalid):
+    def _validate_input(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
@@ -222,7 +222,7 @@ class Estimator(NiMAREBase):
         """Perform any additional preprocessing steps on data in self.inputs_."""
         pass
 
-    def fit(self, dataset, drop_invalid=False):
+    def fit(self, dataset, drop_invalid=True):
         """Fit Estimator to Dataset.
 
         Parameters
