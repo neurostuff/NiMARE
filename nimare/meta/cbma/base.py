@@ -652,7 +652,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         __init__ (called automatically).
     """
 
-    def fit(self, dataset1, dataset2):
+    def fit(self, dataset1, dataset2, drop_invalid=True):
         """
         Fit Estimator to two Datasets.
 
@@ -673,8 +673,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
-        self._validate_input(dataset1)
-        self._validate_input(dataset2)
+        self._validate_input(dataset1, drop_invalid=drop_invalid)
+        self._validate_input(dataset2, drop_invalid=drop_invalid)
 
         # grab and override
         self._preprocess_input(dataset1)

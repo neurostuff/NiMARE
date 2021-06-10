@@ -213,8 +213,8 @@ class Estimator(NiMAREBase):
             for k, v in data.items():
                 if v is None:
                     raise ValueError(
-                        "Estimator {0} requires input dataset to contain {1}, but "
-                        "none were found.".format(self.__class__.__name__, k)
+                        f"Estimator {self.__class__.__name__} requires input dataset to contain "
+                        f"{k}, but no matching data were found."
                     )
                 self.inputs_[k] = v
 
@@ -315,8 +315,7 @@ class MetaEstimator(Estimator):
                     imgs = list(check_imgs.values())
                 else:
                     # resampling will only occur if shape/affines are different
-                    # making this harmless if all img shapes/affines are the same
-                    # as the reference
+                    # making this harmless if all img shapes/affines are the same as the reference
                     imgs = [
                         resample_to_img(nb.load(img), mask_img, **self._resample_kwargs)
                         for img in self.inputs_[name]
@@ -325,15 +324,14 @@ class MetaEstimator(Estimator):
                 # input to NiFtiLabelsMasker must be 4d
                 img4d = concat_imgs(imgs, ensure_ndim=4)
 
-                # Mask required input images using either the dataset's mask or
-                # the estimator's.
+                # Mask required input images using either the dataset's mask or the estimator's.
                 temp_arr = masker.transform(img4d)
 
-                # An intermediate step to mask out bad voxels. Can be dropped
-                # once PyMARE is able to handle masked arrays or missing data.
+                # An intermediate step to mask out bad voxels.
+                # Can be dropped once PyMARE is able to handle masked arrays or missing data.
                 bad_voxel_idx = np.where(temp_arr == 0)[1]
                 bad_voxel_idx = np.unique(bad_voxel_idx)
-                LGR.debug('Masking out {} "bad" voxels'.format(len(bad_voxel_idx)))
+                LGR.debug(f"Masking out {len(bad_voxel_idx)} 'bad' voxels")
                 temp_arr[:, bad_voxel_idx] = 0
 
                 self.inputs_[name] = temp_arr

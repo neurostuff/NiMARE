@@ -339,11 +339,12 @@ class Dataset(NiMAREBase):
         Returns
         -------
         results : :obj:`dict`
-            A dictionary of lists of requested data.
+            A dictionary of lists of requested data. Keys correspond to the keys in dict_.
 
         Examples
         --------
         >>> dset.get({'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')})
+        >>> dset.get({'coordinates': ('coordinates', None)})
         """
         results = {}
         results["id"] = self.ids
