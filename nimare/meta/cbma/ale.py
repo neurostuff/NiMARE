@@ -33,8 +33,6 @@ LGR = logging.getLogger(__name__)
 class ALE(CBMAEstimator):
     r"""Activation likelihood estimation.
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
@@ -205,10 +203,7 @@ class ALE(CBMAEstimator):
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
-    r"""
-    ALE subtraction analysis.
-
-    .. versionadded:: 0.0.1
+    r"""ALE subtraction analysis.
 
     .. versionchanged:: 0.0.7
 
@@ -356,10 +351,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     description=("Introduces the specific co-activation likelihood estimation (SCALE) algorithm."),
 )
 class SCALE(CBMAEstimator):
-    r"""
-    Specific coactivation likelihood estimation.
-
-    .. versionadded:: 0.0.1
+    r"""Specific coactivation likelihood estimation.
 
     Parameters
     ----------

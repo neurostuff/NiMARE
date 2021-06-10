@@ -36,11 +36,8 @@ dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 
 # Calculate missing statistical images from the available stats.
-z_transformer = ImageTransformer(target="z")
-dset = z_transformer.transform(dset)
-
-varcope_transformer = ImageTransformer(target="varcope")
-dset = varcope_transformer.transform(dset)
+xformer = ImageTransformer(target=["z", "varcope"])
+dset = xformer.transform(dset)
 
 # create coordinates from statistical maps
 coord_gen = ImagesToCoordinates(merge_strategy="replace")

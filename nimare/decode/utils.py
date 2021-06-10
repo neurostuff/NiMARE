@@ -6,8 +6,6 @@ def weight_priors(topic_priors, prior_weight):
     """
     Combine topic priors with prior weight.
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     topic_priors : array-like

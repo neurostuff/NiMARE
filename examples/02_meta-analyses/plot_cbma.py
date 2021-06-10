@@ -2,11 +2,11 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas3:
+.. _metas2:
 
-========================================================
+======================================================
  Run coordinate-based meta-analyses on 21 pain studies
-========================================================
+======================================================
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.

@@ -2,11 +2,11 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas3:
+.. _metas4:
 
-========================================================
+================================================================================
  Test combinations of kernels and estimators for coordinate-based meta-analyses.
-========================================================
+================================================================================
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.

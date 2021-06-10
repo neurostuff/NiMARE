@@ -17,8 +17,6 @@ LGR = logging.getLogger(__name__)
 class Fishers(MetaEstimator):
     """An image-based meta-analytic test using t- or z-statistic images.
 
-    .. versionadded:: 0.0.1
-
     Requires z-statistic images, but will be extended to work with t-statistic
     images as well.
 
@@ -77,8 +75,6 @@ class Fishers(MetaEstimator):
 
 class Stouffers(MetaEstimator):
     """A t-test on z-statistic images.
-
-    .. versionadded:: 0.0.1
 
     Requires z-statistic images.
 

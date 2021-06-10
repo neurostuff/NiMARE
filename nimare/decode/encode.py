@@ -32,8 +32,6 @@ def text2brain():
 def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0):
     r"""Perform text-to-image encoding according to the method described in Rubin et al. (2017).
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     model : :obj:`nimare.annotate.topic.GCLDAModel`

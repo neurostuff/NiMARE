@@ -20,8 +20,6 @@ LGR = logging.getLogger(__name__)
 class GCLDAModel(NiMAREBase):
     """Generate a generalized correspondence latent Dirichlet allocation (GCLDA) topic model.
 
-    .. versionadded:: 0.0.1
-
     .. versionchanged:: 0.0.8
 
         * [ENH] Support symmetric GC-LDA topics with more than two subregions.

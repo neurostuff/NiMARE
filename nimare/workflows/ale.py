@@ -23,11 +23,7 @@ def ale_sleuth_workflow(
     fwhm=None,
     n_cores=-1,
 ):
-    """Perform ALE meta-analysis from Sleuth text file.
-
-    .. versionadded:: 0.0.1
-
-    """
+    """Perform ALE meta-analysis from Sleuth text file."""
     LGR.info("Loading coordinates...")
 
     if fwhm:

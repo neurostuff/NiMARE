@@ -12,8 +12,6 @@ LGR = logging.getLogger(__name__)
 def one_way(data, n):
     """One-way chi-square test of independence.
 
-    .. versionadded:: 0.0.1
-
     Takes a 1D array as input and compares activation at each voxel to
     proportion expected under a uniform distribution throughout the array.
     Note that if you're testing activation with this, make sure that only
@@ -51,8 +49,6 @@ def one_way(data, n):
 
 def two_way(cells):
     """Two-way chi-square test of independence.
-
-    .. versionadded:: 0.0.1
 
     Takes a 3D array as input: N(voxels) x 2 x 2, where the last two
     dimensions are the contingency table for each of N voxels.
@@ -92,8 +88,6 @@ def two_way(cells):
 def pearson(x, y):
     """Correlate row vector x with each row vector in 2D array y, quickly.
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     x : (1, N) array_like
@@ -117,8 +111,6 @@ def pearson(x, y):
 
 def null_to_p(test_value, null_array, tail="two", symmetric=False):
     """Return p-value for test value(s) against null array.
-
-    .. versionadded:: 0.0.1
 
     .. versionchanged:: 0.0.7
 
@@ -285,8 +277,6 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
 def fdr(p, q=0.05):
     """Determine FDR threshold given a p value array and desired false discovery rate q.
-
-    .. versionadded:: 0.0.1
 
     Parameters
     ----------

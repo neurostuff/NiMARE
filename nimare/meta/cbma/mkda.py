@@ -20,10 +20,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDADensity(CBMAEstimator):
-    r"""
-    Multilevel kernel density analysis- Density analysis.
-
-    .. versionadded:: 0.0.1
+    r"""Multilevel kernel density analysis- Density analysis.
 
     Parameters
     ----------
@@ -156,10 +153,7 @@ class MKDADensity(CBMAEstimator):
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDAChi2(PairwiseCBMAEstimator):
-    r"""
-    Multilevel kernel density analysis- Chi-square analysis.
-
-    .. versionadded:: 0.0.1
+    r"""Multilevel kernel density analysis- Chi-square analysis.
 
     .. versionchanged:: 0.0.8
 
@@ -484,10 +478,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 @due.dcite(references.KDA1, description="Introduces the KDA algorithm.")
 @due.dcite(references.KDA2, description="Also introduces the KDA algorithm.")
 class KDA(CBMAEstimator):
-    r"""
-    Kernel density analysis.
-
-    .. versionadded:: 0.0.1
+    r"""Kernel density analysis.
 
     Parameters
     ----------

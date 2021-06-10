@@ -25,8 +25,6 @@ LGR = logging.getLogger(__name__)
 class KernelTransformer(Transformer):
     """Base class for modeled activation-generating methods in :mod:`nimare.meta.kernel`.
 
-    .. versionadded:: 0.0.1
-
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
     original analyses. This generally involves convolving each coordinate with
@@ -219,8 +217,6 @@ class KernelTransformer(Transformer):
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
 
-    .. versionadded:: 0.0.1
-
     .. versionchanged:: 0.0.8
 
         * [ENH] Add low-memory option for kernel transformers.
@@ -307,8 +303,6 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
-    .. versionadded:: 0.0.1
-
     .. versionchanged:: 0.0.8
 
         * [ENH] Add low-memory option for kernel transformers.
@@ -354,8 +348,6 @@ class KDAKernel(KernelTransformer):
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
 
-    .. versionadded:: 0.0.1
-
     .. versionchanged:: 0.0.8
 
         * [ENH] Add low-memory option for kernel transformers.
@@ -376,8 +368,6 @@ class MKDAKernel(KDAKernel):
 
 class Peaks2MapsKernel(KernelTransformer):
     """Generate peaks2maps modeled activation images from coordinates.
-
-    .. versionadded:: 0.0.1
 
     Parameters
     ----------

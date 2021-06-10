@@ -13,7 +13,7 @@ from scipy import stats
 from . import references
 from .base import Transformer
 from .due import due
-from .utils import dict_to_coordinates, dict_to_df, get_masker
+from .utils import dict_to_coordinates, dict_to_df, get_masker, listify
 
 LGR = logging.getLogger(__name__)
 
@@ -23,10 +23,12 @@ class ImageTransformer(Transformer):
 
     This class is a light wrapper around :func:`nimare.transforms.transform_images`.
 
+    .. versionadded:: 0.0.9
+
     Parameters
     ----------
-    target : {'z', 'p', 'beta', 'varcope'}
-        Target image type.
+    target : {'z', 'p', 'beta', 'varcope'} or list
+        Target image type. Multiple target types may be specified as a list.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
 
@@ -36,7 +38,7 @@ class ImageTransformer(Transformer):
     """
 
     def __init__(self, target, overwrite=False):
-        self.target = target
+        self.target = listify(target)
         self.overwrite = overwrite
 
     def transform(self, dataset):
@@ -59,14 +61,18 @@ class ImageTransformer(Transformer):
             )
 
         new_dataset = dataset.copy()
-        new_dataset.images = transform_images(
-            dataset.images,
-            target=self.target,
-            masker=dataset.masker,
-            metadata_df=dataset.metadata,
-            out_dir=dataset.basepath,
-            overwrite=self.overwrite,
-        )
+        temp_images = dataset.images
+
+        for target_type in self.target:
+            temp_images = transform_images(
+                temp_images,
+                target=target_type,
+                masker=dataset.masker,
+                metadata_df=dataset.metadata,
+                out_dir=dataset.basepath,
+                overwrite=self.overwrite,
+            )
+        new_dataset.images = temp_images
         return new_dataset
 
 
@@ -74,6 +80,10 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """Generate images of a given type from other image types and write out to files.
 
     .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.9
+
+        * [ENH] Add overwrite option to transform_images
 
     Parameters
     ----------
@@ -101,9 +111,12 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """
     images_df = images_df.copy()
 
-    valid_targets = ["z", "p", "beta", "varcope"]
+    valid_targets = {"z", "p", "beta", "varcope"}
     if target not in valid_targets:
-        raise ValueError("Target type must be one of: {}".format(", ".join(valid_targets)))
+        raise ValueError(
+            f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
+        )
+
     mask_img = masker.mask_img
     new_mask = np.ones(mask_img.shape, int)
     new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)

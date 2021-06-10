@@ -16,11 +16,7 @@ LGR = logging.getLogger(__name__)
 
 
 def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000):
-    """Run the peaks2maps workflow.
-
-    .. versionadded:: 0.0.1
-
-    """
+    """Run the peaks2maps workflow."""
     LGR.info("Loading coordinates...")
     dset = convert_sleuth_to_dataset(sleuth_file)
 
