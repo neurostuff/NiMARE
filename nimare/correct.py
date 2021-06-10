@@ -128,8 +128,6 @@ class Corrector(metaclass=ABCMeta):
 class FWECorrector(Corrector):
     """Perform family-wise error rate correction on a meta-analysis.
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     method : :obj:`str`
@@ -169,8 +167,6 @@ class FWECorrector(Corrector):
 
 class FDRCorrector(Corrector):
     """Perform false discovery rate correction on a meta-analysis.
-
-    .. versionadded:: 0.0.1
 
     Parameters
     ----------

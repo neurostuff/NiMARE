@@ -22,8 +22,6 @@ LGR = logging.getLogger(__name__)
 class NiMAREBase(metaclass=ABCMeta):
     """Base class for NiMARE.
 
-    .. versionadded:: 0.0.1
-
     TODO: Actually write/refactor class methods. They mostly come directly from sklearn
     https://github.com/scikit-learn/scikit-learn/blob/
     2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
@@ -196,11 +194,7 @@ class NiMAREBase(metaclass=ABCMeta):
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults.
-
-    .. versionadded:: 0.0.1
-
-    """
+    """Estimators take in Datasets and return MetaResults."""
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
@@ -354,8 +348,6 @@ class MetaEstimator(Estimator):
 
 class Transformer(NiMAREBase):
     """Transformers take in Datasets and return Datasets.
-
-    .. versionadded:: 0.0.1
 
     Initialize with hyperparameters.
     """

@@ -18,8 +18,6 @@ LGR = logging.getLogger(__name__)
 class CogAtLemmatizer(object):
     """Replace synonyms and abbreviations with Cognitive Atlas identifiers in text.
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     ontology_df : :obj:`pandas.DataFrame`, optional
@@ -93,8 +91,6 @@ class CogAtLemmatizer(object):
 def extract_cogat(text_df, id_df=None, text_column="abstract"):
     """Extract Cognitive Atlas terms and count instances using regular expressions.
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     text_df : (D x 2) :obj:`pandas.DataFrame`
@@ -155,8 +151,6 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
 
 def expand_counts(counts_df, rel_df=None, weights=None):
     """Perform hierarchical expansion of counts across labels.
-
-    .. versionadded:: 0.0.1
 
     Parameters
     ----------

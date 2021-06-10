@@ -18,8 +18,6 @@ from .utils import weight_priors
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     r"""Perform image-to-text decoding for discrete inputs using method from Rubin et al. (2017).
 
-    .. versionadded:: 0.0.1
-
     Parameters
     ----------
     model : :obj:`nimare.annotate.topic.GCLDAModel`
@@ -219,8 +217,6 @@ def brainmap_decode(
     correction="fdr_bh",
 ):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
-
-    .. versionadded:: 0.0.1
 
     Parameters
     ----------
@@ -506,8 +502,6 @@ def neurosynth_decode(
     correction="fdr_bh",
 ):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
-
-    .. versionadded:: 0.0.1
 
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.
