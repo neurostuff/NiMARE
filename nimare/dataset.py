@@ -520,13 +520,13 @@ class Dataset(NiMAREBase):
         images : :obj:`list`
             List of images of requested type for selected IDs.
         """
-        ignore_cols = ["space"]
-        ignore_cols += [c for c in self.images.columns if c.endswith("__relative")]
+        ignore_columns = ["space"]
+        ignore_columns += [c for c in self.images.columns if c.endswith("__relative")]
         result = self._generic_column_getter(
             "images",
             ids=ids,
             column=imtype,
-            ignore_cols=ignore_cols,
+            ignore_columns=ignore_columns,
         )
         return result
 
