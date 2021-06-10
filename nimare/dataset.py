@@ -321,7 +321,7 @@ class Dataset(NiMAREBase):
         """Create a copy of the Dataset."""
         return copy.deepcopy(self)
 
-    def get(self, dict_):
+    def get(self, dict_, drop_invalid=False):
         """Retrieve files and/or metadata from the current Dataset.
 
         Parameters
@@ -332,6 +332,9 @@ class Dataset(NiMAREBase):
             Values should be tuples with two values:
             type (e.g., 'image' or 'metadata') and specific field corresponding
             to column of type-specific DataFrame (e.g., 'z' or 'sample_sizes').
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is False.
 
         Returns
         -------
@@ -360,8 +363,14 @@ class Dataset(NiMAREBase):
             keep_idx = np.intersect1d(keep_idx, temp_keep_idx)
 
         # reduce
-        if len(keep_idx) != len(self.ids):
-            LGR.info("Retaining {0}/{1} studies".format(len(keep_idx), len(self.ids)))
+        if drop_invalid and (len(keep_idx) != len(self.ids)):
+            LGR.info(f"Retaining {len(keep_idx)}/{len(self.ids)} studies")
+        elif len(keep_idx) != len(self.ids):
+            raise Exception(
+                f"Only {len(keep_idx)}/{len(self.ids)} in Dataset contain the necessary data. "
+                "If you want to analyze the subset of studies with required data, "
+                "set `drop_invalid` to True."
+            )
 
         for k in results:
             results[k] = [results[k][i] for i in keep_idx]

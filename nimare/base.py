@@ -200,16 +200,15 @@ class Estimator(NiMAREBase):
     # attributes to set; values are strings indicating location in Dataset.
     _required_inputs = {}
 
-    def _validate_input(self, dataset):
+    def _validate_input(self, dataset, drop_invalid=drop_invalid):
         """Search for, and validate, required inputs as necessary."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
-                'Argument "dataset" must be a valid Dataset '
-                "object, not a {0}".format(type(dataset))
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
             )
 
         if self._required_inputs:
-            data = dataset.get(self._required_inputs)
+            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
             self.inputs_ = {}
             for k, v in data.items():
                 if v is None:
@@ -223,18 +222,26 @@ class Estimator(NiMAREBase):
         """Perform any additional preprocessing steps on data in self.inputs_."""
         pass
 
-    def fit(self, dataset):
+    def fit(self, dataset, drop_invalid=False):
         """Fit Estimator to Dataset.
 
         Parameters
         ----------
         dataset : :obj:`nimare.dataset.Dataset`
             Dataset object to analyze.
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is False.
 
         Returns
         -------
         :obj:`nimare.results.MetaResult`
             Results of Estimator fitting.
+
+        Attributes
+        ----------
+        inputs_ : :obj:`dict`
+            Inputs used in _fit.
 
         Notes
         -----
@@ -243,7 +250,7 @@ class Estimator(NiMAREBase):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
-        self._validate_input(dataset)
+        self._validate_input(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps = self._fit(dataset)
 
