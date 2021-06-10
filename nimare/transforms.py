@@ -103,9 +103,12 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """
     images_df = images_df.copy()
 
-    valid_targets = ["z", "p", "beta", "varcope"]
+    valid_targets = {"z", "p", "beta", "varcope"}
     if target not in valid_targets:
-        raise ValueError("Target type must be one of: {}".format(", ".join(valid_targets)))
+        raise ValueError(
+            f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
+        )
+
     mask_img = masker.mask_img
     new_mask = np.ones(mask_img.shape, int)
     new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)
