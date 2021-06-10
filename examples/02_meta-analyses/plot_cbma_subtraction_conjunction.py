@@ -2,14 +2,14 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas8:
+.. _metas5:
 
 ==========================================================
  Run coordinate-based subtraction and conjunction analyses
 ==========================================================
 
-The (coordinate-based) ALE subtraction method tests at which voxels 
-the meta-analytic results from two groups of studies differ reliably from 
+The (coordinate-based) ALE subtraction method tests at which voxels
+the meta-analytic results from two groups of studies differ reliably from
 one another. [1]_:superscript:`,` [2]_
 """
 import os
