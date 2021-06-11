@@ -209,7 +209,15 @@ class Estimator(NiMAREBase):
 
         if self._required_inputs:
             data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
-            self.inputs_ = {}
+            # Do not overwrite existing inputs_ attribute.
+            # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
+            # in the same object.
+            # It makes the *strong* assumption that required inputs will not changes within an
+            # Estimator across fit calls, so all fields of inputs_ will be overwritten instead of
+            # retaining outdated fields from previous fit calls.
+            if not hasattr(self, "inputs_"):
+                self.inputs_ = {}
+
             for k, v in data.items():
                 if v is None:
                     raise ValueError(
