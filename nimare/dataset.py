@@ -349,16 +349,19 @@ class Dataset(NiMAREBase):
         results = {}
         results["id"] = self.ids
         keep_idx = np.arange(len(self.ids), dtype=int)
-        for k in dict_:
-            vals = dict_[k]
+        for k, vals in dict_.items():
             if vals[0] == "image":
                 temp = self.get_images(imtype=vals[1])
             elif vals[0] == "metadata":
                 temp = self.get_metadata(field=vals[1])
             elif vals[0] == "coordinates":
+                # Break DataFrame down into a list of study-specific DataFrames
                 temp = [self.coordinates.loc[self.coordinates["id"] == id_] for id_ in self.ids]
+                # Replace empty DataFrames with Nones
+                temp = [t if t.size else None for t in temp]
             else:
-                raise ValueError('Input "{}" not understood.'.format(vals[0]))
+                raise ValueError(f"Input '{vals[0]}' not understood.")
+
             results[k] = temp
             temp_keep_idx = np.where([t is not None for t in temp])[0]
             keep_idx = np.intersect1d(keep_idx, temp_keep_idx)
@@ -377,6 +380,7 @@ class Dataset(NiMAREBase):
             results[k] = [results[k][i] for i in keep_idx]
             if dict_.get(k, [None])[0] == "coordinates":
                 results[k] = pd.concat(results[k])
+
         return results
 
     def _generic_column_getter(self, attr, ids=None, column=None, ignore_columns=None):
