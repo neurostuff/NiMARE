@@ -166,71 +166,84 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
     # this transformation should retain the same number of unique ids
     # unless the merge_strategy was demolish
     if img2coord.merge_strategy == "demolish":
-        expected_studies_with_coordinates = set(tst_dset.coordinates["id"]) - set(
+        expected_studies_with_coordinates = set(tst_dset.ids) - set(
             studies_without_coordinates
         )
     else:
-        expected_studies_with_coordinates = set(tst_dset.coordinates["id"])
+        expected_studies_with_coordinates = set(tst_dset.ids)
 
     assert set(new_dset.coordinates["id"]) == expected_studies_with_coordinates
 
 
-def test_images_to_coordinates_merge_strategy(testdata_ibma):
+def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
     """Test different merging strategies."""
     img2coord = transforms.ImagesToCoordinates(z_threshold=1.9)
 
-    # keep pain_01-1, pain_02-1, and pain_03-1
-    tst_dset = testdata_ibma.slice(["pain_01-1", "pain_02-1", "pain_03-1"])
-    # remove coordinate data for pain_02-1
-    tst_dset.coordinates = tst_dset.coordinates.query("id != 'pain_02-1'")
-    # remove image data for pain_01-1
-    tst_dset.images = tst_dset.images.query("id != 'pain_01-1'")
+    # keep pain_01.nidm-1, pain_02.nidm-1, pain_03.nidm-1, pain_04.nidm-1
+    tst_dset = testdata_ibma.slice(
+        ["pain_01.nidm-1", "pain_02.nidm-1", "pain_03.nidm-1", "pain_04.nidm-1"]
+    )
 
-    # |  study  | image | coordinate |
-    # |---------|-------|------------|
-    # | pain_01 | no    | yes        |
-    # | pain_02 | yes   | no         |
-    # | pain_03 | yes   | yes        |
+
+    # remove image data for pain_01.nidm-1 and pain_03.nidm-1
+    # coordinate data for pain_01.nidm-1 and pain_02.nidm-1 are already removed
+    tst_dset.images = tst_dset.images.query("id != 'pain_01.nidm-1'")
+    tst_dset.images = tst_dset.images.query("id != 'pain_03.nidm-1'")
+
+    # | study        | image | coordinate |
+    # |--------------|-------|------------|
+    # | pain_01.nidm | no    | no         |
+    # | pain_02.nidm | yes   | no         |
+    # | pain_03.nidm | no    | yes        |
+    # | pain_04.nidm | yes   | yes        |
 
     # test 'fill' strategy
-    # only pain_02 should have new data, pain_01 and pain_03 should remain the same
+    # only pain_02.nidm should have new data.
+    # pain_01.nidm, pain_03.nidm, and pain_04.nidm should remain the same
     img2coord.merge_strategy = "fill"
     fill_dset = img2coord.transform(tst_dset)
-    # pain_01 and pain_03 should be unchaged
-    assert set(fill_dset.coordinates.query("id != 'pain_02-1'")["x"]) == set(
+    # pain_01.nidm and pain_03.nidm should be unchanged
+    assert set(fill_dset.coordinates.query("id != 'pain_02.nidm-1'")["x"]) == set(
         tst_dset.coordinates["x"]
     )
-    # pain_02 should be in the coordinates now
-    assert "pain_02-1" in fill_dset.coordinates["id"].unique()
+    # pain_02.nidm should be in the coordinates now
+    assert "pain_02.nidm-1" in fill_dset.coordinates["id"].unique()
 
     # test 'replace' strategy
-    # pain_02 and pain_03 should have new data, but pain_01 should remain the same
+    # pain_02.nidm and pain_04.nidm should have new data,
+    # but pain_01.nidm and pain_03.nidm should remain the same
     img2coord.merge_strategy = "replace"
     replace_dset = img2coord.transform(tst_dset)
 
-    # pain_01 should remain the same
-    assert set(replace_dset.coordinates.query("id == 'pain_01-1'")["x"]) == set(
-        tst_dset.coordinates.query("id == 'pain_01-1'")["x"]
+    # pain_01.nidm should remain the same
+    assert set(replace_dset.coordinates.query("id == 'pain_01.nidm-1'")["x"]) == set(
+        tst_dset.coordinates.query("id == 'pain_01.nidm-1'")["x"]
     )
-    # pain_02 should be new
-    assert "pain_02-1" in replace_dset.coordinates["id"].unique()
-    # pain_03 should be new (and have different coordinates from the old version)
-    assert set(replace_dset.coordinates.query("id == 'pain_03-1'")["x"]) != set(
-        tst_dset.coordinates.query("id == 'pain_03-1'")["x"]
+    # pain_02.nidm should be new
+    assert "pain_02.nidm-1" in replace_dset.coordinates["id"].unique()
+    # pain_03.nidm should remain the same
+    assert set(replace_dset.coordinates.query("id == 'pain_03.nidm-1'")["x"]) == set(
+        tst_dset.coordinates.query("id == 'pain_03.nidm-1'")["x"]
+    )
+    # pain_04.nidm should be new (and have different coordinates from the old version)
+    assert set(replace_dset.coordinates.query("id == 'pain_04.nidm-1'")["x"]) != set(
+        tst_dset.coordinates.query("id == 'pain_04.nidm-1'")["x"]
     )
 
     # test 'demolish' strategy
-    # pain_01 will be removed, and pain_02, and pain_03 will be new
+    # pain_03.nidm will be removed, and pain_02.nidm and pain_04.nidm will be new
     img2coord.merge_strategy = "demolish"
     demolish_dset = img2coord.transform(tst_dset)
 
-    # pain_01 should not be in the dset
-    assert "pain_01-1" not in demolish_dset.coordinates["id"].unique()
-    # pain_02 should be new
-    assert "pain_02-1" in demolish_dset.coordinates["id"].unique()
-    # pain_03 should be new (and have different coordinates from the old version)
-    assert set(demolish_dset.coordinates.query("id == 'pain_03-1'")["x"]) != set(
-        tst_dset.coordinates.query("id == 'pain_03-1'")["x"]
+    # pain_01.nidm should not be in the dset
+    assert "pain_01.nidm-1" not in demolish_dset.coordinates["id"].unique()
+    # pain_02.nidm should be new
+    assert "pain_02.nidm-1" in demolish_dset.coordinates["id"].unique()
+    # pain_03.nidm should not be in the dset
+    assert "pain_03.nidm-1" not in demolish_dset.coordinates["id"].unique()
+    # pain_04.nidm should be new (and have different coordinates from the old version)
+    assert set(demolish_dset.coordinates.query("id == 'pain_04.nidm-1'")["x"]) != set(
+        tst_dset.coordinates.query("id == 'pain_04.nidm-1'")["x"]
     )
 
 

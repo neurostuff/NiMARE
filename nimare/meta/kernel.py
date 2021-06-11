@@ -145,7 +145,6 @@ class KernelTransformer(Transformer):
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
         elif return_type == "dataset":
-            dataset = dataset.copy()
             if dataset.basepath is None:
                 raise ValueError(
                     "Dataset output path is not set. Set the path with Dataset.update_path()."
@@ -155,6 +154,7 @@ class KernelTransformer(Transformer):
                     "Output directory does not exist. Set the path to an "
                     "existing folder with Dataset.update_path()."
                 )
+            dataset = dataset.copy()
 
         transformed_maps = self._transform(mask, coordinates)
 
@@ -188,6 +188,11 @@ class KernelTransformer(Transformer):
             return imgs
         elif return_type == "dataset":
             del transformed_maps
+            # Replace NaNs with Nones
+            dataset.images[self.image_type] = dataset.images[self.image_type].where(
+                dataset.images[self.image_type].notnull(),
+                None
+            )
             # Infer relative path
             dataset.images = dataset.images
             return dataset

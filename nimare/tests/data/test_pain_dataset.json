@@ -1,5 +1,5 @@
 {
-    "pain_01": {
+    "pain_01.nidm": {
         "contrasts": {
             "1": {
                 "images": {
@@ -17,7 +17,7 @@
             }
         }
     },
-    "pain_02": {
+    "pain_02.nidm": {
         "contrasts": {
             "1": {
                 "images": {
@@ -35,7 +35,7 @@
             }
         }
     },
-    "pain_03": {
+    "pain_03.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -110,7 +110,7 @@
             }
         }
     },
-    "pain_04": {
+    "pain_04.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -209,7 +209,7 @@
             }
         }
     },
-    "pain_05": {
+    "pain_05.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -272,7 +272,7 @@
             }
         }
     },
-    "pain_06": {
+    "pain_06.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -311,7 +311,7 @@
             }
         }
     },
-    "pain_07": {
+    "pain_07.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -362,7 +362,7 @@
             }
         }
     },
-    "pain_08": {
+    "pain_08.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -446,7 +446,7 @@
             }
         }
     },
-    "pain_09": {
+    "pain_09.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -533,7 +533,7 @@
             }
         }
     },
-    "pain_10": {
+    "pain_10.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -620,7 +620,7 @@
             }
         }
     },
-    "pain_11": {
+    "pain_11.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -659,7 +659,7 @@
             }
         }
     },
-    "pain_12": {
+    "pain_12.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -722,7 +722,7 @@
             }
         }
     },
-    "pain_13": {
+    "pain_13.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -773,7 +773,7 @@
             }
         }
     },
-    "pain_14": {
+    "pain_14.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -824,7 +824,7 @@
             }
         }
     },
-    "pain_15": {
+    "pain_15.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -863,7 +863,7 @@
             }
         }
     },
-    "pain_16": {
+    "pain_16.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -950,7 +950,7 @@
             }
         }
     },
-    "pain_17": {
+    "pain_17.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -1025,7 +1025,7 @@
             }
         }
     },
-    "pain_18": {
+    "pain_18.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -1076,7 +1076,7 @@
             }
         }
     },
-    "pain_19": {
+    "pain_19.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -1163,7 +1163,7 @@
             }
         }
     },
-    "pain_20": {
+    "pain_20.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
@@ -1213,7 +1213,7 @@
             }
         }
     },
-    "pain_21": {
+    "pain_21.nidm": {
         "contrasts": {
             "1": {
                 "coords": {
