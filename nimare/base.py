@@ -341,14 +341,11 @@ class MetaEstimator(Estimator):
                     self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
                     if self.kernel_transformer.image_type in dataset.images.columns:
                         files = dataset.get_images(
-                            ids=dataset.ids,
+                            ids=self.inputs_["id"],
                             imtype=self.kernel_transformer.image_type,
                         )
                         if all(f is not None for f in files):
                             self.inputs_["ma_maps"] = files
-
-                # Set the coordinates directly as well
-                self.inputs_[name] = dataset.coordinates.copy()
 
 
 class Transformer(NiMAREBase):
