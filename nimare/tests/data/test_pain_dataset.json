@@ -2,7 +2,6 @@
     "pain_01": {
         "contrasts": {
             "1": {
-                "coords": {},
                 "images": {
                     "beta": "pain_01_beta.nii.gz",
                     "se": "pain_01_se.nii.gz",
@@ -21,7 +20,6 @@
     "pain_02": {
         "contrasts": {
             "1": {
-                "coords": {},
                 "images": {
                     "beta": "pain_02_beta.nii.gz",
                     "se": "pain_02_se.nii.gz",
