@@ -13,7 +13,7 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from ..utils import check_type, safe_transform, use_memmap
+from ..utils import check_type, safe_transform
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
