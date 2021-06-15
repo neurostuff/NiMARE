@@ -239,7 +239,6 @@ class CorrelationDistributionDecoder(Decoder):
     evaluate results based on significance.
     """
 
-    @use_memmap(LGR, n_files=1)
     def __init__(
         self,
         feature_group=None,
@@ -286,7 +285,7 @@ class CorrelationDistributionDecoder(Decoder):
                     test_imgs,
                     self.masker,
                     memory_limit=self.memory_limit,
-                    memfile=self.memmap_filenames[0],
+                    memfile=None,
                 )
                 images_[feature] = feature_arr
             else:
