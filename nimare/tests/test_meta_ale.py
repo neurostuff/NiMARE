@@ -145,7 +145,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALE_montecarlo_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null_method="montecarlo", n_iters=10, kernel__low_memory=True)
+    meta = ale.ALE(null_method="montecarlo", n_iters=10, kernel__memory_limit="1gb")
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
