@@ -130,9 +130,10 @@ class CBMAEstimator(MetaEstimator):
             This key should only be present if the kernel transformer was already fitted to the
             input Dataset.
         fname_idx : :obj:`int`, optional
-            When the Estimator is set with ``low_memory = True``, there is a ``memmap_filenames``
-            attribute that is a list of filenames or Nones. This parameter specifies which item
-            in that list should be used for a memory-mapped array.
+            When the Estimator is set with ``memory_limit`` as a string,
+            there is a ``memmap_filenames`` attribute that is a list of filenames or Nones.
+            This parameter specifies which item in that list should be used for a memory-mapped
+            array. Default is 0.
 
         Returns
         -------
@@ -141,7 +142,7 @@ class CBMAEstimator(MetaEstimator):
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
-            if self.low_memory:
+            if self.memory_limit:
                 # perform transform on chunks of the input maps
                 ma_maps = safe_transform(
                     self.inputs_[maps_key],

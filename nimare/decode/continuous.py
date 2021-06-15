@@ -137,10 +137,11 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
+        memory_limit="1gb",
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2(low_memory=True, kernel__low_memory=True)
+            meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
         else:
             meta_estimator = check_type(meta_estimator, CBMAEstimator)
 

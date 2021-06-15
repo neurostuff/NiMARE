@@ -54,11 +54,11 @@ def test_MKDADensity(testdata_cbma):
 
 
 def test_MKDADensity_low_memory(testdata_cbma):
-    """Smoke test for MKDADensity with low_memory option."""
-    meta = MKDADensity(null_method="empirical", n_iters=10, low_memory=True)
+    """Smoke test for MKDADensity with memory_limit option."""
+    meta = MKDADensity(null_method="empirical", n_iters=10, memory_limit="1gb")
     res = meta.fit(testdata_cbma)
-    assert meta.low_memory
-    assert not meta.kernel_transformer.low_memory
+    assert meta.memory_limit
+    assert not meta.kernel_transformer.memory_limit
     assert isinstance(res, nimare.results.MetaResult)
 
 
@@ -93,16 +93,16 @@ def test_MKDAChi2_fwe_2core(testdata_cbma):
 
 
 def test_MKDAChi2_low_memory(testdata_cbma):
-    """Smoke test for MKDAChi2 with low_memory option."""
-    meta = MKDAChi2(low_memory=True)
+    """Smoke test for MKDAChi2 with memory_limit option."""
+    meta = MKDAChi2(memory_limit="1gb")
     res = meta.fit(testdata_cbma, testdata_cbma)
-    assert meta.low_memory
-    assert not meta.kernel_transformer.low_memory
+    assert meta.memory_limit
+    assert not meta.kernel_transformer.memory_limit
     assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_MKDAChi2_low_memory_reuse(testdata_cbma, tmp_path_factory):
-    """Smoke test for MKDAChi2 with low_memory option, in which a memory-mapped array is used."""
+    """Smoke test for MKDAChi2 with memory_limit option, in which a memory-mapped array is used."""
     tmpdir = tmp_path_factory.mktemp("test_MKDAChi2_low_memory_reuse")
 
     # Generate MKDAKernel MA maps as files in the Dataset
@@ -111,10 +111,10 @@ def test_MKDAChi2_low_memory_reuse(testdata_cbma, tmp_path_factory):
     dset = kern.transform(testdata_cbma, return_type="dataset")
 
     # Reuse the MA files, loading them as a memory-mapped array
-    meta = MKDAChi2(low_memory=True)
+    meta = MKDAChi2(memory_limit="1gb")
     res = meta.fit(dset, dset)
-    assert meta.low_memory
-    assert not meta.kernel_transformer.low_memory
+    assert meta.memory_limit
+    assert not meta.kernel_transformer.memory_limit
     assert isinstance(res, nimare.results.MetaResult)
 
 

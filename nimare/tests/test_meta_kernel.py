@@ -145,7 +145,7 @@ def test_ALEKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """Check that all return types produce equivalent results (minus the masking element)."""
     tmpdir = tmp_path_factory.mktemp("test_ALEKernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
-    kern = kernel.ALEKernel(sample_size=20, low_memory=True)
+    kern = kernel.ALEKernel(sample_size=20, memory_limit="1gb")
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     ma_arr = kern.transform(testdata_cbma, return_type="array")
     dset = kern.transform(testdata_cbma, return_type="dataset")
@@ -180,7 +180,7 @@ def test_MKDAKernel_1mm(testdata_cbma):
     Test on 1mm template.
     """
     id_ = "pain_01.nidm-1"
-    kern = kernel.MKDAKernel(r=4, value=1, low_memory=True)
+    kern = kernel.MKDAKernel(r=4, value=1, memory_limit="1gb")
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
@@ -383,10 +383,10 @@ def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
     ],
 )
 def test_kernel_low_high_memory(testdata_cbma, tmp_path_factory, kern, kwargs):
-    """Compare kernel results when low_memory is used vs. not."""
-    kern_low_mem = kern(low_memory=True, **kwargs)
-    kern_spec_mem = kern(low_memory="2gb", **kwargs)
-    kern_high_mem = kern(low_memory=False, **kwargs)
+    """Compare kernel results when memory_limit is used vs. not."""
+    kern_low_mem = kern(memory_limit="1gb", **kwargs)
+    kern_spec_mem = kern(memory_limit="2gb", **kwargs)
+    kern_high_mem = kern(memory_limit=None, **kwargs)
     trans_kwargs = {"dataset": testdata_cbma, "return_type": "array"}
     assert np.array_equal(
         kern_low_mem.transform(**trans_kwargs),
