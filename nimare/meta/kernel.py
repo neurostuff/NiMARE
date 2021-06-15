@@ -218,6 +218,10 @@ class KernelTransformer(Transformer):
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
+
     Parameters
     ----------
     fwhm : :obj:`float`, optional
@@ -302,6 +306,10 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
+
     Parameters
     ----------
     r : :obj:`int`, optional
@@ -345,6 +353,10 @@ class KDAKernel(KernelTransformer):
 
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
 
     Parameters
     ----------

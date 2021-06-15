@@ -13,13 +13,77 @@ from scipy import stats
 from . import references
 from .base import Transformer
 from .due import due
-from .utils import dict_to_coordinates, dict_to_df, get_masker
+from .utils import dict_to_coordinates, dict_to_df, get_masker, listify
 
 LGR = logging.getLogger(__name__)
 
 
-def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
+class ImageTransformer(Transformer):
+    """A class to create new images from existing ones within a Dataset.
+
+    This class is a light wrapper around :func:`nimare.transforms.transform_images`.
+
+    .. versionadded:: 0.0.9
+
+    Parameters
+    ----------
+    target : {'z', 'p', 'beta', 'varcope'} or list
+        Target image type. Multiple target types may be specified as a list.
+    overwrite : :obj:`bool`, optional
+        Whether to overwrite existing files or not. Default is False.
+
+    See Also
+    --------
+    nimare.transforms.transform_images : The function called by this class.
+    """
+
+    def __init__(self, target, overwrite=False):
+        self.target = listify(target)
+        self.overwrite = overwrite
+
+    def transform(self, dataset):
+        """Generate images of the target type from other image types in a Dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            A Dataset containing images and relevant metadata.
+
+        Returns
+        -------
+        new_dataset : :obj:`nimare.dataset.Dataset`
+            A copy of the input Dataset, with new images added to its images attribute.
+        """
+        # Using attribute check instead of type check to allow fake Datasets for testing.
+        if not hasattr(dataset, "slice"):
+            raise ValueError(
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
+            )
+
+        new_dataset = dataset.copy()
+        temp_images = dataset.images
+
+        for target_type in self.target:
+            temp_images = transform_images(
+                temp_images,
+                target=target_type,
+                masker=dataset.masker,
+                metadata_df=dataset.metadata,
+                out_dir=dataset.basepath,
+                overwrite=self.overwrite,
+            )
+        new_dataset.images = temp_images
+        return new_dataset
+
+
+def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, overwrite=False):
     """Generate images of a given type from other image types and write out to files.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.9
+
+        * [ENH] Add overwrite option to transform_images
 
     Parameters
     ----------
@@ -37,6 +101,8 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     out_dir : :obj:`str` or :obj:`None`, optional
         Path to output directory. If None, use folder containing first image
         for each study in ``images_df``.
+    overwrite : :obj:`bool`, optional
+        Whether to overwrite existing files or not. Default is False.
 
     Returns
     -------
@@ -45,9 +111,12 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     """
     images_df = images_df.copy()
 
-    valid_targets = ["z", "p", "beta", "varcope"]
+    valid_targets = {"z", "p", "beta", "varcope"}
     if target not in valid_targets:
-        raise ValueError("Target type must be one of: {}".format(", ".join(valid_targets)))
+        raise ValueError(
+            f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
+        )
+
     mask_img = masker.mask_img
     new_mask = np.ones(mask_img.shape, int)
     new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)
@@ -84,7 +153,11 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
         # Get converted data
         img = resolve_transforms(target, available_data, new_masker)
         if img is not None:
-            img.to_filename(new_file)
+            if overwrite or not op.isfile(new_file):
+                img.to_filename(new_file)
+            else:
+                LGR.debug("Image already exists. Not overwriting.")
+
             images_df.loc[images_df["id"] == id_, target] = new_file
         else:
             images_df.loc[images_df["id"] == id_, target] = None
@@ -93,6 +166,13 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
 
 def resolve_transforms(target, available_data, masker):
     """Determine and apply the appropriate transforms to a target image type from available data.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove unnecessary dimensions from output image object *img_like*. \
+                Now, the image object only has 3 dimensions.
 
     Parameters
     ----------
@@ -204,6 +284,8 @@ def resolve_transforms(target, available_data, masker):
 
 class ImagesToCoordinates(Transformer):
     """Transformer from images to coordinates.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
@@ -391,6 +473,8 @@ class ImagesToCoordinates(Transformer):
 def sample_sizes_to_dof(sample_sizes):
     """Calculate degrees of freedom from a list of sample sizes using a simple heuristic.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     sample_sizes : array_like
@@ -409,6 +493,8 @@ def sample_sizes_to_dof(sample_sizes):
 def sample_sizes_to_sample_size(sample_sizes):
     """Calculate appropriate sample size from a list of sample sizes using a simple heuristic.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     sample_sizes : array_like
@@ -425,6 +511,8 @@ def sample_sizes_to_sample_size(sample_sizes):
 
 def sd_to_varcope(sd, sample_size):
     """Convert standard deviation to sampling variance.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -446,6 +534,8 @@ def sd_to_varcope(sd, sample_size):
 def se_to_varcope(se):
     """Convert standard error values to sampling variance.
 
+    .. versionadded:: 0.0.3
+
     Parameters
     ----------
     se : array_like
@@ -466,6 +556,8 @@ def se_to_varcope(se):
 
 def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
     """Convert "sample variance of the dataset" to "sampling variance".
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -492,6 +584,8 @@ def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
 def t_and_varcope_to_beta(t, varcope):
     """Convert t-statistic to parameter estimate using sampling variance.
 
+    .. versionadded:: 0.0.3
+
     Parameters
     ----------
     t : array_like
@@ -511,6 +605,8 @@ def t_and_varcope_to_beta(t, varcope):
 def t_and_beta_to_varcope(t, beta):
     """Convert t-statistic to sampling variance using parameter estimate.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     t : array_like
@@ -529,6 +625,8 @@ def t_and_beta_to_varcope(t, beta):
 
 def z_to_p(z, tail="two"):
     """Convert z-values to p-values.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
@@ -558,6 +656,8 @@ def z_to_p(z, tail="two"):
 
 def p_to_z(p, tail="two"):
     """Convert p-values to (unsigned) z-values.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -591,6 +691,8 @@ def p_to_z(p, tail="two"):
 @due.dcite(references.T2Z_IMPLEMENTATION, description="Python implementation of T-to-Z transform.")
 def t_to_z(t_values, dof):
     """Convert t-statistics to z-statistics.
+
+    .. versionadded:: 0.0.3
 
     An implementation of [1]_ from Vanessa Sochat's TtoZ package [2]_.
 
@@ -648,6 +750,8 @@ def t_to_z(t_values, dof):
 
 def z_to_t(z_values, dof):
     """Convert z-statistics to t-statistics.
+
+    .. versionadded:: 0.0.3
 
     An inversion of the t_to_z implementation of [1]_ from Vanessa Sochat's
     TtoZ package [2]_.

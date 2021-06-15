@@ -20,6 +20,10 @@ LGR = logging.getLogger(__name__)
 class GCLDAModel(NiMAREBase):
     """Generate a generalized correspondence latent Dirichlet allocation (GCLDA) topic model.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Support symmetric GC-LDA topics with more than two subregions.
+
     Parameters
     ----------
     count_df : :obj:`pandas.DataFrame`
@@ -357,6 +361,9 @@ class GCLDAModel(NiMAREBase):
     def fit(self, n_iters=10000, loglikely_freq=10):
         """Run multiple iterations.
 
+        .. versionchanged:: 0.0.8
+            [ENH] Remove ``verbose`` parameter.
+
         Parameters
         ----------
         n_iters : :obj:`int`, optional
@@ -390,6 +397,9 @@ class GCLDAModel(NiMAREBase):
 
     def _update(self, loglikely_freq=1):
         """Run a complete update cycle (sample z, sample y&r, update regions).
+
+        .. versionchanged:: 0.0.8
+            [ENH] Remove ``verbose`` parameter.
 
         Parameters
         ----------

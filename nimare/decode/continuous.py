@@ -110,6 +110,10 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 class CorrelationDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with meta-analytic maps.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add *low-memory* option to :class:`meta_estimator`
+
     Parameters
     ----------
     feature_group : :obj:`str`

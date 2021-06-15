@@ -38,11 +38,11 @@ class ALE(CBMAEstimator):
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
-    null_method : {"analytic", "empirical"}, optional
+    null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
-        This is only used if ``null_method=="empirical"``.
+        This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
@@ -83,7 +83,7 @@ class ALE(CBMAEstimator):
     def __init__(
         self,
         kernel_transformer=ALEKernel,
-        null_method="analytic",
+        null_method="approximate",
         n_iters=10000,
         n_cores=1,
         **kwargs,
@@ -138,8 +138,8 @@ class ALE(CBMAEstimator):
         hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
 
-    def _compute_null_analytic(self, ma_maps):
-        """Compute uncorrected ALE null distribution using analytic solution.
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected ALE null distribution using approximate solution.
 
         Parameters
         ----------
@@ -199,12 +199,19 @@ class ALE(CBMAEstimator):
             ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
-        self.null_distributions_["histweights_corr-none_method-analytic"] = ale_hist
+        self.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
-    r"""
-    ALE subtraction analysis.
+    r"""ALE subtraction analysis.
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Assume non-symmetric null distribution.
 
     Parameters
     ----------
@@ -345,8 +352,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     description=("Introduces the specific co-activation likelihood estimation (SCALE) algorithm."),
 )
 class SCALE(CBMAEstimator):
-    r"""
-    Specific coactivation likelihood estimation.
+    r"""Specific coactivation likelihood estimation.
 
     Parameters
     ----------

@@ -2,11 +2,11 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas5:
+.. _metas3:
 
-========================================================
+===================================================
  Run a meta-analytic coactivation modeling analysis
-========================================================
+===================================================
 
 Meta-analytic coactivation modeling (MACM) is a common coordinate-based
 analysis in which task-independent "connectivity" is assessed by selecting

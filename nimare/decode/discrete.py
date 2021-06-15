@@ -113,6 +113,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 class BrainMapDecoder(Decoder):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
+    .. versionadded:: 0.0.3
+
     Parameters
     ----------
     feature_group : :obj:`str`, optional
@@ -380,6 +382,8 @@ def brainmap_decode(
 @due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class NeurosynthDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
+
+    .. versionadded:: 0.0.3
 
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.

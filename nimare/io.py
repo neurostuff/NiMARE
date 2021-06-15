@@ -285,8 +285,9 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
 def convert_neurovault_to_dataset(
     collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs
 ):
-    """
-    Convert a group of NeuroVault collections into a NiMARE Dataset.
+    """Convert a group of NeuroVault collections into a NiMARE Dataset.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------

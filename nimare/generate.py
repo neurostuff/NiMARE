@@ -7,7 +7,7 @@ import numpy as np
 from .dataset import Dataset
 from .io import convert_neurovault_to_dataset
 from .meta.utils import compute_ale_ma, get_ale_kernel
-from .transforms import transform_images
+from .transforms import ImageTransformer
 from .utils import mm2vox, vox2mm
 
 # defaults for creating a neurovault dataset
@@ -26,6 +26,8 @@ def create_coordinate_dataset(
     space="MNI",
 ):
     """Generate coordinate based dataset for meta analysis.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -120,6 +122,8 @@ def create_neurovault_dataset(
 ):
     """Download images from NeuroVault and use them to create a dataset.
 
+    .. versionadded:: 0.0.8
+
     This function will also attempt to generate Z images for any contrasts
     for which this is possible.
 
@@ -162,15 +166,16 @@ def create_neurovault_dataset(
     dataset = convert_neurovault_to_dataset(
         collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
     )
-    dataset.images = transform_images(
-        dataset.images, target="z", masker=dataset.masker, metadata_df=dataset.metadata
-    )
+    transformer = ImageTransformer(target="z")
+    dataset = transformer.transform(dataset)
 
     return dataset
 
 
 def _create_source(foci, sample_sizes, space="MNI"):
     """Create dictionary according to nimads(ish) specification.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -208,6 +213,8 @@ def _create_source(foci, sample_sizes, space="MNI"):
 
 def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, space):
     """Generate study specific foci.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------

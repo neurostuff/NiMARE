@@ -123,7 +123,27 @@ def dict_to_coordinates(data, masker, space):
     # replace nan with none
     df = df.where(pd.notnull(df), None)
     df[["x", "y", "z"]] = df[["x", "y", "z"]].astype(float)
+    df = transform_coordinates_to_ijk(df, masker, space)
+    return df
 
+
+def transform_coordinates_to_ijk(df, masker, space):
+    """Convert xyz coordinates in a DataFrame to ijk indices for a given target space.
+
+    Parameters
+    ----------
+    df : :obj:`pandas.DataFrame`
+    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        Masker object defining the space and location of the area of interest
+        (e.g., 'brain').
+    space : :obj:`str`
+        String describing the stereotactic space and resolution of the masker.
+
+    Returns
+    -------
+    df : :obj:`pandas.DataFrame`
+        DataFrame with IJK columns either added or overwritten.
+    """
     # Now to apply transformations!
     if "mni" in space.lower() or "ale" in space.lower():
         transform = {"MNI": None, "TAL": tal2mni, "Talairach": tal2mni}
@@ -146,8 +166,8 @@ def dict_to_coordinates(data, masker, space):
         df.loc[idx, "space"] = space
 
     xyz = df[["x", "y", "z"]].values
-    ijk = pd.DataFrame(mm2vox(xyz, masker.mask_img.affine), columns=["i", "j", "k"])
-    df = pd.concat([df, ijk], axis=1)
+    ijk = mm2vox(xyz, masker.mask_img.affine)
+    df[["i", "j", "k"]] = ijk
     return df
 
 
@@ -375,6 +395,8 @@ def find_stem(arr):
 def uk_to_us(text):
     """Convert UK spellings to US based on a converter.
 
+    .. versionadded:: 0.0.2
+
     english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
 
     Parameters
@@ -397,6 +419,8 @@ def uk_to_us(text):
 
 def use_memmap(logger, n_files=1):
     """Memory-map array to a file, and perform cleanup after.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
@@ -560,6 +584,8 @@ def add_metadata_to_dataframe(
 ):
     """Add metadata from a Dataset to a DataFrame.
 
+    .. versionadded:: 0.0.8
+
     This is particularly useful for kernel transformers or estimators where a given metadata field
     is necessary (e.g., ALEKernel with "sample_size"), but we want to just use the coordinates
     DataFrame instead of passing the full Dataset.
@@ -620,6 +646,8 @@ def add_metadata_to_dataframe(
 def check_type(obj, clss, **kwargs):
     """Check variable type and initialize if necessary.
 
+    .. versionadded:: 0.0.8
+
     Parameters
     ----------
     obj
@@ -651,6 +679,10 @@ def vox2mm(ijk, affine):
     """
     Convert matrix subscripts to coordinates.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
     Parameters
     ----------
     ijk : (X, 3) :obj:`numpy.ndarray`
@@ -676,6 +708,10 @@ def vox2mm(ijk, affine):
 def mm2vox(xyz, affine):
     """
     Convert coordinates to matrix subscripts.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------
@@ -712,6 +748,10 @@ def mm2vox(xyz, affine):
 def tal2mni(coords):
     """
     Convert coordinates from Talairach space to MNI space.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------
@@ -787,6 +827,10 @@ def tal2mni(coords):
 def mni2tal(coords):
     """
     Convert coordinates from MNI space Talairach space.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------

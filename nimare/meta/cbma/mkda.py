@@ -20,8 +20,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDADensity(CBMAEstimator):
-    r"""
-    Multilevel kernel density analysis- Density analysis.
+    r"""Multilevel kernel density analysis- Density analysis.
 
     Parameters
     ----------
@@ -47,7 +46,7 @@ class MKDADensity(CBMAEstimator):
     def __init__(
         self,
         kernel_transformer=MKDAKernel,
-        null_method="analytic",
+        null_method="approximate",
         n_iters=10000,
         n_cores=1,
         **kwargs,
@@ -121,8 +120,8 @@ class MKDADensity(CBMAEstimator):
         prop_active = ma_values.mean(1)
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
 
-    def _compute_null_analytic(self, ma_maps):
-        """Compute uncorrected null distribution using analytic solution.
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected null distribution using approximate solution.
 
         Parameters
         ----------
@@ -149,13 +148,16 @@ class MKDADensity(CBMAEstimator):
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
-        self.null_distributions_["histweights_corr-none_method-analytic"] = ss_hist
+        self.null_distributions_["histweights_corr-none_method-approximate"] = ss_hist
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDAChi2(PairwiseCBMAEstimator):
-    r"""
-    Multilevel kernel density analysis- Chi-square analysis.
+    r"""Multilevel kernel density analysis- Chi-square analysis.
+
+    .. versionchanged:: 0.0.8
+
+        * [REF] Use saved MA maps, when available.
 
     Parameters
     ----------
@@ -476,8 +478,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 @due.dcite(references.KDA1, description="Introduces the KDA algorithm.")
 @due.dcite(references.KDA2, description="Also introduces the KDA algorithm.")
 class KDA(CBMAEstimator):
-    r"""
-    Kernel density analysis.
+    r"""Kernel density analysis.
 
     Parameters
     ----------
@@ -514,7 +515,7 @@ class KDA(CBMAEstimator):
     def __init__(
         self,
         kernel_transformer=KDAKernel,
-        null_method="analytic",
+        null_method="approximate",
         n_iters=10000,
         n_cores=1,
         **kwargs,
@@ -617,8 +618,8 @@ class KDA(CBMAEstimator):
         hist_bins = np.arange(0, max_poss_value + (step_size * 1.5), step_size)
         self.null_distributions_["histogram_bins"] = hist_bins
 
-    def _compute_null_analytic(self, ma_maps):
-        """Compute uncorrected null distribution using analytic solution.
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected null distribution using approximate solution.
 
         Parameters
         ----------
@@ -674,4 +675,4 @@ class KDA(CBMAEstimator):
             stat_hist = np.zeros(stat_hist.shape)
             np.add.at(stat_hist, score_idx, probabilities)
 
-        self.null_distributions_["histweights_corr-none_method-analytic"] = stat_hist
+        self.null_distributions_["histweights_corr-none_method-approximate"] = stat_hist

@@ -368,7 +368,7 @@ def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
     testdata_cbma.update_path(tmpdir)
     kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
 
-    est = MKDADensity(kernel_transformer=kern, null_method="analytic")
+    est = MKDADensity(kernel_transformer=kern, null_method="approximate")
     res = est.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
     assert res.get_map("p", return_type="array").dtype == np.float64
