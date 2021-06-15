@@ -317,7 +317,7 @@ class KDAKernel(KernelTransformer):
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1, memory_limit=False):
+    def __init__(self, r=10, value=1, memory_limit=None):
         self.r = float(r)
         self.value = value
         self.memory_limit = memory_limit

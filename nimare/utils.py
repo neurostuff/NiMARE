@@ -444,7 +444,11 @@ def use_memmap(logger, n_files=1):
                     logger.error(f"{function.__name__} failed, removing {filename}")
                 raise
             finally:
-                if hasattr(self, "memory_limit") and self.memory_limit and os.path.isfile(filename):
+                if (
+                    hasattr(self, "memory_limit")
+                    and self.memory_limit
+                    and os.path.isfile(filename)
+                ):
                     for filename in filenames:
                         logger.info(f"Removing temporary file: {filename}")
                         os.remove(filename)

@@ -266,7 +266,7 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
-    memory_limit=False,
+    memory_limit=None,
     memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
