@@ -84,7 +84,7 @@ def test_t_to_z():
 
 NO_OUTPUT_PATTERN = re.compile(
     (
-        r"^No clusters were found for ([\w-]+) at a threshold of [0-9]+\.[0-9]+$|"
+        r"^No clusters were found for ([\w\.0-9+-]+) at a threshold of [0-9]+\.[0-9]+$|"
         r"No Z or p map for ([\w-]+), skipping..."
     )
 )
@@ -115,9 +115,9 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
     caplog.set_level("WARNING", logger=transforms.LGR.name)
 
     img2coord = transforms.ImagesToCoordinates(**kwargs)
+    tst_dset = testdata_ibma.copy()
 
     if add_data:
-        tst_dset = copy.deepcopy(testdata_ibma)
         tst_dset.images = transforms.transform_images(
             tst_dset.images,
             add_data,
@@ -125,8 +125,6 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
             tst_dset.metadata,
             tmp_path,
         )
-    else:
-        tst_dset = testdata_ibma
 
     if drop_data:
         tst_dset.images = tst_dset.images.drop(columns=drop_data)
@@ -152,8 +150,7 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
     if drop_data == "z" and add_data == "p" and img2coord.merge_strategy != "fill":
         assert "No Z map for" in caplog.messages[0]
 
-        # if someone is trying to use two-sided on a study contrast with a p map
-        # raise a warning
+        # if someone is trying to use two-sided on a study contrast with a p map, raise a warning
         if img2coord.two_sided:
             assert "Cannot use two_sided threshold using a p map for" in caplog.messages[0]
 
@@ -166,13 +163,16 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
     # this transformation should retain the same number of unique ids
     # unless the merge_strategy was demolish
     if img2coord.merge_strategy == "demolish":
-        expected_studies_with_coordinates = set(tst_dset.ids) - set(
-            studies_without_coordinates
+        expected_studies_with_coordinates = (
+            set(tst_dset.images.loc[~tst_dset.images["z"].isnull(), "id"]) -
+            set(studies_without_coordinates)
         )
     else:
-        expected_studies_with_coordinates = set(tst_dset.ids)
+        expected_studies_with_coordinates = (
+            set(tst_dset.coordinates["id"]).union(["pain_01.nidm-1"])
+        )
 
-    assert set(new_dset.coordinates["id"]) == expected_studies_with_coordinates
+    assert set(new_dset.coordinates["id"]) == expected_studies_with_coordinates, set(new_dset.coordinates["id"])
 
 
 def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
