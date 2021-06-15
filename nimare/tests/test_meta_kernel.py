@@ -155,9 +155,7 @@ def test_ALEKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
     dset_from_dset = kern.transform(dset, return_type="dataset")
     ids = dset.coordinates["id"].unique()
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=ids, imtype=kern.image_type)
-    )
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -224,9 +222,7 @@ def test_MKDAKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
     ids = dset.coordinates["id"].unique()
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=ids, imtype=kern.image_type)
-    )
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -313,9 +309,7 @@ def test_KDAKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
     ids = dset.coordinates["id"].unique()
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=ids, imtype=kern.image_type)
-    )
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -352,9 +346,7 @@ def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
     ids = dset.coordinates["id"].unique()
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=ids, imtype=kern.image_type)
-    )
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)

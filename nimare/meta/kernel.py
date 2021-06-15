@@ -190,8 +190,7 @@ class KernelTransformer(Transformer):
             del transformed_maps
             # Replace NaNs with Nones
             dataset.images[self.image_type] = dataset.images[self.image_type].where(
-                dataset.images[self.image_type].notnull(),
-                None
+                dataset.images[self.image_type].notnull(), None
             )
             # Infer relative path
             dataset.images = dataset.images

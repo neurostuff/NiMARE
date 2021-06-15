@@ -1,5 +1,4 @@
 """Test nimare.transforms."""
-import copy
 import re
 
 import nibabel as nib
@@ -163,16 +162,17 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
     # this transformation should retain the same number of unique ids
     # unless the merge_strategy was demolish
     if img2coord.merge_strategy == "demolish":
-        expected_studies_with_coordinates = (
-            set(tst_dset.images.loc[~tst_dset.images["z"].isnull(), "id"]) -
-            set(studies_without_coordinates)
-        )
+        expected_studies_with_coordinates = set(
+            tst_dset.images.loc[~tst_dset.images["z"].isnull(), "id"]
+        ) - set(studies_without_coordinates)
     else:
-        expected_studies_with_coordinates = (
-            set(tst_dset.coordinates["id"]).union(["pain_01.nidm-1"])
+        expected_studies_with_coordinates = set(tst_dset.coordinates["id"]).union(
+            ["pain_01.nidm-1"]
         )
 
-    assert set(new_dset.coordinates["id"]) == expected_studies_with_coordinates, set(new_dset.coordinates["id"])
+    assert set(new_dset.coordinates["id"]) == expected_studies_with_coordinates, set(
+        new_dset.coordinates["id"]
+    )
 
 
 def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
@@ -183,7 +183,6 @@ def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
     tst_dset = testdata_ibma.slice(
         ["pain_01.nidm-1", "pain_02.nidm-1", "pain_03.nidm-1", "pain_04.nidm-1"]
     )
-
 
     # remove image data for pain_01.nidm-1 and pain_03.nidm-1
     # coordinate data for pain_01.nidm-1 and pain_02.nidm-1 are already removed
