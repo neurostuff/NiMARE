@@ -209,7 +209,15 @@ class Estimator(NiMAREBase):
 
         if self._required_inputs:
             data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
-            self.inputs_ = {}
+            # Do not overwrite existing inputs_ attribute.
+            # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
+            # in the same object.
+            # It makes the *strong* assumption that required inputs will not changes within an
+            # Estimator across fit calls, so all fields of inputs_ will be overwritten instead of
+            # retaining outdated fields from previous fit calls.
+            if not hasattr(self, "inputs_"):
+                self.inputs_ = {}
+
             for k, v in data.items():
                 if v is None:
                     raise ValueError(
@@ -341,14 +349,11 @@ class MetaEstimator(Estimator):
                     self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
                     if self.kernel_transformer.image_type in dataset.images.columns:
                         files = dataset.get_images(
-                            ids=dataset.ids,
+                            ids=self.inputs_["id"],
                             imtype=self.kernel_transformer.image_type,
                         )
                         if all(f is not None for f in files):
                             self.inputs_["ma_maps"] = files
-
-                # Set the coordinates directly as well
-                self.inputs_[name] = dataset.coordinates.copy()
 
 
 class Transformer(NiMAREBase):
