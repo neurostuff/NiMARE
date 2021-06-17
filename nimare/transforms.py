@@ -385,13 +385,12 @@ class ImagesToCoordinates(Transformer):
                 )
             elif row.get("p"):
                 LGR.info(
-                    (
-                        f"No Z map for {row['id']}, using p map "
-                        "(p-values will be treated as positive z-values)"
-                    )
+                    f"No Z map for {row['id']}, using p map "
+                    "(p-values will be treated as positive z-values)"
                 )
                 if self.two_sided:
                     LGR.warning(f"Cannot use two_sided threshold using a p map for {row['id']}")
+
                 p_threshold = 1 - z_to_p(self.z_threshold)
                 nimg = nib.funcs.squeeze_image(nib.load(row.get("p")))
                 inv_nimg = nib.Nifti1Image(1 - nimg.get_fdata(), nimg.affine, nimg.header)
