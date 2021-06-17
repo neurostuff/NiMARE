@@ -23,6 +23,9 @@ class Corrector(metaclass=ABCMeta):
     # in order to override the default correction method.
     _correction_method = None
 
+    # A list of valid method values for the Corrector that *aren't* Estimator-specific
+    _native_methods = []
+
     # Maps that must be available in the MetaResult instance
     _required_maps = ("p",)
 
@@ -37,11 +40,11 @@ class Corrector(metaclass=ABCMeta):
         if not isinstance(result, MetaResult):
             raise ValueError(
                 "First argument to transform() must be an "
-                "instance of class MetaResult, not {}.".format(type(result))
+                f"instance of class MetaResult, not {type(result)}."
             )
 
         # Get Estimator correction methods
-        pattern = "correct_" + self._correction_method + "_"
+        pattern = f"correct_{self._correction_method}_"
         est_methods = inspect.getmembers(result.estimator, predicate=inspect.ismethod)
         est_methods = [meth[0] for meth in est_methods]
         est_methods = [meth for meth in est_methods if meth.startswith(pattern)]
@@ -50,22 +53,17 @@ class Corrector(metaclass=ABCMeta):
         # Check requested method against available methods
         if self.method not in self._native_methods + est_methods:
             raise ValueError(
-                'Unsupported {0} correction method "{1}"\n'
-                "\tAvailable native methods: {2}\n"
-                "\tAvailable estimator methods: {3}".format(
-                    self._correction_method,
-                    self.method,
-                    ", ".join(self._native_methods),
-                    ", ".join(est_methods),
-                )
+                f"Unsupported {self._correction_method} correction method '{self.method}'\n"
+                f"\tAvailable native methods: {', '.join(self._native_methods)}\n"
+                f"\tAvailable estimator methods: {', '.join(est_methods)}"
             )
 
         # Check required maps
         for rm in self._required_maps:
             if result.maps.get(rm) is None:
                 raise ValueError(
-                    '{0} requires "{1}" maps to be present in the MetaResult, '
-                    "but none were found.".format(type(self), rm)
+                    f"{type(self)} requires '{rm}' maps to be present in the MetaResult, "
+                    "but none were found."
                 )
 
     def _generate_secondary_maps(self, result, corr_maps):
@@ -76,6 +74,32 @@ class Corrector(metaclass=ABCMeta):
         if "logp" in result.maps:
             corr_maps["logp"] = -np.log10(p)
         return corr_maps
+
+    @classmethod
+    def inspect(cls, result):
+        """Identify valid 'method' values for a MetaResult object.
+
+        Parameters
+        ----------
+        result : :obj:`nimare.results.MetaResult`
+            Object for which valid correction methods (i.e., 'method' values) will be identified.
+
+        Returns
+        -------
+        :obj:`list`
+            List of valid 'method' values for the Corrector+Estimator combination, including
+            both non-specific methods and Estimator-specific ones.
+        """
+        est = result.estimator
+        correction_str = f"correct_{cls._correction_method}_"
+        est_methods = inspect.getmembers(est, predicate=inspect.ismethod)
+        valid_methods = [em[0] for em in est_methods if em[0].startswith(correction_str)]
+        method_names = [vm.split(correction_str)[1] for vm in valid_methods]
+        LGR.info(
+            f"Available non-specific methods: {', '.join(cls._native_methods)}\n"
+            f"Available Estimator-specific methods: {', '.join(method_names)}"
+        )
+        return cls._native_methods + method_names
 
     def transform(self, result):
         """Apply the multiple comparisons correction method to a MetaResult object.
@@ -92,7 +116,7 @@ class Corrector(metaclass=ABCMeta):
             MetaResult with new corrected maps added.
         """
         est = result.estimator
-        correction_method = "correct_" + self._correction_method + "_" + self.method
+        correction_method = f"correct_{self._correction_method}_{self.method}"
 
         # Make sure we return a copy of the MetaResult
         result = result.copy()
@@ -102,9 +126,7 @@ class Corrector(metaclass=ABCMeta):
         if correction_method is not None and hasattr(est, correction_method):
             LGR.info(
                 "Using correction method implemented in Estimator: "
-                "{}.{}.{}.".format(
-                    est.__class__.__module__, est.__class__.__name__, correction_method
-                )
+                f"{est.__class__.__module__}.{est.__class__.__name__}.{correction_method}."
             )
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
@@ -147,15 +169,15 @@ class FWECorrector(Corrector):
     """
 
     _correction_method = "fwe"
+    _native_methods = ["bonferroni"]
 
     def __init__(self, method="bonferroni", **kwargs):
         self.method = method
         self.parameters = kwargs
-        self._native_methods = ["bonferroni"]
 
     @property
     def _name_suffix(self):
-        return "_corr-FWE_method-{}".format(self.method)
+        return f"_corr-FWE_method-{self.method}"
 
     def _transform(self, result):
         p = result.maps["p"]
@@ -188,16 +210,16 @@ class FDRCorrector(Corrector):
     """
 
     _correction_method = "fdr"
+    _native_methods = ["indep", "negcorr"]
 
     def __init__(self, alpha=0.05, method="indep", **kwargs):
         self.alpha = alpha
         self.method = method
         self.parameters = kwargs
-        self._native_methods = ["indep", "negcorr"]
 
     @property
     def _name_suffix(self):
-        return "_corr-FDR_method-{}".format(self.method)
+        return f"_corr-FDR_method-{self.method}"
 
     def _transform(self, result):
         p = result.maps["p"]
