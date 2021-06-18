@@ -56,7 +56,7 @@ def convert_neurosynth_to_dict(text_file, annotations_file=None):
         dset_df["space"] = "UNKNOWN"
 
     if isinstance(annotations_file, str):
-        annotations_file = {"Neurosynth_TFIDF", annotations_file}
+        annotations_file = {"Neurosynth_TFIDF": annotations_file}
 
     if annotations_file is not None:
         label_dfs = []
