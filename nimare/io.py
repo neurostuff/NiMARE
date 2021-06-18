@@ -28,35 +28,58 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 def convert_neurosynth_to_dict(text_file, annotations_file=None):
     """Convert Neurosynth database files to a dictionary.
 
+    .. versionchanged:: 0.0.9
+
+        * Support annotations files organized in a dictionary.
+
     Parameters
     ----------
     text_file : :obj:`str`
         Text file with Neurosynth's coordinates. Normally named "database.txt".
-    annotations_file : :obj:`str` or None, optional
-        Optional file with Neurosynth's annotations. Normally named
-        "features.txt". Default is None.
+    annotations_file : :obj:`str`, :obj:`dict`, or None, optional
+        Optional file(s) with Neurosynth's annotations.
+        If a string is provided, then labels from the file will be labeled with the feature group
+        "Neurosynth_TFIDF".
+        If a dictionary is provided, then keys must be feature groups and values must be filenames.
+        The standard Neurosynth annotations file is normally named "features.txt".
+        Default is None.
 
     Returns
     -------
-    dict_ : :obj:`dict`
+    dset_dict : :obj:`dict`
         NiMARE-organized dictionary containing experiment information from text
         files.
     """
-    dset_df = pd.read_csv(text_file, sep="\t")
+    dset_df = pd.read_table(text_file)
+    if "space" not in dset_df.columns:
+        LGR.warning("No 'space' column detected. Defaulting to 'UNKNOWN'.")
+        dset_df["space"] = "UNKNOWN"
+
+    if isinstance(annotations_file, str):
+        annotations_file = {"Neurosynth_TFIDF": annotations_file}
+
     if annotations_file is not None:
-        label_df = pd.read_csv(annotations_file, sep="\t", index_col="pmid")
-        label_df.index = label_df.index.astype(str)
-        labels = label_df.columns
-        if not all("__" in label for label in labels):
-            labels = {label: "Neurosynth_TFIDF__" + label for label in labels}
-        label_df = label_df.rename(columns=labels)
+        label_dfs = []
+        for feature_group, features_file in annotations_file.items():
+            if feature_group.endswith("__"):
+                feature_group = feature_group[:-2]
+
+            label_df = pd.read_table(features_file, index_col="pmid")
+            label_df.index = label_df.index.astype(str)
+            labels = label_df.columns
+            if not all("__" in label for label in labels):
+                labels = {label: f"{feature_group}__" + label for label in labels}
+            label_df = label_df.rename(columns=labels)
+            label_dfs.append(label_df)
+
+        label_df = pd.concat(label_dfs, axis=1)
     else:
         label_df = None
 
     dset_df["id"] = dset_df["id"].astype(str)
 
     ids = dset_df["id"].unique()
-    dict_ = {}
+    dset_dict = {}
     for sid in ids:
         study_df = dset_df.loc[dset_df["id"] == sid]
         study_dict = {}
@@ -79,13 +102,17 @@ def convert_neurosynth_to_dict(text_file, annotations_file=None):
         study_dict["contrasts"]["1"]["coords"]["z"] = study_df["z"].tolist()
         if label_df is not None:
             study_dict["contrasts"]["1"]["labels"] = label_df.loc[sid].to_dict()
-        dict_[sid] = study_dict
+        dset_dict[sid] = study_dict
 
-    return dict_
+    return dset_dict
 
 
 def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
     """Convert Neurosynth dataset text file to a NiMARE json file.
+
+    .. versionchanged:: 0.0.9
+
+        * Support annotations files organized in a dictionary.
 
     Parameters
     ----------
@@ -93,17 +120,25 @@ def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
         Text file with Neurosynth's coordinates. Normally named "database.txt".
     out_file : :obj:`str`
         Output NiMARE-format json file.
-    annotations_file : :obj:`str` or None, optional
-        Optional file with Neurosynth's annotations. Normally named
-        "features.txt". Default is None.
+    annotations_file : :obj:`str`, :obj:`dict`, or None, optional
+        Optional file(s) with Neurosynth's annotations.
+        If a string is provided, then labels from the file will be labeled with the feature group
+        "Neurosynth_TFIDF".
+        If a dictionary is provided, then keys must be feature groups and values must be filenames.
+        The standard Neurosynth annotations file is normally named "features.txt".
+        Default is None.
     """
-    dict_ = convert_neurosynth_to_dict(text_file, annotations_file)
+    dset_dict = convert_neurosynth_to_dict(text_file, annotations_file)
     with open(out_file, "w") as fo:
-        json.dump(dict_, fo, indent=4, sort_keys=True)
+        json.dump(dset_dict, fo, indent=4, sort_keys=True)
 
 
 def convert_neurosynth_to_dataset(text_file, annotations_file=None, target="mni152_2mm"):
     """Convert Neurosynth database files into NiMARE Dataset.
+
+    .. versionchanged:: 0.0.9
+
+        * Support annotations files organized in a dictionary.
 
     Parameters
     ----------
@@ -111,17 +146,21 @@ def convert_neurosynth_to_dataset(text_file, annotations_file=None, target="mni1
         Text file with Neurosynth's coordinates. Normally named "database.txt".
     target : {'mni152_2mm', 'ale_2mm'}, optional
         Target template space for coordinates. Default is 'mni152_2mm'.
-    annotations_file : :obj:`str` or None, optional
-        Optional file with Neurosynth's annotations. Normally named
-        "features.txt". Default is None.
+    annotations_file : :obj:`str`, :obj:`dict`, or None, optional
+        Optional file(s) with Neurosynth's annotations.
+        If a string is provided, then labels from the file will be labeled with the feature group
+        "Neurosynth_TFIDF".
+        If a dictionary is provided, then keys must be feature groups and values must be filenames.
+        The standard Neurosynth annotations file is normally named "features.txt".
+        Default is None.
 
     Returns
     -------
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
     """
-    dict_ = convert_neurosynth_to_dict(text_file, annotations_file)
-    return Dataset(dict_, target=target)
+    dset_dict = convert_neurosynth_to_dict(text_file, annotations_file)
+    return Dataset(dset_dict, target=target)
 
 
 def convert_sleuth_to_dict(text_file):
@@ -136,22 +175,21 @@ def convert_sleuth_to_dict(text_file):
     Returns
     -------
     :obj:`dict`
-        NiMARE-organized dictionary containing experiment information from text
-        file.
+        NiMARE-organized dictionary containing experiment information from text file.
     """
     if isinstance(text_file, list):
-        dict_ = {}
+        dset_dict = {}
         for tf in text_file:
             temp_dict = convert_sleuth_to_dict(tf)
             for sid in temp_dict.keys():
-                if sid in dict_.keys():
-                    dict_[sid]["contrasts"] = {
-                        **dict_[sid]["contrasts"],
+                if sid in dset_dict.keys():
+                    dset_dict[sid]["contrasts"] = {
+                        **dset_dict[sid]["contrasts"],
                         **temp_dict[sid]["contrasts"],
                     }
                 else:
-                    dict_[sid] = temp_dict[sid]
-        return dict_
+                    dset_dict[sid] = temp_dict[sid]
+        return dset_dict
 
     with open(text_file, "r") as file_object:
         data = file_object.read()
@@ -163,9 +201,7 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ["MNI", "TAL", "Talairach"]
     if space not in SPACE_OPTS:
-        raise ValueError(
-            "Space {0} unknown. Options supported: {1}.".format(space, ", ".join(SPACE_OPTS))
-        )
+        raise ValueError(f"Space {space} unknown. Options supported: {', '.join(SPACE_OPTS)}.")
 
     # Split into experiments
     data = data[1:]
@@ -178,14 +214,12 @@ def convert_sleuth_to_dict(text_file):
         group = list(map(itemgetter(1), g))
         ranges.append((group[0], group[-1]))
         if "Subjects" not in data[group[-1]]:
-            raise ValueError(
-                "Sample size line missing for {}".format(data[group[0] : group[-1] + 1])
-            )
+            raise ValueError(f"Sample size line missing for {data[group[0] : group[-1] + 1]}")
     start_idx = [r[0] for r in ranges]
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
 
-    dict_ = {}
+    dset_dict = {}
     for i_exp, exp_idx in enumerate(split_idx):
         exp_data = data[exp_idx[0] : exp_idx[1]]
         if exp_data:
@@ -203,9 +237,8 @@ def convert_sleuth_to_dict(text_file):
             if not correct_shape:
                 all_shapes = np.unique([len(coord) for coord in xyz]).astype(str)
                 raise ValueError(
-                    'Coordinates for study "{0}" are not all '
-                    "correct length. Lengths detected: "
-                    "{1}.".format(study_info, ", ".join(all_shapes))
+                    f"Coordinates for study '{study_info}' are not all "
+                    f"correct length. Lengths detected: {', '.join(all_shapes)}."
                 )
 
             try:
@@ -217,23 +250,22 @@ def convert_sleuth_to_dict(text_file):
                 fmt = "\t".join("{{:{}}}".format(x) for x in lens)
                 table = "\n".join([fmt.format(*row) for row in strs])
                 raise ValueError(
-                    "Conversion to numpy array failed for study "
-                    '"{0}". Coords:\n{1}'.format(study_info, table)
+                    f"Conversion to numpy array failed for study '{study_info}'. Coords:\n{table}"
                 )
 
             x, y, z = list(xyz[:, 0]), list(xyz[:, 1]), list(xyz[:, 2])
 
-            if study_name not in dict_.keys():
-                dict_[study_name] = {"contrasts": {}}
-            dict_[study_name]["contrasts"][contrast_name] = {"coords": {}, "metadata": {}}
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["space"] = space
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["x"] = x
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["y"] = y
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["z"] = z
-            dict_[study_name]["contrasts"][contrast_name]["metadata"]["sample_sizes"] = [
+            if study_name not in dset_dict.keys():
+                dset_dict[study_name] = {"contrasts": {}}
+            dset_dict[study_name]["contrasts"][contrast_name] = {"coords": {}, "metadata": {}}
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["space"] = space
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["x"] = x
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["y"] = y
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["z"] = z
+            dset_dict[study_name]["contrasts"][contrast_name]["metadata"]["sample_sizes"] = [
                 sample_size
             ]
-    return dict_
+    return dset_dict
 
 
 def convert_sleuth_to_json(text_file, out_file):
@@ -248,13 +280,11 @@ def convert_sleuth_to_json(text_file, out_file):
         Path to output json file.
     """
     if not isinstance(text_file, str) and not isinstance(text_file, list):
-        raise ValueError(
-            'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
-        )
-    dict_ = convert_sleuth_to_dict(text_file)
+        raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
+    dset_dict = convert_sleuth_to_dict(text_file)
 
     with open(out_file, "w") as fo:
-        json.dump(dict_, fo, indent=4, sort_keys=True)
+        json.dump(dset_dict, fo, indent=4, sort_keys=True)
 
 
 def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
@@ -275,15 +305,17 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
         Dataset object containing experiment information from text_file.
     """
     if not isinstance(text_file, str) and not isinstance(text_file, list):
-        raise ValueError(
-            'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
-        )
-    dict_ = convert_sleuth_to_dict(text_file)
-    return Dataset(dict_, target=target)
+        raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
+    dset_dict = convert_sleuth_to_dict(text_file)
+    return Dataset(dset_dict, target=target)
 
 
 def convert_neurovault_to_dataset(
-    collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs
+    collection_ids,
+    contrasts,
+    img_dir=None,
+    map_type_conversion=None,
+    **dset_kwargs,
 ):
     """Convert a group of NeuroVault collections into a NiMARE Dataset.
 
