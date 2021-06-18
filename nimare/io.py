@@ -201,9 +201,7 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ["MNI", "TAL", "Talairach"]
     if space not in SPACE_OPTS:
-        raise ValueError(
-            f"Space {space} unknown. Options supported: {', '.join(SPACE_OPTS)}."
-        )
+        raise ValueError(f"Space {space} unknown. Options supported: {', '.join(SPACE_OPTS)}.")
 
     # Split into experiments
     data = data[1:]
@@ -216,9 +214,7 @@ def convert_sleuth_to_dict(text_file):
         group = list(map(itemgetter(1), g))
         ranges.append((group[0], group[-1]))
         if "Subjects" not in data[group[-1]]:
-            raise ValueError(
-                f"Sample size line missing for {data[group[0] : group[-1] + 1]}"
-            )
+            raise ValueError(f"Sample size line missing for {data[group[0] : group[-1] + 1]}")
     start_idx = [r[0] for r in ranges]
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
@@ -284,9 +280,7 @@ def convert_sleuth_to_json(text_file, out_file):
         Path to output json file.
     """
     if not isinstance(text_file, str) and not isinstance(text_file, list):
-        raise ValueError(
-            f"Unsupported type for parameter 'text_file': {type(text_file)}"
-        )
+        raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
     dset_dict = convert_sleuth_to_dict(text_file)
 
     with open(out_file, "w") as fo:
@@ -311,15 +305,17 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
         Dataset object containing experiment information from text_file.
     """
     if not isinstance(text_file, str) and not isinstance(text_file, list):
-        raise ValueError(
-            f"Unsupported type for parameter 'text_file': {type(text_file)}"
-        )
+        raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
     dset_dict = convert_sleuth_to_dict(text_file)
     return Dataset(dset_dict, target=target)
 
 
 def convert_neurovault_to_dataset(
-    collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs,
+    collection_ids,
+    contrasts,
+    img_dir=None,
+    map_type_conversion=None,
+    **dset_kwargs,
 ):
     """Convert a group of NeuroVault collections into a NiMARE Dataset.
 
