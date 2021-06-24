@@ -76,6 +76,9 @@ def test_MKDAChi2_fwe_1core(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
+    valid_methods = FWECorrector.inspect(res)
+    assert "montecarlo" in valid_methods
+
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)

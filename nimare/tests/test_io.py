@@ -80,8 +80,12 @@ def test_convert_neurosynth_to_dataset_smoke():
     """Smoke test for Neurosynth file conversion."""
     db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
     features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")
-    dset = io.convert_neurosynth_to_dataset(db_file, features_file)
+    dset = io.convert_neurosynth_to_dataset(
+        db_file,
+        {"Neurosynth_TEST": features_file},
+    )
     assert isinstance(dset, nimare.dataset.Dataset)
+    assert "Neurosynth_TEST__abilities" in dset.annotations.columns
 
 
 def test_convert_neurosynth_to_json_smoke():
