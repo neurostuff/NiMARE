@@ -229,14 +229,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # F = feature present, g = given, U = unselected, A = activation.
         # So, e.g., pAgF = p(A|F) = probability of activation
         # in a voxel if we know that the feature is present in a study.
-        pF = (n_selected * 1.0) / n_mappables
+        pF = n_selected / n_mappables
         pA = np.array(
             (n_selected_active_voxels + n_unselected_active_voxels) / n_mappables
         ).squeeze()
 
         # Conditional probabilities
-        pAgF = n_selected_active_voxels * 1.0 / n_selected
-        pAgU = n_unselected_active_voxels * 1.0 / n_unselected
+        pAgF = n_selected_active_voxels / n_selected
+        pAgU = n_unselected_active_voxels / n_unselected
         pFgA = pAgF * pF / pA
 
         # Recompute conditionals with uniform prior
@@ -301,8 +301,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
 
         # Currently unused conditional probabilities
-        # pAgF = n_selected_active_voxels * 1.0 / n_selected
-        # pAgU = n_unselected_active_voxels * 1.0 / n_unselected
+        # pAgF = n_selected_active_voxels / n_selected
+        # pAgU = n_unselected_active_voxels / n_unselected
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
