@@ -222,8 +222,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_selected_active_voxels = np.sum(ma_maps1, axis=0)
         n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
 
-        # Transform MA maps to 1d arrays
-        ma_maps_all = np.vstack((ma_maps1, ma_maps2))
+        # Remove large arrays
         del ma_maps1, ma_maps2
 
         # Nomenclature for variables below: p = probability,
@@ -231,7 +230,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # So, e.g., pAgF = p(A|F) = probability of activation
         # in a voxel if we know that the feature is present in a study.
         pF = (n_selected * 1.0) / n_mappables
-        pA = np.array(np.sum(ma_maps_all, axis=0) / n_mappables).squeeze()
+        pA = np.array(
+            (n_selected_active_voxels + n_unselected_active_voxels) / n_mappables
+        ).squeeze()
 
         # Conditional probabilities
         pAgF = n_selected_active_voxels * 1.0 / n_selected
