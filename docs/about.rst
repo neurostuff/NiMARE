@@ -20,7 +20,7 @@ A Proposed Meta-Analytic Ecosystem
 NiMARE aims to fill a gap in a burgeoning meta-analytic ecosystem.
 The goal of NiMARE is to collect a wide range of meta-analytic tools in one Python library.
 Currently, those methods are spread out across a range of programming languages and user interfaces, or are never even translated from the original papers into useable tools.
-NiMARE operates on NIMADS-format datasets, which users will be able to compile by searching the NeuroStuff database with the pyNIMADS library.
+NiMARE operates on NIMADS-format datasets, which users will be able to compile by searching the NeuroStore database with the pyNIMADS library.
 A number of other services in the ecosystem will then use NiMARE functions to perform meta-analyses, including Neurosynth 2.0, `NeuroVault`_, and `metaCurious`_.
 
 .. note::
@@ -34,12 +34,12 @@ Neurosynth 2.0
 
 In order to improve modularization, the next iteration of Neurosynth will limit itself to a web interface for meta-analytic model specification and providing a centralized storage for large-scale meta-analyses, but not actually implementing the algorithms used to run those meta-analyses or to perform the other services provided on the website (e.g., functional decoding and topic modeling).
 The algorithms currently implemented in the `Neurosynth Python package`_ will be implemented (among many others) in NiMARE.
-Under the current plan, the database at the moment stored by Neurosynth will instead by stored in the NeuroStuff database, which will also store other coordinate- and image-based meta-analytic databases in NIMADS format.
+Under the current plan, the database at the moment stored by Neurosynth will instead by stored in the NeuroStore database, which will also store other coordinate- and image-based meta-analytic databases in NIMADS format.
 
 NeuroVault
 ``````````
 `NeuroVault`_ is a database for unthresholded images.
-Users may upload individual maps or `NIDM Results`_, which can be exported from a number of fMRI analysis tools, like `AfNI`_, `SPM`_, `FSL`_, and `NeuroScout`_.
+Users may upload individual maps or `NIDM Results`_, which can be exported from a number of fMRI analysis tools, like `AFNI`_, `SPM`_, `FSL`_, and `NeuroScout`_.
 
 NeuroVault also has integrations with `NeuroPower`_ (for power analyses) and `Neurosynth`_ (for functional decoding), and supports simple image-based meta-analyses.
 
@@ -58,13 +58,13 @@ MetaCurious generates GitHub repositories for meta-analytic samples, which will 
 NIMADS
 ``````
 NIMADS is a new standard for organizing and representing meta-analytic neuroimaging data.
-NIMADS will be used by NeuroStuff, pyNIMADS, `metaCurious`_, and NiMARE.
+NIMADS will be used by NeuroStore, pyNIMADS, `metaCurious`_, and NiMARE.
 
-NeuroStuff
+NeuroStore
 ``````````
-NeuroStuff (tentatively named) will act as a centralized repository for coordinates and maps from neuroimaging studies, stored in NIMADS format.
+NeuroStore will act as a centralized repository for coordinates and maps from neuroimaging studies, stored in NIMADS format.
 Users will be able to query and add to the repository using its API and the pyNIMADS Python library.
 
 pyNIMADS
 ````````
-pyNIMADS (also tentatively named) is a planned Python library that will act as a wrapper for the NeuroStuff API, allowing users to query the database and to build NiMARE-compatible datasets for analysis.
+pyNIMADS (also tentatively named) is a planned Python library that will act as a wrapper for the NeuroStore API, allowing users to query the database and to build NiMARE-compatible datasets for analysis.
