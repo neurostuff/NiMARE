@@ -7,6 +7,7 @@ from sklearn.cluster import KMeans
 
 from .base import NiMAREBase
 from .meta.base import CBMAEstimator
+from .meta.cbma.ale import ALE
 from .results import MetaResult
 from .utils import add_metadata_to_dataframe, check_type, listify, use_memmap, vox2mm
 
@@ -14,10 +15,29 @@ LGR = logging.getLogger(__name__)
 
 
 class CoordCBP(NiMAREBase):
-    """Base class for parcellators in :mod:`nimare.parcellate`.
+    """Perform coordinate-based coactivation-based parcellation.
 
     .. versionadded:: 0.0.10
 
+    Parameters
+    ----------
+    target_mask : :obj:`nibabel.Nifti1.Nifti1Image`
+        Mask of target of parcellation.
+        Currently must be in same space/resolution as Dataset mask.
+    n_clusters : :obj:`list` of :obj:`int`
+        Number of clusters to evaluate in clustering.
+    r : :obj:`float` or None, optional
+        Radius (in mm) within which to find studies. Mutually exclusive with ``n``.
+        Default is None.
+    n : :obj:`int` or None, optional
+        Number of closest studies to identify. Mutually exclusive with ``r``.
+        Default is None.
+    meta_estimator : :obj:`nimare.meta.base.CBMAEstimator`, optional
+        CBMA Estimator with which to run the MACMs.
+        Default is :obj:`nimare.meta.cbma.ale.ALE`.
+    target_image : :obj:`str`, optional
+        Name of meta-analysis results image to use for clustering.
+        Default is "ale", which is specific to the ALE estimator.
     """
 
     _required_inputs = {"coordinates": ("coordinates", None)}
@@ -25,26 +45,29 @@ class CoordCBP(NiMAREBase):
     def __init__(
         self,
         target_mask,
-        meta_estimator,
-        target_image,
         n_clusters,
         r=None,
         n=None,
+        meta_estimator=None,
+        target_image="ale",
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
 
-        # Get kernel transformer
-        meta_estimator = check_type(meta_estimator, CBMAEstimator)
-        self.meta_estimator = meta_estimator
-        self.target_image = target_image
-        self.n_clusters = listify(n_clusters)
+        if meta_estimator is None:
+            meta_estimator = ALE()
+        else:
+            meta_estimator = check_type(meta_estimator, CBMAEstimator)
 
         if r and n:
             raise ValueError("Only one of 'r' and 'n' may be provided.")
         elif not r and not n:
             raise ValueError("Either 'r' or 'n' must be provided.")
+
+        self.meta_estimator = meta_estimator
+        self.target_image = target_image
+        self.n_clusters = listify(n_clusters)
         self.r = r
         self.n = n
 
@@ -72,8 +95,7 @@ class CoordCBP(NiMAREBase):
 
     @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
-        """
-        Perform coordinate-based meta-analysis on dataset.
+        """Perform coordinate-based coactivation-based parcellation on dataset.
 
         Parameters
         ----------
@@ -121,6 +143,16 @@ class CoordCBP(NiMAREBase):
         return images
 
     def fit(self, dataset, drop_invalid=True):
+        """Perform coordinate-based coactivation-based parcellation on dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to analyze.
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is True.
+        """
         self._validate_input(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps = self._fit(dataset)
