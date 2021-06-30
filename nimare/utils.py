@@ -227,10 +227,12 @@ def validate_images_df(image_df):
         if not shared_path.endswith(op.sep):
             shared_path = op.dirname(shared_path) + op.sep
         LGR.info("Shared path detected: '{0}'".format(shared_path))
+        image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
         for abs_col in abs_cols:
-            image_df[abs_col + "__relative"] = image_df[abs_col].apply(
+            image_df_out[abs_col + "__relative"] = image_df[abs_col].apply(
                 lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
             )
+        image_df = image_df_out
     return image_df
 
 
