@@ -181,8 +181,21 @@ class CoordCBP(NiMAREBase):
         images = {"labels": labels}
         return images
 
-    def _filter_selection(self):
-        pass
+    def _filter_selection(self, labels):
+        from scipy import stats
+        n_filters, n_clusters, n_voxels = labels.shape
+        deviant_proportions = np.zeros((n_filters, n_clusters))
+        for i_cluster in range(n_clusters):
+            cluster_labels = labels[:, i_cluster, :]
+            cluster_labels_mode = stats.mode(cluster_labels, axis=0)[0]
+            is_deviant = cluster_labels != cluster_labels_mode
+            deviant_proportion = is_deviant.mean(axis=1)
+            assert deviant_proportion.size == n_filters
+            deviant_proportions[:, i_cluster] = deviant_proportion
+        # Z-score within each cluster solution
+        deviant_z = stats.zscore(deviant_proportions, axis=0)
+        filter_deviant_z = deviant_z.sum(axis=1)
+        min_deviants_filter = np.where(filter_deviant_z == np.min(filter_deviant_z))[0]
 
     def _silhouette(self):
         pass
