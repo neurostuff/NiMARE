@@ -122,16 +122,12 @@ class CoordCBP(NiMAREBase):
                 self.meta_estimator.fit(coord_dset, unselected_dset)
             else:
                 self.meta_estimator.fit(coord_dset)
+
             macm_data = self.meta_estimator.results.get_map(self.target_image, return_type="array")
             if i_coord == 0:
                 data = np.zeros((target_xyz.shape[1], len(macm_data)))
+
             data[i_coord, :] = macm_data
-
-        # Correlate voxel-wise MACM results
-        data = np.corrcoef(data)
-
-        # Convert voxel-wise correlation matrix to distances
-        data = 1 - data
 
         # Perform clustering
         labels = np.zeros((len(self.n_clusters), len(macm_data)), dtype=int)
