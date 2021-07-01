@@ -181,6 +181,24 @@ class CoordCBP(NiMAREBase):
         images = {"labels": labels}
         return images
 
+    def _filter_selection(self):
+        pass
+
+    def _silhouette(self):
+        pass
+
+    def _voxel_misclassification(self):
+        pass
+
+    def _variation_of_information(self):
+        pass
+
+    def _nondominant_voxel_percentage(self):
+        pass
+
+    def _cluster_distance_ratio(self):
+        pass
+
     def fit(self, dataset, drop_invalid=True):
         """Perform coordinate-based coactivation-based parcellation on dataset.
 
