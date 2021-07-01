@@ -625,7 +625,6 @@ class Dataset(NiMAREBase):
         found_ids : :obj:`list`
             A list of IDs from the Dataset matching the search criterion.
         """
-
         if n and r:
             raise ValueError("Only one of 'r' and 'n' may be provided.")
         elif not n and not r:
