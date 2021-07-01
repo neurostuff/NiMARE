@@ -48,6 +48,12 @@ class CoordCBP(NiMAREBase):
     target_image : :obj:`str`, optional
         Name of meta-analysis results image to use for clustering.
         Default is "ale", which is specific to the ALE estimator.
+
+    Notes
+    -----
+    This approach deviates in a number of respects from the method described in
+    Chase et al. (2020), including the fact that the scikit-learn implementation of the K-means
+    clustering algorithm only supports Euclidean distance, so correlation distance is not used.
     """
 
     _required_inputs = {"coordinates": ("coordinates", None)}
@@ -59,7 +65,7 @@ class CoordCBP(NiMAREBase):
         r=None,
         n=None,
         meta_estimator=None,
-        target_image="ale",
+        target_image="stat",
         *args,
         **kwargs,
     ):
@@ -125,6 +131,7 @@ class CoordCBP(NiMAREBase):
 
         n_filters = len(getattr(self, self.filter_type))
         labels = np.zeros((n_filters, len(self.n_clusters), n_target_voxels), dtype=int)
+        silhouettes = np.zeros((n_filters, len(self.n_clusters)), dtype=float)
         kwargs = {"r": None, "n": None}
 
         # Use a memmapped 2D array
@@ -173,6 +180,7 @@ class CoordCBP(NiMAREBase):
                     algorithm="elkan",
                 ).fit(data)
                 labels[i_filter, j_cluster, :] = kmeans.labels_
+                silhouettes[i_filter, j_cluster] = self._silhouette(data, kmeans.labels_)
 
         # Clean up MACM data memmap
         LGR.info(f"Removing temporary file: {memmap_filename}")
@@ -197,14 +205,46 @@ class CoordCBP(NiMAREBase):
         filter_deviant_z = deviant_z.sum(axis=1)
         min_deviants_filter = np.where(filter_deviant_z == np.min(filter_deviant_z))[0]
 
-    def _silhouette(self):
-        pass
+    def _silhouette(self, data, labels):
+        """Calculate silhouette score."""
+        from sklearn.metrics import silhouette_score
+        silhouette = silhouette_score(data, labels, metric="euclidean", random_state=None)
+        return silhouette
 
     def _voxel_misclassification(self):
         pass
 
-    def _variation_of_information(self):
-        pass
+    def _variation_of_information(self, X, Y):
+        """Calculate variation of information metric.
+
+        Parameters
+        ----------
+        X, Y : :obj:`list` of :obj:`list`
+            Partitions to compare
+
+        Notes
+        -----
+        From https://gist.github.com/jwcarr/626cbc80e0006b526688
+
+        Examples
+        --------
+        >>> X = [[1, 2, 3], [4, 5, 6, 7]]
+        >>> Y = [[1, 2, 3, 4], [5, 6, 7]]
+        >>> variation_of_information(X, Y)
+        0.9271749993818661
+        """
+        from math import log
+
+        n = float(sum([len(x) for x in X]))
+        sigma = 0.0
+        for x in X:
+            p = len(x) / n
+            for y in Y:
+                q = len(y) / n
+                r = len(set(x) & set(y)) / n
+                if r > 0.0:
+                    sigma += r * (log(r / p, 2) + log(r / q, 2))
+        return abs(sigma)
 
     def _nondominant_voxel_percentage(self):
         pass
