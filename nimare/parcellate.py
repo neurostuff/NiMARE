@@ -198,6 +198,7 @@ class CoordCBP(NiMAREBase):
             Labeling results from a range of KMeans clustering runs.
         """
         from scipy import stats
+
         n_filters, n_clusters, n_voxels = labels.shape
         deviant_proportions = np.zeros((n_filters, n_clusters))
         for i_cluster in range(n_clusters):
@@ -231,42 +232,69 @@ class CoordCBP(NiMAREBase):
         """
         pass
 
-    def _variation_of_information(self, X, Y):
+    def _variation_of_information(self, labels, cluster_counts):
         """Calculate variation of information metric.
 
         Parameters
         ----------
-        X, Y : :obj:`list` of :obj:`list`
-            Partitions to compare
+        labels : :obj:`numpy.ndarray` of shape (n_filters, n_clusters, n_voxels)
+        cluster_counts : :obj:`list` of :obj:`int`
+            The set of K values tested. Must be n_clusters items long.
+
+        Returns
+        -------
+        vi_values : :obj:`numpy.ndarray` of shape (n_filters, n_clusters, 2)
+            Variation of information values for each filter and each cluster, where the last
+            dimension has two values: the VI value for K vs. K - 1 and the value for K vs. K + 1.
+            K values with no K - 1 or K + 1 have a NaN in the associated cell.
 
         Notes
         -----
-        Implementation adapted from https://gist.github.com/jwcarr/626cbc80e0006b526688.
-
         From Chase et al. (2020):
         Second, the variation of information (VI) metric was employed as an information-theoretic
         criterion to assess the similarity of cluster assignments for each filter size between
         the current solution and the neighboring (K − 1 and K + 1) solutions.
-
-        Examples
-        --------
-        >>> X = [[1, 2, 3], [4, 5, 6, 7]]
-        >>> Y = [[1, 2, 3, 4], [5, 6, 7]]
-        >>> variation_of_information(X, Y)
-        0.9271749993818661
         """
-        from math import log
+        from .utils import variation_of_information
 
-        n = float(sum([len(x) for x in X]))
-        sigma = 0.0
-        for x in X:
-            p = len(x) / n
-            for y in Y:
-                q = len(y) / n
-                r = len(set(x) & set(y)) / n
-                if r > 0.0:
-                    sigma += r * (log(r / p, 2) + log(r / q, 2))
-        return abs(sigma)
+        n_filters, n_clusters, _ = labels.shape
+        assert len(cluster_counts) == n_clusters
+
+        vi_values = np.empty((n_filters, n_clusters, 2))
+        for i_filter in range(n_filters):
+            filter_labels = labels[i_filter, :, :]
+            for j_cluster, cluster_count in enumerate(cluster_counts):
+                cluster_partition = [
+                    np.where(filter_labels[j_cluster, :] == k_cluster_num)[0]
+                    for k_cluster_num in range(cluster_count)
+                ]
+                if j_cluster > 0:
+                    cluster_m1_partition = [
+                        np.where(filter_labels[j_cluster - 1, :] == k_cluster_num)[0]
+                        for k_cluster_num in range(cluster_counts[j_cluster - 1])
+                    ]
+                    # Calculate VI between K and K - 1
+                    vi_values[i_filter, j_cluster, 0] = variation_of_information(
+                        cluster_partition,
+                        cluster_m1_partition,
+                    )
+                else:
+                    vi_values[i_filter, j_cluster, 0] = np.nan
+
+                if j_cluster < (labels.shape[1] - 1):
+                    cluster_p1_partition = [
+                        np.where(filter_labels[j_cluster + 1, :] == k_cluster_num)[0]
+                        for k_cluster_num in range(cluster_counts[j_cluster + 1])
+                    ]
+                    # Calculate VI between K and K + 1
+                    vi_values[i_filter, j_cluster, 1] = variation_of_information(
+                        cluster_partition,
+                        cluster_p1_partition,
+                    )
+                else:
+                    vi_values[i_filter, j_cluster, 1] = np.nan
+
+        return vi_values
 
     def _average_silhouette(self, data, labels):
         """Calculate average silhouette score.
@@ -278,6 +306,7 @@ class CoordCBP(NiMAREBase):
         cluster separation criterion.
         """
         from sklearn.metrics import silhouette_score
+
         silhouette = silhouette_score(data, labels, metric="euclidean", random_state=None)
         # Average across voxels
         return silhouette
