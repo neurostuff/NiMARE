@@ -190,6 +190,13 @@ class CoordCBP(NiMAREBase):
         return images
 
     def _filter_selection(self, labels):
+        """Select a range of optimal filter values based on consistency of cluster assignment.
+
+        Parameters
+        ----------
+        labels : :obj:`numpy.ndarray` of shape (n_filters, nclusters, n_voxels)
+            Labeling results from a range of KMeans clustering runs.
+        """
         from scipy import stats
         n_filters, n_clusters, n_voxels = labels.shape
         deviant_proportions = np.zeros((n_filters, n_clusters))
@@ -205,13 +212,23 @@ class CoordCBP(NiMAREBase):
         filter_deviant_z = deviant_z.sum(axis=1)
         min_deviants_filter = np.where(filter_deviant_z == np.min(filter_deviant_z))[0]
 
-    def _silhouette(self, data, labels):
-        """Calculate silhouette score."""
-        from sklearn.metrics import silhouette_score
-        silhouette = silhouette_score(data, labels, metric="euclidean", random_state=None)
-        return silhouette
+        # This is not the end
+        return min_deviants_filter
 
     def _voxel_misclassification(self):
+        """Calculate voxel misclassification metric.
+
+        Notes
+        -----
+        From Chase et al. (2020):
+        First, misclassified voxels (deviants) were examined as a topological criterion,
+        with optimal K parcellations being those in which the percentage of deviants was not
+        significantly increased compared to the K − 1 solution and but where the K + 1 was
+        associated with significantly increased deviants.
+
+        TS: Deviants are presumably calculated only from the range of filters selected in the
+        filter selection step.
+        """
         pass
 
     def _variation_of_information(self, X, Y):
@@ -224,7 +241,12 @@ class CoordCBP(NiMAREBase):
 
         Notes
         -----
-        From https://gist.github.com/jwcarr/626cbc80e0006b526688
+        Implementation adapted from https://gist.github.com/jwcarr/626cbc80e0006b526688.
+
+        From Chase et al. (2020):
+        Second, the variation of information (VI) metric was employed as an information-theoretic
+        criterion to assess the similarity of cluster assignments for each filter size between
+        the current solution and the neighboring (K − 1 and K + 1) solutions.
 
         Examples
         --------
@@ -246,10 +268,44 @@ class CoordCBP(NiMAREBase):
                     sigma += r * (log(r / p, 2) + log(r / q, 2))
         return abs(sigma)
 
+    def _average_silhouette(self, data, labels):
+        """Calculate average silhouette score.
+
+        Notes
+        -----
+        From Chase et al. (2020):
+        Third, the silhouette value averaged across voxels for each filter size was considered a
+        cluster separation criterion.
+        """
+        from sklearn.metrics import silhouette_score
+        silhouette = silhouette_score(data, labels, metric="euclidean", random_state=None)
+        # Average across voxels
+        return silhouette
+
     def _nondominant_voxel_percentage(self):
+        """Calculate percentage-of-voxels-not-with-parent metric.
+
+        Notes
+        -----
+        From Chase et al. (2020):
+        Fourth, we assessed the percentage of voxels not related to the dominant parent cluster
+        compared with the K − 1 solution as a second topological criterion.
+        This measure corresponds to the percentage voxels that are not present in hierarchy, K,
+        compared with the previous K − 1 solution, and is related to the hierarchy index.
+        """
         pass
 
     def _cluster_distance_ratio(self):
+        """Calculate change-in-inter/intra-cluster-distance metric.
+
+        Notes
+        -----
+        From Chase et al. (2020):
+        Finally, the change in inter- versus intra-cluster distance ratio was computed as a second
+        cluster separation criterion.
+        This ratio is the first derivative of the ratio between the average distance of a given
+        voxel to its own cluster center and the average distance between the cluster centers.
+        """
         pass
 
     def fit(self, dataset, drop_invalid=True):
