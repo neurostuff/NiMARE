@@ -30,7 +30,7 @@ from .utils import (
 LGR = logging.getLogger(__name__)
 
 
-def fetch_neurosynth(path=".", url=None, unpack=False):
+def fetch_neurosynth(path=".", version="7", url=None, **kwargs):
     """Download the latest data files from NeuroSynth.
 
     .. versionadded:: 0.0.4
@@ -39,49 +39,135 @@ def fetch_neurosynth(path=".", url=None, unpack=False):
     ----------
     path : str
         Location to save the retrieved data files. Defaults to current directory.
+    version : str, optional
+        The version to fetch. The default is "7" (Neurosynth's latest version).
     url : None or str, optional
         Specific URL to download. If not None, overrides URL to current data.
-    unpack : bool, optional
-        If True, unzips the data file post-download. Defaults to False.
+        If you want to fetch Neurosynth's data from *before* the 2021 reorganization,
+        you will need to use this argument.
+    kwargs
+        Keyword arguments to select relevant feature files.
+        Valid kwargs include: source, vocab, type.
+        Each kwarg may be a string or a list of strings.
+        If no kwargs are provided, all feature files for the specified database version will be
+        downloaded.
 
     Notes
     -----
-    This function was originally neurosynth.base.dataset.download().
+    This function was adapted from neurosynth.base.dataset.download().
     """
-    if url is None:
-        url = (
-            "https://github.com/neurosynth/neurosynth-data/blob/master/current_data.tar.gz?"
-            "raw=true"
-        )
-    if os.path.exists(path) and os.path.isdir(path):
-        basename = os.path.basename(url).split("?")[0]
-        filename = os.path.join(path, basename)
-    else:
-        filename = path
+    import itertools
 
-    f = open(filename, "wb")
+    # ENTITY_ORDER = ["data", "source", "vocab", "type", "version"]
+    VALID_ENTITIES = {
+        "database.tsv.gz": ["data", "version"],
+        "features.npz": ["data", "source", "vocab", "type", "version"],
+        "ids.txt": ["data", "version"],
+        "vocabulary.txt": ["data", "vocab", "version"],
+        "metadata.json": ["data", "vocab", "version"],
+        "keys.tsv": ["data", "vocab", "version"],
+    }
+    URL = "https://github.com/neurosynth/neurosynth-data/blob/master/"
+    FILES = [
+        "data-neurosynth_source-abstract_vocab-LDA100_type-weight_version-6_features.npz",
+        "data-neurosynth_source-abstract_vocab-LDA100_type-weight_version-7_features.npz",
+        "data-neurosynth_source-abstract_vocab-LDA200_type-weight_version-6_features.npz",
+        "data-neurosynth_source-abstract_vocab-LDA200_type-weight_version-7_features.npz",
+        "data-neurosynth_source-abstract_vocab-LDA400_type-weight_version-6_features.npz",
+        "data-neurosynth_source-abstract_vocab-LDA400_type-weight_version-7_features.npz",
+        "data-neurosynth_source-abstract_vocab-LDA50_type-weight_version-6_features.npz",
+        "data-neurosynth_source-abstract_vocab-LDA50_type-weight_version-7_features.npz",
+        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-3_features.npz",
+        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-4_features.npz",
+        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-5_features.npz",
+        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-6_features.npz",
+        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-7_features.npz",
+        "data-neurosynth_version-3_database.tsv.gz",
+        "data-neurosynth_version-3_ids.txt",
+        "data-neurosynth_version-4_database.tsv.gz",
+        "data-neurosynth_version-4_ids.txt",
+        "data-neurosynth_version-5_database.tsv.gz",
+        "data-neurosynth_version-5_ids.txt",
+        "data-neurosynth_version-6_database.tsv.gz",
+        "data-neurosynth_version-6_ids.txt",
+        "data-neurosynth_version-7_database.tsv.gz",
+        "data-neurosynth_version-7_ids.txt",
+        "data-neurosynth_vocab-LDA100_version-6_keys.tsv",
+        "data-neurosynth_vocab-LDA100_version-6_metadata.json",
+        "data-neurosynth_vocab-LDA100_version-6_vocabulary.txt",
+        "data-neurosynth_vocab-LDA100_version-7_keys.tsv",
+        "data-neurosynth_vocab-LDA100_version-7_metadata.json",
+        "data-neurosynth_vocab-LDA100_version-7_vocabulary.txt",
+        "data-neurosynth_vocab-LDA200_version-6_keys.tsv",
+        "data-neurosynth_vocab-LDA200_version-6_metadata.json",
+        "data-neurosynth_vocab-LDA200_version-6_vocabulary.txt",
+        "data-neurosynth_vocab-LDA200_version-7_keys.tsv",
+        "data-neurosynth_vocab-LDA200_version-7_metadata.json",
+        "data-neurosynth_vocab-LDA200_version-7_vocabulary.txt",
+        "data-neurosynth_vocab-LDA400_version-6_keys.tsv",
+        "data-neurosynth_vocab-LDA400_version-6_metadata.json",
+        "data-neurosynth_vocab-LDA400_version-6_vocabulary.txt",
+        "data-neurosynth_vocab-LDA400_version-7_keys.tsv",
+        "data-neurosynth_vocab-LDA400_version-7_metadata.json",
+        "data-neurosynth_vocab-LDA400_version-7_vocabulary.txt",
+        "data-neurosynth_vocab-LDA50_version-6_keys.tsv",
+        "data-neurosynth_vocab-LDA50_version-6_metadata.json",
+        "data-neurosynth_vocab-LDA50_version-6_vocabulary.txt",
+        "data-neurosynth_vocab-LDA50_version-7_keys.tsv",
+        "data-neurosynth_vocab-LDA50_version-7_metadata.json",
+        "data-neurosynth_vocab-LDA50_version-7_vocabulary.txt",
+        "data-neurosynth_vocab-terms_version-3_vocabulary.txt",
+        "data-neurosynth_vocab-terms_version-4_vocabulary.txt",
+        "data-neurosynth_vocab-terms_version-5_vocabulary.txt",
+        "data-neurosynth_vocab-terms_version-6_vocabulary.txt",
+        "data-neurosynth_vocab-terms_version-7_vocabulary.txt",
+    ]
+    kwargs["data"] = "neurosynth"
+    # Convert all string-based kwargs to lists
+    kwargs = {k: [v] if isinstance(v, str) else v for k, v in kwargs.items()}
+    kwargs = [[f"{k}-{v_i}" for v_i in v] for k, v in kwargs.items()]
+    searches = list(itertools.product(*kwargs))
 
-    u = urlopen(url)
-    file_size = int(u.headers["Content-Length"][0])
-    print("Downloading the latest Neurosynth files: {0} bytes: {1}".format(url, file_size))
+    LGR.debug(f"Searching for any feature files matching the following criteria: {searches}")
 
-    bytes_dl = 0
-    block_size = 8192
-    while True:
-        buffer = u.read(block_size)
-        if not buffer:
-            break
-        bytes_dl += len(buffer)
-        f.write(buffer)
-        p = float(bytes_dl) / file_size
-        status = r"{0}  [{1:.2%}]".format(bytes_dl, p)
-        status = status + chr(8) * (len(status) + 1)
-        sys.stdout.write(status)
+    found_files = []
+    for f in FILES:
+        # Search for match
+        file_parts = f.split("_")
+        suffix = file_parts[-1]
+        valid_entities_for_suffix = VALID_ENTITIES[suffix]
+        for search in searches:
+            temp_search = [term for term in search if term in valid_entities_for_suffix]
+            if all(term in file_parts for term in temp_search):
+                found_files.append(f)
 
-    f.close()
+    for f in found_files:
+        print(f"Downloading {f}", flush=True)
+        url = op.join(URL, f)
+        out_file = op.abspath(op.join(path, f))
+        with open(out_file, "wb") as fo:
+            u = urlopen(url)
 
-    if unpack:
-        tarfile.open(filename, "r:gz").extractall(os.path.dirname(filename))
+            block_size = 8192
+            while True:
+                buffer = u.read(block_size)
+                if not buffer:
+                    break
+                fo.write(buffer)
+
+    out_databases = [
+        {
+            "database": "",
+            "features": [
+                {
+                    "ids": "",
+                    "features": "",
+                    "vocabulary": "",
+                },
+            ],
+        },
+    ]
+    return out_databases
 
 
 def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
