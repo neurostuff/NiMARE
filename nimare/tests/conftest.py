@@ -4,6 +4,7 @@ from shutil import copyfile
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 from nilearn.image import resample_img
 
@@ -11,6 +12,8 @@ import nimare
 from nimare.tests.utils import get_test_data_path
 
 from ..utils import get_resource_path
+
+pd.options.mode.chained_assignment = "raise"
 
 
 @pytest.fixture(scope="session")
