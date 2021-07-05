@@ -455,7 +455,7 @@ def use_memmap(logger, n_files=1):
                     _, filename = mkstemp(
                         prefix=self.__class__.__name__, suffix=start_time, dir=dataset_dir
                     )
-                    logger.info(f"Temporary file written to {filename}")
+                    logger.debug(f"Temporary file written to {filename}")
                     self.memmap_filenames.append(filename)
                     filenames.append(filename)
             else:
@@ -474,7 +474,7 @@ def use_memmap(logger, n_files=1):
                     and os.path.isfile(filename)
                 ):
                     for filename in filenames:
-                        logger.info(f"Removing temporary file: {filename}")
+                        logger.debug(f"Removing temporary file: {filename}")
                         os.remove(filename)
 
         return memmap_context

@@ -183,6 +183,10 @@ class CorrelationDecoder(Decoder):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
             )
+            LGR.info(
+                f"Decoding {feature} ({i}/{len(self.features)}): {len(feature_ids)}/"
+                f"{len(dataset.ids)} studies"
+            )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
             # Check if the meta method is a pairwise estimator
@@ -293,7 +297,7 @@ class CorrelationDistributionDecoder(Decoder):
                 )
                 images_[feature] = feature_arr
             else:
-                LGR.info('Skipping feature "{}". No images found.'.format(feature))
+                LGR.info(f"Skipping feature '{feature}'. No images found.")
         # reduce features again
         self.features_ = [f for f in self.features_ if f in images_.keys()]
         self.images_ = images_
