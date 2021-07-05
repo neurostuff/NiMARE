@@ -222,18 +222,27 @@ def validate_images_df(image_df):
     if len(abs_cols):
         all_files = list(np.ravel(image_df[abs_cols].values))
         all_files = [f for f in all_files if isinstance(f, str)]
-        shared_path = find_stem(all_files)
+        if len(all_files) == 1:
+            shared_path = op.dirname(all_files[0]) + op.sep
+        else:
+            shared_path = find_stem(all_files)
+
         # Get parent *directory* if shared path includes common prefix.
         if not shared_path.endswith(op.sep):
             shared_path = op.dirname(shared_path) + op.sep
-        LGR.info("Shared path detected: '{0}'".format(shared_path))
+
         image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
         for abs_col in abs_cols:
             image_df_out[abs_col + "__relative"] = image_df[abs_col].apply(
                 lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
             )
+
         image_df = image_df_out
-    return image_df
+        shared_path = op.abspath(shared_path)
+    else:
+        shared_path = None
+
+    return image_df, shared_path
 
 
 def get_template(space="mni152_2mm", mask=None):

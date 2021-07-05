@@ -204,7 +204,13 @@ class Dataset(NiMAREBase):
     @images.setter
     def images(self, df):
         validate_df(df)
-        self.__images = validate_images_df(df).sort_values(by="id")
+        updated_df, updated_path = validate_images_df(df)
+
+        if (updated_path is not None) and (self.basepath != updated_path):
+            LGR.warning(f"New base path detected: {updated_path}. Updating Dataset.basepath.")
+            self.update_path(updated_path)
+
+        self.__images = updated_df.sort_values(by="id")
 
     @property
     def metadata(self):
