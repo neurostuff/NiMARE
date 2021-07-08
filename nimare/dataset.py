@@ -107,12 +107,12 @@ class Dataset(NiMAREBase):
         self.masker = mask
         self.space = target
 
+        self.basepath = None
         self.annotations = dict_to_df(id_df, data, key="labels")
         self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
         self.images = dict_to_df(id_df, data, key="images")
         self.metadata = dict_to_df(id_df, data, key="metadata")
         self.texts = dict_to_df(id_df, data, key="text")
-        self.basepath = None
 
     @property
     def ids(self):

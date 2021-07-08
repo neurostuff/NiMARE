@@ -1830,7 +1830,7 @@
         "contrasts": {
             "1": {
                 "connmats": {
-                    "aal": "orig/9787003_1._z.txt"
+                    "aal": "orig/9787003_1_z.txt"
                 },
                 "coords": {
                     "space": "MNI",
@@ -2204,25 +2204,25 @@
                     ]
                 },
                 "images": {
-                    "beta": "orig/9787003_1._beta.nii.gz",
-                    "se": "orig/9787003_1._se.nii.gz",
+                    "beta": "orig/9787003_1_beta.nii.gz",
+                    "se": "orig/9787003_1_se.nii.gz",
                     "space": "MNI_2mm",
-                    "z": "orig/9787003_1._z.nii.gz"
+                    "z": "orig/9787003_1_z.nii.gz"
                 },
                 "labels": {},
                 "metadata": {
                     "sample_sizes": null
                 },
                 "surfaces": {
-                    "beta": "orig/9787003_1._beta.gii.gz",
-                    "se": "orig/9787003_1._se.gii.gz",
+                    "beta": "orig/9787003_1_beta.gii.gz",
+                    "se": "orig/9787003_1_se.gii.gz",
                     "space": "MNI_2mm",
-                    "z": "orig/9787003_1._z.gii.gz"
+                    "z": "orig/9787003_1_z.gii.gz"
                 }
             },
             "2": {
                 "connmats": {
-                    "aal": "orig/9787003_2._z.txt"
+                    "aal": "orig/9787003_2_z.txt"
                 },
                 "coords": {
                     "space": "MNI",
@@ -2292,25 +2292,25 @@
                     ]
                 },
                 "images": {
-                    "beta": "orig/9787003_2._beta.nii.gz",
-                    "se": "orig/9787003_2._se.nii.gz",
+                    "beta": "orig/9787003_2_beta.nii.gz",
+                    "se": "orig/9787003_2_se.nii.gz",
                     "space": "MNI_2mm",
-                    "z": "orig/9787003_2._z.nii.gz"
+                    "z": "orig/9787003_2_z.nii.gz"
                 },
                 "labels": {},
                 "metadata": {
                     "sample_sizes": null
                 },
                 "surfaces": {
-                    "beta": "orig/9787003_2._beta.gii.gz",
-                    "se": "orig/9787003_2._se.gii.gz",
+                    "beta": "orig/9787003_2_beta.gii.gz",
+                    "se": "orig/9787003_2_se.gii.gz",
                     "space": "MNI_2mm",
-                    "z": "orig/9787003_2._z.gii.gz"
+                    "z": "orig/9787003_2_z.gii.gz"
                 }
             },
             "3": {
                 "connmats": {
-                    "aal": "orig/9787003_3._z.txt"
+                    "aal": "orig/9787003_3_z.txt"
                 },
                 "coords": {
                     "space": "MNI",
@@ -2356,20 +2356,20 @@
                     ]
                 },
                 "images": {
-                    "beta": "orig/9787003_3._beta.nii.gz",
-                    "se": "orig/9787003_3._se.nii.gz",
+                    "beta": "orig/9787003_3_beta.nii.gz",
+                    "se": "orig/9787003_3_se.nii.gz",
                     "space": "MNI_2mm",
-                    "z": "orig/9787003_3._z.nii.gz"
+                    "z": "orig/9787003_3_z.nii.gz"
                 },
                 "labels": {},
                 "metadata": {
                     "sample_sizes": null
                 },
                 "surfaces": {
-                    "beta": "orig/9787003_3._beta.gii.gz",
-                    "se": "orig/9787003_3._se.gii.gz",
+                    "beta": "orig/9787003_3_beta.gii.gz",
+                    "se": "orig/9787003_3_se.gii.gz",
                     "space": "MNI_2mm",
-                    "z": "orig/9787003_3._z.gii.gz"
+                    "z": "orig/9787003_3_z.gii.gz"
                 }
             }
         },
