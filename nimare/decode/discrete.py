@@ -710,6 +710,14 @@ class ROIAssociationDecoder(Decoder):
         available options for :func:`statsmodels.stats.multitest.multipletests`.
         Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
 
+    Notes
+    -----
+    The general approach in this method is:
+    1. Define ROI.
+    2. Generate MA maps for all studies in Dataset.
+    3. Average MA values within ROI to get study-wise MA regressor.
+    4. Correlate MA regressor with study-wise annotation values (e.g., tf-idf values).
+
     References
     ----------
     * Yarkoni, Tal, et al. "Large-scale automated synthesis of human
@@ -720,10 +728,9 @@ class ROIAssociationDecoder(Decoder):
     def __init__(
         self,
         mask,
+        kernel_transformer=MKDAKernel,
         feature_group=None,
         features=None,
-        frequency_threshold=0.001,
-        prior=0.5,
         u=0.05,
         correction="fdr_bh",
     ):
