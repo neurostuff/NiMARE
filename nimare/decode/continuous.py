@@ -134,6 +134,11 @@ class CorrelationDecoder(Decoder):
     evaluate results based on significance.
     """
 
+    _required_inputs = {
+        "coordinates": ("coordinates", None),
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
         self,
         feature_group=None,
@@ -182,11 +187,13 @@ class CorrelationDecoder(Decoder):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
             )
+            feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
+
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
             # Check if the meta method is a pairwise estimator
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
-                nonfeature_ids = sorted(list(set(dataset.ids) - set(feature_ids)))
+                nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
                 self.meta_estimator.fit(feature_dset, nonfeature_dset)
             else:
@@ -242,14 +249,18 @@ class CorrelationDistributionDecoder(Decoder):
     evaluate results based on significance.
     """
 
+    _required_inputs = {
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
         self, feature_group=None, features=None, frequency_threshold=0.001, target_image="z"
     ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
-        self.target_image = target_image
         self.results = None
+        self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
         """Collect sets of maps from the Dataset corresponding to each requested feature.
@@ -275,8 +286,13 @@ class CorrelationDistributionDecoder(Decoder):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
             )
-            test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
-            test_imgs = list(filter(None, test_imgs))
+            selected_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
+            selected_id_idx = [
+                i_id for i_id, id_ in enumerate(self.inputs_["id"]) if id_ in selected_ids
+            ]
+            test_imgs = [
+                img for i_img, img in enumerate(self.inputs_["images"]) if i_img in selected_id_idx
+            ]
             if len(test_imgs):
                 feature_arr = self.masker.transform(test_imgs)
                 images_[feature] = feature_arr

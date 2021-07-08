@@ -359,6 +359,11 @@ class Dataset(NiMAREBase):
                 temp = [self.coordinates.loc[self.coordinates["id"] == id_] for id_ in self.ids]
                 # Replace empty DataFrames with Nones
                 temp = [t if t.size else None for t in temp]
+            elif vals[0] == "annotations":
+                # Break DataFrame down into a list of study-specific DataFrames
+                temp = [self.annotations.loc[self.annotations["id"] == id_] for id_ in self.ids]
+                # Replace empty DataFrames with Nones
+                temp = [t if t.size else None for t in temp]
             else:
                 raise ValueError(f"Input '{vals[0]}' not understood.")
 
@@ -378,7 +383,7 @@ class Dataset(NiMAREBase):
 
         for k in results:
             results[k] = [results[k][i] for i in keep_idx]
-            if dict_.get(k, [None])[0] == "coordinates":
+            if dict_.get(k, [None])[0] in ("coordinates", "annotations"):
                 results[k] = pd.concat(results[k])
 
         return results
