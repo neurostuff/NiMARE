@@ -107,12 +107,12 @@ class Dataset(NiMAREBase):
         self.masker = mask
         self.space = target
 
-        self.basepath = None
         self.annotations = dict_to_df(id_df, data, key="labels")
         self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
         self.images = dict_to_df(id_df, data, key="images")
         self.metadata = dict_to_df(id_df, data, key="metadata")
         self.texts = dict_to_df(id_df, data, key="text")
+        self.basepath = None
 
     @property
     def ids(self):
@@ -204,13 +204,7 @@ class Dataset(NiMAREBase):
     @images.setter
     def images(self, df):
         validate_df(df)
-        updated_df, updated_path = validate_images_df(df)
-
-        if (updated_path is not None) and (self.basepath != updated_path):
-            LGR.warning(f"New base path detected: {updated_path}. Updating Dataset.basepath.")
-            self.update_path(updated_path)
-
-        self.__images = updated_df.sort_values(by="id")
+        self.__images = validate_images_df(df).sort_values(by="id")
 
     @property
     def metadata(self):
