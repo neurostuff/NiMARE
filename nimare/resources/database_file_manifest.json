@@ -1,0 +1,108 @@
+[
+    {
+        "database": "data-neurosynth_version-3_database.tsv.gz",
+        "features": [
+            {
+                "features": "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-3_features.npz",
+                "ids": "data-neurosynth_version-3_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-terms_version-3_vocabulary.txt"
+            }
+        ]
+    },
+    {
+        "database": "data-neurosynth_version-4_database.tsv.gz",
+        "features": [
+            {
+                "features": "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-4_features.npz",
+                "ids": "data-neurosynth_version-4_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-terms_version-4_vocabulary.txt"
+            }
+        ]
+    },
+    {
+        "database": "data-neurosynth_version-5_database.tsv.gz",
+        "features": [
+            {
+                "features": "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-5_features.npz",
+                "ids": "data-neurosynth_version-5_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-terms_version-5_vocabulary.txt"
+            }
+        ]
+    },
+    {
+        "database": "data-neurosynth_version-6_database.tsv.gz",
+        "features": [
+            {
+                "features": "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-6_features.npz",
+                "ids": "data-neurosynth_version-6_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-terms_version-6_vocabulary.txt"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA50_type-weight_version-6_features.npz",
+                "ids": "data-neurosynth_version-6_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA50_version-6_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA50_version-6_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA50_version-6_metadata.json"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA100_type-weight_version-6_features.npz",
+                "ids": "data-neurosynth_version-6_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA100_version-6_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA100_version-6_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA100_version-6_metadata.json"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA200_type-weight_version-6_features.npz",
+                "ids": "data-neurosynth_version-6_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA200_version-6_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA200_version-6_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA200_version-6_metadata.json"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA400_type-weight_version-6_features.npz",
+                "ids": "data-neurosynth_version-6_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA400_version-6_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA400_version-6_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA400_version-6_metadata.json"
+            }
+        ]
+    },
+    {
+        "database": "data-neurosynth_version-7_database.tsv.gz",
+        "features": [
+            {
+                "features": "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-7_features.npz",
+                "ids": "data-neurosynth_version-7_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-terms_version-7_vocabulary.txt"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA50_type-weight_version-7_features.npz",
+                "ids": "data-neurosynth_version-7_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA50_version-7_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA50_version-7_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA50_version-7_metadata.json"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA100_type-weight_version-7_features.npz",
+                "ids": "data-neurosynth_version-7_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA100_version-7_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA100_version-7_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA100_version-7_metadata.json"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA200_type-weight_version-7_features.npz",
+                "ids": "data-neurosynth_version-7_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA200_version-7_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA200_version-7_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA200_version-7_metadata.json"
+            },
+            {
+                "features": "data-neurosynth_source-abstract_vocab-LDA400_type-weight_version-7_features.npz",
+                "ids": "data-neurosynth_version-7_ids.txt",
+                "vocabulary": "data-neurosynth_vocab-LDA400_version-7_vocabulary.txt",
+                "keys": "data-neurosynth_vocab-LDA400_version-7_keys.tsv",
+                "metadata": "data-neurosynth_vocab-LDA400_version-7_metadata.json"
+            }
+        ]
+    }
+]

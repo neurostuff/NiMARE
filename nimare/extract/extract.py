@@ -1,10 +1,10 @@
 """Tools for downloading datasets."""
+import itertools
+import json
 import logging
-import math
 import os
 import os.path as op
 import shutil
-import sys
 import tarfile
 import time
 import zipfile
@@ -19,6 +19,7 @@ import requests
 from tqdm.auto import tqdm
 
 from ..dataset import Dataset
+from ..utils import get_resource_path
 from .utils import (
     _download_zipped_file,
     _expand_df,
@@ -29,11 +30,116 @@ from .utils import (
 
 LGR = logging.getLogger(__name__)
 
+VALID_ENTITIES = {
+    "database.tsv.gz": ["data", "version"],
+    "features.npz": ["data", "source", "vocab", "type", "version"],
+    "ids.txt": ["data", "version"],
+    "vocabulary.txt": ["data", "vocab", "version"],
+    "metadata.json": ["data", "vocab", "version"],
+    "keys.tsv": ["data", "vocab", "version"],
+}
 
-def fetch_neurosynth(path=".", version="7", url=None, **kwargs):
+
+def _find_entities(filename, search_pairs, log=False):
+    """Search file for any matching patterns of entities."""
+    # Convert all string-based kwargs to lists
+    search_pairs = {k: [v] if isinstance(v, str) else v for k, v in search_pairs.items()}
+    search_pairs = [[f"{k}-{v_i}" for v_i in v] for k, v in search_pairs.items()]
+    searches = list(itertools.product(*search_pairs))
+
+    if log:
+        LGR.info(f"Searching for any feature files matching the following criteria: {searches}")
+
+    file_parts = filename.split("_")
+    suffix = file_parts[-1]
+    valid_entities_for_suffix = VALID_ENTITIES[suffix]
+    for search in searches:
+        temp_search = [term for term in search if term.split("-")[0] in valid_entities_for_suffix]
+        if all(term in file_parts for term in temp_search):
+            return True
+
+    return False
+
+
+def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
+    """Fetch generic database."""
+    res_dir = get_resource_path()
+    with open(op.join(res_dir, "database_file_manifest.json"), "r") as fo:
+        database_file_manifest = json.load(fo)
+
+    out_dir = op.abspath(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+
+    found_databases = []
+    log = True
+    for database in database_file_manifest:
+        database_file = database["database"]
+        if not _find_entities(database_file, search_pairs, log=log):
+            log = False
+            continue
+
+        log = False
+
+        feature_dicts = database["features"]
+        found_files = []
+        for feature_dict in feature_dicts:
+            features_file = feature_dict["features"]
+            # Other files associated with features have subset of entities,
+            # so unnecessary to search them if we assume that the hard-coded manifest is valid.
+            if not _find_entities(features_file, search_pairs):
+                continue
+            else:
+                out_database_file = op.join(out_dir, database_file)
+                out_feature_dict = {k: op.join(out_dir, v) for k, v in feature_dict.items()}
+
+                db_found = [
+                    i_db
+                    for i_db, db_dct in enumerate(found_databases)
+                    if db_dct["database"] == out_database_file
+                ]
+                if len(db_found):
+                    assert len(db_found) == 1
+
+                    found_databases[db_found[0]]["features"].append(out_feature_dict)
+                else:
+                    found_databases.append(
+                        {
+                            "database": out_database_file,
+                            "features": [out_feature_dict],
+                        }
+                    )
+                found_files += [database_file, *feature_dict.values()]
+
+    found_files = sorted(list(set(found_files)))
+    for found_file in found_files:
+        print(f"Downloading {found_file}", flush=True)
+
+        url = op.join(database_url, found_file)
+        out_file = op.join(out_dir, found_file)
+
+        if op.isfile(out_file) and not overwrite:
+            print("File exists and overwrite is False. Skipping.")
+            continue
+
+        with open(out_file, "wb") as fo:
+            u = urlopen(url)
+
+            block_size = 8192
+            while True:
+                buffer = u.read(block_size)
+                if not buffer:
+                    break
+                fo.write(buffer)
+
+    return found_databases
+
+
+def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     """Download the latest data files from NeuroSynth.
 
     .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.10
 
     Parameters
     ----------
@@ -56,118 +162,50 @@ def fetch_neurosynth(path=".", version="7", url=None, **kwargs):
     -----
     This function was adapted from neurosynth.base.dataset.download().
     """
-    import itertools
+    URL = "https://github.com/tsalo/neurosynth-data/blob/master/"
 
-    # ENTITY_ORDER = ["data", "source", "vocab", "type", "version"]
-    VALID_ENTITIES = {
-        "database.tsv.gz": ["data", "version"],
-        "features.npz": ["data", "source", "vocab", "type", "version"],
-        "ids.txt": ["data", "version"],
-        "vocabulary.txt": ["data", "vocab", "version"],
-        "metadata.json": ["data", "vocab", "version"],
-        "keys.tsv": ["data", "vocab", "version"],
-    }
-    URL = "https://github.com/neurosynth/neurosynth-data/blob/master/"
-    FILES = [
-        "data-neurosynth_source-abstract_vocab-LDA100_type-weight_version-6_features.npz",
-        "data-neurosynth_source-abstract_vocab-LDA100_type-weight_version-7_features.npz",
-        "data-neurosynth_source-abstract_vocab-LDA200_type-weight_version-6_features.npz",
-        "data-neurosynth_source-abstract_vocab-LDA200_type-weight_version-7_features.npz",
-        "data-neurosynth_source-abstract_vocab-LDA400_type-weight_version-6_features.npz",
-        "data-neurosynth_source-abstract_vocab-LDA400_type-weight_version-7_features.npz",
-        "data-neurosynth_source-abstract_vocab-LDA50_type-weight_version-6_features.npz",
-        "data-neurosynth_source-abstract_vocab-LDA50_type-weight_version-7_features.npz",
-        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-3_features.npz",
-        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-4_features.npz",
-        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-5_features.npz",
-        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-6_features.npz",
-        "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-7_features.npz",
-        "data-neurosynth_version-3_database.tsv.gz",
-        "data-neurosynth_version-3_ids.txt",
-        "data-neurosynth_version-4_database.tsv.gz",
-        "data-neurosynth_version-4_ids.txt",
-        "data-neurosynth_version-5_database.tsv.gz",
-        "data-neurosynth_version-5_ids.txt",
-        "data-neurosynth_version-6_database.tsv.gz",
-        "data-neurosynth_version-6_ids.txt",
-        "data-neurosynth_version-7_database.tsv.gz",
-        "data-neurosynth_version-7_ids.txt",
-        "data-neurosynth_vocab-LDA100_version-6_keys.tsv",
-        "data-neurosynth_vocab-LDA100_version-6_metadata.json",
-        "data-neurosynth_vocab-LDA100_version-6_vocabulary.txt",
-        "data-neurosynth_vocab-LDA100_version-7_keys.tsv",
-        "data-neurosynth_vocab-LDA100_version-7_metadata.json",
-        "data-neurosynth_vocab-LDA100_version-7_vocabulary.txt",
-        "data-neurosynth_vocab-LDA200_version-6_keys.tsv",
-        "data-neurosynth_vocab-LDA200_version-6_metadata.json",
-        "data-neurosynth_vocab-LDA200_version-6_vocabulary.txt",
-        "data-neurosynth_vocab-LDA200_version-7_keys.tsv",
-        "data-neurosynth_vocab-LDA200_version-7_metadata.json",
-        "data-neurosynth_vocab-LDA200_version-7_vocabulary.txt",
-        "data-neurosynth_vocab-LDA400_version-6_keys.tsv",
-        "data-neurosynth_vocab-LDA400_version-6_metadata.json",
-        "data-neurosynth_vocab-LDA400_version-6_vocabulary.txt",
-        "data-neurosynth_vocab-LDA400_version-7_keys.tsv",
-        "data-neurosynth_vocab-LDA400_version-7_metadata.json",
-        "data-neurosynth_vocab-LDA400_version-7_vocabulary.txt",
-        "data-neurosynth_vocab-LDA50_version-6_keys.tsv",
-        "data-neurosynth_vocab-LDA50_version-6_metadata.json",
-        "data-neurosynth_vocab-LDA50_version-6_vocabulary.txt",
-        "data-neurosynth_vocab-LDA50_version-7_keys.tsv",
-        "data-neurosynth_vocab-LDA50_version-7_metadata.json",
-        "data-neurosynth_vocab-LDA50_version-7_vocabulary.txt",
-        "data-neurosynth_vocab-terms_version-3_vocabulary.txt",
-        "data-neurosynth_vocab-terms_version-4_vocabulary.txt",
-        "data-neurosynth_vocab-terms_version-5_vocabulary.txt",
-        "data-neurosynth_vocab-terms_version-6_vocabulary.txt",
-        "data-neurosynth_vocab-terms_version-7_vocabulary.txt",
-    ]
     kwargs["data"] = "neurosynth"
-    # Convert all string-based kwargs to lists
-    kwargs = {k: [v] if isinstance(v, str) else v for k, v in kwargs.items()}
-    kwargs = [[f"{k}-{v_i}" for v_i in v] for k, v in kwargs.items()]
-    searches = list(itertools.product(*kwargs))
+    kwargs["version"] = version
 
-    LGR.debug(f"Searching for any feature files matching the following criteria: {searches}")
+    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
 
-    found_files = []
-    for f in FILES:
-        # Search for match
-        file_parts = f.split("_")
-        suffix = file_parts[-1]
-        valid_entities_for_suffix = VALID_ENTITIES[suffix]
-        for search in searches:
-            temp_search = [term for term in search if term in valid_entities_for_suffix]
-            if all(term in file_parts for term in temp_search):
-                found_files.append(f)
+    return found_databases
 
-    for f in found_files:
-        print(f"Downloading {f}", flush=True)
-        url = op.join(URL, f)
-        out_file = op.abspath(op.join(path, f))
-        with open(out_file, "wb") as fo:
-            u = urlopen(url)
 
-            block_size = 8192
-            while True:
-                buffer = u.read(block_size)
-                if not buffer:
-                    break
-                fo.write(buffer)
+def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
+    """Download the latest data files from NeuroQuery.
 
-    out_databases = [
-        {
-            "database": "",
-            "features": [
-                {
-                    "ids": "",
-                    "features": "",
-                    "vocabulary": "",
-                },
-            ],
-        },
-    ]
-    return out_databases
+    .. versionadded:: 0.0.10
+
+    Parameters
+    ----------
+    path : str
+        Location to save the retrieved data files. Defaults to current directory.
+    version : str, optional
+        The version to fetch. The default is "7" (Neurosynth's latest version).
+    url : None or str, optional
+        Specific URL to download. If not None, overrides URL to current data.
+        If you want to fetch Neurosynth's data from *before* the 2021 reorganization,
+        you will need to use this argument.
+    kwargs
+        Keyword arguments to select relevant feature files.
+        Valid kwargs include: source, vocab, type.
+        Each kwarg may be a string or a list of strings.
+        If no kwargs are provided, all feature files for the specified database version will be
+        downloaded.
+
+    Notes
+    -----
+    This function was adapted from neurosynth.base.dataset.download().
+    """
+    URL = "https://github.com/neuroquery/neuroquery_data/blob/master/"
+
+    kwargs["data"] = "neuroquery"
+    kwargs["version"] = version
+
+    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
+
+    return found_databases
 
 
 def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
@@ -494,7 +532,7 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     wrote = 0
     for data in tqdm(
         r.iter_content(block_size),
-        total=math.ceil(total_size // block_size),
+        total=np.ceil(total_size // block_size),
         unit="MB",
         unit_scale=True,
     ):
