@@ -71,6 +71,7 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     os.makedirs(out_dir, exist_ok=True)
 
     found_databases = []
+    found_files = []
     log = True
     for database in database_file_manifest:
         database_file = database["database"]
@@ -81,7 +82,6 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
         log = False
 
         feature_dicts = database["features"]
-        found_files = []
         for feature_dict in feature_dicts:
             features_file = feature_dict["features"]
             # Other files associated with features have subset of entities,
@@ -114,7 +114,7 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     for found_file in found_files:
         print(f"Downloading {found_file}", flush=True)
 
-        url = op.join(database_url, found_file)
+        url = op.join(database_url, found_file + "?raw=true")
         out_file = op.join(out_dir, found_file)
 
         if op.isfile(out_file) and not overwrite:
@@ -145,7 +145,7 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     ----------
     path : str
         Location to save the retrieved data files. Defaults to current directory.
-    version : str, optional
+    version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
     url : None or str, optional
         Specific URL to download. If not None, overrides URL to current data.
@@ -181,7 +181,7 @@ def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
     ----------
     path : str
         Location to save the retrieved data files. Defaults to current directory.
-    version : str, optional
+    version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
     url : None or str, optional
         Specific URL to download. If not None, overrides URL to current data.
