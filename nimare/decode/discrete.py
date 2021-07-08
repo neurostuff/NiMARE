@@ -1,10 +1,7 @@
-"""
-Methods for decoding subsets of voxels (e.g., ROIs) or experiments (e.g., from
-meta-analytic clustering on a database) into text.
-"""
-import nibabel as nib
+"""Methods for decoding subsets of voxels or experiments into text."""
 import numpy as np
 import pandas as pd
+from nilearn._utils import load_niimg
 from scipy import special
 from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
@@ -19,10 +16,7 @@ from .utils import weight_priors
 
 @due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA decoding.")
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
-    r"""
-    Perform image-to-text decoding for discrete image inputs (e.g., regions
-    of interest, significant clusters) according to the method described in
-    Rubin et al. (2017).
+    r"""Perform image-to-text decoding for discrete inputs using method from Rubin et al. (2017).
 
     Parameters
     ----------
@@ -84,12 +78,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
       cognition." PLoS computational biology 13.10 (2017): e1005649.
       https://doi.org/10.1371/journal.pcbi.1005649
     """
-    if isinstance(roi, str):
-        roi = nib.load(roi)
-    elif not isinstance(roi, nib.Nifti1Image):
-        raise IOError(
-            "Input roi must be either a nifti image " "(nibabel.Nifti1Image) or a path to one."
-        )
+    roi = load_niimg(roi)
 
     dset_aff = model.mask.affine
     if not np.array_equal(roi.affine, dset_aff):
@@ -122,9 +111,9 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 
 @due.dcite(references.BRAINMAP_DECODING, description="Citation for BrainMap-style decoding.")
 class BrainMapDecoder(Decoder):
-    """
-    Perform image-to-text decoding for discrete image inputs (e.g., regions
-    of interest, significant clusters) according to the BrainMap method.
+    """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -182,8 +171,7 @@ class BrainMapDecoder(Decoder):
         self.inputs_ = {"coordinates": dataset.coordinates, "annotations": dataset.annotations}
 
     def transform(self, ids, ids2=None):
-        """
-        Apply the decoding method to a Dataset.
+        """Apply the decoding method to a Dataset.
 
         Parameters
         ----------
@@ -228,9 +216,7 @@ def brainmap_decode(
     u=0.05,
     correction="fdr_bh",
 ):
-    """
-    Perform image-to-text decoding for discrete image inputs (e.g., regions
-    of interest, significant clusters) according to the BrainMap method.
+    """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
     Parameters
     ----------
@@ -395,9 +381,9 @@ def brainmap_decode(
 
 @due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class NeurosynthDecoder(Decoder):
-    """
-    Perform discrete functional decoding according to Neurosynth's
-    meta-analytic method.
+    """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
+
+    .. versionadded:: 0.0.3
 
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.
@@ -467,8 +453,7 @@ class NeurosynthDecoder(Decoder):
         self.inputs_ = {"coordinates": dataset.coordinates, "annotations": dataset.annotations}
 
     def transform(self, ids, ids2=None):
-        """
-        Apply the decoding method to a Dataset.
+        """Apply the decoding method to a Dataset.
 
         Parameters
         ----------
@@ -516,9 +501,7 @@ def neurosynth_decode(
     u=0.05,
     correction="fdr_bh",
 ):
-    """
-    Perform discrete functional decoding according to Neurosynth's
-    meta-analytic method.
+    """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.

@@ -1,14 +1,12 @@
-"""
-Image-based meta-analysis estimators
-"""
+"""Image-based meta-analysis estimators."""
 from __future__ import division
 
 import logging
 
-from nilearn.mass_univariate import permuted_ols
 import numpy as np
-
 import pymare
+from nilearn.input_data import NiftiMasker
+from nilearn.mass_univariate import permuted_ols
 
 from ..base import MetaEstimator
 from ..transforms import p_to_z, t_to_z
@@ -17,8 +15,8 @@ LGR = logging.getLogger(__name__)
 
 
 class Fishers(MetaEstimator):
-    """
-    An image-based meta-analytic test using t- or z-statistic images.
+    """An image-based meta-analytic test using t- or z-statistic images.
+
     Requires z-statistic images, but will be extended to work with t-statistic
     images as well.
 
@@ -30,6 +28,9 @@ class Fishers(MetaEstimator):
     -------
     This method does not currently calculate p-values correctly. Do not use.
 
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will result in invalid results. It cannot be used with these types of maskers.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -40,7 +41,7 @@ class Fishers(MetaEstimator):
       Statistical methods for research workers., (5th Ed).
       https://www.cabdirect.org/cabdirect/abstract/19351601205
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.FisherCombinationTest`:
         The PyMARE estimator called by this class.
@@ -52,6 +53,15 @@ class Fishers(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator. "
+                "This is because aggregation, such as averaging values across ROIs, "
+                "will produce invalid results."
+            )
+
         pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
         est = pymare.estimators.FisherCombinationTest()
         est.fit_dataset(pymare_dset)
@@ -64,8 +74,9 @@ class Fishers(MetaEstimator):
 
 
 class Stouffers(MetaEstimator):
-    """
-    A t-test on z-statistic images. Requires z-statistic images.
+    """A t-test on z-statistic images.
+
+    Requires z-statistic images.
 
     Parameters
     ----------
@@ -80,6 +91,9 @@ class Stouffers(MetaEstimator):
     Warning
     -------
     This method does not currently calculate p-values correctly. Do not use.
+
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will result in invalid results. It cannot be used with these types of maskers.
 
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
@@ -96,7 +110,7 @@ class Stouffers(MetaEstimator):
       biology, 24(8), 1836-1841.
       https://doi.org/10.1111/j.1420-9101.2011.02297.x
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.StoufferCombinationTest`:
         The PyMARE estimator called by this class.
@@ -111,6 +125,15 @@ class Stouffers(MetaEstimator):
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator. "
+                "This is because aggregation, such as averaging values across ROIs, "
+                "will produce invalid results."
+            )
+
         est = pymare.estimators.StoufferCombinationTest()
 
         if self.use_sample_size:
@@ -132,8 +155,13 @@ class Stouffers(MetaEstimator):
 
 
 class WeightedLeastSquares(MetaEstimator):
-    """
-    Weighted least-squares meta-regression.
+    """Weighted least-squares meta-regression.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
 
     Provides the weighted least-squares estimate of the fixed effects given
     known/assumed between-study variance tau^2.
@@ -151,6 +179,10 @@ class WeightedLeastSquares(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -161,7 +193,7 @@ class WeightedLeastSquares(MetaEstimator):
       methods for meta-analysis. Statistics in Medicine, 20(6), 825–840.
       https://doi.org/10.1002/sim.650
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.WeightedLeastSquares`:
         The PyMARE estimator called by this class.
@@ -174,22 +206,35 @@ class WeightedLeastSquares(MetaEstimator):
         self.tau2 = tau2
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
 
 class DerSimonianLaird(MetaEstimator):
-    """
-    DerSimonian-Laird meta-regression estimator.
+    """DerSimonian-Laird meta-regression estimator.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
 
     Estimates the between-subject variance tau^2 using the DerSimonian-Laird
     (1986) method-of-moments approach.
@@ -200,6 +245,10 @@ class DerSimonianLaird(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -212,7 +261,7 @@ class DerSimonianLaird(MetaEstimator):
       likelihood-based inference in meta-analysis and meta-regression.
       Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.DerSimonianLaird`:
         The PyMARE estimator called by this class.
@@ -224,22 +273,35 @@ class DerSimonianLaird(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         est = pymare.estimators.DerSimonianLaird()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
 
 class Hedges(MetaEstimator):
-    """
-    Hedges meta-regression estimator.
+    """Hedges meta-regression estimator.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
 
     Estimates the between-subject variance tau^2 using the Hedges & Olkin (1985)
     approach.
@@ -250,6 +312,10 @@ class Hedges(MetaEstimator):
 
     Warning
     -------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -258,7 +324,7 @@ class Hedges(MetaEstimator):
     ----------
     * Hedges LV, Olkin I. 1985. Statistical Methods for Meta‐Analysis.
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.Hedges`:
         The PyMARE estimator called by this class.
@@ -270,23 +336,35 @@ class Hedges(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         est = pymare.estimators.Hedges()
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
 
 class SampleSizeBasedLikelihood(MetaEstimator):
-    """
-    Likelihood-based estimator for estimates with known sample sizes but
-    unknown sampling variances.
+    """Method estimates with known sample sizes but unknown sampling variances.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     betas using the specified likelihood-based estimator (ML or REML).
@@ -317,7 +395,7 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.SampleSizeBasedLikelihoodEstimator`:
         The PyMARE estimator called by this class.
@@ -341,16 +419,21 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
 
 class VarianceBasedLikelihood(MetaEstimator):
-    """
-    A likelihood-based meta-analysis method for estimates with known variances.
+    """A likelihood-based meta-analysis method for estimates with known variances.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     coefficients using the specified likelihood-based estimator (ML or REML).
@@ -376,6 +459,10 @@ class VarianceBasedLikelihood(MetaEstimator):
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
 
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.
@@ -388,7 +475,7 @@ class VarianceBasedLikelihood(MetaEstimator):
       likelihood-based inference in meta-analysis and meta-regression.
       Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
 
-    See also
+    See Also
     --------
     :class:`pymare.estimators.VarianceBasedLikelihoodEstimator`:
         The PyMARE estimator called by this class.
@@ -401,6 +488,14 @@ class VarianceBasedLikelihood(MetaEstimator):
         self.method = method
 
     def _fit(self, dataset):
+        masker = self.masker or dataset.masker
+        if not isinstance(masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
         est = pymare.estimators.VarianceBasedLikelihoodEstimator(method=self.method)
 
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
@@ -408,16 +503,21 @@ class VarianceBasedLikelihood(MetaEstimator):
         est_summary = est.summary()
         results = {
             "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"],
-            "p": est_summary.get_fe_stats()["p"],
-            "est": est_summary.get_fe_stats()["est"],
+            "z": est_summary.get_fe_stats()["z"].squeeze(),
+            "p": est_summary.get_fe_stats()["p"].squeeze(),
+            "est": est_summary.get_fe_stats()["est"].squeeze(),
         }
         return results
 
 
 class PermutedOLS(MetaEstimator):
-    r"""
-    An analysis with permuted ordinary least squares (OLS), using nilearn.
+    r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
 
     Parameters
     ----------
@@ -476,12 +576,18 @@ class PermutedOLS(MetaEstimator):
         # Convert t to z, preserving signs
         dof = self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
         z_map = t_to_z(t_map, dof)
-        images = {"t": t_map, "z": z_map}
+        images = {"t": t_map.squeeze(), "z": z_map.squeeze()}
         return images
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
-        """
-        Perform FWE correction using the max-value permutation method.
+        """Perform FWE correction using the max-value permutation method.
+
+        .. versionadded:: 0.0.4
+
+        .. versionchanged:: 0.0.8
+
+            * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
         Only call this method from within a Corrector.
 
         Parameters
@@ -537,5 +643,5 @@ class PermutedOLS(MetaEstimator):
         sign = np.sign(t_map)
         sign[sign == 0] = 1
         z_map = p_to_z(p_map, tail="two") * sign
-        images = {"logp_level-voxel": log_p_map, "z_level-voxel": z_map}
+        images = {"logp_level-voxel": log_p_map.squeeze(), "z_level-voxel": z_map.squeeze()}
         return images

@@ -1,9 +1,5 @@
-"""
-Functional decoding tools
-"""
+"""Functional decoding tools."""
 
-from . import continuous
-from . import discrete
-from . import encode
+from . import continuous, discrete, encode
 
 __all__ = ["continuous", "discrete", "encode"]

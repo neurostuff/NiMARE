@@ -1,5 +1,4 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
-import os
 import logging
 import multiprocessing as mp
 
@@ -11,9 +10,9 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
+from ...utils import use_memmap
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
-
 
 LGR = logging.getLogger(__name__)
 
@@ -36,14 +35,14 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
-    null_method : {"analytic", "empirical"}, optional
+    null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
-        This is only used if ``null_method=="empirical"``.
+        This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
@@ -84,7 +83,7 @@ class ALE(CBMAEstimator):
     def __init__(
         self,
         kernel_transformer=ALEKernel,
-        null_method="analytic",
+        null_method="approximate",
         n_iters=10000,
         n_cores=1,
         **kwargs,
@@ -139,8 +138,8 @@ class ALE(CBMAEstimator):
         hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
 
-    def _compute_null_analytic(self, ma_maps):
-        """Compute uncorrected ALE null distribution using analytic solution.
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected ALE null distribution using approximate solution.
 
         Parameters
         ----------
@@ -200,16 +199,23 @@ class ALE(CBMAEstimator):
             ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
-        self.null_distributions_["histweights_corr-none_method-analytic"] = ale_hist
+        self.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
-    r"""
-    ALE subtraction analysis.
+    r"""ALE subtraction analysis.
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Assume non-symmetric null distribution.
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset.
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
@@ -264,16 +270,21 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.n_iters = n_iters
         self.low_memory = low_memory
 
+    @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
 
-        ma_maps1 = self.kernel_transformer.transform(
-            self.inputs_["coordinates1"], masker=self.masker, return_type="array"
+        ma_maps1 = self._collect_ma_maps(
+            maps_key="ma_maps1",
+            coords_key="coordinates1",
+            fname_idx=0,
         )
-        ma_maps2 = self.kernel_transformer.transform(
-            self.inputs_["coordinates2"], masker=self.masker, return_type="array"
+        ma_maps2 = self._collect_ma_maps(
+            maps_key="ma_maps2",
+            coords_key="coordinates2",
+            fname_idx=1,
         )
 
         n_grp1 = ma_maps1.shape[0]
@@ -293,11 +304,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         # Calculate null distribution for each voxel based on group-assignment randomization
         if self.low_memory:
-            from tempfile import mkdtemp
-
-            filename = os.path.join(mkdtemp(), "iter_diff_values.dat")
+            # Use a memmapped 4D array
             iter_diff_values = np.memmap(
-                filename, dtype=ma_arr.dtype, mode="w+", shape=(self.n_iters, n_voxels)
+                self.memmap_filenames[2],
+                dtype=ma_arr.dtype,
+                mode="w+",
+                shape=(self.n_iters, n_voxels),
             )
         else:
             iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
@@ -313,21 +325,24 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 iter_diff_values.flush()
 
         # Determine p-values based on voxel-wise null distributions
+        # In cases with differently-sized groups,
+        # the ALE-difference values will be biased and skewed,
+        # but the null distributions will be too, so symmetric should be False.
         p_arr = np.ones(n_voxels)
         for voxel in range(n_voxels):
             p_arr[voxel] = null_to_p(
-                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two"
+                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=False
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
 
         del iter_diff_values
-        if self.low_memory:
-            # Get rid of memmap
-            os.remove(filename)
 
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
 
-        images = {"z_desc-group1MinusGroup2": z_arr}
+        images = {
+            "z_desc-group1MinusGroup2": z_arr,
+            "p_desc-group1MinusGroup2": p_arr,
+        }
         return images
 
 
@@ -336,8 +351,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     description=("Introduces the specific co-activation likelihood estimation (SCALE) algorithm."),
 )
 class SCALE(CBMAEstimator):
-    r"""
-    Specific coactivation likelihood estimation.
+    r"""Specific coactivation likelihood estimation.
 
     Parameters
     ----------
@@ -352,7 +366,7 @@ class SCALE(CBMAEstimator):
         Tab-delimited file of coordinates from database or numpy array with ijk
         coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
         are the three columnns.
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`nimare.meta.kernel.ALEKernel`.
     **kwargs
@@ -392,6 +406,7 @@ class SCALE(CBMAEstimator):
         self.n_cores = self._check_ncores(n_cores)
         self.low_memory = low_memory
 
+    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
@@ -404,18 +419,20 @@ class SCALE(CBMAEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_maps = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="array"
+        ma_values = self._collect_ma_maps(
+            coords_key="coordinates",
+            maps_key="ma_maps",
+            fname_idx=0,
         )
 
         # Determine bins for null distribution histogram
-        max_ma_values = np.max(ma_maps, axis=1)
+        max_ma_values = np.max(ma_values, axis=1)
         max_poss_ale = self._compute_summarystat(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
 
-        stat_values = self._compute_summarystat(ma_maps)
+        stat_values = self._compute_summarystat(ma_values)
 
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.ijk.shape[0], size=(iter_df.shape[0], self.n_iters))
@@ -428,11 +445,8 @@ class SCALE(CBMAEstimator):
 
         if self.n_cores == 1:
             if self.low_memory:
-                from tempfile import mkdtemp
-
-                filename = os.path.join(mkdtemp(), "perm_scale_values.dat")
                 perm_scale_values = np.memmap(
-                    filename,
+                    self.memmap_filenames[1],
                     dtype=stat_values.dtype,
                     mode="w+",
                     shape=(self.n_iters, stat_values.shape[0]),
@@ -454,9 +468,9 @@ class SCALE(CBMAEstimator):
             perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
-        if self.low_memory:
-            del perm_scale_values
-            os.remove(filename)
+
+        del perm_scale_values
+
         logp_values = -np.log10(p_values)
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 

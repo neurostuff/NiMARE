@@ -1,4 +1,5 @@
-"""
+"""Kernel transformers for CBMA algorithms.
+
 Methods for estimating thresholded cluster maps from neuroimaging contrasts
 (Contrasts) from sets of foci and optional additional information (e.g., sample
 size and test statistic values).
@@ -15,15 +16,14 @@ import pandas as pd
 from nilearn import image
 
 from ..base import Transformer
-from ..transforms import vox2mm
+from ..utils import use_memmap, vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
 
 
 class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods in
-    :mod:`nimare.meta.kernel`.
+    """Base class for modeled activation-generating methods in :mod:`nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -39,12 +39,10 @@ class KernelTransformer(Transformer):
     """
 
     def _infer_names(self, **kwargs):
-        """
-        Determine the filename pattern for image files created with this
-        transformer, as well as the image type (i.e., the column for the
-        Dataset.images DataFrame). The parameters used to construct the
-        filenames come from the transformer's parameters (attributes saved in
-        `__init__()`).
+        """Determine filename pattern and image type for files created with this transformer.
+
+        The parameters used to construct the filenames come from the transformer's
+        parameters (attributes saved in ``__init__()``).
 
         Parameters
         ----------
@@ -72,9 +70,9 @@ class KernelTransformer(Transformer):
         )
         self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
 
+    @use_memmap(LGR)
     def transform(self, dataset, masker=None, return_type="image"):
-        """
-        Generate modeled activation images for each Contrast in dataset.
+        """Generate modeled activation images for each Contrast in dataset.
 
         Parameters
         ----------
@@ -147,7 +145,6 @@ class KernelTransformer(Transformer):
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
         elif return_type == "dataset":
-            dataset = dataset.copy()
             if dataset.basepath is None:
                 raise ValueError(
                     "Dataset output path is not set. Set the path with Dataset.update_path()."
@@ -157,6 +154,7 @@ class KernelTransformer(Transformer):
                     "Output directory does not exist. Set the path to an "
                     "existing folder with Dataset.update_path()."
                 )
+            dataset = dataset.copy()
 
         transformed_maps = self._transform(mask, coordinates)
 
@@ -180,11 +178,20 @@ class KernelTransformer(Transformer):
                 out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
+
+        del kernel_data
+
         if return_type == "array":
             return np.vstack(imgs)
         elif return_type == "image":
+            del transformed_maps
             return imgs
         elif return_type == "dataset":
+            del transformed_maps
+            # Replace NaNs with Nones
+            dataset.images[self.image_type] = dataset.images[self.image_type].where(
+                dataset.images[self.image_type].notnull(), None
+            )
             # Infer relative path
             dataset.images = dataset.images
             return dataset
@@ -212,8 +219,11 @@ class KernelTransformer(Transformer):
 
 
 class ALEKernel(KernelTransformer):
-    """
-    Generate ALE modeled activation images from coordinates and sample size.
+    """Generate ALE modeled activation images from coordinates and sample size.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
 
     Parameters
     ----------
@@ -226,18 +236,38 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
-    def __init__(self, fwhm=None, sample_size=None):
+    def __init__(self, fwhm=None, sample_size=None, low_memory=False):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
+        self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
-        transformed = []
         kernels = {}  # retain kernels in dictionary to speed things up
-        for id_, data in coordinates.groupby("id"):
+        exp_ids = coordinates["id"].unique()
+
+        if self.low_memory:
+            # Use a memmapped 4D array
+            transformed_shape = (len(exp_ids),) + mask.shape
+            transformed = np.memmap(
+                self.memmap_filenames[0],
+                dtype=float,
+                mode="w+",
+                shape=transformed_shape,
+            )
+        else:
+            # Use a list of tuples
+            transformed = []
+
+        for i_exp, id_ in enumerate(exp_ids):
+            data = coordinates.loc[coordinates["id"] == id_]
+
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
             if self.sample_size is not None:
                 sample_size = self.sample_size
@@ -259,14 +289,27 @@ class ALEKernel(KernelTransformer):
                 else:
                     kern = kernels[sample_size]
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-            transformed.append((kernel_data, id_))
 
-        return transformed
+            if self.low_memory:
+                transformed[i_exp, :, :, :] = kernel_data
+
+                # Write changes to disk
+                transformed.flush()
+            else:
+                transformed.append((kernel_data, id_))
+
+        if self.low_memory:
+            return transformed, exp_ids
+        else:
+            return transformed
 
 
 class KDAKernel(KernelTransformer):
-    """
-    Generate KDA modeled activation images from coordinates.
+    """Generate KDA modeled activation images from coordinates.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
 
     Parameters
     ----------
@@ -274,13 +317,17 @@ class KDAKernel(KernelTransformer):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1):
+    def __init__(self, r=10, value=1, low_memory=False):
         self.r = float(r)
         self.value = value
+        self.low_memory = low_memory
 
     def _transform(self, mask, coordinates):
         dims = mask.shape
@@ -289,15 +336,25 @@ class KDAKernel(KernelTransformer):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims, vox_dims, ijks, self.r, self.value, exp_idx, sum_overlap=self._sum_overlap
+            dims,
+            vox_dims,
+            ijks,
+            self.r,
+            self.value,
+            exp_idx,
+            sum_overlap=self._sum_overlap,
+            memmap_filename=self.memmap_filenames[0],
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 
 
 class MKDAKernel(KDAKernel):
-    """
-    Generate MKDA modeled activation images from coordinates.
+    """Generate MKDA modeled activation images from coordinates.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
 
     Parameters
     ----------
@@ -305,14 +362,16 @@ class MKDAKernel(KDAKernel):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    low_memory : :obj:`bool`, optional
+        Whether to employ mem-mapped arrays to reduce memory usage or not.
+        Default=False.
     """
 
     _sum_overlap = False
 
 
 class Peaks2MapsKernel(KernelTransformer):
-    """
-    Generate peaks2maps modeled activation images from coordinates.
+    """Generate peaks2maps modeled activation images from coordinates.
 
     Parameters
     ----------

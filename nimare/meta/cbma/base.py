@@ -1,7 +1,6 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
 import multiprocessing as mp
-import inspect
 
 import nibabel as nib
 import numpy as np
@@ -13,6 +12,8 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
+from ...utils import add_metadata_to_dataframe, check_type, use_memmap
+from ..kernel import KernelTransformer
 
 LGR = logging.getLogger(__name__)
 
@@ -20,9 +21,16 @@ LGR = logging.getLogger(__name__)
 class CBMAEstimator(MetaEstimator):
     """Base class for coordinate-based meta-analysis methods.
 
+    .. versionadded:: 0.0.3
+
+    .. versionchanged:: 0.0.8
+
+        * [REF] Use saved MA maps, when available.
+        * [REF] Add *low_memory* option.
+
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
@@ -42,26 +50,10 @@ class CBMAEstimator(MetaEstimator):
         kernel_args = {
             k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
         }
-
-        # Allow both instances and classes for the kernel transformer input.
-        from ..kernel import KernelTransformer
-
-        if not issubclass(type(kernel_transformer), KernelTransformer) and not issubclass(
-            kernel_transformer, KernelTransformer
-        ):
-            raise ValueError(
-                'Argument "kernel_transformer" must be a kind of ' "KernelTransformer"
-            )
-        elif not inspect.isclass(kernel_transformer) and kernel_args:
-            LGR.warning(
-                'Argument "kernel_transformer" has already been '
-                "initialized, so kernel arguments will be ignored: "
-                "{}".format(", ".join(kernel_args.keys()))
-            )
-        elif inspect.isclass(kernel_transformer):
-            kernel_transformer = kernel_transformer(**kernel_args)
+        kernel_transformer = check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
+    @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
         """
         Perform coordinate-based meta-analysis on dataset.
@@ -75,8 +67,10 @@ class CBMAEstimator(MetaEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_values = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], masker=self.masker, return_type="array"
+        ma_values = self._collect_ma_maps(
+            coords_key="coordinates",
+            maps_key="ma_maps",
+            fname_idx=0,
         )
 
         self.weight_vec_ = self._compute_weights(ma_values)
@@ -85,14 +79,15 @@ class CBMAEstimator(MetaEstimator):
 
         # Determine null distributions for summary stat (OF) to p conversion
         self._determine_histogram_bins(ma_values)
-        if self.null_method.startswith("analytic"):
-            self._compute_null_analytic(ma_values)
+        if self.null_method.startswith("approximate"):
+            self._compute_null_approximate(ma_values)
 
-        elif self.null_method == "empirical":
-            self._compute_null_empirical(n_iters=self.n_iters, n_cores=self.n_cores)
+        elif self.null_method == "montecarlo":
+            self._compute_null_montecarlo(n_iters=self.n_iters, n_cores=self.n_cores)
 
         else:
-            self._compute_null_reduced_empirical(ma_values, n_iters=self.n_iters)
+            # A hidden option only used for internal validation/testing
+            self._compute_null_reduced_montecarlo(ma_values, n_iters=self.n_iters)
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
@@ -100,9 +95,12 @@ class CBMAEstimator(MetaEstimator):
         return images
 
     def _compute_weights(self, ma_values):
-        """Optional weight computation routine. Takes an array of meta-analysis
-        values as input and returns an array of the same shape, weighted as
-        desired. Can be ignored by algorithms that don't support weighting."""
+        """Perform optional weight computation routine.
+
+        Takes an array of meta-analysis values as input and returns an array
+        of the same shape, weighted as desired.
+        Can be ignored by algorithms that don't support weighting.
+        """
         return None
 
     def _preprocess_input(self, dataset):
@@ -119,31 +117,59 @@ class CBMAEstimator(MetaEstimator):
         # Integrate "sample_size" from metadata into DataFrame so that
         # kernel_transformer can access it.
         if "sample_size" in kt_args:
-            if "sample_sizes" in dataset.get_metadata():
-                # Extract sample sizes and make DataFrame
-                sample_sizes = dataset.get_metadata(field="sample_sizes", ids=dataset.ids)
-                # we need an extra layer of lists
-                sample_sizes = [[ss] for ss in sample_sizes]
-                sample_sizes = pd.DataFrame(
-                    index=dataset.ids, data=sample_sizes, columns=["sample_sizes"]
+            self.inputs_["coordinates"] = add_metadata_to_dataframe(
+                dataset,
+                self.inputs_["coordinates"],
+                metadata_field="sample_sizes",
+                target_column="sample_size",
+                filter_func=np.mean,
+            )
+
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", fname_idx=0):
+        """Collect modeled activation maps from Estimator inputs.
+
+        Parameters
+        ----------
+        coords_key : :obj:`str`, optional
+            Key to Estimator.inputs_ dictionary containing coordinates DataFrame.
+            This key should **always** be present.
+        maps_key : :obj:`str`, optional
+            Key to Estimator.inputs_ dictionary containing list of MA map files.
+            This key should only be present if the kernel transformer was already fitted to the
+            input Dataset.
+        fname_idx : :obj:`int`, optional
+            When the Estimator is set with ``low_memory = True``, there is a ``memmap_filenames``
+            attribute that is a list of filenames or Nones. This parameter specifies which item
+            in that list should be used for a memory-mapped array.
+
+        Returns
+        -------
+        ma_maps : :obj:`numpy.ndarray`
+            2D numpy array of shape (n_studies, n_voxels) with MA values.
+        """
+        if maps_key in self.inputs_.keys():
+            LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
+            if self.low_memory:
+                temp = self.masker.transform(self.inputs_[maps_key][0])
+                unmasked_shape = (len(self.inputs_[maps_key]), temp.size)
+                ma_maps = np.memmap(
+                    self.memmap_filenames[fname_idx],
+                    dtype=temp.dtype,
+                    mode="w+",
+                    shape=unmasked_shape,
                 )
-                sample_sizes["sample_size"] = sample_sizes["sample_sizes"].apply(np.mean)
-                # Merge sample sizes df into coordinates df
-                self.inputs_["coordinates"] = self.inputs_["coordinates"].merge(
-                    right=sample_sizes,
-                    left_on="id",
-                    right_index=True,
-                    sort=False,
-                    validate="many_to_one",
-                    suffixes=(False, False),
-                    how="left",
-                )
+                for i, f in enumerate(self.inputs_[maps_key]):
+                    ma_maps[i, :] = self.masker.transform(f)
             else:
-                LGR.warning(
-                    'Metadata field "sample_sizes" not found. '
-                    "Set a constant sample size as a kernel transformer "
-                    "argument, if possible."
-                )
+                ma_maps = self.masker.transform(self.inputs_[maps_key])
+        else:
+            LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
+            ma_maps = self.kernel_transformer.transform(
+                self.inputs_[coords_key],
+                masker=self.masker,
+                return_type="array",
+            )
+        return ma_maps
 
     def compute_summarystat(self, data):
         """Compute OF scores from data.
@@ -177,24 +203,27 @@ class CBMAEstimator(MetaEstimator):
         return self._compute_summarystat(ma_values)
 
     def _compute_summarystat(self, ma_values):
-        """Core summary statistic computation logic. Must be overriden by
-        subclasses. Input and output are both numpy arrays; the output must
-        aggregate over the 0th dimension of the input. (I.e., if the input
-        has K dimensions, the output has K - 1 dimensions.)"""
+        """Compute summary statistic according to estimator-specific method.
+
+        Must be overriden by subclasses.
+        Input and output are both numpy arrays; the output must
+        aggregate over the 0th dimension of the input.
+        (i.e., if the input has K dimensions, the output has K - 1 dimensions.)
+        """
         pass
 
-    def _summarystat_to_p(self, stat_values, null_method="analytic"):
+    def _summarystat_to_p(self, stat_values, null_method="approximate"):
         """Compute p- and z-values from summary statistics (e.g., ALE scores).
 
-        Uses either histograms from analytic null or null distribution from empirical null.
+        Uses either histograms from approximate null or null distribution from montecarlo null.
 
         Parameters
         ----------
         stat_values : 1D array_like
             Array of summary statistic values from estimator.
-        null_method : {"analytic", "empirical"}, optional
-            Whether to use analytic null or empirical null.
-            Default is "analytic".
+        null_method : {"approximate", "montecarlo"}, optional
+            Whether to use approximate null or montecarlo null.
+            Default is "approximate".
 
         Returns
         -------
@@ -202,35 +231,35 @@ class CBMAEstimator(MetaEstimator):
             P- and Z-values for statistic values.
             Same shape as stat_values.
         """
-        if null_method.startswith("analytic"):
+        if null_method.startswith("approximate"):
             assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histweights_corr-none_method-analytic" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-approximate" in self.null_distributions_.keys()
 
             p_values = nullhist_to_p(
                 stat_values,
-                self.null_distributions_["histweights_corr-none_method-analytic"],
+                self.null_distributions_["histweights_corr-none_method-approximate"],
                 self.null_distributions_["histogram_bins"],
             )
 
-        elif null_method == "empirical":
+        elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histweights_corr-none_method-empirical" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
             p_values = nullhist_to_p(
                 stat_values,
-                self.null_distributions_["histweights_corr-none_method-empirical"],
+                self.null_distributions_["histweights_corr-none_method-montecarlo"],
                 self.null_distributions_["histogram_bins"],
             )
 
-        elif null_method == "reduced_empirical":
-            assert "values_corr-none_method-reducedEmpirical" in self.null_distributions_.keys()
+        elif null_method == "reduced_montecarlo":
+            assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
             p_values = null_to_p(
                 stat_values,
-                self.null_distributions_["values_corr-none_method-reducedEmpirical"],
+                self.null_distributions_["values_corr-none_method-reducedMontecarlo"],
                 tail="upper",
             )
 
         else:
-            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError("Argument 'null_method' must be one of: 'approximate', 'montecarlo'.")
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
@@ -238,13 +267,13 @@ class CBMAEstimator(MetaEstimator):
     def _p_to_summarystat(self, p, null_method=None):
         """Compute a summary statistic threshold that corresponds to the provided p-value.
 
-        Uses either histograms from analytic null or null distribution from empirical null.
+        Uses either histograms from approximate null or null distribution from montecarlo null.
 
         Parameters
         ----------
         p : The p-value that corresponds to the summary statistic threshold
-        null_method : {None, "analytic", "empirical"}, optional
-            Whether to use analytic null or empirical null. If None, defaults to using
+        null_method : {None, "approximate", "montecarlo"}, optional
+            Whether to use approximate null or montecarlo null. If None, defaults to using
             whichever method was set at initialization.
 
         Returns
@@ -255,52 +284,54 @@ class CBMAEstimator(MetaEstimator):
         if null_method is None:
             null_method = self.null_method
 
-        if null_method.startswith("analytic"):
+        if null_method.startswith("approximate"):
             assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histweights_corr-none_method-analytic" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-approximate" in self.null_distributions_.keys()
 
             # Convert unnormalized histogram weights to null distribution
-            histogram_weights = self.null_distributions_["histweights_corr-none_method-analytic"]
+            histogram_weights = self.null_distributions_[
+                "histweights_corr-none_method-approximate"
+            ]
             null_distribution = histogram_weights / np.sum(histogram_weights)
             null_distribution = np.cumsum(null_distribution[::-1])[::-1]
             null_distribution /= np.max(null_distribution)
             null_distribution = np.squeeze(null_distribution)
 
             # Desired bin is the first one _before_ the target p-value (for consistency
-            # with the empirical null).
+            # with the montecarlo null).
             ss_idx = np.maximum(0, np.where(null_distribution <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
-        elif null_method == "empirical":
+        elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
-            assert "histweights_corr-none_method-empirical" in self.null_distributions_.keys()
+            assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
 
-            hist_weights = self.null_distributions_["histweights_corr-none_method-empirical"]
+            hist_weights = self.null_distributions_["histweights_corr-none_method-montecarlo"]
             # Desired bin is the first one _before_ the target p-value (for consistency
-            # with the empirical null).
+            # with the montecarlo null).
             ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
 
-        elif null_method == "reduced_empirical":
-            assert "values_corr-none_method-reducedEmpirical" in self.null_distributions_.keys()
+        elif null_method == "reduced_montecarlo":
+            assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
             null_dist = np.sort(
-                self.null_distributions_["values_corr-none_method-reducedEmpirical"]
+                self.null_distributions_["values_corr-none_method-reducedMontecarlo"]
             )
             n_vals = len(null_dist)
             ss_idx = np.floor(p * n_vals).astype(int)
             ss = null_dist[-ss_idx]
 
         else:
-            raise ValueError("Argument 'null_method' must be one of: 'analytic', 'empirical'.")
+            raise ValueError("Argument 'null_method' must be one of: 'approximate', 'montecarlo'.")
 
         return ss
 
-    def _compute_null_reduced_empirical(self, ma_maps, n_iters=10000):
-        """Compute uncorrected null distribution using the reduced empirical method.
+    def _compute_null_reduced_montecarlo(self, ma_maps, n_iters=10000):
+        """Compute uncorrected null distribution using the reduced montecarlo method.
 
-        This method is much faster than the full empirical approach, but is still slower than the
-        analytic method. Given that its resolution is roughly the same as the analytic method,
-        we recommend against using this method.
+        This method is much faster than the full montecarlo approach, but is still slower than the
+        approximate method. Given that its resolution is roughly the same as the approximate
+        method, we recommend against using this method.
 
         Parameters
         ----------
@@ -311,15 +342,15 @@ class CBMAEstimator(MetaEstimator):
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute:
-        "values_corr-none_method-reducedEmpirical".
+        "values_corr-none_method-reducedMontecarlo".
         """
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
         null_dist = self.compute_summarystat(iter_ma_values)
-        self.null_distributions_["values_corr-none_method-reducedEmpirical"] = null_dist
+        self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
-    def _compute_null_empirical_permutation(self, params):
+    def _compute_null_montecarlo_permutation(self, params):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between uncorrected stat-to-p conversion and vFWE.
@@ -354,7 +385,7 @@ class CBMAEstimator(MetaEstimator):
         counts, _ = np.histogram(iter_ss_map, bins=bin_edges, density=False)
         return counts
 
-    def _compute_null_empirical(self, n_iters, n_cores):
+    def _compute_null_montecarlo(self, n_iters, n_cores):
         """Compute uncorrected null distribution using Monte Carlo method.
 
         Parameters
@@ -367,8 +398,8 @@ class CBMAEstimator(MetaEstimator):
         Notes
         -----
         This method adds two entries to the null_distributions_ dict attribute:
-        "histweights_corr-none_method-empirical" and
-        "histweights_level-voxel_corr-fwe_method-empirical".
+        "histweights_corr-none_method-montecarlo" and
+        "histweights_level-voxel_corr-fwe_method-montecarlo".
         """
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
@@ -386,21 +417,21 @@ class CBMAEstimator(MetaEstimator):
         if n_cores == 1:
             perm_histograms = []
             for pp in tqdm(params, total=n_iters):
-                perm_histograms.append(self._compute_null_empirical_permutation(pp))
+                perm_histograms.append(self._compute_null_montecarlo_permutation(pp))
 
         else:
             with mp.Pool(n_cores) as p:
                 perm_histograms = list(
-                    tqdm(p.imap(self._compute_null_empirical_permutation, params), total=n_iters)
+                    tqdm(p.imap(self._compute_null_montecarlo_permutation, params), total=n_iters)
                 )
 
         perm_histograms = np.vstack(perm_histograms)
-        self.null_distributions_["histweights_corr-none_method-empirical"] = np.sum(
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
             perm_histograms, axis=0
         )
 
         def get_last_bin(arr1d):
-            """Index the last location in a 1D array with a non-zero value"""
+            """Index the last location in a 1D array with a non-zero value."""
             if np.any(arr1d):
                 last_bin = np.where(arr1d)[0][-1]
             else:
@@ -409,7 +440,7 @@ class CBMAEstimator(MetaEstimator):
 
         fwe_voxel_max = np.apply_along_axis(get_last_bin, 1, perm_histograms)
         self.null_distributions_[
-            "histweights_level-voxel_corr-fwe_method-empirical"
+            "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = fwe_voxel_max
 
     def _correct_fwe_montecarlo_permutation(self, params):
@@ -493,14 +524,14 @@ class CBMAEstimator(MetaEstimator):
         """
         stat_values = result.get_map("stat", return_type="array")
         if vfwe_only:
-            assert self.null_method == "empirical"
+            assert self.null_method == "montecarlo"
 
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
 
             # Determine p- and z-values from stat values and null distribution.
             p_vfwe_values = nullhist_to_p(
                 stat_values,
-                self.null_distributions_["histweights_level-voxel_corr-fwe_method-empirical"],
+                self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
                 self.null_distributions_["histogram_bins"],
             )
 
@@ -602,9 +633,15 @@ class CBMAEstimator(MetaEstimator):
 class PairwiseCBMAEstimator(CBMAEstimator):
     """Base class for pairwise coordinate-based meta-analysis methods.
 
+    .. versionadded:: 0.0.3
+
+    .. versionchanged:: 0.0.8
+
+        * [REF] Use saved MA maps, when available.
+
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.base.KernelTransformer`, optional
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
@@ -615,7 +652,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         __init__ (called automatically).
     """
 
-    def fit(self, dataset1, dataset2):
+    def fit(self, dataset1, dataset2, drop_invalid=True):
         """
         Fit Estimator to two Datasets.
 
@@ -636,13 +673,22 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
-        self._validate_input(dataset1)
-        self._validate_input(dataset2)
         # grab and override
+        self._validate_input(dataset1, drop_invalid=drop_invalid)
         self._preprocess_input(dataset1)
+        if "ma_maps" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            self.inputs_["ma_maps1"] = self.inputs_.pop("ma_maps")
+
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
+
         # grab and override
+        self._validate_input(dataset2, drop_invalid=drop_invalid)
         self._preprocess_input(dataset2)
+        if "ma_maps" in self.inputs_.keys():
+            # Grab pre-generated MA maps
+            self.inputs_["ma_maps2"] = self.inputs_.pop("ma_maps")
+
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         maps = self._fit(dataset1, dataset2)

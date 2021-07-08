@@ -103,6 +103,7 @@ API
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
+For more information about functional characterization analysis, see :ref:`Meta-analytic functional decoding <decoding methods>`.
 
 .. automodule:: nimare.decode
    :no-members:
@@ -140,6 +141,7 @@ API
    io.convert_sleuth_to_dict
    io.convert_sleuth_to_json
    io.convert_sleuth_to_dataset
+   io.convert_neurovault_to_dataset
 
 
 .. _api_transforms_ref:
@@ -155,6 +157,11 @@ API
 
 .. autosummary::
    :toctree: generated/
+   :template: class.rst
+
+   transforms.ImageTransformer
+   transforms.ImagesToCoordinates
+
    :template: function.rst
 
    transforms.transform_images
@@ -169,10 +176,7 @@ API
    transforms.p_to_z
    transforms.t_to_z
    transforms.z_to_t
-   transforms.vox2mm
-   transforms.mm2vox
-   transforms.tal2mni
-   transforms.mni2tal
+   transforms.z_to_p
 
 
 .. _api_extract_ref:
@@ -190,6 +194,7 @@ API
    :toctree: generated/
    :template: function.rst
 
+   extract.fetch_neurosynth
    extract.download_nidm_pain
    extract.download_mallet
    extract.download_cognitive_atlas
@@ -220,6 +225,25 @@ API
    stats.fdr
 
 
+.. _api_generate_ref:
+
+:mod:`nimare.generate`: Data generation functions
+-----------------------------------------------------
+
+.. automodule:: nimare.generate
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   generate.create_coordinate_dataset
+   generate.create_neurovault_dataset
+
+
 .. _api_utils_ref:
 
 :mod:`nimare.utils`: Utility functions and submodules
@@ -244,9 +268,16 @@ API
    utils.listify
    utils.round2
    utils.get_resource_path
+   utils.try_prepend
    utils.find_stem
    utils.uk_to_us
-
+   utils.use_memmap
+   utils.add_metadata_to_dataframe
+   utils.check_type
+   utils.vox2mm
+   utils.mm2vox
+   utils.tal2mni
+   utils.mni2tal
 
 .. _api_workflows_ref:
 

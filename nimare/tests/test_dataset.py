@@ -1,6 +1,4 @@
-"""
-Test nimare.dataset (Dataset IO/transformations).
-"""
+"""Test nimare.dataset (Dataset IO/transformations)."""
 import os.path as op
 
 import nibabel as nib
@@ -12,9 +10,7 @@ from nimare.tests.utils import get_test_data_path
 
 
 def test_dataset_smoke():
-    """
-    Smoke test for nimare.dataset.Dataset initialization and get methods.
-    """
+    """Smoke test for nimare.dataset.Dataset initialization and get methods."""
     db_file = op.join(get_test_data_path(), "neurosynth_dset.json")
     dset = dataset.Dataset(db_file)
     dset.update_path(get_test_data_path())
@@ -33,8 +29,15 @@ def test_dataset_smoke():
     mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
     assert isinstance(dset.get_studies_by_mask(mask_img), list)
 
+    dset1 = dset.slice(dset.ids[:5])
+    dset2 = dset.slice(dset.ids[5:])
+    assert isinstance(dset1, dataset.Dataset)
+    dset_merged = dset1.merge(dset2)
+    assert isinstance(dset_merged, dataset.Dataset)
+
 
 def test_empty_dset():
+    """Smoke test for initialization with an empty Dataset."""
     # dictionary with no information
     minimal_dict = {"study-0": {"contrasts": {"1": {}}}}
     dataset.Dataset(minimal_dict)

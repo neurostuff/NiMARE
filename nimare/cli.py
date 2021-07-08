@@ -1,3 +1,4 @@
+"""Command-line interfaces for common workflows."""
 import argparse
 import os.path as op
 
@@ -11,9 +12,7 @@ from nimare.workflows.scale import scale_workflow
 
 
 def _is_valid_file(parser, arg):
-    """
-    Check if argument is existing file.
-    """
+    """Check if argument is existing file."""
     if not op.isfile(arg) and arg is not None:
         parser.error("The file {0} does not exist!".format(arg))
 
@@ -21,8 +20,7 @@ def _is_valid_file(parser, arg):
 
 
 def _get_parser():
-    """
-    Parses command line inputs for NiMARE
+    """Parse command line inputs for NiMARE.
 
     Returns
     -------
@@ -93,7 +91,7 @@ def _get_parser():
         dest="n_cores",
         type=int,
         default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use " "all available cores."),
+        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
     # Contrast permutation workflow
@@ -113,7 +111,7 @@ def _get_parser():
         nargs="+",
         metavar="FILE",
         type=lambda x: _is_valid_file(parser, x),
-        help=("Data to analyze. May be a single 4D file or a list of 3D " "files."),
+        help=("Data to analyze. May be a single 4D file or a list of 3D files."),
     )
     conperm_parser.add_argument(
         "--mask",
@@ -230,7 +228,7 @@ def _get_parser():
         dest="n_cores",
         type=int,
         default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use " "all available cores."),
+        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
     # SCALE
@@ -283,7 +281,7 @@ def _get_parser():
         dest="n_cores",
         type=int,
         default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use " "all available cores."),
+        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
     # Meta-analytic clustering
@@ -386,7 +384,7 @@ def _get_parser():
 
 
 def _main(argv=None):
-    """NiMARE CLI entrypoint"""
+    """Run NiMARE CLI entrypoint."""
     options = _get_parser().parse_args(argv)
     args = vars(options).copy()
     args.pop("func")

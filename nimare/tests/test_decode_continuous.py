@@ -1,5 +1,4 @@
-"""
-Test nimare.decode.continuous.
+"""Test nimare.decode.continuous.
 
 Tests for nimare.decode.continuous.gclda_decode_map are in test_annotate_gclda.
 """
@@ -7,13 +6,11 @@ import pandas as pd
 import pytest
 
 from nimare.decode import continuous
-from nimare.meta import mkda, kernel
+from nimare.meta import kernel, mkda
 
 
 def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
-    """
-    Smoke test for continuous.CorrelationDecoder
-    """
+    """Smoke test for continuous.CorrelationDecoder."""
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDecoder")
 
     testdata_laird = testdata_laird.copy()
@@ -29,7 +26,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     decoder.fit(testdata_laird)
 
     # Make an image to decode
-    meta = mkda.KDA(null_method="analytic")
+    meta = mkda.KDA(null_method="approximate")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
     decoded_df = decoder.transform(img)
@@ -37,9 +34,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
 
 
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
-    """
-    Smoke test for continuous.CorrelationDistributionDecoder
-    """
+    """Smoke test for continuous.CorrelationDistributionDecoder."""
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDistributionDecoder")
 
     testdata_laird = testdata_laird.copy()
@@ -63,7 +58,7 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     decoder.fit(dset)
 
     # Make an image to decode
-    meta = mkda.KDA(null_method="analytic")
+    meta = mkda.KDA(null_method="approximate")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
     decoded_df = decoder.transform(img)

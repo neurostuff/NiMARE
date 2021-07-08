@@ -8,7 +8,16 @@ This guide provides a more detailed description of the organization and preferre
 Coding Style
 ------------
 NiMARE code should follow PEP8 recommendations.
+
+To enforce NiMARE's preferred coding style,
+we use `flake8`_ with plugins for `isort <https://pypi.org/project/flake8-isort/>`_,
+`black <https://pypi.org/project/flake8-black/>`_, and `docstrings <https://pypi.org/project/flake8-docstrings/>`_.
+These plugins automatically evaluate imports, code formatting, and docstring formatting as part of our continuous integraton.
+
 Additionally, we have modeled NiMARE's code on `scikit-learn`_.
+By this we mean that most of NiMARE user-facing tools are implemented as classes.
+These classes generally accept a number of parameters at initialization,
+and then use ``fit`` or ``transform`` methods to apply the algorithm to data (generally a NiMARE ``Dataset`` object).
 
 Installation with Docker
 ------------------------

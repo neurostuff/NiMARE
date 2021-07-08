@@ -54,7 +54,7 @@ REQUIRES = [
     "indexed_gzip>=1.4.0",
     "matplotlib",
     "nibabel>=3.0.0",
-    "nilearn>=0.7.0",
+    "nilearn>=0.7.1",
     "numpy",
     "pandas",
     "pymare>=0.0.2",
@@ -65,7 +65,16 @@ REQUIRES = [
     "tqdm",
 ]
 
-TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8-black", "pytest", "pytest-cov"]
+TESTS_REQUIRES = [
+    "codecov",
+    "coverage",
+    "coveralls",
+    "flake8-black",
+    "flake8-docstrings",
+    "flake8-isort",
+    "pytest",
+    "pytest-cov",
+]
 
 EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
@@ -76,6 +85,7 @@ EXTRA_REQUIRES = {
         "recommonmark",
         "sphinx>=3.1.1",
         "sphinx-argparse",
+        "sphinx-copybutton",
         "sphinx_gallery",
         "sphinx_rtd_theme",
     ],

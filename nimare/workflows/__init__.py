@@ -1,6 +1,4 @@
-"""
-Common meta-analytic workflows
-"""
+"""Common meta-analytic workflows."""
 
 from .ale import ale_sleuth_workflow
 from .conperm import conperm_workflow

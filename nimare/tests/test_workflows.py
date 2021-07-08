@@ -1,6 +1,4 @@
-"""
-Test nimare.workflows.
-"""
+"""Test nimare.workflows."""
 import os.path as op
 
 from nimare import cli, workflows
@@ -8,9 +6,7 @@ from nimare.tests.utils import get_test_data_path
 
 
 def test_ale_workflow_function_smoke(tmp_path_factory):
-    """
-    Smoke test for Sleuth ALE workflow.
-    """
+    """Run smoke test for Sleuth ALE workflow."""
     tmpdir = tmp_path_factory.mktemp("test_ale_workflow_function_smoke")
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     prefix = "test"
@@ -23,9 +19,7 @@ def test_ale_workflow_function_smoke(tmp_path_factory):
 
 
 def test_ale_workflow_cli_smoke(tmp_path_factory):
-    """
-    Smoke test for Sleuth ALE workflow.
-    """
+    """Run smoke test for Sleuth ALE workflow."""
     tmpdir = tmp_path_factory.mktemp("test_ale_workflow_cli_smoke")
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     prefix = "test"
@@ -48,9 +42,7 @@ def test_ale_workflow_cli_smoke(tmp_path_factory):
 
 
 def test_ale_workflow_function_smoke_2(tmp_path_factory):
-    """
-    Smoke test for Sleuth ALE workflow with subtraction analysis
-    """
+    """Run smoke test for Sleuth ALE workflow with subtraction analysis."""
     tmpdir = tmp_path_factory.mktemp("test_ale_workflow_function_smoke_2")
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     prefix = "test"
@@ -68,9 +60,7 @@ def test_ale_workflow_function_smoke_2(tmp_path_factory):
 
 
 def test_ale_workflow_cli_smoke_2(tmp_path_factory):
-    """
-    Smoke test for Sleuth ALE workflow with subtraction analysis
-    """
+    """Run smoke test for Sleuth ALE workflow with subtraction analysis."""
     tmpdir = tmp_path_factory.mktemp("test_ale_workflow_cli_smoke_2")
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     prefix = "test"
@@ -94,7 +84,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
 
 
 def test_scale_workflow_function_smoke(tmp_path_factory):
-    """Test the SCALE workflow as a function"""
+    """Run smoke test of the SCALE workflow as a function."""
     tmpdir = tmp_path_factory.mktemp("test_scale_workflow_function_smoke")
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     prefix = "test"
@@ -108,6 +98,7 @@ def test_scale_workflow_function_smoke(tmp_path_factory):
 
 
 def test_scale_workflow_cli_smoke(tmp_path_factory):
+    """Run smoke test of the SCALE workflow as a CLI."""
     tmpdir = tmp_path_factory.mktemp("test_scale_workflow_cli_smoke")
     sleuth_file = op.join(get_test_data_path(), "test_sleuth_file.txt")
     prefix = "test"
@@ -133,6 +124,7 @@ def test_scale_workflow_cli_smoke(tmp_path_factory):
 
 
 def test_conperm_workflow_function_smoke(testdata_ibma, tmp_path_factory):
+    """Run smoke test of the contrast permutation workflow as a function."""
     tmpdir = tmp_path_factory.mktemp("test_conperm_workflow_function_smoke")
     dset = testdata_ibma
     files = dset.get_images(imtype="beta")
@@ -147,6 +139,7 @@ def test_conperm_workflow_function_smoke(testdata_ibma, tmp_path_factory):
 
 
 def test_conperm_workflow_cli_smoke(testdata_ibma, tmp_path_factory):
+    """Run smoke test of the contrast permutation workflow as a CLI."""
     tmpdir = tmp_path_factory.mktemp("test_conperm_workflow_cli_smoke")
     dset = testdata_ibma
     files = dset.get_images(imtype="beta")

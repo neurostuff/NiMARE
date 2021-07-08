@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas4:
+.. _metas6:
 
 ========================================================
  Run image-based meta-analyses on 21 pain studies
@@ -36,13 +36,10 @@ dset_dir = nimare.extract.download_nidm_pain()
 dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
+
 # Calculate missing images
-dset.images = nimare.transforms.transform_images(
-    dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
-)
-dset.images = nimare.transforms.transform_images(
-    dset.images, target="varcope", masker=dset.masker, metadata_df=dset.metadata
-)
+xformer = nimare.transforms.ImageTransformer(target=["varcope", "z"])
+dset = xformer.transform(dset)
 
 ###############################################################################
 # Stouffer's

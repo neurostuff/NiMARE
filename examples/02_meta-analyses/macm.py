@@ -2,11 +2,11 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas5:
+.. _metas3:
 
-========================================================
+===================================================
  Run a meta-analytic coactivation modeling analysis
-========================================================
+===================================================
 
 Meta-analytic coactivation modeling (MACM) is a common coordinate-based
 analysis in which task-independent "connectivity" is assessed by selecting
@@ -53,7 +53,7 @@ print(
 # --------------------------------------------------------
 no_roi_ids = list(set(dset.ids).difference(roi_ids))
 dset_unsel = dset.slice(no_roi_ids)
-print("{}/{} studies report zero coordinates in the " "ROI".format(len(no_roi_ids), len(dset.ids)))
+print("{}/{} studies report zero coordinates in the ROI".format(len(no_roi_ids), len(dset.ids)))
 
 
 ###############################################################################

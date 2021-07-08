@@ -1,15 +1,12 @@
-"""
-Utility functions for ontology tools.
-"""
+"""Utility functions for ontology tools."""
 import numpy as np
 import pandas as pd
 
 
 def _generate_weights(rel_df, weights):
-    """
-    Create an IDxID weighting DataFrame based on asserted relationships and
-    some weighting scheme that links a weight value to each relationship type
-    (e.g., partOf, kindOf).
+    """Create an IDxID DataFrame linking weight value to each relationship type.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------

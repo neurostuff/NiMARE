@@ -2,11 +2,11 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas3:
+.. _metas2:
 
-========================================================
+======================================================
  Run coordinate-based meta-analyses on 21 pain studies
-========================================================
+======================================================
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
@@ -35,7 +35,7 @@ mask_img = dset.masker.mask_img
 ###############################################################################
 # MKDA density analysis
 # --------------------------------------------------
-mkda = nimare.meta.MKDADensity(kernel__r=10, null_method="analytic")
+mkda = nimare.meta.MKDADensity(kernel__r=10, null_method="approximate")
 mkda.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
@@ -81,7 +81,7 @@ plot_stat_map(
 ###############################################################################
 # KDA
 # --------------------------------------------------
-kda = nimare.meta.KDA(kernel__r=10, null_method="analytic")
+kda = nimare.meta.KDA(kernel__r=10, null_method="approximate")
 kda.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(kda.results)
@@ -95,7 +95,7 @@ plot_stat_map(
 ###############################################################################
 # ALE
 # --------------------------------------------------
-ale = nimare.meta.ALE(null_method="analytic")
+ale = nimare.meta.ALE(null_method="approximate")
 ale.fit(dset)
 corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(ale.results)

@@ -1,6 +1,4 @@
-"""
-Utilities
-"""
+"""Utility functions for the extract module."""
 from __future__ import division
 
 import logging
@@ -18,7 +16,10 @@ LGR = logging.getLogger(__name__)
 
 
 def get_data_dirs(data_dir=None):
-    """Returns the directories in which NiMARE looks for data.
+    """Return the directories in which NiMARE looks for data.
+
+    .. versionadded:: 0.0.2
+
     This is typically useful for the end-user to check where the data is
     downloaded and stored.
 
@@ -69,6 +70,8 @@ def get_data_dirs(data_dir=None):
 
 def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1):
     """Create if necessary and returns data directory of given dataset.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -143,9 +146,11 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
 
 
 def readlinkabs(link):
-    """
-    Return an absolute path for the destination
-    of a symlink. From nilearn.
+    """Return an absolute path for the destination of a symlink.
+
+    .. versionadded:: 0.0.2
+
+    From nilearn.
     """
     path = os.readlink(link)
     if os.path.isabs(path):
@@ -154,8 +159,10 @@ def readlinkabs(link):
 
 
 def _download_zipped_file(url, filename=None):
-    """
-    Download from a URL to a file.
+    """Download from a URL to a file.
+
+    .. versionadded:: 0.0.2
+
     """
     if filename is None:
         data_dir = op.abspath(op.getcwd())
@@ -170,8 +177,10 @@ def _download_zipped_file(url, filename=None):
 
 
 def _longify(df):
-    """
-    Expand comma-separated lists of aliases in DataFrame into separate rows.
+    """Expand comma-separated lists of aliases in DataFrame into separate rows.
+
+    .. versionadded:: 0.0.2
+
     """
     reduced = df[["id", "name", "alias"]]
     rows = []
@@ -189,8 +198,10 @@ def _longify(df):
 
 
 def _get_ratio(tup):
-    """
-    Get fuzzy ratio.
+    """Get fuzzy ratio.
+
+    .. versionadded:: 0.0.2
+
     """
     if all(isinstance(t, str) for t in tup):
         return fuzz.ratio(tup[0], tup[1])
@@ -199,8 +210,10 @@ def _get_ratio(tup):
 
 
 def _gen_alt_forms(term):
-    """
-    Generate a list of alternate forms for a given term.
+    """Generate a list of alternate forms for a given term.
+
+    .. versionadded:: 0.0.2
+
     """
     if not isinstance(term, str) or len(term) == 0:
         return [None]
@@ -233,9 +246,11 @@ def _gen_alt_forms(term):
 
 
 def _get_concept_reltype(relationship, direction):
-    """
-    Convert two-part relationship info (relationship type and direction) to
-    more parsimonious representation.
+    """Convert two-part relationship info to more parsimonious representation.
+
+    .. versionadded:: 0.0.2
+
+    The two part representation includes relationship type and direction.
     """
     new_rel = None
     if relationship == "PARTOF":
@@ -252,10 +267,12 @@ def _get_concept_reltype(relationship, direction):
 
 
 def _expand_df(df):
-    """
-    Add alternate forms to DataFrame, then sort DataFrame by alias length
-    (for order of extraction from text) and similarity to original name (in
-    order to select most appropriate term to associate with alias).
+    """Add alternate forms to DataFrame, then sort DataFrame by alias length and similarity.
+
+    .. versionadded:: 0.0.2
+
+    Sorting by alias length is done for order of extraction from text. Sorting by similarity to
+    original name is done in order to select most appropriate term to associate with alias.
     """
     df = df.copy()
     df["alias"] = df["alias"].apply(uk_to_us)

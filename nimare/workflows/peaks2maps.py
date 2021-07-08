@@ -1,15 +1,12 @@
-"""
-Workflow for contrast permutation meta-analysis on images constructed from
-coordinates using the Peaks2Maps kernel.
-"""
+"""Perform meta-analysis on images constructed from coordinates using the Peaks2Maps kernel."""
 import logging
 import os
 import pathlib
 
+import numpy as np
 from nilearn.image import resample_to_img
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
-import numpy as np
 
 from ..base import MetaResult
 from ..io import convert_sleuth_to_dataset
@@ -19,7 +16,7 @@ LGR = logging.getLogger(__name__)
 
 
 def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000):
-    """peaks2maps workflow"""
+    """Run the peaks2maps workflow."""
     LGR.info("Loading coordinates...")
     dset = convert_sleuth_to_dataset(sleuth_file)
 

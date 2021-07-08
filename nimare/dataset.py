@@ -1,13 +1,12 @@
-"""
-Classes for representing datasets of images and/or coordinates.
-"""
+"""Classes for representing datasets of images and/or coordinates."""
 import copy
 import json
 import logging
+import os.path as op
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
+from nilearn._utils import load_niimg
 
 from .base import NiMAREBase
 from .utils import (
@@ -17,6 +16,7 @@ from .utils import (
     get_template,
     listify,
     mm2vox,
+    transform_coordinates_to_ijk,
     try_prepend,
     validate_df,
     validate_images_df,
@@ -26,9 +26,15 @@ LGR = logging.getLogger(__name__)
 
 
 class Dataset(NiMAREBase):
-    """
-    Storage container for a coordinate- and/or image-based meta-analytic
-    dataset/database.
+    """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
+
+    .. versionchanged:: 0.0.9
+
+        * [ENH] Add merge method to Dataset class
 
     Parameters
     ----------
@@ -124,8 +130,9 @@ class Dataset(NiMAREBase):
 
     @property
     def masker(self):
-        """:class:`nilearn.input_data.NiftiMasker` or similar: Masker object
-        defining the space and location of the area of interest (e.g., 'brain').
+        """:class:`nilearn.input_data.NiftiMasker` or similar: Masker object.
+
+        Defines the space and location of the area of interest (e.g., 'brain').
         """
         return self.__masker
 
@@ -228,8 +235,7 @@ class Dataset(NiMAREBase):
         self.__texts = df.sort_values(by="id")
 
     def slice(self, ids):
-        """
-        Create a new dataset with only requested IDs.
+        """Create a new dataset with only requested IDs.
 
         Parameters
         ----------
@@ -243,40 +249,80 @@ class Dataset(NiMAREBase):
         """
         new_dset = copy.deepcopy(self)
         new_dset._ids = ids
-        new_dset.annotations = new_dset.annotations.loc[new_dset.annotations["id"].isin(ids)]
-        new_dset.coordinates = new_dset.coordinates.loc[new_dset.coordinates["id"].isin(ids)]
-        new_dset.images = new_dset.images.loc[new_dset.images["id"].isin(ids)]
-        new_dset.metadata = new_dset.metadata.loc[new_dset.metadata["id"].isin(ids)]
-        new_dset.texts = new_dset.texts.loc[new_dset.texts["id"].isin(ids)]
+        for attribute in ("annotations", "coordinates", "images", "metadata", "texts"):
+            df = getattr(new_dset, attribute)
+            df = df.loc[df["id"].isin(ids)]
+            setattr(new_dset, attribute, df)
+
+        return new_dset
+
+    def merge(self, right):
+        """Merge two Datasets.
+
+        .. versionadded:: 0.0.9
+
+        Parameters
+        ----------
+        right : :obj:`nimare.dataset.Dataset`
+            Dataset to merge with.
+
+        Returns
+        -------
+        :obj:`nimare.dataset.Dataset`
+            A Dataset of the two merged Datasets.
+        """
+        assert isinstance(right, Dataset)
+        shared_ids = np.intersect1d(self.ids, right.ids)
+        if shared_ids.size:
+            raise Exception("Duplicate IDs detected in both datasets.")
+
+        all_ids = np.concatenate((self.ids, right.ids))
+        new_dset = copy.deepcopy(self)
+        new_dset._ids = all_ids
+
+        for attribute in ("annotations", "coordinates", "images", "metadata", "texts"):
+            df1 = getattr(self, attribute)
+            df2 = getattr(right, attribute)
+            new_df = df1.append(df2, ignore_index=True, sort=False)
+            new_df.sort_values(by="id", inplace=True)
+            new_df.reset_index(drop=True, inplace=True)
+            new_df = new_df.where(~new_df.isna(), None)
+            setattr(new_dset, attribute, new_df)
+
+        new_dset.coordinates = transform_coordinates_to_ijk(
+            new_dset.coordinates,
+            self.masker,
+            self.space,
+        )
+
         return new_dset
 
     def update_path(self, new_path):
-        """
-        Update paths to images. Prepends new path to the relative path for
-        files in Dataset.images.
+        """Update paths to images.
+
+        Prepends new path to the relative path for files in Dataset.images.
 
         Parameters
         ----------
         new_path : :obj:`str`
             Path to prepend to relative paths of files in Dataset.images.
         """
-        self.basepath = new_path
+        self.basepath = op.abspath(new_path)
         df = self.images
         relative_path_cols = [c for c in df if c.endswith("__relative")]
         for col in relative_path_cols:
             abs_col = col.replace("__relative", "")
             if abs_col in df.columns:
                 LGR.info("Overwriting images column {}".format(abs_col))
-            df[abs_col] = df[col].apply(try_prepend, prefix=new_path)
+            df[abs_col] = df[col].apply(try_prepend, prefix=self.basepath)
         self.images = df
 
     def copy(self):
         """Create a copy of the Dataset."""
         return copy.deepcopy(self)
 
-    def get(self, dict_):
-        """
-        Retrieve files and/or metadata from the current Dataset.
+    def get(self, dict_, drop_invalid=True):
+        """Retrieve files and/or metadata from the current Dataset.
 
         Parameters
         ----------
@@ -286,46 +332,118 @@ class Dataset(NiMAREBase):
             Values should be tuples with two values:
             type (e.g., 'image' or 'metadata') and specific field corresponding
             to column of type-specific DataFrame (e.g., 'z' or 'sample_sizes').
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is False.
 
         Returns
         -------
         results : :obj:`dict`
-            A dictionary of lists of requested data.
+            A dictionary of lists of requested data. Keys correspond to the keys in dict_.
 
         Examples
         --------
         >>> dset.get({'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')})
+        >>> dset.get({'coordinates': ('coordinates', None)})
         """
         results = {}
         results["id"] = self.ids
         keep_idx = np.arange(len(self.ids), dtype=int)
-        for k in dict_:
-            vals = dict_[k]
+        for k, vals in dict_.items():
             if vals[0] == "image":
                 temp = self.get_images(imtype=vals[1])
             elif vals[0] == "metadata":
                 temp = self.get_metadata(field=vals[1])
             elif vals[0] == "coordinates":
+                # Break DataFrame down into a list of study-specific DataFrames
                 temp = [self.coordinates.loc[self.coordinates["id"] == id_] for id_ in self.ids]
+                # Replace empty DataFrames with Nones
+                temp = [t if t.size else None for t in temp]
             else:
-                raise ValueError('Input "{}" not understood.'.format(vals[0]))
+                raise ValueError(f"Input '{vals[0]}' not understood.")
+
             results[k] = temp
             temp_keep_idx = np.where([t is not None for t in temp])[0]
             keep_idx = np.intersect1d(keep_idx, temp_keep_idx)
 
         # reduce
-        if len(keep_idx) != len(self.ids):
-            LGR.info("Retaining {0}/{1} studies".format(len(keep_idx), len(self.ids)))
+        if drop_invalid and (len(keep_idx) != len(self.ids)):
+            LGR.info(f"Retaining {len(keep_idx)}/{len(self.ids)} studies")
+        elif len(keep_idx) != len(self.ids):
+            raise Exception(
+                f"Only {len(keep_idx)}/{len(self.ids)} in Dataset contain the necessary data. "
+                "If you want to analyze the subset of studies with required data, "
+                "set `drop_invalid` to True."
+            )
 
         for k in results:
             results[k] = [results[k][i] for i in keep_idx]
             if dict_.get(k, [None])[0] == "coordinates":
                 results[k] = pd.concat(results[k])
+
         return results
 
-    def get_labels(self, ids=None):
+    def _generic_column_getter(self, attr, ids=None, column=None, ignore_columns=None):
+        """Extract information from DataFrame-based attributes.
+
+        Parameters
+        ----------
+        attr : :obj:`str`
+            The name of the DataFrame-format Dataset attribute to search.
+        ids : :obj:`list` or None, optional
+            A list of study IDs within which to extract values.
+            If None, extract values for all studies in the Dataset.
+            Default is None.
+        column : :obj:`str` or None, optional
+            The column from which to extract values.
+            If None, a list of all columns with valid values will be returned.
+            Must be a column within Dataset.[attr].
+        ignore_columns : :obj:`list` or None, optional
+            A list of columns to ignore. Only used if ``column`` is None.
+
+        Returns
+        -------
+        result : :obj:`list` or :obj:`str`
+            A list of values or a string, depending on if ids is a list (or None) or a string.
         """
-        Extract list of labels for which studies in Dataset have annotations.
+        if ignore_columns is None:
+            ignore_columns = self._id_cols
+        else:
+            ignore_columns += self._id_cols
+
+        df = getattr(self, attr)
+        return_first = False
+
+        if isinstance(ids, str) and column is not None:
+            return_first = True
+        ids = listify(ids)
+
+        available_types = [c for c in df.columns if c not in self._id_cols]
+        if (column is not None) and (column not in available_types):
+            raise ValueError(
+                f"{column} not found in {attr}.\nAvailable types: {', '.join(available_types)}"
+            )
+
+        if column is not None:
+            if ids is not None:
+                result = df[column].loc[df["id"].isin(ids)].tolist()
+            else:
+                result = df[column].tolist()
+        else:
+            if ids is not None:
+                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
+                result = {k: v for k, v in result.items() if any(v)}
+            else:
+                result = {v: df[v].tolist() for v in available_types}
+            result = list(result.keys())
+
+        if return_first:
+            return result[0]
+        else:
+            return result
+
+    def get_labels(self, ids=None):
+        """Extract list of labels for which studies in Dataset have annotations.
 
         Parameters
         ----------
@@ -350,8 +468,7 @@ class Dataset(NiMAREBase):
         return result
 
     def get_texts(self, ids=None, text_type=None):
-        """
-        Extract list of texts of a given type for selected IDs.
+        """Extract list of texts of a given type for selected IDs.
 
         Parameters
         ----------
@@ -367,52 +484,17 @@ class Dataset(NiMAREBase):
         texts : :obj:`list`
             List of texts of requested type for selected IDs.
         """
-        # Rename variables
-        value = text_type
-        df = self.texts
-
-        return_first = False
-        if isinstance(ids, str) and value is not None:
-            return_first = True
-        ids = listify(ids)
-
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        if (value is not None) and (value not in available_types):
-            raise ValueError(
-                'Text type "{0}" not found.\n'
-                "Available types: "
-                "{1}".format(value, ", ".join(available_types))
-            )
-
-        if value is not None:
-            if ids is not None:
-                result = df[value].loc[df["id"].isin(ids)].tolist()
-            else:
-                result = df[value].tolist()
-        else:
-            if ids is not None:
-                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
-
-        if return_first:
-            return result[0]
-        else:
-            return result
-
+        result = self._generic_column_getter("texts", ids=ids, column=text_type)
         return result
 
     def get_metadata(self, ids=None, field=None):
-        """
-        Get metadata from Dataset.
+        """Get metadata from Dataset.
 
         Parameters
         ----------
         ids : :obj:`list`, optional
-            A list of IDs in the Dataset for which to find texts. Default is
-            None, in which case all texts of requested type are returned.
+            A list of IDs in the Dataset for which to find metadata. Default is
+            None, in which case all metadata of requested type are returned.
         field : :obj:`str`, optional
             Metadata field to extract. Corresponds to column name in
             Dataset.metadata DataFrame. Default is None.
@@ -422,50 +504,17 @@ class Dataset(NiMAREBase):
         metadata : :obj:`list`
             List of values of requested type for selected IDs.
         """
-        # Rename variables
-        value = field
-        df = self.metadata
-
-        return_first = False
-        if isinstance(ids, str) and value is not None:
-            return_first = True
-        ids = listify(ids)
-
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        if (value is not None) and (value not in available_types):
-            raise ValueError(
-                'Metadata field "{0}" not found.\n'
-                "Available fields: "
-                "{1}".format(field, ", ".join(available_types))
-            )
-
-        if value is not None:
-            if ids is not None:
-                result = df[value].loc[df["id"].isin(ids)].tolist()
-            else:
-                result = df[value].tolist()
-        else:
-            if ids is not None:
-                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
-
-        if return_first:
-            return result[0]
-        else:
-            return result
+        result = self._generic_column_getter("metadata", ids=ids, column=field)
+        return result
 
     def get_images(self, ids=None, imtype=None):
-        """
-        Get images of a certain type for a subset of studies in the dataset.
+        """Get images of a certain type for a subset of studies in the dataset.
 
         Parameters
         ----------
         ids : :obj:`list`, optional
-            A list of IDs in the Dataset for which to find texts. Default is
-            None, in which case all texts of requested type are returned.
+            A list of IDs in the Dataset for which to find images. Default is
+            None, in which case all images of requested type are returned.
         imtype : :obj:`str`, optional
             Type of image to extract. Corresponds to column name in
             Dataset.images DataFrame. Default is None.
@@ -475,47 +524,22 @@ class Dataset(NiMAREBase):
         images : :obj:`list`
             List of images of requested type for selected IDs.
         """
-        # Rename variables
-        value = imtype
-        df = self.images
+        ignore_columns = ["space"]
+        ignore_columns += [c for c in self.images.columns if c.endswith("__relative")]
+        result = self._generic_column_getter(
+            "images",
+            ids=ids,
+            column=imtype,
+            ignore_columns=ignore_columns,
+        )
+        return result
 
-        return_first = False
-        if isinstance(ids, str) and value is not None:
-            return_first = True
-        ids = listify(ids)
+    def get_studies_by_label(self, labels=None, label_threshold=0.001):
+        """Extract list of studies with a given label.
 
-        metadata_fields = ["space"]
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        available_types = [c for c in available_types if not c.endswith("__relative")]
-        available_types = [c for c in available_types if c not in metadata_fields]
-        if (value is not None) and (value not in available_types):
-            raise ValueError(
-                'Image type "{0}" not found.\n'
-                "Available types: "
-                "{1}".format(value, ", ".join(available_types))
-            )
+        .. versionchanged:: 0.0.9
 
-        if value is not None:
-            if ids is not None:
-                result = self.images[value].loc[self.images["id"].isin(ids)].tolist()
-            else:
-                result = self.images[value].tolist()
-        else:
-            if ids is not None:
-                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
-
-        if return_first:
-            return result[0]
-        else:
-            return result
-
-    def get_studies_by_label(self, labels=None, label_threshold=0.5):
-        """
-        Extract list of studies with a given label.
+            Default value for label_threshold changed to 0.001.
 
         Parameters
         ----------
@@ -549,8 +573,7 @@ class Dataset(NiMAREBase):
         return found_ids
 
     def get_studies_by_mask(self, mask):
-        """
-        Extract list of studies with at least one coordinate in mask.
+        """Extract list of studies with at least one coordinate in mask.
 
         Parameters
         ----------
@@ -564,8 +587,7 @@ class Dataset(NiMAREBase):
         """
         from scipy.spatial.distance import cdist
 
-        if isinstance(mask, str):
-            mask = nib.load(mask)
+        mask = load_niimg(mask)
 
         dset_mask = self.masker.mask_img
         if not np.array_equal(dset_mask.affine, mask.affine):
@@ -579,9 +601,7 @@ class Dataset(NiMAREBase):
         return found_ids
 
     def get_studies_by_coordinate(self, xyz, r=20):
-        """
-        Extract list of studies with at least one focus within radius r of
-        requested coordinates.
+        """Extract list of studies with at least one focus within radius of requested coordinates.
 
         Parameters
         ----------

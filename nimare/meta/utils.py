@@ -1,6 +1,4 @@
-"""
-Utilities for coordinate-based meta-analysis estimators
-"""
+"""Utilities for coordinate-based meta-analysis estimators."""
 import logging
 import os
 
@@ -18,7 +16,11 @@ LGR = logging.getLogger(__name__)
 
 
 def model_fn(features, labels, mode, params):
-    """Run model function used internally by peaks2maps."""
+    """Run model function used internally by peaks2maps.
+
+    .. versionadeed:: 0.0.4
+
+    """
     import tensorflow as tf
     from tensorflow.python.estimator.export.export_output import PredictOutput
 
@@ -158,7 +160,11 @@ def model_fn(features, labels, mode, params):
 
 
 def _get_resize_arg(target_shape):
-    """Get resizing arguments, as used by peaks2maps."""
+    """Get resizing arguments, as used by peaks2maps.
+
+    .. versionadeed:: 0.0.1
+
+    """
     mni_shape_mm = np.array([148.0, 184.0, 156.0])
     target_resolution_mm = np.ceil(mni_shape_mm / np.array(target_shape)).astype(np.int32)
     target_affine = np.array(
@@ -176,7 +182,11 @@ def _get_resize_arg(target_shape):
 
 
 def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_bounds=False):
-    """Get generator, as used by peaks2maps."""
+    """Get generator, as used by peaks2maps.
+
+    .. versionadeed:: 0.0.1
+
+    """
 
     def generator():
         for contrast in contrasts_coordinates:
@@ -200,6 +210,8 @@ def compute_p2m_ma(
     contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None, model_dir="auto"
 ):
     """Generate modeled activation (MA) maps using deep ConvNet model peaks2maps.
+
+    .. versionadeed:: 0.0.1
 
     Parameters
     ----------
@@ -259,9 +271,24 @@ def compute_p2m_ma(
     return niis
 
 
-def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False):
-    """
-    Compute (M)KDA modeled activation (MA) map.
+def compute_kda_ma(
+    shape,
+    vox_dims,
+    ijks,
+    r,
+    value=1.0,
+    exp_idx=None,
+    sum_overlap=False,
+    memmap_filename=None,
+):
+    """Compute (M)KDA modeled activation (MA) map.
+
+    .. versionadeed:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add *memmap_filename* parameter for memory mapping arrays.
+
     Replaces the values around each focus in ijk with binary sphere.
 
     Parameters
@@ -284,6 +311,8 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overla
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
+    memmap_filename : :obj:`str`, optional
+        If passed, use this file for memory mapping arrays
 
     Returns
     -------
@@ -300,7 +329,13 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overla
     uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(uniq)
 
-    kernel_data = np.zeros([n_studies] + list(shape), dtype=type(value))
+    kernel_shape = (n_studies,) + shape
+    if memmap_filename:
+        # Use a memmapped 4D array
+        kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
+    else:
+        kernel_data = np.zeros(kernel_shape, dtype=type(value))
+
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
@@ -316,14 +351,21 @@ def compute_kda_ma(shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overla
         else:
             kernel_data[exp][tuple(sphere.T)] = value
 
+        if memmap_filename:
+            # Write changes to disk
+            kernel_data.flush()
+
     if squeeze:
         kernel_data = np.squeeze(kernel_data, axis=0)
+
     return kernel_data
 
 
 def compute_ale_ma(shape, ijk, kernel):
-    """
-    Generate ALE modeled activation (MA) maps.
+    """Generate ALE modeled activation (MA) maps.
+
+    .. versionadeed:: 0.0.1
+
     Replaces the values around each focus in ijk with the contrast-specific
     kernel. Takes the element-wise maximum when looping through foci, which
     accounts for foci which are near to one another and may have overlapping
@@ -384,9 +426,10 @@ def compute_ale_ma(shape, ijk, kernel):
 
 @due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
 def get_ale_kernel(img, sample_size=None, fwhm=None):
-    """
-    Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given
-    sample size (sample_size) or fwhm (in mm).
+    """Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given sample size or fwhm.
+
+    .. versionadeed:: 0.0.1
+
     """
     if sample_size is not None and fwhm is not None:
         raise ValueError('Only one of "sample_size" and "fwhm" may be specified')

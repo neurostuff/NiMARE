@@ -1,9 +1,17 @@
-import pytest
+"""Tests for the nimare.generate module."""
 from contextlib import ExitStack as does_not_raise
+
+import pytest
 from numpy.random import RandomState
 
-from ..generate import create_coordinate_dataset, _create_source, _create_foci, _array_like
 from ..dataset import Dataset
+from ..generate import (
+    _array_like,
+    _create_foci,
+    _create_source,
+    create_coordinate_dataset,
+    create_neurovault_dataset,
+)
 
 
 @pytest.mark.parametrize(
@@ -51,6 +59,7 @@ from ..dataset import Dataset
     ],
 )
 def test_create_foci(kwargs, expectation):
+    """Smoke test for _create_foci."""
     with expectation:
         ground_truth_foci, foci_dict = _create_foci(**kwargs)
     if isinstance(expectation, does_not_raise):
@@ -59,6 +68,7 @@ def test_create_foci(kwargs, expectation):
 
 
 def test_create_source():
+    """Smoke test for _create_source."""
     source_dict = _create_source(foci={0: [(0, 0, 0)]}, sample_sizes=[25])
     assert source_dict["study-0"]["contrasts"]["1"]["metadata"]["sample_sizes"] == [25]
 
@@ -208,6 +218,7 @@ def test_create_source():
     ],
 )
 def test_create_coordinate_dataset(kwargs, expectation):
+    """Create a coordinate Dataset according to parameters."""
     with expectation:
         ground_truth_foci, dataset = create_coordinate_dataset(**kwargs)
     if isinstance(expectation, does_not_raise):
@@ -223,3 +234,13 @@ def test_create_coordinate_dataset(kwargs, expectation):
             (kwargs["n_studies"] * n_foci) + (kwargs["n_studies"] * kwargs["n_noise_foci"]),
         )
         assert len(dataset.coordinates) == expected_coordinate_number
+
+
+def test_create_neurovault_dataset():
+    """Test creating a neurovault dataset."""
+    dset = create_neurovault_dataset(
+        collection_ids=(8836,),
+        contrasts={"animal": "as-Animal"},
+    )
+    expected_columns = {"beta", "t", "varcope", "z"}
+    assert expected_columns.issubset(dset.images.columns)

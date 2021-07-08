@@ -1,28 +1,95 @@
-"""Miscellaneous spatial and statistical transforms
-"""
+"""Miscellaneous spatial and statistical transforms."""
+
+import copy
 import logging
 import os.path as op
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
+from nilearn.reporting import get_clusters_table
 from scipy import stats
 
-from . import references, utils
+from . import references
+from .base import Transformer
 from .due import due
+from .utils import dict_to_coordinates, dict_to_df, get_masker, listify
 
 LGR = logging.getLogger(__name__)
 
 
-def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
+class ImageTransformer(Transformer):
+    """A class to create new images from existing ones within a Dataset.
+
+    This class is a light wrapper around :func:`nimare.transforms.transform_images`.
+
+    .. versionadded:: 0.0.9
+
+    Parameters
+    ----------
+    target : {'z', 'p', 'beta', 'varcope'} or list
+        Target image type. Multiple target types may be specified as a list.
+    overwrite : :obj:`bool`, optional
+        Whether to overwrite existing files or not. Default is False.
+
+    See Also
+    --------
+    nimare.transforms.transform_images : The function called by this class.
     """
-    Generate images of a given type, depending on compatible images of other
-    types, and write out to files.
+
+    def __init__(self, target, overwrite=False):
+        self.target = listify(target)
+        self.overwrite = overwrite
+
+    def transform(self, dataset):
+        """Generate images of the target type from other image types in a Dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            A Dataset containing images and relevant metadata.
+
+        Returns
+        -------
+        new_dataset : :obj:`nimare.dataset.Dataset`
+            A copy of the input Dataset, with new images added to its images attribute.
+        """
+        # Using attribute check instead of type check to allow fake Datasets for testing.
+        if not hasattr(dataset, "slice"):
+            raise ValueError(
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
+            )
+
+        new_dataset = dataset.copy()
+        temp_images = dataset.images
+
+        for target_type in self.target:
+            temp_images = transform_images(
+                temp_images,
+                target=target_type,
+                masker=dataset.masker,
+                metadata_df=dataset.metadata,
+                out_dir=dataset.basepath,
+                overwrite=self.overwrite,
+            )
+        new_dataset.images = temp_images
+        return new_dataset
+
+
+def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, overwrite=False):
+    """Generate images of a given type from other image types and write out to files.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.9
+
+        * [ENH] Add overwrite option to transform_images
 
     Parameters
     ----------
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to images for studies in Dataset.
-    target : {'z', 'beta', 'varcope'}
+    target : {'z', 'p', 'beta', 'varcope'}
         Target data type.
     masker : :class:`nilearn.input_data.NiftiMasker` or similar
         Masker used to define orientation and resolution of images.
@@ -34,6 +101,8 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     out_dir : :obj:`str` or :obj:`None`, optional
         Path to output directory. If None, use folder containing first image
         for each study in ``images_df``.
+    overwrite : :obj:`bool`, optional
+        Whether to overwrite existing files or not. Default is False.
 
     Returns
     -------
@@ -42,13 +111,16 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
     """
     images_df = images_df.copy()
 
-    valid_targets = ["z", "beta", "varcope"]
+    valid_targets = {"z", "p", "beta", "varcope"}
     if target not in valid_targets:
-        raise ValueError("Target type must be one of: {}".format(", ".join(valid_targets)))
+        raise ValueError(
+            f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
+        )
+
     mask_img = masker.mask_img
     new_mask = np.ones(mask_img.shape, int)
     new_mask = nib.Nifti1Image(new_mask, mask_img.affine, header=mask_img.header)
-    new_masker = utils.get_masker(new_mask)
+    new_masker = get_masker(new_mask)
     res = masker.mask_img.header.get_zooms()
     res = "x".join([str(r) for r in res])
     if target not in images_df.columns:
@@ -81,7 +153,11 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
         # Get converted data
         img = resolve_transforms(target, available_data, new_masker)
         if img is not None:
-            img.to_filename(new_file)
+            if overwrite or not op.isfile(new_file):
+                img.to_filename(new_file)
+            else:
+                LGR.debug("Image already exists. Not overwriting.")
+
             images_df.loc[images_df["id"] == id_, target] = new_file
         else:
             images_df.loc[images_df["id"] == id_, target] = None
@@ -89,12 +165,18 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None):
 
 
 def resolve_transforms(target, available_data, masker):
-    """Figure out the appropriate set of transforms for given available data
-    to a target image type, and apply them.
+    """Determine and apply the appropriate transforms to a target image type from available data.
+
+    .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Remove unnecessary dimensions from output image object *img_like*. \
+                Now, the image object only has 3 dimensions.
 
     Parameters
     ----------
-    target : {'z', 't', 'beta', 'varcope'}
+    target : {'z', 'p', 't', 'beta', 'varcope'}
         Target image type.
     available_data : dict
         Dictionary mapping data types to their values. Images in the dictionary
@@ -124,7 +206,7 @@ def resolve_transforms(target, available_data, masker):
             z = p_to_z(p)
         else:
             return None
-        z = masker.inverse_transform(z)
+        z = masker.inverse_transform(z.squeeze())
         return z
     elif target == "t":
         # will return none given no transform/target exists
@@ -136,7 +218,7 @@ def resolve_transforms(target, available_data, masker):
             dof = sample_sizes_to_dof(available_data["sample_sizes"])
             z = masker.transform(available_data["z"])
             t = z_to_t(z, dof)
-            t = masker.inverse_transform(t)
+            t = masker.inverse_transform(t.squeeze())
             return t
         else:
             return None
@@ -156,7 +238,7 @@ def resolve_transforms(target, available_data, masker):
             t = masker.transform(available_data["t"])
             varcope = masker.transform(available_data["varcope"])
             beta = t_and_varcope_to_beta(t, varcope)
-            beta = masker.inverse_transform(beta)
+            beta = masker.inverse_transform(beta.squeeze())
             return beta
         else:
             return None
@@ -164,14 +246,12 @@ def resolve_transforms(target, available_data, masker):
         if "se" in available_data.keys():
             se = masker.transform(available_data["se"])
             varcope = se_to_varcope(se)
-            varcope = masker.inverse_transform(varcope)
         elif ("samplevar_dataset" in available_data.keys()) and (
             "sample_sizes" in available_data.keys()
         ):
             sample_size = sample_sizes_to_sample_size(available_data["sample_sizes"])
             samplevar_dataset = masker.transform(available_data["samplevar_dataset"])
             varcope = samplevar_dataset_to_varcope(samplevar_dataset, sample_size)
-            varcope = masker.inverse_transform(varcope)
         elif ("sd" in available_data.keys()) and ("sample_sizes" in available_data.keys()):
             sample_size = sample_sizes_to_sample_size(available_data["sample_sizes"])
             sd = masker.transform(available_data["sd"])
@@ -181,17 +261,218 @@ def resolve_transforms(target, available_data, masker):
             t = masker.transform(available_data["t"])
             beta = masker.transform(available_data["beta"])
             varcope = t_and_beta_to_varcope(t, beta)
-            varcope = masker.inverse_transform(varcope)
         else:
             return None
+        varcope = masker.inverse_transform(varcope.squeeze())
         return varcope
+    elif target == "p":
+        if ("t" in available_data.keys()) and ("sample_sizes" in available_data.keys()):
+            dof = sample_sizes_to_dof(available_data["sample_sizes"])
+            t = masker.transform(available_data["t"])
+            z = t_to_z(t, dof)
+            p = z_to_p(z)
+        elif "z" in available_data.keys():
+            z = masker.transform(available_data["z"])
+            p = z_to_p(z)
+        else:
+            return None
+        p = masker.inverse_transform(p.squeeze())
+        return p
     else:
         return None
 
 
+class ImagesToCoordinates(Transformer):
+    """Transformer from images to coordinates.
+
+    .. versionadded:: 0.0.8
+
+    Parameters
+    ----------
+    merge_strategy : {'fill', 'replace', 'demolish'}, optional
+        strategy on how to incorporate the generated coordinates
+        with possible pre-existing coordinates.
+        The three different strategies are 'fill', 'replace',
+        and 'demolish'. Default='fill'.
+        - 'fill': only add coordinates to study contrasts that
+          do not have coordinates. If a study contrast has both
+          image and coordinate data, the original coordinate data
+          will be kept.
+        - 'replace': replace existing coordinates with coordinates
+          generated by this function. If a study contrast only has
+          coordinate data and no images or if the statistical
+          threshold is too high for nimare to detect any peaks
+          the original coordinates will be kept.
+        - 'demolish': only keep generated coordinates and discard
+          any study contrasts with coordinate data, but no images.
+    cluster_threshold : :obj:`int` or `None`, optional
+        Cluster size threshold, in voxels. Default=None.
+    remove_subpeaks : :obj:`bool`, optional
+        If True, removes subpeaks from the cluster results. Default=False.
+    two_sided : :obj:`bool`, optional
+        Whether to employ two-sided thresholding or to evaluate positive values
+        only. Default=False.
+    min_distance : :obj:`float`, optional
+        Minimum distance between subpeaks in mm. Default=8mm.
+    z_threshold : :obj:`float`
+        Cluster forming z-scale threshold. Default=3.1.
+
+    Notes
+    -----
+    The raw Z and/or P maps are not corrected for multiple comparisons,
+    uncorrected z-values and/or p-values are used for thresholding.
+    """
+
+    def __init__(
+        self,
+        merge_strategy="fill",
+        cluster_threshold=None,
+        remove_subpeaks=False,
+        two_sided=False,
+        min_distance=8.0,
+        z_threshold=3.1,
+    ):
+        self.merge_strategy = merge_strategy
+        self.cluster_threshold = cluster_threshold
+        self.remove_subpeaks = remove_subpeaks
+        self.min_distance = min_distance
+        self.two_sided = two_sided
+        self.z_threshold = z_threshold
+
+    def transform(self, dataset):
+        """Create coordinate peaks from statistical images.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset with z maps and/or p maps
+            that can be converted to coordinates.
+
+        Returns
+        -------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset with coordinates generated from
+            images and metadata indicating origin
+            of coordinates ('original' or 'nimare').
+        """
+        # relevant variables from dataset
+        space = dataset.space
+        masker = dataset.masker
+        images_df = dataset.images
+        metadata = dataset.metadata.copy()
+
+        # conform space specification
+        if "mni" in space.lower() or "ale" in space.lower():
+            coordinate_space = "MNI"
+        elif "tal" in space.lower():
+            coordinate_space = "TAL"
+        else:
+            coordinate_space = None
+
+        coordinates_dict = {}
+        for _, row in images_df.iterrows():
+
+            if row["id"] in list(dataset.coordinates["id"]) and self.merge_strategy == "fill":
+                continue
+
+            if row.get("z"):
+                clusters = get_clusters_table(
+                    nib.funcs.squeeze_image(nib.load(row.get("z"))),
+                    self.z_threshold,
+                    self.cluster_threshold,
+                    self.two_sided,
+                    self.min_distance,
+                )
+            elif row.get("p"):
+                LGR.info(
+                    f"No Z map for {row['id']}, using p map "
+                    "(p-values will be treated as positive z-values)"
+                )
+                if self.two_sided:
+                    LGR.warning(f"Cannot use two_sided threshold using a p map for {row['id']}")
+
+                p_threshold = 1 - z_to_p(self.z_threshold)
+                nimg = nib.funcs.squeeze_image(nib.load(row.get("p")))
+                inv_nimg = nib.Nifti1Image(1 - nimg.get_fdata(), nimg.affine, nimg.header)
+                clusters = get_clusters_table(
+                    inv_nimg,
+                    p_threshold,
+                    self.cluster_threshold,
+                    self.min_distance,
+                )
+                # Peak stat p-values are reported as 1 - p in get_clusters_table
+                clusters["Peak Stat"] = p_to_z(1 - clusters["Peak Stat"])
+            else:
+                LGR.warning(f"No Z or p map for {row['id']}, skipping...")
+                continue
+
+            # skip entry if no clusters are found
+            if clusters.empty:
+                LGR.warning(
+                    f"No clusters were found for {row['id']} at a threshold of {self.z_threshold}"
+                )
+                continue
+
+            if self.remove_subpeaks:
+                # subpeaks are identified as 1a, 1b, etc
+                # while peaks are kept as 1, 2, 3, etc,
+                # so removing all non-int rows will
+                # keep main peaks while removing subpeaks
+                clusters = clusters[clusters["Cluster ID"].apply(lambda x: isinstance(x, int))]
+
+            coordinates_dict[row["study_id"]] = {
+                "contrasts": {
+                    row["contrast_id"]: {
+                        "coords": {
+                            "space": coordinate_space,
+                            "x": list(clusters["X"]),
+                            "y": list(clusters["Y"]),
+                            "z": list(clusters["Z"]),
+                            "z_stat": list(clusters["Peak Stat"]),
+                        },
+                        "metadata": {"coordinate_source": "nimare"},
+                    }
+                }
+            }
+
+        # only the generated coordinates ('demolish')
+        coordinates_df = dict_to_coordinates(coordinates_dict, masker, space)
+        meta_df = dict_to_df(
+            pd.DataFrame(dataset._ids),
+            coordinates_dict,
+            "metadata",
+        )
+
+        if "coordinate_source" in meta_df.columns:
+            metadata["coordinate_source"] = meta_df["coordinate_source"]
+        else:
+            # nimare did not overwrite any coordinates
+            metadata["coordinate_source"] = ["original"] * metadata.shape[0]
+
+        if self.merge_strategy != "demolish":
+            original_idxs = ~dataset.coordinates["id"].isin(coordinates_df["id"])
+            old_coordinates_df = dataset.coordinates[original_idxs]
+            coordinates_df = coordinates_df.append(old_coordinates_df, ignore_index=True)
+
+            # specify original coordinates
+            original_ids = set(old_coordinates_df["id"])
+            metadata.loc[metadata["id"].isin(original_ids), "coordinate_source"] = "original"
+
+        # ensure z_stat is treated as float
+        if "z_stat" in coordinates_df.columns:
+            coordinates_df["z_stat"] = coordinates_df["z_stat"].astype(float)
+
+        new_dataset = copy.deepcopy(dataset)
+        new_dataset.coordinates = coordinates_df
+        new_dataset.metadata = metadata
+
+        return new_dataset
+
+
 def sample_sizes_to_dof(sample_sizes):
-    """A simple heuristic for calculating degrees of freedom from a list of
-    sample sizes.
+    """Calculate degrees of freedom from a list of sample sizes using a simple heuristic.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -209,8 +490,9 @@ def sample_sizes_to_dof(sample_sizes):
 
 
 def sample_sizes_to_sample_size(sample_sizes):
-    """A simple heuristic for appropriate sample size from a list of sample
-    sizes.
+    """Calculate appropriate sample size from a list of sample sizes using a simple heuristic.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -228,6 +510,8 @@ def sample_sizes_to_sample_size(sample_sizes):
 
 def sd_to_varcope(sd, sample_size):
     """Convert standard deviation to sampling variance.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -249,6 +533,8 @@ def sd_to_varcope(sd, sample_size):
 def se_to_varcope(se):
     """Convert standard error values to sampling variance.
 
+    .. versionadded:: 0.0.3
+
     Parameters
     ----------
     se : array_like
@@ -268,21 +554,23 @@ def se_to_varcope(se):
 
 
 def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
-    """Convert "sample variance of the dataset" (variance of the individual
-    observations in a single sample) to "sampling variance" (variance of
-    sampling distribution for the parameter).
+    """Convert "sample variance of the dataset" to "sampling variance".
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
     samplevar_dataset : array_like
-        Sample variance of the dataset (e.g., ``np.var(values)``).
+        Sample variance of the dataset (i.e., variance of the individual observations in a single
+        sample). Can be calculated with ``np.var``.
     sample_size : int
         Sample size
 
     Returns
     -------
     varcope : array_like
-        Sampling variance of the parameter
+        Sampling variance of the parameter (i.e., variance of sampling distribution for the
+        parameter).
 
     Notes
     -----
@@ -294,6 +582,8 @@ def samplevar_dataset_to_varcope(samplevar_dataset, sample_size):
 
 def t_and_varcope_to_beta(t, varcope):
     """Convert t-statistic to parameter estimate using sampling variance.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -314,6 +604,8 @@ def t_and_varcope_to_beta(t, varcope):
 def t_and_beta_to_varcope(t, beta):
     """Convert t-statistic to sampling variance using parameter estimate.
 
+    .. versionadded:: 0.0.4
+
     Parameters
     ----------
     t : array_like
@@ -330,8 +622,41 @@ def t_and_beta_to_varcope(t, beta):
     return varcope
 
 
+def z_to_p(z, tail="two"):
+    """Convert z-values to p-values.
+
+    .. versionadded:: 0.0.8
+
+    Parameters
+    ----------
+    z : array_like
+        Z-statistics
+    tail : {'one', 'two'}, optional
+        Whether p-values come from one-tailed or two-tailed test. Default is
+        'two'.
+
+    Returns
+    -------
+    p : array_like
+        P-values
+    """
+    z = np.array(z)
+    if tail == "two":
+        p = stats.norm.sf(abs(z)) * 2
+    elif tail == "one":
+        p = stats.norm.sf(abs(z))
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    if p.shape == ():
+        p = p[()]
+    return p
+
+
 def p_to_z(p, tail="two"):
     """Convert p-values to (unsigned) z-values.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -364,8 +689,9 @@ def p_to_z(p, tail="two"):
 @due.dcite(references.T2Z_TRANSFORM, description="Introduces T-to-Z transform.")
 @due.dcite(references.T2Z_IMPLEMENTATION, description="Python implementation of T-to-Z transform.")
 def t_to_z(t_values, dof):
-    """
-    Convert t-statistics to z-statistics.
+    """Convert t-statistics to z-statistics.
+
+    .. versionadded:: 0.0.3
 
     An implementation of [1]_ from Vanessa Sochat's TtoZ package [2]_.
 
@@ -406,10 +732,12 @@ def t_to_z(t_values, dof):
 
     # Calculate p values for <=0
     p_values_t1 = stats.t.cdf(t1, df=dof)
+    p_values_t1[p_values_t1 < np.finfo(p_values_t1.dtype).eps] = np.finfo(p_values_t1.dtype).eps
     z_values_t1 = stats.norm.ppf(p_values_t1)
 
     # Calculate p values for > 0
     p_values_t2 = stats.t.cdf(-t2, df=dof)
+    p_values_t2[p_values_t2 < np.finfo(p_values_t2.dtype).eps] = np.finfo(p_values_t2.dtype).eps
     z_values_t2 = -stats.norm.ppf(p_values_t2)
     z_values_nonzero[k1] = z_values_t1
     z_values_nonzero[k2] = z_values_t2
@@ -420,8 +748,9 @@ def t_to_z(t_values, dof):
 
 
 def z_to_t(z_values, dof):
-    """
-    Convert z-statistics to t-statistics.
+    """Convert z-statistics to t-statistics.
+
+    .. versionadded:: 0.0.3
 
     An inversion of the t_to_z implementation of [1]_ from Vanessa Sochat's
     TtoZ package [2]_.
@@ -474,200 +803,3 @@ def z_to_t(z_values, dof):
     t_values = np.zeros(z_values.shape)
     t_values[z_values != 0] = t_values_nonzero
     return t_values
-
-
-def vox2mm(ijk, affine):
-    """
-    Convert matrix subscripts to coordinates.
-
-    Parameters
-    ----------
-    ijk : (X, 3) :obj:`numpy.ndarray`
-        Matrix subscripts for coordinates being transformed.
-        One row for each coordinate, with three columns: i, j, and k.
-    affine : (4, 4) :obj:`numpy.ndarray`
-        Affine matrix from image.
-
-    Returns
-    -------
-    xyz : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in image-space.
-
-    Notes
-    -----
-    From here:
-    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
-    """
-    xyz = nib.affines.apply_affine(affine, ijk)
-    return xyz
-
-
-def mm2vox(xyz, affine):
-    """
-    Convert coordinates to matrix subscripts.
-
-    Parameters
-    ----------
-    xyz : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in image-space.
-        One row for each coordinate, with three columns: x, y, and z.
-    affine : (4, 4) :obj:`numpy.ndarray`
-        Affine matrix from image.
-
-    Returns
-    -------
-    ijk : (X, 3) :obj:`numpy.ndarray`
-        Matrix subscripts for coordinates being transformed.
-
-    Notes
-    -----
-    From here:
-    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
-    """
-    ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz).astype(int)
-    return ijk
-
-
-@due.dcite(
-    references.LANCASTER_TRANSFORM,
-    description="Introduces the Lancaster MNI-to-Talairach transform, "
-    "as well as its inverse, the Talairach-to-MNI "
-    "transform.",
-)
-@due.dcite(
-    references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and " "Talairach-to-MNI transforms.",
-)
-def tal2mni(coords):
-    """
-    Convert coordinates from Talairach space to MNI space.
-
-    Parameters
-    ----------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in Talairach space to convert.
-        Each row is a coordinate, with three columns.
-
-    Returns
-    -------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in MNI space.
-        Each row is a coordinate, with three columns.
-
-    Notes
-    -----
-    Python version of BrainMap's tal2icbm_other.m.
-
-    This function converts coordinates from Talairach space to MNI
-    space (normalized using templates other than those contained
-    in SPM and FSL) using the tal2icbm transform developed and
-    validated by Jack Lancaster at the Research Imaging Center in
-    San Antonio, Texas.
-    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
-    """
-    # Find which dimensions are of size 3
-    shape = np.array(coords.shape)
-    if all(shape == 3):
-        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row " "vectors (Nx3).")
-        use_dim = 1
-    elif not any(shape == 3):
-        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
-    else:
-        use_dim = np.where(shape == 3)[0][0]
-
-    # Transpose if necessary
-    if use_dim == 1:
-        coords = coords.transpose()
-
-    # Transformation matrices, different for each software package
-    icbm_other = np.array(
-        [
-            [0.9357, 0.0029, -0.0072, -1.0423],
-            [-0.0065, 0.9396, -0.0726, -1.3940],
-            [0.0103, 0.0752, 0.8967, 3.6475],
-            [0.0000, 0.0000, 0.0000, 1.0000],
-        ]
-    )
-
-    # Invert the transformation matrix
-    icbm_other = np.linalg.inv(icbm_other)
-
-    # Apply the transformation matrix
-    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
-    coords = np.dot(icbm_other, coords)
-
-    # Format the output, transpose if necessary
-    out_coords = coords[:3, :]
-    if use_dim == 1:
-        out_coords = out_coords.transpose()
-    return out_coords
-
-
-@due.dcite(
-    references.LANCASTER_TRANSFORM,
-    description="Introduces the Lancaster MNI-to-Talairach transform, "
-    "as well as its inverse, the Talairach-to-MNI "
-    "transform.",
-)
-@due.dcite(
-    references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and " "Talairach-to-MNI transforms.",
-)
-def mni2tal(coords):
-    """
-    Convert coordinates from MNI space Talairach space.
-
-    Parameters
-    ----------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in MNI space to convert.
-        Each row is a coordinate, with three columns.
-
-    Returns
-    -------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in Talairach space.
-        Each row is a coordinate, with three columns.
-
-    Notes
-    -----
-    Python version of BrainMap's icbm_other2tal.m.
-    This function converts coordinates from MNI space (normalized using
-    templates other than those contained in SPM and FSL) to Talairach space
-    using the icbm2tal transform developed and validated by Jack Lancaster at
-    the Research Imaging Center in San Antonio, Texas.
-    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
-    """
-    # Find which dimensions are of size 3
-    shape = np.array(coords.shape)
-    if all(shape == 3):
-        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row " "vectors (Nx3).")
-        use_dim = 1
-    elif not any(shape == 3):
-        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
-    else:
-        use_dim = np.where(shape == 3)[0][0]
-
-    # Transpose if necessary
-    if use_dim == 1:
-        coords = coords.transpose()
-
-    # Transformation matrices, different for each software package
-    icbm_other = np.array(
-        [
-            [0.9357, 0.0029, -0.0072, -1.0423],
-            [-0.0065, 0.9396, -0.0726, -1.3940],
-            [0.0103, 0.0752, 0.8967, 3.6475],
-            [0.0000, 0.0000, 0.0000, 1.0000],
-        ]
-    )
-
-    # Apply the transformation matrix
-    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
-    coords = np.dot(icbm_other, coords)
-
-    # Format the output, transpose if necessary
-    out_coords = coords[:3, :]
-    if use_dim == 1:
-        out_coords = out_coords.transpose()
-    return out_coords

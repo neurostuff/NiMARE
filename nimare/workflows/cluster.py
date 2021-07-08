@@ -1,6 +1,4 @@
-"""
-Meta-analytic clustering workflow
-"""
+"""Meta-analytic clustering workflow."""
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -22,7 +20,7 @@ from ..meta.kernel import ALEKernel, KDAKernel, MKDAKernel, Peaks2MapsKernel
 )
 @due.dcite(
     references.META_CLUSTER2,
-    description="Performs the specific meta-analytic clustering " "approach implemented here.",
+    description="Performs the specific meta-analytic clustering approach implemented here.",
 )
 def meta_cluster_workflow(
     dataset_file,
@@ -33,8 +31,7 @@ def meta_cluster_workflow(
     algorithm="kmeans",
     clust_range=(2, 10),
 ):
-    """
-    Perform a meta-analytic clustering analysis on a dataset file.
+    """Perform a meta-analytic clustering analysis on a dataset file.
 
     Warnings
     --------

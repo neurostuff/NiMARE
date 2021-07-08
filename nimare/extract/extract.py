@@ -1,6 +1,4 @@
-"""
-Tools for downloading datasets.
-"""
+"""Tools for downloading datasets."""
 import logging
 import math
 import os
@@ -33,8 +31,9 @@ LGR = logging.getLogger(__name__)
 
 
 def fetch_neurosynth(path=".", url=None, unpack=False):
-    """
-    Download the latest data files from NeuroSynth.
+    """Download the latest data files from NeuroSynth.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -49,7 +48,6 @@ def fetch_neurosynth(path=".", url=None, unpack=False):
     -----
     This function was originally neurosynth.base.dataset.download().
     """
-
     if url is None:
         url = (
             "https://github.com/neurosynth/neurosynth-data/blob/master/current_data.tar.gz?"
@@ -87,8 +85,9 @@ def fetch_neurosynth(path=".", url=None, unpack=False):
 
 
 def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download NIDM Results for 21 pain studies from NeuroVault for tests.
+    """Download NIDM Results for 21 pain studies from NeuroVault for tests.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -125,7 +124,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     collection_folders = [f for f in glob(op.join(data_dir, "*")) if ".nidm" not in f]
     collection_folders = [f for f in collection_folders if op.isdir(f)]
     if len(collection_folders) > 1:
-        raise Exception("More than one folder found: " "{0}".format(", ".join(collection_folders)))
+        raise Exception("More than one folder found: {0}".format(", ".join(collection_folders)))
     else:
         folder = collection_folders[0]
     zip_files = glob(op.join(folder, "*.zip"))
@@ -143,8 +142,9 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_mallet(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download the MALLET toolbox for LDA topic modeling.
+    """Download the MALLET toolbox for LDA topic modeling.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -195,9 +195,9 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download Cognitive Atlas ontology and combine Concepts, Tasks, and
-    Disorders to create ID and relationship DataFrames.
+    """Download Cognitive Atlas ontology and extract IDs and relationships.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -219,7 +219,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
         The 'relationships' file contains associations between CogAt items,
         with three columns: input, output, and rel_type (relationship type).
     """
-    from cognitiveatlas.api import get_concept, get_task, get_disorder
+    from cognitiveatlas.api import get_concept, get_disorder, get_task
 
     dataset_name = "cognitive_atlas"
     data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
@@ -305,9 +305,9 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_abstracts(dataset, email):
-    """
-    Download the abstracts for a list of PubMed IDs. Uses the BioPython
-    package.
+    """Download the abstracts for a list of PubMed IDs. Uses the BioPython package.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -329,7 +329,7 @@ def download_abstracts(dataset, email):
     try:
         from Bio import Entrez, Medline
     except ImportError:
-        raise Exception("Module biopython is required for downloading abstracts from " "PubMed.")
+        raise Exception("Module biopython is required for downloading abstracts from PubMed.")
 
     Entrez.email = email
 
@@ -362,8 +362,9 @@ def download_abstracts(dataset, email):
 
 
 def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download the trained Peaks2Maps model from OHBM 2018.
+    """Download the trained Peaks2Maps model from OHBM 2018.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------

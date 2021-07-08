@@ -3,7 +3,6 @@ import logging
 import warnings
 
 import numpy as np
-from scipy import stats
 
 from . import utils
 
@@ -110,8 +109,12 @@ def pearson(x, y):
     return rs
 
 
-def null_to_p(test_value, null_array, tail="two"):
-    """Return p-value for test value against null array.
+def null_to_p(test_value, null_array, tail="two", symmetric=False):
+    """Return p-value for test value(s) against null array.
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Add parameter *symmetric*.
 
     Parameters
     ----------
@@ -125,19 +128,35 @@ def null_to_p(test_value, null_array, tail="two"):
         If 'upper', then higher values for the test_value are more significant.
         If 'lower', then lower values for the test_value are more significant.
         Default is 'two'.
+    symmetric : bool
+        When tail="two", indicates how to compute p-values. When False (default),
+        both one-tailed p-values are computed, and the two-tailed p is double
+        the minimum one-tailed p. When True, it is assumed that the null
+        distribution is zero-centered and symmetric, and the two-tailed p-value
+        is computed as P(abs(test_value) >= abs(null_array)).
 
     Returns
     -------
     p_value : :obj:`float`
-        P-value associated with the test value when compared against the null
-        distribution.
+        P-value(s) associated with the test value when compared against the null
+        distribution. Return type matches input type (i.e., a float if
+        test_value is a single float, and an array if test_value is an array).
 
     Notes
     -----
     P-values are clipped based on the number of elements in the null array.
     Therefore no p-values of 0 or 1 should be produced.
+
+    When the null distribution is known to be symmetric and centered on zero,
+    and two-tailed p-values are desired, use symmetric=True, as it is
+    approximately twice as efficient computationally, and has lower variance.
     """
+    if tail not in {"two", "upper", "lower"}:
+        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
+
+    return_first = isinstance(test_value, (float, int))
     test_value = np.atleast_1d(test_value)
+    null_array = np.array(null_array)
 
     # For efficiency's sake, if there are more than 1000 values, pass only the unique
     # values through percentileofscore(), and then reconstruct.
@@ -147,30 +166,38 @@ def null_to_p(test_value, null_array, tail="two"):
     else:
         reconstruct = False
 
-    # TODO: this runs in N^2 time; is there a more efficient alternative?
-    p = np.array([stats.percentileofscore(null_array, v, "strict") for v in test_value])
-    p /= 100.0
-    if tail == "two":
-        p = (0.5 - np.abs(p - 0.5)) * 2
-    elif tail == "upper":
-        p = 1 - p
-    elif tail != "lower":
-        raise ValueError('Argument "tail" must be one of ["two", "upper", "lower"]')
+    def compute_p(t, null):
+        null = np.sort(null)
+        idx = np.searchsorted(null, t, side="left").astype(float)
+        return 1 - idx / len(null)
 
-    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
+    if tail == "two":
+        if symmetric:
+            p = compute_p(np.abs(test_value), np.abs(null_array))
+        else:
+            p_l = compute_p(test_value, null_array)
+            p_r = compute_p(test_value * -1, null_array * -1)
+            p = 2 * np.minimum(p_l, p_r)
+    elif tail == "lower":
+        p = compute_p(test_value * -1, null_array * -1)
+    else:
+        p = compute_p(test_value, null_array)
 
     # ensure p_value in the following range:
     # smallest_value <= p_value <= (1.0 - smallest_value)
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
     result = np.maximum(smallest_value, np.minimum(p, 1.0 - smallest_value))
 
     if reconstruct:
         result = result[uniq_idx]
 
-    return result
+    return result[0] if return_first else result
 
 
 def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     """Return one-sided p-value for test value against null histogram.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -249,8 +276,7 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
 
 def fdr(p, q=0.05):
-    """Determine FDR threshold given a p value array and desired false
-    discovery rate q.
+    """Determine FDR threshold given a p value array and desired false discovery rate q.
 
     Parameters
     ----------
