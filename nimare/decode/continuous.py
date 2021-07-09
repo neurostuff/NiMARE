@@ -13,7 +13,7 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from ..utils import check_type
+from ..utils import check_type, safe_transform
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
@@ -141,10 +141,11 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
+        memory_limit="1gb",
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2(low_memory=True, kernel__low_memory=True)
+            meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
         else:
             meta_estimator = check_type(meta_estimator, CBMAEstimator)
 
@@ -181,6 +182,10 @@ class CorrelationDecoder(Decoder):
         for i, feature in enumerate(self.features_):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
+            )
+            LGR.info(
+                f"Decoding {feature} ({i}/{len(self.features)}): {len(feature_ids)}/"
+                f"{len(dataset.ids)} studies"
             )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
@@ -243,12 +248,18 @@ class CorrelationDistributionDecoder(Decoder):
     """
 
     def __init__(
-        self, feature_group=None, features=None, frequency_threshold=0.001, target_image="z"
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        target_image="z",
+        memory_limit="1gb",
     ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
         self.target_image = target_image
+        self.memory_limit = memory_limit
         self.results = None
 
     def _fit(self, dataset):
@@ -278,10 +289,15 @@ class CorrelationDistributionDecoder(Decoder):
             test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
             test_imgs = list(filter(None, test_imgs))
             if len(test_imgs):
-                feature_arr = self.masker.transform(test_imgs)
+                feature_arr = safe_transform(
+                    test_imgs,
+                    self.masker,
+                    memory_limit=self.memory_limit,
+                    memfile=None,
+                )
                 images_[feature] = feature_arr
             else:
-                LGR.info('Skipping feature "{}". No images found.'.format(feature))
+                LGR.info(f"Skipping feature '{feature}'. No images found.")
         # reduce features again
         self.features_ = [f for f in self.features_ if f in images_.keys()]
         self.images_ = images_

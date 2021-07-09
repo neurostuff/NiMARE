@@ -76,28 +76,27 @@ def test_get_resource_path():
 
 
 @pytest.mark.parametrize(
-    "has_low_memory,low_memory",
+    "has_low_memory,memory_limit",
     [
-        (True, True),
-        (False, False),
+        (True, "1gb"),
+        (False, None),
     ],
 )
-def test_use_memmap(caplog, has_low_memory, low_memory):
+def test_use_memmap(caplog, has_low_memory, memory_limit):
     """Test the memmapping decorator."""
     LGR = logging.getLogger(__name__)
 
     class DummyClass:
-        def __init__(self, has_low_memory, low_memory):
+        def __init__(self, has_low_memory, memory_limit):
             self.has_low_memory = has_low_memory
-            if has_low_memory:
-                self.low_memory = low_memory
+            self.memory_limit = memory_limit
 
         @utils.use_memmap(LGR)
         def test_decorator(self):
             assert hasattr(self, "memmap_filenames")
             if self.has_low_memory:
-                assert hasattr(self, "low_memory")
-                if self.low_memory:
+                assert hasattr(self, "memory_limit")
+                if self.memory_limit:
                     assert os.path.isfile(self.memmap_filenames[0])
                 else:
                     assert self.memmap_filenames[0] is None
@@ -107,7 +106,7 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
         def bad_justin_timberlake(self):
             raise ValueError("It's gonna be may!")
 
-    my_class = DummyClass(has_low_memory, low_memory)
+    my_class = DummyClass(has_low_memory, memory_limit)
 
     # make sure memmap file has been deleted
     my_class.test_decorator()
@@ -118,7 +117,7 @@ def test_use_memmap(caplog, has_low_memory, low_memory):
         my_class.bad_justin_timberlake()
     assert "failed, removing" in caplog.text
 
-    if hasattr(my_class, "low_memory") and my_class.low_memory:
+    if hasattr(my_class, "memory_limit") and my_class.memory_limit:
         assert not os.path.isfile(first_memmap_filename)
         assert not os.path.isfile(my_class.memmap_filenames[0])
         # test when a function is called a new memmap file is created
