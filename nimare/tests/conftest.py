@@ -4,6 +4,7 @@ from shutil import copyfile
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 from nilearn.image import resample_img
 
@@ -11,6 +12,8 @@ import nimare
 from nimare.tests.utils import get_test_data_path
 
 from ..utils import get_resource_path
+
+pd.options.mode.chained_assignment = "raise"
 
 
 @pytest.fixture(scope="session")
@@ -69,8 +72,8 @@ def testdata_cbma_full():
 @pytest.fixture(scope="session")
 def testdata_laird():
     """Load data from dataset into global variables."""
-    testdata_laird = nimare.dataset.Dataset.load(
-        os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
+    testdata_laird = nimare.dataset.Dataset(
+        os.path.join(get_test_data_path(), "neurosynth_laird_studies.json")
     )
     return testdata_laird
 

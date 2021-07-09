@@ -12,7 +12,7 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import add_metadata_to_dataframe, check_type, use_memmap
+from ...utils import add_metadata_to_dataframe, check_type, safe_transform, use_memmap
 from ..kernel import KernelTransformer
 
 LGR = logging.getLogger(__name__)
@@ -138,9 +138,10 @@ class CBMAEstimator(MetaEstimator):
             This key should only be present if the kernel transformer was already fitted to the
             input Dataset.
         fname_idx : :obj:`int`, optional
-            When the Estimator is set with ``low_memory = True``, there is a ``memmap_filenames``
-            attribute that is a list of filenames or Nones. This parameter specifies which item
-            in that list should be used for a memory-mapped array.
+            When the Estimator is set with ``memory_limit`` as a string,
+            there is a ``memmap_filenames`` attribute that is a list of filenames or Nones.
+            This parameter specifies which item in that list should be used for a memory-mapped
+            array. Default is 0.
 
         Returns
         -------
@@ -149,17 +150,14 @@ class CBMAEstimator(MetaEstimator):
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
-            if self.low_memory:
-                temp = self.masker.transform(self.inputs_[maps_key][0])
-                unmasked_shape = (len(self.inputs_[maps_key]), temp.size)
-                ma_maps = np.memmap(
-                    self.memmap_filenames[fname_idx],
-                    dtype=temp.dtype,
-                    mode="w+",
-                    shape=unmasked_shape,
+            if self.memory_limit:
+                # perform transform on chunks of the input maps
+                ma_maps = safe_transform(
+                    self.inputs_[maps_key],
+                    masker=self.masker,
+                    memory_limit="1gb",
+                    memfile=self.memmap_filenames[fname_idx],
                 )
-                for i, f in enumerate(self.inputs_[maps_key]):
-                    ma_maps[i, :] = self.masker.transform(f)
             else:
                 ma_maps = self.masker.transform(self.inputs_[maps_key])
         else:

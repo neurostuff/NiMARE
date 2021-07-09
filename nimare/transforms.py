@@ -456,7 +456,7 @@ class ImagesToCoordinates(Transformer):
 
             # specify original coordinates
             original_ids = set(old_coordinates_df["id"])
-            metadata[metadata["id"].isin(original_ids)]["coordinate_source"] = "original"
+            metadata.loc[metadata["id"].isin(original_ids), "coordinate_source"] = "original"
 
         # ensure z_stat is treated as float
         if "z_stat" in coordinates_df.columns:
