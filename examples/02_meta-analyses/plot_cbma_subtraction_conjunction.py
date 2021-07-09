@@ -76,7 +76,7 @@ plot_stat_map(
 ###############################################################################
 # Subtraction analysis
 # --------------------------------------------------
-sub = ALESubtraction(n_iters=100, low_memory=False)
+sub = ALESubtraction(n_iters=100, memory_limit=None)
 res_sub = sub.fit(dset, dset2)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
