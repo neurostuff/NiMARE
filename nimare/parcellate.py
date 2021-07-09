@@ -196,6 +196,18 @@ class CoordCBP(NiMAREBase):
         ----------
         labels : :obj:`numpy.ndarray` of shape (n_filters, nclusters, n_voxels)
             Labeling results from a range of KMeans clustering runs.
+
+        Notes
+        -----
+        From Chase et al. (2020):
+        We implemented a two-step procedure that involved a decision on those filter sizes to be
+        included in the final analysis and subsequently a decision on the optimal cluster solution.
+        In the first step, we examined the consistency of the cluster assignment for the individual
+        voxels across the cluster solutions of the co-occurrence maps performed at different filter
+        sizes. We selected a filter range with the lowest number of deviants, that is, number of
+        voxels that were assigned differently compared with the solution from the majority of
+        filters. In other words, we identified those filter sizes which produced solutions most
+        similar to the consensus-solution across all filter sizes
         """
         from scipy import stats
 
@@ -213,11 +225,17 @@ class CoordCBP(NiMAREBase):
         filter_deviant_z = deviant_z.sum(axis=1)
         min_deviants_filter = np.where(filter_deviant_z == np.min(filter_deviant_z))[0]
 
-        # This is not the end
+        # NOTE: This is not the end, but I don't know how filters were selected based on this array
         return min_deviants_filter
 
-    def _voxel_misclassification(self):
+    def _voxel_misclassification(self, selected_filter_labels, alpha=0.05):
         """Calculate voxel misclassification metric.
+
+        Parameters
+        ----------
+        labels : :obj:`numpy.ndarray` of shape (n_selected_filters, nclusters, n_voxels)
+            Labeling results from a range of KMeans clustering runs, limited to those filters
+            that survived the filter selection procedure.
 
         Notes
         -----
@@ -229,8 +247,67 @@ class CoordCBP(NiMAREBase):
 
         TS: Deviants are presumably calculated only from the range of filters selected in the
         filter selection step.
+
+        TS: To measure significance, we could do a series of pair-wise proportion z-tests
+        Left side null hypothesis: proportion from K is <= K - 1
+        Left side alternative: K > K -1
+        Accept on null
+        z, p = proportions_ztest([k, k-1], [n, n], alternative="larger")
+        p >= alpha --> YAY
+        Right side null hypothesis: proportion from K is >= K + 1
+        Right side alternative: K < K + 1
+        Accept on rejected null
+        z, p = proportions_ztest([k, k+1], [n, n], alternative="smaller")
+        p < alpha --> YAY
         """
-        pass
+        from scipy import stats
+        from statsmodels.stats.proportion import proportions_ztest
+
+        n_filters, n_clusters, n_voxels = selected_filter_labels.shape
+        count = n_voxels * n_filters
+        deviant_counts = np.zeros((n_filters, n_clusters))
+        for i_cluster in range(n_clusters):
+            cluster_labels = selected_filter_labels[:, i_cluster, :]
+            cluster_labels_mode = stats.mode(cluster_labels, axis=0)[0]
+            is_deviant = cluster_labels != cluster_labels_mode
+            deviant_count = is_deviant.sum(axis=1)
+            assert deviant_count.size == n_filters
+            deviant_counts[:, i_cluster] = deviant_count
+
+        decision_criteria = np.empty((n_clusters, 2), dtype=bool)
+
+        for i_cluster in range(n_clusters):
+            cluster_deviant_count = np.sum(deviant_counts[:, i_cluster])
+
+            # Compare to k - 1
+            if i_cluster > 0:
+                m1_cluster_deviant_count = np.sum(deviant_counts[:, i_cluster - 1])
+                _, p = proportions_ztest(
+                    count=[cluster_deviant_count, m1_cluster_deviant_count],
+                    nobs=[count, count],
+                    alternative="larger",
+                )
+                decision_criteria[i_cluster, 0] = p >= alpha
+            else:
+                decision_criteria[i_cluster, 0] = np.nan
+
+            if i_cluster < (n_clusters - 1):
+                p1_cluster_deviant_count = np.sum(deviant_counts[:, i_cluster + 1])
+                _, p = proportions_ztest(
+                    count=[cluster_deviant_count, p1_cluster_deviant_count],
+                    nobs=[count, count],
+                    alternative="smaller",
+                )
+                decision_criteria[i_cluster, 1] = p < alpha
+            else:
+                decision_criteria[i_cluster, 1] = np.nan
+
+        decision_results = np.all(decision_criteria, axis=1)
+        good_cluster_idx = np.where(decision_results)[0]
+        if not good_cluster_idx:
+            LGR.warning("No cluster solution found according to VM metric.")
+
+        return good_cluster_idx
 
     def _variation_of_information(self, labels, cluster_counts):
         """Calculate variation of information metric.
@@ -268,12 +345,14 @@ class CoordCBP(NiMAREBase):
                     np.where(filter_labels[j_cluster, :] == k_cluster_num)[0]
                     for k_cluster_num in range(cluster_count)
                 ]
+
+                # Calculate VI between K and K - 1
                 if j_cluster > 0:
                     cluster_m1_partition = [
                         np.where(filter_labels[j_cluster - 1, :] == k_cluster_num)[0]
                         for k_cluster_num in range(cluster_counts[j_cluster - 1])
                     ]
-                    # Calculate VI between K and K - 1
+
                     vi_values[i_filter, j_cluster, 0] = variation_of_information(
                         cluster_partition,
                         cluster_m1_partition,
@@ -281,12 +360,13 @@ class CoordCBP(NiMAREBase):
                 else:
                     vi_values[i_filter, j_cluster, 0] = np.nan
 
+                # Calculate VI between K and K + 1
                 if j_cluster < (labels.shape[1] - 1):
                     cluster_p1_partition = [
                         np.where(filter_labels[j_cluster + 1, :] == k_cluster_num)[0]
                         for k_cluster_num in range(cluster_counts[j_cluster + 1])
                     ]
-                    # Calculate VI between K and K + 1
+
                     vi_values[i_filter, j_cluster, 1] = variation_of_information(
                         cluster_partition,
                         cluster_p1_partition,
