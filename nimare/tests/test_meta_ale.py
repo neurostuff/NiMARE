@@ -149,7 +149,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALE_montecarlo_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null_method="montecarlo", n_iters=10, kernel__low_memory=True)
+    meta = ale.ALE(null_method="montecarlo", n_iters=10, kernel__memory_limit="1gb")
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
@@ -219,7 +219,7 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    sub_meta = ale.ALESubtraction(n_iters=10, low_memory=False)
+    sub_meta = ale.ALESubtraction(n_iters=10, memory_limit=None)
     sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
@@ -239,7 +239,7 @@ def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke_lowmem")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    sub_meta = ale.ALESubtraction(n_iters=10, low_memory=True)
+    sub_meta = ale.ALESubtraction(n_iters=10, memory_limit="1gb")
     sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
@@ -272,7 +272,7 @@ def test_SCALE_smoke_lowmem(testdata_cbma):
     dset = testdata_cbma.slice(testdata_cbma.ids[:3])
     ijk = np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T
     ijk = ijk[:, :20]
-    meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk, low_memory=True)
+    meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk, memory_limit="1gb")
     res = meta.fit(dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert "z" in res.maps.keys()

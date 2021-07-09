@@ -16,7 +16,7 @@ import pandas as pd
 from nilearn import image
 
 from ..base import Transformer
-from ..utils import use_memmap, vox2mm
+from ..utils import safe_transform, use_memmap, vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
@@ -132,7 +132,8 @@ class KernelTransformer(Transformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        return masker.transform(files)
+                        masked_data = safe_transform(files, masker)
+                        return masked_data
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
@@ -236,23 +237,25 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-    low_memory : :obj:`bool`, optional
-        Whether to employ mem-mapped arrays to reduce memory usage or not.
-        Default=False.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     """
 
-    def __init__(self, fwhm=None, sample_size=None, low_memory=False):
+    def __init__(self, fwhm=None, sample_size=None, memory_limit=None):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
-        self.low_memory = low_memory
+        self.memory_limit = memory_limit
 
     def _transform(self, mask, coordinates):
         kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
 
-        if self.low_memory:
+        if self.memory_limit:
             # Use a memmapped 4D array
             transformed_shape = (len(exp_ids),) + mask.shape
             transformed = np.memmap(
@@ -290,7 +293,7 @@ class ALEKernel(KernelTransformer):
                     kern = kernels[sample_size]
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
-            if self.low_memory:
+            if self.memory_limit:
                 transformed[i_exp, :, :, :] = kernel_data
 
                 # Write changes to disk
@@ -298,7 +301,7 @@ class ALEKernel(KernelTransformer):
             else:
                 transformed.append((kernel_data, id_))
 
-        if self.low_memory:
+        if self.memory_limit:
             return transformed, exp_ids
         else:
             return transformed
@@ -317,17 +320,19 @@ class KDAKernel(KernelTransformer):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
-    low_memory : :obj:`bool`, optional
-        Whether to employ mem-mapped arrays to reduce memory usage or not.
-        Default=False.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     """
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1, low_memory=False):
+    def __init__(self, r=10, value=1, memory_limit=None):
         self.r = float(r)
         self.value = value
-        self.low_memory = low_memory
+        self.memory_limit = memory_limit
 
     def _transform(self, mask, coordinates):
         dims = mask.shape
@@ -343,6 +348,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
+            memory_limit=self.memory_limit,
             memmap_filename=self.memmap_filenames[0],
         )
         exp_ids = np.unique(exp_idx)
@@ -362,9 +368,11 @@ class MKDAKernel(KDAKernel):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
-    low_memory : :obj:`bool`, optional
-        Whether to employ mem-mapped arrays to reduce memory usage or not.
-        Default=False.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     """
 
     _sum_overlap = False

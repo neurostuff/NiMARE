@@ -298,7 +298,7 @@ class MetaEstimator(Estimator):
         self.masker = mask
 
         self.resample = kwargs.get("resample", False)
-        self.low_memory = kwargs.get("low_memory", False)
+        self.memory_limit = kwargs.get("memory_limit", False)
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {"clip": True, "interpolation": "linear"}
