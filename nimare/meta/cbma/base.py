@@ -155,7 +155,7 @@ class CBMAEstimator(MetaEstimator):
                 ma_maps = safe_transform(
                     self.inputs_[maps_key],
                     masker=self.masker,
-                    memory_limit="1gb",
+                    memory_limit=self.memory_limit,
                     memfile=self.memmap_filenames[fname_idx],
                 )
             else:
