@@ -1,5 +1,6 @@
 """Classes for representing datasets of images and/or coordinates."""
 import copy
+import inspect
 import json
 import logging
 import os.path as op
@@ -121,8 +122,6 @@ class Dataset(NiMAREBase):
         It's basically the same as the NiMAREBase representation, but with the number of
         experiments in the Dataset represented as well.
         """
-        import inspect
-
         # Get default parameter values for the object
         signature = inspect.signature(self.__init__)
         defaults = {
