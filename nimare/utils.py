@@ -444,7 +444,7 @@ def use_memmap(logger, n_files=1):
     -----
     This function is used as a decorator to methods in which memory-mapped arrays may be used.
     It will only be triggered if the class to which the method belongs has a ``memory_limit``
-    attribute that is set to ``True``.
+    attribute that is set to something other than ``None``.
 
     It will set an attribute within the method's class named ``memmap_filenames``, which is a list
     of filename strings, with ``n_files`` elements.
