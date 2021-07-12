@@ -80,7 +80,7 @@ class Dataset(NiMAREBase):
 
     _id_cols = ["id", "study_id", "contrast_id"]
 
-    def __init__(self, source, space="mni152_2mm", mask=None):
+    def __init__(self, source, target="mni152_2mm", mask=None):
         if isinstance(source, str):
             with open(source, "r") as f_obj:
                 data = json.load(f_obj)
@@ -104,9 +104,9 @@ class Dataset(NiMAREBase):
 
         # Set up Masker
         if mask is None:
-            mask = get_template(space, mask="brain")
+            mask = get_template(target, mask="brain")
         self.masker = mask
-        self.space = space
+        self.space = target
 
         self.annotations = dict_to_df(id_df, data, key="labels")
         self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
@@ -135,6 +135,10 @@ class Dataset(NiMAREBase):
         # as well as default values
         params = self.get_params()
         params = {k: v for k, v in params.items() if "__" not in k}
+        # Parameter "target" is stored as attribute "space"
+        # and we want to show it regardless of whether it's the default or not
+        params["space"] = self.space
+        params.pop("target")
         params = {k: v for k, v in params.items() if defaults.get(k) != v}
 
         # Convert to strings
