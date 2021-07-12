@@ -30,6 +30,40 @@ class NiMAREBase(metaclass=ABCMeta):
     def __init__(self):
         pass
 
+    def __repr__(self):
+        """Show basic NiMARE class representation.
+
+        Specifically, this shows the name of the class, along with any parameters
+        that are **not** set to the default.
+        """
+        # Get default parameter values for the object
+        signature = inspect.signature(self.__init__)
+        defaults = {
+            k: v.default
+            for k, v in signature.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
+
+        # Eliminate any sub-parameters (e.g., parameters for a MetaEstimator's KernelTransformer),
+        # as well as default values
+        params = self.get_params()
+        params = {k: v for k, v in params.items() if "__" not in k}
+        params = {k: v for k, v in params.items() if defaults.get(k) != v}
+
+        # Convert to strings
+        param_strs = []
+        for k, v in params.items():
+            if isinstance(v, str):
+                # Wrap string values in single quotes
+                param_str = f"{k}='{v}'"
+            else:
+                # Keep everything else as-is based on its own repr
+                param_str = f"{k}={v}"
+            param_strs.append(param_str)
+
+        rep = f"{self.__class__.__name__}({', '.join(param_strs)})"
+        return rep
+
     def _check_ncores(self, n_cores):
         """Check number of cores used for method."""
         if n_cores == -1:
