@@ -57,7 +57,7 @@ class Dataset(NiMAREBase):
     masker : :class:`nilearn.input_data.NiftiMasker` or similar
         Masker object defining the space and location of the area of interest
         (e.g., 'brain').
-    space : :obj:`str`
+    target : :obj:`str`
         Standard space. Same as ``target`` parameter.
     annotations : :class:`pandas.DataFrame`
         Labels describing studies
