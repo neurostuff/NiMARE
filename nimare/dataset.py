@@ -41,7 +41,7 @@ class Dataset(NiMAREBase):
     source : :obj:`str` or :obj:`dict`
         JSON file containing dictionary with database information or the dict()
         object
-    space : :obj:`str`, optional
+    target : :obj:`str`, optional
         Desired coordinate space for coordinates. Names follow NIDM convention.
         Default is 'mni152_2mm' (MNI space with 2x2x2 voxels).
         This parameter has no impact on images.
@@ -57,7 +57,7 @@ class Dataset(NiMAREBase):
     masker : :class:`nilearn.input_data.NiftiMasker` or similar
         Masker object defining the space and location of the area of interest
         (e.g., 'brain').
-    target : :obj:`str`
+    space : :obj:`str`
         Standard space. Same as ``target`` parameter.
     annotations : :class:`pandas.DataFrame`
         Labels describing studies
