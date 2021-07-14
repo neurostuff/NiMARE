@@ -87,6 +87,7 @@ class CoordCBP(NiMAREBase):
         self.n_clusters = listify(n_clusters)
         self.filter_selection = isinstance(r, list) or isinstance(n, list)
         self.filter_type = "r" if r else "n"
+        self.alpha = 0.05
         self.r = listify(r)
         self.n = listify(n)
 
@@ -206,6 +207,24 @@ class CoordCBP(NiMAREBase):
                 avg_voxel_center_distance = total_voxel_center_distance / n_target_voxels
                 ratio = avg_voxel_center_distance / avg_intracenter_distance
                 ratios[i_filter, j_cluster] = ratio
+
+        # Identify range of optimal filters
+        retained_filter_idx = self._filter_selection(labels)
+        labels = labels[retained_filter_idx, ...]
+        silhouettes = silhouettes[retained_filter_idx, ...]
+        ratios = ratios[retained_filter_idx, ...]
+
+        # Calculate metrics
+        vm_results = self._voxel_misclassification(labels, alpha=self.alpha)  # boolx2
+        vi_results = self._variation_of_information(labels, self.n_clusters)  # floatx2
+        s_results = silhouettes  # float
+        nvp_results = self._nondominant_voxel_percentage()  # ?
+        cdr_results = self._cluster_distance_ratio(ratios)  # float
+        vote = np.nansum(
+            np.dstack((vm_results, vi_results, s_results, nvp_results, cdr_results)),
+            axis=2,
+        )
+        assert vote.shape == (n_filters, len(self.n_clusters))
 
         # Clean up MACM data memmap
         LGR.info(f"Removing temporary file: {memmap_filename}")
@@ -434,12 +453,7 @@ class CoordCBP(NiMAREBase):
 
         Parameters
         ----------
-        labels : :obj:`numpy.ndarray` of shape (n_filters, n_clusters, n_target_voxels)
-        cluster_centers : :obj:`numpy.ndarray` of shape
-                          (n_filters, n_clusters, max_cluster_size, n_feature_voxels)
-            Cluster centers.
-        cluster_counts : :obj:`list` of :obj:`int`
-            The set of K values tested. Must be n_clusters items long.
+        ratios
 
         Notes
         -----
