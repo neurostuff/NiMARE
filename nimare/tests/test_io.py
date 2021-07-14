@@ -78,14 +78,23 @@ def test_convert_sleuth_to_json_smoke():
 
 def test_convert_neurosynth_to_dataset_smoke():
     """Smoke test for Neurosynth file conversion."""
-    db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
-    features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")
+    db_file = os.path.join(get_test_data_path(), "data-neurosynth_version-7_database.tsv.gz")
+    features = {
+        "features": os.path.join(
+            get_test_data_path(),
+            "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-7_features.npz",
+        ),
+        "ids": os.path.join(get_test_data_path(), "data-neurosynth_version-7_ids.txt"),
+        "vocabulary": os.path.join(
+            get_test_data_path(), "data-neurosynth_vocab-terms_version-7_vocabulary.txt"
+        ),
+    }
     dset = io.convert_neurosynth_to_dataset(
         db_file,
-        {"Neurosynth_TEST": features_file},
+        annotations_files=features,
     )
     assert isinstance(dset, nimare.dataset.Dataset)
-    assert "Neurosynth_TEST__abilities" in dset.annotations.columns
+    assert "vocab-terms_type-tfidf_source-abstract__abilities" in dset.annotations.columns
 
 
 def test_convert_neurosynth_to_json_smoke():
