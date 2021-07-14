@@ -6,13 +6,14 @@ import os
 from tempfile import mkstemp
 
 import numpy as np
+from nilearn._utils import load_niimg
 from scipy.spatial import distance
 from sklearn.cluster import KMeans
 
 from .base import NiMAREBase
 from .extract.utils import _get_dataset_dir
-from .meta.base import CBMAEstimator
 from .meta.cbma.ale import ALE
+from .meta.cbma.base import CBMAEstimator
 from .results import MetaResult
 from .utils import add_metadata_to_dataframe, check_type, listify, use_memmap, vox2mm
 
@@ -48,7 +49,7 @@ class CoordCBP(NiMAREBase):
         Default is :obj:`nimare.meta.cbma.ale.ALE`.
     target_image : :obj:`str`, optional
         Name of meta-analysis results image to use for clustering.
-        Default is "ale", which is specific to the ALE estimator.
+        Default is "stat".
 
     Notes
     -----
@@ -82,6 +83,7 @@ class CoordCBP(NiMAREBase):
         elif not r and not n:
             raise ValueError("Either 'r' or 'n' must be provided.")
 
+        self.target_mask = load_niimg(target_mask)
         self.meta_estimator = meta_estimator
         self.target_image = target_image
         self.n_clusters = listify(n_clusters)
@@ -90,6 +92,7 @@ class CoordCBP(NiMAREBase):
         self.alpha = 0.05
         self.r = listify(r)
         self.n = listify(n)
+        self.masker = None
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the dataset's mask or the estimator's.
@@ -126,10 +129,11 @@ class CoordCBP(NiMAREBase):
         self.masker = self.masker or dataset.masker
 
         # Loop through voxels in target_mask, selecting studies for each and running MACMs (no MCC)
-        target_ijk = np.vstack(np.where(self.target_mask.get_fdata()))
+        target_ijk = np.vstack(np.where(self.target_mask.get_fdata())).T
+        target_ijk = target_ijk[:20, :]  # limit to first 20 for testing
         target_xyz = vox2mm(target_ijk, self.masker.mask_img.affine)
-        n_target_voxels = target_xyz.shape[1]
-        n_mask_voxels = self.masker.transform(self.masker.mask_img).shape[0]
+        n_target_voxels = target_xyz.shape[0]
+        n_mask_voxels = self.masker.transform(self.masker.mask_img).size
 
         n_filters = len(getattr(self, self.filter_type))
         labels = np.zeros((n_filters, len(self.n_clusters), n_target_voxels), dtype=int)
@@ -154,8 +158,8 @@ class CoordCBP(NiMAREBase):
 
         for i_filter in range(n_filters):
             kwargs[self.filter_type] = getattr(self, self.filter_type)[i_filter]
-            for j_coord in n_target_voxels:
-                xyz = target_xyz[:, j_coord]
+            for j_coord in range(n_target_voxels):
+                xyz = target_xyz[j_coord, :]
                 macm_ids = dataset.get_studies_by_coordinate(xyz, **kwargs)
                 coord_dset = dataset.slice(macm_ids)
 
@@ -184,10 +188,10 @@ class CoordCBP(NiMAREBase):
                 ).fit(data)
                 labels[i_filter, j_cluster, :] = kmeans.labels_
 
-                silhouettes[i_filter, j_cluster] = self._silhouette(data, kmeans.labels_)
+                silhouettes[i_filter, j_cluster] = self._average_silhouette(data, kmeans.labels_)
 
                 # Necessary calculations for ratios metric
-                avg_intracenter_distance = np.mean(
+                avg_intercenter_distance = np.mean(
                     distance.pdist(
                         kmeans.cluster_centers_,
                         metric="euclidean",
@@ -199,24 +203,28 @@ class CoordCBP(NiMAREBase):
                     cluster_val_center = kmeans.cluster_centers_[k_cluster_val, :]
                     cluster_val_features = data[cluster_val_voxels, :]
                     cluster_val_distances = distance.cdist(
-                        cluster_val_center,
+                        cluster_val_center[None, :],
                         cluster_val_features,
                         metric="euclidean",
                     )
                     total_voxel_center_distance += np.sum(cluster_val_distances)
-                avg_voxel_center_distance = total_voxel_center_distance / n_target_voxels
-                ratio = avg_voxel_center_distance / avg_intracenter_distance
+                avg_intracluster_distance = total_voxel_center_distance / n_target_voxels
+                ratio = avg_intercenter_distance / avg_intracluster_distance
                 ratios[i_filter, j_cluster] = ratio
 
+        # return labels, silhouettes, ratios
         # Identify range of optimal filters
-        retained_filter_idx = self._filter_selection(labels)
-        labels = labels[retained_filter_idx, ...]
-        silhouettes = silhouettes[retained_filter_idx, ...]
-        ratios = ratios[retained_filter_idx, ...]
+        # retained_filter_idx = self._filter_selection(labels)
+        # labels = labels[retained_filter_idx, ...]
+        # silhouettes = silhouettes[retained_filter_idx, ...]
+        # ratios = ratios[retained_filter_idx, ...]
 
         # Calculate metrics
-        vm_results = self._voxel_misclassification(labels, alpha=self.alpha)  # boolx2
+        vm_decision_criteria, deviant_props = self._voxel_misclassification(
+            labels, alpha=self.alpha)  # boolx2
         vi_results = self._variation_of_information(labels, self.n_clusters)  # floatx2
+
+        return labels, silhouettes, ratios, deviant_props, vi_results
         s_results = silhouettes  # float
         nvp_results = self._nondominant_voxel_percentage()  # ?
         cdr_results = self._cluster_distance_ratio(ratios)  # float
@@ -348,10 +356,12 @@ class CoordCBP(NiMAREBase):
 
         decision_results = np.all(decision_criteria, axis=1)
         good_cluster_idx = np.where(decision_results)[0]
-        if not good_cluster_idx:
+        if not good_cluster_idx.size:
             LGR.warning("No cluster solution found according to VM metric.")
 
-        return good_cluster_idx
+        deviant_props = deviant_counts / n_voxels
+
+        return decision_criteria, deviant_props
 
     def _variation_of_information(self, labels, cluster_counts):
         """Calculate variation of information metric.
@@ -453,7 +463,7 @@ class CoordCBP(NiMAREBase):
 
         Parameters
         ----------
-        ratios
+        ratios : (n_filters, n_cluster_solutions)
 
         Notes
         -----
@@ -464,8 +474,8 @@ class CoordCBP(NiMAREBase):
         voxel to its own cluster center and the average distance between the cluster centers.
         """
         # TODO: Calculate first derivative?
-
-        return ratios
+        ratio_derivs = np.diff(ratios, n=1, axis=1)
+        return ratio_derivs
 
     def fit(self, dataset, drop_invalid=True):
         """Perform coordinate-based coactivation-based parcellation on dataset.
@@ -478,14 +488,14 @@ class CoordCBP(NiMAREBase):
             Whether to automatically ignore any studies without the required data or not.
             Default is True.
         """
-        self._validate_input(dataset, drop_invalid=drop_invalid)
-        self._preprocess_input(dataset)
+        # self._validate_input(dataset, drop_invalid=drop_invalid)
+        # self._preprocess_input(dataset)
         maps = self._fit(dataset)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset.masker
-
+        return maps
         self.results = MetaResult(self, masker, maps)
         return self.results

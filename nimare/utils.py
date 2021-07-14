@@ -232,7 +232,7 @@ def validate_images_df(image_df):
         # Get parent *directory* if shared path includes common prefix.
         if not shared_path.endswith(op.sep):
             shared_path = op.dirname(shared_path) + op.sep
-        LGR.info(f"Shared path detected: '{shared_path}'")
+        # LGR.info(f"Shared path detected: '{shared_path}'")
 
         image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
         for abs_col in abs_cols:
