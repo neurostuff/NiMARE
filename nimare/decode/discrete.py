@@ -677,6 +677,10 @@ class ROIAssociationDecoder(Decoder):
 
     Parameters
     ----------
+    masker : :class:`nilearn.input_data.NiftiMasker`, img_like, or similar
+        Masker for region of interest.
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+        Kernel with which to create modeled activation maps. Default is MKDAKernel.
     feature_group : :obj:`str`, optional
         Feature group name used to select labels from a specific source.
         Feature groups are stored as prefixes to feature name columns in
@@ -685,25 +689,9 @@ class ROIAssociationDecoder(Decoder):
         Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the
-        feature group prefix.
-        If feature_group is *not* provided, then features *should* include the
-        prefix.
+        If feature_group is provided, then features should not include the feature group prefix.
+        If feature_group is *not* provided, then features *should* include the prefix.
         Default is None, which uses all features available.
-    frequency_threshold : :obj:`float`, optional
-        Threshold to apply to dataset annotations. Values greater than or
-        equal to the threshold as assigned as label+, while values below
-        the threshold are considered label-. Default is 0.001.
-    prior : :obj:`float`, optional
-        Uniform prior probability of each label being active in a study in
-        the absence of evidence (labels or selection) from the study.
-        Default is 0.5 (50%).
-    u : :obj:`float`, optional
-        Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
 
     Notes
     -----
@@ -727,13 +715,13 @@ class ROIAssociationDecoder(Decoder):
 
     def __init__(
         self,
-        mask,
+        masker,
         kernel_transformer=MKDAKernel,
         feature_group=None,
         features=None,
         **kwargs,
     ):
-        self.masker = get_masker(mask)
+        self.masker = get_masker(masker)
 
         # Get kernel transformer
         kernel_args = {
@@ -757,17 +745,6 @@ class ROIAssociationDecoder(Decoder):
 
     def transform(self):
         """Apply the decoding method to a Dataset.
-
-        Parameters
-        ----------
-        ids : :obj:`list`
-            Subset of studies in coordinates/annotations dataframes indicating
-            target for decoding. Examples include studies reporting at least one
-            peak in an ROI, or studies selected from a clustering analysis.
-        ids2 : :obj:`list` or None, optional
-            Second subset of studies, representing "unselected" studies. If None,
-            then all studies in Dataset **not** in
-            ``ids`` will be used.
 
         Returns
         -------

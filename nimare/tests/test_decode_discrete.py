@@ -84,7 +84,7 @@ def test_BrainMapDecoder_failure(testdata_laird):
 def test_ROIAssociationDecoder(testdata_laird, roi_img):
     """Smoke test for discrete.ROIAssociationDecoder."""
     labels = testdata_laird.get_labels(ids=testdata_laird.ids)
-    decoder = discrete.ROIAssociationDecoder(mask=roi_img, features=labels)
+    decoder = discrete.ROIAssociationDecoder(masker=roi_img, features=labels)
     decoder.fit(testdata_laird)
     decoded_df = decoder.transform()
     assert isinstance(decoded_df, pd.DataFrame)

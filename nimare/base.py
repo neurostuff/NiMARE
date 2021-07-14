@@ -432,12 +432,18 @@ class Decoder(NiMAREBase):
                 features = self.inputs_["annotations"].columns.values
             else:
                 features = self.features
+
         features = [f for f in features if f not in self.__id_cols]
+        n_features_orig = len(features)
+
         # At least one study in the dataset much have each label
         counts = (self.inputs_["annotations"][features] > self.frequency_threshold).sum(0)
         features = counts[counts > 0].index.tolist()
         if not len(features):
             raise Exception("No features identified in Dataset!")
+        elif len(features) < n_features_orig:
+            LGR.info(f"Retaining {len(features)}/({n_features_orig} features.")
+
         self.features_ = features
 
     def fit(self, dataset, drop_invalid=True):
