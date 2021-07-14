@@ -11,10 +11,12 @@ def test_fetch_neurosynth(tmp_path_factory):
     Taken from the Neurosynth Python package.
     """
     tmpdir = tmp_path_factory.mktemp("test_fetch_neurosynth")
-    url = (
-        "https://raw.githubusercontent.com/neurosynth/neurosynth/master/neurosynth/tests/"
-        "data/test_data.tar.gz"
+    nimare.extract.fetch_neurosynth(
+        path=tmpdir,
+        version="7",
+        overwrite=False,
+        source="abstract",
+        vocab="terms",
     )
-    nimare.extract.fetch_neurosynth(tmpdir, url=url, unpack=True)
-    files = glob(os.path.join(tmpdir, "*.txt"))
-    assert len(files) == 2
+    files = glob(os.path.join(tmpdir, "*"))
+    assert len(files) == 4
