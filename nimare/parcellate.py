@@ -441,7 +441,12 @@ class CoordCBP(NiMAREBase):
                 cluster_count = cluster_counts[j_cluster]
                 solution_labels = labels[i_filter, j_cluster, :]
                 solution_centers = cluster_centers[i_filter, j_cluster, :cluster_count, :]
-                avg_center_distance = np.mean(distance.pdist(solution_centers))
+                avg_intracenter_distance = np.mean(
+                    distance.pdist(
+                        solution_centers,
+                        metric="euclidean",
+                    )
+                )
                 total_voxel_center_distance = 0
                 for k_cluster_val in range(cluster_count):
                     cluster_val_voxels = np.where(solution_labels == k_cluster_val)[0]
@@ -450,10 +455,11 @@ class CoordCBP(NiMAREBase):
                     cluster_val_distances = distance.cdist(
                         cluster_val_center,
                         cluster_val_features,
+                        metric="euclidean",
                     )
                     total_voxel_center_distance += np.sum(cluster_val_distances)
                 avg_voxel_center_distance = total_voxel_center_distance / n_target_voxels
-                ratio = avg_voxel_center_distance / avg_center_distance
+                ratio = avg_voxel_center_distance / avg_intracenter_distance
                 ratios[i_filter, j_cluster] = ratio
 
         # TODO: Calculate first derivative?
