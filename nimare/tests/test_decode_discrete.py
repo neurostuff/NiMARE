@@ -39,10 +39,12 @@ def test_brainmap_decode(testdata_laird):
 def test_NeurosynthDecoder(testdata_laird):
     """Smoke test for discrete.NeurosynthDecoder."""
     ids = testdata_laird.ids[:5]
-    decoder = discrete.NeurosynthDecoder()
+    labels = testdata_laird.get_labels(ids=testdata_laird.ids)
+    decoder = discrete.NeurosynthDecoder(features=labels)
     decoder.fit(testdata_laird)
     decoded_df = decoder.transform(ids=ids)
     assert isinstance(decoded_df, pd.DataFrame)
+    assert decoded_df.shape == (len(labels), 6)
 
 
 def test_NeurosynthDecoder_featuregroup(testdata_laird):
@@ -64,10 +66,12 @@ def test_NeurosynthDecoder_featuregroup_failure(testdata_laird):
 def test_BrainMapDecoder(testdata_laird):
     """Smoke test for discrete.BrainMapDecoder."""
     ids = testdata_laird.ids[:5]
-    decoder = discrete.BrainMapDecoder()
+    labels = testdata_laird.get_labels(ids=testdata_laird.ids)
+    decoder = discrete.BrainMapDecoder(features=labels)
     decoder.fit(testdata_laird)
     decoded_df = decoder.transform(ids=ids)
     assert isinstance(decoded_df, pd.DataFrame)
+    assert decoded_df.shape == (len(labels), 6)
 
 
 def test_BrainMapDecoder_failure(testdata_laird):
@@ -75,3 +79,13 @@ def test_BrainMapDecoder_failure(testdata_laird):
     decoder = discrete.BrainMapDecoder(features=["doggy"])
     with pytest.raises(Exception):
         decoder.fit(testdata_laird)
+
+
+def test_ROIAssociationDecoder(testdata_laird, roi_img):
+    """Smoke test for discrete.ROIAssociationDecoder."""
+    labels = testdata_laird.get_labels(ids=testdata_laird.ids)
+    decoder = discrete.ROIAssociationDecoder(mask=roi_img, features=labels)
+    decoder.fit(testdata_laird)
+    decoded_df = decoder.transform()
+    assert isinstance(decoded_df, pd.DataFrame)
+    assert decoded_df.shape == (len(labels), 1)

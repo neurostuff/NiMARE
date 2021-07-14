@@ -87,6 +87,14 @@ def mni_mask():
 
 
 @pytest.fixture(scope="session")
+def roi_img():
+    """Load MNI mask for testing."""
+    return nib.load(
+        os.path.join(get_test_data_path(), "amygdala_roi.nii.gz")
+    )
+
+
+@pytest.fixture(scope="session")
 def testdata_ibma_resample(tmp_path_factory):
     """Create dataset for image-based resampling tests."""
     tmpdir = tmp_path_factory.mktemp("testdata_ibma_resample")
