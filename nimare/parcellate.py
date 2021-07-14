@@ -6,6 +6,7 @@ import os
 from tempfile import mkstemp
 
 import numpy as np
+from scipy.spatial import distance
 from sklearn.cluster import KMeans
 
 from .base import NiMAREBase
@@ -131,10 +132,6 @@ class CoordCBP(NiMAREBase):
 
         n_filters = len(getattr(self, self.filter_type))
         labels = np.zeros((n_filters, len(self.n_clusters), n_target_voxels), dtype=int)
-        cluster_centers = np.zeros(
-            (n_filters, len(self.n_clusters), np.max(self.n_clusters), n_mask_voxels),
-            dtype=float,
-        )
         silhouettes = np.zeros((n_filters, len(self.n_clusters)), dtype=float)
         kwargs = {"r": None, "n": None}
 
@@ -152,6 +149,7 @@ class CoordCBP(NiMAREBase):
             mode="w+",
             shape=(n_target_voxels, n_mask_voxels),
         )
+        ratios = np.zeros((n_filters, len(self.n_clusters)), dtype=float)
 
         for i_filter in range(n_filters):
             kwargs[self.filter_type] = getattr(self, self.filter_type)[i_filter]
@@ -184,8 +182,30 @@ class CoordCBP(NiMAREBase):
                     algorithm="elkan",
                 ).fit(data)
                 labels[i_filter, j_cluster, :] = kmeans.labels_
-                cluster_centers[i_filter, j_cluster, :cluster_count, :] = kmeans.cluster_centers_
+
                 silhouettes[i_filter, j_cluster] = self._silhouette(data, kmeans.labels_)
+
+                # Necessary calculations for ratios metric
+                avg_intracenter_distance = np.mean(
+                    distance.pdist(
+                        kmeans.cluster_centers_,
+                        metric="euclidean",
+                    )
+                )
+                total_voxel_center_distance = 0
+                for k_cluster_val in range(cluster_count):
+                    cluster_val_voxels = np.where(kmeans.labels_ == k_cluster_val)[0]
+                    cluster_val_center = kmeans.cluster_centers_[k_cluster_val, :]
+                    cluster_val_features = data[cluster_val_voxels, :]
+                    cluster_val_distances = distance.cdist(
+                        cluster_val_center,
+                        cluster_val_features,
+                        metric="euclidean",
+                    )
+                    total_voxel_center_distance += np.sum(cluster_val_distances)
+                avg_voxel_center_distance = total_voxel_center_distance / n_target_voxels
+                ratio = avg_voxel_center_distance / avg_intracenter_distance
+                ratios[i_filter, j_cluster] = ratio
 
         # Clean up MACM data memmap
         LGR.info(f"Removing temporary file: {memmap_filename}")
@@ -409,7 +429,7 @@ class CoordCBP(NiMAREBase):
         """
         pass
 
-    def _cluster_distance_ratio(self, labels, cluster_centers, cluster_counts, data):
+    def _cluster_distance_ratio(self, ratios):
         """Calculate change-in-inter/intra-cluster-distance metric.
 
         Parameters
@@ -429,39 +449,6 @@ class CoordCBP(NiMAREBase):
         This ratio is the first derivative of the ratio between the average distance of a given
         voxel to its own cluster center and the average distance between the cluster centers.
         """
-        from scipy.spatial import distance
-
-        n_filters, n_clusters, n_target_voxels = labels.shape
-        _, _, max_cluster_size, n_feature_voxels = cluster_centers.shape
-        assert n_filters == cluster_centers.shape[0]
-        assert n_clusters == cluster_centers.shape[1]
-        ratios = np.zeros((n_filters, n_clusters), dtype=float)
-        for i_filter in range(n_filters):
-            for j_cluster in range(n_clusters):
-                cluster_count = cluster_counts[j_cluster]
-                solution_labels = labels[i_filter, j_cluster, :]
-                solution_centers = cluster_centers[i_filter, j_cluster, :cluster_count, :]
-                avg_intracenter_distance = np.mean(
-                    distance.pdist(
-                        solution_centers,
-                        metric="euclidean",
-                    )
-                )
-                total_voxel_center_distance = 0
-                for k_cluster_val in range(cluster_count):
-                    cluster_val_voxels = np.where(solution_labels == k_cluster_val)[0]
-                    cluster_val_center = solution_centers[k_cluster_val, :]
-                    cluster_val_features = data[cluster_val_voxels, :]
-                    cluster_val_distances = distance.cdist(
-                        cluster_val_center,
-                        cluster_val_features,
-                        metric="euclidean",
-                    )
-                    total_voxel_center_distance += np.sum(cluster_val_distances)
-                avg_voxel_center_distance = total_voxel_center_distance / n_target_voxels
-                ratio = avg_voxel_center_distance / avg_intracenter_distance
-                ratios[i_filter, j_cluster] = ratio
-
         # TODO: Calculate first derivative?
 
         return ratios
