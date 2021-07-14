@@ -1,5 +1,6 @@
 """Classes for representing datasets of images and/or coordinates."""
 import copy
+import inspect
 import json
 import logging
 import os.path as op
@@ -44,6 +45,7 @@ class Dataset(NiMAREBase):
     target : :obj:`str`, optional
         Desired coordinate space for coordinates. Names follow NIDM convention.
         Default is 'mni152_2mm' (MNI space with 2x2x2 voxels).
+        This parameter has no impact on images.
     mask : :obj:`str`, :class:`nibabel.nifti1.Nifti1Image`, \
     :class:`nilearn.input_data.NiftiMasker` or similar, or None, optional
         Mask(er) to use. If None, uses the target space image, with all
@@ -113,6 +115,46 @@ class Dataset(NiMAREBase):
         self.metadata = dict_to_df(id_df, data, key="metadata")
         self.texts = dict_to_df(id_df, data, key="text")
         self.basepath = None
+
+    def __repr__(self):
+        """Show basic Dataset representation.
+
+        It's basically the same as the NiMAREBase representation, but with the number of
+        experiments in the Dataset represented as well.
+        """
+        # Get default parameter values for the object
+        signature = inspect.signature(self.__init__)
+        defaults = {
+            k: v.default
+            for k, v in signature.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
+
+        # Eliminate any sub-parameters (e.g., parameters for a MetaEstimator's KernelTransformer),
+        # as well as default values
+        params = self.get_params()
+        params = {k: v for k, v in params.items() if "__" not in k}
+        # Parameter "target" is stored as attribute "space"
+        # and we want to show it regardless of whether it's the default or not
+        params["space"] = self.space
+        params.pop("target")
+        params = {k: v for k, v in params.items() if defaults.get(k) != v}
+
+        # Convert to strings
+        param_strs = []
+        for k, v in params.items():
+            if isinstance(v, str):
+                # Wrap string values in single quotes
+                param_str = f"{k}='{v}'"
+            else:
+                # Keep everything else as-is based on its own repr
+                param_str = f"{k}={v}"
+            param_strs.append(param_str)
+
+        params_str = ", ".join(param_strs)
+        params_str = f"{len(self.ids)} experiments{', ' if params_str else ''}{params_str}"
+        rep = f"{self.__class__.__name__}({params_str})"
+        return rep
 
     @property
     def ids(self):
