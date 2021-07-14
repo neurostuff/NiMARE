@@ -89,9 +89,7 @@ def mni_mask():
 @pytest.fixture(scope="session")
 def roi_img():
     """Load MNI mask for testing."""
-    return nib.load(
-        os.path.join(get_test_data_path(), "amygdala_roi.nii.gz")
-    )
+    return nib.load(os.path.join(get_test_data_path(), "amygdala_roi.nii.gz"))
 
 
 @pytest.fixture(scope="session")
