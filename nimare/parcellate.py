@@ -212,6 +212,8 @@ class CoordCBP(NiMAREBase):
                 ratio = avg_intercenter_distance / avg_intracluster_distance
                 ratios[i_filter, j_cluster] = ratio
 
+        # TODO: Implement re-labeling procedure across filters, for each cluster solution
+
         # return labels, silhouettes, ratios
         # Identify range of optimal filters
         # retained_filter_idx = self._filter_selection(labels)
@@ -221,7 +223,9 @@ class CoordCBP(NiMAREBase):
 
         # Calculate metrics
         vm_decision_criteria, deviant_props = self._voxel_misclassification(
-            labels, alpha=self.alpha)  # boolx2
+            labels,
+            alpha=self.alpha,
+        )  # boolx2
         vi_results = self._variation_of_information(labels, self.n_clusters)  # floatx2
 
         return labels, silhouettes, ratios, deviant_props, vi_results
@@ -229,7 +233,7 @@ class CoordCBP(NiMAREBase):
         nvp_results = self._nondominant_voxel_percentage()  # ?
         cdr_results = self._cluster_distance_ratio(ratios)  # float
         vote = np.nansum(
-            np.dstack((vm_results, vi_results, s_results, nvp_results, cdr_results)),
+            np.dstack((vm_decision_criteria, vi_results, s_results, nvp_results, cdr_results)),
             axis=2,
         )
         assert vote.shape == (n_filters, len(self.n_clusters))
