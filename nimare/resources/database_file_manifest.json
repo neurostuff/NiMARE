@@ -73,7 +73,7 @@
             {
                 "features": "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
                 "ids": "data-neurosynth_version-7_ids.txt",
-                "vocabulary": "data-neurosynth_vocab-terms_version-7_vocabulary.txt"
+                "vocabulary": "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
             },
             {
                 "features": "data-neurosynth_version-7_vocab-LDA50_source-abstract_type-weight_features.npz",
