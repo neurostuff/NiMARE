@@ -82,11 +82,11 @@ def test_convert_neurosynth_to_dataset_smoke():
     features = {
         "features": os.path.join(
             get_test_data_path(),
-            "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-7_features.npz",
+            "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
         ),
         "ids": os.path.join(get_test_data_path(), "data-neurosynth_version-7_ids.txt"),
         "vocabulary": os.path.join(
-            get_test_data_path(), "data-neurosynth_vocab-terms_version-7_vocabulary.txt"
+            get_test_data_path(), "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
         ),
     }
     dset = io.convert_neurosynth_to_dataset(
@@ -94,7 +94,7 @@ def test_convert_neurosynth_to_dataset_smoke():
         annotations_files=features,
     )
     assert isinstance(dset, nimare.dataset.Dataset)
-    assert "vocab-terms_type-tfidf_source-abstract__abilities" in dset.annotations.columns
+    assert "terms_abstract_tfidf__abilities" in dset.annotations.columns
 
 
 def test_convert_neurosynth_to_json_smoke():
@@ -104,11 +104,11 @@ def test_convert_neurosynth_to_json_smoke():
     features = {
         "features": os.path.join(
             get_test_data_path(),
-            "data-neurosynth_source-abstract_vocab-terms_type-tfidf_version-7_features.npz",
+            "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
         ),
         "ids": os.path.join(get_test_data_path(), "data-neurosynth_version-7_ids.txt"),
         "vocabulary": os.path.join(
-            get_test_data_path(), "data-neurosynth_vocab-terms_version-7_vocabulary.txt"
+            get_test_data_path(), "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
         ),
     }
     io.convert_neurosynth_to_json(db_file, out_file, annotations_files=features)

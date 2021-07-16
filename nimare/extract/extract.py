@@ -158,6 +158,15 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
         If no kwargs are provided, all feature files for the specified database version will be
         downloaded.
 
+    Returns
+    -------
+    found_databases : :obj:`list` of :obj:`dict`
+        List of dictionaries indicating datasets downloaded.
+        Each list entry is a different database, containing a dictionary with two keys:
+        "database" and "features". "database" will be a filename.
+        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
+        keys with associated files.
+
     Notes
     -----
     This function was adapted from neurosynth.base.dataset.download().

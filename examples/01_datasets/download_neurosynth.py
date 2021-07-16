@@ -20,8 +20,7 @@ NiMARE.
 # Start with the necessary imports
 # --------------------------------
 import os
-
-from neurosynth.base.dataset import download
+from pprint import pprint
 
 import nimare
 
@@ -32,16 +31,25 @@ out_dir = os.path.abspath("../example_data/")
 if not os.path.isdir(out_dir):
     os.mkdir(out_dir)
 
-if not os.path.isfile(os.path.join(out_dir, "database.txt")):
-    download(out_dir, unpack=True)
+files = nimare.extract.fetch_neurosynth(
+    path=out_dir,
+    version="7",
+    overwrite=False,
+    source="abstract",
+    vocab="terms",
+)
+pprint(files)
+first_database = files[0]
 
 ###############################################################################
 # Convert Neurosynth database to NiMARE dataset file
 # --------------------------------------------------
 dset = nimare.io.convert_neurosynth_to_dataset(
-    os.path.join(out_dir, "database.txt"), os.path.join(out_dir, "features.txt")
+    database_file=first_database["database"],
+    annotations_files=first_database["features"],
 )
 dset.save(os.path.join(out_dir, "neurosynth_dataset.pkl.gz"))
+print(dset)
 
 ###############################################################################
 # Add article abstracts to dataset

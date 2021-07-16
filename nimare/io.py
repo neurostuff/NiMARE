@@ -94,8 +94,8 @@ def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_gr
                 feature_group = f"{vocab}_{source}_{value_type}__"
 
             features = sparse.load_npz(features_file).todense()
-            ids = np.loadtxt(ids_file, dtype=str)
-            vocab = np.loadtxt(vocabulary_file, dtype=str)
+            ids = np.loadtxt(ids_file, dtype=str, delimiter="\t")
+            vocab = np.loadtxt(vocabulary_file, dtype=str, delimiter="\t")
 
             labels = [feature_group + label for label in vocab]
 
