@@ -194,6 +194,7 @@ For more information about functional characterization analysis, see :ref:`Meta-
    :toctree: generated/
    :template: function.rst
 
+   extract.fetch_neuroquery
    extract.fetch_neurosynth
    extract.download_nidm_pain
    extract.download_mallet
