@@ -32,11 +32,11 @@ LGR = logging.getLogger(__name__)
 
 VALID_ENTITIES = {
     "database.tsv.gz": ["data", "version"],
-    "features.npz": ["data", "source", "vocab", "type", "version"],
+    "features.npz": ["data", "version", "vocab", "source", "type"],
     "ids.txt": ["data", "version"],
-    "vocabulary.txt": ["data", "vocab", "version"],
-    "metadata.json": ["data", "vocab", "version"],
-    "keys.tsv": ["data", "vocab", "version"],
+    "vocabulary.txt": ["data", "version", "vocab"],
+    "metadata.json": ["data", "version", "vocab"],
+    "keys.tsv": ["data", "version", "vocab"],
 }
 
 
@@ -137,9 +137,9 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
 def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     """Download the latest data files from NeuroSynth.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.10
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
