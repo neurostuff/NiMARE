@@ -52,7 +52,6 @@ REQUIRES = [
     "cognitiveatlas",
     "fuzzywuzzy",
     "indexed_gzip>=1.4.0",
-    "matplotlib",
     "nibabel>=3.0.0",
     "nilearn>=0.7.1",
     "numpy",
@@ -60,7 +59,6 @@ REQUIRES = [
     "pymare>=0.0.2",
     "scikit-learn",
     "scipy",
-    "seaborn",
     "statsmodels",
     "tqdm",
 ]
@@ -80,9 +78,11 @@ EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
     "doc": [
+        "matplotlib",
         "m2r",
         "pillow",
         "recommonmark",
+        "seaborn",
         "sphinx>=3.1.1",
         "sphinx-argparse",
         "sphinx-copybutton",
