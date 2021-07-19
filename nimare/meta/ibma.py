@@ -26,8 +26,6 @@ class Fishers(MetaEstimator):
 
     Warning
     -------
-    This method does not currently calculate p-values correctly. Do not use.
-
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
@@ -90,8 +88,6 @@ class Stouffers(MetaEstimator):
 
     Warning
     -------
-    This method does not currently calculate p-values correctly. Do not use.
-
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
