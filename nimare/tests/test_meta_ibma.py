@@ -3,6 +3,7 @@ import logging
 import os.path as op
 from contextlib import ExitStack as does_not_raise
 
+import numpy as np
 import pytest
 from nilearn.input_data import NiftiLabelsMasker
 
@@ -158,7 +159,8 @@ def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation, 
         assert isinstance(meta.results, nimare.results.MetaResult)
         # There are five "labels", but one of them has no good data,
         # so the outputs should be 4 long.
-        assert meta.results.maps["z"].shape == (4,)
+        assert meta.results.maps["z"].shape == (5,)
+        assert np.isnan(meta.results.maps["z"][0])
         assert meta.results.get_map("z").shape == (10, 10, 10)
 
 

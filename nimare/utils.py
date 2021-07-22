@@ -11,7 +11,7 @@ from tempfile import mkstemp
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn import datasets, image
+from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
 from . import references
@@ -899,26 +899,36 @@ def mni2tal(coords):
     return out_coords
 
 
-def reduce_masker(masker, bool_array):
-    """Reduce a masker based on which elements (e.g., voxels) are good."""
-    masker_params = masker.get_params()
+def boolean_unmask(data_array, bool_array):
+    """Unmask data based on a boolean array, with NaNs in empty voxels.
 
-    # NiftiLabelsMasker has a mask_img parameter/attribute, so we need to check labels_img first
-    if hasattr(masker, "labels_img"):
-        # Needs to be coerced to 2D I guess ¯\_(ツ)_/¯
-        bool_img = masker.inverse_transform(bool_array[None, :].astype(int))
-        labels_img = image.math_img("l * b", l=masker.labels_img, b=bool_img)
-        masker_params["labels_img"] = labels_img
+    Parameters
+    ----------
+    data_array : 1D or 2D :obj:`numpy.ndarray`
+        Masked data array.
+    bool_array : 1D :obj:`numpy.ndarray`
+        Boolean mask array. Must have the same number of ``True`` entries as elements in the
+        second dimension of ``data_array``.
 
-    elif hasattr(masker, "mask_img"):
-        bool_img = masker.inverse_transform(bool_array.astype(int))
-        masker_params["mask_img"] = bool_img
+    Returns
+    -------
+    unmasked_data : 1D or 2D :obj:`numpy.ndarray`
+        Unmasked data array.
+        If 1D, first dimension is the same size as the first (and only) dimension of
+        ``boolean_array``.
+        If 2D, first dimension is the same size as the first dimension of ``data_array``, while
+        second dimension is the same size as the first (and only) dimension  of ``boolean_array``.
+        All elements corresponding to ``False`` values in ``boolean_array`` will have NaNs.
+    """
+    assert data_array.ndim in (1, 2)
+    assert bool_array.ndim == 1
+    assert bool_array.sum() == data_array.shape[-1]
 
-    else:
-        raise ValueError(f"Unsupported masker type: {type(masker)}")
-
-    # Create new masker with updated mask.
-    new_masker = type(masker)(**masker_params)
-    new_masker.fit()
-
-    return new_masker
+    unmasked_data = np.full(
+        shape=bool_array.shape + data_array.T.shape[1:],
+        fill_value=np.nan,
+        dtype=data_array.dtype,
+    )
+    unmasked_data[bool_array] = data_array
+    unmasked_data = unmasked_data.T
+    return unmasked_data

@@ -14,7 +14,7 @@ from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
 from .results import MetaResult
-from .utils import get_masker, reduce_masker
+from .utils import get_masker
 
 LGR = logging.getLogger(__name__)
 
@@ -348,6 +348,12 @@ class MetaEstimator(Estimator):
         if isinstance(mask_img, str):
             mask_img = nb.load(mask_img)
 
+        # Ensure that protected values are not included among _required_inputs
+        assert "aggressive_mask" not in self._required_inputs.keys(), "This is a protected name."
+
+        # A dictionary to collect masked image data, to be further reduced by the aggressive mask.
+        temp_image_inputs = {}
+
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
                 # If no resampling is requested, check if resampling is required
@@ -371,23 +377,29 @@ class MetaEstimator(Estimator):
 
                 # An intermediate step to mask out bad voxels.
                 # Can be dropped once PyMARE is able to handle masked arrays or missing data.
-                zero_voxels_bool = np.any(temp_arr == 0, axis=0)
-                nan_voxels_bool = np.any(np.isnan(temp_arr), axis=0)
-                bad_voxels_bool = np.logical_or(zero_voxels_bool, nan_voxels_bool)
+                nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
+                nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
+                good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
 
-                n_bad_voxels = bad_voxels_bool.sum()
+                n_bad_voxels = good_voxels_bool.size - good_voxels_bool.sum()
                 if n_bad_voxels:
                     LGR.warning(
                         f"Masking out {n_bad_voxels} additional voxels. "
                         "The updated masker is available in the Estimator.masker attribute."
                     )
-                    self.masker = reduce_masker(masker, ~bad_voxels_bool)
+
+                data = masker.transform(img4d)
+
+                temp_image_inputs[name] = data
+                if "aggressive_mask" not in self.inputs_.keys():
+                    self.inputs_["aggressive_mask"] = good_voxels_bool
                 else:
-                    self.masker = masker
+                    # Remove any voxels that are bad in any image-based inputs
+                    self.inputs_["aggressive_mask"] = np.logical_or(
+                        self.inputs_["aggressive_mask"],
+                        good_voxels_bool,
+                    )
 
-                data = self.masker.transform(img4d)
-
-                self.inputs_[name] = data
             elif type_ == "coordinates":
                 # Try to load existing MA maps
                 if hasattr(self, "kernel_transformer"):
@@ -399,6 +411,11 @@ class MetaEstimator(Estimator):
                         )
                         if all(f is not None for f in files):
                             self.inputs_["ma_maps"] = files
+
+        # Further reduce image-based inputs to remove "bad" voxels
+        # (voxels with zeros or NaNs in any studies)
+        for name, raw_masked_data in temp_image_inputs.items():
+            self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
 
 
 class Transformer(NiMAREBase):
