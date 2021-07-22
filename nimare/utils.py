@@ -11,7 +11,7 @@ from tempfile import mkstemp
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn import datasets
+from nilearn import datasets, image
 from nilearn.input_data import NiftiMasker
 
 from . import references
@@ -897,3 +897,28 @@ def mni2tal(coords):
     if use_dim == 1:
         out_coords = out_coords.transpose()
     return out_coords
+
+
+def reduce_masker(masker, bool_array):
+    """Reduce a masker based on which elements (e.g., voxels) are good."""
+    masker_params = masker.get_params()
+
+    # NiftiLabelsMasker has a mask_img parameter/attribute, so we need to check labels_img first
+    if hasattr(masker, "labels_img"):
+        # Needs to be coerced to 2D I guess ¯\_(ツ)_/¯
+        bool_img = masker.inverse_transform(bool_array[None, :].astype(int))
+        labels_img = image.math_img("l * b", l=masker.labels_img, b=bool_img)
+        masker_params["labels_img"] = labels_img
+
+    elif hasattr(masker, "mask_img"):
+        bool_img = masker.inverse_transform(bool_array.astype(int))
+        masker_params["mask_img"] = bool_img
+
+    else:
+        raise ValueError(f"Unsupported masker type: {type(masker)}")
+
+    # Create new masker with updated mask.
+    new_masker = type(masker)(**masker_params)
+    new_masker.fit()
+
+    return new_masker

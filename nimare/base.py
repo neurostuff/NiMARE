@@ -14,7 +14,7 @@ from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
 from .results import MetaResult
-from .utils import get_masker
+from .utils import get_masker, reduce_masker
 
 LGR = logging.getLogger(__name__)
 
@@ -371,12 +371,23 @@ class MetaEstimator(Estimator):
 
                 # An intermediate step to mask out bad voxels.
                 # Can be dropped once PyMARE is able to handle masked arrays or missing data.
-                bad_voxel_idx = np.where(temp_arr == 0)[1]
-                bad_voxel_idx = np.unique(bad_voxel_idx)
-                LGR.debug(f"Masking out {len(bad_voxel_idx)} 'bad' voxels")
-                temp_arr[:, bad_voxel_idx] = 0
+                zero_voxels_bool = np.any(temp_arr == 0, axis=0)
+                nan_voxels_bool = np.any(np.isnan(temp_arr), axis=0)
+                bad_voxels_bool = np.logical_or(zero_voxels_bool, nan_voxels_bool)
 
-                self.inputs_[name] = temp_arr
+                n_bad_voxels = bad_voxels_bool.sum()
+                if n_bad_voxels:
+                    LGR.warning(
+                        f"Masking out {n_bad_voxels} additional voxels. "
+                        "The updated masker is available in the Estimator.masker attribute."
+                    )
+                    self.masker = reduce_masker(masker, ~bad_voxels_bool)
+                else:
+                    self.masker = masker
+
+                data = self.masker.transform(img4d)
+
+                self.inputs_[name] = data
             elif type_ == "coordinates":
                 # Try to load existing MA maps
                 if hasattr(self, "kernel_transformer"):

@@ -156,7 +156,9 @@ def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation, 
     # Only fit the estimator if it doesn't raise a ValueError
     if expectation != "error":
         assert isinstance(meta.results, nimare.results.MetaResult)
-        assert meta.results.maps["z"].shape == (5,)
+        # There are five "labels", but one of them has no good data,
+        # so the outputs should be 4 long.
+        assert meta.results.maps["z"].shape == (4,)
         assert meta.results.get_map("z").shape == (10, 10, 10)
 
 
