@@ -66,8 +66,8 @@ class Fishers(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "z": boolean_unmask(est_summary.z, self.inputs_["aggressive_mask"]),
-            "p": boolean_unmask(est_summary.p, self.inputs_["aggressive_mask"]),
+            "z": boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
+            "p": boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -145,8 +145,8 @@ class Stouffers(MetaEstimator):
         est_summary = est.summary()
 
         results = {
-            "z": boolean_unmask(est_summary.z, self.inputs_["aggressive_mask"]),
-            "p": boolean_unmask(est_summary.p, self.inputs_["aggressive_mask"]),
+            "z": boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
+            "p": boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -216,7 +216,7 @@ class WeightedLeastSquares(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": boolean_unmask(est_summary.tau2, self.inputs_["aggressive_mask"]),
+            "tau2": boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
             "z": boolean_unmask(
                 est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
             ),
@@ -289,7 +289,7 @@ class DerSimonianLaird(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": boolean_unmask(est_summary.tau2, self.inputs_["aggressive_mask"]),
+            "tau2": boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
             "z": boolean_unmask(
                 est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
             ),
@@ -358,7 +358,7 @@ class Hedges(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": boolean_unmask(est_summary.tau2, self.inputs_["aggressive_mask"]),
+            "tau2": boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
             "z": boolean_unmask(
                 est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
             ),
@@ -433,7 +433,7 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": boolean_unmask(est_summary.tau2, self.inputs_["aggressive_mask"]),
+            "tau2": boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
             "z": boolean_unmask(
                 est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
             ),
@@ -523,7 +523,7 @@ class VarianceBasedLikelihood(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": boolean_unmask(est_summary.tau2, self.inputs_["aggressive_mask"]),
+            "tau2": boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
             "z": boolean_unmask(
                 est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
             ),

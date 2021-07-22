@@ -381,13 +381,6 @@ class MetaEstimator(Estimator):
                 nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
                 good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
 
-                n_bad_voxels = good_voxels_bool.size - good_voxels_bool.sum()
-                if n_bad_voxels:
-                    LGR.warning(
-                        f"Masking out {n_bad_voxels} additional voxels. "
-                        "The updated masker is available in the Estimator.masker attribute."
-                    )
-
                 data = masker.transform(img4d)
 
                 temp_image_inputs[name] = data
@@ -414,6 +407,15 @@ class MetaEstimator(Estimator):
 
         # Further reduce image-based inputs to remove "bad" voxels
         # (voxels with zeros or NaNs in any studies)
+        if "aggressive_mask" in self.inputs_.keys():
+            n_bad_voxels = (
+                self.inputs_["aggressive_mask"].size - self.inputs_["aggressive_mask"].sum()
+            )
+            if n_bad_voxels:
+                LGR.warning(
+                    f"Masking out {n_bad_voxels} additional voxels. "
+                    "The updated masker is available in the Estimator.masker attribute."
+                )
         for name, raw_masked_data in temp_image_inputs.items():
             self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
 
