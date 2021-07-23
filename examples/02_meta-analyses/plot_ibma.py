@@ -40,39 +40,40 @@ dset.update_path(dset_dir)
 # Calculate missing images
 xformer = nimare.transforms.ImageTransformer(target=["varcope", "z"])
 dset = xformer.transform(dset)
+raise Exception()
 
 ###############################################################################
 # Stouffer's
 # --------------------------------------------------
-meta = ibma.Stouffers(use_sample_size=False)
+meta = ibma.Stouffers(use_sample_size=False, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Stouffer's with weighting by sample size
 # -----------------------------------------------------------------------------
-meta = ibma.Stouffers(use_sample_size=True)
+meta = ibma.Stouffers(use_sample_size=True, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Fisher's
 # -----------------------------------------------------------------------------
-meta = ibma.Fishers()
+meta = ibma.Fishers(resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Permuted OLS
 # -----------------------------------------------------------------------------
-meta = ibma.PermutedOLS(two_sided=True)
+meta = ibma.PermutedOLS(two_sided=True, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Permuted OLS with FWE Correction
 # -----------------------------------------------------------------------------
-meta = ibma.PermutedOLS(two_sided=True)
+meta = ibma.PermutedOLS(two_sided=True, resample=True)
 meta.fit(dset)
 corrector = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
 cresult = corrector.transform(meta.results)
@@ -86,20 +87,20 @@ plot_stat_map(
 ###############################################################################
 # Weighted Least Squares
 # -----------------------------------------------------------------------------
-meta = ibma.WeightedLeastSquares(tau2=0)
+meta = ibma.WeightedLeastSquares(tau2=0, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # DerSimonian-Laird
 # -----------------------------------------------------------------------------
-meta = ibma.DerSimonianLaird()
+meta = ibma.DerSimonianLaird(resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Hedges
 # -----------------------------------------------------------------------------
-meta = ibma.Hedges()
+meta = ibma.Hedges(resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
