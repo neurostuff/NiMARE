@@ -40,7 +40,6 @@ dset.update_path(dset_dir)
 # Calculate missing images
 xformer = nimare.transforms.ImageTransformer(target=["varcope", "z"])
 dset = xformer.transform(dset)
-raise Exception()
 
 ###############################################################################
 # Stouffer's
