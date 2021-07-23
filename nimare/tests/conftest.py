@@ -12,6 +12,9 @@ from nimare.tests.utils import get_test_data_path
 
 from ..utils import get_resource_path
 
+# Only enable the following once in a while for a check for SettingWithCopyWarnings
+# pd.options.mode.chained_assignment = "raise"
+
 
 @pytest.fixture(scope="session")
 def testdata_ibma(tmp_path_factory):
@@ -69,8 +72,8 @@ def testdata_cbma_full():
 @pytest.fixture(scope="session")
 def testdata_laird():
     """Load data from dataset into global variables."""
-    testdata_laird = nimare.dataset.Dataset.load(
-        os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
+    testdata_laird = nimare.dataset.Dataset(
+        os.path.join(get_test_data_path(), "neurosynth_laird_studies.json")
     )
     return testdata_laird
 
@@ -81,6 +84,12 @@ def mni_mask():
     return nib.load(
         os.path.join(get_resource_path(), "templates", "MNI152_2x2x2_brainmask.nii.gz")
     )
+
+
+@pytest.fixture(scope="session")
+def roi_img():
+    """Load MNI mask for testing."""
+    return nib.load(os.path.join(get_test_data_path(), "amygdala_roi.nii.gz"))
 
 
 @pytest.fixture(scope="session")

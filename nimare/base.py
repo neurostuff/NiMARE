@@ -30,6 +30,40 @@ class NiMAREBase(metaclass=ABCMeta):
     def __init__(self):
         pass
 
+    def __repr__(self):
+        """Show basic NiMARE class representation.
+
+        Specifically, this shows the name of the class, along with any parameters
+        that are **not** set to the default.
+        """
+        # Get default parameter values for the object
+        signature = inspect.signature(self.__init__)
+        defaults = {
+            k: v.default
+            for k, v in signature.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
+
+        # Eliminate any sub-parameters (e.g., parameters for a MetaEstimator's KernelTransformer),
+        # as well as default values
+        params = self.get_params()
+        params = {k: v for k, v in params.items() if "__" not in k}
+        params = {k: v for k, v in params.items() if defaults.get(k) != v}
+
+        # Convert to strings
+        param_strs = []
+        for k, v in params.items():
+            if isinstance(v, str):
+                # Wrap string values in single quotes
+                param_str = f"{k}='{v}'"
+            else:
+                # Keep everything else as-is based on its own repr
+                param_str = f"{k}={v}"
+            param_strs.append(param_str)
+
+        rep = f"{self.__class__.__name__}({', '.join(param_strs)})"
+        return rep
+
     def _check_ncores(self, n_cores):
         """Check number of cores used for method."""
         if n_cores == -1:
@@ -298,7 +332,7 @@ class MetaEstimator(Estimator):
         self.masker = mask
 
         self.resample = kwargs.get("resample", False)
-        self.low_memory = kwargs.get("low_memory", False)
+        self.memory_limit = kwargs.get("memory_limit", None)
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {"clip": True, "interpolation": "linear"}
@@ -385,6 +419,32 @@ class Decoder(NiMAREBase):
 
     __id_cols = ["id", "study_id", "contrast_id"]
 
+    def _validate_input(self, dataset, drop_invalid=True):
+        """Search for, and validate, required inputs as necessary."""
+        if not hasattr(dataset, "slice"):
+            raise ValueError(
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
+            )
+
+        if self._required_inputs:
+            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
+            # Do not overwrite existing inputs_ attribute.
+            # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
+            # in the same object.
+            # It makes the *strong* assumption that required inputs will not changes within an
+            # Estimator across fit calls, so all fields of inputs_ will be overwritten instead of
+            # retaining outdated fields from previous fit calls.
+            if not hasattr(self, "inputs_"):
+                self.inputs_ = {}
+
+            for k, v in data.items():
+                if v is None:
+                    raise ValueError(
+                        f"Estimator {self.__class__.__name__} requires input dataset to contain "
+                        f"{k}, but no matching data were found."
+                    )
+                self.inputs_[k] = v
+
     def _preprocess_input(self, dataset):
         """Select features for model based on requested features and feature_group.
 
@@ -395,7 +455,7 @@ class Decoder(NiMAREBase):
         if self.feature_group is not None:
             if not self.feature_group.endswith("__"):
                 self.feature_group += "__"
-            feature_names = dataset.annotations.columns.values
+            feature_names = self.inputs_["annotations"].columns.values
             feature_names = [f for f in feature_names if f.startswith(self.feature_group)]
             if self.features is not None:
                 features = [f.split("__")[-1] for f in feature_names if f in self.features]
@@ -403,24 +463,34 @@ class Decoder(NiMAREBase):
                 features = feature_names
         else:
             if self.features is None:
-                features = dataset.annotations.columns.values
+                features = self.inputs_["annotations"].columns.values
             else:
                 features = self.features
+
         features = [f for f in features if f not in self.__id_cols]
+        n_features_orig = len(features)
+
         # At least one study in the dataset much have each label
-        counts = (dataset.annotations[features] > self.frequency_threshold).sum(0)
+        counts = (self.inputs_["annotations"][features] > self.frequency_threshold).sum(0)
         features = counts[counts > 0].index.tolist()
         if not len(features):
             raise Exception("No features identified in Dataset!")
+        elif len(features) < n_features_orig:
+            LGR.info(f"Retaining {len(features)}/({n_features_orig} features.")
+
         self.features_ = features
 
-    def fit(self, dataset):
+    def fit(self, dataset, drop_invalid=True):
         """Fit Decoder to Dataset.
 
         Parameters
         ----------
         dataset : :obj:`nimare.dataset.Dataset`
             Dataset object to analyze.
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is True.
+
 
         Returns
         -------
@@ -437,6 +507,7 @@ class Decoder(NiMAREBase):
         Selection of features based on requested features and feature group is performed in
         `Decoder._preprocess_input`.
         """
+        self._validate_input(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         self._fit(dataset)
 

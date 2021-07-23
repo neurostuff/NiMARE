@@ -12,7 +12,7 @@ Discrete decoding approaches characterize subsets of the Dataset or regions of i
 
 The BrainMap approach
 `````````````````````
-:func:`nimare.decode.discrete.BrainMapDecoder`, :func:`nimare.decode.discrete.brainmap_decode`
+:class:`nimare.decode.discrete.BrainMapDecoder`, :func:`nimare.decode.discrete.brainmap_decode`
 
 The BrainMap method for discrete functional decoding performs both forward and reverse inference
 using an annotated coordinate-based database and a target sample of studies within that database.
@@ -78,7 +78,7 @@ of foci associated with each study in the database.
 
 The Neurosynth approach
 ```````````````````````
-:func:`nimare.decode.discrete.NeurosynthDecoder`, :func:`nimare.decode.discrete.neurosynth_decode`
+:class:`nimare.decode.discrete.NeurosynthDecoder`, :func:`nimare.decode.discrete.neurosynth_decode`
 
 The Neurosynth method for discrete functional decoding performs both forward and reverse inference
 using an annotated coordinate-based database and a target sample of studies within that database.
@@ -135,11 +135,28 @@ of any given experiment including a given label.
     - Convert p-value to signed z-value using :math:`P(s^{+}|l^{-})` to determine sign.
 
 
+The Neurosynth ROI association approach
+```````````````````````````````````````
+:class:`nimare.decode.discrete.ROIAssociationDecoder`
+
+Neurosynth's ROI association approach is quite simple, but it has been used in at least one publication, `Margulies et al. (2016)`_.
+
+This approach uses the following steps to calculate label-wise correlation values:
+
+1.  Specify a region of interest (ROI) image in the same space as the Dataset.
+2.  Generate modeled activation (MA) maps for all studies in Dataset with coordinates.
+3.  Average the MA values within the ROI to get a study-wise MA regressor.
+4.  Correlate the MA regressor with study-wise annotation values (e.g., tf-idf values).
+
+.. _Margulies et al. (2016): https://doi.org/10.1073/pnas.1608282113
+
+
 The GC-LDA approach
 ```````````````````
 :func:`nimare.decode.discrete.gclda_decode_roi`
 
 The GC-LDA approach sums :math:`P(topic|voxel)` weights within the region of interest to produce topic-wise weights.
+
 
 Continuous decoding
 -------------------
