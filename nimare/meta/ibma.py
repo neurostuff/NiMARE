@@ -215,8 +215,8 @@ class WeightedLeastSquares(MetaEstimator):
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+        # tau2 is an float, not a map, so it can't go in the results dictionary
         results = {
-            "tau2": boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
             "z": boolean_unmask(
                 est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
             ),
