@@ -897,3 +897,38 @@ def mni2tal(coords):
     if use_dim == 1:
         out_coords = out_coords.transpose()
     return out_coords
+
+
+def boolean_unmask(data_array, bool_array):
+    """Unmask data based on a boolean array, with NaNs in empty voxels.
+
+    Parameters
+    ----------
+    data_array : 1D or 2D :obj:`numpy.ndarray`
+        Masked data array.
+    bool_array : 1D :obj:`numpy.ndarray`
+        Boolean mask array. Must have the same number of ``True`` entries as elements in the
+        second dimension of ``data_array``.
+
+    Returns
+    -------
+    unmasked_data : 1D or 2D :obj:`numpy.ndarray`
+        Unmasked data array.
+        If 1D, first dimension is the same size as the first (and only) dimension of
+        ``boolean_array``.
+        If 2D, first dimension is the same size as the first dimension of ``data_array``, while
+        second dimension is the same size as the first (and only) dimension  of ``boolean_array``.
+        All elements corresponding to ``False`` values in ``boolean_array`` will have NaNs.
+    """
+    assert data_array.ndim in (1, 2)
+    assert bool_array.ndim == 1
+    assert bool_array.sum() == data_array.shape[-1]
+
+    unmasked_data = np.full(
+        shape=bool_array.shape + data_array.T.shape[1:],
+        fill_value=np.nan,
+        dtype=data_array.dtype,
+    )
+    unmasked_data[bool_array] = data_array
+    unmasked_data = unmasked_data.T
+    return unmasked_data
