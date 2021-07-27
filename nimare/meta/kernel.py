@@ -16,7 +16,7 @@ import pandas as pd
 from nilearn import image
 
 from ..base import Transformer
-from ..utils import safe_transform, use_memmap, vox2mm
+from ..utils import add_metadata_to_dataframe, safe_transform, use_memmap, vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
@@ -78,17 +78,19 @@ class KernelTransformer(Transformer):
         ----------
         dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
-        masker : img_like, optional
-            Only used if dataset is a DataFrame.
+        masker : img_like or None, optional
+            Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
+            If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
+            Default is None.
         return_type : {'array', 'image', 'dataset'}, optional
-            Whether to return a numpy array ('array'), a list of niimgs
-            ('image'), or a Dataset with MA images saved as files ('dataset').
-            Default is 'dataset'.
+            Whether to return a numpy array ('array'), a list of niimgs ('image'),
+            or a Dataset with MA images saved as files ('dataset').
+            Default is 'image'.
 
         Returns
         -------
-        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of
-               :class:`nibabel.Nifti1Image` or :class:`nimare.dataset.Dataset`
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
+               or :class:`nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images
@@ -110,7 +112,7 @@ class KernelTransformer(Transformer):
         if isinstance(dataset, pd.DataFrame):
             assert (
                 masker is not None
-            ), 'Argument "masker" must be provided if dataset is a DataFrame'
+            ), "Argument 'masker' must be provided if dataset is a DataFrame."
             mask = masker.mask_img
             coordinates = dataset.copy()
             assert (
@@ -119,7 +121,7 @@ class KernelTransformer(Transformer):
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
-            coordinates = dataset.coordinates
+            coordinates = dataset.coordinates.copy()
 
             # Determine MA map filenames. Must happen after parameters are set.
             self._infer_names(affine=md5(mask.affine).hexdigest())
@@ -139,7 +141,24 @@ class KernelTransformer(Transformer):
                     elif return_type == "dataset":
                         return dataset.copy()
 
-        # Otherwise, generate the MA maps
+            # Add any metadata the Transformer might need to the coordinates DataFrame
+            # This approach is probably inferior to one which uses a _required_inputs attribute
+            # (like the MetaEstimators), but it should work just fine as long as individual
+            # requirements are written in here.
+            if (
+                hasattr(self, "sample_size")
+                and (self.sample_size is None)
+                and ("sample_size" not in coordinates.columns)
+            ):
+                coordinates = add_metadata_to_dataframe(
+                    dataset,
+                    coordinates,
+                    metadata_field="sample_sizes",
+                    target_column="sample_size",
+                    filter_func=np.mean,
+                )
+
+        # Generate the MA maps if they weren't already available as images
         if return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         elif return_type == "image":
@@ -152,8 +171,8 @@ class KernelTransformer(Transformer):
                 )
             elif not os.path.isdir(dataset.basepath):
                 raise ValueError(
-                    "Output directory does not exist. Set the path to an "
-                    "existing folder with Dataset.update_path()."
+                    "Output directory does not exist. Set the path to an existing folder with "
+                    "Dataset.update_path()."
                 )
             dataset = dataset.copy()
 
@@ -383,9 +402,8 @@ class Peaks2MapsKernel(KernelTransformer):
 
     Parameters
     ----------
-    resample_to_mask : :obj:`bool`, optional
-        If True, will resample the MA maps to the mask's header.
-        Default is True.
+    model_dir : :obj:`str`, optional
+        Path to model directory. Default is "auto".
 
     Warning
     -------

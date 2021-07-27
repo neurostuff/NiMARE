@@ -83,13 +83,7 @@ def test_ALEKernel_inputdataset_returnimages(testdata_cbma):
 
     Test on Dataset object.
     """
-    # Manually override dataset coordinates file sample sizes
-    # This column would be extracted from metadata and added to coordinates
-    # automatically by the Estimator
-    testdata_cbma = testdata_cbma.copy()
     coordinates = testdata_cbma.coordinates.copy()
-    coordinates["sample_size"] = 20
-    testdata_cbma.coordinates = coordinates
 
     id_ = "pain_03.nidm-1"
     kern = kernel.ALEKernel()
