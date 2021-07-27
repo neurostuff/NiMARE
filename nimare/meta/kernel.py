@@ -145,7 +145,11 @@ class KernelTransformer(Transformer):
             # This approach is probably inferior to one which uses a _required_inputs attribute
             # (like the MetaEstimators), but it should work just fine as long as individual
             # requirements are written in here.
-            if hasattr(self, "sample_size") and self.sample_size is None:
+            if (
+                hasattr(self, "sample_size")
+                and (self.sample_size is None)
+                and ("sample_size" not in coordinates.columns)
+            ):
                 coordinates = add_metadata_to_dataframe(
                     dataset,
                     coordinates,
