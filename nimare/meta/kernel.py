@@ -139,7 +139,20 @@ class KernelTransformer(Transformer):
                     elif return_type == "dataset":
                         return dataset.copy()
 
-        # Otherwise, generate the MA maps
+            # Add any metadata the Transformer might need to the coordinates DataFrame
+            # This approach is probably inferior to one which uses a _required_inputs attribute
+            # (like the MetaEstimators), but it should work just fine as long as individual
+            # requirements are written in here.
+            if hasattr(self, "sample_size") and self.sample_size is None:
+                coordinates = add_metadata_to_dataframe(
+                    dataset,
+                    coordinates,
+                    metadata_field="sample_sizes",
+                    target_column="sample_size",
+                    filter_func=np.mean,
+                )
+
+        # Generate the MA maps if they weren't already available as images
         if return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         elif return_type == "image":
