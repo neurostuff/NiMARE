@@ -123,8 +123,8 @@ plot_stat_map(
 #     meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
 #     https://doi.org/10.1016/j.neuroimage.2011.09.017
 # .. [3] Enge, Alexander, et al. "A meta-analysis of fMRI studies of
-#     semantic cognition in children." bioRxiv (2021): 2021.05.17.442947.
-#     https://doi.org/10.1101/2021.05.17.442947
+#     semantic cognition in children." Neuroimage 241 (2021): 118436.
+#     https://doi.org/10.1016/j.neuroimage.2021.118436
 # .. [4] Nichols, Thomas, et al. "Valid conjunction inference with the
 #     minimum statistic." Neuroimage 25.3 (2005): 653-660.
 #     https://doi.org/10.1016/j.neuroimage.2004.12.005
