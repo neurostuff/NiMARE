@@ -70,8 +70,8 @@ class NiMAREBase(metaclass=ABCMeta):
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
             LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
+                f"Desired number of cores ({n_cores}) greater than number "
+                f"available ({mp.cpu_count()}). Setting to {mp.cpu_count()}."
             )
             n_cores = mp.cpu_count()
         return n_cores
@@ -222,7 +222,7 @@ class NiMAREBase(metaclass=ABCMeta):
                     obj = pickle.load(file_object, encoding="latin")
 
         if not isinstance(obj, cls):
-            raise IOError("Pickled object must be {0}, not {1}".format(cls, type(obj)))
+            raise IOError(f"Pickled object must be {cls}, not {type(obj)}")
 
         return obj
 
@@ -435,8 +435,7 @@ class Transformer(NiMAREBase):
         # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
             raise ValueError(
-                'Argument "dataset" must be a valid Dataset '
-                "object, not a {0}".format(type(dataset))
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}"
             )
 
 

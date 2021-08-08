@@ -97,7 +97,7 @@ dset.masker
 
 ###############################################################################
 # ``Dataset.space`` is a string
-print("Template space: {}".format(dset.space))
+print(f"Template space: {dset.space}")
 
 ###############################################################################
 # Statistical images are not stored internally

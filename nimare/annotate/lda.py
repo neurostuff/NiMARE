@@ -96,7 +96,7 @@ class LDAModel(NiMAREBase):
             keep_ids = text_df["id"].tolist()
 
             if len(keep_ids) != len(orig_ids):
-                LGR.info("Retaining {0}/{1} studies".format(len(keep_ids), len(orig_ids)))
+                LGR.info(f"Retaining {len(keep_ids)}/{len(orig_ids)} studies")
 
             for id_ in text_df["id"].values:
                 text = text_df.loc[text_df["id"] == id_, text_column].values[0]
@@ -106,31 +106,24 @@ class LDAModel(NiMAREBase):
         # Run MALLET topic modeling
         LGR.info("Generating topics...")
         import_str = (
-            "{mallet} import-dir "
-            "--input {text_dir} "
-            "--output {outdir}/topic-input.mallet "
+            f"{mallet_bin} import-dir "
+            f"--input {text_dir} "
+            f"--output {model_dir}/topic-input.mallet "
             "--keep-sequence "
             "--remove-stopwords"
-        ).format(mallet=mallet_bin, text_dir=text_dir, outdir=model_dir)
+        )
 
         train_str = (
-            "{mallet} train-topics "
-            "--input {out}/topic-input.mallet "
-            "--num-topics {n_topics} "
-            "--output-doc-topics {out}/doc_topics.txt "
-            "--topic-word-weights-file {out}/topic_word_weights.txt "
-            "--num-iterations {n_iters} "
-            "--output-model {out}/saved_model.mallet "
+            f"{mallet_bin} train-topics "
+            f"--input {model_dir}/topic-input.mallet "
+            f"--num-topics {self.params['n_topics']} "
+            f"--output-doc-topics {model_dir}/doc_topics.txt "
+            f"--topic-word-weights-file {model_dir}/topic_word_weights.txt "
+            f"--num-iterations {self.params['n_iters']} "
+            f"--output-model {model_dir}/saved_model.mallet "
             "--random-seed 1 "
-            "--alpha {alpha} "
-            "--beta {beta}"
-        ).format(
-            mallet=mallet_bin,
-            out=model_dir,
-            n_topics=self.params["n_topics"],
-            n_iters=self.params["n_iters"],
-            alpha=self.params["alpha"],
-            beta=self.params["beta"],
+            f"--alpha {self.params['alpha']} "
+            f"--beta {self.params['beta']}"
         )
         self.commands_ = [import_str, train_str]
 
@@ -149,7 +142,7 @@ class LDAModel(NiMAREBase):
         subprocess.call(self.commands_[1], shell=True)
 
         # Read in and convert doc_topics and topic_keys.
-        topic_names = ["topic_{0:03d}".format(i) for i in range(self.params["n_topics"])]
+        topic_names = [f"topic_{i:03d}" for i in range(self.params["n_topics"])]
 
         # doc_topics: Topic weights for each paper.
         # The conversion here is pretty ugly at the moment.

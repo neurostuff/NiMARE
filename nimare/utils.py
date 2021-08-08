@@ -43,7 +43,7 @@ def dict_to_df(id_df, data, key="labels"):
     for pid in data.keys():
         for expid in data[pid]["contrasts"].keys():
             exp = data[pid]["contrasts"][expid]
-            id_ = "{0}-{1}".format(pid, expid)
+            id_ = f"{pid}-{expid}"
 
             if key not in data[pid]["contrasts"][expid].keys():
                 continue
@@ -75,7 +75,7 @@ def dict_to_coordinates(data, masker, space):
 
             # Required info (ids, x, y, z, space)
             n_coords = len(exp["coords"]["x"])
-            rep_id = np.array([["{0}-{1}".format(pid, expid), pid, expid]] * n_coords).T
+            rep_id = np.array([[f"{pid}-{expid}", pid, expid]] * n_coords).T
 
             space_arr = exp["coords"].get("space")
             space_arr = np.array([space_arr] * n_coords)
@@ -150,14 +150,13 @@ def transform_coordinates_to_ijk(df, masker, space):
     elif "tal" in space.lower():
         transform = {"MNI": mni2tal, "TAL": None, "Talairach": None}
     else:
-        raise ValueError("Unrecognized space: {0}".format(space))
+        raise ValueError(f"Unrecognized space: {space}")
 
     found_spaces = df["space"].unique()
     for found_space in found_spaces:
         if found_space not in transform.keys():
             LGR.warning(
-                "Not applying transforms to coordinates in "
-                'unrecognized space "{0}"'.format(found_space)
+                f"Not applying transforms to coordinates in unrecognized space '{found_space}'"
             )
         alg = transform.get(found_space, None)
         idx = df["space"] == found_space
@@ -214,8 +213,7 @@ def validate_images_df(image_df):
                 image_df = image_df.rename(columns={col: col + "__relative"})
         else:
             raise ValueError(
-                "Mix of absolute and relative paths detected "
-                "for images in column '{}'".format(col)
+                f"Mix of absolute and relative paths detected for images in column '{col}'"
             )
 
     # Set relative paths from absolute ones
@@ -269,7 +267,7 @@ def get_template(space="mni152_2mm", mask=None):
         elif mask == "gm":
             img = datasets.fetch_icbm152_brain_gm_mask(threshold=0.2)
         else:
-            raise ValueError("Mask {0} not supported".format(mask))
+            raise ValueError(f"Mask {mask} not supported")
     elif space == "mni152_2mm":
         if mask is None:
             img = datasets.load_mni152_template()
@@ -285,7 +283,7 @@ def get_template(space="mni152_2mm", mask=None):
             data = (data > 1200).astype(int)
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
-            raise ValueError("Mask {0} not supported".format(mask))
+            raise ValueError(f"Mask {mask} not supported")
     elif space == "ale_2mm":
         if mask is None:
             img = datasets.load_mni152_template()
@@ -294,7 +292,7 @@ def get_template(space="mni152_2mm", mask=None):
             # the default "more conservative" MNI152 mask in GingerALE.
             img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii"))
     else:
-        raise ValueError("Space {0} not supported".format(space))
+        raise ValueError(f"Space {space} not supported")
     return img
 
 

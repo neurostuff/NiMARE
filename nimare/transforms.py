@@ -137,9 +137,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
             id_out_dir = op.dirname(options[0])
         else:
             id_out_dir = out_dir
-        new_file = op.join(
-            id_out_dir, "{id_}_{res}_{target}.nii.gz".format(id_=id_, res=res, target=target)
-        )
+        new_file = op.join(id_out_dir, f"{id_}_{res}_{target}.nii.gz")
 
         # Grab columns with actual values
         available_data = row[~row.isnull()].to_dict()
@@ -193,7 +191,7 @@ def resolve_transforms(target, available_data, masker):
         Otherwise, None.
     """
     if target in available_data.keys():
-        LGR.warning('Target "{}" already available.'.format(target))
+        LGR.warning(f"Target '{target}' already available.")
         return available_data[target]
 
     if target == "z":

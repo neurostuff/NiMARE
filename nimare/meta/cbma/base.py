@@ -195,7 +195,7 @@ class CBMAEstimator(MetaEstimator):
         elif isinstance(data, np.ndarray):
             ma_values = data
         elif not isinstance(data, np.ndarray):
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+            raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
         return self._compute_summarystat(ma_values)

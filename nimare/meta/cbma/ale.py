@@ -126,7 +126,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # Determine bins for null distribution histogram
         # Remember that numpy histogram bins are bin edges, not centers
@@ -159,7 +159,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
 
@@ -506,7 +506,7 @@ class SCALE(CBMAEstimator):
         elif isinstance(data, np.ndarray):
             ma_values = data.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+            raise ValueError(f"Unsupported data type '{type(data)}'")
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values

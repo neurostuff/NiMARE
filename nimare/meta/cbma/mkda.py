@@ -118,7 +118,7 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         prop_active = ma_values.mean(1)
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
@@ -141,7 +141,7 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # MKDA maps are binary, so we only have k + 1 bins in the final
         # histogram, where k is the number of studies. We can analytically
@@ -586,7 +586,7 @@ class KDA(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # assumes that groupby results in same order as MA maps
         n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
@@ -643,7 +643,7 @@ class KDA(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""
