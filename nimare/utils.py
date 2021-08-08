@@ -408,8 +408,6 @@ def uk_to_us(text):
 
     .. versionadded:: 0.0.2
 
-    english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
-
     Parameters
     ----------
     text : :obj:`str`
@@ -417,6 +415,10 @@ def uk_to_us(text):
     Returns
     -------
     text : :obj:`str`
+
+    Notes
+    -----
+    The english_spellings.csv file is from http://www.tysto.com/uk-us-spelling-list.html.
     """
     SPELL_DF = pd.read_csv(op.join(get_resource_path(), "english_spellings.csv"), index_col="UK")
     SPELL_DICT = SPELL_DF["US"].to_dict()

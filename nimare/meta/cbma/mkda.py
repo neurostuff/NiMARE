@@ -33,6 +33,9 @@ class MKDADensity(CBMAEstimator):
 
     Notes
     -----
+    The MKDA density algorithm is also implemented in MATLAB at
+    https://github.com/canlab/Canlab_MKDA_MetaAnalysis.
+
     Available correction methods: :func:`MKDADensity.correct_fwe_montecarlo`
 
     References
@@ -173,6 +176,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     Notes
     -----
+    The MKDA Chi-square algorithm was originally implemented as part of the Neurosynth Python
+    library (https://github.com/neurosynth/neurosynth).
+
     Available correction methods: :func:`MKDAChi2.correct_fwe_montecarlo`,
     :obj:`MKDAChi2.correct_fdr_bh`
 

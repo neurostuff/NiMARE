@@ -154,11 +154,11 @@ class Stouffers(MetaEstimator):
 class WeightedLeastSquares(MetaEstimator):
     """Weighted least-squares meta-regression.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Provides the weighted least-squares estimate of the fixed effects given
     known/assumed between-study variance tau^2.
@@ -233,11 +233,11 @@ class WeightedLeastSquares(MetaEstimator):
 class DerSimonianLaird(MetaEstimator):
     """DerSimonian-Laird meta-regression estimator.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Estimates the between-subject variance tau^2 using the DerSimonian-Laird
     (1986) method-of-moments approach.
@@ -306,11 +306,11 @@ class DerSimonianLaird(MetaEstimator):
 class Hedges(MetaEstimator):
     """Hedges meta-regression estimator.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Estimates the between-subject variance tau^2 using the Hedges & Olkin (1985)
     approach.
@@ -375,11 +375,11 @@ class Hedges(MetaEstimator):
 class SampleSizeBasedLikelihood(MetaEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     betas using the specified likelihood-based estimator (ML or REML).
@@ -450,11 +450,11 @@ class SampleSizeBasedLikelihood(MetaEstimator):
 class VarianceBasedLikelihood(MetaEstimator):
     """A likelihood-based meta-analysis method for estimates with known variances.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     coefficients using the specified likelihood-based estimator (ML or REML).
@@ -540,11 +540,11 @@ class VarianceBasedLikelihood(MetaEstimator):
 class PermutedOLS(MetaEstimator):
     r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -612,11 +612,11 @@ class PermutedOLS(MetaEstimator):
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
         """Perform FWE correction using the max-value permutation method.
 
-        .. versionadded:: 0.0.4
-
         .. versionchanged:: 0.0.8
 
             * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+        .. versionadded:: 0.0.4
 
         Only call this method from within a Corrector.
 

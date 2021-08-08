@@ -66,6 +66,9 @@ class ALE(CBMAEstimator):
     The ALE algorithm was originally developed in [1]_, then updated in [2]_
     and [3]_.
 
+    The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
+    organization (https://www.brainmap.org/ale/).
+
     Available correction methods: :func:`ALE.correct_fwe_montecarlo`
 
     References
@@ -205,13 +208,13 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     r"""ALE subtraction analysis.
 
-    .. versionchanged:: 0.0.7
-
-        * [FIX] Assume a zero-centered and symmetric null distribution.
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Assume non-symmetric null distribution.
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
 
     Parameters
     ----------
@@ -233,6 +236,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
     Notes
     -----
     This method was originally developed in [1]_ and refined in [2]_.
+
+    The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
+    BrainMap organization (https://www.brainmap.org/ale/).
 
     Warning
     -------

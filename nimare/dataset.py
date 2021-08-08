@@ -29,13 +29,13 @@ LGR = logging.getLogger(__name__)
 class Dataset(NiMAREBase):
     """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
 
-    .. versionchanged:: 0.0.8
-
-        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
-
     .. versionchanged:: 0.0.9
 
         * [ENH] Add merge method to Dataset class
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
 
     Parameters
     ----------

@@ -362,6 +362,7 @@ class GCLDAModel(NiMAREBase):
         """Run multiple iterations.
 
         .. versionchanged:: 0.0.8
+
             [ENH] Remove ``verbose`` parameter.
 
         Parameters
@@ -399,6 +400,7 @@ class GCLDAModel(NiMAREBase):
         """Run a complete update cycle (sample z, sample y&r, update regions).
 
         .. versionchanged:: 0.0.8
+
             [ENH] Remove ``verbose`` parameter.
 
         Parameters

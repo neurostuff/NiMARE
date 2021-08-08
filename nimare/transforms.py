@@ -79,11 +79,11 @@ class ImageTransformer(Transformer):
 def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, overwrite=False):
     """Generate images of a given type from other image types and write out to files.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.9
 
         * [ENH] Add overwrite option to transform_images
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -167,12 +167,12 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
 def resolve_transforms(target, available_data, masker):
     """Determine and apply the appropriate transforms to a target image type from available data.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove unnecessary dimensions from output image object *img_like*. \
                 Now, the image object only has 3 dimensions.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------

@@ -317,11 +317,11 @@ class Estimator(NiMAREBase):
 class MetaEstimator(Estimator):
     """Base class for meta-analysis methods in :mod:`nimare.meta`.
 
-    .. versionadded:: 0.0.3
-
     .. versionchanged:: 0.0.8
 
         * [REF] Use saved MA maps, when available.
+
+    .. versionadded:: 0.0.3
 
     """
 

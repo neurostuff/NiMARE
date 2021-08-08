@@ -285,11 +285,11 @@ def compute_kda_ma(
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
-    .. versionadeed:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [ENH] Add *memmap_filename* parameter for memory mapping arrays.
+
+    .. versionadded:: 0.0.4
 
     Replaces the values around each focus in ijk with binary sphere.
 
