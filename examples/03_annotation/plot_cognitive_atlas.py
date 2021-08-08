@@ -23,9 +23,7 @@ from nimare.tests.utils import get_test_data_path
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-dset = nimare.dataset.Dataset(
-    os.path.join(get_test_data_path(), "neurosynth_laird_studies.json")
-)
+dset = nimare.dataset.Dataset(os.path.join(get_test_data_path(), "neurosynth_laird_studies.json"))
 
 ###############################################################################
 # Download Cognitive Atlas
