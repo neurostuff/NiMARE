@@ -64,9 +64,9 @@ class KernelTransformer(Transformer):
         keys = sorted(params.keys())
         param_str = "_".join(f"{k}-{str(params[k])}" for k in keys)
         self.filename_pattern = (
-            f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz"
-            .replace("[[", "{")
-            .replace("]]", "}")
+            f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
+                "[[", "{"
+            ).replace("]]", "}")
         )
         self.image_type = f"{param_str}_{self.__class__.__name__}"
 
