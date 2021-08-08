@@ -76,13 +76,14 @@ dset = z_transformer.transform(dset)
 print(dset.images["z"])
 
 
+from nilearn.plotting import plot_stat_map
+
 ###############################################################################
 # Run a Meta-Analysis
 # -------------------
 # With the missing Z maps filled in, we can run a Meta-Analysis
 # and plot our results
 from nimare.meta.ibma import Fishers
-from nilearn.plotting import plot_stat_map
 
 meta = Fishers()
 

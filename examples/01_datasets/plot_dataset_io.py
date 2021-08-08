@@ -14,8 +14,6 @@
 # --------------------------------
 import os
 
-import pandas as pd
-
 import nimare
 from nimare.tests.utils import get_test_data_path
 

@@ -18,13 +18,13 @@ Why would you want to do this?
 """
 import os
 
-from nilearn.plotting import plot_stat_map
 import matplotlib.pyplot as plt
+from nilearn.plotting import plot_stat_map
 
 import nimare
-from nimare.transforms import ImagesToCoordinates, ImageTransformer
 from nimare.meta.cbma import ALE
 from nimare.tests.utils import get_test_data_path
+from nimare.transforms import ImagesToCoordinates, ImageTransformer
 
 ###############################################################################
 # Download data
