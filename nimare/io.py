@@ -26,8 +26,17 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 }
 
 
-def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_groups=None):
+def convert_neurosynth_to_dict(
+    coordinates_file,
+    metadata_file,
+    annotations_files=None,
+    feature_groups=None,
+):
     """Convert Neurosynth/NeuroQuery database files to a dictionary.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
 
     .. versionchanged:: 0.0.9
 
@@ -35,16 +44,17 @@ def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_gr
 
     Parameters
     ----------
-    database_file : :obj:`str`
-        TSV.GZ file with Neurosynth/NeuroQuery's coordinates and metadata.
+    coordinates_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's coordinates.
+    metadata_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's metadata.
     annotations_files : :obj:`dict`, :obj:`list` of :obj:`dict`, or None, optional
         Optional file(s) with Neurosynth/NeuroQuery's annotations.
-        This should consist of a dictionary with three keys: "features", "ids", and "vocabulary".
+        This should consist of a dictionary with two keys: "features" and "vocabulary".
         "features" should have an NPZ file containing a sparse matrix of feature values.
-        "ids" should have a TXT file containing study IDs (matching the IDs in database_file).
         "vocabulary" should have a TXT file containing labels.
-        The IDs correspond to the rows of the features matrix, while the vocabulary corresponds
-        to the columns.
+        The vocabulary corresponds to the columns of the feature matrix, while study IDs are
+        inferred from the metadata file, which MUST be in the same order as the features matrix.
         Multiple sets of annotations may be provided, in which case "annotations_files" should be
         a list of dictionaries. The appropriate name of each annotation set will be inferred from
         the "features" filename, but this can be overwritten by using the "feature_groups"
@@ -62,10 +72,18 @@ def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_gr
         NiMARE-organized dictionary containing experiment information from text
         files.
     """
-    dset_df = pd.read_table(database_file)
-    if "space" not in dset_df.columns:
+    coords_df = pd.read_table(coordinates_file)
+    metadata_df = pd.read_table(metadata_file)
+    assert metadata_df["id"].is_unique, "Metadata file must have one row per ID."
+
+    coords_df["id"] = coords_df["id"].astype(str)
+    metadata_df["id"] = metadata_df["id"].astype(str)
+    metadata_df = metadata_df.set_index("id", drop=False)
+    ids = metadata_df["id"].tolist()
+
+    if "space" not in metadata_df.columns:
         LGR.warning("No 'space' column detected. Defaulting to 'UNKNOWN'.")
-        dset_df["space"] = "UNKNOWN"
+        metadata_df["space"] = "UNKNOWN"
 
     if isinstance(annotations_files, dict):
         annotations_files = [annotations_files]
@@ -73,6 +91,7 @@ def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_gr
     if isinstance(feature_groups, str):
         feature_groups = [feature_groups]
 
+    # Load labels into a single DataFrame
     if annotations_files is not None:
         label_dfs = []
         if feature_groups is not None:
@@ -80,7 +99,6 @@ def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_gr
 
         for i_feature_group, annotations_dict in enumerate(annotations_files):
             features_file = annotations_dict["features"]
-            ids_file = annotations_dict["ids"]
             vocabulary_file = annotations_dict["vocabulary"]
 
             vocab = re.findall("vocab-([a-zA-Z0-9]+)_", features_file)[0]
@@ -94,7 +112,6 @@ def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_gr
                 feature_group = f"{vocab}_{source}_{value_type}__"
 
             features = sparse.load_npz(features_file).todense()
-            ids = np.loadtxt(ids_file, dtype=str, delimiter="\t")
             vocab = np.loadtxt(vocabulary_file, dtype=str, delimiter="\t")
 
             labels = [feature_group + label for label in vocab]
@@ -108,44 +125,50 @@ def convert_neurosynth_to_dict(database_file, annotations_files=None, feature_gr
     else:
         label_df = None
 
-    dset_df["id"] = dset_df["id"].astype(str)
-
-    ids = dset_df["id"].unique()
+    # Compile (pseudo-)NIMADS-format dictionary
     dset_dict = {}
-    for sid in ids:
-        study_df = dset_df.loc[dset_df["id"] == sid]
+    for sid, study_metadata in metadata_df.iterrows():
+        study_coords_df = coords_df.loc[coords_df["id"] == sid]
         study_dict = {}
         study_dict["metadata"] = {}
-        study_dict["metadata"]["authors"] = study_df["authors"].tolist()[0]
-        study_dict["metadata"]["journal"] = study_df["journal"].tolist()[0]
-        study_dict["metadata"]["year"] = study_df["year"].tolist()[0]
-        study_dict["metadata"]["title"] = study_df["title"].tolist()[0]
+        study_dict["metadata"]["authors"] = study_metadata["authors"]
+        study_dict["metadata"]["journal"] = study_metadata["journal"]
+        study_dict["metadata"]["year"] = study_metadata["year"]
+        study_dict["metadata"]["title"] = study_metadata["title"]
         study_dict["contrasts"] = {}
         study_dict["contrasts"]["1"] = {}
+        # Duplicate metadata across study and contrast levels
         study_dict["contrasts"]["1"]["metadata"] = {}
-        study_dict["contrasts"]["1"]["metadata"]["authors"] = study_df["authors"].tolist()[0]
-        study_dict["contrasts"]["1"]["metadata"]["journal"] = study_df["journal"].tolist()[0]
-        study_dict["contrasts"]["1"]["metadata"]["year"] = study_df["year"].tolist()[0]
-        study_dict["contrasts"]["1"]["metadata"]["title"] = study_df["title"].tolist()[0]
+        study_dict["contrasts"]["1"]["metadata"]["authors"] = study_metadata["authors"]
+        study_dict["contrasts"]["1"]["metadata"]["journal"] = study_metadata["journal"]
+        study_dict["contrasts"]["1"]["metadata"]["year"] = study_metadata["year"]
+        study_dict["contrasts"]["1"]["metadata"]["title"] = study_metadata["title"]
         study_dict["contrasts"]["1"]["coords"] = {}
-        study_dict["contrasts"]["1"]["coords"]["space"] = study_df["space"].tolist()[0]
-        study_dict["contrasts"]["1"]["coords"]["x"] = study_df["x"].tolist()
-        study_dict["contrasts"]["1"]["coords"]["y"] = study_df["y"].tolist()
-        study_dict["contrasts"]["1"]["coords"]["z"] = study_df["z"].tolist()
+        study_dict["contrasts"]["1"]["coords"]["space"] = study_metadata["space"]
+        study_dict["contrasts"]["1"]["coords"]["x"] = study_coords_df["x"].tolist()
+        study_dict["contrasts"]["1"]["coords"]["y"] = study_coords_df["y"].tolist()
+        study_dict["contrasts"]["1"]["coords"]["z"] = study_coords_df["z"].tolist()
+
         if label_df is not None:
             study_dict["contrasts"]["1"]["labels"] = label_df.loc[sid].to_dict()
+
         dset_dict[sid] = study_dict
 
     return dset_dict
 
 
 def convert_neurosynth_to_json(
-    database_file,
+    coordinates_file,
+    metadata_file,
     out_file,
     annotations_files=None,
     feature_groups=None,
 ):
     """Convert Neurosynth/NeuroQuery dataset text file to a NiMARE json file.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
 
     .. versionchanged:: 0.0.9
 
@@ -153,18 +176,19 @@ def convert_neurosynth_to_json(
 
     Parameters
     ----------
-    database_file : :obj:`str`
+    coordinates_file : :obj:`str`
         TSV.GZ file with Neurosynth/NeuroQuery's coordinates and metadata.
+    metadata_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's metadata.
     out_file : :obj:`str`
         Output NiMARE-format json file.
     annotations_files : :obj:`dict`, :obj:`list` of :obj:`dict`, or None, optional
         Optional file(s) with Neurosynth/NeuroQuery's annotations.
-        This should consist of a dictionary with three keys: "features", "ids", and "vocabulary".
+        This should consist of a dictionary with two keys: "features" and "vocabulary".
         "features" should have an NPZ file containing a sparse matrix of feature values.
-        "ids" should have a TXT file containing study IDs (matching the IDs in database_file).
         "vocabulary" should have a TXT file containing labels.
-        The IDs correspond to the rows of the features matrix, while the vocabulary corresponds
-        to the columns.
+        The vocabulary corresponds to the columns of the feature matrix, while study IDs are
+        inferred from the metadata file, which MUST be in the same order as the features matrix.
         Multiple sets of annotations may be provided, in which case "annotations_files" should be
         a list of dictionaries. The appropriate name of each annotation set will be inferred from
         the "features" filename, but this can be overwritten by using the "feature_groups"
@@ -176,18 +200,25 @@ def convert_neurosynth_to_json(
         the automatically-extracted annotation set names.
         Default is None.
     """
-    dset_dict = convert_neurosynth_to_dict(database_file, annotations_files, feature_groups)
+    dset_dict = convert_neurosynth_to_dict(
+        coordinates_file, metadata_file, annotations_files, feature_groups
+    )
     with open(out_file, "w") as fo:
         json.dump(dset_dict, fo, indent=4, sort_keys=True)
 
 
 def convert_neurosynth_to_dataset(
-    database_file,
+    coordinates_file,
+    metadata_file,
     annotations_files=None,
     feature_groups=None,
     target="mni152_2mm",
 ):
     """Convert Neurosynth/NeuroQuery database files into NiMARE Dataset.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
 
     .. versionchanged:: 0.0.9
 
@@ -195,16 +226,17 @@ def convert_neurosynth_to_dataset(
 
     Parameters
     ----------
-    database_file : :obj:`str`
+    coordinates_file : :obj:`str`
         TSV.GZ file with Neurosynth/NeuroQuery's coordinates and metadata.
+    metadata_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's metadata.
     annotations_files : :obj:`dict`, :obj:`list` of :obj:`dict`, or None, optional
         Optional file(s) with Neurosynth/NeuroQuery's annotations.
-        This should consist of a dictionary with three keys: "features", "ids", and "vocabulary".
+        This should consist of a dictionary with two keys: "features" and "vocabulary".
         "features" should have an NPZ file containing a sparse matrix of feature values.
-        "ids" should have a TXT file containing study IDs (matching the IDs in database_file).
         "vocabulary" should have a TXT file containing labels.
-        The IDs correspond to the rows of the features matrix, while the vocabulary corresponds
-        to the columns.
+        The vocabulary corresponds to the columns of the feature matrix, while study IDs are
+        inferred from the metadata file, which MUST be in the same order as the features matrix.
         Multiple sets of annotations may be provided, in which case "annotations_files" should be
         a list of dictionaries. The appropriate name of each annotation set will be inferred from
         the "features" filename, but this can be overwritten by using the "feature_groups"
@@ -223,7 +255,12 @@ def convert_neurosynth_to_dataset(
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
     """
-    dset_dict = convert_neurosynth_to_dict(database_file, annotations_files, feature_groups)
+    dset_dict = convert_neurosynth_to_dict(
+        coordinates_file,
+        metadata_file,
+        annotations_files,
+        feature_groups,
+    )
     return Dataset(dset_dict, target=target)
 
 

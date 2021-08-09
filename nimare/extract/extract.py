@@ -31,9 +31,9 @@ from .utils import (
 LGR = logging.getLogger(__name__)
 
 VALID_ENTITIES = {
-    "database.tsv.gz": ["data", "version"],
+    "coordinates.tsv.gz": ["data", "version"],
+    "metadata.tsv.gz": ["data", "version"],
     "features.npz": ["data", "version", "vocab", "source", "type"],
-    "ids.txt": ["data", "version"],
     "vocabulary.txt": ["data", "version", "vocab"],
     "metadata.json": ["data", "version", "vocab"],
     "keys.tsv": ["data", "version", "vocab"],
@@ -74,8 +74,9 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     found_files = []
     log = True
     for database in database_file_manifest:
-        database_file = database["database"]
-        if not _find_entities(database_file, search_pairs, log=log):
+        coordinates_file = database["coordinates"]
+        metadata_file = database["metadata"]
+        if not _find_entities(coordinates_file, search_pairs, log=log):
             log = False
             continue
 
@@ -89,13 +90,14 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
             if not _find_entities(features_file, search_pairs):
                 continue
             else:
-                out_database_file = op.join(out_dir, database_file)
+                out_coordinates_file = op.join(out_dir, coordinates_file)
+                out_metadata_file = op.join(out_dir, metadata_file)
                 out_feature_dict = {k: op.join(out_dir, v) for k, v in feature_dict.items()}
 
                 db_found = [
                     i_db
                     for i_db, db_dct in enumerate(found_databases)
-                    if db_dct["database"] == out_database_file
+                    if db_dct["coordinates"] == out_coordinates_file
                 ]
                 if len(db_found):
                     assert len(db_found) == 1
@@ -104,11 +106,12 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
                 else:
                     found_databases.append(
                         {
-                            "database": out_database_file,
+                            "coordinates": out_coordinates_file,
+                            "metadata": out_metadata_file,
                             "features": [out_feature_dict],
                         }
                     )
-                found_files += [database_file, *feature_dict.values()]
+                found_files += [coordinates_file, metadata_file, *feature_dict.values()]
 
     found_files = sorted(list(set(found_files)))
     for found_file in found_files:
@@ -139,6 +142,8 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
 
     .. versionchanged:: 0.0.10
 
+        * Use new format for Neurosynth and NeuroQuery files.
+
     .. versionadded:: 0.0.4
 
     Parameters
@@ -162,8 +167,8 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     -------
     found_databases : :obj:`list` of :obj:`dict`
         List of dictionaries indicating datasets downloaded.
-        Each list entry is a different database, containing a dictionary with two keys:
-        "database" and "features". "database" will be a filename.
+        Each list entry is a different database, containing a dictionary with three keys:
+        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
         "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
         keys with associated files.
 
@@ -202,6 +207,15 @@ def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
         Each kwarg may be a string or a list of strings.
         If no kwargs are provided, all feature files for the specified database version will be
         downloaded.
+
+    Returns
+    -------
+    found_databases : :obj:`list` of :obj:`dict`
+        List of dictionaries indicating datasets downloaded.
+        Each list entry is a different database, containing a dictionary with three keys:
+        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
+        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
+        keys with associated files.
 
     Notes
     -----

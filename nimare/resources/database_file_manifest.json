@@ -1,66 +1,62 @@
 [
     {
-        "database": "data-neurosynth_version-3_database.tsv.gz",
+        "coordinates": "data-neurosynth_version-3_coordinates.tsv.gz",
+        "metadata": "data-neurosynth_version-3_metadata.tsv.gz",
         "features": [
             {
                 "features": "data-neurosynth_version-3_vocab-terms_source-abstract_type-tfidf_features.npz",
-                "ids": "data-neurosynth_version-3_ids.txt",
                 "vocabulary": "data-neurosynth_version-3_vocab-terms_vocabulary.txt"
             }
         ]
     },
     {
-        "database": "data-neurosynth_version-4_database.tsv.gz",
+        "coordinates": "data-neurosynth_version-4_coordinates.tsv.gz",
+        "metadata": "data-neurosynth_version-4_metadata.tsv.gz",
         "features": [
             {
                 "features": "data-neurosynth_version-4_vocab-terms_source-abstract_type-tfidf_features.npz",
-                "ids": "data-neurosynth_version-4_ids.txt",
                 "vocabulary": "data-neurosynth_version-4_vocab-terms_vocabulary.txt"
             }
         ]
     },
     {
-        "database": "data-neurosynth_version-5_database.tsv.gz",
+        "coordinates": "data-neurosynth_version-5_coordinates.tsv.gz",
+        "metadata": "data-neurosynth_version-5_metadata.tsv.gz",
         "features": [
             {
                 "features": "data-neurosynth_version-5_vocab-terms_source-abstract_type-tfidf_features.npz",
-                "ids": "data-neurosynth_version-5_ids.txt",
                 "vocabulary": "data-neurosynth_version-5_vocab-terms_vocabulary.txt"
             }
         ]
     },
     {
-        "database": "data-neurosynth_version-6_database.tsv.gz",
+        "coordinates": "data-neurosynth_version-6_coordinates.tsv.gz",
+        "metadata": "data-neurosynth_version-6_metadata.tsv.gz",
         "features": [
             {
                 "features": "data-neurosynth_version-6_vocab-terms_source-abstract_type-tfidf_features.npz",
-                "ids": "data-neurosynth_version-6_ids.txt",
                 "vocabulary": "data-neurosynth_version-6_vocab-terms_vocabulary.txt"
             },
             {
                 "features": "data-neurosynth_version-6_vocab-LDA50_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-6_ids.txt",
                 "vocabulary": "data-neurosynth_version-6_vocab-LDA50_vocabulary.txt",
                 "keys": "data-neurosynth_version-6_vocab-LDA50_keys.tsv",
                 "metadata": "data-neurosynth_version-6_vocab-LDA50_metadata.json"
             },
             {
                 "features": "data-neurosynth_version-6_vocab-LDA100_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-6_ids.txt",
                 "vocabulary": "data-neurosynth_version-6_vocab-LDA100_vocabulary.txt",
                 "keys": "data-neurosynth_version-6_vocab-LDA100_keys.tsv",
                 "metadata": "data-neurosynth_version-6_vocab-LDA100_metadata.json"
             },
             {
                 "features": "data-neurosynth_version-6_vocab-LDA200_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-6_ids.txt",
                 "vocabulary": "data-neurosynth_version-6_vocab-LDA200_vocabulary.txt",
                 "keys": "data-neurosynth_version-6_vocab-LDA200_keys.tsv",
                 "metadata": "data-neurosynth_version-6_vocab-LDA200_metadata.json"
             },
             {
                 "features": "data-neurosynth_version-6_vocab-LDA400_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-6_ids.txt",
                 "vocabulary": "data-neurosynth_version-6_vocab-LDA400_vocabulary.txt",
                 "keys": "data-neurosynth_version-6_vocab-LDA400_keys.tsv",
                 "metadata": "data-neurosynth_version-6_vocab-LDA400_metadata.json"
@@ -68,37 +64,33 @@
         ]
     },
     {
-        "database": "data-neurosynth_version-7_database.tsv.gz",
+        "coordinates": "data-neurosynth_version-7_coordinates.tsv.gz",
+        "metadata": "data-neurosynth_version-7_metadata.tsv.gz",
         "features": [
             {
                 "features": "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
-                "ids": "data-neurosynth_version-7_ids.txt",
                 "vocabulary": "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
             },
             {
                 "features": "data-neurosynth_version-7_vocab-LDA50_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-7_ids.txt",
                 "vocabulary": "data-neurosynth_version-7_vocab-LDA50_vocabulary.txt",
                 "keys": "data-neurosynth_version-7_vocab-LDA50_keys.tsv",
                 "metadata": "data-neurosynth_version-7_vocab-LDA50_metadata.json"
             },
             {
                 "features": "data-neurosynth_version-7_vocab-LDA100_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-7_ids.txt",
                 "vocabulary": "data-neurosynth_version-7_vocab-LDA100_vocabulary.txt",
                 "keys": "data-neurosynth_version-7_vocab-LDA100_keys.tsv",
                 "metadata": "data-neurosynth_version-7_vocab-LDA100_metadata.json"
             },
             {
                 "features": "data-neurosynth_version-7_vocab-LDA200_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-7_ids.txt",
                 "vocabulary": "data-neurosynth_version-7_vocab-LDA200_vocabulary.txt",
                 "keys": "data-neurosynth_version-7_vocab-LDA200_keys.tsv",
                 "metadata": "data-neurosynth_version-7_vocab-LDA200_metadata.json"
             },
             {
                 "features": "data-neurosynth_version-7_vocab-LDA400_source-abstract_type-weight_features.npz",
-                "ids": "data-neurosynth_version-7_ids.txt",
                 "vocabulary": "data-neurosynth_version-7_vocab-LDA400_vocabulary.txt",
                 "keys": "data-neurosynth_version-7_vocab-LDA400_keys.tsv",
                 "metadata": "data-neurosynth_version-7_vocab-LDA400_metadata.json"
