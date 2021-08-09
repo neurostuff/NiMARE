@@ -131,18 +131,18 @@ def convert_neurosynth_to_dict(
         study_coords_df = coords_df.loc[coords_df["id"] == sid]
         study_dict = {}
         study_dict["metadata"] = {}
-        study_dict["metadata"]["authors"] = study_metadata["authors"]
-        study_dict["metadata"]["journal"] = study_metadata["journal"]
-        study_dict["metadata"]["year"] = study_metadata["year"]
-        study_dict["metadata"]["title"] = study_metadata["title"]
+        study_dict["metadata"]["authors"] = study_metadata.get("authors", "n/a")
+        study_dict["metadata"]["journal"] = study_metadata.get("journal", "n/a")
+        study_dict["metadata"]["year"] = study_metadata.get("year", "n/a")
+        study_dict["metadata"]["title"] = study_metadata.get("title", "n/a")
         study_dict["contrasts"] = {}
         study_dict["contrasts"]["1"] = {}
         # Duplicate metadata across study and contrast levels
         study_dict["contrasts"]["1"]["metadata"] = {}
-        study_dict["contrasts"]["1"]["metadata"]["authors"] = study_metadata["authors"]
-        study_dict["contrasts"]["1"]["metadata"]["journal"] = study_metadata["journal"]
-        study_dict["contrasts"]["1"]["metadata"]["year"] = study_metadata["year"]
-        study_dict["contrasts"]["1"]["metadata"]["title"] = study_metadata["title"]
+        study_dict["contrasts"]["1"]["metadata"]["authors"] = study_metadata.get("authors", "n/a")
+        study_dict["contrasts"]["1"]["metadata"]["journal"] = study_metadata.get("journal", "n/a")
+        study_dict["contrasts"]["1"]["metadata"]["year"] = study_metadata.get("year", "n/a")
+        study_dict["contrasts"]["1"]["metadata"]["title"] = study_metadata.get("title", "n/a")
         study_dict["contrasts"]["1"]["coords"] = {}
         study_dict["contrasts"]["1"]["coords"]["space"] = study_metadata["space"]
         study_dict["contrasts"]["1"]["coords"]["x"] = study_coords_df["x"].tolist()
