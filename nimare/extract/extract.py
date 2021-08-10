@@ -149,14 +149,12 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     Parameters
     ----------
     path : str
-        Location to save the retrieved data files. Defaults to current directory.
+        Location in which to save the retrieved data files. Defaults to current directory.
     version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
-    url : None or str, optional
-        Specific URL to download. If not None, overrides URL to current data.
-        If you want to fetch Neurosynth's data from *before* the 2021 reorganization,
-        you will need to use this argument.
-    kwargs
+    overwrite : bool, optional
+        Whether to overwrite existing files or not. Default is False.
+    kwargs : dict, optional
         Keyword arguments to select relevant feature files.
         Valid kwargs include: source, vocab, type.
         Each kwarg may be a string or a list of strings.
@@ -175,8 +173,16 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     Notes
     -----
     This function was adapted from neurosynth.base.dataset.download().
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
-    URL = "https://github.com/neurosynth/neurosynth-data/blob/master/"
+    URL = (
+        "https://github.com/neurosynth/neurosynth-data/blob/"
+        "753c058ac17c69db47689c1bb7c7a2598b443035/"
+    )
 
     kwargs["data"] = "neurosynth"
     kwargs["version"] = version

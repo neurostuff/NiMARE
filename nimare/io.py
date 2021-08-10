@@ -69,8 +69,12 @@ def convert_neurosynth_to_dict(
     Returns
     -------
     dset_dict : :obj:`dict`
-        NiMARE-organized dictionary containing experiment information from text
-        files.
+        NiMARE-organized dictionary containing experiment information from text files.
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
     coords_df = pd.read_table(coordinates_file)
     metadata_df = pd.read_table(metadata_file)
@@ -199,6 +203,11 @@ def convert_neurosynth_to_json(
         This should only be used if "annotations_files" is used and the users wants to override
         the automatically-extracted annotation set names.
         Default is None.
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
     dset_dict = convert_neurosynth_to_dict(
         coordinates_file, metadata_file, annotations_files, feature_groups
@@ -254,6 +263,11 @@ def convert_neurosynth_to_dataset(
     -------
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
     dset_dict = convert_neurosynth_to_dict(
         coordinates_file,
