@@ -122,8 +122,7 @@ class GCLDAModel(NiMAREBase):
         if len(count_ids) != len(coord_ids) != len(ids):
             union_ids = sorted(list(set(count_ids + coord_ids)))
             LGR.warning(
-                "IDs mismatch detected: retaining {0} of {1} unique "
-                "IDs".format(len(ids), len(union_ids))
+                f"IDs mismatch detected: retaining {len(ids)} of {len(union_ids)} unique IDs"
             )
         self.ids = ids
 
@@ -362,6 +361,7 @@ class GCLDAModel(NiMAREBase):
         """Run multiple iterations.
 
         .. versionchanged:: 0.0.8
+
             [ENH] Remove ``verbose`` parameter.
 
         Parameters
@@ -399,6 +399,7 @@ class GCLDAModel(NiMAREBase):
         """Run a complete update cycle (sample z, sample y&r, update regions).
 
         .. versionchanged:: 0.0.8
+
             [ENH] Remove ``verbose`` parameter.
 
         Parameters
@@ -409,32 +410,28 @@ class GCLDAModel(NiMAREBase):
         """
         self.iter += 1  # Update total iteration count
 
-        LGR.debug("Iter {0:04d}: Sampling z".format(self.iter))
+        LGR.debug(f"Iter {self.iter:04d}: Sampling z")
         self.seed += 1
         self._update_word_topic_assignments(self.seed)  # Update z-assignments
 
-        LGR.debug("Iter {0:04d}: Sampling y|r".format(self.iter))
+        LGR.debug(f"Iter {self.iter:04d}: Sampling y|r")
         self.seed += 1
         self._update_peak_assignments(self.seed)  # Update y-assignments
 
-        LGR.debug("Iter {0:04d}: Updating spatial params".format(self.iter))
+        LGR.debug(f"Iter {self.iter:04d}: Updating spatial params")
         self._update_regions()  # Update gaussian estimates for all subregions
 
         # Only update log-likelihood every 'loglikely_freq' iterations
         # (Computing log-likelihood isn't necessary and slows things down a bit)
         if self.iter % loglikely_freq == 0:
-            LGR.debug("Iter {0:04d}: Computing log-likelihood".format(self.iter))
+            LGR.debug(f"Iter {self.iter:04d}: Computing log-likelihood")
 
             # Compute log-likelihood of model in current state
             self.compute_log_likelihood()
             LGR.info(
-                "Iter {0:04d} Log-likely: x = {1:10.1f}, w = {2:10.1f}, "
-                "tot = {3:10.1f}".format(
-                    self.iter,
-                    self.loglikelihood["x"][-1],
-                    self.loglikelihood["w"][-1],
-                    self.loglikelihood["total"][-1],
-                )
+                f"Iter {self.iter:04d} Log-likely: x = {self.loglikelihood['x'][-1]:10.1f}, "
+                f"w = {self.loglikelihood['w'][-1]:10.1f}, "
+                f"tot = {self.loglikelihood['total'][-1]:10.1f}"
             )
 
     def _update_word_topic_assignments(self, randseed):

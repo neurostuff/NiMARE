@@ -25,7 +25,7 @@ def generate_counts(text_df, text_column="abstract", tfidf=True, min_df=50, max_
         unigrams/bigrams derived from the data. D = document. T = term.
     """
     if text_column not in text_df.columns:
-        raise ValueError('Column "{0}" not found in DataFrame'.format(text_column))
+        raise ValueError(f"Column '{text_column}' not found in DataFrame")
 
     # Remove rows with empty text cells
     orig_ids = text_df["id"].tolist()
@@ -34,7 +34,7 @@ def generate_counts(text_df, text_column="abstract", tfidf=True, min_df=50, max_
     text_df = text_df.loc[text_df["id"].isin(keep_ids)]
 
     if len(keep_ids) != len(orig_ids):
-        LGR.info("Retaining {0}/{1} studies".format(len(keep_ids), len(orig_ids)))
+        LGR.info(f"Retaining {len(keep_ids)}/{len(orig_ids)} studies")
 
     ids = text_df["id"].tolist()
     text = text_df[text_column].tolist()

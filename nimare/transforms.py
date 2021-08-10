@@ -79,11 +79,11 @@ class ImageTransformer(Transformer):
 def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, overwrite=False):
     """Generate images of a given type from other image types and write out to files.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.9
 
         * [ENH] Add overwrite option to transform_images
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -137,9 +137,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
             id_out_dir = op.dirname(options[0])
         else:
             id_out_dir = out_dir
-        new_file = op.join(
-            id_out_dir, "{id_}_{res}_{target}.nii.gz".format(id_=id_, res=res, target=target)
-        )
+        new_file = op.join(id_out_dir, f"{id_}_{res}_{target}.nii.gz")
 
         # Grab columns with actual values
         available_data = row[~row.isnull()].to_dict()
@@ -167,12 +165,12 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
 def resolve_transforms(target, available_data, masker):
     """Determine and apply the appropriate transforms to a target image type from available data.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove unnecessary dimensions from output image object *img_like*. \
                 Now, the image object only has 3 dimensions.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -193,7 +191,7 @@ def resolve_transforms(target, available_data, masker):
         Otherwise, None.
     """
     if target in available_data.keys():
-        LGR.warning('Target "{}" already available.'.format(target))
+        LGR.warning(f"Target '{target}' already available.")
         return available_data[target]
 
     if target == "z":

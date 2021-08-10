@@ -33,6 +33,9 @@ class MKDADensity(CBMAEstimator):
 
     Notes
     -----
+    The MKDA density algorithm is also implemented in MATLAB at
+    https://github.com/canlab/Canlab_MKDA_MetaAnalysis.
+
     Available correction methods: :func:`MKDADensity.correct_fwe_montecarlo`
 
     References
@@ -115,7 +118,7 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         prop_active = ma_values.mean(1)
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
@@ -138,7 +141,7 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # MKDA maps are binary, so we only have k + 1 bins in the final
         # histogram, where k is the number of studies. We can analytically
@@ -173,6 +176,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     Notes
     -----
+    The MKDA Chi-square algorithm was originally implemented as part of the Neurosynth Python
+    library (https://github.com/neurosynth/neurosynth).
+
     Available correction methods: :func:`MKDAChi2.correct_fwe_montecarlo`,
     :obj:`MKDAChi2.correct_fdr_bh`
 
@@ -580,7 +586,7 @@ class KDA(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # assumes that groupby results in same order as MA maps
         n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
@@ -637,7 +643,7 @@ class KDA(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""

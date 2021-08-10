@@ -44,9 +44,7 @@ All trademarks referenced herein are property of their respective holders.
 Copyright (c) 2018--, NiMARE developers
 """
 
-DOWNLOAD_URL = "https://github.com/neurostuff/{name}/archive/{ver}.tar.gz".format(
-    name=PACKAGENAME, ver=VERSION
-)
+DOWNLOAD_URL = f"https://github.com/neurostuff/{PACKAGENAME}/archive/{VERSION}.tar.gz"
 
 REQUIRES = [
     "cognitiveatlas",

@@ -85,8 +85,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     dset_aff = model.mask.affine
     if not np.array_equal(roi.affine, dset_aff):
         raise ValueError(
-            "Input roi must have same affine as mask img:"
-            "\n{0}\n{1}".format(np.array2string(roi.affine), np.array2string(dset_aff))
+            "Input roi must have same affine as mask img:\n"
+            f"{np.array2string(roi.affine)}\n{np.array2string(dset_aff)}"
         )
 
     # Load ROI file and get ROI voxels overlapping with brain mask

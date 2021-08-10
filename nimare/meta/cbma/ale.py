@@ -66,6 +66,9 @@ class ALE(CBMAEstimator):
     The ALE algorithm was originally developed in [1]_, then updated in [2]_
     and [3]_.
 
+    The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
+    organization (https://www.brainmap.org/ale/).
+
     Available correction methods: :func:`ALE.correct_fwe_montecarlo`
 
     References
@@ -123,7 +126,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # Determine bins for null distribution histogram
         # Remember that numpy histogram bins are bin edges, not centers
@@ -156,7 +159,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
 
@@ -205,13 +208,13 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     r"""ALE subtraction analysis.
 
-    .. versionchanged:: 0.0.7
-
-        * [FIX] Assume a zero-centered and symmetric null distribution.
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Assume non-symmetric null distribution.
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
 
     Parameters
     ----------
@@ -233,6 +236,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
     Notes
     -----
     This method was originally developed in [1]_ and refined in [2]_.
+
+    The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
+    BrainMap organization (https://www.brainmap.org/ale/).
 
     Warning
     -------
@@ -500,7 +506,7 @@ class SCALE(CBMAEstimator):
         elif isinstance(data, np.ndarray):
             ma_values = data.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+            raise ValueError(f"Unsupported data type '{type(data)}'")
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values

@@ -138,7 +138,7 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
                 return path
             except Exception as exc:
                 short_error_message = getattr(exc, "strerror", str(exc))
-                errors.append("\n -{0} ({1})".format(path, short_error_message))
+                errors.append(f"\n -{path} ({short_error_message})")
 
     raise OSError(
         "NiMARE tried to store the dataset in the following directories, but: " + "".join(errors)
@@ -222,9 +222,9 @@ def _gen_alt_forms(term):
     # For one alternate form, put contents of parentheses at beginning of term
     if "(" in term:
         prefix = term[term.find("(") + 1 : term.find(")")]
-        temp_term = term.replace("({0})".format(prefix), "").replace("  ", " ")
+        temp_term = term.replace(f"({prefix})", "").replace("  ", " ")
         alt_forms.append(temp_term)
-        alt_forms.append("{0} {1}".format(prefix, temp_term))
+        alt_forms.append(f"{prefix} {temp_term}")
     else:
         prefix = ""
 

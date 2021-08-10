@@ -29,13 +29,13 @@ LGR = logging.getLogger(__name__)
 class Dataset(NiMAREBase):
     """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
 
-    .. versionchanged:: 0.0.8
-
-        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
-
     .. versionchanged:: 0.0.9
 
         * [ENH] Add merge method to Dataset class
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
 
     Parameters
     ----------
@@ -97,7 +97,7 @@ class Dataset(NiMAREBase):
         all_ids = []
         for pid in data.keys():
             for expid in data[pid]["contrasts"].keys():
-                id_ = "{0}-{1}".format(pid, expid)
+                id_ = f"{pid}-{expid}"
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
         id_df = id_df.set_index("id", drop=False)
@@ -355,7 +355,7 @@ class Dataset(NiMAREBase):
         for col in relative_path_cols:
             abs_col = col.replace("__relative", "")
             if abs_col in df.columns:
-                LGR.info("Overwriting images column {}".format(abs_col))
+                LGR.info(f"Overwriting images column {abs_col}")
             df[abs_col] = df[col].apply(try_prepend, prefix=self.basepath)
         self.images = df
 
@@ -608,7 +608,7 @@ class Dataset(NiMAREBase):
             # For now, labels are all we can search by.
             return self.ids
         elif not isinstance(labels, list):
-            raise ValueError('Argument "labels" cannot be {0}'.format(type(labels)))
+            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
 
         found_labels = [label for label in labels if label in self.annotations.columns]
         temp_annotations = self.annotations[self._id_cols + found_labels]

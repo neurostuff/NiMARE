@@ -36,24 +36,21 @@ img = nib.load(atlas["maps"])
 roi_idx = atlas["labels"].index("Right Amygdala")
 img_vals = np.unique(img.get_fdata())
 roi_val = img_vals[roi_idx]
-roi_img = image.math_img("img1 == {}".format(roi_val), img1=img)
+roi_img = image.math_img(f"img1 == {roi_val}", img1=img)
 
 ###############################################################################
 # Select studies with a reported coordinate in the ROI
 # ----------------------------------------------------
 roi_ids = dset.get_studies_by_mask(roi_img)
 dset_sel = dset.slice(roi_ids)
-print(
-    "{}/{} studies report at least one coordinate in the "
-    "ROI".format(len(roi_ids), len(dset.ids))
-)
+print(f"{len(roi_ids)}/{len(dset.ids)} studies report at least one coordinate in the ROI")
 
 ###############################################################################
 # Select studies with *no* reported coordinates in the ROI
 # --------------------------------------------------------
 no_roi_ids = list(set(dset.ids).difference(roi_ids))
 dset_unsel = dset.slice(no_roi_ids)
-print("{}/{} studies report zero coordinates in the ROI".format(len(no_roi_ids), len(dset.ids)))
+print(f"{len(no_roi_ids)}/{len(dset.ids)} studies report zero coordinates in the ROI")
 
 
 ###############################################################################

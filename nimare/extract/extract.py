@@ -280,7 +280,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     collection_folders = [f for f in glob(op.join(data_dir, "*")) if ".nidm" not in f]
     collection_folders = [f for f in collection_folders if op.isdir(f)]
     if len(collection_folders) > 1:
-        raise Exception("More than one folder found: {0}".format(", ".join(collection_folders)))
+        raise Exception(f"More than one folder found: {', '.join(collection_folders)}")
     else:
         folder = collection_folders[0]
     zip_files = glob(op.join(folder, "*.zip"))
@@ -345,7 +345,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
         fo.write("The MALLET toolbox for latent Dirichlet allocation.")
 
     if verbose > 0:
-        print("\nDataset moved to {}\n".format(data_dir))
+        print(f"\nDataset moved to {data_dir}\n")
 
     return data_dir
 
@@ -461,7 +461,9 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_abstracts(dataset, email):
-    """Download the abstracts for a list of PubMed IDs. Uses the BioPython package.
+    """Download the abstracts for a list of PubMed IDs.
+
+    Uses the BioPython package.
 
     .. versionadded:: 0.0.2
 
@@ -495,13 +497,13 @@ def download_abstracts(dataset, email):
     elif isinstance(dataset, list):
         pmids = [str(pmid) for pmid in dataset]
     else:
-        raise Exception("Dataset type not recognized: {0}".format(type(dataset)))
+        raise Exception(f"Dataset type not recognized: {type(dataset)}")
 
     records = []
     # PubMed only allows you to search ~1000 at a time. I chose 900 to be safe.
     chunks = [pmids[x : x + 900] for x in range(0, len(pmids), 900)]
     for i, chunk in enumerate(chunks):
-        LGR.info("Downloading chunk {0} of {1}".format(i + 1, len(chunks)))
+        LGR.info(f"Downloading chunk {i + 1} of {len(chunks)}")
         h = Entrez.efetch(db="pubmed", id=chunk, rettype="medline", retmode="text")
         records += list(Medline.parse(h))
 
@@ -574,7 +576,7 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
         raise Exception("Download interrupted")
 
     f.seek(0)
-    LGR.info("Uncompressing the model to {}...".format(temp_data_dir))
+    LGR.info(f"Uncompressing the model to {temp_data_dir}...")
     tf_file = tarfile.TarFile(fileobj=LZMAFile(f), mode="r")
     tf_file.extractall(temp_data_dir)
 
@@ -585,6 +587,6 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
         fo.write("The trained Peaks2Maps model from OHBM 2018.")
 
     if verbose > 0:
-        print("\nDataset moved to {}\n".format(data_dir))
+        print(f"\nDataset moved to {data_dir}\n")
 
     return data_dir

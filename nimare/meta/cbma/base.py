@@ -21,12 +21,12 @@ LGR = logging.getLogger(__name__)
 class CBMAEstimator(MetaEstimator):
     """Base class for coordinate-based meta-analysis methods.
 
-    .. versionadded:: 0.0.3
-
     .. versionchanged:: 0.0.8
 
         * [REF] Use saved MA maps, when available.
         * [REF] Add *low_memory* option.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -195,7 +195,7 @@ class CBMAEstimator(MetaEstimator):
         elif isinstance(data, np.ndarray):
             ma_values = data
         elif not isinstance(data, np.ndarray):
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+            raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
         return self._compute_summarystat(ma_values)
@@ -631,11 +631,11 @@ class CBMAEstimator(MetaEstimator):
 class PairwiseCBMAEstimator(CBMAEstimator):
     """Base class for pairwise coordinate-based meta-analysis methods.
 
-    .. versionadded:: 0.0.3
-
     .. versionchanged:: 0.0.8
 
         * [REF] Use saved MA maps, when available.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
