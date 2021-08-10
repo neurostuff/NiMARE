@@ -1,10 +1,10 @@
 """Tools for downloading datasets."""
+import itertools
+import json
 import logging
-import math
 import os
 import os.path as op
 import shutil
-import sys
 import tarfile
 import time
 import zipfile
@@ -19,6 +19,7 @@ import requests
 from tqdm.auto import tqdm
 
 from ..dataset import Dataset
+from ..utils import get_resource_path
 from .utils import (
     _download_zipped_file,
     _expand_df,
@@ -29,59 +30,214 @@ from .utils import (
 
 LGR = logging.getLogger(__name__)
 
+VALID_ENTITIES = {
+    "coordinates.tsv.gz": ["data", "version"],
+    "metadata.tsv.gz": ["data", "version"],
+    "features.npz": ["data", "version", "vocab", "source", "type"],
+    "vocabulary.txt": ["data", "version", "vocab"],
+    "metadata.json": ["data", "version", "vocab"],
+    "keys.tsv": ["data", "version", "vocab"],
+}
 
-def fetch_neurosynth(path=".", url=None, unpack=False):
+
+def _find_entities(filename, search_pairs, log=False):
+    """Search file for any matching patterns of entities."""
+    # Convert all string-based kwargs to lists
+    search_pairs = {k: [v] if isinstance(v, str) else v for k, v in search_pairs.items()}
+    search_pairs = [[f"{k}-{v_i}" for v_i in v] for k, v in search_pairs.items()]
+    searches = list(itertools.product(*search_pairs))
+
+    if log:
+        LGR.info(f"Searching for any feature files matching the following criteria: {searches}")
+
+    file_parts = filename.split("_")
+    suffix = file_parts[-1]
+    valid_entities_for_suffix = VALID_ENTITIES[suffix]
+    for search in searches:
+        temp_search = [term for term in search if term.split("-")[0] in valid_entities_for_suffix]
+        if all(term in file_parts for term in temp_search):
+            return True
+
+    return False
+
+
+def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
+    """Fetch generic database."""
+    res_dir = get_resource_path()
+    with open(op.join(res_dir, "database_file_manifest.json"), "r") as fo:
+        database_file_manifest = json.load(fo)
+
+    out_dir = op.abspath(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+
+    found_databases = []
+    found_files = []
+    log = True
+    for database in database_file_manifest:
+        coordinates_file = database["coordinates"]
+        metadata_file = database["metadata"]
+        if not _find_entities(coordinates_file, search_pairs, log=log):
+            log = False
+            continue
+
+        log = False
+
+        feature_dicts = database["features"]
+        for feature_dict in feature_dicts:
+            features_file = feature_dict["features"]
+            # Other files associated with features have subset of entities,
+            # so unnecessary to search them if we assume that the hard-coded manifest is valid.
+            if not _find_entities(features_file, search_pairs):
+                continue
+            else:
+                out_coordinates_file = op.join(out_dir, coordinates_file)
+                out_metadata_file = op.join(out_dir, metadata_file)
+                out_feature_dict = {k: op.join(out_dir, v) for k, v in feature_dict.items()}
+
+                db_found = [
+                    i_db
+                    for i_db, db_dct in enumerate(found_databases)
+                    if db_dct["coordinates"] == out_coordinates_file
+                ]
+                if len(db_found):
+                    assert len(db_found) == 1
+
+                    found_databases[db_found[0]]["features"].append(out_feature_dict)
+                else:
+                    found_databases.append(
+                        {
+                            "coordinates": out_coordinates_file,
+                            "metadata": out_metadata_file,
+                            "features": [out_feature_dict],
+                        }
+                    )
+                found_files += [coordinates_file, metadata_file, *feature_dict.values()]
+
+    found_files = sorted(list(set(found_files)))
+    for found_file in found_files:
+        print(f"Downloading {found_file}", flush=True)
+
+        url = op.join(database_url, found_file + "?raw=true")
+        out_file = op.join(out_dir, found_file)
+
+        if op.isfile(out_file) and not overwrite:
+            print("File exists and overwrite is False. Skipping.")
+            continue
+
+        with open(out_file, "wb") as fo:
+            u = urlopen(url)
+
+            block_size = 8192
+            while True:
+                buffer = u.read(block_size)
+                if not buffer:
+                    break
+                fo.write(buffer)
+
+    return found_databases
+
+
+def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     """Download the latest data files from NeuroSynth.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
 
     .. versionadded:: 0.0.4
 
     Parameters
     ----------
     path : str
-        Location to save the retrieved data files. Defaults to current directory.
-    url : None or str, optional
-        Specific URL to download. If not None, overrides URL to current data.
-    unpack : bool, optional
-        If True, unzips the data file post-download. Defaults to False.
+        Location in which to save the retrieved data files. Defaults to current directory.
+    version : str or list, optional
+        The version to fetch. The default is "7" (Neurosynth's latest version).
+    overwrite : bool, optional
+        Whether to overwrite existing files or not. Default is False.
+    kwargs : dict, optional
+        Keyword arguments to select relevant feature files.
+        Valid kwargs include: source, vocab, type.
+        Each kwarg may be a string or a list of strings.
+        If no kwargs are provided, all feature files for the specified database version will be
+        downloaded.
+
+    Returns
+    -------
+    found_databases : :obj:`list` of :obj:`dict`
+        List of dictionaries indicating datasets downloaded.
+        Each list entry is a different database, containing a dictionary with three keys:
+        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
+        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
+        keys with associated files.
 
     Notes
     -----
-    This function was originally neurosynth.base.dataset.download().
+    This function was adapted from neurosynth.base.dataset.download().
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
-    if url is None:
-        url = (
-            "https://github.com/neurosynth/neurosynth-data/blob/master/current_data.tar.gz?"
-            "raw=true"
-        )
-    if os.path.exists(path) and os.path.isdir(path):
-        basename = os.path.basename(url).split("?")[0]
-        filename = os.path.join(path, basename)
-    else:
-        filename = path
+    URL = (
+        "https://github.com/neurosynth/neurosynth-data/blob/"
+        "753c058ac17c69db47689c1bb7c7a2598b443035/"
+    )
 
-    f = open(filename, "wb")
+    kwargs["data"] = "neurosynth"
+    kwargs["version"] = version
 
-    u = urlopen(url)
-    file_size = int(u.headers["Content-Length"][0])
-    print("Downloading the latest Neurosynth files: {0} bytes: {1}".format(url, file_size))
+    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
 
-    bytes_dl = 0
-    block_size = 8192
-    while True:
-        buffer = u.read(block_size)
-        if not buffer:
-            break
-        bytes_dl += len(buffer)
-        f.write(buffer)
-        p = float(bytes_dl) / file_size
-        status = r"{0}  [{1:.2%}]".format(bytes_dl, p)
-        status = status + chr(8) * (len(status) + 1)
-        sys.stdout.write(status)
+    return found_databases
 
-    f.close()
 
-    if unpack:
-        tarfile.open(filename, "r:gz").extractall(os.path.dirname(filename))
+def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
+    """Download the latest data files from NeuroQuery.
+
+    .. versionadded:: 0.0.10
+
+    Parameters
+    ----------
+    path : str
+        Location to save the retrieved data files. Defaults to current directory.
+    version : str or list, optional
+        The version to fetch. The default is "7" (Neurosynth's latest version).
+    url : None or str, optional
+        Specific URL to download. If not None, overrides URL to current data.
+        If you want to fetch Neurosynth's data from *before* the 2021 reorganization,
+        you will need to use this argument.
+    kwargs
+        Keyword arguments to select relevant feature files.
+        Valid kwargs include: source, vocab, type.
+        Each kwarg may be a string or a list of strings.
+        If no kwargs are provided, all feature files for the specified database version will be
+        downloaded.
+
+    Returns
+    -------
+    found_databases : :obj:`list` of :obj:`dict`
+        List of dictionaries indicating datasets downloaded.
+        Each list entry is a different database, containing a dictionary with three keys:
+        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
+        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
+        keys with associated files.
+
+    Notes
+    -----
+    This function was adapted from neurosynth.base.dataset.download().
+    """
+    URL = (
+        "https://github.com/neuroquery/neuroquery_data/blob/"
+        "893f7c31ee616a2b05419fab8bcd7c40936f7e0a/data/"
+    )
+
+    kwargs["data"] = "neuroquery"
+    kwargs["version"] = version
+
+    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
+
+    return found_databases
 
 
 def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
@@ -410,7 +566,7 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     wrote = 0
     for data in tqdm(
         r.iter_content(block_size),
-        total=math.ceil(total_size // block_size),
+        total=np.ceil(total_size // block_size),
         unit="MB",
         unit_scale=True,
     ):

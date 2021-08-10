@@ -78,22 +78,58 @@ def test_convert_sleuth_to_json_smoke():
 
 def test_convert_neurosynth_to_dataset_smoke():
     """Smoke test for Neurosynth file conversion."""
-    db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
-    features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")
+    coordinates_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_coordinates.tsv.gz",
+    )
+    metadata_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_metadata.tsv.gz",
+    )
+    features = {
+        "features": os.path.join(
+            get_test_data_path(),
+            "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
+        ),
+        "vocabulary": os.path.join(
+            get_test_data_path(), "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
+        ),
+    }
     dset = io.convert_neurosynth_to_dataset(
-        db_file,
-        {"Neurosynth_TEST": features_file},
+        coordinates_file,
+        metadata_file,
+        annotations_files=features,
     )
     assert isinstance(dset, nimare.dataset.Dataset)
-    assert "Neurosynth_TEST__abilities" in dset.annotations.columns
+    assert "terms_abstract_tfidf__abilities" in dset.annotations.columns
 
 
 def test_convert_neurosynth_to_json_smoke():
     """Smoke test for Neurosynth file conversion."""
     out_file = os.path.abspath("temp.json")
-    db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
-    features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")
-    io.convert_neurosynth_to_json(db_file, out_file, annotations_file=features_file)
+    coordinates_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_coordinates.tsv.gz",
+    )
+    metadata_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_metadata.tsv.gz",
+    )
+    features = {
+        "features": os.path.join(
+            get_test_data_path(),
+            "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
+        ),
+        "vocabulary": os.path.join(
+            get_test_data_path(), "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
+        ),
+    }
+    io.convert_neurosynth_to_json(
+        coordinates_file,
+        metadata_file,
+        out_file,
+        annotations_files=features,
+    )
     dset = nimare.dataset.Dataset(out_file)
     assert os.path.isfile(out_file)
     assert isinstance(dset, nimare.dataset.Dataset)
