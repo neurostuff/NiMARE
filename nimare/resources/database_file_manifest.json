@@ -96,5 +96,47 @@
                 "metadata": "data-neurosynth_version-7_vocab-LDA400_metadata.json"
             }
         ]
+    },
+    {
+        "coordinates": "data-neuroquery_version-1_coordinates.tsv.gz",
+        "metadata": "data-neuroquery_version-1_metadata.tsv.gz",
+        "features": [
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery7547_source-combined_type-tfidf_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery7547_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery7547_source-abstract_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery7547_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery7547_source-body_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery7547_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery7547_source-keywords_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery7547_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery7547_source-title_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery7547_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery156521_source-abstract_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery156521_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery156521_source-body_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery156521_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery156521_source-keywords_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery156521_vocabulary.txt"
+            },
+            {
+                "features": "data-neuroquery_version-1_vocab-neuroquery156521_source-title_type-count_features.npz",
+                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery156521_vocabulary.txt"
+            }
+        ]
     }
 ]

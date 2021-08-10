@@ -176,7 +176,7 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     -----
     This function was adapted from neurosynth.base.dataset.download().
     """
-    URL = "https://github.com/tsalo/neurosynth-data/blob/master/"
+    URL = "https://github.com/neurosynth/neurosynth-data/blob/master/"
 
     kwargs["data"] = "neurosynth"
     kwargs["version"] = version
@@ -221,7 +221,10 @@ def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
     -----
     This function was adapted from neurosynth.base.dataset.download().
     """
-    URL = "https://github.com/neuroquery/neuroquery_data/blob/master/"
+    URL = (
+        "https://github.com/neuroquery/neuroquery_data/blob/"
+        "reorganize_files_like_neurosynth/data/"
+    )
 
     kwargs["data"] = "neuroquery"
     kwargs["version"] = version
