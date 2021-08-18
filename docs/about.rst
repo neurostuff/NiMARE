@@ -13,6 +13,10 @@ As with these other tools, NiMARE is open source, collaboratively developed, and
 
 This page outlines NiMARE's purpose and its role in a proposed meta-analytic ecosystem.
 
+.. important::
+  This page is not regularly updated.
+  For more up-to-date information, please see `neurostuff.github.io <https://neurostuff.github.io>`_.
+
 
 A Proposed Meta-Analytic Ecosystem
 ----------------------------------
