@@ -54,7 +54,8 @@ neurosynth_db = files[0]
 # Convert Neurosynth database to NiMARE dataset file
 # --------------------------------------------------
 neurosynth_dset = nimare.io.convert_neurosynth_to_dataset(
-    database_file=neurosynth_db["database"],
+    coordinates_file=neurosynth_db["coordinates"],
+    metadata_file=neurosynth_db["metadata"],
     annotations_files=neurosynth_db["features"],
 )
 neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset.pkl.gz"))
@@ -87,7 +88,8 @@ neuroquery_db = files[0]
 # Note that the conversion function says "neurosynth".
 # This is just for backwards compatibility.
 neuroquery_dset = nimare.io.convert_neurosynth_to_dataset(
-    database_file=neuroquery_db["database"],
+    coordinates_file=neuroquery_db["coordinates"],
+    metadata_file=neuroquery_db["metadata"],
     annotations_files=neuroquery_db["features"],
 )
 neuroquery_dset.save(os.path.join(out_dir, "neuroquery_dataset.pkl.gz"))
