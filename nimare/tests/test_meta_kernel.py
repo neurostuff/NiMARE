@@ -21,15 +21,15 @@ def test_ALEKernel_smoke(testdata_cbma):
 
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(coordinates, testdata_cbma.masker, return_type="image")
-    assert len(ma_maps) == len(testdata_cbma.ids)
+    assert len(ma_maps) == len(testdata_cbma.ids) - 2
     ma_maps = kern.transform(coordinates, testdata_cbma.masker, return_type="array")
-    assert ma_maps.shape[0] == len(testdata_cbma.ids)
+    assert ma_maps.shape[0] == len(testdata_cbma.ids) - 2
     # Test set_params
     kern.set_params(fwhm=10, sample_size=None)
     kern2 = kernel.ALEKernel(fwhm=10)
     ma_maps1 = kern.transform(coordinates, testdata_cbma.masker, return_type="array")
     ma_maps2 = kern2.transform(coordinates, testdata_cbma.masker, return_type="array")
-    assert ma_maps1.shape[0] == ma_maps2.shape[0] == len(testdata_cbma.ids)
+    assert ma_maps1.shape[0] == ma_maps2.shape[0] == len(testdata_cbma.ids) - 2
     assert np.array_equal(ma_maps1, ma_maps2)
 
 
@@ -44,7 +44,7 @@ def test_ALEKernel_1mm(testdata_cbma):
     coordinates = testdata_cbma.coordinates.copy()
     coordinates["sample_size"] = 20
 
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(coordinates, testdata_cbma.masker, return_type="image")
     ijk = coordinates.loc[coordinates["id"] == id_, ["i", "j", "k"]]
@@ -66,7 +66,7 @@ def test_ALEKernel_2mm(testdata_cbma):
     coordinates = testdata_cbma.coordinates.copy()
     coordinates["sample_size"] = 20
 
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="image")
 
@@ -83,15 +83,9 @@ def test_ALEKernel_inputdataset_returnimages(testdata_cbma):
 
     Test on Dataset object.
     """
-    # Manually override dataset coordinates file sample sizes
-    # This column would be extracted from metadata and added to coordinates
-    # automatically by the Estimator
-    testdata_cbma = testdata_cbma.copy()
     coordinates = testdata_cbma.coordinates.copy()
-    coordinates["sample_size"] = 20
-    testdata_cbma.coordinates = coordinates
 
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.ALEKernel()
     ma_maps = kern.transform(testdata_cbma, return_type="image")
 
@@ -110,7 +104,7 @@ def test_ALEKernel_fwhm(testdata_cbma):
     """
     coordinates = testdata_cbma.coordinates.copy()
 
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.ALEKernel(fwhm=10)
     ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="image")
 
@@ -129,7 +123,7 @@ def test_ALEKernel_sample_size(testdata_cbma):
     """
     coordinates = testdata_cbma.coordinates.copy()
 
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.ALEKernel(sample_size=20)
     ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="image")
 
@@ -145,7 +139,7 @@ def test_ALEKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     """Check that all return types produce equivalent results (minus the masking element)."""
     tmpdir = tmp_path_factory.mktemp("test_ALEKernel_inputdataset_returndataset")
     testdata_cbma.update_path(tmpdir)
-    kern = kernel.ALEKernel(sample_size=20, low_memory=True)
+    kern = kernel.ALEKernel(sample_size=20, memory_limit="1gb")
     ma_maps = kern.transform(testdata_cbma, return_type="image")
     ma_arr = kern.transform(testdata_cbma, return_type="array")
     dset = kern.transform(testdata_cbma, return_type="dataset")
@@ -154,9 +148,8 @@ def test_ALEKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
     dset_from_dset = kern.transform(dset, return_type="dataset")
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=dset.ids, imtype=kern.image_type)
-    )
+    ids = dset.coordinates["id"].unique()
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -168,9 +161,9 @@ def test_MKDAKernel_smoke(testdata_cbma):
     """Smoke test for nimare.meta.kernel.MKDAKernel, using Dataset object."""
     kern = kernel.MKDAKernel()
     ma_maps = kern.transform(testdata_cbma, return_type="image")
-    assert len(ma_maps) == len(testdata_cbma.ids)
+    assert len(ma_maps) == len(testdata_cbma.ids) - 2
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="array")
-    assert ma_maps.shape[0] == len(testdata_cbma.ids)
+    assert ma_maps.shape[0] == len(testdata_cbma.ids) - 2
 
 
 def test_MKDAKernel_1mm(testdata_cbma):
@@ -179,8 +172,8 @@ def test_MKDAKernel_1mm(testdata_cbma):
     This assumes the focus isn't masked out and spheres don't overlap.
     Test on 1mm template.
     """
-    id_ = "pain_01.nidm-1"
-    kern = kernel.MKDAKernel(r=4, value=1, low_memory=True)
+    id_ = "pain_03.nidm-1"
+    kern = kernel.MKDAKernel(r=4, value=1, memory_limit="1gb")
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
     ijk = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["i", "j", "k"]]
@@ -197,7 +190,7 @@ def test_MKDAKernel_2mm(testdata_cbma):
     This assumes the focus isn't masked out and spheres don't overlap.
     Test on 2mm template.
     """
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.MKDAKernel(r=4, value=1)
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
@@ -222,9 +215,8 @@ def test_MKDAKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     dset_from_dset = kern.transform(dset, return_type="dataset")
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=dset.ids, imtype=kern.image_type)
-    )
+    ids = dset.coordinates["id"].unique()
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -236,9 +228,9 @@ def test_KDAKernel_smoke(testdata_cbma):
     """Smoke test for nimare.meta.kernel.KDAKernel."""
     kern = kernel.KDAKernel()
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
-    assert len(ma_maps) == len(testdata_cbma.ids)
+    assert len(ma_maps) == len(testdata_cbma.ids) - 2
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="array")
-    assert ma_maps.shape[0] == len(testdata_cbma.ids)
+    assert ma_maps.shape[0] == len(testdata_cbma.ids) - 2
 
 
 def test_KDAKernel_1mm(testdata_cbma):
@@ -247,7 +239,7 @@ def test_KDAKernel_1mm(testdata_cbma):
     This assumes focus isn't masked out and spheres don't overlap.
     Test on 1mm template.
     """
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.KDAKernel(r=4, value=1)
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
@@ -265,7 +257,7 @@ def test_KDAKernel_2mm(testdata_cbma):
     This assumes focus isn't masked out and spheres don't overlap.
     Test on 2mm template.
     """
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.KDAKernel(r=4, value=1)
     ma_maps = kern.transform(testdata_cbma.coordinates, testdata_cbma.masker, return_type="image")
 
@@ -283,7 +275,7 @@ def test_KDAKernel_inputdataset_returnimages(testdata_cbma):
     This assumes focus isn't masked out and spheres don't overlap.
     Test on Dataset object.
     """
-    id_ = "pain_01.nidm-1"
+    id_ = "pain_03.nidm-1"
     kern = kernel.KDAKernel(r=4, value=1)
     ma_maps = kern.transform(testdata_cbma, return_type="image")
 
@@ -310,9 +302,8 @@ def test_KDAKernel_inputdataset_returndataset(testdata_cbma, tmp_path_factory):
     dset_from_dset = kern.transform(dset, return_type="dataset")
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=dset.ids, imtype=kern.image_type)
-    )
+    ids = dset.coordinates["id"].unique()
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -348,9 +339,8 @@ def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
     dset_from_dset = kern.transform(dset, return_type="dataset")
     ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
     ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
-    ma_maps_dset = testdata_cbma.masker.transform(
-        dset.get_images(ids=dset.ids, imtype=kern.image_type)
-    )
+    ids = dset.coordinates["id"].unique()
+    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
     assert isinstance(dset_from_dset, Dataset)
     assert np.array_equal(ma_arr, ma_maps_arr)
     assert np.array_equal(ma_arr, ma_maps_dset)
@@ -368,7 +358,7 @@ def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
     testdata_cbma.update_path(tmpdir)
     kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
 
-    est = MKDADensity(kernel_transformer=kern, null_method="analytic")
+    est = MKDADensity(kernel_transformer=kern, null_method="approximate")
     res = est.fit(testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
     assert res.get_map("p", return_type="array").dtype == np.float64
@@ -383,10 +373,16 @@ def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
     ],
 )
 def test_kernel_low_high_memory(testdata_cbma, tmp_path_factory, kern, kwargs):
-    """Compare kernel results when low_memory is used vs. not."""
-    kern_low_mem = kern(low_memory=True, **kwargs)
-    kern_high_mem = kern(low_memory=False, **kwargs)
+    """Compare kernel results when memory_limit is used vs. not."""
+    kern_low_mem = kern(memory_limit="1gb", **kwargs)
+    kern_spec_mem = kern(memory_limit="2gb", **kwargs)
+    kern_high_mem = kern(memory_limit=None, **kwargs)
     trans_kwargs = {"dataset": testdata_cbma, "return_type": "array"}
-    assert np.all(
-        kern_low_mem.transform(**trans_kwargs) == kern_high_mem.transform(**trans_kwargs)
+    assert np.array_equal(
+        kern_low_mem.transform(**trans_kwargs),
+        kern_high_mem.transform(**trans_kwargs),
+    )
+    assert np.array_equal(
+        kern_low_mem.transform(**trans_kwargs),
+        kern_spec_mem.transform(**trans_kwargs),
     )

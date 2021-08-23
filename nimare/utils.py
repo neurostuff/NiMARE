@@ -43,7 +43,7 @@ def dict_to_df(id_df, data, key="labels"):
     for pid in data.keys():
         for expid in data[pid]["contrasts"].keys():
             exp = data[pid]["contrasts"][expid]
-            id_ = "{0}-{1}".format(pid, expid)
+            id_ = f"{pid}-{expid}"
 
             if key not in data[pid]["contrasts"][expid].keys():
                 continue
@@ -75,7 +75,7 @@ def dict_to_coordinates(data, masker, space):
 
             # Required info (ids, x, y, z, space)
             n_coords = len(exp["coords"]["x"])
-            rep_id = np.array([["{0}-{1}".format(pid, expid), pid, expid]] * n_coords).T
+            rep_id = np.array([[f"{pid}-{expid}", pid, expid]] * n_coords).T
 
             space_arr = exp["coords"].get("space")
             space_arr = np.array([space_arr] * n_coords)
@@ -123,21 +123,40 @@ def dict_to_coordinates(data, masker, space):
     # replace nan with none
     df = df.where(pd.notnull(df), None)
     df[["x", "y", "z"]] = df[["x", "y", "z"]].astype(float)
+    df = transform_coordinates_to_ijk(df, masker, space)
+    return df
 
+
+def transform_coordinates_to_ijk(df, masker, space):
+    """Convert xyz coordinates in a DataFrame to ijk indices for a given target space.
+
+    Parameters
+    ----------
+    df : :obj:`pandas.DataFrame`
+    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        Masker object defining the space and location of the area of interest
+        (e.g., 'brain').
+    space : :obj:`str`
+        String describing the stereotactic space and resolution of the masker.
+
+    Returns
+    -------
+    df : :obj:`pandas.DataFrame`
+        DataFrame with IJK columns either added or overwritten.
+    """
     # Now to apply transformations!
     if "mni" in space.lower() or "ale" in space.lower():
         transform = {"MNI": None, "TAL": tal2mni, "Talairach": tal2mni}
     elif "tal" in space.lower():
         transform = {"MNI": mni2tal, "TAL": None, "Talairach": None}
     else:
-        raise ValueError("Unrecognized space: {0}".format(space))
+        raise ValueError(f"Unrecognized space: {space}")
 
     found_spaces = df["space"].unique()
     for found_space in found_spaces:
         if found_space not in transform.keys():
             LGR.warning(
-                "Not applying transforms to coordinates in "
-                'unrecognized space "{0}"'.format(found_space)
+                f"Not applying transforms to coordinates in unrecognized space '{found_space}'"
             )
         alg = transform.get(found_space, None)
         idx = df["space"] == found_space
@@ -146,8 +165,8 @@ def dict_to_coordinates(data, masker, space):
         df.loc[idx, "space"] = space
 
     xyz = df[["x", "y", "z"]].values
-    ijk = pd.DataFrame(mm2vox(xyz, masker.mask_img.affine), columns=["i", "j", "k"])
-    df = pd.concat([df, ijk], axis=1)
+    ijk = mm2vox(xyz, masker.mask_img.affine)
+    df[["i", "j", "k"]] = ijk
     return df
 
 
@@ -194,23 +213,33 @@ def validate_images_df(image_df):
                 image_df = image_df.rename(columns={col: col + "__relative"})
         else:
             raise ValueError(
-                "Mix of absolute and relative paths detected "
-                "for images in column '{}'".format(col)
+                f"Mix of absolute and relative paths detected for images in column '{col}'"
             )
 
     # Set relative paths from absolute ones
     if len(abs_cols):
         all_files = list(np.ravel(image_df[abs_cols].values))
         all_files = [f for f in all_files if isinstance(f, str)]
-        shared_path = find_stem(all_files)
+
+        if len(all_files) == 1:
+            # In the odd case where there's only one absolute path
+            shared_path = op.dirname(all_files[0]) + op.sep
+        else:
+            shared_path = find_stem(all_files)
+
         # Get parent *directory* if shared path includes common prefix.
         if not shared_path.endswith(op.sep):
             shared_path = op.dirname(shared_path) + op.sep
-        LGR.info("Shared path detected: '{0}'".format(shared_path))
+        LGR.info(f"Shared path detected: '{shared_path}'")
+
+        image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
         for abs_col in abs_cols:
-            image_df[abs_col + "__relative"] = image_df[abs_col].apply(
+            image_df_out[abs_col + "__relative"] = image_df[abs_col].apply(
                 lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
             )
+
+        image_df = image_df_out
+
     return image_df
 
 
@@ -238,7 +267,7 @@ def get_template(space="mni152_2mm", mask=None):
         elif mask == "gm":
             img = datasets.fetch_icbm152_brain_gm_mask(threshold=0.2)
         else:
-            raise ValueError("Mask {0} not supported".format(mask))
+            raise ValueError(f"Mask {mask} not supported")
     elif space == "mni152_2mm":
         if mask is None:
             img = datasets.load_mni152_template()
@@ -254,7 +283,7 @@ def get_template(space="mni152_2mm", mask=None):
             data = (data > 1200).astype(int)
             img = nib.Nifti1Image(data, temp_img.affine)
         else:
-            raise ValueError("Mask {0} not supported".format(mask))
+            raise ValueError(f"Mask {mask} not supported")
     elif space == "ale_2mm":
         if mask is None:
             img = datasets.load_mni152_template()
@@ -263,7 +292,7 @@ def get_template(space="mni152_2mm", mask=None):
             # the default "more conservative" MNI152 mask in GingerALE.
             img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii"))
     else:
-        raise ValueError("Space {0} not supported".format(space))
+        raise ValueError(f"Space {space} not supported")
     return img
 
 
@@ -375,7 +404,7 @@ def find_stem(arr):
 def uk_to_us(text):
     """Convert UK spellings to US based on a converter.
 
-    english_spellings.csv: From http://www.tysto.com/uk-us-spelling-list.html
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -384,6 +413,10 @@ def uk_to_us(text):
     Returns
     -------
     text : :obj:`str`
+
+    Notes
+    -----
+    The english_spellings.csv file is from http://www.tysto.com/uk-us-spelling-list.html.
     """
     SPELL_DF = pd.read_csv(op.join(get_resource_path(), "english_spellings.csv"), index_col="UK")
     SPELL_DICT = SPELL_DF["US"].to_dict()
@@ -398,6 +431,8 @@ def uk_to_us(text):
 def use_memmap(logger, n_files=1):
     """Memory-map array to a file, and perform cleanup after.
 
+    .. versionadded:: 0.0.8
+
     Parameters
     ----------
     logger : :obj:`logging.Logger`
@@ -408,12 +443,12 @@ def use_memmap(logger, n_files=1):
     Notes
     -----
     This function is used as a decorator to methods in which memory-mapped arrays may be used.
-    It will only be triggered if the class to which the method belongs has a ``low_memory``
-    attribute that is set to ``True``.
+    It will only be triggered if the class to which the method belongs has a ``memory_limit``
+    attribute that is set to something other than ``None``.
 
     It will set an attribute within the method's class named ``memmap_filenames``, which is a list
     of filename strings, with ``n_files`` elements.
-    If ``low_memory`` is False, then it will be a list of ``Nones``.
+    If ``memory_limit`` is None, then it will be a list of ``Nones``.
 
     Files generated by this function will be stored in the NiMARE data directory and will be
     removed after the wrapped method finishes.
@@ -423,7 +458,7 @@ def use_memmap(logger, n_files=1):
     def inner_function(function):
         @wraps(function)
         def memmap_context(self, *args, **kwargs):
-            if hasattr(self, "low_memory") and self.low_memory:
+            if hasattr(self, "memory_limit") and self.memory_limit:
                 self.memmap_filenames, filenames = [], []
                 for i_file in range(n_files):
                     start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -431,7 +466,7 @@ def use_memmap(logger, n_files=1):
                     _, filename = mkstemp(
                         prefix=self.__class__.__name__, suffix=start_time, dir=dataset_dir
                     )
-                    logger.info(f"Temporary file written to {filename}")
+                    logger.debug(f"Temporary file written to {filename}")
                     self.memmap_filenames.append(filename)
                     filenames.append(filename)
             else:
@@ -444,14 +479,111 @@ def use_memmap(logger, n_files=1):
                     logger.error(f"{function.__name__} failed, removing {filename}")
                 raise
             finally:
-                if hasattr(self, "low_memory") and self.low_memory and os.path.isfile(filename):
+                if (
+                    hasattr(self, "memory_limit")
+                    and self.memory_limit
+                    and os.path.isfile(filename)
+                ):
                     for filename in filenames:
-                        logger.info(f"Removing temporary file: {filename}")
+                        logger.debug(f"Removing temporary file: {filename}")
                         os.remove(filename)
 
         return memmap_context
 
     return inner_function
+
+
+BYTE = 2
+KILOBYTE = BYTE ** 10
+BYTE_CONVERSION = {
+    "kb": KILOBYTE,
+    "mb": KILOBYTE ** 2,
+    "gb": KILOBYTE ** 3,
+    "tb": KILOBYTE ** 4,
+}
+
+
+def determine_chunk_size(limit, arr, multiplier=1):
+    """Determine how many arrays can be read into memory at once.
+
+    Parameters
+    ----------
+    limit : :obj:`str`
+        String representation of memory limit, can use:
+        kb, mb, gb, and tb as suffix (e.g., "4gb").
+    arr : :obj:`numpy.array`
+        Representative numpy array.
+    multiplier : :obj:`int`
+        Adjustment for processes that have more or
+        less overhead than expected.
+    """
+    limit = limit.lower()
+    size, representation = re.search(r"([0-9]+)([a-z]+)", limit).groups()
+
+    limit_bytes = float(size) * BYTE_CONVERSION[representation] * multiplier
+
+    arr_bytes = arr.size * arr.itemsize
+
+    chunk_size = int(limit_bytes // arr_bytes)
+
+    if chunk_size == 0:
+        arr_size = arr_bytes // BYTE_CONVERSION["mb"]
+        raise RuntimeError(f"memory limit: {limit} too small for array with size {arr_size}mb")
+
+    return chunk_size
+
+
+def safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None):
+    """Apply a masker with limited memory usage.
+
+    Parameters
+    ----------
+    imgs : list of niimgs
+        List of images upon which to apply the masker.
+    masker : nilearn masker
+        Masker object to apply to images.
+    memory_limit : :obj:`str`, optional
+        String representation of memory limit, can use:
+        kb, mb, gb, and tb as suffix (e.g., "4gb").
+    dtype : :obj:`str`, optional
+        Target datatype of masked array.
+        Default is "auto", which uses the datatype of the niimgs.
+    memfile : :obj:`str` or None, optional
+        Name of a memory-mapped file. If None, memory-mapping will not be used.
+
+    Returns
+    -------
+    masked_data : :obj:`numpy.ndarray` or :obj:`numpy.memmap`
+        Masked data in a 2D array.
+        Either an ndarray (if memfile is None) or a memmap array (if memfile is a string).
+    """
+    assert isinstance(memfile, (type(None), str))
+
+    first_img_data = masker.transform(imgs[0])
+    masked_shape = (len(imgs), first_img_data.size)
+    if memfile:
+        masked_data = np.memmap(
+            memfile,
+            dtype=first_img_data.dtype if dtype == "auto" else dtype,
+            mode="w+",
+            shape=masked_shape,
+        )
+    else:
+        masked_data = np.empty(
+            masked_shape,
+            dtype=first_img_data.dtype if dtype == "auto" else dtype,
+        )
+
+    # perform transform on chunks of the input maps
+    chunk_size = determine_chunk_size(memory_limit, first_img_data)
+    map_chunks = [imgs[i : i + chunk_size] for i in range(0, len(imgs), chunk_size)]
+    idx = 0
+    for map_chunk in map_chunks:
+        end_idx = idx + len(map_chunk)
+        masked_data[idx:end_idx, :] = masker.transform(map_chunk)
+        idx = end_idx
+
+    return masked_data
 
 
 def add_metadata_to_dataframe(
@@ -462,6 +594,8 @@ def add_metadata_to_dataframe(
     filter_func=np.mean,
 ):
     """Add metadata from a Dataset to a DataFrame.
+
+    .. versionadded:: 0.0.8
 
     This is particularly useful for kernel transformers or estimators where a given metadata field
     is necessary (e.g., ALEKernel with "sample_size"), but we want to just use the coordinates
@@ -523,6 +657,8 @@ def add_metadata_to_dataframe(
 def check_type(obj, clss, **kwargs):
     """Check variable type and initialize if necessary.
 
+    .. versionadded:: 0.0.8
+
     Parameters
     ----------
     obj
@@ -554,6 +690,10 @@ def vox2mm(ijk, affine):
     """
     Convert matrix subscripts to coordinates.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
     Parameters
     ----------
     ijk : (X, 3) :obj:`numpy.ndarray`
@@ -579,6 +719,10 @@ def vox2mm(ijk, affine):
 def mm2vox(xyz, affine):
     """
     Convert coordinates to matrix subscripts.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------
@@ -615,6 +759,10 @@ def mm2vox(xyz, affine):
 def tal2mni(coords):
     """
     Convert coordinates from Talairach space to MNI space.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
 
     Parameters
     ----------
@@ -691,6 +839,10 @@ def mni2tal(coords):
     """
     Convert coordinates from MNI space Talairach space.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
     Parameters
     ----------
     coords : (X, 3) :obj:`numpy.ndarray`
@@ -745,3 +897,38 @@ def mni2tal(coords):
     if use_dim == 1:
         out_coords = out_coords.transpose()
     return out_coords
+
+
+def boolean_unmask(data_array, bool_array):
+    """Unmask data based on a boolean array, with NaNs in empty voxels.
+
+    Parameters
+    ----------
+    data_array : 1D or 2D :obj:`numpy.ndarray`
+        Masked data array.
+    bool_array : 1D :obj:`numpy.ndarray`
+        Boolean mask array. Must have the same number of ``True`` entries as elements in the
+        second dimension of ``data_array``.
+
+    Returns
+    -------
+    unmasked_data : 1D or 2D :obj:`numpy.ndarray`
+        Unmasked data array.
+        If 1D, first dimension is the same size as the first (and only) dimension of
+        ``boolean_array``.
+        If 2D, first dimension is the same size as the first dimension of ``data_array``, while
+        second dimension is the same size as the first (and only) dimension  of ``boolean_array``.
+        All elements corresponding to ``False`` values in ``boolean_array`` will have NaNs.
+    """
+    assert data_array.ndim in (1, 2)
+    assert bool_array.ndim == 1
+    assert bool_array.sum() == data_array.shape[-1]
+
+    unmasked_data = np.full(
+        shape=bool_array.shape + data_array.T.shape[1:],
+        fill_value=np.nan,
+        dtype=data_array.dtype,
+    )
+    unmasked_data[bool_array] = data_array
+    unmasked_data = unmasked_data.T
+    return unmasked_data

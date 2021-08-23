@@ -112,6 +112,10 @@ def pearson(x, y):
 def null_to_p(test_value, null_array, tail="two", symmetric=False):
     """Return p-value for test value(s) against null array.
 
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Add parameter *symmetric*.
+
     Parameters
     ----------
     test_value : 1D array_like
@@ -192,6 +196,8 @@ def null_to_p(test_value, null_array, tail="two", symmetric=False):
 
 def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     """Return one-sided p-value for test value against null histogram.
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------

@@ -62,20 +62,21 @@ dset = convert_neurovault_to_dataset(
 # ------------------------------
 # Some of the statistical maps are T statistics and others are Z statistics.
 # To perform a Fisher's meta analysis, we need all Z maps.
-# Thoughtfully, NiMARE has a function named ``transform_images`` that will
+# Thoughtfully, NiMARE has a class named ``ImageTransformer`` that will
 # help us.
-from nimare.transforms import transform_images
+from nimare.transforms import ImageTransformer
 
 # Not all studies have Z maps!
 print(dset.images["z"])
 
-dset.images = transform_images(
-    dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
-)
+z_transformer = ImageTransformer(target="z")
+dset = z_transformer.transform(dset)
 
-# All studies have Z maps!
+# All studies now have Z maps!
 print(dset.images["z"])
 
+
+from nilearn.plotting import plot_stat_map
 
 ###############################################################################
 # Run a Meta-Analysis
@@ -83,7 +84,6 @@ print(dset.images["z"])
 # With the missing Z maps filled in, we can run a Meta-Analysis
 # and plot our results
 from nimare.meta.ibma import Fishers
-from nilearn.plotting import plot_stat_map
 
 meta = Fishers()
 

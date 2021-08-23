@@ -50,7 +50,7 @@ class MetaResult(object):
         """
         m = self.maps.get(name)
         if m is None:
-            raise ValueError("No map with name '{}' found.".format(name))
+            raise ValueError(f"No map with name '{name}' found.")
         if return_type == "image":
             # pending resolution of https://github.com/nilearn/nilearn/issues/2724
             try:

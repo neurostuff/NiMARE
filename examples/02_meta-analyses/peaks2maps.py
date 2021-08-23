@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas2:
+.. _metas9:
 
 ========================================================
  Generate modeled activation maps with peaks2maps

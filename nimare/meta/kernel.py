@@ -16,7 +16,7 @@ import pandas as pd
 from nilearn import image
 
 from ..base import Transformer
-from ..utils import use_memmap, vox2mm
+from ..utils import add_metadata_to_dataframe, safe_transform, use_memmap, vox2mm
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
@@ -62,13 +62,13 @@ class KernelTransformer(Transformer):
 
         # Determine names for kernel-specific files
         keys = sorted(params.keys())
-        param_str = "_".join("{k}-{v}".format(k=k, v=str(params[k])) for k in keys)
+        param_str = "_".join(f"{k}-{str(params[k])}" for k in keys)
         self.filename_pattern = (
-            "study-[[id]]_{ps}_{n}.nii.gz".format(n=self.__class__.__name__, ps=param_str)
-            .replace("[[", "{")
-            .replace("]]", "}")
+            f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
+                "[[", "{"
+            ).replace("]]", "}")
         )
-        self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
+        self.image_type = f"{param_str}_{self.__class__.__name__}"
 
     @use_memmap(LGR)
     def transform(self, dataset, masker=None, return_type="image"):
@@ -78,17 +78,19 @@ class KernelTransformer(Transformer):
         ----------
         dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
-        masker : img_like, optional
-            Only used if dataset is a DataFrame.
+        masker : img_like or None, optional
+            Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
+            If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
+            Default is None.
         return_type : {'array', 'image', 'dataset'}, optional
-            Whether to return a numpy array ('array'), a list of niimgs
-            ('image'), or a Dataset with MA images saved as files ('dataset').
-            Default is 'dataset'.
+            Whether to return a numpy array ('array'), a list of niimgs ('image'),
+            or a Dataset with MA images saved as files ('dataset').
+            Default is 'image'.
 
         Returns
         -------
-        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of
-               :class:`nibabel.Nifti1Image` or :class:`nimare.dataset.Dataset`
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
+               or :class:`nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images
@@ -110,7 +112,7 @@ class KernelTransformer(Transformer):
         if isinstance(dataset, pd.DataFrame):
             assert (
                 masker is not None
-            ), 'Argument "masker" must be provided if dataset is a DataFrame'
+            ), "Argument 'masker' must be provided if dataset is a DataFrame."
             mask = masker.mask_img
             coordinates = dataset.copy()
             assert (
@@ -119,7 +121,7 @@ class KernelTransformer(Transformer):
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
-            coordinates = dataset.coordinates
+            coordinates = dataset.coordinates.copy()
 
             # Determine MA map filenames. Must happen after parameters are set.
             self._infer_names(affine=md5(mask.affine).hexdigest())
@@ -132,29 +134,47 @@ class KernelTransformer(Transformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        return masker.transform(files)
+                        masked_data = safe_transform(files, masker)
+                        return masked_data
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
                         return dataset.copy()
 
-        # Otherwise, generate the MA maps
+            # Add any metadata the Transformer might need to the coordinates DataFrame
+            # This approach is probably inferior to one which uses a _required_inputs attribute
+            # (like the MetaEstimators), but it should work just fine as long as individual
+            # requirements are written in here.
+            if (
+                hasattr(self, "sample_size")
+                and (self.sample_size is None)
+                and ("sample_size" not in coordinates.columns)
+            ):
+                coordinates = add_metadata_to_dataframe(
+                    dataset,
+                    coordinates,
+                    metadata_field="sample_sizes",
+                    target_column="sample_size",
+                    filter_func=np.mean,
+                )
+
+        # Generate the MA maps if they weren't already available as images
         if return_type == "array":
             mask_data = mask.get_fdata().astype(np.bool)
         elif return_type == "image":
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
         elif return_type == "dataset":
-            dataset = dataset.copy()
             if dataset.basepath is None:
                 raise ValueError(
                     "Dataset output path is not set. Set the path with Dataset.update_path()."
                 )
             elif not os.path.isdir(dataset.basepath):
                 raise ValueError(
-                    "Output directory does not exist. Set the path to an "
-                    "existing folder with Dataset.update_path()."
+                    "Output directory does not exist. Set the path to an existing folder with "
+                    "Dataset.update_path()."
                 )
+            dataset = dataset.copy()
 
         transformed_maps = self._transform(mask, coordinates)
 
@@ -188,6 +208,10 @@ class KernelTransformer(Transformer):
             return imgs
         elif return_type == "dataset":
             del transformed_maps
+            # Replace NaNs with Nones
+            dataset.images[self.image_type] = dataset.images[self.image_type].where(
+                dataset.images[self.image_type].notnull(), None
+            )
             # Infer relative path
             dataset.images = dataset.images
             return dataset
@@ -217,6 +241,10 @@ class KernelTransformer(Transformer):
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
+
     Parameters
     ----------
     fwhm : :obj:`float`, optional
@@ -228,23 +256,25 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-    low_memory : :obj:`bool`, optional
-        Whether to employ mem-mapped arrays to reduce memory usage or not.
-        Default=False.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     """
 
-    def __init__(self, fwhm=None, sample_size=None, low_memory=False):
+    def __init__(self, fwhm=None, sample_size=None, memory_limit=None):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
-        self.low_memory = low_memory
+        self.memory_limit = memory_limit
 
     def _transform(self, mask, coordinates):
         kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
 
-        if self.low_memory:
+        if self.memory_limit:
             # Use a memmapped 4D array
             transformed_shape = (len(exp_ids),) + mask.shape
             transformed = np.memmap(
@@ -282,7 +312,7 @@ class ALEKernel(KernelTransformer):
                     kern = kernels[sample_size]
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
-            if self.low_memory:
+            if self.memory_limit:
                 transformed[i_exp, :, :, :] = kernel_data
 
                 # Write changes to disk
@@ -290,7 +320,7 @@ class ALEKernel(KernelTransformer):
             else:
                 transformed.append((kernel_data, id_))
 
-        if self.low_memory:
+        if self.memory_limit:
             return transformed, exp_ids
         else:
             return transformed
@@ -299,23 +329,29 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
+
     Parameters
     ----------
     r : :obj:`int`, optional
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
-    low_memory : :obj:`bool`, optional
-        Whether to employ mem-mapped arrays to reduce memory usage or not.
-        Default=False.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     """
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1, low_memory=False):
+    def __init__(self, r=10, value=1, memory_limit=None):
         self.r = float(r)
         self.value = value
-        self.low_memory = low_memory
+        self.memory_limit = memory_limit
 
     def _transform(self, mask, coordinates):
         dims = mask.shape
@@ -331,6 +367,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
+            memory_limit=self.memory_limit,
             memmap_filename=self.memmap_filenames[0],
         )
         exp_ids = np.unique(exp_idx)
@@ -340,15 +377,21 @@ class KDAKernel(KernelTransformer):
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add low-memory option for kernel transformers.
+
     Parameters
     ----------
     r : :obj:`int`, optional
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
-    low_memory : :obj:`bool`, optional
-        Whether to employ mem-mapped arrays to reduce memory usage or not.
-        Default=False.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     """
 
     _sum_overlap = False
@@ -359,9 +402,8 @@ class Peaks2MapsKernel(KernelTransformer):
 
     Parameters
     ----------
-    resample_to_mask : :obj:`bool`, optional
-        If True, will resample the MA maps to the mask's header.
-        Default is True.
+    model_dir : :obj:`str`, optional
+        Path to model directory. Default is "auto".
 
     Warning
     -------

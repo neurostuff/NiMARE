@@ -12,6 +12,9 @@ from nimare.tests.utils import get_test_data_path
 
 from ..utils import get_resource_path
 
+# Only enable the following once in a while for a check for SettingWithCopyWarnings
+# pd.options.mode.chained_assignment = "raise"
+
 
 @pytest.fixture(scope="session")
 def testdata_ibma(tmp_path_factory):
@@ -45,7 +48,7 @@ def testdata_ibma(tmp_path_factory):
 @pytest.fixture(scope="session")
 def testdata_cbma():
     """Generate coordinate-based dataset for tests."""
-    dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
     dset = nimare.dataset.Dataset(dset_file)
 
     # Only retain one peak in each study in coordinates
@@ -61,7 +64,7 @@ def testdata_cbma_full():
 
     Same as above, except returns all coords, not just one per study.
     """
-    dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
     dset = nimare.dataset.Dataset(dset_file)
     return dset
 
@@ -69,8 +72,8 @@ def testdata_cbma_full():
 @pytest.fixture(scope="session")
 def testdata_laird():
     """Load data from dataset into global variables."""
-    testdata_laird = nimare.dataset.Dataset.load(
-        os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
+    testdata_laird = nimare.dataset.Dataset(
+        os.path.join(get_test_data_path(), "neurosynth_laird_studies.json")
     )
     return testdata_laird
 
@@ -81,6 +84,12 @@ def mni_mask():
     return nib.load(
         os.path.join(get_resource_path(), "templates", "MNI152_2x2x2_brainmask.nii.gz")
     )
+
+
+@pytest.fixture(scope="session")
+def roi_img():
+    """Load MNI mask for testing."""
+    return nib.load(os.path.join(get_test_data_path(), "amygdala_roi.nii.gz"))
 
 
 @pytest.fixture(scope="session")
@@ -101,15 +110,18 @@ def testdata_ibma_resample(tmp_path_factory):
     for c in dset.images.columns:
         if c.endswith("__relative"):
             continue
+
         for f in dset.images[c].values:
             if (f is None) or not os.path.isfile(f):
                 continue
+
             new_f = f.replace(
                 dset_dir.rstrip(os.path.sep), str(tmpdir.absolute()).rstrip(os.path.sep)
             )
             dirname = os.path.dirname(new_f)
             if not os.path.isdir(dirname):
                 os.makedirs(dirname)
+
             # create random affine to make images different shapes
             affine = np.eye(3)
             np.fill_diagonal(affine, rng.choice([1, 2, 3]))

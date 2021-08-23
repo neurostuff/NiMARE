@@ -38,11 +38,11 @@ class ALE(CBMAEstimator):
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
-    null_method : {"analytic", "empirical"}, optional
+    null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
-        This is only used if ``null_method=="empirical"``.
+        This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
@@ -66,6 +66,9 @@ class ALE(CBMAEstimator):
     The ALE algorithm was originally developed in [1]_, then updated in [2]_
     and [3]_.
 
+    The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
+    organization (https://www.brainmap.org/ale/).
+
     Available correction methods: :func:`ALE.correct_fwe_montecarlo`
 
     References
@@ -83,7 +86,7 @@ class ALE(CBMAEstimator):
     def __init__(
         self,
         kernel_transformer=ALEKernel,
-        null_method="analytic",
+        null_method="approximate",
         n_iters=10000,
         n_cores=1,
         **kwargs,
@@ -123,7 +126,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # Determine bins for null distribution histogram
         # Remember that numpy histogram bins are bin edges, not centers
@@ -138,8 +141,8 @@ class ALE(CBMAEstimator):
         hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
 
-    def _compute_null_analytic(self, ma_maps):
-        """Compute uncorrected ALE null distribution using analytic solution.
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected ALE null distribution using approximate solution.
 
         Parameters
         ----------
@@ -156,7 +159,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
 
@@ -199,12 +202,19 @@ class ALE(CBMAEstimator):
             ale_hist = np.zeros(ale_hist.shape)
             np.add.at(ale_hist, score_idx, probabilities)
 
-        self.null_distributions_["histweights_corr-none_method-analytic"] = ale_hist
+        self.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
-    r"""
-    ALE subtraction analysis.
+    r"""ALE subtraction analysis.
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Assume non-symmetric null distribution.
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
 
     Parameters
     ----------
@@ -213,10 +223,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
         Default is 10000.
-    low_memory : :obj:`bool`, optional
-        If True, use memory-mapped files for large arrays to reduce memory usage.
-        If False, do everything in memory.
-        Default is False.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -225,6 +236,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
     Notes
     -----
     This method was originally developed in [1]_ and refined in [2]_.
+
+    The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
+    BrainMap organization (https://www.brainmap.org/ale/).
 
     Warning
     -------
@@ -246,7 +260,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
-    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, low_memory=False, **kwargs):
+    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, memory_limit=None, **kwargs):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -261,7 +275,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset2 = None
         self.results = None
         self.n_iters = n_iters
-        self.low_memory = low_memory
+        self.memory_limit = memory_limit
 
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
@@ -296,7 +310,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         diff_ale_values = grp1_ale_values - grp2_ale_values
 
         # Calculate null distribution for each voxel based on group-assignment randomization
-        if self.low_memory:
+        if self.memory_limit:
             # Use a memmapped 4D array
             iter_diff_values = np.memmap(
                 self.memmap_filenames[2],
@@ -313,7 +327,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
             iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
             iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
             del iter_grp1_ale_values, iter_grp2_ale_values
-            if self.low_memory:
+            if self.memory_limit:
                 # Write changes to disk
                 iter_diff_values.flush()
 
@@ -344,8 +358,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     description=("Introduces the specific co-activation likelihood estimation (SCALE) algorithm."),
 )
 class SCALE(CBMAEstimator):
-    r"""
-    Specific coactivation likelihood estimation.
+    r"""Specific coactivation likelihood estimation.
 
     Parameters
     ----------
@@ -363,6 +376,11 @@ class SCALE(CBMAEstimator):
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`nimare.meta.kernel.ALEKernel`.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -381,7 +399,7 @@ class SCALE(CBMAEstimator):
         n_cores=-1,
         ijk=None,
         kernel_transformer=ALEKernel,
-        low_memory=False,
+        memory_limit=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -398,7 +416,7 @@ class SCALE(CBMAEstimator):
         self.ijk = ijk
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.low_memory = low_memory
+        self.memory_limit = memory_limit
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
@@ -438,7 +456,7 @@ class SCALE(CBMAEstimator):
         params = zip(iter_dfs, iter_ijks)
 
         if self.n_cores == 1:
-            if self.low_memory:
+            if self.memory_limit:
                 perm_scale_values = np.memmap(
                     self.memmap_filenames[1],
                     dtype=stat_values.dtype,
@@ -451,7 +469,7 @@ class SCALE(CBMAEstimator):
                 )
             for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
                 perm_scale_values[i_iter, :] = self._run_permutation(pp)
-                if self.low_memory:
+                if self.memory_limit:
                     # Write changes to disk
                     perm_scale_values.flush()
         else:
@@ -488,7 +506,7 @@ class SCALE(CBMAEstimator):
         elif isinstance(data, np.ndarray):
             ma_values = data.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+            raise ValueError(f"Unsupported data type '{type(data)}'")
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values

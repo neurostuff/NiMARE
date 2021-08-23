@@ -23,7 +23,7 @@ def macm_workflow(
     # override sample size
     n_subs_db = dset.coordinates.drop_duplicates("id")["n"].astype(float).astype(int).sum()
     n_subs_sel = sel_dset.coordinates.drop_duplicates("id")["n"].astype(float).astype(int).sum()
-    LGR.info("{0} studies selected out of {1}.".format(len(sel_ids), len(dset.ids)))
+    LGR.info(f"{len(sel_ids)} studies selected out of {len(dset.ids)}.")
 
     boilerplate = """
 Meta-analytic connectivity modeling (MACM; Laird et al., 2009; Robinson et al.,

@@ -2,11 +2,11 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas3:
+.. _metas4:
 
-========================================================
+================================================================================
  Test combinations of kernels and estimators for coordinate-based meta-analyses.
-========================================================
+================================================================================
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
@@ -46,7 +46,7 @@ kernel_transformers = {
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        mkda = nimare.meta.MKDADensity(kernel_transformer=kt, null_method="analytic")
+        mkda = nimare.meta.MKDADensity(kernel_transformer=kt, null_method="approximate")
         mkda.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(mkda.results)
@@ -95,7 +95,7 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        kda = nimare.meta.KDA(kernel_transformer=kt, null_method="analytic")
+        kda = nimare.meta.KDA(kernel_transformer=kt, null_method="approximate")
         kda.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(kda.results)
@@ -117,7 +117,7 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        ale = nimare.meta.ALE(kernel_transformer=kt, null_method="analytic")
+        ale = nimare.meta.ALE(kernel_transformer=kt, null_method="approximate")
         ale.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(ale.results)

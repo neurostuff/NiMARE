@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas4:
+.. _metas6:
 
 ========================================================
  Run image-based meta-analyses on 21 pain studies
@@ -36,46 +36,43 @@ dset_dir = nimare.extract.download_nidm_pain()
 dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
+
 # Calculate missing images
-dset.images = nimare.transforms.transform_images(
-    dset.images, target="z", masker=dset.masker, metadata_df=dset.metadata
-)
-dset.images = nimare.transforms.transform_images(
-    dset.images, target="varcope", masker=dset.masker, metadata_df=dset.metadata
-)
+xformer = nimare.transforms.ImageTransformer(target=["varcope", "z"])
+dset = xformer.transform(dset)
 
 ###############################################################################
 # Stouffer's
 # --------------------------------------------------
-meta = ibma.Stouffers(use_sample_size=False)
+meta = ibma.Stouffers(use_sample_size=False, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Stouffer's with weighting by sample size
 # -----------------------------------------------------------------------------
-meta = ibma.Stouffers(use_sample_size=True)
+meta = ibma.Stouffers(use_sample_size=True, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Fisher's
 # -----------------------------------------------------------------------------
-meta = ibma.Fishers()
+meta = ibma.Fishers(resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Permuted OLS
 # -----------------------------------------------------------------------------
-meta = ibma.PermutedOLS(two_sided=True)
+meta = ibma.PermutedOLS(two_sided=True, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Permuted OLS with FWE Correction
 # -----------------------------------------------------------------------------
-meta = ibma.PermutedOLS(two_sided=True)
+meta = ibma.PermutedOLS(two_sided=True, resample=True)
 meta.fit(dset)
 corrector = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
 cresult = corrector.transform(meta.results)
@@ -89,20 +86,20 @@ plot_stat_map(
 ###############################################################################
 # Weighted Least Squares
 # -----------------------------------------------------------------------------
-meta = ibma.WeightedLeastSquares(tau2=0)
+meta = ibma.WeightedLeastSquares(tau2=0, resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # DerSimonian-Laird
 # -----------------------------------------------------------------------------
-meta = ibma.DerSimonianLaird()
+meta = ibma.DerSimonianLaird(resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # Hedges
 # -----------------------------------------------------------------------------
-meta = ibma.Hedges()
+meta = ibma.Hedges(resample=True)
 meta.fit(dset)
 plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")

@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import requests
+from scipy import sparse
 
 from .dataset import Dataset
 from .extract.utils import _get_dataset_dir
@@ -25,103 +26,256 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 }
 
 
-def convert_neurosynth_to_dict(text_file, annotations_file=None):
-    """Convert Neurosynth database files to a dictionary.
+def convert_neurosynth_to_dict(
+    coordinates_file,
+    metadata_file,
+    annotations_files=None,
+    feature_groups=None,
+):
+    """Convert Neurosynth/NeuroQuery database files to a dictionary.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
+
+    .. versionchanged:: 0.0.9
+
+        * Support annotations files organized in a dictionary.
 
     Parameters
     ----------
-    text_file : :obj:`str`
-        Text file with Neurosynth's coordinates. Normally named "database.txt".
-    annotations_file : :obj:`str` or None, optional
-        Optional file with Neurosynth's annotations. Normally named
-        "features.txt". Default is None.
+    coordinates_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's coordinates.
+    metadata_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's metadata.
+    annotations_files : :obj:`dict`, :obj:`list` of :obj:`dict`, or None, optional
+        Optional file(s) with Neurosynth/NeuroQuery's annotations.
+        This should consist of a dictionary with two keys: "features" and "vocabulary".
+        "features" should have an NPZ file containing a sparse matrix of feature values.
+        "vocabulary" should have a TXT file containing labels.
+        The vocabulary corresponds to the columns of the feature matrix, while study IDs are
+        inferred from the metadata file, which MUST be in the same order as the features matrix.
+        Multiple sets of annotations may be provided, in which case "annotations_files" should be
+        a list of dictionaries. The appropriate name of each annotation set will be inferred from
+        the "features" filename, but this can be overwritten by using the "feature_groups"
+        parameter.
+        Default is None.
+    feature_groups : :obj:`list` of :obj:`str`, or None, optional
+        An optional list of names of annotation sets defined in "annotations_files".
+        This should only be used if "annotations_files" is used and the users wants to override
+        the automatically-extracted annotation set names.
+        Default is None.
 
     Returns
     -------
-    dict_ : :obj:`dict`
-        NiMARE-organized dictionary containing experiment information from text
-        files.
+    dset_dict : :obj:`dict`
+        NiMARE-organized dictionary containing experiment information from text files.
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
-    dset_df = pd.read_csv(text_file, sep="\t")
-    if annotations_file is not None:
-        label_df = pd.read_csv(annotations_file, sep="\t", index_col="pmid")
-        label_df.index = label_df.index.astype(str)
-        labels = label_df.columns
-        if not all("__" in label for label in labels):
-            labels = {label: "Neurosynth_TFIDF__" + label for label in labels}
-        label_df = label_df.rename(columns=labels)
+    coords_df = pd.read_table(coordinates_file)
+    metadata_df = pd.read_table(metadata_file)
+    assert metadata_df["id"].is_unique, "Metadata file must have one row per ID."
+
+    coords_df["id"] = coords_df["id"].astype(str)
+    metadata_df["id"] = metadata_df["id"].astype(str)
+    metadata_df = metadata_df.set_index("id", drop=False)
+    ids = metadata_df["id"].tolist()
+
+    if "space" not in metadata_df.columns:
+        LGR.warning("No 'space' column detected. Defaulting to 'UNKNOWN'.")
+        metadata_df["space"] = "UNKNOWN"
+
+    if isinstance(annotations_files, dict):
+        annotations_files = [annotations_files]
+
+    if isinstance(feature_groups, str):
+        feature_groups = [feature_groups]
+
+    # Load labels into a single DataFrame
+    if annotations_files is not None:
+        label_dfs = []
+        if feature_groups is not None:
+            assert len(feature_groups) == len(annotations_files)
+
+        for i_feature_group, annotations_dict in enumerate(annotations_files):
+            features_file = annotations_dict["features"]
+            vocabulary_file = annotations_dict["vocabulary"]
+
+            vocab = re.findall("vocab-([a-zA-Z0-9]+)_", features_file)[0]
+            source = re.findall("source-([a-zA-Z0-9]+)_", features_file)[0]
+            value_type = re.findall("type-([a-zA-Z0-9]+)_", features_file)[0]
+
+            if feature_groups is not None:
+                feature_group = feature_groups[i_feature_group]
+                feature_group = feature_group.rstrip("_") + "__"
+            else:
+                feature_group = f"{vocab}_{source}_{value_type}__"
+
+            features = sparse.load_npz(features_file).todense()
+            vocab = np.loadtxt(vocabulary_file, dtype=str, delimiter="\t")
+
+            labels = [feature_group + label for label in vocab]
+
+            temp_label_df = pd.DataFrame(features, index=ids, columns=labels)
+            temp_label_df.index.name = "study_id"
+
+            label_dfs.append(temp_label_df)
+
+        label_df = pd.concat(label_dfs, axis=1)
     else:
         label_df = None
 
-    dset_df["id"] = dset_df["id"].astype(str)
-
-    ids = dset_df["id"].unique()
-    dict_ = {}
-    for sid in ids:
-        study_df = dset_df.loc[dset_df["id"] == sid]
+    # Compile (pseudo-)NIMADS-format dictionary
+    dset_dict = {}
+    for sid, study_metadata in metadata_df.iterrows():
+        study_coords_df = coords_df.loc[coords_df["id"] == sid]
         study_dict = {}
         study_dict["metadata"] = {}
-        study_dict["metadata"]["authors"] = study_df["authors"].tolist()[0]
-        study_dict["metadata"]["journal"] = study_df["journal"].tolist()[0]
-        study_dict["metadata"]["year"] = study_df["year"].tolist()[0]
-        study_dict["metadata"]["title"] = study_df["title"].tolist()[0]
+        study_dict["metadata"]["authors"] = study_metadata.get("authors", "n/a")
+        study_dict["metadata"]["journal"] = study_metadata.get("journal", "n/a")
+        study_dict["metadata"]["year"] = study_metadata.get("year", "n/a")
+        study_dict["metadata"]["title"] = study_metadata.get("title", "n/a")
         study_dict["contrasts"] = {}
         study_dict["contrasts"]["1"] = {}
+        # Duplicate metadata across study and contrast levels
         study_dict["contrasts"]["1"]["metadata"] = {}
-        study_dict["contrasts"]["1"]["metadata"]["authors"] = study_df["authors"].tolist()[0]
-        study_dict["contrasts"]["1"]["metadata"]["journal"] = study_df["journal"].tolist()[0]
-        study_dict["contrasts"]["1"]["metadata"]["year"] = study_df["year"].tolist()[0]
-        study_dict["contrasts"]["1"]["metadata"]["title"] = study_df["title"].tolist()[0]
+        study_dict["contrasts"]["1"]["metadata"]["authors"] = study_metadata.get("authors", "n/a")
+        study_dict["contrasts"]["1"]["metadata"]["journal"] = study_metadata.get("journal", "n/a")
+        study_dict["contrasts"]["1"]["metadata"]["year"] = study_metadata.get("year", "n/a")
+        study_dict["contrasts"]["1"]["metadata"]["title"] = study_metadata.get("title", "n/a")
         study_dict["contrasts"]["1"]["coords"] = {}
-        study_dict["contrasts"]["1"]["coords"]["space"] = study_df["space"].tolist()[0]
-        study_dict["contrasts"]["1"]["coords"]["x"] = study_df["x"].tolist()
-        study_dict["contrasts"]["1"]["coords"]["y"] = study_df["y"].tolist()
-        study_dict["contrasts"]["1"]["coords"]["z"] = study_df["z"].tolist()
+        study_dict["contrasts"]["1"]["coords"]["space"] = study_metadata["space"]
+        study_dict["contrasts"]["1"]["coords"]["x"] = study_coords_df["x"].tolist()
+        study_dict["contrasts"]["1"]["coords"]["y"] = study_coords_df["y"].tolist()
+        study_dict["contrasts"]["1"]["coords"]["z"] = study_coords_df["z"].tolist()
+
         if label_df is not None:
             study_dict["contrasts"]["1"]["labels"] = label_df.loc[sid].to_dict()
-        dict_[sid] = study_dict
 
-    return dict_
+        dset_dict[sid] = study_dict
+
+    return dset_dict
 
 
-def convert_neurosynth_to_json(text_file, out_file, annotations_file=None):
-    """Convert Neurosynth dataset text file to a NiMARE json file.
+def convert_neurosynth_to_json(
+    coordinates_file,
+    metadata_file,
+    out_file,
+    annotations_files=None,
+    feature_groups=None,
+):
+    """Convert Neurosynth/NeuroQuery dataset text file to a NiMARE json file.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
+
+    .. versionchanged:: 0.0.9
+
+        * Support annotations files organized in a dictionary.
 
     Parameters
     ----------
-    text_file : :obj:`str`
-        Text file with Neurosynth's coordinates. Normally named "database.txt".
+    coordinates_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's coordinates and metadata.
+    metadata_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's metadata.
     out_file : :obj:`str`
         Output NiMARE-format json file.
-    annotations_file : :obj:`str` or None, optional
-        Optional file with Neurosynth's annotations. Normally named
-        "features.txt". Default is None.
+    annotations_files : :obj:`dict`, :obj:`list` of :obj:`dict`, or None, optional
+        Optional file(s) with Neurosynth/NeuroQuery's annotations.
+        This should consist of a dictionary with two keys: "features" and "vocabulary".
+        "features" should have an NPZ file containing a sparse matrix of feature values.
+        "vocabulary" should have a TXT file containing labels.
+        The vocabulary corresponds to the columns of the feature matrix, while study IDs are
+        inferred from the metadata file, which MUST be in the same order as the features matrix.
+        Multiple sets of annotations may be provided, in which case "annotations_files" should be
+        a list of dictionaries. The appropriate name of each annotation set will be inferred from
+        the "features" filename, but this can be overwritten by using the "feature_groups"
+        parameter.
+        Default is None.
+    feature_groups : :obj:`list` of :obj:`str`, or None, optional
+        An optional list of names of annotation sets defined in "annotations_files".
+        This should only be used if "annotations_files" is used and the users wants to override
+        the automatically-extracted annotation set names.
+        Default is None.
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
-    dict_ = convert_neurosynth_to_dict(text_file, annotations_file)
+    dset_dict = convert_neurosynth_to_dict(
+        coordinates_file, metadata_file, annotations_files, feature_groups
+    )
     with open(out_file, "w") as fo:
-        json.dump(dict_, fo, indent=4, sort_keys=True)
+        json.dump(dset_dict, fo, indent=4, sort_keys=True)
 
 
-def convert_neurosynth_to_dataset(text_file, annotations_file=None, target="mni152_2mm"):
-    """Convert Neurosynth database files into NiMARE Dataset.
+def convert_neurosynth_to_dataset(
+    coordinates_file,
+    metadata_file,
+    annotations_files=None,
+    feature_groups=None,
+    target="mni152_2mm",
+):
+    """Convert Neurosynth/NeuroQuery database files into NiMARE Dataset.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
+
+    .. versionchanged:: 0.0.9
+
+        * Support annotations files organized in a dictionary.
 
     Parameters
     ----------
-    text_file : :obj:`str`
-        Text file with Neurosynth's coordinates. Normally named "database.txt".
+    coordinates_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's coordinates and metadata.
+    metadata_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery's metadata.
+    annotations_files : :obj:`dict`, :obj:`list` of :obj:`dict`, or None, optional
+        Optional file(s) with Neurosynth/NeuroQuery's annotations.
+        This should consist of a dictionary with two keys: "features" and "vocabulary".
+        "features" should have an NPZ file containing a sparse matrix of feature values.
+        "vocabulary" should have a TXT file containing labels.
+        The vocabulary corresponds to the columns of the feature matrix, while study IDs are
+        inferred from the metadata file, which MUST be in the same order as the features matrix.
+        Multiple sets of annotations may be provided, in which case "annotations_files" should be
+        a list of dictionaries. The appropriate name of each annotation set will be inferred from
+        the "features" filename, but this can be overwritten by using the "feature_groups"
+        parameter.
+        Default is None.
+    feature_groups : :obj:`list` of :obj:`str`, or None, optional
+        An optional list of names of annotation sets defined in "annotations_files".
+        This should only be used if "annotations_files" is used and the users wants to override
+        the automatically-extracted annotation set names.
+        Default is None.
     target : {'mni152_2mm', 'ale_2mm'}, optional
         Target template space for coordinates. Default is 'mni152_2mm'.
-    annotations_file : :obj:`str` or None, optional
-        Optional file with Neurosynth's annotations. Normally named
-        "features.txt". Default is None.
 
     Returns
     -------
     :obj:`nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
-    dict_ = convert_neurosynth_to_dict(text_file, annotations_file)
-    return Dataset(dict_, target=target)
+    dset_dict = convert_neurosynth_to_dict(
+        coordinates_file,
+        metadata_file,
+        annotations_files,
+        feature_groups,
+    )
+    return Dataset(dset_dict, target=target)
 
 
 def convert_sleuth_to_dict(text_file):
@@ -136,22 +290,21 @@ def convert_sleuth_to_dict(text_file):
     Returns
     -------
     :obj:`dict`
-        NiMARE-organized dictionary containing experiment information from text
-        file.
+        NiMARE-organized dictionary containing experiment information from text file.
     """
     if isinstance(text_file, list):
-        dict_ = {}
+        dset_dict = {}
         for tf in text_file:
             temp_dict = convert_sleuth_to_dict(tf)
             for sid in temp_dict.keys():
-                if sid in dict_.keys():
-                    dict_[sid]["contrasts"] = {
-                        **dict_[sid]["contrasts"],
+                if sid in dset_dict.keys():
+                    dset_dict[sid]["contrasts"] = {
+                        **dset_dict[sid]["contrasts"],
                         **temp_dict[sid]["contrasts"],
                     }
                 else:
-                    dict_[sid] = temp_dict[sid]
-        return dict_
+                    dset_dict[sid] = temp_dict[sid]
+        return dset_dict
 
     with open(text_file, "r") as file_object:
         data = file_object.read()
@@ -163,9 +316,7 @@ def convert_sleuth_to_dict(text_file):
 
     SPACE_OPTS = ["MNI", "TAL", "Talairach"]
     if space not in SPACE_OPTS:
-        raise ValueError(
-            "Space {0} unknown. Options supported: {1}.".format(space, ", ".join(SPACE_OPTS))
-        )
+        raise ValueError(f"Space {space} unknown. Options supported: {', '.join(SPACE_OPTS)}.")
 
     # Split into experiments
     data = data[1:]
@@ -178,14 +329,12 @@ def convert_sleuth_to_dict(text_file):
         group = list(map(itemgetter(1), g))
         ranges.append((group[0], group[-1]))
         if "Subjects" not in data[group[-1]]:
-            raise ValueError(
-                "Sample size line missing for {}".format(data[group[0] : group[-1] + 1])
-            )
+            raise ValueError(f"Sample size line missing for {data[group[0] : group[-1] + 1]}")
     start_idx = [r[0] for r in ranges]
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
 
-    dict_ = {}
+    dset_dict = {}
     for i_exp, exp_idx in enumerate(split_idx):
         exp_data = data[exp_idx[0] : exp_idx[1]]
         if exp_data:
@@ -203,9 +352,8 @@ def convert_sleuth_to_dict(text_file):
             if not correct_shape:
                 all_shapes = np.unique([len(coord) for coord in xyz]).astype(str)
                 raise ValueError(
-                    'Coordinates for study "{0}" are not all '
-                    "correct length. Lengths detected: "
-                    "{1}.".format(study_info, ", ".join(all_shapes))
+                    f"Coordinates for study '{study_info}' are not all "
+                    f"correct length. Lengths detected: {', '.join(all_shapes)}."
                 )
 
             try:
@@ -217,23 +365,22 @@ def convert_sleuth_to_dict(text_file):
                 fmt = "\t".join("{{:{}}}".format(x) for x in lens)
                 table = "\n".join([fmt.format(*row) for row in strs])
                 raise ValueError(
-                    "Conversion to numpy array failed for study "
-                    '"{0}". Coords:\n{1}'.format(study_info, table)
+                    f"Conversion to numpy array failed for study '{study_info}'. Coords:\n{table}"
                 )
 
             x, y, z = list(xyz[:, 0]), list(xyz[:, 1]), list(xyz[:, 2])
 
-            if study_name not in dict_.keys():
-                dict_[study_name] = {"contrasts": {}}
-            dict_[study_name]["contrasts"][contrast_name] = {"coords": {}, "metadata": {}}
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["space"] = space
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["x"] = x
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["y"] = y
-            dict_[study_name]["contrasts"][contrast_name]["coords"]["z"] = z
-            dict_[study_name]["contrasts"][contrast_name]["metadata"]["sample_sizes"] = [
+            if study_name not in dset_dict.keys():
+                dset_dict[study_name] = {"contrasts": {}}
+            dset_dict[study_name]["contrasts"][contrast_name] = {"coords": {}, "metadata": {}}
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["space"] = space
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["x"] = x
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["y"] = y
+            dset_dict[study_name]["contrasts"][contrast_name]["coords"]["z"] = z
+            dset_dict[study_name]["contrasts"][contrast_name]["metadata"]["sample_sizes"] = [
                 sample_size
             ]
-    return dict_
+    return dset_dict
 
 
 def convert_sleuth_to_json(text_file, out_file):
@@ -248,13 +395,11 @@ def convert_sleuth_to_json(text_file, out_file):
         Path to output json file.
     """
     if not isinstance(text_file, str) and not isinstance(text_file, list):
-        raise ValueError(
-            'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
-        )
-    dict_ = convert_sleuth_to_dict(text_file)
+        raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
+    dset_dict = convert_sleuth_to_dict(text_file)
 
     with open(out_file, "w") as fo:
-        json.dump(dict_, fo, indent=4, sort_keys=True)
+        json.dump(dset_dict, fo, indent=4, sort_keys=True)
 
 
 def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
@@ -275,18 +420,21 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
         Dataset object containing experiment information from text_file.
     """
     if not isinstance(text_file, str) and not isinstance(text_file, list):
-        raise ValueError(
-            'Unsupported type for parameter "text_file": ' "{0}".format(type(text_file))
-        )
-    dict_ = convert_sleuth_to_dict(text_file)
-    return Dataset(dict_, target=target)
+        raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
+    dset_dict = convert_sleuth_to_dict(text_file)
+    return Dataset(dset_dict, target=target)
 
 
 def convert_neurovault_to_dataset(
-    collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs
+    collection_ids,
+    contrasts,
+    img_dir=None,
+    map_type_conversion=None,
+    **dset_kwargs,
 ):
-    """
-    Convert a group of NeuroVault collections into a NiMARE Dataset.
+    """Convert a group of NeuroVault collections into a NiMARE Dataset.
+
+    .. versionadded:: 0.0.8
 
     Parameters
     ----------
@@ -337,6 +485,13 @@ def convert_neurovault_to_dataset(
 
         nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
         images = requests.get(nv_url).json()
+        if "Not found" in images.get("detail", ""):
+            raise ValueError(
+                f"Collection {nv_coll} not found. "
+                "Three likely causes are (1) the collection doesn't exist, "
+                "(2) the collection is private, or "
+                "(3) the provided ID corresponds to an image instead of a collection."
+            )
 
         dataset_dict[f"study-{coll_name}"] = {"contrasts": {}}
         for contrast_name, contrast_regex in contrasts.items():

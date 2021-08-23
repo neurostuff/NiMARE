@@ -44,23 +44,20 @@ All trademarks referenced herein are property of their respective holders.
 Copyright (c) 2018--, NiMARE developers
 """
 
-DOWNLOAD_URL = "https://github.com/neurostuff/{name}/archive/{ver}.tar.gz".format(
-    name=PACKAGENAME, ver=VERSION
-)
+DOWNLOAD_URL = f"https://github.com/neurostuff/{PACKAGENAME}/archive/{VERSION}.tar.gz"
 
 REQUIRES = [
     "cognitiveatlas",
     "fuzzywuzzy",
     "indexed_gzip>=1.4.0",
-    "matplotlib",
     "nibabel>=3.0.0",
     "nilearn>=0.7.1",
     "numpy",
     "pandas",
     "pymare>=0.0.2",
+    "requests",
     "scikit-learn",
     "scipy",
-    "seaborn",
     "statsmodels",
     "tqdm",
 ]
@@ -80,9 +77,11 @@ EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
     "doc": [
+        "matplotlib",
         "m2r",
         "pillow",
         "recommonmark",
+        "seaborn",
         "sphinx>=3.1.1",
         "sphinx-argparse",
         "sphinx-copybutton",

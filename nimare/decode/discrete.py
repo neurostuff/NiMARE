@@ -9,8 +9,10 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from .. import references
 from ..base import Decoder
 from ..due import due
-from ..stats import one_way, two_way
+from ..meta.kernel import KernelTransformer, MKDAKernel
+from ..stats import one_way, pearson, two_way
 from ..transforms import p_to_z
+from ..utils import check_type, get_masker
 from .utils import weight_priors
 
 
@@ -83,8 +85,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     dset_aff = model.mask.affine
     if not np.array_equal(roi.affine, dset_aff):
         raise ValueError(
-            "Input roi must have same affine as mask img:"
-            "\n{0}\n{1}".format(np.array2string(roi.affine), np.array2string(dset_aff))
+            "Input roi must have same affine as mask img:\n"
+            f"{np.array2string(roi.affine)}\n{np.array2string(dset_aff)}"
         )
 
     # Load ROI file and get ROI voxels overlapping with brain mask
@@ -112,6 +114,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 @due.dcite(references.BRAINMAP_DECODING, description="Citation for BrainMap-style decoding.")
 class BrainMapDecoder(Decoder):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -150,6 +154,11 @@ class BrainMapDecoder(Decoder):
       (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
     """
 
+    _required_inputs = {
+        "coordinates": ("coordinates", None),
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
         self,
         feature_group=None,
@@ -166,7 +175,7 @@ class BrainMapDecoder(Decoder):
         self.results = None
 
     def _fit(self, dataset):
-        self.inputs_ = {"coordinates": dataset.coordinates, "annotations": dataset.annotations}
+        pass
 
     def transform(self, ids, ids2=None):
         """Apply the decoding method to a Dataset.
@@ -381,6 +390,8 @@ def brainmap_decode(
 class NeurosynthDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
+    .. versionadded:: 0.0.3
+
     This does not employ correlations between unthresholded maps, which are the
     method of choice for decoding within Neurosynth and Neurovault.
     Metadata (i.e., feature labels) for studies within the selected sample
@@ -428,6 +439,11 @@ class NeurosynthDecoder(Decoder):
       https://doi.org/10.1038/nmeth.1635
     """
 
+    _required_inputs = {
+        "coordinates": ("coordinates", None),
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
         self,
         feature_group=None,
@@ -446,7 +462,7 @@ class NeurosynthDecoder(Decoder):
         self.results = None
 
     def _fit(self, dataset):
-        self.inputs_ = {"coordinates": dataset.coordinates, "annotations": dataset.annotations}
+        pass
 
     def transform(self, ids, ids2=None):
         """Apply the decoding method to a Dataset.
@@ -553,7 +569,7 @@ def neurosynth_decode(
     See Also
     --------
     :class:`nimare.decode.discrete.NeurosynthDecoder`: The associated class for this method.
-    :func:`nimare.decode.continuous.corr_decode`: The correlation-based decoding
+    :func:`nimare.decode.continuous.CorrelationDecoder`: The correlation-based decoding
         method employed in Neurosynth and NeuroVault.
 
     References
@@ -653,3 +669,92 @@ def neurosynth_decode(
     )
     out_df.index.name = "Term"
     return out_df
+
+
+@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
+class ROIAssociationDecoder(Decoder):
+    """Perform discrete functional decoding according to Neurosynth's ROI association method.
+
+    Parameters
+    ----------
+    masker : :class:`nilearn.input_data.NiftiMasker`, img_like, or similar
+        Masker for region of interest.
+    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+        Kernel with which to create modeled activation maps. Default is MKDAKernel.
+    feature_group : :obj:`str`, optional
+        Feature group name used to select labels from a specific source.
+        Feature groups are stored as prefixes to feature name columns in
+        Dataset.annotations, with the format ``[source]_[valuetype]__``.
+        Input may or may not include the trailing underscore.
+        Default is None, which uses all feature groups available.
+    features : :obj:`list`, optional
+        List of features in dataset annotations to use for decoding.
+        If feature_group is provided, then features should not include the feature group prefix.
+        If feature_group is *not* provided, then features *should* include the prefix.
+        Default is None, which uses all features available.
+
+    Notes
+    -----
+    The general approach in this method is:
+    1. Define ROI.
+    2. Generate MA maps for all studies in Dataset.
+    3. Average MA values within ROI to get study-wise MA regressor.
+    4. Correlate MA regressor with study-wise annotation values (e.g., tf-idf values).
+
+    References
+    ----------
+    * Yarkoni, Tal, et al. "Large-scale automated synthesis of human
+      functional neuroimaging data." Nature methods 8.8 (2011): 665.
+      https://doi.org/10.1038/nmeth.1635
+    """
+
+    _required_inputs = {
+        "coordinates": ("coordinates", None),
+        "annotations": ("annotations", None),
+    }
+
+    def __init__(
+        self,
+        masker,
+        kernel_transformer=MKDAKernel,
+        feature_group=None,
+        features=None,
+        **kwargs,
+    ):
+        self.masker = get_masker(masker)
+
+        # Get kernel transformer
+        kernel_args = {
+            k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
+        }
+        kernel_transformer = check_type(kernel_transformer, KernelTransformer, **kernel_args)
+        self.kernel_transformer = kernel_transformer
+
+        self.feature_group = feature_group
+        self.features = features
+        self.frequency_threshold = 0
+        self.results = None
+
+    def _fit(self, dataset):
+        roi_values = self.kernel_transformer.transform(
+            self.inputs_["coordinates"],
+            self.masker,
+            return_type="array",
+        )
+        self.roi_values_ = roi_values.mean(axis=1)
+
+    def transform(self):
+        """Apply the decoding method to a Dataset.
+
+        Returns
+        -------
+        results : :class:`pandas.DataFrame`
+            Table with each label and the following values associated with each
+            label: 'r'.
+        """
+        feature_values = self.inputs_["annotations"][self.features_].values
+        corrs = pearson(self.roi_values_, feature_values.T)
+        out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
+        out_df.index.name = "feature"
+        self.results = out_df
+        return out_df

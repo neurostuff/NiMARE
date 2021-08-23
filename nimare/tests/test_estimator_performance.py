@@ -93,9 +93,11 @@ def meta_est(request):
 @pytest.fixture(
     scope="session",
     params=[
-        pytest.param({"null_method": "empirical", "n_iters": 100}, id="empirical"),
-        pytest.param({"null_method": "analytic"}, id="analytic"),
-        pytest.param({"null_method": "reduced_empirical", "n_iters": 100}, id="reduced_empirical"),
+        pytest.param({"null_method": "montecarlo", "n_iters": 100}, id="montecarlo"),
+        pytest.param({"null_method": "approximate"}, id="approximate"),
+        pytest.param(
+            {"null_method": "reduced_montecarlo", "n_iters": 100}, id="reduced_montecarlo"
+        ),
     ],
 )
 def meta_params(request):
@@ -240,35 +242,35 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
     if (
         isinstance(meta_res.estimator, ale.ALE)
         and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
-        and meta_res.estimator.get_params().get("null_method") == "analytic"
+        and meta_res.estimator.get_params().get("null_method") == "approximate"
     ):
         good_sensitivity = True
         good_specificity = False
     elif (
         isinstance(meta_res.estimator, ale.ALE)
         and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
-        and "empirical" in meta_res.estimator.get_params().get("null_method")
+        and "montecarlo" in meta_res.estimator.get_params().get("null_method")
     ):
         good_sensitivity = False
         good_specificity = True
     elif (
         isinstance(meta_res.estimator, ale.ALE)
         and type(meta_res.estimator.kernel_transformer) == kernel.KDAKernel
-        and "empirical" in meta_res.estimator.get_params().get("null_method")
+        and "montecarlo" in meta_res.estimator.get_params().get("null_method")
     ):
         good_sensitivity = False
         good_specificity = True
     elif (
         isinstance(meta_res.estimator, ale.ALE)
         and type(meta_res.estimator.kernel_transformer) == kernel.KDAKernel
-        and meta_res.estimator.get_params().get("null_method") == "analytic"
+        and meta_res.estimator.get_params().get("null_method") == "approximate"
     ):
         good_sensitivity = True
         good_specificity = False
     elif (
         isinstance(meta_res.estimator, mkda.MKDADensity)
         and isinstance(meta_res.estimator.kernel_transformer, kernel.ALEKernel)
-        and meta_res.estimator.get_params().get("null_method") != "reduced_empirical"
+        and meta_res.estimator.get_params().get("null_method") != "reduced_montecarlo"
     ):
         good_sensitivity = False
         good_specificity = True
@@ -315,7 +317,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
     if (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and meta_cres.estimator.get_params().get("null_method") == "analytic"
+        and meta_cres.estimator.get_params().get("null_method") == "approximate"
         and corr.method != "montecarlo"
     ):
         good_sensitivity = True
@@ -323,14 +325,14 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and "empirical" in meta_cres.estimator.get_params().get("null_method")
+        and "montecarlo" in meta_cres.estimator.get_params().get("null_method")
     ):
         good_sensitivity = False
         good_specificity = True
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and meta_cres.estimator.get_params().get("null_method") == "analytic"
+        and meta_cres.estimator.get_params().get("null_method") == "approximate"
         and corr.method == "montecarlo"
     ):
         good_sensitivity = False
@@ -339,9 +341,9 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         isinstance(meta_cres.estimator, ale.ALE)
         and type(meta_cres.estimator.kernel_transformer) == kernel.KDAKernel
         and (
-            "empirical" in meta_cres.estimator.get_params().get("null_method")
+            "montecarlo" in meta_cres.estimator.get_params().get("null_method")
             or (
-                meta_cres.estimator.get_params().get("null_method") == "analytic"
+                meta_cres.estimator.get_params().get("null_method") == "approximate"
                 and corr.method == "montecarlo"
             )
         )
@@ -351,14 +353,14 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
         and type(meta_cres.estimator.kernel_transformer) == kernel.KDAKernel
-        and meta_cres.estimator.get_params().get("null_method") == "analytic"
+        and meta_cres.estimator.get_params().get("null_method") == "approximate"
     ):
         good_sensitivity = True
         good_specificity = False
     elif (
         isinstance(meta_cres.estimator, mkda.MKDADensity)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)
-        and meta_cres.estimator.get_params().get("null_method") != "reduced_empirical"
+        and meta_cres.estimator.get_params().get("null_method") != "reduced_montecarlo"
         and corr.method != "montecarlo"
     ):
         good_sensitivity = False

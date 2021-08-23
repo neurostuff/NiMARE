@@ -13,7 +13,7 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from ..utils import check_type
+from ..utils import check_type, safe_transform
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
@@ -110,6 +110,10 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 class CorrelationDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with meta-analytic maps.
 
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add *low-memory* option to :class:`meta_estimator`
+
     Parameters
     ----------
     feature_group : :obj:`str`
@@ -130,6 +134,11 @@ class CorrelationDecoder(Decoder):
     evaluate results based on significance.
     """
 
+    _required_inputs = {
+        "coordinates": ("coordinates", None),
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
         self,
         feature_group=None,
@@ -137,10 +146,11 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
+        memory_limit="1gb",
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2(low_memory=True, kernel__low_memory=True)
+            meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
         else:
             meta_estimator = check_type(meta_estimator, CBMAEstimator)
 
@@ -178,11 +188,17 @@ class CorrelationDecoder(Decoder):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
             )
+            feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
+
+            LGR.info(
+                f"Decoding {feature} ({i}/{len(self.features)}): {len(feature_ids)}/"
+                f"{len(dataset.ids)} studies"
+            )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
             # Check if the meta method is a pairwise estimator
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
-                nonfeature_ids = sorted(list(set(dataset.ids) - set(feature_ids)))
+                nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
                 self.meta_estimator.fit(feature_dset, nonfeature_dset)
             else:
@@ -238,14 +254,24 @@ class CorrelationDistributionDecoder(Decoder):
     evaluate results based on significance.
     """
 
+    _required_inputs = {
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
-        self, feature_group=None, features=None, frequency_threshold=0.001, target_image="z"
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        target_image="z",
+        memory_limit="1gb",
     ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
-        self.target_image = target_image
+        self.memory_limit = memory_limit
         self.results = None
+        self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
         """Collect sets of maps from the Dataset corresponding to each requested feature.
@@ -271,13 +297,23 @@ class CorrelationDistributionDecoder(Decoder):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
             )
-            test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
-            test_imgs = list(filter(None, test_imgs))
+            selected_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
+            selected_id_idx = [
+                i_id for i_id, id_ in enumerate(self.inputs_["id"]) if id_ in selected_ids
+            ]
+            test_imgs = [
+                img for i_img, img in enumerate(self.inputs_["images"]) if i_img in selected_id_idx
+            ]
             if len(test_imgs):
-                feature_arr = self.masker.transform(test_imgs)
+                feature_arr = safe_transform(
+                    test_imgs,
+                    self.masker,
+                    memory_limit=self.memory_limit,
+                    memfile=None,
+                )
                 images_[feature] = feature_arr
             else:
-                LGR.info('Skipping feature "{}". No images found.'.format(feature))
+                LGR.info(f"Skipping feature '{feature}'. No images found.")
         # reduce features again
         self.features_ = [f for f in self.features_ if f in images_.keys()]
         self.images_ = images_

@@ -10,13 +10,18 @@ from scipy import ndimage
 from .. import references
 from ..due import due
 from ..extract import download_peaks2maps_model
+from ..utils import determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
 
 
 def model_fn(features, labels, mode, params):
-    """Run model function used internally by peaks2maps."""
+    """Run model function used internally by peaks2maps.
+
+    .. versionadded:: 0.0.4
+
+    """
     import tensorflow as tf
     from tensorflow.python.estimator.export.export_output import PredictOutput
 
@@ -156,7 +161,11 @@ def model_fn(features, labels, mode, params):
 
 
 def _get_resize_arg(target_shape):
-    """Get resizing arguments, as used by peaks2maps."""
+    """Get resizing arguments, as used by peaks2maps.
+
+    .. versionadded:: 0.0.1
+
+    """
     mni_shape_mm = np.array([148.0, 184.0, 156.0])
     target_resolution_mm = np.ceil(mni_shape_mm / np.array(target_shape)).astype(np.int32)
     target_affine = np.array(
@@ -265,9 +274,16 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
+    memory_limit=None,
     memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add *memmap_filename* parameter for memory mapping arrays.
+
+    .. versionadded:: 0.0.4
 
     Replaces the values around each focus in ijk with binary sphere.
 
@@ -291,6 +307,11 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
+    memory_limit : :obj:`str` or None, optional
+        Memory limit to apply to data. If None, no memory management will be applied.
+        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
+        (2) restrict memory during array creation to the limit.
+        Default is None.
     memmap_filename : :obj:`str`, optional
         If passed, use this file for memory mapping arrays
 
@@ -321,6 +342,9 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
+    if memory_limit:
+        chunk_size = determine_chunk_size(limit=memory_limit, arr=ijks[0])
+
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
@@ -331,7 +355,7 @@ def compute_kda_ma(
         else:
             kernel_data[exp][tuple(sphere.T)] = value
 
-        if memmap_filename:
+        if memmap_filename and i % chunk_size == 0:
             # Write changes to disk
             kernel_data.flush()
 
