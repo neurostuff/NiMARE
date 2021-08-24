@@ -12,7 +12,13 @@ from ...base import MetaEstimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import add_metadata_to_dataframe, check_type, safe_transform, use_memmap
+from ...utils import (
+    add_metadata_to_dataframe,
+    check_type,
+    safe_transform,
+    use_memmap,
+    vox2mm,
+)
 from ..kernel import KernelTransformer
 
 LGR = logging.getLogger(__name__)
@@ -334,8 +340,7 @@ class CBMAEstimator(MetaEstimator):
         Parameters
         ----------
         ma_maps : (C x V) array
-            Contrast by voxel array of MA values, after weighting with
-            weight_vec.
+            Contrast by voxel array of MA values, after weighting with weight_vec.
 
         Notes
         -----
@@ -364,10 +369,10 @@ class CBMAEstimator(MetaEstimator):
         counts : 1D array_like
             Weights associated with the attribute `null_distributions_["histogram_bins"]`.
         """
-        iter_ijk, iter_df = params
+        iter_xyz, iter_df = params
 
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[["i", "j", "k"]] = iter_ijk
+        iter_xyz = np.squeeze(iter_xyz)
+        iter_df[["x", "y", "z"]] = iter_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
@@ -404,14 +409,16 @@ class CBMAEstimator(MetaEstimator):
         n_cores = self._check_ncores(n_cores)
 
         rand_idx = np.random.choice(
-            null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
+            null_ijk.shape[0],
+            size=(self.inputs_["coordinates"].shape[0], n_iters),
         )
         rand_ijk = null_ijk[rand_idx, :]
-        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+        rand_xyz = vox2mm(rand_ijk, self.masker.mask_img.affine)
+        iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
         iter_dfs = [iter_df] * n_iters
 
-        params = zip(iter_ijks, iter_dfs)
+        params = zip(iter_xyzs, iter_dfs)
         if n_cores == 1:
             perm_histograms = []
             for pp in tqdm(params, total=n_iters):
@@ -459,10 +466,10 @@ class CBMAEstimator(MetaEstimator):
             A 2-tuple of floats giving the maximum voxel-wise value, and maximum
             cluster size for the permuted dataset.
         """
-        iter_ijk, iter_df, conn, voxel_thresh = params
+        iter_xyz, iter_df, conn, voxel_thresh = params
 
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[["i", "j", "k"]] = iter_ijk
+        iter_xyz = np.squeeze(iter_xyz)
+        iter_df[["x", "y", "z"]] = iter_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
@@ -534,7 +541,10 @@ class CBMAEstimator(MetaEstimator):
             )
 
         else:
-            null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+            null_xyz = vox2mm(
+                np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
+                self.masker.mask_img.affine,
+            )
 
             n_cores = self._check_ncores(n_cores)
 
@@ -542,10 +552,11 @@ class CBMAEstimator(MetaEstimator):
             ss_thresh = self._p_to_summarystat(voxel_thresh)
 
             rand_idx = np.random.choice(
-                null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters)
+                null_xyz.shape[0],
+                size=(self.inputs_["coordinates"].shape[0], n_iters),
             )
-            rand_ijk = null_ijk[rand_idx, :]
-            iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+            rand_xyz = null_xyz[rand_idx, :]
+            iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
             iter_df = self.inputs_["coordinates"].copy()
             iter_dfs = [iter_df] * n_iters
 
@@ -559,7 +570,7 @@ class CBMAEstimator(MetaEstimator):
             # Define parameters
             iter_conn = [conn] * n_iters
             iter_ss_thresh = [ss_thresh] * n_iters
-            params = zip(iter_ijks, iter_dfs, iter_conn, iter_ss_thresh)
+            params = zip(iter_xyzs, iter_dfs, iter_conn, iter_ss_thresh)
 
             if n_cores == 1:
                 perm_results = []

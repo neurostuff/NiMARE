@@ -184,14 +184,10 @@ class Dataset(NiMAREBase):
         if hasattr(self, "masker") and not np.array_equal(
             self.masker.mask_img.affine, mask.mask_img.affine
         ):
-            LGR.info(
-                "New masker does not match old masker. "
-                "Space is assumed to be the same, but coordinates will "
-                "be transformed to new matrix."
-            )
-            coords = self.coordinates
-            coords[["i", "j", "k"]] = mm2vox(coords[["x", "y", "z"]], mask.mask_img.affine)
-            self.coordinates = coords
+            # This message does not have an associated effect,
+            # since matrix indices are calculated as necessary
+            LGR.warning("New masker does not match old masker. Space is assumed to be the same.")
+
         self.__masker = mask
 
     @property

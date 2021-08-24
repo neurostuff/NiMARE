@@ -11,7 +11,7 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import use_memmap
+from ...utils import use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -288,11 +288,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return images
 
     def _run_fwe_permutation(self, params):
-        iter_df1, iter_df2, iter_ijk1, iter_ijk2 = params
-        iter_ijk1 = np.squeeze(iter_ijk1)
-        iter_ijk2 = np.squeeze(iter_ijk2)
-        iter_df1[["i", "j", "k"]] = iter_ijk1
-        iter_df2[["i", "j", "k"]] = iter_ijk2
+        iter_df1, iter_df2, iter_xyz1, iter_xyz2 = params
+        iter_xyz1 = np.squeeze(iter_xyz1)
+        iter_xyz2 = np.squeeze(iter_xyz2)
+        iter_df1[["x", "y", "z"]] = iter_xyz1
+        iter_df2[["x", "y", "z"]] = iter_xyz2
 
         temp_ma_maps1 = self.kernel_transformer.transform(
             iter_df1, self.masker, return_type="array"
@@ -366,7 +366,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+        null_xyz = vox2mm(
+            np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
+            self.masker.mask_img.affine,
+        )
         pAgF_chi2_vals = result.get_map("chi2_desc-consistency", return_type="array")
         pFgA_chi2_vals = result.get_map("chi2_desc-specificity", return_type="array")
         pAgF_z_vals = result.get_map("z_desc-consistency", return_type="array")
@@ -380,15 +383,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_df2 = self.inputs_["coordinates2"].copy()
         iter_dfs1 = [iter_df1] * n_iters
         iter_dfs2 = [iter_df2] * n_iters
-        rand_idx1 = np.random.choice(null_ijk.shape[0], size=(iter_df1.shape[0], n_iters))
-        rand_ijk1 = null_ijk[rand_idx1, :]
-        iter_ijks1 = np.split(rand_ijk1, rand_ijk1.shape[1], axis=1)
-        rand_idx2 = np.random.choice(null_ijk.shape[0], size=(iter_df2.shape[0], n_iters))
-        rand_ijk2 = null_ijk[rand_idx2, :]
-        iter_ijks2 = np.split(rand_ijk2, rand_ijk2.shape[1], axis=1)
+        rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
+        rand_xyz1 = null_xyz[rand_idx1, :]
+        iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
+        rand_idx2 = np.random.choice(null_xyz.shape[0], size=(iter_df2.shape[0], n_iters))
+        rand_xyz2 = null_xyz[rand_idx2, :]
+        iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
         eps = np.spacing(1)
 
-        params = zip(iter_dfs1, iter_dfs2, iter_ijks1, iter_ijks2)
+        params = zip(iter_dfs1, iter_dfs2, iter_xyzs1, iter_xyzs2)
 
         if n_cores == 1:
             perm_results = []
