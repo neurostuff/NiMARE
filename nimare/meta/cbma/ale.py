@@ -360,6 +360,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    .. versionchanged:: 0.0.10
+
+        Replace ``ijk`` with ``xyz``. This should be easier for users to collect.
+
     Parameters
     ----------
     voxel_thresh : float, optional
