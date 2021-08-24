@@ -16,7 +16,13 @@ import pandas as pd
 from nilearn import image
 
 from ..base import Transformer
-from ..utils import add_metadata_to_dataframe, safe_transform, use_memmap, vox2mm
+from ..utils import (
+    add_metadata_to_dataframe,
+    mm2vox,
+    safe_transform,
+    use_memmap,
+    vox2mm,
+)
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
@@ -118,6 +124,10 @@ class KernelTransformer(Transformer):
             assert (
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
+
+            # Calculate IJK. Must assume that the masker is in same space,
+            # but has different affine, from original IJK.
+            coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
@@ -140,6 +150,10 @@ class KernelTransformer(Transformer):
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
                         return dataset.copy()
+
+            # Calculate IJK
+            if not np.array_equal(mask.affine, dataset.masker.mask_img.affine):
+                coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
 
             # Add any metadata the Transformer might need to the coordinates DataFrame
             # This approach is probably inferior to one which uses a _required_inputs attribute

@@ -14,7 +14,7 @@ from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
 from .results import MetaResult
-from .utils import get_masker
+from .utils import get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -404,6 +404,13 @@ class MetaEstimator(Estimator):
                         )
                         if all(f is not None for f in files):
                             self.inputs_["ma_maps"] = files
+
+                # Calculate IJK matrix indices for target mask
+                # Mask space is assumed to be the same as the Dataset's space
+                # These indices are used directly by any KernelTransformer
+                xyz = self.inputs_["coordinates"][["x", "y", "z"]].values
+                ijk = mm2vox(xyz, mask_img.affine)
+                self.inputs_["coordinates"][["i", "j", "k"]] = ijk
 
         # Further reduce image-based inputs to remove "bad" voxels
         # (voxels with zeros or NaNs in any studies)
