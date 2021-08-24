@@ -176,7 +176,7 @@ class KernelTransformer(Transformer):
 
         # Generate the MA maps if they weren't already available as images
         if return_type == "array":
-            mask_data = mask.get_fdata().astype(np.bool)
+            mask_data = mask.get_fdata().astype(bool)
         elif return_type == "image":
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
