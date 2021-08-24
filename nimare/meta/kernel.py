@@ -153,7 +153,9 @@ class KernelTransformer(Transformer):
 
             # Calculate IJK
             if not np.array_equal(mask.affine, dataset.masker.mask_img.affine):
-                coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
+                LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
+
+            coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
 
             # Add any metadata the Transformer might need to the coordinates DataFrame
             # This approach is probably inferior to one which uses a _required_inputs attribute

@@ -214,10 +214,13 @@ class Dataset(NiMAREBase):
     def coordinates(self):
         """:class:`pandas.DataFrame`: Coordinates in the dataset.
 
+        .. versionchanged:: 0.0.10
+
+            The coordinates attribute no longer includes the associated matrix indices
+            (columns 'i', 'j', and 'k'). These columns are calculated as needed.
+
         Each study has one row for each peak.
-        Columns include ['x', 'y', 'z'] (peak locations in mm),
-        ['i', 'j', 'k'] (peak locations in voxel index based on Dataset's space),
-        and 'space' (Dataset's space).
+        Columns include ['x', 'y', 'z'] (peak locations in mm) and 'space' (Dataset's space).
         """
         return self.__coordinates
 
@@ -638,13 +641,13 @@ class Dataset(NiMAREBase):
 
         dset_mask = self.masker.mask_img
         if not np.array_equal(dset_mask.affine, mask.affine):
-            from nilearn.image import resample_to_img
+            LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
 
-            mask = resample_to_img(mask, dset_mask, interpolation="nearest")
+        dset_ijk = mm2vox(self.coordinates[["x", "y", "z"]].values, mask.affine)
         mask_ijk = np.vstack(np.where(mask.get_fdata())).T
-        distances = cdist(mask_ijk, self.coordinates[["i", "j", "k"]].values)
+        distances = cdist(mask_ijk, dset_ijk)
         distances = np.any(distances == 0, axis=0)
-        found_ids = list(self.coordinates.loc[distances, "id"].unique())
+        found_ids = list(self.coordinates.iloc[distances]["id"].unique())
         return found_ids
 
     def get_studies_by_coordinate(self, xyz, r=20):
@@ -669,5 +672,5 @@ class Dataset(NiMAREBase):
         assert xyz.shape[1] == 3 and xyz.ndim == 2
         distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
         distances = np.any(distances <= r, axis=0)
-        found_ids = list(self.coordinates.loc[distances, "id"].unique())
+        found_ids = list(self.coordinates.iloc[distances]["id"].unique())
         return found_ids
