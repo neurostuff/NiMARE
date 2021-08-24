@@ -587,6 +587,10 @@ class Dataset(NiMAREBase):
     def get_studies_by_label(self, labels=None, label_threshold=0.001):
         """Extract list of studies with a given label.
 
+        .. versionchanged:: 0.0.10
+
+            Fix bug in which all IDs were returned when a label wasn't present in the Dataset.
+
         .. versionchanged:: 0.0.9
 
             Default value for label_threshold changed to 0.001.
@@ -607,19 +611,20 @@ class Dataset(NiMAREBase):
         """
         if isinstance(labels, str):
             labels = [labels]
-        elif labels is None:
-            # For now, labels are all we can search by.
-            return self.ids
         elif not isinstance(labels, list):
             raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
 
-        found_labels = [label for label in labels if label in self.annotations.columns]
-        temp_annotations = self.annotations[self._id_cols + found_labels]
-        found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
+        missing_labels = [label for label in labels if label not in self.annotations.columns]
+        if missing_labels:
+            raise ValueError(f"Missing label(s): {', '.join(missing_labels)}")
+
+        temp_annotations = self.annotations[self._id_cols + labels]
+        found_rows = (temp_annotations[labels] >= label_threshold).all(axis=1)
         if any(found_rows):
             found_ids = temp_annotations.loc[found_rows, "id"].tolist()
         else:
             found_ids = []
+
         return found_ids
 
     def get_studies_by_mask(self, mask):
