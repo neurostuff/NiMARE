@@ -64,8 +64,8 @@ cres = corr.transform(mkda.results)
 
 # We want the "specificity" map (2-way chi-square between sel and unsel)
 plotting.plot_stat_map(
-    cres.get_map("logp_level-cluster_corr-FWE_method-montecarlo"),
-    threshold=3.0,
+    cres.get_map("z_desc-consistency_level-voxel_corr-FWE_method-montecarlo"),
+    threshold=3.09,
     draw_cross=False,
     cmap="RdBu_r",
 )

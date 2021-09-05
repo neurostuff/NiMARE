@@ -191,7 +191,7 @@ class CorrelationDecoder(Decoder):
             feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
 
             LGR.info(
-                f"Decoding {feature} ({i}/{len(self.features)}): {len(feature_ids)}/"
+                f"Decoding {feature} ({i}/{len(self.features_)}): {len(feature_ids)}/"
                 f"{len(dataset.ids)} studies"
             )
             feature_dset = dataset.slice(feature_ids)

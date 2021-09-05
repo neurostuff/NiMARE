@@ -181,7 +181,7 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
     """
     URL = (
         "https://github.com/neurosynth/neurosynth-data/blob/"
-        "753c058ac17c69db47689c1bb7c7a2598b443035/"
+        "209c33cd009d0b069398a802198b41b9c488b9b7/"
     )
 
     kwargs["data"] = "neurosynth"
