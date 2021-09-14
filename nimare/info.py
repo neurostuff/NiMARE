@@ -51,7 +51,7 @@ REQUIRES = [
     "fuzzywuzzy",
     "indexed_gzip>=1.4.0",
     "nibabel>=3.0.0",
-    "nilearn>=0.7.1",
+    "nilearn>=0.7.1,<0.8.0",
     "numpy",
     "pandas",
     "pymare>=0.0.2",

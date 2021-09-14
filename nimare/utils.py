@@ -123,11 +123,11 @@ def dict_to_coordinates(data, masker, space):
     # replace nan with none
     df = df.where(pd.notnull(df), None)
     df[["x", "y", "z"]] = df[["x", "y", "z"]].astype(float)
-    df = transform_coordinates_to_ijk(df, masker, space)
+    df = transform_coordinates_to_space(df, masker, space)
     return df
 
 
-def transform_coordinates_to_ijk(df, masker, space):
+def transform_coordinates_to_space(df, masker, space):
     """Convert xyz coordinates in a DataFrame to ijk indices for a given target space.
 
     Parameters
@@ -164,9 +164,6 @@ def transform_coordinates_to_ijk(df, masker, space):
             df.loc[idx, ["x", "y", "z"]] = alg(df.loc[idx, ["x", "y", "z"]].values)
         df.loc[idx, "space"] = space
 
-    xyz = df[["x", "y", "z"]].values
-    ijk = mm2vox(xyz, masker.mask_img.affine)
-    df[["i", "j", "k"]] = ijk
     return df
 
 

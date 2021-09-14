@@ -9,6 +9,7 @@ import numpy as np
 from ..dataset import Dataset
 from ..io import convert_sleuth_to_dataset
 from ..meta import SCALE
+from ..utils import vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -60,11 +61,14 @@ rates. NeuroImage, 99, 559-570.
     # indices matching the dataset template, where the base rate for a given
     # voxel is reflected by the number of times that voxel appears in the array
     if not baseline:
-        ijk = np.vstack(np.where(dset.masker.mask_img.get_fdata())).T
+        xyz = vox2mm(
+            np.vstack(np.where(dset.masker.mask_img.get_fdata())).T,
+            dset.masker.mask_img.affine,
+        )
     else:
-        ijk = np.loadtxt(baseline)
+        xyz = np.loadtxt(baseline)
 
-    estimator = SCALE(ijk=ijk, n_iters=n_iters, n_cores=n_cores)
+    estimator = SCALE(xyz=xyz, n_iters=n_iters, n_cores=n_cores)
     estimator.fit(dset)
 
     if output_dir is None:

@@ -3,6 +3,7 @@ import os.path as op
 
 import nibabel as nib
 import numpy as np
+import pytest
 
 import nimare
 from nimare import dataset
@@ -20,10 +21,16 @@ def test_dataset_smoke():
         assert isinstance(method(), list)
         assert isinstance(method(ids=dset.ids[:5]), list)
         assert isinstance(method(ids=dset.ids[0]), list)
+
     assert isinstance(dset.get_images(imtype="beta"), list)
     assert isinstance(dset.get_metadata(field="sample_sizes"), list)
     assert isinstance(dset.get_studies_by_label("cogat_cognitive_control"), list)
     assert isinstance(dset.get_studies_by_coordinate(np.array([[20, 20, 20]])), list)
+
+    # If label is not available, raise ValueError
+    with pytest.raises(ValueError):
+        dset.get_studies_by_label("dog")
+
     mask_data = np.zeros(dset.masker.mask_img.shape, int)
     mask_data[40, 40, 40] = 1
     mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
