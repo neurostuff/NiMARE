@@ -404,7 +404,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
         else:
             with mp.Pool(n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
+
+        del iter_df1, iter_df2, iter_dfs1, iter_dfs2, rand_idx1, rand_ijk1, iter_ijks1,
+        del rand_idx2, rand_ijk2, iter_ijks2, params
+
         pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
+
+        del perm_results
 
         # pAgF_FWE
         pAgF_null_chi2_dist = np.squeeze(pAgF_null_chi2_dist)
