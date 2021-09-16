@@ -297,14 +297,18 @@ class MKDAChi2(PairwiseCBMAEstimator):
         temp_ma_maps1 = self.kernel_transformer.transform(
             iter_df1, self.masker, return_type="array"
         )
+        n_selected = temp_ma_maps1.shape[0]
+        n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
+
+        del temp_ma_maps1
+
         temp_ma_maps2 = self.kernel_transformer.transform(
             iter_df2, self.masker, return_type="array"
         )
-
-        n_selected = temp_ma_maps1.shape[0]
         n_unselected = temp_ma_maps2.shape[0]
-        n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
         n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
+
+        del temp_ma_maps2
 
         # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels / n_selected
@@ -407,6 +411,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
             pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel], pAgF_null_chi2_dist, tail="upper")
+
+        del pAgF_null_chi2_dist
+
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to
         # 0 or 1. Prevents inf z-values.
         pAgF_p_FWE[pAgF_p_FWE < eps] = eps
@@ -418,6 +425,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
             pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_null_chi2_dist, tail="upper")
+
+        del pFgA_null_chi2_dist
+
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to
         # 0 or 1. Prevents inf z-values.
         pFgA_p_FWE[pFgA_p_FWE < eps] = eps
