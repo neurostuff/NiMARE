@@ -379,6 +379,8 @@ class CBMAEstimator(MetaEstimator):
         )
         iter_ss_map = self.compute_summarystat(iter_ma_maps)
 
+        del iter_ma_maps
+
         # Get bin edges for histogram
         bin_centers = self.null_distributions_["histogram_bins"]
         step_size = bin_centers[1] - bin_centers[0]
@@ -475,11 +477,17 @@ class CBMAEstimator(MetaEstimator):
             iter_df, masker=self.masker, return_type="array"
         )
         iter_ss_map = self.compute_summarystat(iter_ma_maps)
+
+        del iter_ma_maps
+
         iter_max_value = np.max(iter_ss_map)
         iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
         iter_ss_map[iter_ss_map <= voxel_thresh] = 0
 
         labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
+
+        del iter_ss_map
+
         _, clust_sizes = np.unique(labeled_matrix, return_counts=True)
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
         if clust_sizes.size:
