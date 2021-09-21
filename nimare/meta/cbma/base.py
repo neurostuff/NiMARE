@@ -176,12 +176,16 @@ class CBMAEstimator(MetaEstimator):
         return ma_maps
 
     def compute_summarystat(self, data):
-        """Compute OF scores from data.
+        """Compute summary statistics from data.
+
+        The actual summary statistic varies across Estimators.
+        For ALE and SCALE, the values are known as ALE values.
+        For (M)KDA, they are "OF" scores.
 
         Parameters
         ----------
         data : array, pandas.DataFrame, or list of img_like
-            Data from which to estimate ALE scores.
+            Data from which to estimate summary statistics.
             The data can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
             (2) a DataFrame containing coordinates to produce MA values,
@@ -190,7 +194,7 @@ class CBMAEstimator(MetaEstimator):
         Returns
         -------
         stat_values : 1d array
-            OF values. One value per voxel.
+            Summary statistic values. One value per voxel.
         """
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
@@ -346,6 +350,10 @@ class CBMAEstimator(MetaEstimator):
         -----
         This method adds one entry to the null_distributions_ dict attribute:
         "values_corr-none_method-reducedMontecarlo".
+
+        Warning
+        -------
+        This method is only retained for testing and algorithm development.
         """
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))

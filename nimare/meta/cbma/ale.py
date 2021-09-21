@@ -40,10 +40,17 @@ class ALE(CBMAEstimator):
         ALEKernel.
     null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
+        "approximate" is faster, but slightly less accurate.
+        "montecarlo" can be much slower, and is only slightly more accurate.
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        This is only used if ``null_method=="montecarlo"``.
+        If <=0, defaults to using all available cores.
+        Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
