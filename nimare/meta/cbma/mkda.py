@@ -27,6 +27,19 @@ class MKDADensity(CBMAEstimator):
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`nimare.meta.kernel.MKDAKernel`.
+    null_method : {"approximate", "montecarlo"}, optional
+        Method by which to determine uncorrected p-values.
+        "approximate" is faster, but slightly less accurate.
+        "montecarlo" can be much slower, and is only slightly more accurate.
+    n_iters : int, optional
+        Number of iterations to use to define the null distribution.
+        This is only used if ``null_method=="montecarlo"``.
+        Default is 10000.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        This is only used if ``null_method=="montecarlo"``.
+        If <=0, defaults to using all available cores.
+        Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -164,12 +177,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     Parameters
     ----------
-    prior : float, optional
-        Uniform prior probability of each feature being active in a map in
-        the absence of evidence from the map. Default: 0.5
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`nimare.meta.kernel.MKDAKernel`.
+    prior : float, optional
+        Uniform prior probability of each feature being active in a map in
+        the absence of evidence from the map. Default: 0.5
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -511,6 +524,19 @@ class KDA(CBMAEstimator):
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`nimare.meta.kernel.KDAKernel`.
+    null_method : {"approximate", "montecarlo"}, optional
+        Method by which to determine uncorrected p-values.
+        "approximate" is faster, but slightly less accurate.
+        "montecarlo" can be much slower, and is only slightly more accurate.
+    n_iters : int, optional
+        Number of iterations to use to define the null distribution.
+        This is only used if ``null_method=="montecarlo"``.
+        Default is 10000.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        This is only used if ``null_method=="montecarlo"``.
+        If <=0, defaults to using all available cores.
+        Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.

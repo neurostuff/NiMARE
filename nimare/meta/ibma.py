@@ -18,8 +18,7 @@ LGR = logging.getLogger(__name__)
 class Fishers(MetaEstimator):
     """An image-based meta-analytic test using t- or z-statistic images.
 
-    Requires z-statistic images, but will be extended to work with t-statistic
-    images as well.
+    Requires z-statistic images, but will be extended to work with t-statistic images as well.
 
     Notes
     -----
@@ -80,8 +79,8 @@ class Stouffers(MetaEstimator):
     Parameters
     ----------
     use_sample_size : :obj:`bool`, optional
-        Whether to use sample sizes for weights (i.e., "weighted Stouffer's")
-        or not. Default is False.
+        Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not.
+        Default is False.
 
     Notes
     -----
@@ -388,8 +387,8 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     ----------
     method : {'ml', 'reml'}, optional
         The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml'
-        (restricted maximum-likelihood). Default is 'ml'.
+        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
+        Default is 'ml'.
 
     Notes
     -----
@@ -463,8 +462,8 @@ class VarianceBasedLikelihood(MetaEstimator):
     ----------
     method : {'ml', 'reml'}, optional
         The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml'
-        (restricted maximum-likelihood). Default is 'ml'.
+        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
+        Default is 'ml'.
 
     Notes
     -----

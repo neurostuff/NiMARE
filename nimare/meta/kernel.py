@@ -15,7 +15,9 @@ import numpy as np
 import pandas as pd
 from nilearn import image
 
+from .. import references
 from ..base import Transformer
+from ..due import due
 from ..utils import (
     add_metadata_to_dataframe,
     mm2vox,
@@ -254,8 +256,20 @@ class KernelTransformer(Transformer):
         pass
 
 
+@due.dcite(
+    references.ALE2,
+    description=(
+        "Modifies ALE algorithm to eliminate within-experiment "
+        "effects and generate MA maps based on subject group "
+        "instead of experiment."
+    ),
+)
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
+
+    By default (if neither ``fwhm`` nor ``sample_size`` is provided), the FWHM of the kernel
+    will be determined on a study-wise basis based on the sample sizes available in the input,
+    via the method described in [1]_.
 
     .. versionchanged:: 0.0.8
 
@@ -277,6 +291,11 @@ class ALEKernel(KernelTransformer):
         Otherwise, the memory limit will be used to (1) assign memory-mapped files and
         (2) restrict memory during array creation to the limit.
         Default is None.
+
+    References
+    ----------
+    .. [1] Eickhoff, Simon B., et al. "Activation likelihood estimation
+           meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
 
     def __init__(self, fwhm=None, sample_size=None, memory_limit=None):
@@ -310,6 +329,7 @@ class ALEKernel(KernelTransformer):
             if self.sample_size is not None:
                 sample_size = self.sample_size
             elif self.fwhm is None:
+                # Extract from input
                 sample_size = data.sample_size.astype(float).values[0]
 
             if self.fwhm is not None:
@@ -319,6 +339,7 @@ class ALEKernel(KernelTransformer):
                     kernels[self.fwhm] = kern
                 else:
                     kern = kernels[self.fwhm]
+
             else:
                 assert np.isfinite(sample_size), "Sample size must be finite number"
                 if sample_size not in kernels.keys():
@@ -326,6 +347,7 @@ class ALEKernel(KernelTransformer):
                     kernels[sample_size] = kern
                 else:
                     kern = kernels[sample_size]
+
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
             if self.memory_limit:
