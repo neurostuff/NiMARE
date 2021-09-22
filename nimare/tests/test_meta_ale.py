@@ -10,6 +10,7 @@ import pytest
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
+from nimare.utils import vox2mm
 
 
 def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
@@ -257,9 +258,12 @@ def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
 def test_SCALE_smoke(testdata_cbma):
     """Smoke test for SCALE."""
     dset = testdata_cbma.slice(testdata_cbma.ids[:3])
-    ijk = np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T
-    ijk = ijk[:, :20]
-    meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk)
+    xyz = vox2mm(
+        np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
+        testdata_cbma.masker.mask_img.affine,
+    )
+    xyz = xyz[:, :20]
+    meta = ale.SCALE(n_iters=5, n_cores=1, xyz=xyz)
     res = meta.fit(dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert "z" in res.maps.keys()
@@ -270,9 +274,12 @@ def test_SCALE_smoke(testdata_cbma):
 def test_SCALE_smoke_lowmem(testdata_cbma):
     """Smoke test for SCALE with low memory settings."""
     dset = testdata_cbma.slice(testdata_cbma.ids[:3])
-    ijk = np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T
-    ijk = ijk[:, :20]
-    meta = ale.SCALE(n_iters=5, n_cores=1, ijk=ijk, memory_limit="1gb")
+    xyz = vox2mm(
+        np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
+        testdata_cbma.masker.mask_img.affine,
+    )
+    xyz = xyz[:, :20]
+    meta = ale.SCALE(n_iters=5, n_cores=1, xyz=xyz, memory_limit="1gb")
     res = meta.fit(dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert "z" in res.maps.keys()

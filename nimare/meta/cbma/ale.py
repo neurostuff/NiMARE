@@ -360,6 +360,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    .. versionchanged:: 0.0.10
+
+        Replace ``ijk`` with ``xyz``. This should be easier for users to collect.
+
     Parameters
     ----------
     voxel_thresh : float, optional
@@ -369,9 +373,9 @@ class SCALE(CBMAEstimator):
     n_cores : int, optional
         Number of processes to use for meta-analysis. If -1, use all
         available cores. Default: -1
-    ijk : :obj:`str` or (N x 3) array_like
-        Tab-delimited file of coordinates from database or numpy array with ijk
-        coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
+    xyz : :obj:`str` or (N x 3) array_like
+        Tab-delimited file of coordinates from database or numpy array with XYZ
+        coordinates. Voxels are rows and x, y, z (meaning coordinates) values
         are the three columnns.
     kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
@@ -397,7 +401,7 @@ class SCALE(CBMAEstimator):
         voxel_thresh=0.001,
         n_iters=10000,
         n_cores=-1,
-        ijk=None,
+        xyz=None,
         kernel_transformer=ALEKernel,
         memory_limit=None,
         **kwargs,
@@ -413,7 +417,7 @@ class SCALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
         self.voxel_thresh = voxel_thresh
-        self.ijk = ijk
+        self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.memory_limit = memory_limit
@@ -447,13 +451,13 @@ class SCALE(CBMAEstimator):
         stat_values = self._compute_summarystat(ma_values)
 
         iter_df = self.inputs_["coordinates"].copy()
-        rand_idx = np.random.choice(self.ijk.shape[0], size=(iter_df.shape[0], self.n_iters))
-        rand_ijk = self.ijk[rand_idx, :]
-        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+        rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
+        rand_xyz = self.xyz[rand_idx, :]
+        iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
 
         # Define parameters
         iter_dfs = [iter_df] * self.n_iters
-        params = zip(iter_dfs, iter_ijks)
+        params = zip(iter_dfs, iter_xyzs)
 
         if self.n_cores == 1:
             if self.memory_limit:
@@ -564,8 +568,8 @@ class SCALE(CBMAEstimator):
 
     def _run_permutation(self, params):
         """Run a single random SCALE permutation of a dataset."""
-        iter_df, iter_ijk = params
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[["i", "j", "k"]] = iter_ijk
+        iter_df, iter_xyz = params
+        iter_xyz = np.squeeze(iter_xyz)
+        iter_df[["x", "y", "z"]] = iter_xyz
         stat_values = self._compute_summarystat(iter_df)
         return stat_values

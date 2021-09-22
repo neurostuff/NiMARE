@@ -102,10 +102,6 @@
         "metadata": "data-neuroquery_version-1_metadata.tsv.gz",
         "features": [
             {
-                "features": "data-neuroquery_version-1_vocab-neuroquery7547_source-combined_type-tfidf_features.npz",
-                "vocabulary": "data-neuroquery_version-1_vocab-neuroquery7547_vocabulary.txt"
-            },
-            {
                 "features": "data-neuroquery_version-1_vocab-neuroquery7547_source-abstract_type-count_features.npz",
                 "vocabulary": "data-neuroquery_version-1_vocab-neuroquery7547_vocabulary.txt"
             },
