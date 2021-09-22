@@ -77,6 +77,35 @@ The correlation-based decoding is implemented in NiMARE’s `CorrelationDecoder`
    decoder.fit(ns_dset)
    decoding_results = decoder.transform('pain_map.nii.gz')
 
+Sometimes, users prefer to train ``CorrelationDecoder`` using a custom meta-analysis. In that case, 
+you will need to annotate :obj:`nimare.dataset.Dataset` with the weight of each feature across 
+studies with the column name using the format ``[source]_[valuetype]__``; then the decoder can be 
+trained using the ``feature_group`` argument. For example, to perform topic-based meta-analytic 
+decoding using a Latent Dirichlet allocation (LDA) model of abstracts of publications in 
+Neurosynth, you would need to append one column per topic to the :obj:`pandas.DataFrame`   
+``ns_dset.annotations`` (:obj:`nimare.dataset.Dataset.annotations`) with the probability of topic 
+given article :math:`p(topic|article)` using the feature names ``"Neurosynth_lda200__<001-200>”``, 
+for 200 topics. Then, ``CorrelationDecoder`` can be trained using the  
+``feature_group="Neurosynth_lda200”``, the frequency threshold is set at `0.05` in this case 
+(i.e., perform meta-analysis per topic on documents with a loading of 0.05 in a topic). 
+
+.. code-block:: python
+
+   decoder = CorrelationDecoder(
+       feature_group="Neurosynth_lda200”
+       frequency_threshold=0.05,
+       meta_estimator=mkda.MKDAChi2,
+       target_image='z_desc-specificity',
+   )
+
+The topic-based meta-analytic maps are then computed by fitting the ``CorrelationDecoder`` object 
+class to the newly annotated Neurosynth dataset ``ns_lda200_dset``. 
+
+.. code-block:: python
+
+   decoder.fit(ns_lda200_dset)
+   decoding_results = decoder.transform('pain_map.nii.gz')
+
 Correlation distribution-based decoding
 ``````````````````````````````````````````
 :class:`nimare.decode.continuous.CorrelationDistributionDecoder`
