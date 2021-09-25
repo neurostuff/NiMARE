@@ -77,35 +77,6 @@ The correlation-based decoding is implemented in NiMARE’s `CorrelationDecoder`
    decoder.fit(ns_dset)
    decoding_results = decoder.transform('pain_map.nii.gz')
 
-Sometimes, users prefer to train ``CorrelationDecoder`` using a custom meta-analysis. In that case, 
-you will need to annotate :obj:`nimare.dataset.Dataset` with the weight of each feature across 
-studies with the column name using the format ``[source]_[valuetype]__``; then the decoder can be 
-trained using the ``feature_group`` argument. For example, to perform topic-based meta-analytic 
-decoding using a Latent Dirichlet allocation (LDA) model of abstracts of publications in 
-Neurosynth, you would need to append one column per topic to the :obj:`pandas.DataFrame`   
-``ns_dset.annotations`` (:obj:`nimare.dataset.Dataset.annotations`) with the probability of topic 
-given article :math:`p(topic|article)` using the feature names ``"Neurosynth_lda200__<001-200>”``, 
-for 200 topics. Then, ``CorrelationDecoder`` can be trained using the  
-``feature_group="Neurosynth_lda200”``, the frequency threshold is set at `0.05` in this case 
-(i.e., perform meta-analysis per topic on documents with a loading of 0.05 in a topic). 
-
-.. code-block:: python
-
-   decoder = CorrelationDecoder(
-       feature_group="Neurosynth_lda200”
-       frequency_threshold=0.05,
-       meta_estimator=mkda.MKDAChi2,
-       target_image='z_desc-specificity',
-   )
-
-The topic-based meta-analytic maps are then computed by fitting the ``CorrelationDecoder`` object 
-class to the newly annotated Neurosynth dataset ``ns_lda200_dset``. 
-
-.. code-block:: python
-
-   decoder.fit(ns_lda200_dset)
-   decoding_results = decoder.transform('pain_map.nii.gz')
-
 Correlation distribution-based decoding
 ``````````````````````````````````````````
 :class:`nimare.decode.continuous.CorrelationDistributionDecoder`
@@ -120,7 +91,7 @@ The GCLDA approach
 
 Recently, it was introduced a new decoding framework based on Generalized Correspondence LDA 
 (GC-LDA, (`Rubin et al., 2017`_)), an extension to the LDA model. This method, in addition to the 
-two probability distributions from LDA (:math:`P(word|topic)`` and :math:`P(topic|article)``), 
+two probability distributions from LDA (:math:`P(word|topic)` and :math:`P(topic|article)`), 
 produces an additional probability distribution: the probability of a voxel given topic: 
 :math:`P(voxel|topic)`, which we use to calculate the word weight associated with an input image.
 
@@ -168,11 +139,11 @@ according to some criterion. For example, if decoding a region of interest, user
 studies reporting at least one coordinate within 5 mm of the ROI. Metadata (such as ontological 
 labels) for this subset of studies are then compared to those of the remaining, unselected portion 
 of the database in a confusion matrix. For each label in the ontology, studies are divided into 
-four groups: selected and label-positive (SS+L+), selected and label-negative (SS+L-), unselected 
-and label-positive (SS-L+), and unselected and label-negative (SS-L-). Each method then compares 
-these groups in order to evaluate both consistency and specificity of the relationship between the 
-selection criteria and each label, which are evaluated in terms of both statistical significance 
-and effect size.
+four groups: selected and label-positive (:math:`S_{s+l+}`), selected and label-negative 
+(:math:`S_{s+l-}`), unselected and label-positive (:math:`S_{s-l+}`), and unselected and 
+label-negative (:math:`S_{s-l-}`). Each method then compares these groups in order to evaluate 
+both consistency and specificity of the relationship between the selection criteria and each label, 
+which are evaluated in terms of both statistical significance and effect size.
 
 
 The BrainMap approach
