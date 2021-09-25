@@ -1,6 +1,6 @@
 .. _decoding methods:
 
-.. include:: links.rst
+.. include:: ../links.rst
 
 Meta-analytic functional decoding
 =================================
