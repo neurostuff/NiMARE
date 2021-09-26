@@ -98,7 +98,7 @@ EXTRA_REQUIRES = {
         "pandas==1.1",
         "pymare==0.0.2",
         "scikit-learn==0.22",
-        "scipy==1.6",
+        "scipy==1.5",  # 1.6 drops Python 3.6 support
     ]
 }
 
