@@ -229,7 +229,7 @@ def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
     """
     URL = (
         "https://github.com/neuroquery/neuroquery_data/blob/"
-        "893f7c31ee616a2b05419fab8bcd7c40936f7e0a/data/"
+        "4580f86267fb7c14ac1f601e298cbed898d79f2d/data/"
     )
 
     kwargs["data"] = "neuroquery"
