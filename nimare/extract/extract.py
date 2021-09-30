@@ -137,19 +137,20 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     return found_databases
 
 
-def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
+def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
     """Download the latest data files from NeuroSynth.
 
     .. versionchanged:: 0.0.10
 
         * Use new format for Neurosynth and NeuroQuery files.
+        * Change "path" parameter to "data_dir".
 
     .. versionadded:: 0.0.4
 
     Parameters
     ----------
-    path : str
-        Location in which to save the retrieved data files. Defaults to current directory.
+    data_dir : :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
     overwrite : bool, optional
@@ -183,24 +184,27 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
         "https://github.com/neurosynth/neurosynth-data/blob/"
         "209c33cd009d0b069398a802198b41b9c488b9b7/"
     )
+    dataset_name = "neurosynth"
 
-    kwargs["data"] = "neurosynth"
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
+
+    kwargs["data"] = dataset_name
     kwargs["version"] = version
 
-    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
+    found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
 
     return found_databases
 
 
-def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
+def fetch_neuroquery(data_dir=None, version="1", overwrite=False, **kwargs):
     """Download the latest data files from NeuroQuery.
 
     .. versionadded:: 0.0.10
 
     Parameters
     ----------
-    path : str
-        Location to save the retrieved data files. Defaults to current directory.
+    data_dir : :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
     url : None or str, optional
@@ -231,11 +235,14 @@ def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
         "https://github.com/neuroquery/neuroquery_data/blob/"
         "4580f86267fb7c14ac1f601e298cbed898d79f2d/data/"
     )
+    dataset_name = "neuroquery"
 
-    kwargs["data"] = "neuroquery"
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
+
+    kwargs["data"] = dataset_name
     kwargs["version"] = version
 
-    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
+    found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
 
     return found_databases
 
@@ -248,8 +255,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     Parameters
     ----------
     data_dir : :obj:`str`, optional
-        Location in which to place the studies. Default is None, which uses the
-        package's default path for downloaded data.
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
     verbose : :obj:`int`, optional
@@ -305,8 +311,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     Parameters
     ----------
     data_dir : :obj:`str`, optional
-        Location in which to place MALLET. Default is None, which uses the
-        package's default path for downloaded data.
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
     verbose : :obj:`int`, optional
@@ -358,9 +363,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
     Parameters
     ----------
     data_dir : :obj:`str`, optional
-        Location in which to place Cognitive Atlas files.
-        Default is None, which uses the package's default path for downloaded
-        data.
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
     verbose : :obj:`int`, optional

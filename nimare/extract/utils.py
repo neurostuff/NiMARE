@@ -117,9 +117,11 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
     for path, is_pre_dir in paths:
         if not is_pre_dir:
             path = os.path.join(path, dataset_name)
+
         if os.path.islink(path):
             # Resolve path
             path = readlinkabs(path)
+
         if os.path.exists(path) and os.path.isdir(path):
             if verbose > 1:
                 print("\nDataset found in %s\n" % path)
@@ -130,6 +132,7 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
     for (path, is_pre_dir) in paths:
         if not is_pre_dir:
             path = os.path.join(path, dataset_name)
+
         if not os.path.exists(path):
             try:
                 os.makedirs(path)
