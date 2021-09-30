@@ -54,6 +54,13 @@ To install NiMARE check out our `installation guide`_.
    :width: 100 %
 
 .. toctree::
+   :hidden:
+   :name: hiddentoc
+
+   methods/decoding
+   methods/fetching
+
+.. toctree::
    :maxdepth: 2
    :caption: Contents:
 
@@ -66,13 +73,6 @@ To install NiMARE check out our `installation guide`_.
    roadmap
    cli
    outputs
-
-.. toctree::
-   :hidden:
-   :name: hiddentoc
-
-   methods/decoding
-   methods/fetching
 
 Indices and tables
 ------------------
