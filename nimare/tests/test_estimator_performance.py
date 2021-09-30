@@ -220,6 +220,7 @@ def meta_cres_small(meta, meta_res, corr_small, random):
 # --------------
 
 
+@pytest.mark.performance_smoke
 def test_meta_fit_smoke(meta_res):
     """Smoke test for meta-analytic estimator fit."""
     assert isinstance(meta_res, MetaResult)
@@ -291,6 +292,7 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
     )
 
 
+@pytest.mark.performance_smoke
 def test_corr_transform_smoke(meta_cres_small):
     """Smoke test for corrector transform."""
     assert isinstance(meta_cres_small, MetaResult)

@@ -174,6 +174,26 @@ jobs:
       - codecov/upload:
           file: /tmp/src/NiMARE/coverage.xml
 
+  test_performance_smoke:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Test reasonable output for combinations of estimators/kernels/correctors
+          no_output_timeout: 30m
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py36_env
+            make performancesmoketest
+      - codecov/upload:
+          file: /tmp/src/NiMARE/coverage.xml
+
 workflows:
   version: 2.1
   run_tests:
@@ -183,6 +203,9 @@ workflows:
           requires:
             - make_py36_env
       - test_performance:
+          requires:
+            - make_py36_env
+      - test_performance_smoke:
           requires:
             - make_py36_env
       - test_py37
