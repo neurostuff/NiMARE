@@ -134,7 +134,7 @@ jobs:
       - store_artifacts:
           path: /tmp/data/lint
 
-  test_py36_and_coverage:
+  test_py36:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -144,15 +144,18 @@ jobs:
       - restore_cache:  # load environment
           key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
-          name: Run tests and compile coverage
+          name: Run tests
           command:  |
             apt-get update
             apt-get install -yqq make
             apt-get install -yqq curl
             source activate py36_env
             make unittest
-      - codecov/upload:
-          file: /tmp/src/NiMARE/coverage.xml
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.py36
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.py36
 
   test_performance:
     working_directory: /tmp/src/NiMARE
@@ -171,8 +174,11 @@ jobs:
             apt-get install -yqq make
             source activate py36_env
             make performancetest
-      - codecov/upload:
-          file: /tmp/src/NiMARE/coverage.xml
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance
 
   test_performance_smoke:
     working_directory: /tmp/src/NiMARE
@@ -191,15 +197,42 @@ jobs:
             apt-get install -yqq make
             source activate py36_env
             make performancesmoketest
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_smoke
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_smoke
+
+  merge_coverage:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:
+          at: /tmp
+      - checkout
+      - restore_cache:
+          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Merge coverage files
+          command: |
+            apt-get update
+            apt-get install -yqq curl
+            source activate py36_env
+            cd /tmp/src/coverage/
+            coverage combine
+            coverage xml
+      - store_artifacts:
+          path: /tmp/src/coverage
       - codecov/upload:
-          file: /tmp/src/NiMARE/coverage.xml
+          file: /tmp/src/coverage/coverage.xml
 
 workflows:
   version: 2.1
   run_tests:
     jobs:
       - make_py36_env
-      - test_py36_and_coverage:
+      - test_py36:
           requires:
             - make_py36_env
       - test_performance:
@@ -216,3 +249,8 @@ workflows:
       - style_check:
           requires:
             - make_py36_env
+      - merge_coverage:
+          requires:
+            - test_py36
+            - test_performance
+            - test_performance_smoke
