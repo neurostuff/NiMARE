@@ -203,6 +203,8 @@ For more information about fetching data from the internet, see `fetching tools`
    extract.download_abstracts
    extract.download_peaks2maps_model
 
+   extract.utils.get_data_dirs
+
 
 .. _api_stats_ref:
 
