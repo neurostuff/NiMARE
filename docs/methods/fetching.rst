@@ -10,6 +10,7 @@ NiMARE's ``extract`` module contains a number of functions for downloading resou
 (e.g., ontologies, images, and datasets) from the internet.
 
 .. topic:: Where do downloaded resources end up?
+
     The fetching functions in NiMARE use the same approach as ``nilearn``.
     Namely, data fetched using NiMARE's functions will be downloaded to the disk.
     These files will be saved to one of the following directories:
