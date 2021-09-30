@@ -1,6 +1,6 @@
 .. _fetching tools:
 
-.. include:: ../links.rst
+.. include:: links.rst
 
 Fetching resources from the internet
 ====================================
