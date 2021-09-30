@@ -43,7 +43,7 @@ out_dir = os.path.abspath("../example_data/")
 os.makedirs(out_dir, exist_ok=True)
 
 files = nimare.extract.fetch_neurosynth(
-    path=out_dir,
+    data_dir=out_dir,
     version="7",
     overwrite=False,
     source="abstract",
@@ -77,7 +77,7 @@ neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pk
 # ---------------------------
 # NeuroQuery's data files are stored at https://github.com/neuroquery/neuroquery_data.
 files = nimare.extract.fetch_neuroquery(
-    path=out_dir,
+    data_dir=out_dir,
     version="1",
     overwrite=False,
     source="combined",

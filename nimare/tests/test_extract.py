@@ -12,7 +12,7 @@ def test_fetch_neurosynth(tmp_path_factory):
     """
     tmpdir = tmp_path_factory.mktemp("test_fetch_neurosynth")
     nimare.extract.fetch_neurosynth(
-        path=tmpdir,
+        data_dir=tmpdir,
         version="7",
         overwrite=False,
         source="abstract",
@@ -26,7 +26,7 @@ def test_fetch_neuroquery(tmp_path_factory):
     """Smoke test for extract.fetch_neuroquery."""
     tmpdir = tmp_path_factory.mktemp("test_fetch_neuroquery")
     nimare.extract.fetch_neuroquery(
-        path=tmpdir,
+        data_dir=tmpdir,
         version="1",
         overwrite=False,
         source="abstract",
