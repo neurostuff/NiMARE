@@ -8,8 +8,7 @@
  Download the Neurosynth or NeuroQuery databases
 ================================================
 
-Download and convert the Neurosynth database (with abstracts) for analysis with
-NiMARE.
+Download and convert the Neurosynth database (with abstracts) for analysis with NiMARE.
 
 .. warning::
     In August 2021, the Neurosynth database was reorganized according to a new file format.
@@ -23,6 +22,9 @@ NiMARE.
                 "e8f27c4a9a44dbfbc0750366166ad2ba34ac72d6/current_data.tar.gz?raw=true"
             ),
         )
+
+For information about where these files will be downloaded to on your machine,
+see :ref:`Fetching resources from the internet <fetching tools>`.
 
 """
 ###############################################################################

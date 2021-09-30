@@ -183,6 +183,7 @@ For more information about functional characterization analysis, see :ref:`Meta-
 
 :mod:`nimare.extract`: Dataset and model fetching
 -----------------------------------------------------
+For more information about fetching data from the internet, see `fetching tools`_.
 
 .. automodule:: nimare.extract
    :no-members:

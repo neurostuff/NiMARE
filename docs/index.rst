@@ -45,33 +45,34 @@ To install NiMARE check out our `installation guide`_.
    :alt: Join the chat
 
 .. image:: https://img.shields.io/badge/RRID-SCR__017398-blue.svg
-  :target: https://scicrunch.org/scicrunch/Resources/record/nlx_144509-1/SCR_017398/resolver?q=nimare&l=nimare
-  :alt: RRID:SCR_017398
+   :target: https://scicrunch.org/scicrunch/Resources/record/nlx_144509-1/SCR_017398/resolver?q=nimare&l=nimare
+   :alt: RRID:SCR_017398
 
 .. _installation guide: installation.html
 
 .. image:: _static/nimare_overview.png
-  :width: 100 %
+   :width: 100 %
 
 .. toctree::
-  :maxdepth: 2
-  :caption: Contents:
+   :maxdepth: 2
+   :caption: Contents:
 
-  about
-  installation
-  api
-  auto_examples/index
-  contributing
-  dev_guide
-  roadmap
-  cli
-  outputs
+   about
+   installation
+   api
+   auto_examples/index
+   contributing
+   dev_guide
+   roadmap
+   cli
+   outputs
 
 .. toctree::
    :hidden:
    :name: hiddentoc
 
-   methods/decoding.rst
+   methods/decoding
+   methods/fetching
 
 Indices and tables
 ------------------
