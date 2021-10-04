@@ -11,21 +11,22 @@ def test_fetch_neurosynth(tmp_path_factory):
     Taken from the Neurosynth Python package.
     """
     tmpdir = tmp_path_factory.mktemp("test_fetch_neurosynth")
-    nimare.extract.fetch_neurosynth(
+    data_files = nimare.extract.fetch_neurosynth(
         data_dir=tmpdir,
         version="7",
         overwrite=False,
         source="abstract",
         vocab="terms",
     )
-    files = glob(os.path.join(tmpdir, "*"))
+    files = glob(os.path.join(tmpdir, "neurosynth", "*"))
     assert len(files) == 4
+    assert isinstance(data_files, dict)
 
 
 def test_fetch_neuroquery(tmp_path_factory):
     """Smoke test for extract.fetch_neuroquery."""
     tmpdir = tmp_path_factory.mktemp("test_fetch_neuroquery")
-    nimare.extract.fetch_neuroquery(
+    data_files = nimare.extract.fetch_neuroquery(
         data_dir=tmpdir,
         version="1",
         overwrite=False,
@@ -33,5 +34,6 @@ def test_fetch_neuroquery(tmp_path_factory):
         vocab="neuroquery7547",
         type="count",
     )
-    files = glob(os.path.join(tmpdir, "*"))
+    files = glob(os.path.join(tmpdir, "neuroquery", "*"))
     assert len(files) == 4
+    assert isinstance(data_files, dict)

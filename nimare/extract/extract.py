@@ -151,6 +151,8 @@ def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
     ----------
     data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
         Path where data should be downloaded. By default, files are downloaded in home directory.
+        A subfolder, named ``neurosynth``, will be created in ``data_dir``, which is where the
+        files will be located.
     version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
     overwrite : bool, optional
@@ -256,6 +258,8 @@ def download_nidm_pain(data_dir=None, overwrite=False):
     ----------
     data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
         Path where data should be downloaded. By default, files are downloaded in home directory.
+        A subfolder, named ``neuroquery``, will be created in ``data_dir``, which is where the
+        files will be located.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
 

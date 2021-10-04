@@ -49,6 +49,7 @@ files = nimare.extract.fetch_neurosynth(
     source="abstract",
     vocab="terms",
 )
+# Note that the files are saved to a new folder within "out_dir" named "neurosynth".
 pprint(files)
 neurosynth_db = files[0]
 
@@ -84,6 +85,7 @@ files = nimare.extract.fetch_neuroquery(
     vocab="neuroquery7547",
     type="tfidf",
 )
+# Note that the files are saved to a new folder within "out_dir" named "neuroquery".
 pprint(files)
 neuroquery_db = files[0]
 
