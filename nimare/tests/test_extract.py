@@ -20,7 +20,10 @@ def test_fetch_neurosynth(tmp_path_factory):
     )
     files = glob(os.path.join(tmpdir, "neurosynth", "*"))
     assert len(files) == 4
-    assert isinstance(data_files, dict)
+
+    # One set of files found
+    assert isinstance(data_files, list)
+    assert len(data_files) == 1
 
 
 def test_fetch_neuroquery(tmp_path_factory):
@@ -36,4 +39,7 @@ def test_fetch_neuroquery(tmp_path_factory):
     )
     files = glob(os.path.join(tmpdir, "neuroquery", "*"))
     assert len(files) == 4
-    assert isinstance(data_files, dict)
+
+    # One set of files found
+    assert isinstance(data_files, list)
+    assert len(data_files) == 1
