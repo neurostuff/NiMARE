@@ -8,8 +8,7 @@
  Download the Neurosynth or NeuroQuery databases
 ================================================
 
-Download and convert the Neurosynth database (with abstracts) for analysis with
-NiMARE.
+Download and convert the Neurosynth database (with abstracts) for analysis with NiMARE.
 
 .. warning::
     In August 2021, the Neurosynth database was reorganized according to a new file format.
@@ -17,12 +16,16 @@ NiMARE.
     with its default parameters.
     In order to download the Neurosynth database in its older format using NiMARE <= 0.0.9,
     do the following::
+
         nimare.extract.fetch_neurosynth(
             url=(
                 "https://github.com/neurosynth/neurosynth-data/blob/"
                 "e8f27c4a9a44dbfbc0750366166ad2ba34ac72d6/current_data.tar.gz?raw=true"
             ),
         )
+
+For information about where these files will be downloaded to on your machine,
+see :ref:`fetching tools`.
 
 """
 ###############################################################################
@@ -41,12 +44,13 @@ out_dir = os.path.abspath("../example_data/")
 os.makedirs(out_dir, exist_ok=True)
 
 files = nimare.extract.fetch_neurosynth(
-    path=out_dir,
+    data_dir=out_dir,
     version="7",
     overwrite=False,
     source="abstract",
     vocab="terms",
 )
+# Note that the files are saved to a new folder within "out_dir" named "neurosynth".
 pprint(files)
 neurosynth_db = files[0]
 
@@ -75,13 +79,14 @@ neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pk
 # ---------------------------
 # NeuroQuery's data files are stored at https://github.com/neuroquery/neuroquery_data.
 files = nimare.extract.fetch_neuroquery(
-    path=out_dir,
+    data_dir=out_dir,
     version="1",
     overwrite=False,
     source="combined",
     vocab="neuroquery7547",
     type="tfidf",
 )
+# Note that the files are saved to a new folder within "out_dir" named "neuroquery".
 pprint(files)
 neuroquery_db = files[0]
 

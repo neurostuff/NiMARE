@@ -1,6 +1,6 @@
 """
 
-.. _datasets2:
+.. _datasets3:
 
 ===========================================
 Using Neurovault Statistical Maps in NiMARE

@@ -25,13 +25,13 @@ def get_data_dirs(data_dir=None):
 
     Parameters
     ----------
-    data_dir: string, optional
+    data_dir: :obj:`pathlib.Path` or :obj:`str`, optional
         Path of the data directory. Used to force data storage in a specified
         location. Default: None
 
     Returns
     -------
-    paths: list of strings
+    paths : :obj:`list` of :obj:`str`
         Paths of the dataset directories.
 
     Notes
@@ -39,6 +39,7 @@ def get_data_dirs(data_dir=None):
     Taken from Nilearn.
     This function retrieves the datasets directories using the following
     priority :
+
     1. defaults system paths
     2. the keyword argument data_dir
     3. the global environment variable NIMARE_SHARED_DATA
@@ -52,7 +53,7 @@ def get_data_dirs(data_dir=None):
 
     # Check data_dir which force storage in a specific location
     if data_dir is not None:
-        paths.extend(data_dir.split(os.pathsep))
+        paths.extend(str(data_dir).split(os.pathsep))
 
     # If data_dir has not been specified, then we crawl default locations
     if data_dir is None:
@@ -68,27 +69,25 @@ def get_data_dirs(data_dir=None):
     return paths
 
 
-def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1):
+def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None):
     """Create if necessary and returns data directory of given dataset.
 
     .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    dataset_name: string
+    dataset_name : :obj:`str`
         The unique name of the dataset.
-    data_dir: string, optional
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
         Path of the data directory. Used to force data storage in a specified
         location. Default: None
-    default_paths: list of string, optional
+    default_paths : :obj:`list` of :obj:`str`, optional
         Default system paths in which the dataset may already have been
         installed by a third party software. They will be checked first.
-    verbose: int, optional
-        verbosity level (0 means no message).
 
     Returns
     -------
-    data_dir: string
+    data_dir : :obj:`str`
         Path of the given dataset directory.
 
     Notes
@@ -106,23 +105,23 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
     # Search possible data-specific system paths
     if default_paths is not None:
         for default_path in default_paths:
-            paths.extend([(d, True) for d in default_path.split(os.pathsep)])
+            paths.extend([(d, True) for d in str(default_path).split(os.pathsep)])
 
     paths.extend([(d, False) for d in get_data_dirs(data_dir=data_dir)])
 
-    if verbose > 2:
-        print("Dataset search paths: %s" % paths)
+    LGR.debug(f"Dataset search paths: {paths}")
 
     # Check if the dataset exists somewhere
     for path, is_pre_dir in paths:
         if not is_pre_dir:
             path = os.path.join(path, dataset_name)
+
         if os.path.islink(path):
             # Resolve path
             path = readlinkabs(path)
+
         if os.path.exists(path) and os.path.isdir(path):
-            if verbose > 1:
-                print("\nDataset found in %s\n" % path)
+            LGR.info(f"Dataset found in {path}\n")
             return path
 
     # If not, create a folder in the first writeable directory
@@ -130,11 +129,11 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
     for (path, is_pre_dir) in paths:
         if not is_pre_dir:
             path = os.path.join(path, dataset_name)
+
         if not os.path.exists(path):
             try:
                 os.makedirs(path)
-                if verbose > 0:
-                    print("\nDataset created in %s\n" % path)
+                LGR.info(f"Dataset created in {path}")
                 return path
             except Exception as exc:
                 short_error_message = getattr(exc, "strerror", str(exc))
