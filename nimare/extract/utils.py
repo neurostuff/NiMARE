@@ -39,6 +39,7 @@ def get_data_dirs(data_dir=None):
     Taken from Nilearn.
     This function retrieves the datasets directories using the following
     priority :
+
     1. defaults system paths
     2. the keyword argument data_dir
     3. the global environment variable NIMARE_SHARED_DATA
