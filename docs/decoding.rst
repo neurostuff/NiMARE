@@ -1,4 +1,4 @@
-.. _decoding methods:
+.. _decoding_methods:
 
 .. include:: links.rst
 

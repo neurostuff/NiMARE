@@ -1,4 +1,4 @@
-.. _fetching tools:
+.. _fetching_tools:
 
 .. include:: links.rst
 
