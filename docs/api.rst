@@ -1,9 +1,5 @@
-.. _api_ref:
-
 API
 ===
-
-.. currentmodule:: nimare
 
 .. _api_dataset_ref:
 
@@ -13,6 +9,8 @@ API
 .. automodule:: nimare.dataset
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
@@ -29,6 +27,8 @@ API
 .. automodule:: nimare.meta
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
@@ -49,6 +49,8 @@ API
    :no-members:
    :no-inherited-members:
 
+.. currentmodule:: nimare
+
 .. autosummary::
    :toctree: generated/
    :template: class.rst
@@ -64,6 +66,8 @@ API
 .. automodule:: nimare.correct
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
@@ -81,6 +85,8 @@ API
 .. automodule:: nimare.annotate
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
@@ -103,6 +109,8 @@ For more information about functional characterization analysis, see :ref:`decod
    :no-members:
    :no-inherited-members:
 
+.. currentmodule:: nimare
+
 .. autosummary::
    :toctree: generated/
    :template: module.rst
@@ -120,6 +128,8 @@ For more information about functional characterization analysis, see :ref:`decod
 .. automodule:: nimare.io
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
@@ -142,6 +152,8 @@ For more information about functional characterization analysis, see :ref:`decod
 .. automodule:: nimare.transforms
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
@@ -177,6 +189,8 @@ For more information about fetching data from the internet, see :ref:`fetching_t
    :no-members:
    :no-inherited-members:
 
+.. currentmodule:: nimare
+
 .. autosummary::
    :toctree: generated/
    :template: function.rst
@@ -201,6 +215,8 @@ For more information about fetching data from the internet, see :ref:`fetching_t
    :no-members:
    :no-inherited-members:
 
+.. currentmodule:: nimare
+
 .. autosummary::
    :toctree: generated/
    :template: function.rst
@@ -222,6 +238,8 @@ For more information about fetching data from the internet, see :ref:`fetching_t
    :no-members:
    :no-inherited-members:
 
+.. currentmodule:: nimare
+
 .. autosummary::
    :toctree: generated/
    :template: function.rst
@@ -238,6 +256,8 @@ For more information about fetching data from the internet, see :ref:`fetching_t
 .. automodule:: nimare.utils
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
@@ -272,6 +292,8 @@ For more information about fetching data from the internet, see :ref:`fetching_t
    :no-members:
    :no-inherited-members:
 
+.. currentmodule:: nimare
+
 .. autosummary::
    :toctree: generated/
    :template: function.rst
@@ -290,6 +312,8 @@ For more information about fetching data from the internet, see :ref:`fetching_t
 .. automodule:: nimare.base
    :no-members:
    :no-inherited-members:
+
+.. currentmodule:: nimare
 
 .. autosummary::
    :toctree: generated/
