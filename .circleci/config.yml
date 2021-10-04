@@ -158,7 +158,7 @@ jobs:
           paths:
               - src/coverage/.coverage.py36
 
-  test_performance:
+  test_performance_estimators:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -174,13 +174,37 @@ jobs:
             apt-get update
             apt-get install -yqq make
             source activate py36_env
-            make performancetest
+            make test_performance_estimators
             mkdir /tmp/src/coverage
-            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_estimators
       - persist_to_workspace:
           root: /tmp
           paths:
-              - src/coverage/.coverage.performance
+              - src/coverage/.coverage.performance_estimators
+
+  test_performance_correctors:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Test reasonable output for combinations of estimators/kernels/correctors
+          no_output_timeout: 30m
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py36_env
+            make test_performance_correctors
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_correctors
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_correctors
 
   test_performance_smoke:
     working_directory: /tmp/src/NiMARE
@@ -198,7 +222,7 @@ jobs:
             apt-get update
             apt-get install -yqq make
             source activate py36_env
-            make performancesmoketest
+            make test_performance_smoke
             mkdir /tmp/src/coverage
             mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_smoke
       - persist_to_workspace:
@@ -238,7 +262,10 @@ workflows:
       - test_py36:
           requires:
             - make_py36_env
-      - test_performance:
+      - test_performance_estimators:
+          requires:
+            - make_py36_env
+      - test_performance_correctors:
           requires:
             - make_py36_env
       - test_performance_smoke:
@@ -255,5 +282,6 @@ workflows:
       - merge_coverage:
           requires:
             - test_py36
-            - test_performance
+            - test_performance_estimators
+            - test_performance_correctors
             - test_performance_smoke

@@ -225,7 +225,7 @@ def test_meta_fit_smoke(meta_res):
     assert isinstance(meta_res, MetaResult)
 
 
-@pytest.mark.performance
+@pytest.mark.performance_estimators
 def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
     """Test meta-analytic estimator fit performance."""
     _, (ground_truth_foci, _) = simulatedata_cbma
@@ -297,7 +297,7 @@ def test_corr_transform_smoke(meta_cres_small):
     assert isinstance(meta_cres_small, MetaResult)
 
 
-@pytest.mark.performance
+@pytest.mark.performance_correctors
 def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_cbma):
     """Test corrector transform performance."""
     _, (ground_truth_foci, _) = simulatedata_cbma
