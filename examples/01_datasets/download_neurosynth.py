@@ -16,6 +16,7 @@ Download and convert the Neurosynth database (with abstracts) for analysis with 
     with its default parameters.
     In order to download the Neurosynth database in its older format using NiMARE <= 0.0.9,
     do the following::
+
         nimare.extract.fetch_neurosynth(
             url=(
                 "https://github.com/neurosynth/neurosynth-data/blob/"
@@ -24,7 +25,7 @@ Download and convert the Neurosynth database (with abstracts) for analysis with 
         )
 
 For information about where these files will be downloaded to on your machine,
-see :ref:`Fetching resources from the internet <fetching tools>`.
+see :ref:`fetching tools`.
 
 """
 ###############################################################################

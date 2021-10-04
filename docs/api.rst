@@ -103,7 +103,7 @@ API
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
-For more information about functional characterization analysis, see :ref:`decoding_methods`.
+For more information about functional characterization analysis, see :ref:`decoding methods`.
 
 .. automodule:: nimare.decode
    :no-members:
@@ -183,7 +183,7 @@ For more information about functional characterization analysis, see :ref:`decod
 
 :mod:`nimare.extract`: Dataset and model fetching
 -----------------------------------------------------
-For more information about fetching data from the internet, see :ref:`fetching_tools`.
+For more information about fetching data from the internet, see :ref:`fetching tools`.
 
 .. automodule:: nimare.extract
    :no-members:
@@ -323,5 +323,4 @@ For more information about fetching data from the internet, see :ref:`fetching_t
    base.Estimator
    base.MetaEstimator
    base.Transformer
-   base.KernelTransformer
    base.Decoder
