@@ -275,6 +275,8 @@ workflows:
       - test_py36:
           requires:
             - make_py36_env
+      - test_py37
+      - test_py38
       - test_performance_estimators:
           requires:
             - make_py36_env
