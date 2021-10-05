@@ -51,7 +51,7 @@ jobs:
           command:  |
             conda create -n py36_min_env python=3.6 -yq
             source activate py36_min_env
-            pip install -e .[minimum,tests]
+            pip install -e .[minimum,tests,peaks2maps-cpu]
             python setup.py install --user
       - run:
           name: Run tests
@@ -75,7 +75,6 @@ jobs:
           command:  |
             apt-get update
             apt-get install -yqq make
-            apt-get install -yqq curl
             source activate py36_env
             make unittest
             mkdir /tmp/src/coverage
@@ -148,6 +147,8 @@ jobs:
       - run:
           name: Linting
           command:  |
+            apt-get update
+            apt-get install -yqq make
             source activate py36_env
             make test_performance_estimators
             mkdir /tmp/src/coverage
