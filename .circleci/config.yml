@@ -61,7 +61,7 @@ jobs:
             source activate py36_min_env
             make unittest
 
-  test_py36_and_coverage:
+  test_py36:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -71,15 +71,19 @@ jobs:
       - restore_cache:  # load environment
           key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
-          name: Run tests and compile coverage
+          name: Run tests
           command:  |
             apt-get update
             apt-get install -yqq make
             apt-get install -yqq curl
             source activate py36_env
             make unittest
-      - codecov/upload:
-          file: /tmp/src/NiMARE/coverage.xml
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.py36
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.py36
 
   test_py37:
     working_directory: /tmp/src/NiMARE
@@ -132,7 +136,28 @@ jobs:
             source activate py38_env
             make unittest
 
-  test_performance:
+  test_performance_estimators:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Linting
+          command:  |
+            source activate py36_env
+            make test_performance_estimators
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_estimators
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_estimators
+
+  test_performance_correctors:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -148,11 +173,15 @@ jobs:
             apt-get update
             apt-get install -yqq make
             source activate py36_env
-            make performancetest
-      - codecov/upload:
-          file: /tmp/src/NiMARE/coverage.xml
+            make test_performance_correctors
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_correctors
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_correctors
 
-  build_docs:
+  test_performance_smoke:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -162,32 +191,43 @@ jobs:
       - restore_cache:  # load environment
           key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
-          name: Build documentation
-          command: |
-            source activate py36_env
+          name: Test reasonable output for combinations of estimators/kernels/correctors
+          no_output_timeout: 30m
+          command:  |
             apt-get update
             apt-get install -yqq make
-            make -C docs html
-          no_output_timeout: 30m
-      - store_artifacts:
-          path: /tmp/src/NiMARE/docs/_build/html
+            source activate py36_env
+            make test_performance_smoke
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_smoke
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_smoke
 
-  style_check:
+  merge_coverage:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
     steps:
-      - attach_workspace:  # get NiMARE
+      - attach_workspace:
           at: /tmp
-      - restore_cache:  # load environment
+      - checkout
+      - restore_cache:
           key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
-          name: Linting
-          command:  |
+          name: Merge coverage files
+          command: |
+            apt-get update
+            apt-get install -yqq curl
             source activate py36_env
-            flake8 /tmp/src/NiMARE/nimare
+            cd /tmp/src/coverage/
+            coverage combine
+            coverage xml
       - store_artifacts:
-          path: /tmp/data/lint
+          path: /tmp/src/coverage
+      - codecov/upload:
+          file: /tmp/src/coverage/coverage.xml
 
 workflows:
   version: 2.1
@@ -195,12 +235,16 @@ workflows:
     jobs:
       - make_py36_env
       - test_py36_minimum
-      - test_py36_and_coverage:
+      - test_py36:
           requires:
             - make_py36_env
-      - test_py37
-      - test_py38
-      - test_performance:
+      - test_performance_estimators:
+          requires:
+            - make_py36_env
+      - test_performance_correctors:
+          requires:
+            - make_py36_env
+      - test_performance_smoke:
           requires:
             - make_py36_env
       - build_docs:
@@ -209,3 +253,9 @@ workflows:
       - style_check:
           requires:
             - make_py36_env
+      - merge_coverage:
+          requires:
+            - test_py36
+            - test_performance_estimators
+            - test_performance_correctors
+            - test_performance_smoke

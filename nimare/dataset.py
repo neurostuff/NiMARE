@@ -380,7 +380,7 @@ class Dataset(NiMAREBase):
         Returns
         -------
         results : :obj:`dict`
-            A dictionary of lists of requested data. Keys correspond to the keys in dict_.
+            A dictionary of lists of requested data. Keys correspond to the keys in ``dict_``.
 
         Examples
         --------

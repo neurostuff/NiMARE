@@ -95,6 +95,9 @@ encoded_img, _ = decode.encode.gclda_encode(model, text)
 plotting.plot_stat_map(encoded_img, draw_cross=False)
 
 ###############################################################################
+#
+# .. _gclda-decode-map-example:
+#
 # Decode an unthresholded statistical map
 # -------------------------------------------
 # For the sake of simplicity, we will use the pseudo-statistic map generated
@@ -105,6 +108,9 @@ decoded_df, _ = decode.continuous.gclda_decode_map(model, encoded_img)
 decoded_df.sort_values(by="Weight", ascending=False).head(10)
 
 ###############################################################################
+#
+# .. _gclda-decode-roi-example:
+#
 # Decode an ROI image
 # -------------------
 

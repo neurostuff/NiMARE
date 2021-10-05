@@ -85,6 +85,7 @@ analyze_and_plot(dset, ground_truth_foci)
 # --------------------------
 # Perhaps you want more control over the studies being generated.
 # you can set:
+#
 #   - the specific peak coordinates (i.e., ``foci``)
 #   - the percentage of studies that contain the foci of interest (``foci_percentage``)
 #   - how tightly the study specific foci are selected around the ground truth (i.e., ``fwhm``)

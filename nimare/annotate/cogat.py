@@ -38,6 +38,11 @@ class CogAtLemmatizer(object):
     * Poldrack, Russell A., et al. "The cognitive atlas: toward a
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+
+    See Also
+    --------
+    nimare.extract.download_cognitive_atlas : This function will be called automatically if
+                                              ``ontology_df`` is not provided.
     """
 
     def __init__(self, ontology_df=None):
@@ -116,6 +121,11 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
     * Poldrack, Russell A., et al. "The cognitive atlas: toward a
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+
+    See Also
+    --------
+    nimare.extract.download_cognitive_atlas : This function will be called automatically if
+                                              ``id_df`` is not provided.
     """
     text_df = text_df.copy()
     if id_df is None:

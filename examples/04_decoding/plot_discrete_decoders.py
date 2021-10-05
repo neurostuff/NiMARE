@@ -43,6 +43,9 @@ plot_roi(mask_img, draw_cross=False)
 ids = dset.get_studies_by_mask(mask_img)
 
 ###############################################################################
+#
+# .. _brain-map-decoder-example:
+#
 # Decode an ROI image using the BrainMap method
 # ---------------------------------------------
 
@@ -53,6 +56,9 @@ decoded_df = decoder.transform(ids=ids)
 decoded_df.sort_values(by="probReverse", ascending=False).head()
 
 ###############################################################################
+#
+# .. _neurosynth-chi2-decoder-example:
+#
 # Decode an ROI image using the Neurosynth chi-square method
 # ----------------------------------------------------------
 
@@ -63,6 +69,9 @@ decoded_df = decoder.transform(ids=ids)
 decoded_df.sort_values(by="probReverse", ascending=False).head()
 
 ###############################################################################
+#
+# .. _neurosynth-roi-decoder-example:
+#
 # Decode an ROI image using the Neurosynth ROI association method
 # ---------------------------------------------------------------
 

@@ -14,7 +14,11 @@
 
 .. _command line interface: cli.html
 
+.. _flake8: https://flake8.pycqa.org/en/latest/
+
 .. _FSL: https://fsl.fmrib.ox.ac.uk
+
+.. _metaCurious: https://github.com/neurostuff/metaCurious
 
 .. _NeuroPower: http://neuropowertools.org
 

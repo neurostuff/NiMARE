@@ -63,6 +63,10 @@ class LDAModel(NiMAREBase):
         brain, and mental disorders using topic mapping." PLoS computational
         biology 8.10 (2012): e1002707.
         https://doi.org/10.1371/journal.pcbi.1002707
+
+    See Also
+    --------
+    nimare.extract.download_mallet : This function will be called automatically to download MALLET.
     """
 
     def __init__(

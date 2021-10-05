@@ -137,19 +137,22 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     return found_databases
 
 
-def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
+def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
     """Download the latest data files from NeuroSynth.
 
     .. versionchanged:: 0.0.10
 
         * Use new format for Neurosynth and NeuroQuery files.
+        * Change "path" parameter to "data_dir".
 
     .. versionadded:: 0.0.4
 
     Parameters
     ----------
-    path : str
-        Location in which to save the retrieved data files. Defaults to current directory.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
+        A subfolder, named ``neurosynth``, will be created in ``data_dir``, which is where the
+        files will be located.
     version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
     overwrite : bool, optional
@@ -183,24 +186,27 @@ def fetch_neurosynth(path=".", version="7", overwrite=False, **kwargs):
         "https://github.com/neurosynth/neurosynth-data/blob/"
         "209c33cd009d0b069398a802198b41b9c488b9b7/"
     )
+    dataset_name = "neurosynth"
 
-    kwargs["data"] = "neurosynth"
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
+
+    kwargs["data"] = dataset_name
     kwargs["version"] = version
 
-    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
+    found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
 
     return found_databases
 
 
-def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
+def fetch_neuroquery(data_dir=None, version="1", overwrite=False, **kwargs):
     """Download the latest data files from NeuroQuery.
 
     .. versionadded:: 0.0.10
 
     Parameters
     ----------
-    path : str
-        Location to save the retrieved data files. Defaults to current directory.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     version : str or list, optional
         The version to fetch. The default is "7" (Neurosynth's latest version).
     url : None or str, optional
@@ -229,31 +235,33 @@ def fetch_neuroquery(path=".", version="1", overwrite=False, **kwargs):
     """
     URL = (
         "https://github.com/neuroquery/neuroquery_data/blob/"
-        "893f7c31ee616a2b05419fab8bcd7c40936f7e0a/data/"
+        "4580f86267fb7c14ac1f601e298cbed898d79f2d/data/"
     )
+    dataset_name = "neuroquery"
 
-    kwargs["data"] = "neuroquery"
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
+
+    kwargs["data"] = dataset_name
     kwargs["version"] = version
 
-    found_databases = _fetch_database(kwargs, URL, path, overwrite=overwrite)
+    found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
 
     return found_databases
 
 
-def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
+def download_nidm_pain(data_dir=None, overwrite=False):
     """Download NIDM Results for 21 pain studies from NeuroVault for tests.
 
     .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    data_dir : :obj:`str`, optional
-        Location in which to place the studies. Default is None, which uses the
-        package's default path for downloaded data.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
+        A subfolder, named ``neuroquery``, will be created in ``data_dir``, which is where the
+        files will be located.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
-    verbose : :obj:`int`, optional
-        Default is 1.
 
     Returns
     -------
@@ -264,7 +272,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
 
     dataset_name = "nidm_21pain"
 
-    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
     desc_file = op.join(data_dir, "description.txt")
     if op.isfile(desc_file) and overwrite is False:
         return data_dir
@@ -297,20 +305,17 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     return data_dir
 
 
-def download_mallet(data_dir=None, overwrite=False, verbose=1):
+def download_mallet(data_dir=None, overwrite=False):
     """Download the MALLET toolbox for LDA topic modeling.
 
     .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    data_dir : :obj:`str`, optional
-        Location in which to place MALLET. Default is None, which uses the
-        package's default path for downloaded data.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
-    verbose : :obj:`int`, optional
-        Default is 1.
 
     Returns
     -------
@@ -320,7 +325,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     url = "http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz"
 
     temp_dataset_name = "mallet__temp"
-    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
+    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir)
 
     dataset_name = "mallet"
     data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
@@ -344,27 +349,22 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     with open(desc_file, "w") as fo:
         fo.write("The MALLET toolbox for latent Dirichlet allocation.")
 
-    if verbose > 0:
-        print(f"\nDataset moved to {data_dir}\n")
+    LGR.debug(f"Dataset moved to {data_dir}")
 
     return data_dir
 
 
-def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
+def download_cognitive_atlas(data_dir=None, overwrite=False):
     """Download Cognitive Atlas ontology and extract IDs and relationships.
 
     .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    data_dir : :obj:`str`, optional
-        Location in which to place Cognitive Atlas files.
-        Default is None, which uses the package's default path for downloaded
-        data.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
-    verbose : :obj:`int`, optional
-        Default is 1.
 
     Returns
     -------
@@ -378,7 +378,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
     from cognitiveatlas.api import get_concept, get_disorder, get_task
 
     dataset_name = "cognitive_atlas"
-    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
 
     ids_file = op.join(data_dir, "cogat_aliases.csv")
     rels_file = op.join(data_dir, "cogat_relationships.csv")
@@ -519,21 +519,19 @@ def download_abstracts(dataset, email):
     return dataset
 
 
-def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
+def download_peaks2maps_model(data_dir=None, overwrite=False):
     """Download the trained Peaks2Maps model from OHBM 2018.
 
     .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    data_dir : None or str, optional
+    data_dir : :obj:`pathlib.Path` or :obj:`str` or None, optional
         Where to put the trained model.
         If None, then download to the automatic NiMARE data directory.
         Default is None.
     overwrite : bool, optional
         Whether to overwrite an existing model or not. Default is False.
-    verbose : int, optional
-        Verbosity level. Default is 1.
 
     Returns
     -------
@@ -543,8 +541,8 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
 
     temp_dataset_name = "peaks2maps_model_ohbm2018__temp"
-    data_dir = _get_dataset_dir("", data_dir=data_dir, verbose=verbose)
-    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
+    data_dir = _get_dataset_dir("", data_dir=data_dir)
+    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir)
 
     dataset_name = "peaks2maps_model_ohbm2018"
     if dataset_name not in data_dir:  # allow data_dir to include model folder
@@ -586,7 +584,6 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     with open(desc_file, "w") as fo:
         fo.write("The trained Peaks2Maps model from OHBM 2018.")
 
-    if verbose > 0:
-        print(f"\nDataset moved to {data_dir}\n")
+    LGR.debug(f"Dataset moved to {data_dir}")
 
     return data_dir
