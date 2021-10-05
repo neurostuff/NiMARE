@@ -50,6 +50,7 @@ REQUIRES = [
     "cognitiveatlas",
     "fuzzywuzzy",
     "indexed_gzip>=1.4.0",
+    "matplotlib",  # this is for nilearn, which doesn't include it in its reqs
     "nibabel>=3.0.0",
     "nilearn>=0.7.1,<0.8.0",
     "numpy",
@@ -90,6 +91,16 @@ EXTRA_REQUIRES = {
     ],
     "tests": TESTS_REQUIRES,
     "duecredit": ["duecredit"],
+    "minimum": [
+        "indexed_gzip==1.4",
+        "nibabel==3.0",
+        "nilearn==0.7.1",
+        "numpy==1.18",
+        "pandas==1.1",
+        "pymare==0.0.2",
+        "scikit-learn==0.22",
+        "scipy==1.5",  # 1.6 drops Python 3.6 support
+    ]
 }
 
 # Enable a handle to install all extra dependencies at once
