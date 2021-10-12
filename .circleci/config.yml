@@ -161,32 +161,6 @@ jobs:
             source activate py39_env
             make unittest
 
-  test_py310:
-    working_directory: /tmp/src/NiMARE
-    docker:
-      - image: continuumio/miniconda3
-    steps:
-      - checkout
-      - persist_to_workspace:
-          root: /tmp
-          paths:
-              - src/NiMARE
-      - run:  # will overwrite NiMARE installation each time
-          name: Generate environment
-          command:  |
-            conda create -n py310_env python=3.10 -yq
-            source activate py310_env
-            pip install pip -U
-            pip install -e .[tests,peaks2maps-cpu]
-            python setup.py install --user
-      - run:
-          name: Run tests
-          command:  |
-            apt-get update
-            apt-get install -yqq make
-            source activate py310_env
-            make unittest
-
   test_performance_estimators:
     working_directory: /tmp/src/NiMARE
     docker:
@@ -331,7 +305,6 @@ workflows:
       - test_py37
       - test_py38
       - test_py39
-      - test_py310
       - test_performance_estimators:
           requires:
             - make_py36_env
