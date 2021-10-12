@@ -168,6 +168,13 @@ def test_convert_neurosynth_to_json_smoke():
                 "map_type_conversion": {"univariate-beta map": "beta"},
             }
         ),
+        (
+            {
+                "collection_ids": (11303,),
+                "contrasts": {"rms": "rms"},
+                "map_type_conversion": {"univariate-beta map": "beta"},
+            }
+        ),
     ],
 )
 def test_convert_neurovault_to_dataset(kwargs):

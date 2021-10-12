@@ -509,6 +509,7 @@ def convert_neurovault_to_dataset(
                 if not (
                     re.match(contrast_regex, img_dict["name"])
                     and img_dict["map_type"] in map_type_conversion
+                    and img_dict["analysis_level"] == "group"
                 ):
                     continue
 
