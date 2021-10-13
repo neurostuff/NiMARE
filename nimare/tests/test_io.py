@@ -180,7 +180,7 @@ def test_convert_neurosynth_to_json_smoke():
                 "collection_ids": (8836,),
                 "contrasts": {
                     "crab_people": "cannot hurt you because they do not exist"
-                    },
+                },
             }
         ),
     ],
