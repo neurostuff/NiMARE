@@ -505,6 +505,7 @@ def convert_neurovault_to_dataset(
             }
 
             sample_sizes = []
+            no_images = True
             for img_dict in images["results"]:
                 if not (
                     re.match(contrast_regex, img_dict["name"])
@@ -513,6 +514,7 @@ def convert_neurovault_to_dataset(
                 ):
                     continue
 
+                no_images = False
                 filename = img_dir / (
                     f"collection-{nv_coll}_id-{img_dict['id']}_" + Path(img_dict["file"]).name
                 )
@@ -531,6 +533,11 @@ def convert_neurovault_to_dataset(
                 # aggregate sample sizes (should all be the same)
                 sample_sizes.append(img_dict["number_of_subjects"])
 
+            if no_images:
+                raise ValueError(
+                    f"No images were found for contrast {contrast_name}. "
+                    f"Please check the contrast regular expression: {contrast_regex}"
+                )
             # take modal sample size (raise warning if there are multiple values)
             if len(set(sample_sizes)) > 1:
                 sample_size = _resolve_sample_size(sample_sizes)
