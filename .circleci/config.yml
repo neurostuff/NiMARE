@@ -18,7 +18,7 @@ jobs:
           paths:
               - src/NiMARE
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -32,7 +32,7 @@ jobs:
             fi
             python setup.py install --user
       - save_cache:  # environment cache tied to requirements
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
           paths:
             - "/opt/conda/envs/py36_env"
 
@@ -69,7 +69,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Run tests
           command:  |
@@ -135,6 +135,32 @@ jobs:
             source activate py38_env
             make unittest
 
+  test_py39:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/NiMARE
+      - run:  # will overwrite NiMARE installation each time
+          name: Generate environment
+          command:  |
+            conda create -n py39_env python=3.9 -yq
+            source activate py39_env
+            pip install pip -U
+            pip install -e .[tests,peaks2maps-cpu]
+            python setup.py install --user
+      - run:
+          name: Run tests
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py39_env
+            make unittest
+
   test_performance_estimators:
     working_directory: /tmp/src/NiMARE
     docker:
@@ -143,7 +169,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Linting
           command:  |
@@ -166,7 +192,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Test reasonable output for combinations of estimators/kernels/correctors
           no_output_timeout: 30m
@@ -190,7 +216,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Test reasonable output for combinations of estimators/kernels/correctors
           no_output_timeout: 30m
@@ -215,7 +241,7 @@ jobs:
           at: /tmp
       - checkout
       - restore_cache:
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Merge coverage files
           command: |
@@ -238,7 +264,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Build documentation
           command: |
@@ -258,7 +284,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Linting
           command:  |
@@ -278,6 +304,7 @@ workflows:
             - make_py36_env
       - test_py37
       - test_py38
+      - test_py39
       - test_performance_estimators:
           requires:
             - make_py36_env

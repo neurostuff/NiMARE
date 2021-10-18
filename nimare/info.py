@@ -100,7 +100,7 @@ EXTRA_REQUIRES = {
         "pymare==0.0.2",
         "scikit-learn==0.22",
         "scipy==1.5",  # 1.6 drops Python 3.6 support
-    ]
+    ],
 }
 
 # Enable a handle to install all extra dependencies at once
@@ -118,5 +118,6 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "Topic :: Scientific/Engineering",
 ]
