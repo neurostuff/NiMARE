@@ -178,9 +178,7 @@ def test_convert_neurosynth_to_json_smoke():
         (
             {
                 "collection_ids": (8836,),
-                "contrasts": {
-                    "crab_people": "cannot hurt you because they do not exist"
-                },
+                "contrasts": {"crab_people": "cannot hurt you because they do not exist"},
             }
         ),
     ],
@@ -192,7 +190,7 @@ def test_convert_neurovault_to_dataset(kwargs):
             dset = io.convert_neurovault_to_dataset(**kwargs)
         assert "Collection 778 not found." in str(excinfo.value)
         return
-    elif "crab_people" in kwargs['contrasts'].keys():
+    elif "crab_people" in kwargs["contrasts"].keys():
         with pytest.raises(ValueError) as excinfo:
             dset = io.convert_neurovault_to_dataset(**kwargs)
         assert "No images were found for contrast crab_people" in str(excinfo.value)
