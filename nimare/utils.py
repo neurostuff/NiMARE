@@ -290,6 +290,9 @@ def get_template(space="mni152_2mm", mask=None):
             img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii"))
     else:
         raise ValueError(f"Space {space} not supported")
+
+    # Coerce to array-image
+    img = nib.Nifti1Image(img.get_fdata(), affine=img.affine, header=img.header)
     return img
 
 
@@ -309,6 +312,9 @@ def get_masker(mask):
         mask = nib.load(mask)
 
     if isinstance(mask, nib.nifti1.Nifti1Image):
+        # Coerce to array-image
+        mask = nib.Nifti1Image(mask.get_fdata(), affine=mask.affine, header=mask.header)
+
         mask = NiftiMasker(mask)
 
     if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
