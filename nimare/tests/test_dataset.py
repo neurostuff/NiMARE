@@ -16,6 +16,9 @@ def test_dataset_smoke():
     dset = dataset.Dataset(db_file)
     dset.update_path(get_test_data_path())
     assert isinstance(dset, nimare.dataset.Dataset)
+    # Test that Dataset.masker is portable
+    assert not nib.is_proxy(dset.masker.mask_img_.dataobj)
+
     methods = [dset.get_images, dset.get_labels, dset.get_metadata, dset.get_texts]
     for method in methods:
         assert isinstance(method(), list)
