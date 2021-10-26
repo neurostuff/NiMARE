@@ -941,7 +941,7 @@ def run_shell_command(command, env=None):
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         shell=True,
         env=merged_env,
     )
@@ -953,6 +953,5 @@ def run_shell_command(command, env=None):
             break
 
     if process.returncode != 0:
-        raise Exception(
-            f"Non zero return code: {process.returncode}\n{command}\n\n{process.stdout.read()}"
-        )
+        stderr_line = str(process.stderr.read(), "utf-8")[:-1]
+        raise Exception(f"Non zero return code: {process.returncode}\n{command}\n\n{stderr_line}")
