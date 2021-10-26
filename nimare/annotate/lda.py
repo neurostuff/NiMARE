@@ -1,9 +1,7 @@
 """Topic modeling with latent Dirichlet allocation via MALLET."""
 import logging
 import os
-import os.path as op
 import shutil
-import subprocess
 
 import numpy as np
 import pandas as pd
@@ -12,6 +10,7 @@ from .. import references
 from ..base import NiMAREBase
 from ..due import due
 from ..extract import download_mallet, utils
+from ..utils import run_shell_command
 
 LGR = logging.getLogger(__name__)
 
@@ -73,12 +72,12 @@ class LDAModel(NiMAREBase):
         self, text_df, text_column="abstract", n_topics=50, n_iters=1000, alpha="auto", beta=0.001
     ):
         mallet_dir = download_mallet()
-        mallet_bin = op.join(mallet_dir, "bin/mallet")
+        mallet_bin = os.path.join(mallet_dir, "bin/mallet")
 
         model_dir = utils._get_dataset_dir("mallet_model")
-        text_dir = op.join(model_dir, "texts")
+        text_dir = os.path.join(model_dir, "texts")
 
-        if not op.isdir(model_dir):
+        if not os.path.isdir(model_dir):
             os.mkdir(model_dir)
 
         if alpha == "auto":
@@ -90,7 +89,7 @@ class LDAModel(NiMAREBase):
         self.model_dir = model_dir
 
         # Check for presence of text files and convert if necessary
-        if not op.isdir(text_dir):
+        if not os.path.isdir(text_dir):
             LGR.info("Texts folder not found. Creating text files...")
             os.mkdir(text_dir)
 
@@ -104,11 +103,11 @@ class LDAModel(NiMAREBase):
 
             for id_ in text_df["id"].values:
                 text = text_df.loc[text_df["id"] == id_, text_column].values[0]
-                with open(op.join(text_dir, str(id_) + ".txt"), "w") as fo:
+                with open(os.path.join(text_dir, str(id_) + ".txt"), "w") as fo:
                     fo.write(text)
 
         # Run MALLET topic modeling
-        LGR.info("Generating topics...")
+        LGR.info("Compiling MALLET commands...")
         import_str = (
             f"{mallet_bin} import-dir "
             f"--input {text_dir} "
@@ -142,8 +141,9 @@ class LDAModel(NiMAREBase):
         p_word_g_topic_ : :obj:`numpy.ndarray`
             Probability of each word given a topic
         """
-        subprocess.call(self.commands_[0], shell=True)
-        subprocess.call(self.commands_[1], shell=True)
+        LGR.info("Generating topics...")
+        run_shell_command(self.commands_[0])
+        run_shell_command(self.commands_[1])
 
         # Read in and convert doc_topics and topic_keys.
         topic_names = [f"topic_{i:03d}" for i in range(self.params["n_topics"])]
@@ -158,7 +158,7 @@ class LDAModel(NiMAREBase):
         # on an individual id basis by the weights.
         n_cols = (2 * self.params["n_topics"]) + 1
         dt_df = pd.read_csv(
-            op.join(self.model_dir, "doc_topics.txt"),
+            os.path.join(self.model_dir, "doc_topics.txt"),
             delimiter="\t",
             skiprows=1,
             header=None,
@@ -194,7 +194,7 @@ class LDAModel(NiMAREBase):
 
         # Topic word weights
         p_word_g_topic_df = pd.read_csv(
-            op.join(self.model_dir, "topic_word_weights.txt"),
+            os.path.join(self.model_dir, "topic_word_weights.txt"),
             dtype=str,
             keep_default_na=False,
             na_values=[],
@@ -213,7 +213,7 @@ class LDAModel(NiMAREBase):
         shutil.rmtree(self.model_dir)
 
     def _clean_str(self, string):
-        return op.basename(op.splitext(string)[0])
+        return os.path.basename(os.path.splitext(string)[0])
 
     def _get_sort(self, lst):
         return [i[0] for i in sorted(enumerate(lst), key=lambda x: x[1])]
