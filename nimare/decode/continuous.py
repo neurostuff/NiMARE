@@ -1,19 +1,19 @@
-"""
-Methods for decoding unthresholded brain maps into text.
-"""
+"""Methods for decoding unthresholded brain maps into text."""
 import inspect
 import logging
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
+from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 
 from .. import references
 from ..base import Decoder
 from ..due import due
+from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
+from ..utils import check_type, safe_transform
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
@@ -21,10 +21,7 @@ LGR = logging.getLogger(__name__)
 
 @due.dcite(references.GCLDA_DECODING, description="Describes decoding methods using GC-LDA.")
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
-    r"""
-    Perform image-to-text decoding for continuous inputs (e.g.,
-    unthresholded statistical maps), according to the method described in
-    Rubin et al. (2017).
+    r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
     Parameters
     ----------
@@ -89,12 +86,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
       cognition." PLoS computational biology 13.10 (2017): e1005649.
       https://doi.org/10.1371/journal.pcbi.1005649
     """
-    if isinstance(image, str):
-        image = nib.load(image)
-    elif not isinstance(image, nib.Nifti1Image):
-        raise IOError(
-            "Input image must be either a nifti image " "(nibabel.Nifti1Image) or a path to one."
-        )
+    image = load_niimg(image)
 
     # Load image file and get voxel values
     input_values = apply_mask(image, model.mask)
@@ -116,8 +108,11 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
 @due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class CorrelationDecoder(Decoder):
-    """Decode an unthresholded image by correlating the image with
-    meta-analytic maps corresponding to specific features.
+    """Decode an unthresholded image by correlating the image with meta-analytic maps.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] Add *low-memory* option to :class:`meta_estimator`
 
     Parameters
     ----------
@@ -139,6 +134,11 @@ class CorrelationDecoder(Decoder):
     evaluate results based on significance.
     """
 
+    _required_inputs = {
+        "coordinates": ("coordinates", None),
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
         self,
         feature_group=None,
@@ -146,10 +146,13 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
+        memory_limit="1gb",
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2()
+            meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
+        else:
+            meta_estimator = check_type(meta_estimator, CBMAEstimator)
 
         self.feature_group = feature_group
         self.features = features
@@ -159,8 +162,7 @@ class CorrelationDecoder(Decoder):
         self.results = None
 
     def _fit(self, dataset):
-        """
-        Generate feature-specific meta-analytic maps for dataset.
+        """Generate feature-specific meta-analytic maps for dataset.
 
         Parameters
         ----------
@@ -186,11 +188,17 @@ class CorrelationDecoder(Decoder):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
             )
+            feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
+
+            LGR.info(
+                f"Decoding {feature} ({i}/{len(self.features_)}): {len(feature_ids)}/"
+                f"{len(dataset.ids)} studies"
+            )
             feature_dset = dataset.slice(feature_ids)
             # This seems like a somewhat inelegant solution
             # Check if the meta method is a pairwise estimator
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
-                nonfeature_ids = sorted(list(set(dataset.ids) - set(feature_ids)))
+                nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
                 self.meta_estimator.fit(feature_dset, nonfeature_dset)
             else:
@@ -215,8 +223,7 @@ class CorrelationDecoder(Decoder):
         Returns
         -------
         out_df : :obj:`pandas.DataFrame`
-            DataFrame with one row for each feature and two columns:
-            "feature" and "r".
+            DataFrame with one row for each feature, an index named "feature", and one column: "r".
         """
         img_vec = self.masker.transform(img)
         corrs = pearson(img_vec, self.images_)
@@ -227,8 +234,7 @@ class CorrelationDecoder(Decoder):
 
 
 class CorrelationDistributionDecoder(Decoder):
-    """Decode an unthresholded image by correlating the image with
-    images from all studies labeled with specific features.
+    """Decode an unthresholded image by correlating the image with study-wise images.
 
     Parameters
     ----------
@@ -248,19 +254,27 @@ class CorrelationDistributionDecoder(Decoder):
     evaluate results based on significance.
     """
 
+    _required_inputs = {
+        "annotations": ("annotations", None),
+    }
+
     def __init__(
-        self, feature_group=None, features=None, frequency_threshold=0.001, target_image="z"
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        target_image="z",
+        memory_limit="1gb",
     ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
-        self.target_image = target_image
+        self.memory_limit = memory_limit
         self.results = None
+        self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
-        """
-        Collect sets of maps from the Dataset corresponding to each requested
-        feature.
+        """Collect sets of maps from the Dataset corresponding to each requested feature.
 
         Parameters
         ----------
@@ -283,13 +297,23 @@ class CorrelationDistributionDecoder(Decoder):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
             )
-            test_imgs = dataset.get_images(ids=feature_ids, imtype=self.target_image)
-            test_imgs = list(filter(None, test_imgs))
+            selected_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
+            selected_id_idx = [
+                i_id for i_id, id_ in enumerate(self.inputs_["id"]) if id_ in selected_ids
+            ]
+            test_imgs = [
+                img for i_img, img in enumerate(self.inputs_["images"]) if i_img in selected_id_idx
+            ]
             if len(test_imgs):
-                feature_arr = self.masker.transform(test_imgs)
+                feature_arr = safe_transform(
+                    test_imgs,
+                    self.masker,
+                    memory_limit=self.memory_limit,
+                    memfile=None,
+                )
                 images_[feature] = feature_arr
             else:
-                LGR.info('Skipping feature "{}". No images found.'.format(feature))
+                LGR.info(f"Skipping feature '{feature}'. No images found.")
         # reduce features again
         self.features_ = [f for f in self.features_ if f in images_.keys()]
         self.images_ = images_
@@ -305,8 +329,8 @@ class CorrelationDistributionDecoder(Decoder):
         Returns
         -------
         out_df : :obj:`pandas.DataFrame`
-            DataFrame with one row for each feature and two columns:
-            "feature" and "r".
+            DataFrame with one row for each feature, an index named "feature", and two columns:
+            "mean" and "std".
         """
         img_vec = self.masker.transform(img)
         out_df = pd.DataFrame(

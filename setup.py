@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """ NiMARE setup script """
-import versioneer
-from io import open
 import os.path as op
-from inspect import getfile, currentframe
-from setuptools import setup, find_packages
+from glob import glob
+from inspect import currentframe, getfile
+from io import open
+
+from setuptools import find_packages, setup
+
+import versioneer
 
 
 def main():
@@ -14,8 +17,6 @@ def main():
     with open(ver_file) as f:
         exec(f.read())
     vars = locals()
-
-    pkg_data = {"nimare": ["tests/data/*", "resources/*"]}
 
     root_dir = op.dirname(op.abspath(getfile(currentframe())))
     cmdclass = versioneer.get_cmdclass()
@@ -39,7 +40,6 @@ def main():
         extras_require=vars["EXTRA_REQUIRES"],
         entry_points=vars["ENTRY_POINTS"],
         packages=find_packages(exclude=("tests",)),
-        package_data=pkg_data,
         zip_safe=False,
         cmdclass=cmdclass,
     )

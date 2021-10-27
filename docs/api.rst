@@ -103,6 +103,7 @@ API
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
+For more information about functional characterization analysis, see :ref:`decoding methods`.
 
 .. automodule:: nimare.decode
    :no-members:
@@ -140,6 +141,7 @@ API
    io.convert_sleuth_to_dict
    io.convert_sleuth_to_json
    io.convert_sleuth_to_dataset
+   io.convert_neurovault_to_dataset
 
 
 .. _api_transforms_ref:
@@ -155,6 +157,11 @@ API
 
 .. autosummary::
    :toctree: generated/
+   :template: class.rst
+
+   transforms.ImageTransformer
+   transforms.ImagesToCoordinates
+
    :template: function.rst
 
    transforms.transform_images
@@ -169,16 +176,14 @@ API
    transforms.p_to_z
    transforms.t_to_z
    transforms.z_to_t
-   transforms.vox2mm
-   transforms.mm2vox
-   transforms.tal2mni
-   transforms.mni2tal
+   transforms.z_to_p
 
 
 .. _api_extract_ref:
 
 :mod:`nimare.extract`: Dataset and model fetching
 -----------------------------------------------------
+For more information about fetching data from the internet, see :ref:`fetching tools`.
 
 .. automodule:: nimare.extract
    :no-members:
@@ -190,11 +195,15 @@ API
    :toctree: generated/
    :template: function.rst
 
+   extract.fetch_neuroquery
+   extract.fetch_neurosynth
    extract.download_nidm_pain
    extract.download_mallet
    extract.download_cognitive_atlas
    extract.download_abstracts
    extract.download_peaks2maps_model
+
+   extract.utils.get_data_dirs
 
 
 .. _api_stats_ref:
@@ -216,7 +225,27 @@ API
    stats.two_way
    stats.pearson
    stats.null_to_p
+   stats.nullhist_to_p
    stats.fdr
+
+
+.. _api_generate_ref:
+
+:mod:`nimare.generate`: Data generation functions
+-----------------------------------------------------
+
+.. automodule:: nimare.generate
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   generate.create_coordinate_dataset
+   generate.create_neurovault_dataset
 
 
 .. _api_utils_ref:
@@ -243,9 +272,16 @@ API
    utils.listify
    utils.round2
    utils.get_resource_path
+   utils.try_prepend
    utils.find_stem
    utils.uk_to_us
-
+   utils.use_memmap
+   utils.add_metadata_to_dataframe
+   utils.check_type
+   utils.vox2mm
+   utils.mm2vox
+   utils.tal2mni
+   utils.mni2tal
 
 .. _api_workflows_ref:
 
@@ -287,5 +323,4 @@ API
    base.Estimator
    base.MetaEstimator
    base.Transformer
-   base.KernelTransformer
    base.Decoder

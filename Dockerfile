@@ -73,7 +73,6 @@ RUN export PATH="/opt/miniconda-latest/bin:$PATH" \
            'jupyter' \
            'jupyterlab' \
            'jupyter_contrib_nbextensions' \
-           'seaborn' \
            'pytest' \
            'pytest-cov' \
            'codecov' \
@@ -132,8 +131,7 @@ RUN echo '{ \
     \n          "python=3.6", \
     \n          "jupyter", \
     \n          "jupyterlab", \
-    \n          "jupyter_contrib_nbextensions", \
-    \n          "seaborn" \
+    \n          "jupyter_contrib_nbextensions" \
     \n        ], \
     \n        "pip_install": [ \
     \n          "/src/NiMARE/" \

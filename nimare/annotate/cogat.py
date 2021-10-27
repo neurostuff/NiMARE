@@ -1,25 +1,22 @@
-"""
-Automated annotation of Cognitive Atlas labels.
-"""
+"""Automated annotation of Cognitive Atlas labels."""
 import logging
 import re
 
 import numpy as np
 import pandas as pd
 
-from . import utils
 from .. import references
 from ..due import due
 from ..extract import download_cognitive_atlas
 from ..utils import uk_to_us
+from . import utils
 
 LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.COGNITIVE_ATLAS, description="Introduces the Cognitive Atlas.")
 class CogAtLemmatizer(object):
-    """
-    Replace synonyms and abbreviations with Cognitive Atlas identifiers in text.
+    """Replace synonyms and abbreviations with Cognitive Atlas identifiers in text.
 
     Parameters
     ----------
@@ -41,6 +38,11 @@ class CogAtLemmatizer(object):
     * Poldrack, Russell A., et al. "The cognitive atlas: toward a
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+
+    See Also
+    --------
+    nimare.extract.download_cognitive_atlas : This function will be called automatically if
+                                              ``ontology_df`` is not provided.
     """
 
     def __init__(self, ontology_df=None):
@@ -64,8 +66,7 @@ class CogAtLemmatizer(object):
         self.regex_ = regex_dict
 
     def transform(self, text, convert_uk=True):
-        """
-        Replace terms in text with unique Cognitive Atlas identifiers.
+        """Replace terms in text with unique Cognitive Atlas identifiers.
 
         Parameters
         ----------
@@ -93,9 +94,7 @@ class CogAtLemmatizer(object):
 
 @due.dcite(references.COGNITIVE_ATLAS, description="Introduces the Cognitive Atlas.")
 def extract_cogat(text_df, id_df=None, text_column="abstract"):
-    """
-    Extract Cognitive Atlas terms and count instances using regular
-    expressions.
+    """Extract Cognitive Atlas terms and count instances using regular expressions.
 
     Parameters
     ----------
@@ -122,6 +121,11 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
     * Poldrack, Russell A., et al. "The cognitive atlas: toward a
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+
+    See Also
+    --------
+    nimare.extract.download_cognitive_atlas : This function will be called automatically if
+                                              ``id_df`` is not provided.
     """
     text_df = text_df.copy()
     if id_df is None:
@@ -156,8 +160,7 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
 
 
 def expand_counts(counts_df, rel_df=None, weights=None):
-    """
-    Perform hierarchical expansion of counts across labels.
+    """Perform hierarchical expansion of counts across labels.
 
     Parameters
     ----------
@@ -187,9 +190,7 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     w_not_c = set(weights_columns) - set(counts_columns)
     c_not_w = set(counts_columns) - set(weights_columns)
     if c_not_w:
-        raise Exception(
-            "Columns found in counts but not weights: " "{0}".format(", ".join(c_not_w))
-        )
+        raise Exception(f"Columns found in counts but not weights: {', '.join(c_not_w)}")
 
     for col in w_not_c:
         counts_df[col] = 0

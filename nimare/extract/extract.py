@@ -1,12 +1,10 @@
-"""
-Tools for downloading datasets.
-"""
+"""Tools for downloading datasets."""
+import itertools
+import json
 import logging
-import math
 import os
 import os.path as op
 import shutil
-import sys
 import tarfile
 import time
 import zipfile
@@ -21,6 +19,7 @@ import requests
 from tqdm.auto import tqdm
 
 from ..dataset import Dataset
+from ..utils import get_resource_path
 from .utils import (
     _download_zipped_file,
     _expand_df,
@@ -31,74 +30,238 @@ from .utils import (
 
 LGR = logging.getLogger(__name__)
 
+VALID_ENTITIES = {
+    "coordinates.tsv.gz": ["data", "version"],
+    "metadata.tsv.gz": ["data", "version"],
+    "features.npz": ["data", "version", "vocab", "source", "type"],
+    "vocabulary.txt": ["data", "version", "vocab"],
+    "metadata.json": ["data", "version", "vocab"],
+    "keys.tsv": ["data", "version", "vocab"],
+}
 
-def fetch_neurosynth(path=".", url=None, unpack=False):
-    """
-    Download the latest data files from NeuroSynth.
+
+def _find_entities(filename, search_pairs, log=False):
+    """Search file for any matching patterns of entities."""
+    # Convert all string-based kwargs to lists
+    search_pairs = {k: [v] if isinstance(v, str) else v for k, v in search_pairs.items()}
+    search_pairs = [[f"{k}-{v_i}" for v_i in v] for k, v in search_pairs.items()]
+    searches = list(itertools.product(*search_pairs))
+
+    if log:
+        LGR.info(f"Searching for any feature files matching the following criteria: {searches}")
+
+    file_parts = filename.split("_")
+    suffix = file_parts[-1]
+    valid_entities_for_suffix = VALID_ENTITIES[suffix]
+    for search in searches:
+        temp_search = [term for term in search if term.split("-")[0] in valid_entities_for_suffix]
+        if all(term in file_parts for term in temp_search):
+            return True
+
+    return False
+
+
+def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
+    """Fetch generic database."""
+    res_dir = get_resource_path()
+    with open(op.join(res_dir, "database_file_manifest.json"), "r") as fo:
+        database_file_manifest = json.load(fo)
+
+    out_dir = op.abspath(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+
+    found_databases = []
+    found_files = []
+    log = True
+    for database in database_file_manifest:
+        coordinates_file = database["coordinates"]
+        metadata_file = database["metadata"]
+        if not _find_entities(coordinates_file, search_pairs, log=log):
+            log = False
+            continue
+
+        log = False
+
+        feature_dicts = database["features"]
+        for feature_dict in feature_dicts:
+            features_file = feature_dict["features"]
+            # Other files associated with features have subset of entities,
+            # so unnecessary to search them if we assume that the hard-coded manifest is valid.
+            if not _find_entities(features_file, search_pairs):
+                continue
+            else:
+                out_coordinates_file = op.join(out_dir, coordinates_file)
+                out_metadata_file = op.join(out_dir, metadata_file)
+                out_feature_dict = {k: op.join(out_dir, v) for k, v in feature_dict.items()}
+
+                db_found = [
+                    i_db
+                    for i_db, db_dct in enumerate(found_databases)
+                    if db_dct["coordinates"] == out_coordinates_file
+                ]
+                if len(db_found):
+                    assert len(db_found) == 1
+
+                    found_databases[db_found[0]]["features"].append(out_feature_dict)
+                else:
+                    found_databases.append(
+                        {
+                            "coordinates": out_coordinates_file,
+                            "metadata": out_metadata_file,
+                            "features": [out_feature_dict],
+                        }
+                    )
+                found_files += [coordinates_file, metadata_file, *feature_dict.values()]
+
+    found_files = sorted(list(set(found_files)))
+    for found_file in found_files:
+        print(f"Downloading {found_file}", flush=True)
+
+        url = op.join(database_url, found_file + "?raw=true")
+        out_file = op.join(out_dir, found_file)
+
+        if op.isfile(out_file) and not overwrite:
+            print("File exists and overwrite is False. Skipping.")
+            continue
+
+        with open(out_file, "wb") as fo:
+            u = urlopen(url)
+
+            block_size = 8192
+            while True:
+                buffer = u.read(block_size)
+                if not buffer:
+                    break
+                fo.write(buffer)
+
+    return found_databases
+
+
+def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
+    """Download the latest data files from NeuroSynth.
+
+    .. versionchanged:: 0.0.10
+
+        * Use new format for Neurosynth and NeuroQuery files.
+        * Change "path" parameter to "data_dir".
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
-    path : str
-        Location to save the retrieved data files. Defaults to current directory.
-    url : None or str, optional
-        Specific URL to download. If not None, overrides URL to current data.
-    unpack : bool, optional
-        If True, unzips the data file post-download. Defaults to False.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
+        A subfolder, named ``neurosynth``, will be created in ``data_dir``, which is where the
+        files will be located.
+    version : str or list, optional
+        The version to fetch. The default is "7" (Neurosynth's latest version).
+    overwrite : bool, optional
+        Whether to overwrite existing files or not. Default is False.
+    kwargs : dict, optional
+        Keyword arguments to select relevant feature files.
+        Valid kwargs include: source, vocab, type.
+        Each kwarg may be a string or a list of strings.
+        If no kwargs are provided, all feature files for the specified database version will be
+        downloaded.
+
+    Returns
+    -------
+    found_databases : :obj:`list` of :obj:`dict`
+        List of dictionaries indicating datasets downloaded.
+        Each list entry is a different database, containing a dictionary with three keys:
+        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
+        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
+        keys with associated files.
 
     Notes
     -----
-    This function was originally neurosynth.base.dataset.download().
+    This function was adapted from neurosynth.base.dataset.download().
+
+    Warning
+    -------
+    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+    format. Old code using this function **will not work** with the new version.
     """
+    URL = (
+        "https://github.com/neurosynth/neurosynth-data/blob/"
+        "209c33cd009d0b069398a802198b41b9c488b9b7/"
+    )
+    dataset_name = "neurosynth"
 
-    if url is None:
-        url = (
-            "https://github.com/neurosynth/neurosynth-data/blob/master/current_data.tar.gz?"
-            "raw=true"
-        )
-    if os.path.exists(path) and os.path.isdir(path):
-        basename = os.path.basename(url).split("?")[0]
-        filename = os.path.join(path, basename)
-    else:
-        filename = path
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
 
-    f = open(filename, "wb")
+    kwargs["data"] = dataset_name
+    kwargs["version"] = version
 
-    u = urlopen(url)
-    file_size = int(u.headers["Content-Length"][0])
-    print("Downloading the latest Neurosynth files: {0} bytes: {1}".format(url, file_size))
+    found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
 
-    bytes_dl = 0
-    block_size = 8192
-    while True:
-        buffer = u.read(block_size)
-        if not buffer:
-            break
-        bytes_dl += len(buffer)
-        f.write(buffer)
-        p = float(bytes_dl) / file_size
-        status = r"{0}  [{1:.2%}]".format(bytes_dl, p)
-        status = status + chr(8) * (len(status) + 1)
-        sys.stdout.write(status)
-
-    f.close()
-
-    if unpack:
-        tarfile.open(filename, "r:gz").extractall(os.path.dirname(filename))
+    return found_databases
 
 
-def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download NIDM Results for 21 pain studies from NeuroVault for tests.
+def fetch_neuroquery(data_dir=None, version="1", overwrite=False, **kwargs):
+    """Download the latest data files from NeuroQuery.
+
+    .. versionadded:: 0.0.10
 
     Parameters
     ----------
-    data_dir : :obj:`str`, optional
-        Location in which to place the studies. Default is None, which uses the
-        package's default path for downloaded data.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
+    version : str or list, optional
+        The version to fetch. The default is "7" (Neurosynth's latest version).
+    url : None or str, optional
+        Specific URL to download. If not None, overrides URL to current data.
+        If you want to fetch Neurosynth's data from *before* the 2021 reorganization,
+        you will need to use this argument.
+    kwargs
+        Keyword arguments to select relevant feature files.
+        Valid kwargs include: source, vocab, type.
+        Each kwarg may be a string or a list of strings.
+        If no kwargs are provided, all feature files for the specified database version will be
+        downloaded.
+
+    Returns
+    -------
+    found_databases : :obj:`list` of :obj:`dict`
+        List of dictionaries indicating datasets downloaded.
+        Each list entry is a different database, containing a dictionary with three keys:
+        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
+        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
+        keys with associated files.
+
+    Notes
+    -----
+    This function was adapted from neurosynth.base.dataset.download().
+    """
+    URL = (
+        "https://github.com/neuroquery/neuroquery_data/blob/"
+        "4580f86267fb7c14ac1f601e298cbed898d79f2d/data/"
+    )
+    dataset_name = "neuroquery"
+
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
+
+    kwargs["data"] = dataset_name
+    kwargs["version"] = version
+
+    found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
+
+    return found_databases
+
+
+def download_nidm_pain(data_dir=None, overwrite=False):
+    """Download NIDM Results for 21 pain studies from NeuroVault for tests.
+
+    .. versionadded:: 0.0.2
+
+    Parameters
+    ----------
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
+        A subfolder, named ``neuroquery``, will be created in ``data_dir``, which is where the
+        files will be located.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
-    verbose : :obj:`int`, optional
-        Default is 1.
 
     Returns
     -------
@@ -109,7 +272,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
 
     dataset_name = "nidm_21pain"
 
-    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
     desc_file = op.join(data_dir, "description.txt")
     if op.isfile(desc_file) and overwrite is False:
         return data_dir
@@ -125,7 +288,7 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     collection_folders = [f for f in glob(op.join(data_dir, "*")) if ".nidm" not in f]
     collection_folders = [f for f in collection_folders if op.isdir(f)]
     if len(collection_folders) > 1:
-        raise Exception("More than one folder found: " "{0}".format(", ".join(collection_folders)))
+        raise Exception(f"More than one folder found: {', '.join(collection_folders)}")
     else:
         folder = collection_folders[0]
     zip_files = glob(op.join(folder, "*.zip"))
@@ -142,19 +305,17 @@ def download_nidm_pain(data_dir=None, overwrite=False, verbose=1):
     return data_dir
 
 
-def download_mallet(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download the MALLET toolbox for LDA topic modeling.
+def download_mallet(data_dir=None, overwrite=False):
+    """Download the MALLET toolbox for LDA topic modeling.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    data_dir : :obj:`str`, optional
-        Location in which to place MALLET. Default is None, which uses the
-        package's default path for downloaded data.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
-    verbose : :obj:`int`, optional
-        Default is 1.
 
     Returns
     -------
@@ -164,7 +325,7 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     url = "http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz"
 
     temp_dataset_name = "mallet__temp"
-    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
+    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir)
 
     dataset_name = "mallet"
     data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
@@ -188,27 +349,22 @@ def download_mallet(data_dir=None, overwrite=False, verbose=1):
     with open(desc_file, "w") as fo:
         fo.write("The MALLET toolbox for latent Dirichlet allocation.")
 
-    if verbose > 0:
-        print("\nDataset moved to {}\n".format(data_dir))
+    LGR.debug(f"Dataset moved to {data_dir}")
 
     return data_dir
 
 
-def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download Cognitive Atlas ontology and combine Concepts, Tasks, and
-    Disorders to create ID and relationship DataFrames.
+def download_cognitive_atlas(data_dir=None, overwrite=False):
+    """Download Cognitive Atlas ontology and extract IDs and relationships.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    data_dir : :obj:`str`, optional
-        Location in which to place Cognitive Atlas files.
-        Default is None, which uses the package's default path for downloaded
-        data.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in home directory.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
-    verbose : :obj:`int`, optional
-        Default is 1.
 
     Returns
     -------
@@ -219,10 +375,10 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
         The 'relationships' file contains associations between CogAt items,
         with three columns: input, output, and rel_type (relationship type).
     """
-    from cognitiveatlas.api import get_concept, get_task, get_disorder
+    from cognitiveatlas.api import get_concept, get_disorder, get_task
 
     dataset_name = "cognitive_atlas"
-    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir, verbose=verbose)
+    data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
 
     ids_file = op.join(data_dir, "cogat_aliases.csv")
     rels_file = op.join(data_dir, "cogat_relationships.csv")
@@ -305,9 +461,11 @@ def download_cognitive_atlas(data_dir=None, overwrite=False, verbose=1):
 
 
 def download_abstracts(dataset, email):
-    """
-    Download the abstracts for a list of PubMed IDs. Uses the BioPython
-    package.
+    """Download the abstracts for a list of PubMed IDs.
+
+    Uses the BioPython package.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
@@ -329,7 +487,7 @@ def download_abstracts(dataset, email):
     try:
         from Bio import Entrez, Medline
     except ImportError:
-        raise Exception("Module biopython is required for downloading abstracts from " "PubMed.")
+        raise Exception("Module biopython is required for downloading abstracts from PubMed.")
 
     Entrez.email = email
 
@@ -339,13 +497,13 @@ def download_abstracts(dataset, email):
     elif isinstance(dataset, list):
         pmids = [str(pmid) for pmid in dataset]
     else:
-        raise Exception("Dataset type not recognized: {0}".format(type(dataset)))
+        raise Exception(f"Dataset type not recognized: {type(dataset)}")
 
     records = []
     # PubMed only allows you to search ~1000 at a time. I chose 900 to be safe.
     chunks = [pmids[x : x + 900] for x in range(0, len(pmids), 900)]
     for i, chunk in enumerate(chunks):
-        LGR.info("Downloading chunk {0} of {1}".format(i + 1, len(chunks)))
+        LGR.info(f"Downloading chunk {i + 1} of {len(chunks)}")
         h = Entrez.efetch(db="pubmed", id=chunk, rettype="medline", retmode="text")
         records += list(Medline.parse(h))
 
@@ -361,20 +519,19 @@ def download_abstracts(dataset, email):
     return dataset
 
 
-def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
-    """
-    Download the trained Peaks2Maps model from OHBM 2018.
+def download_peaks2maps_model(data_dir=None, overwrite=False):
+    """Download the trained Peaks2Maps model from OHBM 2018.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    data_dir : None or str, optional
+    data_dir : :obj:`pathlib.Path` or :obj:`str` or None, optional
         Where to put the trained model.
         If None, then download to the automatic NiMARE data directory.
         Default is None.
     overwrite : bool, optional
         Whether to overwrite an existing model or not. Default is False.
-    verbose : int, optional
-        Verbosity level. Default is 1.
 
     Returns
     -------
@@ -384,7 +541,8 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
 
     temp_dataset_name = "peaks2maps_model_ohbm2018__temp"
-    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir, verbose=verbose)
+    data_dir = _get_dataset_dir("", data_dir=data_dir)
+    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir)
 
     dataset_name = "peaks2maps_model_ohbm2018"
     if dataset_name not in data_dir:  # allow data_dir to include model folder
@@ -406,7 +564,7 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     wrote = 0
     for data in tqdm(
         r.iter_content(block_size),
-        total=math.ceil(total_size // block_size),
+        total=np.ceil(total_size // block_size),
         unit="MB",
         unit_scale=True,
     ):
@@ -416,7 +574,7 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
         raise Exception("Download interrupted")
 
     f.seek(0)
-    LGR.info("Uncompressing the model to {}...".format(temp_data_dir))
+    LGR.info(f"Uncompressing the model to {temp_data_dir}...")
     tf_file = tarfile.TarFile(fileobj=LZMAFile(f), mode="r")
     tf_file.extractall(temp_data_dir)
 
@@ -426,7 +584,6 @@ def download_peaks2maps_model(data_dir=None, overwrite=False, verbose=1):
     with open(desc_file, "w") as fo:
         fo.write("The trained Peaks2Maps model from OHBM 2018.")
 
-    if verbose > 0:
-        print("\nDataset moved to {}\n".format(data_dir))
+    LGR.debug(f"Dataset moved to {data_dir}")
 
     return data_dir

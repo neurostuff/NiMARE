@@ -1,6 +1,4 @@
-"""
-Perform MACM with ALE algorithm.
-"""
+"""Perform MACM with ALE algorithm."""
 import logging
 import os
 import pathlib
@@ -16,9 +14,7 @@ LGR = logging.getLogger(__name__)
 def macm_workflow(
     dataset_file, mask_file, output_dir=None, prefix=None, n_iters=10000, v_thr=0.001, n_cores=-1
 ):
-    """
-    Perform MACM with ALE algorithm.
-    """
+    """Perform MACM with ALE algorithm."""
     LGR.info("Loading coordinates...")
     dset = Dataset(dataset_file)
     sel_ids = dset.get_studies_by_mask(mask_file)
@@ -27,7 +23,7 @@ def macm_workflow(
     # override sample size
     n_subs_db = dset.coordinates.drop_duplicates("id")["n"].astype(float).astype(int).sum()
     n_subs_sel = sel_dset.coordinates.drop_duplicates("id")["n"].astype(float).astype(int).sum()
-    LGR.info("{0} studies selected out of {1}.".format(len(sel_ids), len(dset.ids)))
+    LGR.info(f"{len(sel_ids)} studies selected out of {len(dset.ids)}.")
 
     boilerplate = """
 Meta-analytic connectivity modeling (MACM; Laird et al., 2009; Robinson et al.,

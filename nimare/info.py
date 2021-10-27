@@ -44,42 +44,63 @@ All trademarks referenced herein are property of their respective holders.
 Copyright (c) 2018--, NiMARE developers
 """
 
-DOWNLOAD_URL = "https://github.com/neurostuff/{name}/archive/{ver}.tar.gz".format(
-    name=PACKAGENAME, ver=VERSION
-)
+DOWNLOAD_URL = f"https://github.com/neurostuff/{PACKAGENAME}/archive/{VERSION}.tar.gz"
 
 REQUIRES = [
     "cognitiveatlas",
     "fuzzywuzzy",
-    "matplotlib",
+    "indexed_gzip>=1.4.0",
+    "matplotlib",  # this is for nilearn, which doesn't include it in its reqs
     "nibabel>=3.0.0",
-    "nilearn>=0.7.0",
+    "nilearn>=0.7.1,<0.8.0",
     "numpy",
     "pandas",
     "pymare>=0.0.2",
+    "requests",
     "scikit-learn",
     "scipy",
-    "seaborn",
     "statsmodels",
     "tqdm",
 ]
 
-TESTS_REQUIRES = ["codecov", "coverage", "coveralls", "flake8-black", "pytest", "pytest-cov"]
+TESTS_REQUIRES = [
+    "codecov",
+    "coverage",
+    "coveralls",
+    "flake8-black",
+    "flake8-docstrings",
+    "flake8-isort",
+    "pytest",
+    "pytest-cov",
+]
 
 EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
     "doc": [
+        "matplotlib",
         "m2r",
         "pillow",
         "recommonmark",
+        "pytest",  # For get_test_data_path. May fix later.
         "sphinx>=3.1.1",
         "sphinx-argparse",
+        "sphinx-copybutton",
         "sphinx_gallery",
         "sphinx_rtd_theme",
     ],
     "tests": TESTS_REQUIRES,
     "duecredit": ["duecredit"],
+    "minimum": [
+        "indexed_gzip==1.4",
+        "nibabel==3.0",
+        "nilearn==0.7.1",
+        "numpy==1.18",
+        "pandas==1.1",
+        "pymare==0.0.2",
+        "scikit-learn==0.22",
+        "scipy==1.5",  # 1.6 drops Python 3.6 support
+    ],
 }
 
 # Enable a handle to install all extra dependencies at once
@@ -97,5 +118,6 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "Topic :: Scientific/Engineering",
 ]

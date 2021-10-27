@@ -1,13 +1,11 @@
-"""
-Workflow for running a contrast permutation meta-analysis on a set of images.
-"""
+"""Run a contrast permutation meta-analysis on a set of images."""
 import logging
 import os
 import pathlib
 
+import numpy as np
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
-import numpy as np
 
 from ..results import MetaResult
 from ..utils import get_template
@@ -16,9 +14,7 @@ LGR = logging.getLogger(__name__)
 
 
 def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="", n_iters=10000):
-    """
-    Contrast permutation workflow.
-    """
+    """Run a contrast permutation workflow."""
     if mask_image is None:
         target = "mni152_2mm"
         mask_image = get_template(target, mask="brain")

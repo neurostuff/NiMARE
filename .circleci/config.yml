@@ -7,7 +7,7 @@ orbs:
   codecov: codecov/codecov@1.0.5
 jobs:
 
-  build_py36:
+  make_py36_env:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -18,7 +18,7 @@ jobs:
           paths:
               - src/NiMARE
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps9-{{ checksum "nimare/info.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -26,17 +26,17 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py36_env
             else
-                conda create -n py36_env python=3.6 numpy -yq
+                conda create -n py36_env python=3.6 -yq
                 source activate py36_env
                 pip install -e .[tests,doc,peaks2maps-cpu]
             fi
             python setup.py install --user
       - save_cache:  # environment cache tied to requirements
-          key: deps9-{{ checksum "nimare/info.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
           paths:
             - "/opt/conda/envs/py36_env"
 
-  test_py38:
+  test_py36_minimum:
     working_directory: /tmp/src/NiMARE
     docker:
       - image: continuumio/miniconda3
@@ -49,22 +49,40 @@ jobs:
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
-            if [[ -e /opt/conda/envs/py38_env ]]; then
-                echo "Restoring environment from cache"
-                source activate py38_env
-            else
-                conda create -n py38_env python=3.8 numpy -yq
-                source activate py38_env
-                pip install pip -U
-                pip install -e .[tests,doc,peaks2maps-cpu]
-            fi
+            conda create -n py36_min_env python=3.6 -yq
+            source activate py36_min_env
+            pip install -e .[minimum,tests,peaks2maps-cpu]
             python setup.py install --user
       - run:
           name: Run tests
           command:  |
+            apt-get update
             apt-get install -yqq make
-            source activate py38_env
+            source activate py36_min_env
             make unittest
+
+  test_py36:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Run tests
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py36_env
+            make unittest
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.py36
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.py36
 
   test_py37:
     working_directory: /tmp/src/NiMARE
@@ -79,21 +97,164 @@ jobs:
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
-            if [[ -e /opt/conda/envs/py37_env ]]; then
-                echo "Restoring environment from cache"
-                source activate py37_env
-            else
-                conda create -n py37_env python=3.7 numpy -yq
-                source activate py37_env
-                pip install -e .[tests,doc,peaks2maps-cpu]
-            fi
+            conda create -n py37_env python=3.7 -yq
+            source activate py37_env
+            pip install -e .[tests,peaks2maps-cpu]
             python setup.py install --user
       - run:
           name: Run tests
           command:  |
+            apt-get update
             apt-get install -yqq make
             source activate py37_env
             make unittest
+
+  test_py38:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/NiMARE
+      - run:  # will overwrite NiMARE installation each time
+          name: Generate environment
+          command:  |
+            conda create -n py38_env python=3.8 -yq
+            source activate py38_env
+            pip install pip -U
+            pip install -e .[tests,peaks2maps-cpu]
+            python setup.py install --user
+      - run:
+          name: Run tests
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py38_env
+            make unittest
+
+  test_py39:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/NiMARE
+      - run:  # will overwrite NiMARE installation each time
+          name: Generate environment
+          command:  |
+            conda create -n py39_env python=3.9 -yq
+            source activate py39_env
+            pip install pip -U
+            pip install -e .[tests,peaks2maps-cpu]
+            python setup.py install --user
+      - run:
+          name: Run tests
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py39_env
+            make unittest
+
+  test_performance_estimators:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Linting
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py36_env
+            make test_performance_estimators
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_estimators
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_estimators
+
+  test_performance_correctors:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Test reasonable output for combinations of estimators/kernels/correctors
+          no_output_timeout: 30m
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py36_env
+            make test_performance_correctors
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_correctors
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_correctors
+
+  test_performance_smoke:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:  # get NiMARE
+          at: /tmp
+      - restore_cache:  # load environment
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Test reasonable output for combinations of estimators/kernels/correctors
+          no_output_timeout: 30m
+          command:  |
+            apt-get update
+            apt-get install -yqq make
+            source activate py36_env
+            make test_performance_smoke
+            mkdir /tmp/src/coverage
+            mv /tmp/src/NiMARE/.coverage /tmp/src/coverage/.coverage.performance_smoke
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+              - src/coverage/.coverage.performance_smoke
+
+  merge_coverage:
+    working_directory: /tmp/src/NiMARE
+    docker:
+      - image: continuumio/miniconda3
+    steps:
+      - attach_workspace:
+          at: /tmp
+      - checkout
+      - restore_cache:
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
+      - run:
+          name: Merge coverage files
+          command: |
+            apt-get update
+            apt-get install -yqq curl
+            source activate py36_env
+            cd /tmp/src/coverage/
+            coverage combine
+            coverage xml
+      - store_artifacts:
+          path: /tmp/src/coverage
+      - codecov/upload:
+          file: /tmp/src/coverage/coverage.xml
 
   build_docs:
     working_directory: /tmp/src/NiMARE
@@ -103,13 +264,15 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Build documentation
           command: |
             source activate py36_env
+            apt-get update
             apt-get install -yqq make
             make -C docs html
+          no_output_timeout: 30m
       - store_artifacts:
           path: /tmp/src/NiMARE/docs/_build/html
 
@@ -121,7 +284,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}
+          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
       - run:
           name: Linting
           command:  |
@@ -130,113 +293,36 @@ jobs:
       - store_artifacts:
           path: /tmp/data/lint
 
-  test_py36_and_coverage:
-    working_directory: /tmp/src/NiMARE
-    docker:
-      - image: continuumio/miniconda3
-    steps:
-      - attach_workspace:  # get NiMARE
-          at: /tmp
-      - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}
-      - run:
-          name: Run tests and compile coverage
-          command:  |
-            apt-get install -yqq make
-            apt-get install -yqq curl
-            source activate py36_env
-            make unittest
-      - codecov/upload:
-          file: /tmp/src/NiMARE/coverage.xml
-        
-  test_performance:
-    working_directory: /tmp/src/NiMARE
-    docker:
-      - image: continuumio/miniconda3
-    steps:
-      - attach_workspace:  # get NiMARE
-          at: /tmp
-      - restore_cache:  # load environment
-          key: deps9-{{ checksum "nimare/info.py" }}
-      - run:
-          name: Test reasonable output for combinations of estimators/kernels/correctors
-          no_output_timeout: 30m
-          command:  |
-            apt-get install -yqq make
-            source activate py36_env
-            make performancetest
-      - codecov/upload:
-          file: /tmp/src/NiMARE/coverage.xml
-
-  deploy:
-    docker:
-      - image: continuumio/miniconda3
-    steps:
-      - checkout
-      - run:
-          name: init .pypirc
-          command: |
-            echo -e "[pypi]" >> ~/.pypirc
-            echo -e "username = $PYPI_USER" >> ~/.pypirc
-            echo -e "password = $PYPI_PASSWORD" >> ~/.pypirc
-      - run:
-          name: create package
-          command: |
-            python setup.py sdist
-            python setup.py bdist_wheel
-      - run:
-          name: upload to pypi
-          command: |
-            pip install twine
-            twine upload dist/*
-
 workflows:
   version: 2.1
   run_tests:
     jobs:
-      - build_py36:
-          filters:
-            tags:
-              only: /.*/
-      - test_py36_and_coverage:
+      - make_py36_env
+      - test_py36_minimum
+      - test_py36:
           requires:
-            - build_py36
-          filters:
-            tags:
-              only: /.*/
-      - test_performance:
+            - make_py36_env
+      - test_py37
+      - test_py38
+      - test_py39
+      - test_performance_estimators:
           requires:
-            - build_py36
-          filters:
-            tags:
-              only: /.*/
-      - test_py37:
-          filters:
-            tags:
-              only: /.*/
-      - test_py38:
-          filters:
-            tags:
-              only: /.*/
+            - make_py36_env
+      - test_performance_correctors:
+          requires:
+            - make_py36_env
+      - test_performance_smoke:
+          requires:
+            - make_py36_env
       - build_docs:
           requires:
-            - build_py36
-          filters:
-            tags:
-              only: /.*/
+            - make_py36_env
       - style_check:
           requires:
-            - build_py36
-          filters:
-            tags:
-              only: /.*/
-      - deploy:
+            - make_py36_env
+      - merge_coverage:
           requires:
-            - test_py36_and_coverage
-            - test_py37
-            - test_py38
-          filters:
-            tags:
-              only: /[0-9]+(\.[0-9]+)*/
-            branches:
-              ignore: /.*/
+            - test_py36
+            - test_performance_estimators
+            - test_performance_correctors
+            - test_performance_smoke

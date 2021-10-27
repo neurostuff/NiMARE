@@ -14,8 +14,6 @@
 # --------------------------------
 import os
 
-import pandas as pd
-
 import nimare
 from nimare.tests.utils import get_test_data_path
 
@@ -97,7 +95,7 @@ dset.masker
 
 ###############################################################################
 # ``Dataset.space`` is a string
-print("Template space: {}".format(dset.space))
+print(f"Template space: {dset.space}")
 
 ###############################################################################
 # Statistical images are not stored internally
@@ -121,10 +119,9 @@ dset.images[columns_to_show].head()
 # beta images, you can also calculate varcope (variance) images.
 #
 # We use :mod:`nimare.transforms` to perform these transformations
-# (especially :func:`nimare.transforms.transform_images`)
-dset.images = nimare.transforms.transform_images(
-    dset.images, "varcope", dset.masker, dset.metadata, out_dir=None
-)
+# (especially :class:`nimare.transforms.ImageTransformer`)
+varcope_transformer = nimare.transforms.ImageTransformer(target="varcope")
+dset = varcope_transformer.transform(dset)
 dset.images[["id", "varcope"]].head()
 
 ###############################################################################
@@ -147,9 +144,8 @@ print("\n".join(z_images))
 ###############################################################################
 # Let's try to fill in missing z images
 # `````````````````````````````````````````````````````````````````````````````
-dset.images = nimare.transforms.transform_images(
-    dset.images, "z", dset.masker, dset.metadata, out_dir=None
-)
+z_transformer = nimare.transforms.ImageTransformer(target="z")
+dset = z_transformer.transform(dset)
 z_images = dset.get_images(imtype="z")
 z_images = [str(z) for z in z_images]
 print("\n".join(z_images))

@@ -1,6 +1,4 @@
-"""
-Utilities
-"""
+"""Utility functions for the extract module."""
 from __future__ import division
 
 import logging
@@ -18,19 +16,22 @@ LGR = logging.getLogger(__name__)
 
 
 def get_data_dirs(data_dir=None):
-    """Returns the directories in which NiMARE looks for data.
+    """Return the directories in which NiMARE looks for data.
+
+    .. versionadded:: 0.0.2
+
     This is typically useful for the end-user to check where the data is
     downloaded and stored.
 
     Parameters
     ----------
-    data_dir: string, optional
+    data_dir: :obj:`pathlib.Path` or :obj:`str`, optional
         Path of the data directory. Used to force data storage in a specified
         location. Default: None
 
     Returns
     -------
-    paths: list of strings
+    paths : :obj:`list` of :obj:`str`
         Paths of the dataset directories.
 
     Notes
@@ -38,6 +39,7 @@ def get_data_dirs(data_dir=None):
     Taken from Nilearn.
     This function retrieves the datasets directories using the following
     priority :
+
     1. defaults system paths
     2. the keyword argument data_dir
     3. the global environment variable NIMARE_SHARED_DATA
@@ -51,7 +53,7 @@ def get_data_dirs(data_dir=None):
 
     # Check data_dir which force storage in a specific location
     if data_dir is not None:
-        paths.extend(data_dir.split(os.pathsep))
+        paths.extend(str(data_dir).split(os.pathsep))
 
     # If data_dir has not been specified, then we crawl default locations
     if data_dir is None:
@@ -67,25 +69,25 @@ def get_data_dirs(data_dir=None):
     return paths
 
 
-def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1):
+def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None):
     """Create if necessary and returns data directory of given dataset.
+
+    .. versionadded:: 0.0.2
 
     Parameters
     ----------
-    dataset_name: string
+    dataset_name : :obj:`str`
         The unique name of the dataset.
-    data_dir: string, optional
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
         Path of the data directory. Used to force data storage in a specified
         location. Default: None
-    default_paths: list of string, optional
+    default_paths : :obj:`list` of :obj:`str`, optional
         Default system paths in which the dataset may already have been
         installed by a third party software. They will be checked first.
-    verbose: int, optional
-        verbosity level (0 means no message).
 
     Returns
     -------
-    data_dir: string
+    data_dir : :obj:`str`
         Path of the given dataset directory.
 
     Notes
@@ -103,23 +105,23 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
     # Search possible data-specific system paths
     if default_paths is not None:
         for default_path in default_paths:
-            paths.extend([(d, True) for d in default_path.split(os.pathsep)])
+            paths.extend([(d, True) for d in str(default_path).split(os.pathsep)])
 
     paths.extend([(d, False) for d in get_data_dirs(data_dir=data_dir)])
 
-    if verbose > 2:
-        print("Dataset search paths: %s" % paths)
+    LGR.debug(f"Dataset search paths: {paths}")
 
     # Check if the dataset exists somewhere
     for path, is_pre_dir in paths:
         if not is_pre_dir:
             path = os.path.join(path, dataset_name)
+
         if os.path.islink(path):
             # Resolve path
             path = readlinkabs(path)
+
         if os.path.exists(path) and os.path.isdir(path):
-            if verbose > 1:
-                print("\nDataset found in %s\n" % path)
+            LGR.info(f"Dataset found in {path}\n")
             return path
 
     # If not, create a folder in the first writeable directory
@@ -127,25 +129,27 @@ def _get_dataset_dir(dataset_name, data_dir=None, default_paths=None, verbose=1)
     for (path, is_pre_dir) in paths:
         if not is_pre_dir:
             path = os.path.join(path, dataset_name)
+
         if not os.path.exists(path):
             try:
                 os.makedirs(path)
-                if verbose > 0:
-                    print("\nDataset created in %s\n" % path)
+                LGR.info(f"Dataset created in {path}")
                 return path
             except Exception as exc:
                 short_error_message = getattr(exc, "strerror", str(exc))
-                errors.append("\n -{0} ({1})".format(path, short_error_message))
+                errors.append(f"\n -{path} ({short_error_message})")
 
     raise OSError(
-        "NiMARE tried to store the dataset in the following " "directories, but:" + "".join(errors)
+        "NiMARE tried to store the dataset in the following directories, but: " + "".join(errors)
     )
 
 
 def readlinkabs(link):
-    """
-    Return an absolute path for the destination
-    of a symlink. From nilearn.
+    """Return an absolute path for the destination of a symlink.
+
+    .. versionadded:: 0.0.2
+
+    From nilearn.
     """
     path = os.readlink(link)
     if os.path.isabs(path):
@@ -154,8 +158,10 @@ def readlinkabs(link):
 
 
 def _download_zipped_file(url, filename=None):
-    """
-    Download from a URL to a file.
+    """Download from a URL to a file.
+
+    .. versionadded:: 0.0.2
+
     """
     if filename is None:
         data_dir = op.abspath(op.getcwd())
@@ -170,8 +176,10 @@ def _download_zipped_file(url, filename=None):
 
 
 def _longify(df):
-    """
-    Expand comma-separated lists of aliases in DataFrame into separate rows.
+    """Expand comma-separated lists of aliases in DataFrame into separate rows.
+
+    .. versionadded:: 0.0.2
+
     """
     reduced = df[["id", "name", "alias"]]
     rows = []
@@ -189,8 +197,10 @@ def _longify(df):
 
 
 def _get_ratio(tup):
-    """
-    Get fuzzy ratio.
+    """Get fuzzy ratio.
+
+    .. versionadded:: 0.0.2
+
     """
     if all(isinstance(t, str) for t in tup):
         return fuzz.ratio(tup[0], tup[1])
@@ -199,8 +209,10 @@ def _get_ratio(tup):
 
 
 def _gen_alt_forms(term):
-    """
-    Generate a list of alternate forms for a given term.
+    """Generate a list of alternate forms for a given term.
+
+    .. versionadded:: 0.0.2
+
     """
     if not isinstance(term, str) or len(term) == 0:
         return [None]
@@ -209,9 +221,9 @@ def _gen_alt_forms(term):
     # For one alternate form, put contents of parentheses at beginning of term
     if "(" in term:
         prefix = term[term.find("(") + 1 : term.find(")")]
-        temp_term = term.replace("({0})".format(prefix), "").replace("  ", " ")
+        temp_term = term.replace(f"({prefix})", "").replace("  ", " ")
         alt_forms.append(temp_term)
-        alt_forms.append("{0} {1}".format(prefix, temp_term))
+        alt_forms.append(f"{prefix} {temp_term}")
     else:
         prefix = ""
 
@@ -233,9 +245,11 @@ def _gen_alt_forms(term):
 
 
 def _get_concept_reltype(relationship, direction):
-    """
-    Convert two-part relationship info (relationship type and direction) to
-    more parsimonious representation.
+    """Convert two-part relationship info to more parsimonious representation.
+
+    .. versionadded:: 0.0.2
+
+    The two part representation includes relationship type and direction.
     """
     new_rel = None
     if relationship == "PARTOF":
@@ -252,10 +266,12 @@ def _get_concept_reltype(relationship, direction):
 
 
 def _expand_df(df):
-    """
-    Add alternate forms to DataFrame, then sort DataFrame by alias length
-    (for order of extraction from text) and similarity to original name (in
-    order to select most appropriate term to associate with alias).
+    """Add alternate forms to DataFrame, then sort DataFrame by alias length and similarity.
+
+    .. versionadded:: 0.0.2
+
+    Sorting by alias length is done for order of extraction from text. Sorting by similarity to
+    original name is done in order to select most appropriate term to associate with alias.
     """
     df = df.copy()
     df["alias"] = df["alias"].apply(uk_to_us)

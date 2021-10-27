@@ -2,11 +2,11 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas3:
+.. _metas4:
 
-========================================================
+================================================================================
  Test combinations of kernels and estimators for coordinate-based meta-analyses.
-========================================================
+================================================================================
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
@@ -46,9 +46,7 @@ kernel_transformers = {
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        mkda = nimare.meta.MKDADensity(
-            kernel_transformer=kt, null_method="empirical", n_iters=100
-        )
+        mkda = nimare.meta.MKDADensity(kernel_transformer=kt, null_method="approximate")
         mkda.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(mkda.results)
@@ -60,7 +58,7 @@ for kt_name, kt in kernel_transformers.items():
             title="MKDA estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the MKDA meta-analysis method\n"
             % kt_name
@@ -86,7 +84,7 @@ for kt_name, kt in kernel_transformers.items():
             title="MKDA Chi2 estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the MKDA Chi2 meta-analysis method\n"
             % kt_name
@@ -97,7 +95,7 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        kda = nimare.meta.KDA(kernel_transformer=kt, null_method="empirical", n_iters=100)
+        kda = nimare.meta.KDA(kernel_transformer=kt, null_method="approximate")
         kda.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(kda.results)
@@ -109,7 +107,7 @@ for kt_name, kt in kernel_transformers.items():
             title="KDA estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the KDA meta-analysis method\n" % kt_name
         )
@@ -119,7 +117,7 @@ for kt_name, kt in kernel_transformers.items():
 # --------------------------------------------------
 for kt_name, kt in kernel_transformers.items():
     try:
-        ale = nimare.meta.ALE(kernel_transformer=kt)
+        ale = nimare.meta.ALE(kernel_transformer=kt, null_method="approximate")
         ale.fit(dset)
         corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
         cres = corr.transform(ale.results)
@@ -131,7 +129,7 @@ for kt_name, kt in kernel_transformers.items():
             title="ALE estimator with %s" % kt_name,
         )
 
-    except IndexError:
+    except AttributeError:
         print(
             "\nError: the %s does not currently work with the ALE meta-analysis method\n" % kt_name
         )

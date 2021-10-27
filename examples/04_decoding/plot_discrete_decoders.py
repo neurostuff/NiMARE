@@ -15,8 +15,7 @@ import os
 
 import nibabel as nib
 import numpy as np
-import pandas as pd
-from nilearn.plotting import plot_roi, plot_stat_map
+from nilearn.plotting import plot_roi
 
 import nimare
 from nimare.decode import discrete
@@ -27,14 +26,12 @@ from nimare.tests.utils import get_test_data_path
 # ---------------------------
 # We'll load a small dataset composed only of studies in Neurosynth with
 # Angela Laird as a coauthor, for the sake of speed.
-dset = nimare.dataset.Dataset.load(
-    os.path.join(get_test_data_path(), "neurosynth_laird_studies.pkl.gz")
-)
+dset = nimare.dataset.Dataset(os.path.join(get_test_data_path(), "neurosynth_laird_studies.json"))
 dset.annotations.head(5)
 
 ###############################################################################
 # Create a region of interest
-# -------------------------------------------
+# ---------------------------
 
 # First we'll make an ROI
 arr = np.zeros(dset.masker.mask_img.shape, int)
@@ -46,8 +43,24 @@ plot_roi(mask_img, draw_cross=False)
 ids = dset.get_studies_by_mask(mask_img)
 
 ###############################################################################
-# Decode an ROI image using the Neurosynth method
-# -----------------------------------------------
+#
+# .. _brain-map-decoder-example:
+#
+# Decode an ROI image using the BrainMap method
+# ---------------------------------------------
+
+# Run the decoder
+decoder = discrete.BrainMapDecoder(correction=None)
+decoder.fit(dset)
+decoded_df = decoder.transform(ids=ids)
+decoded_df.sort_values(by="probReverse", ascending=False).head()
+
+###############################################################################
+#
+# .. _neurosynth-chi2-decoder-example:
+#
+# Decode an ROI image using the Neurosynth chi-square method
+# ----------------------------------------------------------
 
 # Run the decoder
 decoder = discrete.NeurosynthDecoder(correction=None)
@@ -56,11 +69,18 @@ decoded_df = decoder.transform(ids=ids)
 decoded_df.sort_values(by="probReverse", ascending=False).head()
 
 ###############################################################################
-# Decode an ROI image using the BrainMap method
-# -----------------------------------------------
+#
+# .. _neurosynth-roi-decoder-example:
+#
+# Decode an ROI image using the Neurosynth ROI association method
+# ---------------------------------------------------------------
 
-# Run the decoder
-decoder = discrete.BrainMapDecoder(correction=None)
+# This method decodes the ROI image directly, rather than comparing subsets of the Dataset like the
+# other two.
+decoder = discrete.ROIAssociationDecoder(mask_img)
 decoder.fit(dset)
-decoded_df = decoder.transform(ids=ids)
-decoded_df.sort_values(by="probReverse", ascending=False).head()
+
+# The `transform` method doesn't take any parameters.
+decoded_df = decoder.transform()
+
+decoded_df.sort_values(by="r", ascending=False).head()

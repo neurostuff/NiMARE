@@ -1,7 +1,8 @@
 # emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
 # ex: set sts=4 ts=4 sw=4 et:
 """
-.. _metas6:
+
+.. _metas8:
 
 ========================================================
  Simulate data for coordinate based meta-analysis (CBMA)
@@ -11,10 +12,10 @@ Simulating data before you run your meta-analysis is a great
 way to test your assumptions and see how the meta-analysis
 would perform with simplified data
 """
-import nimare
-from nimare.generate import create_coordinate_dataset
 from nilearn.plotting import plot_stat_map
 
+import nimare
+from nimare.generate import create_coordinate_dataset
 
 ###############################################################################
 # Create function to perform a meta-analysis and plot results
@@ -84,6 +85,7 @@ analyze_and_plot(dset, ground_truth_foci)
 # --------------------------
 # Perhaps you want more control over the studies being generated.
 # you can set:
+#
 #   - the specific peak coordinates (i.e., ``foci``)
 #   - the percentage of studies that contain the foci of interest (``foci_percentage``)
 #   - how tightly the study specific foci are selected around the ground truth (i.e., ``fwhm``)
