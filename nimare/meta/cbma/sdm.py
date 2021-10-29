@@ -1,15 +1,35 @@
 """Seed-based d-mapping-related methods."""
 import dijkstra3d
 import numpy as np
-from scipy import spatial, stats
 from nilearn import masking
+from scipy import spatial, stats
 
 
-def compute_sdm_ma(ijk, effect_sizes, sample_sizes, significance_level,
-                   mask_img, corr_map, alpha=0.5, kernel_sigma=5):
-    """Apply anisotropic kernel"""
-    # kernel_sigma is user-specified sigma of kernel
-    # alpha is user-selected degree of anisotropy
+def compute_sdm_ma(
+    ijk,
+    effect_sizes,
+    sample_sizes,
+    significance_level,
+    mask_img,
+    corr_map,
+    alpha=0.5,
+    kernel_sigma=5,
+):
+    """Apply anisotropic kernel to coordinates.
+
+    Parameters
+    ----------
+    ijk
+    effect_sizes
+    sample_sizes
+    significance_level
+    mask_img
+    corr_map
+    alpha : float
+        User-selected degree of anisotropy. Default is 0.5.
+    kernel_sigma : float
+        User-specified sigma of kernel. Default is 5.
+    """
     df = np.sum(sample_sizes) - 2
     effect_size_threshold = stats.t.isf(significance_level, df)
     min_effect_size = -effect_size_threshold  # smallest possible effect size
@@ -43,10 +63,14 @@ def compute_sdm_ma(ijk, effect_sizes, sample_sizes, significance_level,
     real_distances = spatial.distance.cdist(kept_ijk, mask_ijk)
     closest_peak = np.argmin(real_distances, axis=0)
     virtual_distances = np.sqrt(
-        (1 - alpha) * (real_distances ** 2) + alpha
-        * 2 * kernel_sigma * np.log(peak_corr ** -1)
+        (1 - alpha) * (real_distances ** 2) + alpha * 2 * kernel_sigma * np.log(peak_corr ** -1)
     )
-    y_lower = min_effect_size + np.exp((-virtual_distances ** 2) / (2 * kernel_sigma)) * (peak_t - min_effect_size)
-    y_upper = max_effect_size + np.exp((-virtual_distances ** 2) / (2 * kernel_sigma)) * (peak_t - max_effect_size)
+    y_lower = min_effect_size + np.exp((-(virtual_distances ** 2)) / (2 * kernel_sigma)) * (
+        peak_t - min_effect_size
+    )
+    y_upper = max_effect_size + np.exp((-(virtual_distances ** 2)) / (2 * kernel_sigma)) * (
+        peak_t - max_effect_size
+    )
     y_lower_img = masking.unmask(y_lower, mask_img)
     y_upper_img = masking.unmask(y_upper, mask_img)
+    return y_lower_img, y_upper_img
