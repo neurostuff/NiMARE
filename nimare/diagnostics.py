@@ -1,4 +1,6 @@
 """Methods for diagnosing problems in meta-analytic datasets or analyses."""
+import copy
+import logging
 from abc import ABCMeta
 
 import nibabel as nib
@@ -9,6 +11,8 @@ from scipy import ndimage
 from tqdm.auto import tqdm
 
 from .utils import vox2mm
+
+LGR = logging.getLogger(__name__)
 
 
 class Jackknife(metaclass=ABCMeta):
@@ -67,22 +71,34 @@ class Jackknife(metaclass=ABCMeta):
             name in ``contribution_table``.
         """
         dset = result.estimator.dataset
-        estimator = result.estimator
+        # We need to copy the estimator because it will otherwise overwrite the original version
+        # with one missing a study in its inputs.
+        estimator = copy.deepcopy(result.estimator)
         original_masker = estimator.masker
 
         target_img = result.get_map(self.target_image, return_type="image")
-        if self.voxel_threshold:
-            thresh_img = image.threshold_img(target_img, self.voxel_threshold)
+        if self.voxel_thresh:
+            thresh_img = image.threshold_img(target_img, self.voxel_thresh)
         else:
             thresh_img = target_img
 
-        # CBMAs have "stat" maps, while IBMAs have "est" maps.
+        # CBMAs have "stat" maps, while most IBMAs have "est" maps.
+        # Fisher's and Stouffer's only have "z" maps though.
         if "est" in result.maps:
-            stat_values = result.get_map("est", return_type="array")
+            target_value_map = "est"
+        elif "stat" in result.maps:
+            target_value_map = "stat"
         else:
-            stat_values = result.get_map("stat", return_type="array")
+            target_value_map = "z"
+
+        stat_values = result.get_map(target_value_map, return_type="array")
 
         thresh_arr = thresh_img.get_fdata()
+
+        # Should probably go off IDs in estimator.inputs_ instead,
+        # in case some experiments are filtered out based on available data.
+        meta_ids = estimator.inputs_["id"]
+        rows = ["Center of Mass"] + list(meta_ids)
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
@@ -90,17 +106,22 @@ class Jackknife(metaclass=ABCMeta):
         conn[:, :, 1] = 1
         conn[:, 1, :] = 1
         conn[1, :, :] = 1
-        cfwe_arr_labeled, n_clusters = ndimage.measurements.label(thresh_arr, conn)
-        cluster_ids = list(range(1, n_clusters + 1))
-        coms = ndimage.center_of_mass(cfwe_arr_labeled, cfwe_arr_labeled, cluster_ids)
-        coms = np.array(coms)
-        coms = vox2mm(coms, target_img.affine)
-
+        labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
-            cfwe_arr_labeled,
+            labeled_cluster_arr,
             affine=target_img.affine,
             header=target_img.header,
         )
+
+        if n_clusters == 0:
+            LGR.warning("No clusters found")
+            contribution_table = pd.DataFrame(index=rows)
+            return contribution_table, labeled_cluster_img
+
+        cluster_ids = list(range(1, n_clusters + 1))
+        coms = ndimage.center_of_mass(labeled_cluster_arr, labeled_cluster_arr, cluster_ids)
+        coms = np.array(coms)
+        coms = vox2mm(coms, target_img.affine)
 
         cluster_peak_strs = []
         for i_peak in range(len(cluster_ids)):
@@ -112,10 +133,7 @@ class Jackknife(metaclass=ABCMeta):
         cluster_masker = input_data.NiftiLabelsMasker(labeled_cluster_img)
         cluster_masker.fit(labeled_cluster_img)
 
-        # Should probably go off IDs in estimator.inputs_ instead,
-        # in case some experiments are filtered out based on available data.
-        meta_ids = estimator.inputs_["id"]
-        rows = ["Center of Mass"] + list(meta_ids)
+        # Compile contribution table
         contribution_table = pd.DataFrame(index=rows, columns=cluster_ids)
         contribution_table.index.name = "Cluster ID"
         contribution_table.loc["Center of Mass"] = cluster_peak_strs
@@ -125,7 +143,7 @@ class Jackknife(metaclass=ABCMeta):
             other_ids = [id_ for id_ in meta_ids if id_ != expid]
             temp_dset = dset.slice(other_ids)
             temp_result = estimator.fit(temp_dset)
-            temp_stat_img = temp_result.get_map("stat", return_type="image")
+            temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
 
             temp_stat_vals = np.squeeze(original_masker.transform(temp_stat_img))
             # Voxelwise proportional reduction of each statistic after removal of the experiment
