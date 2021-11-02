@@ -305,6 +305,36 @@ workflows:
       - test_py37
       - test_py38
       - test_py39
+      - test_performance_smoke:
+          requires:
+            - make_py36_env
+      - build_docs:
+          requires:
+            - make_py36_env
+      - style_check:
+          requires:
+            - make_py36_env
+      - merge_coverage:
+          requires:
+            - test_py36
+            - test_performance_smoke
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * *"
+          filters:
+            branches:
+              only:
+                - main
+    jobs:
+      - make_py36_env
+      - test_py36_minimum
+      - test_py36:
+          requires:
+            - make_py36_env
+      - test_py37
+      - test_py38
+      - test_py39
       - test_performance_estimators:
           requires:
             - make_py36_env

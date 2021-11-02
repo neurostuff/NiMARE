@@ -22,7 +22,7 @@ from nimare.meta import cbma, ibma
 )
 def test_Jackknife(testdata_ibma, testdata_cbma_full, estimator, meta_type):
     meta = estimator()
-    testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma
+    testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
     res = meta.fit(testdata)
 
     jackknife = Jackknife(target_image="z", voxel_thresh=1.65)
