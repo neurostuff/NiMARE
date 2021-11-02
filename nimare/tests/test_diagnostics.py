@@ -1,3 +1,4 @@
+"""Tests for the nimare.diagnostics module."""
 import pytest
 
 from nimare.diagnostics import Jackknife
@@ -21,6 +22,7 @@ from nimare.meta import cbma, ibma
     ],
 )
 def test_Jackknife(testdata_ibma, testdata_cbma_full, estimator, meta_type):
+    """Smoke test the Jackknife method."""
     meta = estimator()
     testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
     res = meta.fit(testdata)

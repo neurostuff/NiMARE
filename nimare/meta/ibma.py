@@ -589,6 +589,7 @@ class PermutedOLS(MetaEstimator):
         self.parameters_ = {}
 
     def _fit(self, dataset):
+        self.dataset = dataset
         # Use intercept as explanatory variable
         self.parameters_["tested_vars"] = np.ones((self.inputs_["z_maps"].shape[0], 1))
         self.parameters_["confounding_vars"] = None
