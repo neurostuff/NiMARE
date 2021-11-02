@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from nilearn import input_data
 from scipy import ndimage
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from .utils import vox2mm
 
@@ -20,12 +20,13 @@ class Jackknife(metaclass=ABCMeta):
     def transform(self, result):
         dset = result.estimator.dataset
         estimator = result.estimator
+        original_masker = estimator.masker
         # Using z because log-p will not always have value of zero for non-cluster voxels
         cfwe_img = result.get_map(
             "z_level-cluster_corr-FWE_method-montecarlo",
             return_type="image",
         )
-        stat_img = result.get_map("stat", return_type="image")
+        stat_values = result.get_map("stat", return_type="array")
         cfwe_arr = cfwe_img.get_fdata()
 
         # Let's label the clusters in the cFWE map so we can use it as a NiftiLabelsMasker
@@ -54,9 +55,7 @@ class Jackknife(metaclass=ABCMeta):
 
         # Mask using a labels masker
         cluster_masker = input_data.NiftiLabelsMasker(cfwe_img_labeled)
-
-        #
-        orig_stat_vals = np.squeeze(cluster_masker.fit_transform(stat_img))
+        cluster_masker.fit(cfwe_img_labeled)
 
         # Should probably go off IDs in estimator.inputs_ instead,
         # in case some experiments are filtered out based on available data.
@@ -72,9 +71,17 @@ class Jackknife(metaclass=ABCMeta):
             temp_result = estimator.fit(temp_dset)
             temp_stat_img = temp_result.get_map("stat", return_type="image")
 
-            temp_stat_vals = np.squeeze(cluster_masker.transform(temp_stat_img))
-            # Proportional reduction of each statistic after removal of the experiment
-            stat_prop_values = 1 - (temp_stat_vals / orig_stat_vals)
+            temp_stat_vals = np.squeeze(original_masker.transform(temp_stat_img))
+            # Voxelwise proportional reduction of each statistic after removal of the experiment
+            with np.errstate(divide="ignore", invalid="ignore"):
+                prop_values = np.true_divide(temp_stat_vals, stat_values)
+                prop_values = np.nan_to_num(prop_values)
+
+            voxelwise_stat_prop_values = 1 - prop_values
+            stat_prop_img = original_masker.inverse_transform(voxelwise_stat_prop_values)
+
+            # Now get the cluster-wise mean of the proportion values
+            stat_prop_values = cluster_masker.transform(stat_prop_img)
             output.loc[expid] = stat_prop_values
 
         return output, cfwe_img_labeled
