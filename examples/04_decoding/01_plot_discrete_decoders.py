@@ -4,9 +4,9 @@
 
 .. _decode1:
 
-=====================================================
+==================================================
 Decode regions of interest and subsets of Datasets
-=====================================================
+==================================================
 
 We can use the methods in ``nimare.decode.discrete`` to apply functional
 characterization analysis to regions of interest or subsets of the Dataset.

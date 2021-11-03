@@ -4,9 +4,9 @@
 
 .. _metas7:
 
-===================================================
+================================================
 Compare image and coordinate based meta-analyses
-===================================================
+================================================
 
 Run IBMAs and CBMAs on a toy dataset, then compare the results qualitatively.
 

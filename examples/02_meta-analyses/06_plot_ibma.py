@@ -4,9 +4,9 @@
 
 .. _metas6:
 
-================================
+=============================
 Run image-based meta-analyses
-================================
+=============================
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
