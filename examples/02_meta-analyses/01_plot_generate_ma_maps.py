@@ -13,6 +13,7 @@ by generating "modeled activation" (MA) maps.
 These MA maps are used in the CBMA algorithms, although the specific method
 used to generate the MA maps differs by algorithm.
 """
+# sphinx_gallery_thumbnail_number = 2
 ###############################################################################
 # Start with the necessary imports
 # --------------------------------
