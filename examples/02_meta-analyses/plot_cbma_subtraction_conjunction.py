@@ -14,10 +14,12 @@ one another. [1]_:superscript:`,` [2]_
 """
 import os
 
+import matplotlib.pyplot as plt
 from nilearn.image import math_img
 from nilearn.plotting import plot_stat_map
 
 from nimare.correct import FWECorrector
+from nimare.diagnostics import Jackknife
 from nimare.io import convert_sleuth_to_dataset
 from nimare.meta.cbma import ALE, ALESubtraction
 from nimare.tests.utils import get_test_data_path
@@ -31,11 +33,11 @@ from nimare.tests.utils import get_test_data_path
 # hearing its auditory description) while a second group of studies asked
 # children to decide if two (or more) words were semantically related to one
 # another or not.
-sleuth_file = os.path.join(get_test_data_path(), "semantic_knowledge_children.txt")
-sleuth_file2 = os.path.join(get_test_data_path(), "semantic_relatedness_children.txt")
+knowledge_file = os.path.join(get_test_data_path(), "semantic_knowledge_children.txt")
+related_file = os.path.join(get_test_data_path(), "semantic_relatedness_children.txt")
 
-dset = convert_sleuth_to_dataset(sleuth_file)
-dset2 = convert_sleuth_to_dataset(sleuth_file2)
+knowledge_dset = convert_sleuth_to_dataset(knowledge_file)
+related_dset = convert_sleuth_to_dataset(related_file)
 
 ###############################################################################
 # Individual group ALEs
@@ -44,14 +46,15 @@ dset2 = convert_sleuth_to_dataset(sleuth_file2)
 # performing the subtraction analysis but will help to appreciate the
 # similarities and differences between the groups.
 ale = ALE(null_method="approximate")
-res = ale.fit(dset)
-res2 = ale.fit(dset2)
+knowledge_results = ale.fit(knowledge_dset)
+related_results = ale.fit(related_dset)
 
 corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=1)
-cres = corr.transform(res)
-cres2 = corr.transform(res2)
+knowledge_corrected_results = corr.transform(knowledge_results)
+related_corrected_results = corr.transform(related_results)
 
-img = cres.get_map("z_level-cluster_corr-FWE_method-montecarlo")
+fig, axes = plt.subplots(figsize=(12, 10), nrows=2)
+img = knowledge_corrected_results.get_map("z_level-cluster_corr-FWE_method-montecarlo")
 plot_stat_map(
     img,
     cut_coords=4,
@@ -60,9 +63,11 @@ plot_stat_map(
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
     vmax=4,
+    axes=axes[0],
+    figure=fig,
 )
 
-img2 = cres2.get_map("z_level-cluster_corr-FWE_method-montecarlo")
+img2 = related_corrected_results.get_map("z_level-cluster_corr-FWE_method-montecarlo")
 plot_stat_map(
     img2,
     cut_coords=4,
@@ -71,13 +76,29 @@ plot_stat_map(
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
     vmax=4,
+    axes=axes[0],
+    figure=fig,
 )
+fig.show()
+
+###############################################################################
+# Characterize the relative contributions of experiments in the ALE results
+# -----------------------------------------------------------------------------
+jknife = Jackknife(
+    target_image="z_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
+)
+knowledge_cluster_table, knowledge_cluster_img = jknife.transform(knowledge_corrected_results)
+related_cluster_table, related_cluster_img = jknife.transform(related_corrected_results)
+
+print(knowledge_cluster_table.head())
+print(related_cluster_table.head())
 
 ###############################################################################
 # Subtraction analysis
 # --------------------------------------------------
 sub = ALESubtraction(n_iters=100, memory_limit=None)
-res_sub = sub.fit(dset, dset2)
+res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
 plot_stat_map(
