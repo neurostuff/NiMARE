@@ -5,7 +5,7 @@
 .. _metas3:
 
 =====================================================
-03 Run a meta-analytic coactivation modeling analysis
+Run a meta-analytic coactivation modeling analysis
 =====================================================
 
 Meta-analytic coactivation modeling (MACM) is a common coordinate-based

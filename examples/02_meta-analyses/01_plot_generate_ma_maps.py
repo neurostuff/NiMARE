@@ -5,7 +5,7 @@
 .. _metas1:
 
 ===================================
-01 Generate modeled activation maps
+Generate modeled activation maps
 ===================================
 
 For coordinate-based data, individual studies' statistical maps are mimicked

@@ -5,7 +5,7 @@
 .. _metas2:
 
 ========================================================
-02 Run coordinate-based meta-analyses on 21 pain studies
+Run coordinate-based meta-analyses on 21 pain studies
 ========================================================
 
 Perform CBMAs on a toy dataset.

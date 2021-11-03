@@ -5,7 +5,7 @@
 .. _decode1:
 
 =====================================================
-01 Decode regions of interest and subsets of Datasets
+Decode regions of interest and subsets of Datasets
 =====================================================
 
 We can use the methods in ``nimare.decode.discrete`` to apply functional

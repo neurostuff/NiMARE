@@ -5,7 +5,7 @@
 .. _annotations2:
 
 ================================
-02 Train an LDA model and use it
+Train an LDA model and use it
 ================================
 
 This example trains a latent Dirichlet allocation model with MALLET using abstracts from

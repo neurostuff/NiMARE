@@ -3,7 +3,7 @@
 .. _datasets3:
 
 ==============================================
-03 Use Neurovault statistical maps in NiMARE
+Use Neurovault statistical maps in NiMARE
 ==============================================
 
 Download statistical maps from NeuroVault, then use them in a meta-analysis, with NiMARE.

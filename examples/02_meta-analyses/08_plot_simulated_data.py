@@ -5,7 +5,7 @@
 .. _metas8:
 
 ===================================================
-08 Simulate data for coordinate based meta-analysis
+Simulate data for coordinate based meta-analysis
 ===================================================
 
 Simulating data before you run your meta-analysis is a great way to test your assumptions and see

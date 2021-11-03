@@ -5,7 +5,7 @@
 .. _metas5:
 
 ============================================================
-05 Run coordinate-based subtraction and conjunction analyses
+Run coordinate-based subtraction and conjunction analyses
 ============================================================
 
 The (coordinate-based) ALE subtraction method tests at which voxels

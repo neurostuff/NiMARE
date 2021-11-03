@@ -5,7 +5,7 @@
 .. _annotations1:
 
 =================================
-01 Train a GCLDA model and use it
+Train a GCLDA model and use it
 =================================
 
 This example trains a generalized correspondence latent Dirichlet allocation

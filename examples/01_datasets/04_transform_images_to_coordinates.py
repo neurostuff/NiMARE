@@ -5,7 +5,7 @@
 .. _datasets4:
 
 ====================================
-04 Transform images into coordinates
+Transform images into coordinates
 ====================================
 
 Create a dataset with coordinates derived from peak statistic identification in images.
