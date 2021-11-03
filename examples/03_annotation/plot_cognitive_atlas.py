@@ -4,11 +4,11 @@
 
 .. _annotations3:
 
-===============================
- Work with the Cognitive Atlas
-===============================
-We can download the Cognitive Atlas and extract CogAt terms from text.
+================================
+03 Work with the Cognitive Atlas
+================================
 
+We can download the Cognitive Atlas and extract CogAt terms from text.
 """
 import os
 

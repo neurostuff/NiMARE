@@ -4,9 +4,9 @@
 
 .. _annotations1:
 
-===============================
- Train a GCLDA model and use it
-===============================
+=================================
+01 Train a GCLDA model and use it
+=================================
 
 This example trains a generalized correspondence latent Dirichlet allocation
 model using abstracts from Neurosynth and then uses it for decoding.

@@ -76,7 +76,7 @@ plot_stat_map(
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
     vmax=4,
-    axes=axes[0],
+    axes=axes[1],
     figure=fig,
 )
 fig.show()
@@ -91,8 +91,11 @@ jknife = Jackknife(
 knowledge_cluster_table, knowledge_cluster_img = jknife.transform(knowledge_corrected_results)
 related_cluster_table, related_cluster_img = jknife.transform(related_corrected_results)
 
-print(knowledge_cluster_table.head())
-print(related_cluster_table.head())
+# #############################################################################
+knowledge_cluster_table.head()
+
+# #############################################################################
+related_cluster_table.head()
 
 ###############################################################################
 # Subtraction analysis

@@ -4,9 +4,9 @@
 
 .. _metas4:
 
-================================================================================
- Test combinations of kernels and estimators for coordinate-based meta-analyses.
-================================================================================
+===================================================
+04 Test combinations of CBMA kernels and estimators
+===================================================
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.

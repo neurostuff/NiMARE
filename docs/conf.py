@@ -23,6 +23,7 @@ from distutils.version import LooseVersion
 
 import sphinx
 from m2r import MdInclude
+from sphinx_gallery.sorting import ExampleTitleSortKey
 
 sys.path.insert(0, os.path.abspath(os.path.pardir))
 sys.path.insert(0, os.path.abspath("sphinxext"))
@@ -190,6 +191,7 @@ sphinx_gallery_conf = {
         # The module you locally document uses None
         "nimare": None
     },
+    "within_subsection_order": ExampleTitleSortKey,
 }
 
 # Generate the plots for the gallery

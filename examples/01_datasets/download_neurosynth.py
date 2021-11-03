@@ -4,9 +4,9 @@
 
 .. _datasets2:
 
-================================================
- Download the Neurosynth or NeuroQuery databases
-================================================
+==================================================
+02 Download the Neurosynth or NeuroQuery databases
+==================================================
 
 Download and convert the Neurosynth database (with abstracts) for analysis with NiMARE.
 
@@ -26,7 +26,6 @@ Download and convert the Neurosynth database (with abstracts) for analysis with 
 
 For information about where these files will be downloaded to on your machine,
 see :ref:`fetching tools`.
-
 """
 ###############################################################################
 # Start with the necessary imports

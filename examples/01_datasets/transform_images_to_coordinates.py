@@ -4,12 +4,12 @@
 
 .. _datasets4:
 
-=============================================
- Transform images into coordinates
-=============================================
+====================================
+04 Transform images into coordinates
+====================================
 
-Create a dataset with coordinates derived from peak statistic
-identification in images.
+Create a dataset with coordinates derived from peak statistic identification in images.
+
 Why would you want to do this?
 
 * Compare CBMA and IBMA

@@ -4,9 +4,11 @@
 
 .. _metas2:
 
-======================================================
- Run coordinate-based meta-analyses on 21 pain studies
-======================================================
+========================================================
+02 Run coordinate-based meta-analyses on 21 pain studies
+========================================================
+
+Perform CBMAs on a toy dataset.
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.

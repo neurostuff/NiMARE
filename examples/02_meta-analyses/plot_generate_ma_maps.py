@@ -4,15 +4,14 @@
 
 .. _metas1:
 
-========================================================
- Generate modeled activation maps
-========================================================
+===================================
+01 Generate modeled activation maps
+===================================
 
 For coordinate-based data, individual studies' statistical maps are mimicked
 by generating "modeled activation" (MA) maps.
 These MA maps are used in the CBMA algorithms, although the specific method
 used to generate the MA maps differs by algorithm.
-
 """
 ###############################################################################
 # Start with the necessary imports
