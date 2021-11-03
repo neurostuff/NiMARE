@@ -4,9 +4,9 @@
 
 .. _metas2:
 
-==================================
-Run coordinate-based meta-analyses
-==================================
+==============================
+Coordinate-based meta-analysis
+==============================
 
 Perform CBMAs on a toy dataset.
 

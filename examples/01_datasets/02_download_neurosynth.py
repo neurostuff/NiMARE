@@ -4,9 +4,9 @@
 
 .. _datasets2:
 
-==================================
-Download Neurosynth and NeuroQuery
-==================================
+=========================
+Neurosynth and NeuroQuery
+=========================
 
 Download and convert the Neurosynth database (with abstracts) for analysis with NiMARE.
 

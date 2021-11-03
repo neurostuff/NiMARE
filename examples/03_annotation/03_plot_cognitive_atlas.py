@@ -4,9 +4,9 @@
 
 .. _annotations3:
 
-=============================
-Work with the Cognitive Atlas
-=============================
+===================
+The Cognitive Atlas
+===================
 
 We can download the Cognitive Atlas and extract CogAt terms from text.
 """

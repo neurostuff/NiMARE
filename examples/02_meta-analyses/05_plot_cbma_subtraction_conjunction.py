@@ -4,9 +4,9 @@
 
 .. _metas5:
 
-=========================================================
-Run coordinate-based subtraction and conjunction analyses
-=========================================================
+=================================
+Subtraction and conjunction CBMAs
+=================================
 
 The (coordinate-based) ALE subtraction method tests at which voxels
 the meta-analytic results from two groups of studies differ reliably from
