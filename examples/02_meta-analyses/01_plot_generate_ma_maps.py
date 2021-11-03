@@ -100,7 +100,7 @@ kernel = nimare.meta.kernel.ALEKernel(sample_size=20)
 ale_res = kernel.transform(dset, return_type="image")
 max_conv = np.max(kda_res[2].get_fdata())
 
-fig, axes = plt.subplots(figsize=(12, 12), n_rows=3)
+fig, axes = plt.subplots(figsize=(12, 12), nrows=3)
 plot_stat_map(
     mkda_res[2],
     cut_coords=[-2, -10, -4],
