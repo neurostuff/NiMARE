@@ -18,7 +18,7 @@ from nimare.meta import cbma, ibma
         (ibma.Hedges, "ibma"),
         # (ibma.SampleSizeBasedLikelihood, "ibma"),
         # (ibma.VarianceBasedLikelihood, "ibma"),
-        (ibma.PermutedOLS, "ibma"),
+        # (ibma.PermutedOLS, "ibma"),
     ],
 )
 def test_Jackknife(testdata_ibma, testdata_cbma_full, estimator, meta_type):
