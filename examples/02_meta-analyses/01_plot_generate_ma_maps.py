@@ -48,10 +48,20 @@ mkda_r14 = kernel.transform(dset, return_type="image")
 
 fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 10))
 plot_stat_map(
-    mkda_r02[2], cut_coords=[-2, -10, -4], title="r=2mm", vmax=2, axes=axes[0, 0], draw_cross=False
+    mkda_r02[2],
+    cut_coords=[-2, -10, -4],
+    title="r=2mm",
+    vmax=2,
+    axes=axes[0, 0],
+    draw_cross=False,
 )
 plot_stat_map(
-    mkda_r06[2], cut_coords=[-2, -10, -4], title="r=6mm", vmax=2, axes=axes[0, 1], draw_cross=False
+    mkda_r06[2],
+    cut_coords=[-2, -10, -4],
+    title="r=6mm",
+    vmax=2,
+    axes=axes[0, 1],
+    draw_cross=False,
 )
 plot_stat_map(
     mkda_r10[2],
@@ -89,6 +99,32 @@ kda_res = kernel.transform(dset, return_type="image")
 kernel = nimare.meta.kernel.ALEKernel(sample_size=20)
 ale_res = kernel.transform(dset, return_type="image")
 max_conv = np.max(kda_res[2].get_fdata())
-plot_stat_map(mkda_res[2], cut_coords=[-2, -10, -4], title="MKDA", vmax=max_conv)
-plot_stat_map(kda_res[2], cut_coords=[-2, -10, -4], title="KDA", vmax=max_conv)
-plot_stat_map(ale_res[2], cut_coords=[-2, -10, -4], title="ALE")
+
+fig, axes = plt.subplots(figsize=(12, 12), n_rows=3)
+plot_stat_map(
+    mkda_res[2],
+    cut_coords=[-2, -10, -4],
+    title="MKDA",
+    vmax=max_conv,
+    draw_cross=False,
+    axes=axes[0],
+    figure=fig,
+)
+plot_stat_map(
+    kda_res[2],
+    cut_coords=[-2, -10, -4],
+    title="KDA",
+    vmax=max_conv,
+    draw_cross=False,
+    axes=axes[1],
+    figure=fig,
+)
+plot_stat_map(
+    ale_res[2],
+    cut_coords=[-2, -10, -4],
+    title="ALE",
+    draw_cross=False,
+    axes=axes[2],
+    figure=fig,
+)
+fig.show()

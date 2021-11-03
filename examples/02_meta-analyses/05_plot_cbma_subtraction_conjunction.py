@@ -93,11 +93,11 @@ related_cluster_table, related_cluster_img = jknife.transform(related_corrected_
 
 # %%
 # #############################################################################
-knowledge_cluster_table.head()
+knowledge_cluster_table.head(10)
 
 # %%
 # #############################################################################
-related_cluster_table.head()
+related_cluster_table.head(10)
 
 ###############################################################################
 # Subtraction analysis
@@ -122,9 +122,8 @@ plot_stat_map(
 # can be computed by (a) identifying voxels that were statistically significant
 # in *both* individual group maps and (b) selecting, for each of these voxels,
 # the smaller of the two group-specific *z* values. [4]_ Since this is simple
-# arithmetic on images, conjunction is not implemented as a seperate method in
-# :code:`NiMARE` but can easily be achieved with the :code:`math_img()`
-# function from :code:`nilearn.image`.
+# arithmetic on images, conjunction is not implemented as a separate method in
+# :code:`NiMARE` but can easily be achieved with :func:`nilearn.image.math_img`.
 formula = "np.where(img * img2 > 0, np.minimum(img, img2), 0)"
 img_conj = math_img(formula, img=img, img2=img2)
 
