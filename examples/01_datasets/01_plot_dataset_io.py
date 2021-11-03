@@ -5,7 +5,7 @@
 .. _datasets1:
 
 ===============================
-01 Load and work with a Dataset
+Load and work with a Dataset
 ===============================
 
 This is a brief walkthrough of the :class:`nimare.dataset.Dataset` class and its methods.

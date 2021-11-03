@@ -4,9 +4,9 @@
 
 .. _metas5:
 
-==========================================================
- Run coordinate-based subtraction and conjunction analyses
-==========================================================
+============================================================
+05 Run coordinate-based subtraction and conjunction analyses
+============================================================
 
 The (coordinate-based) ALE subtraction method tests at which voxels
 the meta-analytic results from two groups of studies differ reliably from
@@ -91,9 +91,11 @@ jknife = Jackknife(
 knowledge_cluster_table, knowledge_cluster_img = jknife.transform(knowledge_corrected_results)
 related_cluster_table, related_cluster_img = jknife.transform(related_corrected_results)
 
+# %%
 # #############################################################################
 knowledge_cluster_table.head()
 
+# %%
 # #############################################################################
 related_cluster_table.head()
 
