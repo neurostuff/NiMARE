@@ -26,10 +26,10 @@ from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load Sleuth text files into Datasets
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 # The data for this example are a subset of studies from a meta-analysis on
 # semantic cognition in children. [3]_ A first group of studies probed
-# childrens semantic world knowledge (e.g., correctly naming an object after
+# children's semantic world knowledge (e.g., correctly naming an object after
 # hearing its auditory description) while a second group of studies asked
 # children to decide if two (or more) words were semantically related to one
 # another or not.
@@ -41,9 +41,9 @@ related_dset = convert_sleuth_to_dataset(related_file)
 
 ###############################################################################
 # Individual group ALEs
-# --------------------------------------------------
-# Computing seperate ALE analyses for each group is not strictly necessary for
-# performing the subtraction analysis but will help to appreciate the
+# -----------------------------------------------------------------------------
+# Computing separate ALE analyses for each group is not strictly necessary for
+# performing the subtraction analysis but will help the experimenter to appreciate the
 # similarities and differences between the groups.
 ale = ALE(null_method="approximate")
 knowledge_results = ale.fit(knowledge_dset)
@@ -84,6 +84,7 @@ fig.show()
 ###############################################################################
 # Characterize the relative contributions of experiments in the ALE results
 # -----------------------------------------------------------------------------
+
 jknife = Jackknife(
     target_image="z_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
@@ -101,7 +102,9 @@ related_cluster_table.head(10)
 
 ###############################################################################
 # Subtraction analysis
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
+# Typically, one would use at least 10000 iterations for a subtraction analysis.
+# However, we have reduced this to 100 iterations for this example.
 sub = ALESubtraction(n_iters=100, memory_limit=None)
 res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
@@ -117,7 +120,7 @@ plot_stat_map(
 
 ###############################################################################
 # Conjunction analysis
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 # To determine the overlap of the meta-analytic results, a conjunction image
 # can be computed by (a) identifying voxels that were statistically significant
 # in *both* individual group maps and (b) selecting, for each of these voxels,
@@ -139,7 +142,7 @@ plot_stat_map(
 
 ###############################################################################
 # References
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 # .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
 #     false discovery rate and performing statistical contrasts." Human
 #     brain mapping 25.1 (2005): 155-164.

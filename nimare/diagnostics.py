@@ -20,10 +20,17 @@ class Jackknife(metaclass=ABCMeta):
 
     Parameters
     ----------
-    target_image
+    target_image : :obj:`str`, optional
+        The meta-analytic map for which clusters will be characterized.
         The default is z because log-p will not always have value of zero for non-cluster voxels.
-    voxel_thresh
-    n_cores
+    voxel_thresh : :obj:`float` or None, optional
+        An optional voxel-level threshold that may be applied to the ``target_image`` to define
+        clusters. This can be None if the ``target_image`` is already thresholded
+        (e.g., a cluster-level corrected map).
+        Default is None.
+    n_cores : :obj:`int`, optional
+        Not yet implemented.
+        Default is 1.
 
     Notes
     -----
@@ -51,7 +58,6 @@ class Jackknife(metaclass=ABCMeta):
         ----------
         result : :obj:`nimare.results.MetaResult`
             A MetaResult produced by a coordinate- or image-based meta-analysis.
-            Multiple comparisons correction must be performed prior to applying the Jackknife.
 
         Returns
         -------
@@ -76,11 +82,14 @@ class Jackknife(metaclass=ABCMeta):
         estimator = copy.deepcopy(result.estimator)
         original_masker = estimator.masker
 
+        # Collect the thresholded cluster map
         target_img = result.get_map(self.target_image, return_type="image")
         if self.voxel_thresh:
             thresh_img = image.threshold_img(target_img, self.voxel_thresh)
         else:
             thresh_img = target_img
+
+        thresh_arr = thresh_img.get_fdata()
 
         # CBMAs have "stat" maps, while most IBMAs have "est" maps.
         # Fisher's and Stouffer's only have "z" maps though.
@@ -93,10 +102,8 @@ class Jackknife(metaclass=ABCMeta):
 
         stat_values = result.get_map(target_value_map, return_type="array")
 
-        thresh_arr = thresh_img.get_fdata()
-
-        # Should probably go off IDs in estimator.inputs_ instead,
-        # in case some experiments are filtered out based on available data.
+        # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
+        # estimator to a study that might have been filtered out by the estimator's criteria.
         meta_ids = estimator.inputs_["id"]
         rows = ["Center of Mass"] + list(meta_ids)
 
@@ -118,43 +125,51 @@ class Jackknife(metaclass=ABCMeta):
             contribution_table = pd.DataFrame(index=rows)
             return contribution_table, labeled_cluster_img
 
+        # Identify center of mass for each cluster
+        # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
         cluster_ids = list(range(1, n_clusters + 1))
-        coms = ndimage.center_of_mass(labeled_cluster_arr, labeled_cluster_arr, cluster_ids)
-        coms = np.array(coms)
-        coms = vox2mm(coms, target_img.affine)
+        cluster_coms = ndimage.center_of_mass(
+            labeled_cluster_arr,
+            labeled_cluster_arr,
+            cluster_ids,
+        )
+        cluster_coms = np.array(cluster_coms)
+        cluster_coms = vox2mm(cluster_coms, target_img.affine)
 
-        cluster_peak_strs = []
+        cluster_com_strs = []
         for i_peak in range(len(cluster_ids)):
-            x, y, z = coms[i_peak, :].astype(int)
+            x, y, z = cluster_coms[i_peak, :].astype(int)
             xyz_str = f"({x}, {y}, {z})"
-            cluster_peak_strs.append(xyz_str)
+            cluster_com_strs.append(xyz_str)
 
-        # Mask using a labels masker
+        # Mask using a labels masker, so that we can easily get the mean value for each cluster
         cluster_masker = input_data.NiftiLabelsMasker(labeled_cluster_img)
         cluster_masker.fit(labeled_cluster_img)
 
-        # Compile contribution table
+        # Create empty contribution table
         contribution_table = pd.DataFrame(index=rows, columns=cluster_ids)
         contribution_table.index.name = "Cluster ID"
-        contribution_table.loc["Center of Mass"] = cluster_peak_strs
+        contribution_table.loc["Center of Mass"] = cluster_com_strs
 
-        for i_expid in tqdm(range(len(meta_ids))):
-            expid = meta_ids[i_expid]
+        for expid in tqdm(meta_ids):
+            # Fit Estimator to all studies except the target study
             other_ids = [id_ for id_ in meta_ids if id_ != expid]
             temp_dset = dset.slice(other_ids)
             temp_result = estimator.fit(temp_dset)
-            temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
 
+            # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
+            temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
             temp_stat_vals = np.squeeze(original_masker.transform(temp_stat_img))
+
             # Voxelwise proportional reduction of each statistic after removal of the experiment
             with np.errstate(divide="ignore", invalid="ignore"):
                 prop_values = np.true_divide(temp_stat_vals, stat_values)
                 prop_values = np.nan_to_num(prop_values)
 
             voxelwise_stat_prop_values = 1 - prop_values
-            stat_prop_img = original_masker.inverse_transform(voxelwise_stat_prop_values)
 
             # Now get the cluster-wise mean of the proportion values
+            stat_prop_img = original_masker.inverse_transform(voxelwise_stat_prop_values)
             stat_prop_values = cluster_masker.transform(stat_prop_img)
             contribution_table.loc[expid] = stat_prop_values
 
