@@ -256,26 +256,6 @@ jobs:
       - codecov/upload:
           file: /tmp/src/coverage/coverage.xml
 
-  build_docs:
-    working_directory: /tmp/src/NiMARE
-    docker:
-      - image: continuumio/miniconda3
-    steps:
-      - attach_workspace:  # get NiMARE
-          at: /tmp
-      - restore_cache:  # load environment
-          key: deps10-{{ checksum "nimare/info.py" }}-{{ checksum "setup.py" }}
-      - run:
-          name: Build documentation
-          command: |
-            source activate py36_env
-            apt-get update
-            apt-get install -yqq make
-            make -C docs html
-          no_output_timeout: 30m
-      - store_artifacts:
-          path: /tmp/src/NiMARE/docs/_build/html
-
   style_check:
     working_directory: /tmp/src/NiMARE
     docker:
@@ -312,9 +292,6 @@ workflows:
           requires:
             - make_py36_env
       - test_performance_smoke:
-          requires:
-            - make_py36_env
-      - build_docs:
           requires:
             - make_py36_env
       - style_check:
