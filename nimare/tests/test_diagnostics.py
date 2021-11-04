@@ -15,7 +15,6 @@ from nimare.tests.utils import get_test_data_path
         (cbma.ALE, "cbma", "onesample", "z"),
         (cbma.MKDADensity, "cbma", "onesample", "z"),
         (cbma.KDA, "cbma", "onesample", "z"),
-        (cbma.ALESubtraction, "cbma", "twosample", "z_desc-group1MinusGroup2"),
         (cbma.MKDAChi2, "cbma", "twosample", "z_desc-consistency"),
         (ibma.Fishers, "ibma", "onesample", "z"),
         (ibma.Stouffers, "ibma", "onesample", "z"),

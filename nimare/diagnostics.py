@@ -1,7 +1,8 @@
 """Methods for diagnosing problems in meta-analytic datasets or analyses."""
 import copy
 import logging
-from abc import ABCMeta
+from functools import partial
+from multiprocessing import Pool
 
 import nibabel as nib
 import numpy as np
@@ -11,12 +12,13 @@ from nilearn import image, input_data
 from scipy import ndimage
 from tqdm.auto import tqdm
 
+from .base import NiMAREBase
 from .utils import vox2mm
 
 LGR = logging.getLogger(__name__)
 
 
-class Jackknife(metaclass=ABCMeta):
+class Jackknife(NiMAREBase):
     """Run a jackknife analysis on a meta-analysis result.
 
     Parameters
@@ -30,7 +32,8 @@ class Jackknife(metaclass=ABCMeta):
         (e.g., a cluster-level corrected map).
         Default is None.
     n_cores : :obj:`int`, optional
-        Not yet implemented.
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores.
         Default is 1.
 
     Notes
@@ -50,7 +53,7 @@ class Jackknife(metaclass=ABCMeta):
     ):
         self.target_image = target_image
         self.voxel_thresh = voxel_thresh
-        self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
 
     def transform(self, result):
         """Apply the analysis to a MetaResult.
@@ -171,33 +174,63 @@ class Jackknife(metaclass=ABCMeta):
         contribution_table.index.name = "Cluster ID"
         contribution_table.loc["Center of Mass"] = cluster_com_strs
 
-        for expid in tqdm(meta_ids):
-            # Fit Estimator to all studies except the target study
-            other_ids = [id_ for id_ in meta_ids if id_ != expid]
-            temp_dset = dset.slice(other_ids)
-            temp_result = estimator.fit(temp_dset)
+        # For the private method that does the work of the analysis, we have a lot of constant
+        # parameters, and only one that varies (the ID of the study being removed),
+        # so we use functools.partial.
+        transform_method = partial(
+            self._transform,
+            all_ids=meta_ids,
+            dset=dset,
+            estimator=estimator,
+            target_value_map=target_value_map,
+            stat_values=stat_values,
+            original_masker=original_masker,
+            cluster_masker=cluster_masker,
+        )
+        with Pool(self.n_cores) as p:
+            jackknife_results = list(tqdm(p.imap(transform_method, meta_ids), total=len(meta_ids)))
 
-            # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
-            temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
-            temp_stat_vals = np.squeeze(original_masker.transform(temp_stat_img))
-
-            # Voxelwise proportional reduction of each statistic after removal of the experiment
-            with np.errstate(divide="ignore", invalid="ignore"):
-                prop_values = np.true_divide(temp_stat_vals, stat_values)
-                prop_values = np.nan_to_num(prop_values)
-
-            voxelwise_stat_prop_values = 1 - prop_values
-
-            # Now get the cluster-wise mean of the proportion values
-            # pending resolution of https://github.com/nilearn/nilearn/issues/2724
-            try:
-                stat_prop_img = original_masker.inverse_transform(voxelwise_stat_prop_values)
-            except IndexError:
-                stat_prop_img = squeeze_image(
-                    original_masker.inverse_transform([voxelwise_stat_prop_values])
-                )
-
-            stat_prop_values = cluster_masker.transform(stat_prop_img)
+        # Add the results to the table
+        for expid, stat_prop_values in jackknife_results:
             contribution_table.loc[expid] = stat_prop_values
 
         return contribution_table, labeled_cluster_img
+
+    def _transform(
+        self,
+        expid,
+        all_ids,
+        dset,
+        estimator,
+        target_value_map,
+        stat_values,
+        original_masker,
+        cluster_masker,
+    ):
+        # Fit Estimator to all studies except the target study
+        other_ids = [id_ for id_ in all_ids if id_ != expid]
+        temp_dset = dset.slice(other_ids)
+        temp_result = estimator.fit(temp_dset)
+
+        # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
+        temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
+        temp_stat_vals = np.squeeze(original_masker.transform(temp_stat_img))
+
+        # Voxelwise proportional reduction of each statistic after removal of the experiment
+        with np.errstate(divide="ignore", invalid="ignore"):
+            prop_values = np.true_divide(temp_stat_vals, stat_values)
+            prop_values = np.nan_to_num(prop_values)
+
+        voxelwise_stat_prop_values = 1 - prop_values
+
+        # Now get the cluster-wise mean of the proportion values
+        # pending resolution of https://github.com/nilearn/nilearn/issues/2724
+        try:
+            stat_prop_img = original_masker.inverse_transform(voxelwise_stat_prop_values)
+        except IndexError:
+            stat_prop_img = squeeze_image(
+                original_masker.inverse_transform([voxelwise_stat_prop_values])
+            )
+
+        stat_prop_values = cluster_masker.transform(stat_prop_img)
+        return expid, stat_prop_values
