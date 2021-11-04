@@ -43,6 +43,11 @@ class Jackknife(NiMAREBase):
     statistic for all experiments *except* the target experiment, dividing the resulting test
     summary statistics by the summary statistics from the original meta-analysis, and finally
     averaging the resulting proportion values across all voxels in each cluster.
+
+    Warning
+    -------
+    Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
+    method.
     """
 
     def __init__(
@@ -79,11 +84,6 @@ class Jackknife(NiMAREBase):
             analysis.
             Each cluster in the map has a single value, which corresponds to the cluster's column
             name in ``contribution_table``.
-
-        Warning
-        -------
-        Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
-        method.
         """
         if not hasattr(result.estimator, "dataset"):
             raise AttributeError(
