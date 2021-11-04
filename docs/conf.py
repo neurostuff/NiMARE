@@ -180,6 +180,7 @@ intersphinx_mapping = {
 sphinx_gallery_conf = {
     # path to your examples scripts
     "examples_dirs": "../examples",
+    # run examples with a number, then "plot"
     "filename_pattern": "/[0-9]+_plot_",
     # path where to save gallery generated examples
     "gallery_dirs": "auto_examples",
