@@ -68,3 +68,8 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
     jackknife = Jackknife(target_image="z", voxel_thresh=0.5)
     cluster_table, labeled_img = jackknife.transform(res)
     assert cluster_table.shape[0] == len(meta.inputs_["id"]) + 1
+
+    # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
+    with pytest.raises(ValueError):
+        jackknife = Jackknife(target_image="doggy", voxel_thresh=0.5)
+        jackknife.transform(res)
