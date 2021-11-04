@@ -4,13 +4,12 @@
 
 .. _annotations2:
 
-===============================
- Train an LDA model and use it
-===============================
+==================
+LDA topic modeling
+==================
 
-This example trains a latent Dirichlet allocation model with MALLET
-using abstracts from Neurosynth.
-
+This example trains a latent Dirichlet allocation model with MALLET using abstracts from
+Neurosynth.
 """
 import os
 

@@ -22,6 +22,16 @@ LGR = logging.getLogger(__name__)
 class NiMAREBase(metaclass=ABCMeta):
     """Base class for NiMARE.
 
+    This class contains a few features that are useful throughout the library:
+
+    - Custom __repr__ method for printing the object.
+    - A private _check_ncores method to check if the common n_cores argument is valid.
+    - get_params from scikit-learn, with which parameters provided at __init__ can be viewed.
+    - set_params from scikit-learn, with which parameters provided at __init__ can be overwritten.
+      I'm not sure that this is actually used or useable in NiMARE.
+    - save to save the object to a Pickle file.
+    - load to load an instance of the object from a Pickle file.
+
     TODO: Actually write/refactor class methods. They mostly come directly from sklearn
     https://github.com/scikit-learn/scikit-learn/blob/
     2a1e9686eeb203f5fddf44fd06414db8ab6a554a/sklearn/base.py#L141
@@ -228,7 +238,14 @@ class NiMAREBase(metaclass=ABCMeta):
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults."""
+    """Estimators take in Datasets and return MetaResults.
+
+    All Estimators must have a ``_fit`` method implemented, which applies algorithm-specific
+    methods to a dataset and returns a dictionary of arrays to be converted into a MetaResult.
+    Users will interact with the ``_fit`` method by calling the user-facing ``fit`` method.
+    ``fit`` takes in a ``Dataset``, calls ``_validate_input``, then ``_preprocess_input``,
+    then ``_fit``, and finally converts the dictionary returned by ``_fit`` into a ``MetaResult``.
+    """
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.

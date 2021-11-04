@@ -4,10 +4,11 @@
 
 .. _datasets1:
 
-========================================================
- Load and work with a Dataset
-========================================================
+=========================
+The NiMARE Dataset object
+=========================
 
+This is a brief walkthrough of the :class:`nimare.dataset.Dataset` class and its methods.
 """
 ###############################################################################
 # Start with the necessary imports

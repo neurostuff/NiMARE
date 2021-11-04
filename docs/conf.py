@@ -23,6 +23,7 @@ from distutils.version import LooseVersion
 
 import sphinx
 from m2r import MdInclude
+from sphinx_gallery.sorting import FileNameSortKey
 
 sys.path.insert(0, os.path.abspath(os.path.pardir))
 sys.path.insert(0, os.path.abspath("sphinxext"))
@@ -179,17 +180,20 @@ intersphinx_mapping = {
 sphinx_gallery_conf = {
     # path to your examples scripts
     "examples_dirs": "../examples",
+    # run examples with a number, then "plot"
+    "filename_pattern": "/[0-9]+_plot_",
     # path where to save gallery generated examples
     "gallery_dirs": "auto_examples",
     "backreferences_dir": "generated",
-    # Modules for which function level galleries are created.  In
-    # this case sphinx_gallery and numpy in a tuple of strings.
+    # Modules for which function level galleries are created.
+    # In this case sphinx_gallery and numpy in a tuple of strings.
     "doc_module": ("nimare"),
     "ignore_pattern": r"utils/.",
     "reference_url": {
         # The module you locally document uses None
         "nimare": None
     },
+    "within_subsection_order": FileNameSortKey,
 }
 
 # Generate the plots for the gallery

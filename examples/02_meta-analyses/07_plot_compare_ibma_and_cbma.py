@@ -4,13 +4,14 @@
 
 .. _metas7:
 
-===================================================================
-Compare image and coordinate based meta-analyses on 21 pain studies
-===================================================================
+================================================
+Compare image and coordinate based meta-analyses
+================================================
+
+Run IBMAs and CBMAs on a toy dataset, then compare the results qualitatively.
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
-
 """
 import os
 

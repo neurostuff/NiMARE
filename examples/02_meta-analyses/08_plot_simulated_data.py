@@ -4,13 +4,12 @@
 
 .. _metas8:
 
-========================================================
- Simulate data for coordinate based meta-analysis (CBMA)
-========================================================
+================================================
+Simulate data for coordinate based meta-analysis
+================================================
 
-Simulating data before you run your meta-analysis is a great
-way to test your assumptions and see how the meta-analysis
-would perform with simplified data
+Simulating data before you run your meta-analysis is a great way to test your assumptions and see
+how the meta-analysis would perform with simplified data
 """
 from nilearn.plotting import plot_stat_map
 
