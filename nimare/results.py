@@ -33,7 +33,7 @@ class MetaResult(object):
     """
 
     def __init__(self, estimator, mask, maps=None):
-        self.estimator = estimator
+        self.estimator = copy.deepcopy(estimator)
         self.masker = get_masker(mask)
         self.maps = maps or {}
 
