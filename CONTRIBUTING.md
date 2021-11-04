@@ -30,7 +30,7 @@ As stated in the code, severe or repeated violations by community members may re
 
 ## Asking questions about using NiMARE
 
-Please direct usage-related questions to [NeuroStars][link_neurostars], with the tag "nimare".
+Please direct usage-related questions to [NeuroStars][link_neurostars], with the ["nimare" tag][link_neurostars_nimare].
 The NiMARE developers follow NeuroStars, and will be able to answer your question there.
 
 ## Labels
@@ -102,6 +102,7 @@ You're awesome.
 [link_labels]: https://github.com/neurostuff/NiMARE/labels
 [link_discussingissues]: https://help.github.com/articles/discussing-projects-in-issues-and-pull-requests
 [link_neurostars]: https://neurostars.org
+[link_neurostars_nimare]: https://neurostars.org/tag/nimare
 
 [link_pullrequest]: https://help.github.com/articles/creating-a-pull-request/
 [link_fork]: https://help.github.com/articles/fork-a-repo/

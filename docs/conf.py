@@ -161,7 +161,7 @@ _python_version_str = "{0.major}.{0.minor}".format(sys.version_info)
 _python_doc_base = "https://docs.python.org/" + _python_version_str
 intersphinx_mapping = {
     "python": (_python_doc_base, None),
-    "numpy": ("https://docs.scipy.org/doc/numpy", (None, "./_intersphinx/numpy-objects.inv")),
+    "numpy": ("https://numpy.org/doc/stable/", (None, "./_intersphinx/numpy-objects.inv")),
     "scipy": (
         "https://docs.scipy.org/doc/scipy/reference",
         (None, "./_intersphinx/scipy-objects.inv"),
@@ -194,6 +194,7 @@ sphinx_gallery_conf = {
         "nimare": None
     },
     "within_subsection_order": FileNameSortKey,
+    "default_thumb_file": "_static/nimare_favicon.png",
 }
 
 # Generate the plots for the gallery

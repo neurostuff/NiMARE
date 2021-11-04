@@ -55,17 +55,20 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     :math:`p(w|t)`            Probability of word type given topic (``p_word_g_topic``)
     ======================    ==============================================================
 
-    1.  Compute
-        :math:`p(v|t)`.
+    1.  Compute :math:`p(v|t)`.
+
             - From :func:`gclda.model.Model.get_spatial_probs()`
-    2.  Compute topic weight vector (:math:`\\tau_{t}`) by adding across voxels
-        within ROI.
+
+    2.  Compute topic weight vector (:math:`\\tau_{t}`) by adding across voxels within ROI.
+
             - :math:`\\tau_{t} = \sum_{i} {p(t|v_{i})}`
-    3.  Multiply :math:`\\tau_{t}` by
-        :math:`p(w|t)`.
+
+    3.  Multiply :math:`\\tau_{t}` by :math:`p(w|t)`.
+
             - :math:`p(w|r) \propto \\tau_{t} \cdot p(w|t)`
-    4.  The resulting vector (``word_weights``) reflects arbitrarily scaled
-        term weights for the ROI.
+
+    4.  The resulting vector (``word_weights``) reflects arbitrarily scaled term weights for the
+        ROI.
 
     See Also
     --------
