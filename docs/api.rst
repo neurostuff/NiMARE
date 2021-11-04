@@ -77,6 +77,24 @@ API
    correct.FDRCorrector
 
 
+.. _api_diagnostics_ref:
+
+:mod:`nimare.diagnostics`: Diagnostics
+------------------------------------------------------
+
+.. automodule:: nimare.diagnostics
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   diagnostics.Jackknife
+
+
 .. _api_annotate_ref:
 
 :mod:`nimare.annotate`: Automated annotation
