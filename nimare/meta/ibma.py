@@ -430,6 +430,9 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         self.method = method
 
     def _fit(self, dataset):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+
         sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
         n_maps = np.tile(sample_sizes, (self.inputs_["beta_maps"].shape[1], 1)).T
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], n=n_maps)
@@ -515,6 +518,7 @@ class VarianceBasedLikelihood(MetaEstimator):
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
+
         if not isinstance(self.masker, NiftiMasker):
             LGR.warning(
                 f"A {type(self.masker)} mask has been detected. "
