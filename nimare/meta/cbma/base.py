@@ -1,6 +1,7 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
 import multiprocessing as mp
+from functools import partial
 
 import nibabel as nib
 import numpy as np
@@ -361,7 +362,7 @@ class CBMAEstimator(MetaEstimator):
         null_dist = self.compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
-    def _compute_null_montecarlo_permutation(self, params):
+    def _compute_null_montecarlo_permutation(self, iter_xyz, iter_df):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between uncorrected stat-to-p conversion and vFWE.
@@ -377,7 +378,9 @@ class CBMAEstimator(MetaEstimator):
         counts : 1D array_like
             Weights associated with the attribute `null_distributions_["histogram_bins"]`.
         """
-        iter_xyz, iter_df = params
+        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
+        # be safe.
+        iter_df = iter_df.copy()
 
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
@@ -426,19 +429,14 @@ class CBMAEstimator(MetaEstimator):
         rand_xyz = vox2mm(rand_ijk, self.masker.mask_img.affine)
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
-        iter_dfs = [iter_df] * n_iters
 
-        params = zip(iter_xyzs, iter_dfs)
-        if n_cores == 1:
-            perm_histograms = []
-            for pp in tqdm(params, total=n_iters):
-                perm_histograms.append(self._compute_null_montecarlo_permutation(pp))
+        permutation_method = partial(
+            self._compute_null_montecarlo_permutation,
+            iter_df=iter_df,
+        )
 
-        else:
-            with mp.Pool(n_cores) as p:
-                perm_histograms = list(
-                    tqdm(p.imap(self._compute_null_montecarlo_permutation, params), total=n_iters)
-                )
+        with mp.Pool(n_cores) as p:
+            perm_histograms = list(tqdm(p.imap(permutation_method, iter_xyzs), total=n_iters))
 
         perm_histograms = np.vstack(perm_histograms)
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
@@ -458,7 +456,7 @@ class CBMAEstimator(MetaEstimator):
             "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = fwe_voxel_max
 
-    def _correct_fwe_montecarlo_permutation(self, params):
+    def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between vFWE and cFWE.
@@ -476,7 +474,9 @@ class CBMAEstimator(MetaEstimator):
             A 2-tuple of floats giving the maximum voxel-wise value, and maximum
             cluster size for the permuted dataset.
         """
-        iter_xyz, iter_df, conn, voxel_thresh = params
+        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
+        # be safe.
+        iter_df = iter_df.copy()
 
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
@@ -574,7 +574,6 @@ class CBMAEstimator(MetaEstimator):
             rand_xyz = null_xyz[rand_idx, :]
             iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
             iter_df = self.inputs_["coordinates"].copy()
-            iter_dfs = [iter_df] * n_iters
 
             # Find number of voxels per cluster (includes 0, which is empty space in
             # the matrix)
@@ -583,23 +582,15 @@ class CBMAEstimator(MetaEstimator):
             conn[:, 1, :] = 1
             conn[1, :, :] = 1
 
-            # Define parameters
-            iter_conn = [conn] * n_iters
-            iter_ss_thresh = [ss_thresh] * n_iters
-            params = zip(iter_xyzs, iter_dfs, iter_conn, iter_ss_thresh)
+            permutation_method = partial(
+                self._correct_fwe_montecarlo_permutation,
+                iter_df=iter_df,
+                conn=conn,
+                voxel_thresh=ss_thresh,
+            )
 
-            if n_cores == 1:
-                perm_results = []
-                for pp in tqdm(params, total=n_iters):
-                    perm_results.append(self._correct_fwe_montecarlo_permutation(pp))
-
-            else:
-                with mp.Pool(n_cores) as p:
-                    perm_results = list(
-                        tqdm(
-                            p.imap(self._correct_fwe_montecarlo_permutation, params), total=n_iters
-                        )
-                    )
+            with mp.Pool(n_cores) as p:
+                perm_results = list(tqdm(p.imap(permutation_method, iter_xyzs), total=n_iters))
 
             fwe_voxel_max, fwe_clust_max = zip(*perm_results)
 

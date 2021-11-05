@@ -1,6 +1,7 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
 import logging
 import multiprocessing as mp
+from functools import partial
 
 import numpy as np
 from scipy import special
@@ -300,8 +301,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def _run_fwe_permutation(self, params):
-        iter_df1, iter_df2, iter_xyz1, iter_xyz2 = params
+    def _run_fwe_permutation(self, params, iter_df1, iter_df2):
+        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
+        # be safe.
+        iter_df1 = iter_df1.copy()
+        iter_df2 = iter_df2.copy()
+
+        iter_xyz1, iter_xyz2 = params
         iter_xyz1 = np.squeeze(iter_xyz1)
         iter_xyz2 = np.squeeze(iter_xyz2)
         iter_df1[["x", "y", "z"]] = iter_xyz1
@@ -398,8 +404,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         iter_df1 = self.inputs_["coordinates1"].copy()
         iter_df2 = self.inputs_["coordinates2"].copy()
-        iter_dfs1 = [iter_df1] * n_iters
-        iter_dfs2 = [iter_df2] * n_iters
         rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
         rand_xyz1 = null_xyz[rand_idx1, :]
         iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
@@ -408,17 +412,18 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
         eps = np.spacing(1)
 
-        params = zip(iter_dfs1, iter_dfs2, iter_xyzs1, iter_xyzs2)
+        params = zip(iter_xyzs1, iter_xyzs2)
 
-        if n_cores == 1:
-            perm_results = []
-            for pp in tqdm(params, total=n_iters):
-                perm_results.append(self._run_fwe_permutation(pp))
-        else:
-            with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
+        permutation_method = partial(
+            self._run_fwe_permutation,
+            iter_df1=iter_df1,
+            iter_df2=iter_df2,
+        )
 
-        del iter_df1, iter_df2, iter_dfs1, iter_dfs2, rand_idx1, rand_xyz1, iter_xyzs1
+        with mp.Pool(n_cores) as p:
+            perm_results = list(tqdm(p.imap(permutation_method, params), total=n_iters))
+
+        del iter_df1, iter_df2, rand_idx1, rand_xyz1, iter_xyzs1
         del rand_idx2, rand_xyz2, iter_xyzs2, params
 
         pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
