@@ -60,18 +60,22 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     :math:`\omega`            1d array from input image (``input_values``)
     ======================    ==============================================================
 
-    1.  Compute :math:`p(t|v)`
-        (``p_topic_g_voxel``).
-            - From :func:`gclda.model.Model.get_spatial_probs()`
+    1.  Compute :math:`p(t|v)` (``p_topic_g_voxel``).
+
+        - From :func:`gclda.model.Model.get_spatial_probs()`
+
     2.  Squeeze input image to 1d array :math:`\omega` (``input_values``).
-    3.  Compute topic weight vector (:math:`\\tau_{t}`) by multiplying
-        :math:`p(t|v)` by input image.
+    3.  Compute topic weight vector (:math:`\\tau_{t}`) by multiplying :math:`p(t|v)` by input
+        image.
+
             - :math:`\\tau_{t} = p(t|v) \cdot \omega`
-    4.  Multiply :math:`\\tau_{t}` by
-        :math:`p(w|t)`.
+
+    4.  Multiply :math:`\\tau_{t}` by :math:`p(w|t)`.
+
             - :math:`p(w|i) \propto \\tau_{t} \cdot p(w|t)`
-    5.  The resulting vector (``word_weights``) reflects arbitrarily scaled
-        term weights for the input image.
+
+    5.  The resulting vector (``word_weights``) reflects arbitrarily scaled term weights for the
+        input image.
 
     See Also
     --------

@@ -5,13 +5,18 @@
   background: #a589df;
 }
 
+/*Width of panel */
+.wy-nav-content {
+  max-width: None;
+}
+
 /* Sphinx gallery example titles */
 /* Taken from scikit-learn */
 #examples {
   font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
 }
 
-#examples .caption-text {
+.sphx-glr-thumbcontainer span.caption-text {
   font-style: normal;
   font-size: 0.9rem;
   text-align: center;
@@ -37,4 +42,8 @@
   margin-bottom: 1rem;
   padding: 0.5rem;
   font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
+}
+
+.rst-content img {
+  max-width: 800px;
 }

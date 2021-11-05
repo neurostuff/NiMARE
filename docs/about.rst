@@ -22,7 +22,7 @@ A Proposed Meta-Analytic Ecosystem
 ----------------------------------
 
 .. image:: _static/ecosystem.png
-  :width: 100 %
+  :align: center
 
 NiMARE aims to fill a gap in a burgeoning meta-analytic ecosystem.
 The goal of NiMARE is to collect a wide range of meta-analytic tools in one Python library.
