@@ -1,16 +1,16 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 import logging
-import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
 from ... import references
 from ...due import due
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import use_memmap
+from ...utils import tqdm_joblib, use_memmap
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -408,6 +408,7 @@ class SCALE(CBMAEstimator):
         voxel_thresh=0.001,
         n_iters=10000,
         n_cores=-1,
+        use_joblib=False,
         xyz=None,
         kernel_transformer=ALEKernel,
         memory_limit=None,
@@ -427,6 +428,7 @@ class SCALE(CBMAEstimator):
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
+        self.use_joblib = use_joblib
         self.memory_limit = memory_limit
 
     @use_memmap(LGR, n_files=2)
@@ -462,33 +464,28 @@ class SCALE(CBMAEstimator):
         rand_xyz = self.xyz[rand_idx, :]
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
 
-        # Define parameters
-        iter_dfs = [iter_df] * self.n_iters
-        params = zip(iter_dfs, iter_xyzs)
+        perm_scale_values = np.memmap(
+            self.memmap_filenames[1],
+            dtype=stat_values.dtype,
+            mode="w+",
+            shape=(self.n_iters, stat_values.shape[0]),
+        )
+        if not self.use_joblib:
+            # Define parameters
+            iter_dfs = [iter_df] * self.n_iters
+            params = zip(iter_dfs, iter_xyzs)
 
-        if self.n_cores == 1:
-            if self.memory_limit:
-                perm_scale_values = np.memmap(
-                    self.memmap_filenames[1],
-                    dtype=stat_values.dtype,
-                    mode="w+",
-                    shape=(self.n_iters, stat_values.shape[0]),
-                )
-            else:
-                perm_scale_values = np.zeros(
-                    (self.n_iters, stat_values.shape[0]), dtype=stat_values.dtype
-                )
             for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
-                perm_scale_values[i_iter, :] = self._run_permutation(pp)
-                if self.memory_limit:
-                    # Write changes to disk
-                    perm_scale_values.flush()
+                stat_values = self._run_permutation(pp)
+                perm_scale_values[i_iter, :] = stat_values
         else:
-            with mp.Pool(self.n_cores) as p:
-                perm_scale_values = list(
-                    tqdm(p.imap(self._run_permutation, params, chunksize=10), total=self.n_iters)
+            with tqdm_joblib(tqdm(total=self.n_iters)):
+                Parallel(n_jobs=self.n_cores)(
+                    delayed(self._run_permutation2)(
+                        i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
+                    )
+                    for i_iter in range(self.n_iters)
                 )
-            perm_scale_values = np.stack(perm_scale_values)
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
 
@@ -580,3 +577,10 @@ class SCALE(CBMAEstimator):
         iter_df[["x", "y", "z"]] = iter_xyz
         stat_values = self._compute_summarystat(iter_df)
         return stat_values
+
+    def _run_permutation2(self, i_row, iter_xyz, iter_df, perm_scale_values):
+        """Run a single random SCALE permutation of a dataset."""
+        iter_xyz = np.squeeze(iter_xyz)
+        iter_df[["x", "y", "z"]] = iter_xyz
+        stat_values = self._compute_summarystat(iter_df)
+        perm_scale_values[i_row, :] = stat_values
