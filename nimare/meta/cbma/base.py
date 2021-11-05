@@ -436,7 +436,9 @@ class CBMAEstimator(MetaEstimator):
         )
 
         with mp.Pool(n_cores) as p:
-            perm_histograms = list(tqdm(p.imap(permutation_method, iter_xyzs), total=n_iters))
+            perm_histograms = list(
+                tqdm(p.imap(permutation_method, iter_xyzs, chunksize=10), total=n_iters)
+            )
 
         perm_histograms = np.vstack(perm_histograms)
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
@@ -590,7 +592,9 @@ class CBMAEstimator(MetaEstimator):
             )
 
             with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(permutation_method, iter_xyzs), total=n_iters))
+                perm_results = list(
+                    tqdm(p.imap(permutation_method, iter_xyzs, chunksize=10), total=n_iters)
+                )
 
             fwe_voxel_max, fwe_clust_max = zip(*perm_results)
 

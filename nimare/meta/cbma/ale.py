@@ -486,7 +486,7 @@ class SCALE(CBMAEstimator):
         else:
             with mp.Pool(self.n_cores) as p:
                 perm_scale_values = list(
-                    tqdm(p.imap(self._run_permutation, params), total=self.n_iters)
+                    tqdm(p.imap(self._run_permutation, params, chunksize=10), total=self.n_iters)
                 )
             perm_scale_values = np.stack(perm_scale_values)
 

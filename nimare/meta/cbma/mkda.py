@@ -421,7 +421,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         )
 
         with mp.Pool(n_cores) as p:
-            perm_results = list(tqdm(p.imap(permutation_method, params), total=n_iters))
+            perm_results = list(
+                tqdm(p.imap(permutation_method, params, chunksize=10), total=n_iters)
+            )
 
         del iter_df1, iter_df2, rand_idx1, rand_xyz1, iter_xyzs1
         del rand_idx2, rand_xyz2, iter_xyzs2, params

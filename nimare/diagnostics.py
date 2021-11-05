@@ -188,7 +188,9 @@ class Jackknife(NiMAREBase):
             cluster_masker=cluster_masker,
         )
         with Pool(self.n_cores) as p:
-            jackknife_results = list(tqdm(p.imap(transform_method, meta_ids), total=len(meta_ids)))
+            jackknife_results = list(
+                tqdm(p.imap(transform_method, meta_ids, chunksize=10), total=len(meta_ids))
+            )
 
         # Add the results to the table
         for expid, stat_prop_values in jackknife_results:
