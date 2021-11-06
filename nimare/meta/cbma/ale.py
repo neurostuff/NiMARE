@@ -429,7 +429,7 @@ class SCALE(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.use_joblib = use_joblib
-        self.memory_limit = memory_limit
+        self.memory_limit = True
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
@@ -470,22 +470,13 @@ class SCALE(CBMAEstimator):
             mode="w+",
             shape=(self.n_iters, stat_values.shape[0]),
         )
-        if not self.use_joblib:
-            # Define parameters
-            iter_dfs = [iter_df] * self.n_iters
-            params = zip(iter_dfs, iter_xyzs)
-
-            for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
-                stat_values = self._run_permutation(pp)
-                perm_scale_values[i_iter, :] = stat_values
-        else:
-            with tqdm_joblib(tqdm(total=self.n_iters)):
-                Parallel(n_jobs=self.n_cores)(
-                    delayed(self._run_permutation2)(
-                        i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
-                    )
-                    for i_iter in range(self.n_iters)
+        with tqdm_joblib(tqdm(total=self.n_iters)):
+            Parallel(n_jobs=self.n_cores)(
+                delayed(self._run_permutation)(
+                    i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
                 )
+                for i_iter in range(self.n_iters)
+            )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
 
@@ -570,15 +561,7 @@ class SCALE(CBMAEstimator):
         )[0]
         return hist_
 
-    def _run_permutation(self, params):
-        """Run a single random SCALE permutation of a dataset."""
-        iter_df, iter_xyz = params
-        iter_xyz = np.squeeze(iter_xyz)
-        iter_df[["x", "y", "z"]] = iter_xyz
-        stat_values = self._compute_summarystat(iter_df)
-        return stat_values
-
-    def _run_permutation2(self, i_row, iter_xyz, iter_df, perm_scale_values):
+    def _run_permutation(self, i_row, iter_xyz, iter_df, perm_scale_values):
         """Run a single random SCALE permutation of a dataset."""
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
