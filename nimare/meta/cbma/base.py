@@ -582,12 +582,12 @@ class CBMAEstimator(MetaEstimator):
             conn[:, 1, :] = 1
             conn[1, :, :] = 1
 
-            with tqdm_joblib(tqdm(total=self.n_iters)):
+            with tqdm_joblib(tqdm(total=n_iters)):
                 perm_results = Parallel(n_jobs=self.n_cores)(
                     delayed(self._correct_fwe_montecarlo_permutation)(
                         iter_xyzs[i_iter], iter_df=iter_df, conn=conn, voxel_thresh=ss_thresh
                     )
-                    for i_iter in range(self.n_iters)
+                    for i_iter in range(n_iters)
                 )
 
             fwe_voxel_max, fwe_clust_max = zip(*perm_results)
