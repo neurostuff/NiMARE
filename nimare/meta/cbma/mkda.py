@@ -1,9 +1,8 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
 import logging
-import multiprocessing as mp
-from functools import partial
 
 import numpy as np
+from joblib import Parallel, delayed
 from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
@@ -12,7 +11,7 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import use_memmap, vox2mm
+from ...utils import tqdm_joblib, use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -301,13 +300,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def _run_fwe_permutation(self, params, iter_df1, iter_df2):
+    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2):
         # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df1 = iter_df1.copy()
         iter_df2 = iter_df2.copy()
 
-        iter_xyz1, iter_xyz2 = params
         iter_xyz1 = np.squeeze(iter_xyz1)
         iter_xyz2 = np.squeeze(iter_xyz2)
         iter_df1[["x", "y", "z"]] = iter_xyz1
@@ -412,21 +410,19 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
         eps = np.spacing(1)
 
-        params = zip(iter_xyzs1, iter_xyzs2)
-
-        permutation_method = partial(
-            self._run_fwe_permutation,
-            iter_df1=iter_df1,
-            iter_df2=iter_df2,
-        )
-
-        with mp.Pool(n_cores) as p:
-            perm_results = list(
-                tqdm(p.imap(permutation_method, params, chunksize=10), total=n_iters)
+        with tqdm_joblib(tqdm(total=n_iters)):
+            perm_results = Parallel(n_jobs=n_cores)(
+                delayed(self._run_fwe_permutation)(
+                    iter_xyz1=iter_xyzs1[i_iter],
+                    iter_xyz2=iter_xyzs2[i_iter],
+                    iter_df1=iter_df1,
+                    iter_df2=iter_df2,
+                )
+                for i_iter in range(n_iters)
             )
 
         del iter_df1, iter_df2, rand_idx1, rand_xyz1, iter_xyzs1
-        del rand_idx2, rand_xyz2, iter_xyzs2, params
+        del rand_idx2, rand_xyz2, iter_xyzs2
 
         pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
