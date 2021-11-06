@@ -1,11 +1,10 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
-import multiprocessing as mp
-from functools import partial
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from scipy import ndimage
 from tqdm.auto import tqdm
 
@@ -17,6 +16,7 @@ from ...utils import (
     add_metadata_to_dataframe,
     check_type,
     safe_transform,
+    tqdm_joblib,
     use_memmap,
     vox2mm,
 )
@@ -430,14 +430,12 @@ class CBMAEstimator(MetaEstimator):
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
 
-        permutation_method = partial(
-            self._compute_null_montecarlo_permutation,
-            iter_df=iter_df,
-        )
-
-        with mp.Pool(n_cores) as p:
-            perm_histograms = list(
-                tqdm(p.imap(permutation_method, iter_xyzs, chunksize=10), total=n_iters)
+        with tqdm_joblib(tqdm(total=n_iters)):
+            perm_histograms = Parallel(n_jobs=n_cores)(
+                delayed(self._compute_null_montecarlo_permutation)(
+                    iter_xyzs[i_iter], iter_df=iter_df
+                )
+                for i_iter in range(n_iters)
             )
 
         perm_histograms = np.vstack(perm_histograms)
@@ -584,16 +582,12 @@ class CBMAEstimator(MetaEstimator):
             conn[:, 1, :] = 1
             conn[1, :, :] = 1
 
-            permutation_method = partial(
-                self._correct_fwe_montecarlo_permutation,
-                iter_df=iter_df,
-                conn=conn,
-                voxel_thresh=ss_thresh,
-            )
-
-            with mp.Pool(n_cores) as p:
-                perm_results = list(
-                    tqdm(p.imap(permutation_method, iter_xyzs, chunksize=10), total=n_iters)
+            with tqdm_joblib(tqdm(total=self.n_iters)):
+                perm_results = Parallel(n_jobs=self.n_cores)(
+                    delayed(self._correct_fwe_montecarlo_permutation)(
+                        iter_xyzs[i_iter], iter_df=iter_df, conn=conn, voxel_thresh=ss_thresh
+                    )
+                    for i_iter in range(self.n_iters)
                 )
 
             fwe_voxel_max, fwe_clust_max = zip(*perm_results)
