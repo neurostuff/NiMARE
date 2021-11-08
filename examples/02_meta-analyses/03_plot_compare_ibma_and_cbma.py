@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas7:
+.. _metas_cbma_vs_ibma:
 
 ================================================
 Compare image and coordinate based meta-analyses

@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _datasets2:
+.. _datasets_databases:
 
 =========================
 Neurosynth and NeuroQuery

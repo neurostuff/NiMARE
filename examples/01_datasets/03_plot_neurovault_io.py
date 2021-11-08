@@ -1,6 +1,6 @@
 """
 
-.. _datasets3:
+.. _datasets_neurovault:
 
 =========================================
 Use NeuroVault statistical maps in NiMARE

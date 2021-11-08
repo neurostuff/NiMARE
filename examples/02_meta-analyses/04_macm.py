@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas3:
+.. _metas_macm:
 
 ============================================
 Meta-analytic coactivation modeling analysis

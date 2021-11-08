@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _annotations1:
+.. _annotations_gclda:
 
 ====================
 GCLDA topic modeling

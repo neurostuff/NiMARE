@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _decode1:
+.. _decode_discrete:
 
 ============================
 Discrete functional decoding

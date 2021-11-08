@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas9:
+.. _metas_peaks2maps:
 
 ================================
 Generate MA maps with peaks2maps
