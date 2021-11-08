@@ -13,14 +13,14 @@ from .base import NiMAREBase
 from .utils import (
     _dict_to_coordinates,
     _dict_to_df,
-    get_masker,
-    get_template,
     _listify,
-    mm2vox,
     _transform_coordinates_to_space,
     _try_prepend,
     _validate_df,
     _validate_images_df,
+    get_masker,
+    get_template,
+    mm2vox,
 )
 
 LGR = logging.getLogger(__name__)

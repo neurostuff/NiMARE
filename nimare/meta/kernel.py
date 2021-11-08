@@ -20,8 +20,8 @@ from ..base import Transformer
 from ..due import due
 from ..utils import (
     _add_metadata_to_dataframe,
-    mm2vox,
     _safe_transform,
+    mm2vox,
     use_memmap,
     vox2mm,
 )

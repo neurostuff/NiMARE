@@ -13,7 +13,7 @@ from scipy import stats
 from . import references
 from .base import Transformer
 from .due import due
-from .utils import _dict_to_coordinates, _dict_to_df, get_masker, _listify
+from .utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
 
 LGR = logging.getLogger(__name__)
 
