@@ -13,9 +13,9 @@ from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
 from ...utils import (
-    add_metadata_to_dataframe,
-    check_type,
-    safe_transform,
+    _add_metadata_to_dataframe,
+    _check_type,
+    _safe_transform,
     use_memmap,
     vox2mm,
 )
@@ -56,7 +56,7 @@ class CBMAEstimator(MetaEstimator):
         kernel_args = {
             k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
         }
-        kernel_transformer = check_type(kernel_transformer, KernelTransformer, **kernel_args)
+        kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
     @use_memmap(LGR, n_files=1)
@@ -123,7 +123,7 @@ class CBMAEstimator(MetaEstimator):
         # Integrate "sample_size" from metadata into DataFrame so that
         # kernel_transformer can access it.
         if "sample_size" in kt_args:
-            self.inputs_["coordinates"] = add_metadata_to_dataframe(
+            self.inputs_["coordinates"] = _add_metadata_to_dataframe(
                 dataset,
                 self.inputs_["coordinates"],
                 metadata_field="sample_sizes",
@@ -158,7 +158,7 @@ class CBMAEstimator(MetaEstimator):
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
             if self.memory_limit:
                 # perform transform on chunks of the input maps
-                ma_maps = safe_transform(
+                ma_maps = _safe_transform(
                     self.inputs_[maps_key],
                     masker=self.masker,
                     memory_limit=self.memory_limit,

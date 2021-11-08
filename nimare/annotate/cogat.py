@@ -8,7 +8,7 @@ import pandas as pd
 from .. import references
 from ..due import due
 from ..extract import download_cognitive_atlas
-from ..utils import uk_to_us
+from ..utils import _uk_to_us
 from . import utils
 
 LGR = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class CogAtLemmatizer(object):
             Atlas identifiers.
         """
         if convert_uk:
-            text = uk_to_us(text)
+            text = _uk_to_us(text)
 
         for term_idx in self.ontology_.index:
             term = self.ontology_["alias"].loc[term_idx]
@@ -136,7 +136,7 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
         text_df.set_index("id", inplace=True)
 
     text_df[text_column] = text_df[text_column].fillna("")
-    text_df[text_column] = text_df[text_column].apply(uk_to_us)
+    text_df[text_column] = text_df[text_column].apply(_uk_to_us)
 
     # Create regex dictionary
     regex_dict = {}

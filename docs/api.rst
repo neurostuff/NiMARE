@@ -281,21 +281,9 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :toctree: generated/
    :template: function.rst
 
-   utils.dict_to_df
-   utils.dict_to_coordinates
-   utils.validate_df
-   utils.validate_images_df
    utils.get_template
    utils.get_masker
-   utils.listify
-   utils.round2
    utils.get_resource_path
-   utils.try_prepend
-   utils.find_stem
-   utils.uk_to_us
-   utils.use_memmap
-   utils.add_metadata_to_dataframe
-   utils.check_type
    utils.vox2mm
    utils.mm2vox
    utils.tal2mni

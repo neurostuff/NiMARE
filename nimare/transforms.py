@@ -13,7 +13,7 @@ from scipy import stats
 from . import references
 from .base import Transformer
 from .due import due
-from .utils import dict_to_coordinates, dict_to_df, get_masker, listify
+from .utils import _dict_to_coordinates, _dict_to_df, get_masker, _listify
 
 LGR = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class ImageTransformer(Transformer):
     """
 
     def __init__(self, target, overwrite=False):
-        self.target = listify(target)
+        self.target = _listify(target)
         self.overwrite = overwrite
 
     def transform(self, dataset):
@@ -432,8 +432,8 @@ class ImagesToCoordinates(Transformer):
             }
 
         # only the generated coordinates ('demolish')
-        coordinates_df = dict_to_coordinates(coordinates_dict, masker, space)
-        meta_df = dict_to_df(
+        coordinates_df = _dict_to_coordinates(coordinates_dict, masker, space)
+        meta_df = _dict_to_df(
             pd.DataFrame(dataset._ids),
             coordinates_dict,
             "metadata",
