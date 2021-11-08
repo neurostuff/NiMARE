@@ -8,6 +8,7 @@ Here we outline the rules we apply to NiMARE outputs.
 
 File names
 ----------
+
 NiMARE-generated files, especially ones made by meta-analyses, follow a naming convention somewhat based on BIDS.
 
 Here is the basic naming convention for statistical maps:

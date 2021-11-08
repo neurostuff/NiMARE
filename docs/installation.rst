@@ -19,7 +19,7 @@ NiMARE requires Python >=3.6 and a number of packages.
 For a complete list, please see nimare/info.py.
 
 What Next?
-``````````
+----------
 
 For an overview of what you can do with NiMARE see `NiMARE Documentation`_.
 
