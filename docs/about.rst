@@ -8,7 +8,7 @@ While meta-analytic packages exist which implement one or two algorithms each,
 NiMARE provides a standard syntax for performing a wide range of analyses and for interacting with databases of coordinates and images
 from fMRI studies (e.g., brainspell, Neurosynth, and NeuroVault).
 
-NiMARE joins a growing Python ecosystem for neuroimaging research, which includes such tools as `Nipype`_, `Nistats`_, and `Nilearn`_.
+NiMARE joins a growing Python ecosystem for neuroimaging research, which includes such tools as `Nipype`_, `Nibabel`_, and `Nilearn`_.
 As with these other tools, NiMARE is open source, collaboratively developed, and built with ease of use in mind.
 
 This page outlines NiMARE's purpose and its role in a proposed meta-analytic ecosystem.

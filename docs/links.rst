@@ -40,6 +40,8 @@
 
 .. _NeuroVault: https://neurovault.org/
 
+.. _Nibabel: https://nipy.org/nibabel/
+
 .. _NIDM Results: http://nidm.nidash.org/specs/nidm-results_130.html
 
 .. _Nilearn: https://nilearn.github.io/
@@ -49,8 +51,6 @@
 .. _NiMARE Documentation: about.html
 
 .. _Nipype: https://nipype.readthedocs.io/en/latest/index.html
-
-.. _Nistats: https://nistats.github.io/
 
 .. _OpenNeuro: https://openneuro.org
 
