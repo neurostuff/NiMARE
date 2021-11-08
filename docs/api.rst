@@ -140,8 +140,8 @@ For more information about functional characterization analysis, see :ref:`decod
 
 .. _api_io_ref:
 
-:mod:`nimare.io`: Input/Output
------------------------------------------------------
+:mod:`nimare.io`: Tools for ingesting data in other formats
+-----------------------------------------------------------
 
 .. automodule:: nimare.io
    :no-members:
