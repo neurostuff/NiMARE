@@ -63,7 +63,6 @@ To install NiMARE check out our `installation guide`_.
    auto_examples/index
    contributing
    dev_guide
-   roadmap
    cli
    outputs
 

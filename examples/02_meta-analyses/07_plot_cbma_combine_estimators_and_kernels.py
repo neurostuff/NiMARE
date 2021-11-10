@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas4:
+.. _metas_estimators_and_kernels:
 
 ===================================
 Combine CBMA kernels and estimators

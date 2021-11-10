@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas8:
+.. _metas_simulation:
 
 ================================================
 Simulate data for coordinate based meta-analysis

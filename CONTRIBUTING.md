@@ -1,17 +1,20 @@
 # Contributing to NiMARE
 
-Welcome to the NiMARE repository! We're excited you're here and want to contribute.
+Welcome to the ``NiMARE`` repository!
+We're excited you're here and want to contribute.
 
-These guidelines are designed to make it as easy as possible to get involved. If you have any questions that aren't discussed below, please let us know by opening an [issue][link_issues]!
+These guidelines are designed to make it as easy as possible to get involved.
+If you have any questions that aren't discussed below, please let us know by opening an [issue][link_issues]!
 
-Before you start you'll need to set up a free [GitHub][link_github] account and sign in. Here are some [instructions][link_signupinstructions].
+Before you start you'll need to set up a free [GitHub][link_github] account and sign in.
+Here are some [instructions][link_signupinstructions].
 
 ## Governance
 
 Governance is a hugely important part of any project.
 It is especially important to have clear process and communication channels for open source projects that rely on a distributed network of volunteers, such as ``NiMARE``.
 
-`NiMARE` is currently supported by a small group of core developers.
+``NiMARE`` is currently supported by a small group of core developers.
 Even with only a couple of individuals involved in decision making processes, we've found that setting expectations and communicating a shared vision has great value.
 
 By starting the governance structure early in our development, we hope to welcome more people into the contributing team.
@@ -31,7 +34,7 @@ As stated in the code, severe or repeated violations by community members may re
 ## Asking questions about using NiMARE
 
 Please direct usage-related questions to [NeuroStars][link_neurostars], with the ["nimare" tag][link_neurostars_nimare].
-The NiMARE developers follow NeuroStars, and will be able to answer your question there.
+The ``NiMARE`` developers follow NeuroStars, and will be able to answer your question there.
 
 ## Labels
 
@@ -52,7 +55,8 @@ If you experience the same bug as one already listed, please add any additional 
 
 * [![Enhancement](https://img.shields.io/badge/-enhancement-84b6eb.svg)](https://github.com/neurostuff/NiMARE/labels/enhancement)
 *These issues are asking for new features to be added to the project.*
-Please try to make sure that your requested feature is distinct from any others that have already been requested or implemented. If you find one that's similar but there are subtle differences please reference the other request in your issue.
+Please try to make sure that your requested feature is distinct from any others that have already been requested or implemented.
+If you find one that's similar but there are subtle differences please reference the other request in your issue.
 
 ## Making a change
 
@@ -68,7 +72,8 @@ This allows other members of the NiMARE development team to confirm that you are
 
 [Fork][link_fork] the [NiMARE repository][link_nimare] to your profile.
 
-This is now your own unique copy of NiMARE. Changes here won't effect anyone else's work, so it's a safe space to explore edits to the code!
+This is now your own unique copy of NiMARE.
+Changes here won't effect anyone else's work, so it's a safe space to explore edits to the code!
 
 Make sure to [keep your fork up to date][link_updateupstreamwiki] with the master repository.
 
@@ -76,7 +81,8 @@ Make sure to [keep your fork up to date][link_updateupstreamwiki] with the maste
 
 Try to keep the changes focused. We've found that working on a [new branch][link_branches] makes it easier to keep your changes targeted.
 
-When you're creating your pull request, please do your best to follow NiMARE's preferred style conventions. Namely, documentation should follow the [numpydoc](https://numpydoc.readthedocs.io/en/latest/) convention and code should adhere to [PEP8](https://www.python.org/dev/peps/pep-0008/) as much as possible.
+When you're creating your pull request, please do your best to follow NiMARE's preferred style conventions.
+Namely, documentation should follow the [numpydoc](https://numpydoc.readthedocs.io/en/latest/) convention and code should adhere to [PEP8](https://www.python.org/dev/peps/pep-0008/) as much as possible.
 
 **4. Submit a pull request.**
 
@@ -86,13 +92,16 @@ A member of the development team will review your changes to confirm that they c
 
 ## Recognizing contributions
 
-We welcome and recognize all contributions from documentation to testing to code development. You can see a list of current contributors in our [zenodo][link_zenodo] file. If you are new to the project, don't forget to add your name and affiliation there!
+We welcome and recognize all contributions from documentation to testing to code development.
+You can see a list of current contributors in our [zenodo][link_zenodo] file.
+If you are new to the project, don't forget to add your name and affiliation there!
 
 ## Thank you!
 
 You're awesome.
 
-* NOTE: These guidelines are based on contributing guidelines from the [STEMMRoleModels][link_stemmrolemodels] project.
+.. note::
+    These guidelines are based on contributing guidelines from the [STEMMRoleModels][link_stemmrolemodels] project.
 
 [link_github]: https://github.com/
 [link_nimare]: https://github.com/neurostuff/NiMARE

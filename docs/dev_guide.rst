@@ -7,6 +7,7 @@ This guide provides a more detailed description of the organization and preferre
 
 Coding Style
 ------------
+
 NiMARE code should follow PEP8 recommendations.
 
 To enforce NiMARE's preferred coding style,
@@ -21,6 +22,7 @@ and then use ``fit`` or ``transform`` methods to apply the algorithm to data (ge
 
 Installation with Docker
 ------------------------
+
 You may wish to use Docker to control your environment when testing or developing on NiMARE.
 Here are some common steps for taking this approach:
 

@@ -19,9 +19,9 @@ from .. import references
 from ..base import Transformer
 from ..due import due
 from ..utils import (
-    add_metadata_to_dataframe,
+    _add_metadata_to_dataframe,
+    _safe_transform,
     mm2vox,
-    safe_transform,
     use_memmap,
     vox2mm,
 )
@@ -146,7 +146,7 @@ class KernelTransformer(Transformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        masked_data = safe_transform(files, masker)
+                        masked_data = _safe_transform(files, masker)
                         return masked_data
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
@@ -168,7 +168,7 @@ class KernelTransformer(Transformer):
                 and (self.sample_size is None)
                 and ("sample_size" not in coordinates.columns)
             ):
-                coordinates = add_metadata_to_dataframe(
+                coordinates = _add_metadata_to_dataframe(
                     dataset,
                     coordinates,
                     metadata_field="sample_sizes",

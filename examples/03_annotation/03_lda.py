@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _annotations2:
+.. _annotations_lda:
 
 ==================
 LDA topic modeling

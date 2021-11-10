@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas6:
+.. _metas_ibma:
 
 =========================
 Image-based meta-analysis

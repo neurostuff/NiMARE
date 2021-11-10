@@ -10,7 +10,7 @@ from scipy import ndimage
 from .. import references
 from ..due import due
 from ..extract import download_peaks2maps_model
-from ..utils import determine_chunk_size
+from ..utils import _determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
@@ -343,7 +343,7 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     if memory_limit:
-        chunk_size = determine_chunk_size(limit=memory_limit, arr=ijks[0])
+        chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
 
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)

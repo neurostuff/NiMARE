@@ -13,7 +13,7 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from ..utils import check_type, safe_transform
+from ..utils import _check_type, _safe_transform
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
@@ -156,7 +156,7 @@ class CorrelationDecoder(Decoder):
         if meta_estimator is None:
             meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
         else:
-            meta_estimator = check_type(meta_estimator, CBMAEstimator)
+            meta_estimator = _check_type(meta_estimator, CBMAEstimator)
 
         self.feature_group = feature_group
         self.features = features
@@ -309,7 +309,7 @@ class CorrelationDistributionDecoder(Decoder):
                 img for i_img, img in enumerate(self.inputs_["images"]) if i_img in selected_id_idx
             ]
             if len(test_imgs):
-                feature_arr = safe_transform(
+                feature_arr = _safe_transform(
                     test_imgs,
                     self.masker,
                     memory_limit=self.memory_limit,

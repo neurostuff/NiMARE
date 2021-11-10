@@ -256,7 +256,7 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
     p_values = np.ones(test_values.shape)
     idx = np.where(test_values > 0)[0]
-    value_bins = utils.round2(test_values[idx] * inv_step)
+    value_bins = utils._round2(test_values[idx] * inv_step)
     value_bins[value_bins >= n_bins] = n_bins - 1  # limit to within null distribution
 
     # Get p-values by getting the value_bins-th value in null_distribution

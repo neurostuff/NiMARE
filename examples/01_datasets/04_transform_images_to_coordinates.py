@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _datasets4:
+.. _datasets_imgs_to_coords:
 
 =================================
 Transform images into coordinates

@@ -12,7 +12,7 @@ from ..due import due
 from ..meta.kernel import KernelTransformer, MKDAKernel
 from ..stats import one_way, pearson, two_way
 from ..transforms import p_to_z
-from ..utils import check_type, get_masker
+from ..utils import _check_type, get_masker
 from .utils import weight_priors
 
 
@@ -730,7 +730,7 @@ class ROIAssociationDecoder(Decoder):
         kernel_args = {
             k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
         }
-        kernel_transformer = check_type(kernel_transformer, KernelTransformer, **kernel_args)
+        kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
         self.feature_group = feature_group

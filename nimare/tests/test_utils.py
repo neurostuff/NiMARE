@@ -12,7 +12,7 @@ from nimare import utils
 
 
 def test_find_stem():
-    """Test nimare.utils.find_stem."""
+    """Test nimare.utils._find_stem."""
     test_array = [
         "/home/data/dataset/file1.nii.gz",
         "/home/data/dataset/file2.nii.gz",
@@ -20,7 +20,7 @@ def test_find_stem():
         "/home/data/dataset/file4.nii.gz",
         "/home/data/dataset/file5.nii.gz",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == "/home/data/dataset/file"
 
     test_array = [
@@ -30,7 +30,7 @@ def test_find_stem():
         "/home/data/dataset/subfolder2/file4.nii.gz",
         "/home/data/dataset/subfolder3/file5.nii.gz",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == "/home/data/dataset/subfolder"
 
     test_array = [
@@ -40,7 +40,7 @@ def test_find_stem():
         "/home/data/file4_test-filename_test.nii.gz",
         "/home/data/file5_test-filename_test.nii.gz",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == "/home/data/file"
 
     test_array = [
@@ -50,7 +50,7 @@ def test_find_stem():
         "mouse",
         "louse",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == ""
 
 
@@ -168,21 +168,21 @@ def test_mm2vox():
 
 
 def test_run_shell_command(caplog):
-    """Test run_shell_command."""
+    """Test _run_shell_command."""
     with caplog.at_level(logging.INFO):
-        utils.run_shell_command("echo 'output'")
+        utils._run_shell_command("echo 'output'")
     assert "output" in caplog.text
 
     # Check that the exception is registered as such
     with pytest.raises(Exception) as execinfo:
-        utils.run_shell_command("echo 'Error!' 1>&2;exit 64")
+        utils._run_shell_command("echo 'Error!' 1>&2;exit 64")
     assert "Error!" in str(execinfo.value)
 
     # Check that the function actually waits until the command completes
     dur = 3
     start = time.time()
     with caplog.at_level(logging.INFO):
-        utils.run_shell_command(f"echo 'hi';sleep {dur}s;echo 'bye'")
+        utils._run_shell_command(f"echo 'hi';sleep {dur}s;echo 'bye'")
     end = time.time()
 
     assert "hi" in caplog.text

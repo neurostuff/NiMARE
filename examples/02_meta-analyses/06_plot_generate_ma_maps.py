@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas1:
+.. _metas_ma_maps:
 
 ================================
 Generate modeled activation maps

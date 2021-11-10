@@ -2,13 +2,18 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _datasets2:
+.. _datasets_databases:
 
 =========================
 Neurosynth and NeuroQuery
 =========================
 
-Download and convert the Neurosynth database (with abstracts) for analysis with NiMARE.
+Neurosynth and NeuroQuery are the two largest publicly-available coordinate-based databases.
+NiMARE includes functions for downloading releases of each database and converting the databases
+to NiMARE Datasets.
+
+In this example, we download and convert the Neurosynth and NeuroQuery databases for analysis with
+NiMARE.
 
 .. warning::
     In August 2021, the Neurosynth database was reorganized according to a new file format.
