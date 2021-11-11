@@ -8,6 +8,7 @@ Use NeuroVault statistical maps in NiMARE
 
 Download statistical maps from NeuroVault, then use them in a meta-analysis, with NiMARE.
 """
+import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
 ###############################################################################
@@ -88,7 +89,8 @@ meta = Fishers()
 
 meta_res = meta.fit(dset)
 
-display = plot_stat_map(meta_res.get_map("z"), threshold=3.3)
-display.frame_axes.figure.show()
+fig, ax = plt.subplots()
+display = plot_stat_map(meta_res.get_map("z"), threshold=3.3, axes=ax, figure=fig)
+fig.show()
 # The result may look questionable, but this code provides
 # a template on how to use neurovault in your meta analysis.
