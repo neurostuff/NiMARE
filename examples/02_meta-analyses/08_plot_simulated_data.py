@@ -108,7 +108,8 @@ _, manual_dset = create_coordinate_dataset(
 # Analyze and plot manual dataset
 # -------------------------------
 
-analyze_and_plot(manual_dset, ground_truth_foci)
+display = analyze_and_plot(manual_dset, ground_truth_foci)
+display.frame_axes.figure.show()
 
 ###############################################################################
 # Control percentage of studies with the foci of interest
@@ -126,7 +127,8 @@ _, perc_foci_dset = create_coordinate_dataset(
 # Analyze and plot the 50% foci dataset
 # -------------------------------------
 
-analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
+display = analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
+display.frame_axes.figure.show()
 
 ###############################################################################
 # Create a null dataset
