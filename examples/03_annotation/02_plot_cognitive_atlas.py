@@ -18,17 +18,20 @@ import pandas as pd
 
 import nimare
 from nimare import annotate, extract
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-dset = nimare.dataset.Dataset(os.path.join(get_test_data_path(), "neurosynth_laird_studies.json"))
+dset = nimare.dataset.Dataset(
+    os.path.join(nimare.utils.get_resource_path(), "neurosynth_laird_studies.json")
+)
 
 ###############################################################################
 # Download Cognitive Atlas
 # ------------------------
-cogatlas = extract.download_cognitive_atlas(data_dir=get_test_data_path(), overwrite=False)
+cogatlas = extract.download_cognitive_atlas(
+    data_dir=nimare.utils.get_resource_path(), overwrite=False
+)
 id_df = pd.read_csv(cogatlas["ids"])
 rel_df = pd.read_csv(cogatlas["relationships"])
 

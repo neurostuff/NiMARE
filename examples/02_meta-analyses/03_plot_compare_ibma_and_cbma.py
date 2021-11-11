@@ -21,7 +21,6 @@ from nilearn.plotting import plot_stat_map
 import nimare
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import DerSimonianLaird
-from nimare.tests.utils import get_test_data_path
 from nimare.transforms import ImagesToCoordinates, ImageTransformer
 
 ###############################################################################
@@ -32,7 +31,7 @@ dset_dir = nimare.extract.download_nidm_pain()
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
+dset_file = os.path.join(nimare.utils.get_resource_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 dset.update_path(dset_dir)
 

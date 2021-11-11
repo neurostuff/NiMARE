@@ -22,12 +22,11 @@ import os
 from nilearn.plotting import plot_stat_map
 
 import nimare
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
+dset_file = os.path.join(nimare.utils.get_resource_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file)
 
 mask_img = dset.masker.mask_img

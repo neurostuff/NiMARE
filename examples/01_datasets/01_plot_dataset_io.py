@@ -16,7 +16,6 @@ This is a brief walkthrough of the :class:`nimare.dataset.Dataset` class and its
 import os
 
 import nimare
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Datasets are stored as json or pkl[.gz] files
@@ -32,7 +31,7 @@ from nimare.tests.utils import get_test_data_path
 dset_dir = nimare.extract.download_nidm_pain()
 
 # Now we can load and save the Dataset object
-dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
+dset_file = os.path.join(nimare.utils.get_resource_path(), "nidm_pain_dset.json")
 dset = nimare.dataset.Dataset(dset_file, target="mni152_2mm", mask=None)
 dset.save("pain_dset.pkl")
 dset = nimare.dataset.Dataset.load("pain_dset.pkl")

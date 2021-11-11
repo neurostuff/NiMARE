@@ -26,14 +26,15 @@ from nilearn import image, masking, plotting
 
 import nimare
 from nimare import annotate, decode
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
 # We'll load a small dataset composed only of studies in Neurosynth with
 # Angela Laird as a coauthor, for the sake of speed.
-dset = nimare.dataset.Dataset(os.path.join(get_test_data_path(), "neurosynth_laird_studies.json"))
+dset = nimare.dataset.Dataset(
+    os.path.join(nimare.utils.get_resource_path(), "neurosynth_laird_studies.json")
+)
 dset.texts.head(2)
 
 ###############################################################################

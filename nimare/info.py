@@ -82,7 +82,6 @@ EXTRA_REQUIRES = {
         "m2r",
         "pillow",
         "recommonmark",
-        "pytest",  # For get_test_data_path. May fix later.
         "sphinx>=3.1.1",
         "sphinx-argparse",
         "sphinx-copybutton",
