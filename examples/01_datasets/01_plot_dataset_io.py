@@ -15,7 +15,10 @@ This is a brief walkthrough of the :class:`nimare.dataset.Dataset` class and its
 # --------------------------------
 import os
 
-import nimare
+from nimare.dataset import Dataset
+from nimare.extract import download_nidm_pain
+from nimare.transforms import ImageTransformer
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Datasets are stored as json or pkl[.gz] files
@@ -28,13 +31,13 @@ import nimare
 # Dataset is no longer a dictionary.
 
 # Let's start by downloading a dataset
-dset_dir = nimare.extract.download_nidm_pain()
+dset_dir = download_nidm_pain()
 
 # Now we can load and save the Dataset object
-dset_file = os.path.join(nimare.utils.get_resource_path(), "nidm_pain_dset.json")
-dset = nimare.dataset.Dataset(dset_file, target="mni152_2mm", mask=None)
+dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
+dset = Dataset(dset_file, target="mni152_2mm", mask=None)
 dset.save("pain_dset.pkl")
-dset = nimare.dataset.Dataset.load("pain_dset.pkl")
+dset = Dataset.load("pain_dset.pkl")
 os.remove("pain_dset.pkl")  # cleanup
 
 ###############################################################################
@@ -120,7 +123,7 @@ dset.images[columns_to_show].head()
 #
 # We use :mod:`nimare.transforms` to perform these transformations
 # (especially :class:`nimare.transforms.ImageTransformer`)
-varcope_transformer = nimare.transforms.ImageTransformer(target="varcope")
+varcope_transformer = ImageTransformer(target="varcope")
 dset = varcope_transformer.transform(dset)
 dset.images[["id", "varcope"]].head()
 
@@ -144,7 +147,7 @@ print("\n".join(z_images))
 ###############################################################################
 # Let's try to fill in missing z images
 # `````````````````````````````````````````````````````````````````````````````
-z_transformer = nimare.transforms.ImageTransformer(target="z")
+z_transformer = ImageTransformer(target="z")
 dset = z_transformer.transform(dset)
 z_images = dset.get_images(imtype="z")
 z_images = [str(z) for z in z_images]

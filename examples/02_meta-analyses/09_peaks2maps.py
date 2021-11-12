@@ -15,18 +15,20 @@ import os
 
 from nilearn.plotting import plot_glass_brain
 
-import nimare
+from nimare.dataset import Dataset
+from nimare.meta.kernel import Peaks2MapsKernel
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(nimare.utils.get_resource_path(), "nidm_pain_dset.json")
-dset = nimare.dataset.Dataset(dset_file)
+dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
+dset = Dataset(dset_file)
 
 ###############################################################################
 # Run peaks2maps
 # --------------------------------------------------
-k = nimare.meta.kernel.Peaks2MapsKernel()
+k = Peaks2MapsKernel()
 imgs = k.transform(dset, return_type="image")
 
 ###############################################################################

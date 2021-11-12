@@ -16,7 +16,9 @@ import nibabel as nib
 import numpy as np
 from nilearn import datasets, image, plotting
 
-import nimare
+from nimare.correct import FWECorrector
+from nimare.dataset import Dataset
+from nimare.meta import SCALE, MKDAChi2
 
 ###############################################################################
 # Load Dataset
@@ -24,7 +26,7 @@ import nimare
 # We will assume that the Neurosynth database has already been downloaded and
 # converted to a NiMARE dataset.
 dset_file = "neurosynth_nimare_with_abstracts.pkl.gz"
-dset = nimare.dataset.Dataset.load(dset_file)
+dset = Dataset.load(dset_file)
 
 ###############################################################################
 # Define a region of interest
@@ -56,10 +58,10 @@ print(f"{len(no_roi_ids)}/{len(dset.ids)} studies report zero coordinates in the
 ###############################################################################
 # MKDA Chi2 with FWE correction
 # --------------------------------------------------
-mkda = nimare.meta.MKDAChi2(kernel__r=10)
+mkda = MKDAChi2(kernel__r=10)
 mkda.fit(dset_sel, dset_unsel)
 
-corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10000)
+corr = FWECorrector(method="montecarlo", n_iters=10000)
 cres = corr.transform(mkda.results)
 
 # We want the "specificity" map (2-way chi-square between sel and unsel)
@@ -80,6 +82,6 @@ plotting.plot_stat_map(
 # First, we must define our null model of reported coordinates in the literature.
 # We will use the coordinates in Neurosynth
 xyz = dset.coordinates[["x", "y", "z"]].values
-scale = nimare.meta.SCALE(xyz=xyz, n_iters=10000, kernel__n=20)
+scale = SCALE(xyz=xyz, n_iters=10000, kernel__n=20)
 scale.fit(dset_sel)
 plotting.plot_stat_map(scale.results.get_map("z_vthresh"), draw_cross=False, cmap="RdBu_r")

@@ -13,8 +13,9 @@ how the meta-analysis would perform with simplified data
 """
 from nilearn.plotting import plot_stat_map
 
-import nimare
+from nimare.correct import FDRCorrector
 from nimare.generate import create_coordinate_dataset
+from nimare.meta import ALE
 
 ###############################################################################
 # Create function to perform a meta-analysis and plot results
@@ -22,10 +23,10 @@ from nimare.generate import create_coordinate_dataset
 
 
 def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=False):
-    meta = nimare.meta.ale.ALE(kernel__fwhm=10)
+    meta = ALE(kernel__fwhm=10)
     meta.fit(dset)
     if correct:
-        corr = nimare.correct.FDRCorrector()
+        corr = FDRCorrector()
         cres = corr.transform(meta.results)
     else:
         cres = meta.results

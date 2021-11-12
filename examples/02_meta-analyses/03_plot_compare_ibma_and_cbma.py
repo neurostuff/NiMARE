@@ -18,21 +18,23 @@ import os
 import pandas as pd
 from nilearn.plotting import plot_stat_map
 
-import nimare
+from nimare.dataset import Dataset
+from nimare.extract import download_nidm_pain
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import DerSimonianLaird
 from nimare.transforms import ImagesToCoordinates, ImageTransformer
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Download data
 # --------------------------------
-dset_dir = nimare.extract.download_nidm_pain()
+dset_dir = download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(nimare.utils.get_resource_path(), "nidm_pain_dset.json")
-dset = nimare.dataset.Dataset(dset_file)
+dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
+dset = Dataset(dset_file)
 dset.update_path(dset_dir)
 
 # Calculate missing statistical images from the available stats.
