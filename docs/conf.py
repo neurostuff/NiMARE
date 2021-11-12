@@ -36,7 +36,7 @@ import nimare
 
 # If your documentation needs a minimal Sphinx version, state it here.
 
-# needs_sphinx = '1.0'
+needs_sphinx = "3.5"
 
 # generate autosummary even if no references
 autosummary_generate = True
