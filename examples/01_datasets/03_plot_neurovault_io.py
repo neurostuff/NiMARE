@@ -6,7 +6,8 @@
 Use NeuroVault statistical maps in NiMARE
 =========================================
 
-Download statistical maps from NeuroVault, then use them in a meta-analysis, with NiMARE.
+Download statistical maps from NeuroVault, then use them in a meta-analysis,
+with NiMARE.
 """
 import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
@@ -30,7 +31,6 @@ from nilearn.plotting import plot_stat_map
 # I can load specific statistical maps from these collections
 # into a NiMARE dataset:
 from nimare.io import convert_neurovault_to_dataset
-from nimare.meta.ibma import Fishers
 
 # The specific collections I would like to download group level
 # statistical maps from
@@ -72,19 +72,23 @@ dset = convert_neurovault_to_dataset(
 from nimare.transforms import ImageTransformer
 
 # Not all studies have Z maps!
-print(dset.images["z"])
+dset.images[["z"]]
 
+###############################################################################
 z_transformer = ImageTransformer(target="z")
 dset = z_transformer.transform(dset)
 
+###############################################################################
 # All studies now have Z maps!
-print(dset.images["z"])
+dset.images[["z"]]
 
 ###############################################################################
 # Run a Meta-Analysis
 # -------------------
 # With the missing Z maps filled in, we can run a Meta-Analysis
 # and plot our results
+from nimare.meta.ibma import Fishers
+
 meta = Fishers()
 
 meta_res = meta.fit(dset)
