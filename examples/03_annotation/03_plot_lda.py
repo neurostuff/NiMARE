@@ -18,13 +18,13 @@ from sklearn.decomposition import LatentDirichletAllocation
 
 import nimare
 from nimare import annotate
-from nimare.tests.utils import get_test_data_path
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
 dset = nimare.dataset.Dataset(
-    os.path.join(get_test_data_path(), "neurosynth_laird_studies.json")
+    os.path.join(get_resource_path(), "neurosynth_laird_studies.json")
 )
 
 ###############################################################################
