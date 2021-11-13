@@ -28,7 +28,7 @@ jobs:
             else
                 conda create -n py37_env python=3.7 -yq
                 source activate py37_env
-                pip install -e .[tests,doc,peaks2maps-cpu]
+                pip install -e .[tests,peaks2maps-cpu]
             fi
             python setup.py install --user
       - save_cache:  # environment cache tied to requirements
