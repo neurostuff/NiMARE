@@ -13,8 +13,9 @@ how the meta-analysis would perform with simplified data
 """
 from nilearn.plotting import plot_stat_map
 
-import nimare
+from nimare.correct import FDRCorrector
 from nimare.generate import create_coordinate_dataset
+from nimare.meta import ALE
 
 ###############################################################################
 # Create function to perform a meta-analysis and plot results
@@ -22,10 +23,10 @@ from nimare.generate import create_coordinate_dataset
 
 
 def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=False):
-    meta = nimare.meta.ale.ALE(kernel__fwhm=10)
+    meta = ALE(kernel__fwhm=10)
     meta.fit(dset)
     if correct:
-        corr = nimare.correct.FDRCorrector()
+        corr = FDRCorrector()
         cres = corr.transform(meta.results)
     else:
         cres = meta.results
@@ -108,7 +109,8 @@ _, manual_dset = create_coordinate_dataset(
 # Analyze and plot manual dataset
 # -------------------------------
 
-analyze_and_plot(manual_dset, ground_truth_foci)
+display = analyze_and_plot(manual_dset, ground_truth_foci)
+display.frame_axes.figure.show()
 
 ###############################################################################
 # Control percentage of studies with the foci of interest
@@ -126,7 +128,8 @@ _, perc_foci_dset = create_coordinate_dataset(
 # Analyze and plot the 50% foci dataset
 # -------------------------------------
 
-analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
+display = analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
+display.frame_axes.figure.show()
 
 ###############################################################################
 # Create a null dataset

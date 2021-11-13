@@ -108,7 +108,7 @@ the most likely word from the top associated topics for a given unthresholded st
 interest.
 
 To run th GC-LDA decoding approach, you need to train a GC-LDA model (see
-:ref:`annotations1`).
+:ref:`annotations_gclda`).
 
 Example: :ref:`gclda-decode-map-example`
 

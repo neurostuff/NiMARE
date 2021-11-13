@@ -13,14 +13,16 @@ Neurosynth.
 """
 import os
 
-import nimare
-from nimare import annotate
-from nimare.tests.utils import get_test_data_path
+from nimare import annotate, extract
+from nimare.dataset import Dataset
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-dset = nimare.dataset.Dataset(os.path.join(get_test_data_path(), "neurosynth_laird_studies.json"))
+dset = Dataset(
+    os.path.join(get_resource_path(), "neurosynth_laird_studies.json")
+)
 
 ###############################################################################
 # Download MALLET
@@ -29,7 +31,7 @@ dset = nimare.dataset.Dataset(os.path.join(get_test_data_path(), "neurosynth_lai
 # While LDA is implemented in some Python libraries, like scikit-learn,
 # MALLET appears to do a better job at LDA than other tools.
 # LDAModel will download MALLET automatically, but it's included here for clarity.
-mallet_dir = nimare.extract.download_mallet()
+mallet_dir = extract.download_mallet()
 
 ###############################################################################
 # Run model
