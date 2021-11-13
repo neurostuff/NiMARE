@@ -26,9 +26,8 @@ jobs:
                 echo "Restoring environment from cache"
                 source activate py37_env
             else
-                conda create -n py37_env python=3.6 -yq
+                conda create -n py37_env python=3.7 -yq
                 source activate py37_env
-                pip install pip -U
                 pip install -e .[tests,doc,peaks2maps-cpu]
             fi
             python setup.py install --user
