@@ -23,14 +23,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from nilearn.plotting import plot_stat_map
 
-import nimare
-from nimare.tests.utils import get_test_data_path
+from nimare.dataset import Dataset
+from nimare.meta.kernel import ALEKernel, KDAKernel, MKDAKernel
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
-dset = nimare.dataset.Dataset(dset_file)
+dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
+dset = Dataset(dset_file)
 
 ###############################################################################
 # Each kernel can taken certain parameters that control behavior
@@ -38,13 +39,13 @@ dset = nimare.dataset.Dataset(dset_file)
 # For example, :class:`nimare.meta.kernel.MKDAKernel` kernel accepts an `r`
 # argument to control the radius of the kernel.
 
-kernel = nimare.meta.kernel.MKDAKernel(r=2)
+kernel = MKDAKernel(r=2)
 mkda_r02 = kernel.transform(dset, return_type="image")
-kernel = nimare.meta.kernel.MKDAKernel(r=6)
+kernel = MKDAKernel(r=6)
 mkda_r06 = kernel.transform(dset, return_type="image")
-kernel = nimare.meta.kernel.MKDAKernel(r=10)
+kernel = MKDAKernel(r=10)
 mkda_r10 = kernel.transform(dset, return_type="image")
-kernel = nimare.meta.kernel.MKDAKernel(r=14)
+kernel = MKDAKernel(r=14)
 mkda_r14 = kernel.transform(dset, return_type="image")
 
 fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 10))
@@ -93,11 +94,11 @@ fig.show()
 #
 # :class:`nimare.meta.kernel.ALEKernel` convolves coordinates with a 3D
 # Gaussian, for which the FWHM is determined by the sample size of each study.
-kernel = nimare.meta.kernel.MKDAKernel(r=10)
+kernel = MKDAKernel(r=10)
 mkda_res = kernel.transform(dset, return_type="image")
-kernel = nimare.meta.kernel.KDAKernel(r=10)
+kernel = KDAKernel(r=10)
 kda_res = kernel.transform(dset, return_type="image")
-kernel = nimare.meta.kernel.ALEKernel(sample_size=20)
+kernel = ALEKernel(sample_size=20)
 ale_res = kernel.transform(dset, return_type="image")
 max_conv = np.max(kda_res[2].get_fdata())
 

@@ -36,7 +36,7 @@ import nimare
 
 # If your documentation needs a minimal Sphinx version, state it here.
 
-# needs_sphinx = '1.0'
+needs_sphinx = "3.5"
 
 # generate autosummary even if no references
 autosummary_generate = True
@@ -188,7 +188,7 @@ sphinx_gallery_conf = {
     # Modules for which function level galleries are created.
     # In this case sphinx_gallery and numpy in a tuple of strings.
     "doc_module": ("nimare"),
-    "ignore_pattern": r"utils/.",
+    "ignore_pattern": r"misc-notebooks/.",
     "reference_url": {
         # The module you locally document uses None
         "nimare": None
@@ -198,7 +198,7 @@ sphinx_gallery_conf = {
 }
 
 # Generate the plots for the gallery
-plot_gallery = "True"
+plot_gallery = True
 
 
 def setup(app):

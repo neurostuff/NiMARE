@@ -18,11 +18,10 @@ import matplotlib.pyplot as plt
 from nilearn.image import math_img
 from nilearn.plotting import plot_stat_map
 
+from nimare import io, utils
 from nimare.correct import FWECorrector
 from nimare.diagnostics import Jackknife
-from nimare.io import convert_sleuth_to_dataset
 from nimare.meta.cbma import ALE, ALESubtraction
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load Sleuth text files into Datasets
@@ -33,11 +32,11 @@ from nimare.tests.utils import get_test_data_path
 # hearing its auditory description) while a second group of studies asked
 # children to decide if two (or more) words were semantically related to one
 # another or not.
-knowledge_file = os.path.join(get_test_data_path(), "semantic_knowledge_children.txt")
-related_file = os.path.join(get_test_data_path(), "semantic_relatedness_children.txt")
+knowledge_file = os.path.join(utils.get_resource_path(), "semantic_knowledge_children.txt")
+related_file = os.path.join(utils.get_resource_path(), "semantic_relatedness_children.txt")
 
-knowledge_dset = convert_sleuth_to_dataset(knowledge_file)
-related_dset = convert_sleuth_to_dataset(related_file)
+knowledge_dset = io.convert_sleuth_to_dataset(knowledge_file)
+related_dset = io.convert_sleuth_to_dataset(related_file)
 
 ###############################################################################
 # Individual group ALEs

@@ -21,21 +21,22 @@ import os
 import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
-import nimare
+from nimare.dataset import Dataset
+from nimare.extract import download_nidm_pain
 from nimare.meta.cbma import ALE
-from nimare.tests.utils import get_test_data_path
 from nimare.transforms import ImagesToCoordinates, ImageTransformer
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Download data
 # --------------------------------
-dset_dir = nimare.extract.download_nidm_pain()
+dset_dir = download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
-dset = nimare.dataset.Dataset(dset_file)
+dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
+dset = Dataset(dset_file)
 dset.update_path(dset_dir)
 
 # ImagesToCoordinates uses z or p statistical maps

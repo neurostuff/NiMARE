@@ -23,23 +23,25 @@ import os
 
 from nilearn.plotting import plot_stat_map
 
-import nimare
-from nimare.tests.utils import get_test_data_path
+from nimare.correct import FDRCorrector, FWECorrector
+from nimare.dataset import Dataset
+from nimare.meta import ALE, KDA, MKDAChi2, MKDADensity
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
-dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
-dset = nimare.dataset.Dataset(dset_file)
+dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
+dset = Dataset(dset_file)
 
 mask_img = dset.masker.mask_img
 
 ###############################################################################
 # MKDA density analysis
 # --------------------------------------------------
-mkda = nimare.meta.MKDADensity(kernel__r=10, null_method="approximate")
+mkda = MKDADensity(kernel__r=10, null_method="approximate")
 mkda.fit(dset)
-corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
 plot_stat_map(
     cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo"),
@@ -51,11 +53,11 @@ plot_stat_map(
 ###############################################################################
 # MKDA Chi2 with FDR correction
 # --------------------------------------------------
-mkda = nimare.meta.MKDAChi2(kernel__r=10)
+mkda = MKDAChi2(kernel__r=10)
 dset1 = dset.slice(dset.ids)
 dset2 = dset.slice(dset.ids)
 mkda.fit(dset1, dset2)
-corr = nimare.correct.FDRCorrector(method="bh", alpha=0.001)
+corr = FDRCorrector(method="bh", alpha=0.001)
 cres = corr.transform(mkda.results)
 plot_stat_map(
     cres.get_map("z_desc-consistency_level-voxel_corr-FDR_method-bh"),
@@ -70,7 +72,7 @@ plot_stat_map(
 # --------------------------------------------------
 # Since we've already fitted the Estimator, we can just apply a new Corrector
 # to the estimator.
-corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
 plot_stat_map(
     cres.get_map("z_desc-consistency_level-voxel_corr-FWE_method-montecarlo"),
@@ -83,9 +85,9 @@ plot_stat_map(
 ###############################################################################
 # KDA
 # --------------------------------------------------
-kda = nimare.meta.KDA(kernel__r=10, null_method="approximate")
+kda = KDA(kernel__r=10, null_method="approximate")
 kda.fit(dset)
-corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(kda.results)
 plot_stat_map(
     cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo"),
@@ -97,9 +99,9 @@ plot_stat_map(
 ###############################################################################
 # ALE
 # --------------------------------------------------
-ale = nimare.meta.ALE(null_method="approximate")
+ale = ALE(null_method="approximate")
 ale.fit(dset)
-corr = nimare.correct.FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(ale.results)
 plot_stat_map(
     cres.get_map("logp_level-cluster_corr-FWE_method-montecarlo"),
