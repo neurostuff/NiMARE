@@ -198,7 +198,7 @@ sphinx_gallery_conf = {
 }
 
 # Generate the plots for the gallery
-plot_gallery = "True"
+plot_gallery = True
 
 
 def setup(app):
