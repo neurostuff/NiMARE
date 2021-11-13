@@ -85,7 +85,7 @@ EXTRA_REQUIRES = {
         "sphinx>=3.5",
         "sphinx-argparse",
         "sphinx-copybutton",
-        "sphinx_gallery>=0.10.1",
+        "sphinx_gallery==0.10.1",
         "sphinx_rtd_theme",
     ],
     "tests": TESTS_REQUIRES,
