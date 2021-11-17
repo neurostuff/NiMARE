@@ -70,8 +70,7 @@ class ALE(CBMAEstimator):
 
     Notes
     -----
-    The ALE algorithm was originally developed in [1]_, then updated in [2]_
-    and [3]_.
+    The ALE algorithm was originally developed in [1]_, then updated in [2]_ and [3]_.
 
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
