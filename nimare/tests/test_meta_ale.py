@@ -109,16 +109,27 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.results.MetaResult)
-    assert "z_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_level-voxel_corr-FWE_method-montecarlo" in cres.maps.keys()
-    assert "logp_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "logp_level-voxel_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert isinstance(
-        cres.get_map("z_level-cluster_corr-FWE_method-montecarlo", return_type="image"),
+        cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="image"),
         nib.Nifti1Image,
     )
     assert isinstance(
-        cres.get_map("z_level-cluster_corr-FWE_method-montecarlo", return_type="array"), np.ndarray
+        cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"),
+        np.ndarray,
+    )
+    assert isinstance(
+        cres.get_map("z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        cres.get_map("z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"),
+        np.ndarray,
     )
 
     # Bonferroni FWE
@@ -182,16 +193,27 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.results.MetaResult)
-    assert "z_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_level-voxel_corr-FWE_method-montecarlo" in cres.maps.keys()
-    assert "logp_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
+    assert "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "logp_level-voxel_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert isinstance(
-        cres.get_map("z_level-cluster_corr-FWE_method-montecarlo", return_type="image"),
+        cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="image"),
         nib.Nifti1Image,
     )
     assert isinstance(
-        cres.get_map("z_level-cluster_corr-FWE_method-montecarlo", return_type="array"), np.ndarray
+        cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"),
+        np.ndarray,
+    )
+    assert isinstance(
+        cres.get_map("z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="image"),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        cres.get_map("z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"),
+        np.ndarray,
     )
 
     # Bonferroni FWE

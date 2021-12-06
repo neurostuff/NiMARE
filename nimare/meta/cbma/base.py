@@ -684,10 +684,10 @@ class CBMAEstimator(MetaEstimator):
             images = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
-                "logp_level-cluster": logp_csfwe_values,
-                "z_level-cluster": z_csfwe_values,
-                "logp_level-clusterMass": logp_cmfwe_values,
-                "z_level-clusterMass": z_cmfwe_values,
+                "logp_desc-size_level-cluster": logp_csfwe_values,
+                "z_desc-size_level-cluster": z_csfwe_values,
+                "logp_desc-mass_level-cluster": logp_cmfwe_values,
+                "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
         return images
