@@ -504,7 +504,7 @@ class CBMAEstimator(MetaEstimator):
             ss_vals = iter_ss_map[labeled_matrix == unique_val] - voxel_thresh
             iter_max_mass = np.maximum(iter_max_mass, np.sum(ss_vals))
 
-        del iter_ss_map
+        del iter_ss_map, labeled_matrix
 
         # Cluster size-based inference
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
