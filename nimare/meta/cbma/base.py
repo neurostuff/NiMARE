@@ -472,7 +472,7 @@ class CBMAEstimator(MetaEstimator):
 
         Returns
         -------
-        (iter_max value, iter_max_cluster)
+        (iter_max value, iter_max_cluster, iter_max_mass)
             A 2-tuple of floats giving the maximum voxel-wise value, and maximum
             cluster size for the permuted dataset.
         """
@@ -494,6 +494,11 @@ class CBMAEstimator(MetaEstimator):
 
         labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
 
+        iter_max_mass = 0
+        for unique_val in np.unique(labeled_matrix)[1:]:
+            ss_vals = iter_ss_map[labeled_matrix == unique_val] - voxel_thresh
+            iter_max_mass = np.maximum(iter_max_mass, np.sum(ss_vals))
+
         del iter_ss_map
 
         _, clust_sizes = np.unique(labeled_matrix, return_counts=True)
@@ -502,7 +507,7 @@ class CBMAEstimator(MetaEstimator):
             iter_max_cluster = np.max(clust_sizes)
         else:
             iter_max_cluster = 0
-        return iter_max_value, iter_max_cluster
+        return iter_max_value, iter_max_cluster, iter_max_mass
 
     def correct_fwe_montecarlo(
         self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1, vfwe_only=False
@@ -601,26 +606,53 @@ class CBMAEstimator(MetaEstimator):
                         )
                     )
 
-            fwe_voxel_max, fwe_clust_max = zip(*perm_results)
+            fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
 
             # Cluster-level FWE
+            # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
             thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
             thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
             labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
 
-            _, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
+            cluster_labels, idx, cluster_sizes = np.unique(
+                labeled_matrix,
+                return_inverse=True,
+                return_counts=True,
+            )
+            assert cluster_labels[0] == 0
+
+            # Cluster mass-based inference
+            cluster_masses = np.zeros(cluster_labels.shape)
+            for i_val in cluster_labels:
+                if i_val == 0:
+                    cluster_masses[i_val] = 0
+
+                cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
+                cluster_masses[i_val] = cluster_mass
+
+            p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
+            p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+            p_cmfwe_values = np.squeeze(
+                self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
+            )
+            logp_cmfwe_values = -np.log10(p_cmfwe_values)
+            logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
+            z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
+
+            # Cluster size-based inference
             # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
             # with 0, which gives us a p-value of 1.
-            sizes[0] = 0
-            p_vals = null_to_p(sizes, fwe_clust_max, "upper")
-            p_cfwe_map = p_vals[np.reshape(idx, labeled_matrix.shape)]
+            cluster_sizes[0] = 0
+            p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
+            p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
 
-            p_cfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
+            p_csfwe_values = np.squeeze(
+                self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
             )
-            logp_cfwe_values = -np.log10(p_cfwe_values)
-            logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log10(np.finfo(float).eps)
-            z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
+            logp_csfwe_values = -np.log10(p_csfwe_values)
+            logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
+            z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
 
             # Voxel-level FWE
             LGR.info("Using null distribution for voxel-level FWE correction.")
@@ -630,7 +662,7 @@ class CBMAEstimator(MetaEstimator):
             ] = fwe_voxel_max
             self.null_distributions_[
                 "values_level-cluster_corr-fwe_method-montecarlo"
-            ] = fwe_clust_max
+            ] = fwe_cluster_size_max
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
@@ -648,8 +680,10 @@ class CBMAEstimator(MetaEstimator):
             images = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
-                "logp_level-cluster": logp_cfwe_values,
-                "z_level-cluster": z_cfwe_values,
+                "logp_level-cluster": logp_csfwe_values,
+                "z_level-cluster": z_csfwe_values,
+                "logp_level-clusterMass": logp_cmfwe_values,
+                "z_level-clusterMass": z_cmfwe_values,
             }
 
         return images
