@@ -488,25 +488,31 @@ class CBMAEstimator(MetaEstimator):
 
         del iter_ma_maps
 
+        # Voxel-level inference
         iter_max_value = np.max(iter_ss_map)
+
+        # Cluster-level inference
         iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
         iter_ss_map[iter_ss_map <= voxel_thresh] = 0
-
         labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
+        clust_vals, clust_sizes = np.unique(labeled_matrix, return_counts=True)
+        assert clust_vals[0] == 0
 
+        # Cluster mass-based inference
         iter_max_mass = 0
-        for unique_val in np.unique(labeled_matrix)[1:]:
+        for unique_val in clust_vals[1:]:
             ss_vals = iter_ss_map[labeled_matrix == unique_val] - voxel_thresh
             iter_max_mass = np.maximum(iter_max_mass, np.sum(ss_vals))
 
         del iter_ss_map
 
-        _, clust_sizes = np.unique(labeled_matrix, return_counts=True)
+        # Cluster size-based inference
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
         if clust_sizes.size:
             iter_max_cluster = np.max(clust_sizes)
         else:
             iter_max_cluster = 0
+
         return iter_max_value, iter_max_cluster, iter_max_mass
 
     def correct_fwe_montecarlo(
@@ -641,9 +647,7 @@ class CBMAEstimator(MetaEstimator):
             z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
 
             # Cluster size-based inference
-            # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
-            # with 0, which gives us a p-value of 1.
-            cluster_sizes[0] = 0
+            cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
             p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
             p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
 
