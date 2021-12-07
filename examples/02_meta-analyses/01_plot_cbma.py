@@ -104,7 +104,7 @@ ale.fit(dset)
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(ale.results)
 plot_stat_map(
-    cres.get_map("logp_level-cluster_corr-FWE_method-montecarlo"),
+    cres.get_map("logp_desc-size_level-cluster_corr-FWE_method-montecarlo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
