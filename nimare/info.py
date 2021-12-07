@@ -78,8 +78,9 @@ EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
     "doc": [
-        "matplotlib",
         "m2r",
+        "matplotlib",
+        "mistune<2",  # just temporary until m2r addresses this issue
         "pillow",
         "recommonmark",
         "sphinx>=3.5",
