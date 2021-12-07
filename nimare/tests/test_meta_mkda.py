@@ -131,9 +131,7 @@ def test_KDA_approximate_null(testdata_cbma):
     assert res.get_map("p", return_type="array").dtype == np.float64
     assert isinstance(cres, nimare.results.MetaResult)
     assert (
-        cres.get_map(
-            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
-        ).dtype
+        cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array").dtype
         == np.float64
     )
     assert (
@@ -160,9 +158,7 @@ def test_KDA_fwe_1core(testdata_cbma):
     assert res.get_map("p", return_type="array").dtype == np.float64
     assert isinstance(cres, nimare.results.MetaResult)
     assert (
-        cres.get_map(
-            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
-        ).dtype
+        cres.get_map("logp_level-voxel_corr-FWE_method-montecarlo", return_type="array").dtype
         == np.float64
     )
     assert (

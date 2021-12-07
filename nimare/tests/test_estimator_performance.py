@@ -309,9 +309,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
 
     p_array = meta_cres.maps.get("p")
     if p_array is None or corr.method == "montecarlo":
-        p_array = 10 ** -meta_cres.maps.get(
-            "logp_level-voxel_corr-FWE_method-montecarlo"
-        )
+        p_array = 10 ** -meta_cres.maps.get("logp_level-voxel_corr-FWE_method-montecarlo")
 
     n_iters = corr.parameters.get("n_iters")
 
