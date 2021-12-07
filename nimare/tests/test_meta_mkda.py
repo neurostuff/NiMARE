@@ -132,13 +132,19 @@ def test_KDA_approximate_null(testdata_cbma):
     assert isinstance(cres, nimare.results.MetaResult)
     assert (
         cres.get_map(
-            "logp_desc-size_level-voxel_corr-FWE_method-montecarlo", return_type="array"
+            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
         == np.float64
     )
     assert (
         cres.get_map(
-            "logp_desc-mass_level-voxel_corr-FWE_method-montecarlo", return_type="array"
+            "logp_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float64
+    )
+    assert (
+        cres.get_map(
+            "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
         == np.float64
     )
@@ -155,13 +161,19 @@ def test_KDA_fwe_1core(testdata_cbma):
     assert isinstance(cres, nimare.results.MetaResult)
     assert (
         cres.get_map(
-            "logp_desc-size_level-voxel_corr-FWE_method-montecarlo", return_type="array"
+            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
         == np.float64
     )
     assert (
         cres.get_map(
-            "logp_desc-mass_level-voxel_corr-FWE_method-montecarlo", return_type="array"
+            "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float64
+    )
+    assert (
+        cres.get_map(
+            "logp_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
         == np.float64
     )
