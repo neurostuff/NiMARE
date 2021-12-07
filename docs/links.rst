@@ -18,6 +18,8 @@
 
 .. _FSL: https://fsl.fmrib.ox.ac.uk
 
+.. _GingerALE: https://www.brainmap.org/ale/
+
 .. _metaCurious: https://github.com/neurostuff/metaCurious
 
 .. _NeuroPower: http://neuropowertools.org

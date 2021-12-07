@@ -65,6 +65,7 @@ To install NiMARE check out our `installation guide`_.
    dev_guide
    cli
    outputs
+   cbma
 
 .. toctree::
    :hidden:
