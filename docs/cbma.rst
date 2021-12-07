@@ -64,7 +64,8 @@ Multiple comparisons correction
 
 The initial Estimator fit (with the null method of choice) will produce a MetaResult with unthresholded, uncorrected statistical maps.
 These statistical maps shouldn't be thresholded and interpreted on their own, as they don't account for the multiple comparisons issue.
-To correct for multiple comparisons, we have Corrector classes (FWECorrector and FDRCorrector).
+To correct for multiple comparisons, we have Corrector classes
+(:class:`FWECorrector<nimare.correct.FWECorrector>` and :class:`FDRCorrector<nimare.correct.FDRCorrector>`).
 
 These classes ingest MetaResults with uncorrected maps,
 then use the Estimator and Dataset that the MetaResult references to perform multiple comparisons correction.
@@ -88,6 +89,7 @@ One such method is the Monte Carlo method (``method="montecarlo"``).
 
 The Monte Carlo multiple comparisons correction method
 ``````````````````````````````````````````````````````
+:class:`nimare.correct.FWECorrector`, :meth:`nimare.meta.cbma.base.CBMAEstimator.correct_fwe_montecarlo`
 
 For our CBMA algorithms, we strongly recommend using the "montecarlo" method with the FWECorrector.
 This is the primary Estimator-specific method, which operates by creating simulated versions of the Dataset,
