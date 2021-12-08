@@ -23,7 +23,7 @@ The kernel used to create the modeled activation map varies across approaches, b
 the :class:`ALEKernel<nimare.meta.kernel.ALEKernel>`, which convolves coordinates with a 3D Gaussian distribution,
 and the :class:`MKDAKernel<nimare.meta.kernel.MKDAKernel>`, which creates a binary sphere around each coordinate.
 
-.. warning::
+.. important::
     While the modeled activation map is an estimate of the original statistical map,
     that doesn't mean that modeled activation maps can actually be used as statistical maps.
     We still need meta-analytic algorithms that are designed for coordinates, rather than images.
@@ -57,7 +57,7 @@ and then comparing the summary statistics from the real Dataset to these "null" 
 This method may take a long time, and is only slightly more accurate than the approximate method,
 as long as there are enough iterations.
 
-In general, we would recommend using the approximate method.
+**In general, we recommend using the approximate method.**
 
 Multiple comparisons correction
 -------------------------------
@@ -79,7 +79,7 @@ These methods can be broadly separated into two groups: generic methods and Esti
 Generic methods rely on tools like ``statsmodels`` to correct the results as an array,
 without accounting for any of the idiosyncrasies of neuroimaging data (e.g., autocorrelation).
 One example of a generic method is the "bonferroni" method for the FWECorrector.
-**We do not recommend using these methods.**
+**We do not recommend using the generic methods.**
 
 Estimator-specific methods are approaches that are implemented within the Estimator as class methods
 that are then called by the Corrector.
