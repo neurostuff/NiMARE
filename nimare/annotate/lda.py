@@ -44,7 +44,7 @@ class LDAModel(Annotator):
             learning_method="online",
         )
 
-    def transform(self, dset):
+    def _transform(self, dset):
         """Fit the LDA topic model to text from a Dataset.
 
         Parameters

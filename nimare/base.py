@@ -470,24 +470,43 @@ class Annotator(NiMAREBase):
     One difference between Annotators and Transformers is that Annotators retain extra information
     in a ``distributions_`` attribute.
 
-    Depending on the Annotator, they should accept either a text column or a set of annotations to
-    use.
+    Depending on the Annotator, they may accept either a text column or a set of labels to use.
 
     .. versionadded:: 0.0.11
 
     """
 
-    def __init__(self):
-        pass
-
-    @abstractmethod
     def transform(self, dataset):
-        """Add stuff to transformer."""
+        """Annotate a dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Dataset to annotate.
+
+        Returns
+        -------
+        dataset : :obj:`nimare.dataset.Dataset`
+            Updated Dataset with new annotations added to the ``Dataset.annotations`` attribute.
+
+        Notes
+        -----
+        The `transform` method is a light wrapper that runs input validation and preprocessing
+        before fitting the actual model. Annotators' individual "transforming" methods are
+        implemented as `_transform`, although users should call `transform`.
+        """
         # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}"
             )
+
+        dataset = self._transform(dataset)
+        return dataset
+
+    @abstractmethod
+    def _transform(self, dataset):
+        pass
 
 
 class Decoder(NiMAREBase):
