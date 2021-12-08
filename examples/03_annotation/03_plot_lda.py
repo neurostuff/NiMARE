@@ -13,62 +13,28 @@ using abstracts from Neurosynth.
 """
 import os
 
-import pandas as pd
-from sklearn.decomposition import LatentDirichletAllocation
-
-import nimare
-from nimare import annotate
+from nimare import annotate, dataset
 from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-dset = nimare.dataset.Dataset(
-    os.path.join(get_resource_path(), "neurosynth_laird_studies.json")
-)
+dset = dataset.Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 
 ###############################################################################
-# Extract term counts from the abstracts
-# --------------------------------------
-counts_df = annotate.text.generate_counts(
-    dset.texts,
-    text_column="abstract",
-    tfidf=False,
-    max_df=len(dset.ids) - 2,
-    min_df=2,
-)
-vocabulary = counts_df.columns.tolist()
-count_values = counts_df.values
-study_ids = counts_df.index.tolist()
-N_TOPICS = 5
-topic_names = [f"Topic {str(i+1).zfill(3)}" for i in range(N_TOPICS)]
+# Initialize LDA model
+# --------------------
+model = annotate.lda.LDAModel(n_topics=5, max_iter=1000, text_column="abstract")
 
 ###############################################################################
 # Run model
 # ---------
-# This may take some time, so we won't run it in the gallery.
-model = LatentDirichletAllocation(
-    n_components=N_TOPICS,
-    max_iter=1000,
-    learning_method="online",
-)
-doc_topic_weights = model.fit_transform(count_values)
-doc_topic_weights_df = pd.DataFrame(
-    index=study_ids,
-    columns=topic_names,
-    data=doc_topic_weights,
-)
-topic_word_weights = model.components_
-topic_word_weights_df = pd.DataFrame(
-    index=topic_names,
-    columns=vocabulary,
-    data=topic_word_weights,
-)
+new_dset = model.transform(dset)
 
 ###############################################################################
 # View results
 # ------------
-doc_topic_weights_df.head()
+new_dset.annotations.head()
 
 ###############################################################################
-topic_word_weights_df.head()
+model.distributions_["p_topic_g_word_df"].head()

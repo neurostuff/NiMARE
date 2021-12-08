@@ -2,10 +2,17 @@
 import pandas as pd
 from sklearn.decomposition import LatentDirichletAllocation
 
+from nimare import references
 from nimare.annotate.text import generate_counts
 from nimare.base import Annotator
+from nimare.due import due
 
 
+@due.dcite(references.LDA, description="Introduces LDA.")
+@due.dcite(
+    references.LDAMODEL,
+    description="First use of LDA for automated annotation of neuroimaging literature.",
+)
 class LDAModel(Annotator):
     """Generate a latent Dirichlet allocation (LDA) topic model.
 
@@ -21,11 +28,12 @@ class LDAModel(Annotator):
     ----------
     model : :obj:`sklearn.decomposition.LatentDirichletAllocation`
 
-    See also
+    See Also
     --------
     :class:`sklearn.feature_extraction.text.CountVectorizer`
     :class:`sklearn.decomposition.LatentDirichletAllocation`
     """
+
     def __init__(self, n_topics, max_iter, text_column="abstract"):
         self.n_topics = n_topics
         self.max_iter = max_iter
@@ -67,6 +75,7 @@ class LDAModel(Annotator):
         vocabulary = counts_df.columns.tolist()
         count_values = counts_df.values
         study_ids = counts_df.index.tolist()
+        # LDA50__1_word1_word2_word3
         topic_names = [f"Topic {str(i+1).zfill(3)}" for i in range(self.n_topics)]
 
         doc_topic_weights = self.model.fit_transform(count_values)
