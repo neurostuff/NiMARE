@@ -470,6 +470,9 @@ class Annotator(NiMAREBase):
     One difference between Annotators and Transformers is that Annotators retain extra information
     in a ``distributions_`` attribute.
 
+    Depending on the Annotator, they should accept either a text column or a set of annotations to
+    use.
+
     .. versionadded:: 0.0.11
 
     """

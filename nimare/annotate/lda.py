@@ -96,7 +96,9 @@ class LDAModel(Annotator):
         }
 
         annotations = dset.annotations.copy()
-        new_annotations = pd.merge(annotations, doc_topic_weights_df)
+        new_annotations = pd.merge(
+            annotations, doc_topic_weights_df, left_on="id", right_index=True
+        )
         new_dset = dset.copy()
         new_dset.annotations = new_annotations
         return new_dset
