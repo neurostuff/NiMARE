@@ -50,7 +50,7 @@ REQUIRES = [
     "cognitiveatlas",
     "fuzzywuzzy",
     "indexed_gzip>=1.4.0",
-    "matplotlib",  # this is for nilearn, which doesn't include it in its reqs
+    "matplotlib<3.5",  # this is for nilearn, which doesn't include it in its reqs
     "nibabel>=3.0.0",
     "nilearn>=0.7.1,<0.8.0",
     "numpy",
@@ -78,8 +78,9 @@ EXTRA_REQUIRES = {
     "peaks2maps-cpu": ["tensorflow>=2.0.0", "appdirs"],
     "peaks2maps-gpu": ["tensorflow-gpu>=2.0.0", "appdirs"],
     "doc": [
-        "matplotlib",
         "m2r",
+        "matplotlib",
+        "mistune<2",  # just temporary until m2r addresses this issue
         "pillow",
         "recommonmark",
         "sphinx>=3.5",
