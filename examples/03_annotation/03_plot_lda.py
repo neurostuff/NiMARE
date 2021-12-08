@@ -36,11 +36,11 @@ new_dset = model.transform(dset)
 ###############################################################################
 # View results
 # ------------
-# Given that the new annotations DataFrame is very wide (many terms),
-# but also very short (5 studies), we will transpose it before presenting it.
-new_dset.annotations.T.head(10)
+# This DataFrame is very large, so we will only show a slice of it.
+new_dset.annotations[new_dset.annotations.columns[:10]].head(10)
 
 ###############################################################################
+# Given that this DataFrame is very wide (many terms), we will transpose it before presenting it.
 model.distributions_["p_topic_g_word_df"].T.head(10)
 
 ###############################################################################
