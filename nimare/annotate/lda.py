@@ -76,7 +76,7 @@ class LDAModel(Annotator):
         count_values = counts_df.values
         study_ids = counts_df.index.tolist()
         # LDA50__1_word1_word2_word3
-        topic_names = [f"Topic {str(i+1).zfill(3)}" for i in range(self.n_topics)]
+        topic_names = [f"LDA{self.n_topics}__{i}" for i in range(self.n_topics)]
 
         doc_topic_weights = self.model.fit_transform(count_values)
         doc_topic_weights_df = pd.DataFrame(
