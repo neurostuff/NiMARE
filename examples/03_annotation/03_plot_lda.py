@@ -13,6 +13,8 @@ using abstracts from Neurosynth.
 """
 import os
 
+import pandas as pd
+
 from nimare import annotate, dataset
 from nimare.utils import get_resource_path
 
@@ -38,3 +40,17 @@ new_dset.annotations.head()
 
 ###############################################################################
 model.distributions_["p_topic_g_word_df"].head()
+
+###############################################################################
+n_top_terms = 10
+top_term_df = model.distributions_["p_topic_g_word_df"].T
+temp_df = top_term_df.copy()
+top_term_df = pd.DataFrame(columns=top_term_df.columns, index=range(n_top_terms))
+top_term_df.index.name = "Token"
+for col in top_term_df.columns:
+    top_tokens = temp_df.sort_values(by=col, ascending=False).index.tolist()[:n_top_terms]
+    top_term_df.loc[:, col] = top_tokens
+
+top_term_df = top_term_df[top_term_df.columns[:n_top_terms]]
+
+top_term_df.head()
