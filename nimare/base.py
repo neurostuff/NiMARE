@@ -463,6 +463,30 @@ class Transformer(NiMAREBase):
             )
 
 
+class Annotator(NiMAREBase):
+    """Base class for annotators in :mod:`nimare.annotate`.
+
+    Annotators operate like Transformers in that they ingest Datasets and output modified Datasets.
+    One difference between Annotators and Transformers is that Annotators retain extra information
+    in a ``distributions_`` attribute.
+
+    .. versionadded:: 0.0.11
+
+    """
+
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def transform(self, dataset):
+        """Add stuff to transformer."""
+        # Using attribute check instead of type check to allow fake Datasets for testing.
+        if not hasattr(dataset, "slice"):
+            raise ValueError(
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}"
+            )
+
+
 class Decoder(NiMAREBase):
     """Base class for decoders in :mod:`nimare.decode`.
 

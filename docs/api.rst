@@ -112,6 +112,7 @@ API
 
    annotate.cogat
    annotate.gclda
+   annotate.lda
    annotate.text
    annotate.utils
 
