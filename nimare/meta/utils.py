@@ -19,6 +19,9 @@ LGR = logging.getLogger(__name__)
 def model_fn(features, labels, mode, params):
     """Run model function used internally by peaks2maps.
 
+    .. deprecated:: 0.0.11
+        `model_fn` will be removed in NiMARE 0.0.13.
+
     .. versionadded:: 0.0.4
 
     """
@@ -163,6 +166,9 @@ def model_fn(features, labels, mode, params):
 def _get_resize_arg(target_shape):
     """Get resizing arguments, as used by peaks2maps.
 
+    .. deprecated:: 0.0.11
+        `_get_resize_arg` will be removed in NiMARE 0.0.13.
+
     .. versionadded:: 0.0.1
 
     """
@@ -207,6 +213,9 @@ def compute_p2m_ma(
     contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None, model_dir="auto"
 ):
     """Generate modeled activation (MA) maps using deep ConvNet model peaks2maps.
+
+    .. deprecated:: 0.0.11
+        `compute_p2m_ma` will be removed in NiMARE 0.0.13.
 
     Parameters
     ----------

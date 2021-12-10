@@ -438,6 +438,9 @@ class MKDAKernel(KDAKernel):
 class Peaks2MapsKernel(KernelTransformer):
     """Generate peaks2maps modeled activation images from coordinates.
 
+    .. deprecated:: 0.0.11
+        `Peaks2MapsKernel` will be removed in NiMARE 0.0.13.
+
     Parameters
     ----------
     model_dir : :obj:`str`, optional
