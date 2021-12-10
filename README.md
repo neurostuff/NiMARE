@@ -26,11 +26,7 @@ pip install nimare
 
 ### Local installation (development version)
 ```
-pip install git+https://github.com/neurostuff/NiMARE.git#egg=nimare[peaks2maps-cpu]
-```
-If you have [TensorFlow configured to take advantage of your local GPU](https://www.tensorflow.org/install/) use
-```
-pip install git+https://github.com/neurostuff/NiMARE.git#egg=nimare[peaks2maps-gpu]
+pip install git+https://github.com/neurostuff/NiMARE.git
 ```
 
 ## Contributing
