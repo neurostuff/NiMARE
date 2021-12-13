@@ -192,7 +192,7 @@ class Dataset(NiMAREBase):
 
     @property
     def annotations(self):
-        """:class:`pandas.DataFrame`: Labels describing studies in the dataset.
+        """:obj:`dict`: Labels and associated weights describing experiments in a Dataset.
 
         Each study/experiment has its own row.
         Columns correspond to individual labels (e.g., 'emotion'), and may

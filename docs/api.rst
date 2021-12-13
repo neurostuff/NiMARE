@@ -330,3 +330,4 @@ For more information about fetching data from the internet, see :ref:`fetching t
    base.MetaEstimator
    base.Transformer
    base.Decoder
+   base.Annotation

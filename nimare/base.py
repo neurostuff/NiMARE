@@ -5,7 +5,7 @@ import logging
 import multiprocessing as mp
 import pickle
 from abc import ABCMeta, abstractmethod
-from collections import defaultdict
+from collections import UserDict, defaultdict
 from hashlib import md5
 
 import nibabel as nb
@@ -13,8 +13,8 @@ import numpy as np
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
-from .results import MetaResult
-from .utils import get_masker, mm2vox
+from nimare.results import MetaResult
+from nimare.utils import _validate_df, get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -571,3 +571,126 @@ class Decoder(NiMAREBase):
         Must return a DataFrame, with one row for each feature.
         """
         pass
+
+
+class Annotation(object):
+    """Class for storing "annotations".
+
+    .. versionadded:: 0.0.11
+
+    Parameters
+    ----------
+    label_weights
+    metadata
+    kwargs : dict
+        Key-value pairs, where values MUST be _ImageArrays or _LabelArrays.
+
+    Attributes
+    ----------
+    label_weights : :obj:`pandas.DataFrame`
+        Labels and associated weights describing experiments.
+    metadata : :obj:`dict`
+        Information about parameters and software used to generate the annotations.
+        This may include summary information for labels, such as the top-loading `N` terms for
+        each topic in a topic model.
+    other_distributions : :obj:`dict`
+        A dictionary containing other weights or distributions created by the Annotator, such as
+        topic-token weights for topic models or topic-voxel weights for
+        :class:`nimare.annotate.gclda.GCLDAModel`.
+
+    Methods
+    -------
+    to_filename(filename)
+        Save the :py:attr:`~label_weights` DataFrame attribute to a
+        TSV file.
+    """
+
+    def __init__(self, label_weights, metadata, **kwargs):
+        self.label_weights = label_weights
+        self.metadata = metadata
+        self.other_distributions = {}
+        for key, value in kwargs.items():
+            self.other_distributions[key] = value
+
+    @property
+    def label_weights(self):
+        """:obj:`~pandas.DataFrame`: Labels and associated weights describing experiments.
+
+        Each study/experiment has its own row.
+        Columns correspond to individual labels (e.g., 'emotion').
+        Weights may be floats or integers.
+        The DataFrame MUST have a column named "id".
+        """
+        return self.__label_weights
+
+    @label_weights.setter
+    def label_weights(self, df):
+        _validate_df(df)
+        self.__label_weights = df.sort_values(by="id")
+
+    @property
+    def other_distributions(self):
+        """:obj:`dict` of :obj:`~numpy.ndarray` or :obj:`~pandas.DataFrame`: \
+            Other distributions or DataFrames.
+
+        A dictionary containing other weights or distributions created by the Annotator, such as
+        topic-token weights for topic models or topic-voxel weights for
+        :class:`nimare.annotate.gclda.GCLDAModel`.
+        These distributions may be :obj:`~numpy.ndarray`s or :obj:`~pandas.DataFrame`s.
+        """
+        return self.__other_distributions
+
+    @other_distributions.setter
+    def other_distributions(self, key, value):
+        _validate_df(key)
+        self.__other_distributions = value.sort_values(by="id")
+
+
+class _DistributionDict(UserDict):
+    """Dictionary-like container that only allows _ImageArrays and _LabelArrays.
+
+    .. versionadded:: 0.0.11
+
+    Notes
+    -----
+    The implementation is based on recommendations in
+    https://treyhunner.com/2019/04/why-you-shouldnt-inherit-from-list-and-dict-in-python/.
+
+    """
+
+    def __setitem__(self, key, value):
+        if not isinstance(key, str):
+            raise TypeError(f"key must be a str, not {type(key)}.")
+
+        if not isinstance(value, (_ImageArray, _LabelArray)):
+            raise TypeError(f"value must be one of (_ImageArray, _LabelArray), not {type(value)}.")
+
+        super().__setitem__(key, value)
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.data})"
+
+
+class _ImageArray:
+    """Representation of a numpy array that corresponds to images.
+
+    Attributes
+    ----------
+    masker
+    array
+    """
+
+    ...
+
+
+class _LabelArray:
+    """Representation of a numpy array that corresponds to a DataFrame.
+
+    Attributes
+    ----------
+    columns
+    index
+    array
+    """
+
+    ...
