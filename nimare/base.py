@@ -573,6 +573,23 @@ class Decoder(NiMAREBase):
         pass
 
 
+class Annotator(NiMAREBase):
+    """Base class for annotators."""
+
+    def transform(self, dset):
+        """Apply an annotation method to a Dataset.
+
+        Parameters
+        ----------
+        dset : :obj:`~nimare.dataset.Dataset`
+
+        Returns
+        -------
+        :obj:`~nimare.base.Annotation`
+        """
+        ...
+
+
 class Annotation(object):
     """Class for storing "annotations".
 
