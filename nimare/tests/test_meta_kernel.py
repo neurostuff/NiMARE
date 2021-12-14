@@ -50,7 +50,7 @@ def test_kernel_peaks(testdata_cbma, tmp_path_factory, kern, res, param, return_
 
     id_ = "pain_03.nidm-1"
 
-    template = get_template(space=f"mni_{res}mm", mask="brain")
+    template = get_template(space=f"mni152_{res}mm", mask="brain")
     masker = get_masker(template)
 
     xyz = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["x", "y", "z"]]
