@@ -33,8 +33,8 @@ def get_template(space="mni152_2mm", mask=None):
     """Load template file.
 
     .. versionchanged:: 0.0.11
-        Remove the mask="gm" option.
-        Replace the nilearn templates with ones downloaded directly from TemplateFlow.
+        - Remove the ``mask="gm"`` option.
+        - Replace the nilearn templates with ones downloaded directly from TemplateFlow.
 
     Parameters
     ----------
@@ -43,13 +43,13 @@ def get_template(space="mni152_2mm", mask=None):
         The options are:
 
             -   mni152_1mm: The MNI152NLin6Asym template at 1mm3 resolution,
-                downloaded from TemplateFlow. The shape of this template is X voxels.
+                downloaded from TemplateFlow. The shape of this template is 182x218x182 voxels.
             -   mni152_2mm: The MNI152NLin6Asym template at 2mm3 resolution,
                 downloaded from TemplateFlow. The shape of this template is 91x109x91 voxels.
             -   ale_2mm: The template used is the MNI152NLin6Asym template at 2mm3 resolution,
                 but if ``mask='brain'``, then a brain mask taken from GingerALE will be used.
                 The brain mask corresponds to GingerALE's "more conservative" mask.
-                The shape of this template is 91x109x91.
+                The shape of this template is 91x109x91 voxels.
     mask : {None, 'brain'}, optional
         Whether to return the raw T1w template (None) or a brain mask ('brain').
         Default is None.
