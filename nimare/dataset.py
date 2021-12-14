@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg
 
-from .base import NiMAREBase
+from .base import NiMAREBase, _AnnotationDict
 from .utils import (
     _dict_to_coordinates,
     _dict_to_df,
@@ -60,8 +60,11 @@ class Dataset(NiMAREBase):
         (e.g., 'brain').
     space : :obj:`str`
         Standard space. Same as ``target`` parameter.
-    annotations : :class:`pandas.DataFrame`
-        Labels describing studies
+    annotations : :obj:`dict`
+        Labels describing studies. This attribute is organized as a dictionary-like object
+        containing feature group-:class:`~nimare.base.Annotation` pairs.
+        Feature groups correspond to sources of annotations, such as a specific topic model or
+        terms extracted from study abstracts.
     coordinates : :class:`pandas.DataFrame`
         Peak coordinates from studies
     images : :class:`pandas.DataFrame`
@@ -109,6 +112,7 @@ class Dataset(NiMAREBase):
         self.masker = mask
         self.space = target
 
+        # TODO: Change this.
         self.annotations = _dict_to_df(id_df, data, key="labels")
         self.coordinates = _dict_to_coordinates(data, masker=self.masker, space=self.space)
         self.images = _dict_to_df(id_df, data, key="images")
@@ -192,19 +196,28 @@ class Dataset(NiMAREBase):
 
     @property
     def annotations(self):
-        """:obj:`dict`: Labels and associated weights describing experiments in a Dataset.
+        """:obj:`dict`: Group-:class:`~nimare.base.Annotation` pairs for a Dataset.
 
-        Each study/experiment has its own row.
-        Columns correspond to individual labels (e.g., 'emotion'), and may
-        be prefixed with a feature group including two underscores
-        (e.g., 'Neurosynth_TFIDF__emotion').
+        .. versionchanged:: 0.0.11
+
+            Changed from a single DataFrame to a dictionary-like object of group-Annotation pairs.
+
+        Technically, this is a :class:`~nimare.base._AnnotationDict` rather than a dictionary,
+        but the only difference is that the `_AnnotationDict` only allows
+        :class:`~nimare.base.Annotation` objects as values.
         """
         return self.__annotations
 
     @annotations.setter
-    def annotations(self, df):
-        _validate_df(df)
-        self.__annotations = df.sort_values(by="id")
+    def annotations(self, dict_):
+        """Set the annotations attribute."""
+        assert isinstance(dict_, (dict, _AnnotationDict))
+
+        # Coerce to special Annotations-only dictionary
+        if isinstance(dict_, dict):
+            dict_ = _AnnotationDict(**dict_.items())
+
+        self.__annotations = dict_
 
     @property
     def coordinates(self):

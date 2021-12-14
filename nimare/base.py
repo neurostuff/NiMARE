@@ -658,9 +658,50 @@ class Annotation(object):
         return self.__other_distributions
 
     @other_distributions.setter
-    def other_distributions(self, key, value):
-        _validate_df(key)
-        self.__other_distributions = value.sort_values(by="id")
+    def other_distributions(self, dict_):
+        assert isinstance(dict_, (dict, _DistributionDict))
+
+        # Coerce to special distributions-only dictionary
+        if isinstance(dict_, dict):
+            dict_ = _DistributionDict(**dict_.items())
+
+        self.__other_distributions = dict_
+
+    def slice(self, ids):
+        """Create a new Annotation object with only requested IDs.
+
+        Parameters
+        ----------
+        ids : array_like
+            List of study IDs to include in new Annotation
+
+        Returns
+        -------
+        new_annotation : :obj:`~nimare.base.Annotation`
+            Reduced Annotation containing only requested studies.
+
+        Notes
+        -----
+        This method selects rows in :py:attr:`~label_weights` based on its ID column.
+        It also loops through
+        """
+        ...
+
+    def merge(self, right):
+        """Merge two Annotations.
+
+        Parameters
+        ----------
+        right : :obj:`~nimare.base.Annotation`
+            Annotation to merge into the current one.
+
+        Returns
+        -------
+        :obj:`~nimare.base.Annotation`
+            An Annotation composed of the two merged Annotations.
+        """
+        assert isinstance(right, Annotation)
+        ...
 
 
 class _DistributionDict(UserDict):
@@ -681,6 +722,31 @@ class _DistributionDict(UserDict):
 
         if not isinstance(value, (_ImageArray, _LabelArray)):
             raise TypeError(f"value must be one of (_ImageArray, _LabelArray), not {type(value)}.")
+
+        super().__setitem__(key, value)
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.data})"
+
+
+class _AnnotationDict(UserDict):
+    """Dictionary-like container that only allows Annotations as values.
+
+    .. versionadded:: 0.0.11
+
+    Notes
+    -----
+    The implementation is based on recommendations in
+    https://treyhunner.com/2019/04/why-you-shouldnt-inherit-from-list-and-dict-in-python/.
+
+    """
+
+    def __setitem__(self, key, value):
+        if not isinstance(key, str):
+            raise TypeError(f"key must be a str, not {type(key)}.")
+
+        if not isinstance(value, Annotation):
+            raise TypeError(f"value must be an Annotation, not {type(value)}.")
 
         super().__setitem__(key, value)
 
