@@ -30,7 +30,7 @@ NiMARE.
         )
 
 For information about where these files will be downloaded to on your machine,
-see :ref:`fetching tools`.
+see :doc:`../../fetching`.
 """
 ###############################################################################
 # Start with the necessary imports

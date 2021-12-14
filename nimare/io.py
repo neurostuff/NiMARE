@@ -261,7 +261,7 @@ def convert_neurosynth_to_dataset(
 
     Returns
     -------
-    :obj:`nimare.dataset.Dataset`
+    :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
 
     Warning
@@ -416,7 +416,7 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
 
     Returns
     -------
-    :obj:`nimare.dataset.Dataset`
+    :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
     """
     if not isinstance(text_file, str) and not isinstance(text_file, list):
@@ -465,11 +465,11 @@ def convert_neurovault_to_dataset(
         statistic map in a nimare dataset. Default = None.
     **dset_kwargs : keyword arguments passed to Dataset
         Keyword arguments to pass in when creating the Dataset object.
-        see :obj:`nimare.dataset.Dataset` for details.
+        see :obj:`~nimare.dataset.Dataset` for details.
 
     Returns
     -------
-    :obj:`nimare.dataset.Dataset`
+    :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from neurovault.
     """
     img_dir = Path(_get_dataset_dir("_".join(contrasts.keys()), data_dir=img_dir))

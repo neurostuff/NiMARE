@@ -815,7 +815,7 @@ def _add_metadata_to_dataframe(
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
+    dataset : :obj:`~nimare.dataset.Dataset`
         Dataset containing study IDs and metadata to feed into dataframe.
     dataframe : :obj:`pandas.DataFrame`
         DataFrame containing study IDs, into which Dataset metadata will be merged.

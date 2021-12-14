@@ -286,7 +286,7 @@ class Estimator(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
@@ -294,7 +294,7 @@ class Estimator(NiMAREBase):
 
         Returns
         -------
-        :obj:`nimare.results.MetaResult`
+        :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
         Attributes
@@ -332,7 +332,7 @@ class Estimator(NiMAREBase):
 
 
 class MetaEstimator(Estimator):
-    """Base class for meta-analysis methods in :mod:`nimare.meta`.
+    """Base class for meta-analysis methods in :mod:`~nimare.meta`.
 
     .. versionchanged:: 0.0.8
 
@@ -510,7 +510,7 @@ class Annotator(NiMAREBase):
 
 
 class Decoder(NiMAREBase):
-    """Base class for decoders in :mod:`nimare.decode`.
+    """Base class for decoders in :mod:`~nimare.decode`.
 
     .. versionadded:: 0.0.3
 
@@ -584,7 +584,7 @@ class Decoder(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
@@ -593,7 +593,7 @@ class Decoder(NiMAREBase):
 
         Returns
         -------
-        :obj:`nimare.results.MetaResult`
+        :obj:`~nimare.results.MetaResult`
             Results of Decoder fitting.
 
         Notes

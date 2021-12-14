@@ -420,20 +420,20 @@ def download_abstracts(dataset, email):
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
+    dataset : :obj:`~nimare.dataset.Dataset`
         A Dataset object where IDs are in the form PMID-EXPID
     email : :obj:`str`
         Email address to use to call the PubMed API
 
     Returns
     -------
-    dataset : :obj:`nimare.dataset.Dataset`
+    dataset : :obj:`~nimare.dataset.Dataset`
 
     Warning
     -------
     This function assumes that the dataset uses identifiers in the format
     [PMID-EXPID]. Thus, the ``study_id`` column of the
-    :obj:`nimare.dataset.Dataset.texts` DataFrame should correspond to PMID.
+    :py:attr:`~nimare.dataset.Dataset.texts` DataFrame should correspond to PMID.
     """
     try:
         from Bio import Entrez, Medline

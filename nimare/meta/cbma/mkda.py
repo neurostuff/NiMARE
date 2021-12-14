@@ -24,9 +24,9 @@ class MKDADensity(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.MKDAKernel`.
+        :class:`~nimare.meta.kernel.MKDAKernel`.
     null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
         "approximate" is faster, but slightly less accurate.
@@ -177,9 +177,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.MKDAKernel`.
+        :class:`~nimare.meta.kernel.MKDAKernel`.
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
@@ -354,7 +354,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
         n_iters : :obj:`int`, optional
             Number of iterations to build the vFWE null distribution.
@@ -468,7 +468,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
         alpha : :obj:`float`, optional
             Alpha. Default is 0.05.
@@ -521,9 +521,9 @@ class KDA(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.KDAKernel`.
+        :class:`~nimare.meta.kernel.KDAKernel`.
     null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
         "approximate" is faster, but slightly less accurate.

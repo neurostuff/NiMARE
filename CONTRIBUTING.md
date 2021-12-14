@@ -90,6 +90,9 @@ Submit a [pull request][link_pullrequest].
 
 A member of the development team will review your changes to confirm that they can be merged into the main codebase.
 
+Please use a sentence-case title for the pull request, and do not include any prefixes (e.g., ``[ENH]``), as we now use labels to distinguish pull request types.
+The title should summarize the changes proposed in the pull request, with an emphasis on readability, as pull request titles are used directly in our release notes.
+
 ## Recognizing contributions
 
 We welcome and recognize all contributions from documentation to testing to code development.

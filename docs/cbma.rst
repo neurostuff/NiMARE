@@ -20,8 +20,8 @@ All of the CBMA algorithms currently implemented in NiMARE are `kernel-based` me
 In kernel-based CBMA, coordinates are convolved with some kind of kernel to produce a "modeled activation" map for each experiment in the dataset.
 The modeled activation map acts as a substitute for the original, unthresholded statistical map from which the coordinates were derived.
 The kernel used to create the modeled activation map varies across approaches, but the most common are
-the :class:`ALEKernel<nimare.meta.kernel.ALEKernel>`, which convolves coordinates with a 3D Gaussian distribution,
-and the :class:`MKDAKernel<nimare.meta.kernel.MKDAKernel>`, which creates a binary sphere around each coordinate.
+the :class:`~nimare.meta.kernel.ALEKernel`, which convolves coordinates with a 3D Gaussian distribution,
+and the :class:`~nimare.meta.kernel.MKDAKernel`, which creates a binary sphere around each coordinate.
 
 .. important::
     While the modeled activation map is an estimate of the original statistical map,
@@ -65,7 +65,7 @@ Multiple comparisons correction
 The initial Estimator fit (with the null method of choice) will produce a MetaResult with unthresholded, uncorrected statistical maps.
 These statistical maps shouldn't be thresholded and interpreted on their own, as they don't account for the multiple comparisons issue.
 To correct for multiple comparisons, we have Corrector classes
-(:class:`FWECorrector<nimare.correct.FWECorrector>` and :class:`FDRCorrector<nimare.correct.FDRCorrector>`).
+(:class:`~nimare.correct.FWECorrector` and :class:`~nimare.correct.FDRCorrector`).
 
 These classes ingest MetaResults with uncorrected maps,
 then use the Estimator and Dataset that the MetaResult references to perform multiple comparisons correction.
@@ -89,7 +89,7 @@ One such method is the Monte Carlo method (``method="montecarlo"``).
 
 The Monte Carlo multiple comparisons correction method
 ``````````````````````````````````````````````````````
-:class:`nimare.correct.FWECorrector`, :meth:`nimare.meta.cbma.base.CBMAEstimator.correct_fwe_montecarlo`
+:class:`~nimare.correct.FWECorrector`, :meth:`~nimare.meta.cbma.base.CBMAEstimator.correct_fwe_montecarlo`
 
 For our CBMA algorithms, we strongly recommend using the "montecarlo" method with the FWECorrector.
 This is the primary Estimator-specific method, which operates by creating simulated versions of the Dataset,
