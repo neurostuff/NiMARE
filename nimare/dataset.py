@@ -285,7 +285,7 @@ class Dataset(NiMAREBase):
 
         Returns
         -------
-        new_dset : :obj:`nimare.dataset.Dataset`
+        new_dset : :obj:`~nimare.dataset.Dataset`
             Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
@@ -304,12 +304,12 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        right : :obj:`nimare.dataset.Dataset`
+        right : :obj:`~nimare.dataset.Dataset`
             Dataset to merge with.
 
         Returns
         -------
-        :obj:`nimare.dataset.Dataset`
+        :obj:`~nimare.dataset.Dataset`
             A Dataset of the two merged Datasets.
         """
         assert isinstance(right, Dataset)

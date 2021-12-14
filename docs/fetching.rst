@@ -4,7 +4,7 @@
 
 Fetching resources from the internet
 ====================================
-:mod:`nimare.extract`
+:mod:`~nimare.extract`
 
 NiMARE's ``extract`` module contains a number of functions for downloading resources
 (e.g., ontologies, images, and datasets) from the internet.
@@ -24,4 +24,4 @@ NiMARE's ``extract`` module contains a number of functions for downloading resou
     to distinguish a global dataset repository that may be read-only at the user-level.
     Note that you can copy that folder to another user's computers to avoid the initial dataset download on the first fetching call.
 
-    You can check in which directory NiMARE will store the data with the function :func:`nimare.extract.utils.get_data_dirs`.
+    You can check in which directory NiMARE will store the data with the function :func:`~nimare.extract.utils.get_data_dirs`.

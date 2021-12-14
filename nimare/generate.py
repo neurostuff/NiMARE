@@ -62,7 +62,7 @@ def create_coordinate_dataset(
     -------
     ground_truth_foci : :obj:`list`
         generated foci in xyz (mm) coordinates
-    dataset : :class:`nimare.Dataset`
+    dataset : :class:`~nimare.dataset.Dataset`
     """
     # set random state
     rng = np.random.RandomState(seed=seed)
@@ -156,11 +156,11 @@ def create_neurovault_dataset(
         statistic map in a nimare dataset. Default = None.
     **dset_kwargs : keyword arguments passed to Dataset
         Keyword arguments to pass in when creating the Dataset object.
-        see :obj:`nimare.dataset.Dataset` for details.
+        see :obj:`~nimare.dataset.Dataset` for details.
 
     Returns
     -------
-    :obj:`nimare.dataset.Dataset`
+    :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from neurovault.
     """
     dataset = convert_neurovault_to_dataset(

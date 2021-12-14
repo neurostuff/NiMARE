@@ -24,6 +24,8 @@ API
 :mod:`nimare.meta`: Meta-analytic algorithms
 --------------------------------------------------
 
+For more information about the components of coordinate-based meta-analysis in NiMARE, see :doc:`cbma`.
+
 .. automodule:: nimare.meta
    :no-members:
    :no-inherited-members:
@@ -121,7 +123,7 @@ API
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
-For more information about functional characterization analysis, see :ref:`decoding methods`.
+For more information about functional characterization analysis, see :doc:`decoding`.
 
 .. automodule:: nimare.decode
    :no-members:
