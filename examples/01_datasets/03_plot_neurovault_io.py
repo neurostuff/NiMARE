@@ -89,7 +89,10 @@ dset.images[["z"]]
 # and plot our results
 from nimare.meta.ibma import Fishers
 
-meta = Fishers()
+# The default template has a slightly different, but completely compatible,
+# affine than the NeuroVault images, so we allow the Estimator to resample
+# images during the fitting process.
+meta = Fishers(resample=True)
 
 meta_res = meta.fit(dset)
 
