@@ -4,14 +4,13 @@ import shutil
 import nibabel as nib
 import numpy as np
 import pytest
-from nilearn.datasets import load_mni152_brain_mask
 from scipy.ndimage.measurements import center_of_mass
 
 import nimare
 from nimare import extract
 from nimare.dataset import Dataset
 from nimare.meta import MKDADensity, kernel
-from nimare.utils import get_masker, mm2vox
+from nimare.utils import get_masker, get_template, mm2vox
 
 
 @pytest.mark.parametrize(
@@ -51,9 +50,7 @@ def test_kernel_peaks(testdata_cbma, tmp_path_factory, kern, res, param, return_
 
     id_ = "pain_03.nidm-1"
 
-    # Ignoring resolution until we support 0.8.1
-    # template = load_mni152_brain_mask(resolution=res)
-    template = load_mni152_brain_mask()
+    template = get_template(space=f"mni_{res}mm", mask="brain")
     masker = get_masker(template)
 
     xyz = testdata_cbma.coordinates.loc[testdata_cbma.coordinates["id"] == id_, ["x", "y", "z"]]
