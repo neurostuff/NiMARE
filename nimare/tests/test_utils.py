@@ -56,20 +56,39 @@ def test_find_stem():
 
 def test_get_template():
     """Test nimare.utils.get_template."""
+    # 1mm template
     img = utils.get_template(space="mni152_1mm", mask=None)
     assert isinstance(img, nib.Nifti1Image)
     assert not nib.is_proxy(img.dataobj)
     img = utils.get_template(space="mni152_1mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
-    img = utils.get_template(space="mni152_1mm", mask="gm")
-    assert isinstance(img, nib.Nifti1Image)
+
+    # 2mm template (default)
     img = utils.get_template(space="mni152_2mm", mask=None)
     assert isinstance(img, nib.Nifti1Image)
     img = utils.get_template(space="mni152_2mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
-    img = utils.get_template(space="mni152_2mm", mask="gm")
+    assert not nib.is_proxy(img.dataobj)
+
+    # ALE template
+    img = utils.get_template(space="ale_2mm", mask=None)
+    assert isinstance(img, nib.Nifti1Image)
+    img = utils.get_template(space="ale_2mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
     assert not nib.is_proxy(img.dataobj)
+
+    # Expect exceptions when incompatible spaces or masks are requested.
+    with pytest.raises(ValueError):
+        utils.get_template(space="something", mask=None)
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="mni152_1mm", mask="gm")
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="mni152_2mm", mask="gm")
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="ale_2mm", mask="gm")
 
 
 def test_get_resource_path():
