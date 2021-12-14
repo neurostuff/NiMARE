@@ -52,7 +52,7 @@ REQUIRES = [
     "indexed_gzip>=1.4.0",
     "matplotlib<3.5",  # this is for nilearn, which doesn't include it in its reqs
     "nibabel>=3.0.0",
-    "nilearn>=0.7.1,<0.8.0",
+    "nilearn>=0.7.1",
     "numpy",
     "pandas",
     "pymare>=0.0.2",
