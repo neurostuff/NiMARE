@@ -14,7 +14,7 @@ def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0
 
     Parameters
     ----------
-    model : :obj:`nimare.annotate.topic.GCLDAModel`
+    model : :obj:`~nimare.annotate.gclda.GCLDAModel`
         Model object needed for decoding.
     text : :obj:`str` or :obj:`list`
         Text to encode into an image.
@@ -72,9 +72,9 @@ def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0
 
     See Also
     --------
-    :class:`nimare.annotate.gclda.GCLDAModel`
-    :func:`nimare.decode.continuous.gclda_decode_map`
-    :func:`nimare.decode.discrete.gclda_decode_roi`
+    :class:`~nimare.annotate.gclda.GCLDAModel`
+    :func:`~nimare.decode.continuous.gclda_decode_map`
+    :func:`~nimare.decode.discrete.gclda_decode_roi`
 
     References
     ----------

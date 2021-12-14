@@ -15,7 +15,7 @@ class MetaResult(object):
 
     Parameters
     ----------
-    estimator : :class:`nimare.base.Estimator`
+    estimator : :class:`~nimare.base.Estimator`
         The Estimator used to generate the maps in the MetaResult.
     mask : Niimg-like or `nilearn.input_data.base_masker.BaseMasker`
         Mask for converting maps between arrays and images.
@@ -24,7 +24,7 @@ class MetaResult(object):
 
     Attributes
     ----------
-    estimator : :class:`nimare.base.Estimator`
+    estimator : :class:`~nimare.base.Estimator`
         The Estimator used to generate the maps in the MetaResult.
     masker : :class:`nilearn.input_data.NiftiMasker` or similar
         Masker object.

@@ -3,7 +3,7 @@
 Working with datasets
 ---------------------
 
-NiMARE stores meta-analytic data in its :class:`nimare.dataset.Dataset` class.
+NiMARE stores meta-analytic data in its :class:`~nimare.dataset.Dataset` class.
 Dataset objects may contain a range of elements, including coordinates (for coordinate-based meta-analysis),
 links to statistical maps (for image-based meta-analysis), article text, label weights, and other metadata.
 

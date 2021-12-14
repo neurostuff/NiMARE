@@ -20,10 +20,10 @@ All of the CBMA algorithms currently implemented in NiMARE are `kernel-based` me
 In kernel-based CBMA, coordinates are convolved with some kind of kernel to produce a "modeled activation" map for each experiment in the dataset.
 The modeled activation map acts as a substitute for the original, unthresholded statistical map from which the coordinates were derived.
 The kernel used to create the modeled activation map varies across approaches, but the most common are
-the :class:`ALEKernel<nimare.meta.kernel.ALEKernel>`, which convolves coordinates with a 3D Gaussian distribution,
-and the :class:`MKDAKernel<nimare.meta.kernel.MKDAKernel>`, which creates a binary sphere around each coordinate.
+the :class:`~nimare.meta.kernel.ALEKernel`, which convolves coordinates with a 3D Gaussian distribution,
+and the :class:`~nimare.meta.kernel.MKDAKernel`, which creates a binary sphere around each coordinate.
 
-.. warning::
+.. important::
     While the modeled activation map is an estimate of the original statistical map,
     that doesn't mean that modeled activation maps can actually be used as statistical maps.
     We still need meta-analytic algorithms that are designed for coordinates, rather than images.
@@ -57,7 +57,7 @@ and then comparing the summary statistics from the real Dataset to these "null" 
 This method may take a long time, and is only slightly more accurate than the approximate method,
 as long as there are enough iterations.
 
-In general, we would recommend using the approximate method.
+**In general, we recommend using the approximate method.**
 
 Multiple comparisons correction
 -------------------------------
@@ -65,7 +65,7 @@ Multiple comparisons correction
 The initial Estimator fit (with the null method of choice) will produce a MetaResult with unthresholded, uncorrected statistical maps.
 These statistical maps shouldn't be thresholded and interpreted on their own, as they don't account for the multiple comparisons issue.
 To correct for multiple comparisons, we have Corrector classes
-(:class:`FWECorrector<nimare.correct.FWECorrector>` and :class:`FDRCorrector<nimare.correct.FDRCorrector>`).
+(:class:`~nimare.correct.FWECorrector` and :class:`~nimare.correct.FDRCorrector`).
 
 These classes ingest MetaResults with uncorrected maps,
 then use the Estimator and Dataset that the MetaResult references to perform multiple comparisons correction.
@@ -79,7 +79,7 @@ These methods can be broadly separated into two groups: generic methods and Esti
 Generic methods rely on tools like ``statsmodels`` to correct the results as an array,
 without accounting for any of the idiosyncrasies of neuroimaging data (e.g., autocorrelation).
 One example of a generic method is the "bonferroni" method for the FWECorrector.
-**We do not recommend using these methods.**
+**We do not recommend using the generic methods.**
 
 Estimator-specific methods are approaches that are implemented within the Estimator as class methods
 that are then called by the Corrector.
@@ -89,7 +89,7 @@ One such method is the Monte Carlo method (``method="montecarlo"``).
 
 The Monte Carlo multiple comparisons correction method
 ``````````````````````````````````````````````````````
-:class:`nimare.correct.FWECorrector`, :meth:`nimare.meta.cbma.base.CBMAEstimator.correct_fwe_montecarlo`
+:class:`~nimare.correct.FWECorrector`, :meth:`~nimare.meta.cbma.base.CBMAEstimator.correct_fwe_montecarlo`
 
 For our CBMA algorithms, we strongly recommend using the "montecarlo" method with the FWECorrector.
 This is the primary Estimator-specific method, which operates by creating simulated versions of the Dataset,

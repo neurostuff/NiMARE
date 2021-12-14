@@ -8,7 +8,7 @@
 The NiMARE Dataset object
 =========================
 
-This is a brief walkthrough of the :class:`nimare.dataset.Dataset` class and its methods.
+This is a brief walkthrough of the :class:`~nimare.dataset.Dataset` class and its methods.
 """
 ###############################################################################
 # Start with the necessary imports
@@ -107,7 +107,7 @@ print(f"Template space: {dset.space}")
 # Instead, relative paths to image files are retained in the Dataset.images
 # attribute.
 # When loading a Dataset, you will likely need to specify the path to the images.
-# To do this, you can use :func:`nimare.dataset.Dataset.update_path`.
+# To do this, you can use :func:`~nimare.dataset.Dataset.update_path`.
 dset.update_path(dset_dir)
 columns_to_show = ["id", "study_id", "contrast_id", "beta", "beta__relative"]
 dset.images[columns_to_show].head()
@@ -121,8 +121,8 @@ dset.images[columns_to_show].head()
 # For example, ``varcope = t / beta``, so if you have t-statistic images and
 # beta images, you can also calculate varcope (variance) images.
 #
-# We use :mod:`nimare.transforms` to perform these transformations
-# (especially :class:`nimare.transforms.ImageTransformer`)
+# We use the :mod:`~nimare.transforms` module to perform these transformations
+# (especially :class:`~nimare.transforms.ImageTransformer`)
 varcope_transformer = ImageTransformer(target="varcope")
 dset = varcope_transformer.transform(dset)
 dset.images[["id", "varcope"]].head()
@@ -168,6 +168,6 @@ print("\n".join(sel_studies))
 # to image files, most elements are not.
 # NiMARE Estimators operate on Datasets and return *new*, updated Datasets.
 # If you want to reduce a Dataset based on a subset of the studies in the
-# Dataset, you need to use :func:`nimare.dataset.Dataset.slice`.
+# Dataset, you need to use :meth:`~nimare.dataset.Dataset.slice`.
 sub_dset = dset.slice(ids=sel_studies)
 print("\n".join(sub_dset.ids))
