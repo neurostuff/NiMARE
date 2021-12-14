@@ -171,7 +171,7 @@ def test_mni2tal():
 def test_vox2mm():
     """Test vox2mm."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
-    true = np.array([[50.0, -86.0, -32.0], [90.0, -126.0, -72.0]])
+    true = np.array([[-50.0, -86.0, -32.0], [-90.0, -126.0, -72.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.vox2mm(test, aff), true)
@@ -180,7 +180,7 @@ def test_vox2mm():
 def test_mm2vox():
     """Test mm2vox."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
-    true = np.array([[35.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
+    true = np.array([[55.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.mm2vox(test, aff), true)
