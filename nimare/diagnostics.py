@@ -65,7 +65,7 @@ class Jackknife(NiMAREBase):
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             A MetaResult produced by a coordinate- or image-based meta-analysis.
 
         Returns

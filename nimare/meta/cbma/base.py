@@ -36,14 +36,14 @@ class CBMAEstimator(MetaEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
         __init__ (called automatically).
     """
 
@@ -66,7 +66,7 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
         """
         self.dataset = dataset
@@ -529,7 +529,7 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             Result object from a CBMA meta-analysis.
         voxel_thresh : :obj:`float`, optional
             Cluster-defining p-value threshold. Default is 0.001.
@@ -756,14 +756,14 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
         __init__ (called automatically).
     """
 
@@ -773,12 +773,12 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         Parameters
         ----------
-        dataset1/dataset2 : :obj:`nimare.dataset.Dataset`
+        dataset1/dataset2 : :obj:`~nimare.dataset.Dataset`
             Dataset objects to analyze.
 
         Returns
         -------
-        :obj:`nimare.results.MetaResult`
+        :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
         Notes

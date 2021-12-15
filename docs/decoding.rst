@@ -1,7 +1,5 @@
 .. include:: links.rst
 
-.. _decoding methods:
-
 Meta-analytic functional decoding
 =================================
 
@@ -60,7 +58,7 @@ should be preferred over the correlation distribution-based decoding.
 
 Correlation-based decoding
 ``````````````````````````````
-:class:`nimare.decode.continuous.CorrelationDecoder`
+:class:`~nimare.decode.continuous.CorrelationDecoder`
 
 The correlation-based decoding is implemented in NiMARE’s `CorrelationDecoder` class object.
 
@@ -79,7 +77,7 @@ The correlation-based decoding is implemented in NiMARE’s `CorrelationDecoder`
 
 Correlation distribution-based decoding
 ``````````````````````````````````````````
-:class:`nimare.decode.continuous.CorrelationDistributionDecoder`
+:class:`~nimare.decode.continuous.CorrelationDistributionDecoder`
 
 The distribution-based decoding is implemented in NiMARE’s ``CorrelationDistributionDecoder``
 class object.
@@ -87,7 +85,7 @@ class object.
 
 The GCLDA approach
 `````````````````````
-:func:`nimare.decode.continuous.gclda_decode_map`
+:func:`~nimare.decode.continuous.gclda_decode_map`
 
 Recently, it was introduced a new decoding framework based on Generalized Correspondence LDA
 (GC-LDA, (`Rubin et al., 2017`_)), an extension to the LDA model. This method, in addition to the
@@ -148,7 +146,7 @@ which are evaluated in terms of both statistical significance and effect size.
 
 The BrainMap approach
 `````````````````````
-:class:`nimare.decode.discrete.BrainMapDecoder`, :func:`nimare.decode.discrete.brainmap_decode`
+:class:`~nimare.decode.discrete.BrainMapDecoder`, :func:`~nimare.decode.discrete.brainmap_decode`
 
 The BrainMap discrete decoding method compares the distributions of studies with each label within
 the sample against those in a larger database while accounting for the number of foci from each
@@ -254,7 +252,7 @@ Example: :ref:`brain-map-decoder-example`
 
 The Neurosynth approach
 ```````````````````````
-:class:`nimare.decode.discrete.NeurosynthDecoder`, :func:`nimare.decode.discrete.neurosynth_decode`
+:class:`~nimare.decode.discrete.NeurosynthDecoder`, :func:`~nimare.decode.discrete.neurosynth_decode`
 
 The implementation of the MKDA Chi-squared meta-analysis method used by Neurosynth is quite
 similar to BrainMap’s method for decoding, if applied to annotations instead of modeled activation
@@ -358,7 +356,7 @@ Example: :ref:`neurosynth-chi2-decoder-example`
 
 The Neurosynth ROI association approach
 ```````````````````````````````````````
-:class:`nimare.decode.discrete.ROIAssociationDecoder`
+:class:`~nimare.decode.discrete.ROIAssociationDecoder`
 
 Neurosynth's ROI association approach is quite simple, but it has been used in at least one
 publication, `Margulies et al. (2016)`_.
@@ -389,7 +387,7 @@ Example: :ref:`neurosynth-roi-decoder-example`
 
 The GC-LDA approach
 ```````````````````
-:func:`nimare.decode.discrete.gclda_decode_roi`
+:func:`~nimare.decode.discrete.gclda_decode_roi`
 
 
 The GC-LDA approach sums :math:`P(topic|voxel)` weights within the region of interest to produce
@@ -399,3 +397,5 @@ Example: :ref:`gclda-decode-roi-example`
 
 Encoding
 --------
+
+TBD

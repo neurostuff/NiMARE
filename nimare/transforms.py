@@ -21,7 +21,7 @@ LGR = logging.getLogger(__name__)
 class ImageTransformer(Transformer):
     """A class to create new images from existing ones within a Dataset.
 
-    This class is a light wrapper around :func:`nimare.transforms.transform_images`.
+    This class is a light wrapper around :func:`~nimare.transforms.transform_images`.
 
     .. versionadded:: 0.0.9
 
@@ -46,12 +46,12 @@ class ImageTransformer(Transformer):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             A Dataset containing images and relevant metadata.
 
         Returns
         -------
-        new_dataset : :obj:`nimare.dataset.Dataset`
+        new_dataset : :obj:`~nimare.dataset.Dataset`
             A copy of the input Dataset, with new images added to its images attribute.
         """
         # Using attribute check instead of type check to allow fake Datasets for testing.
@@ -340,13 +340,13 @@ class ImagesToCoordinates(Transformer):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset with z maps and/or p maps
             that can be converted to coordinates.
 
         Returns
         -------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset with coordinates generated from
             images and metadata indicating origin
             of coordinates ('original' or 'nimare').

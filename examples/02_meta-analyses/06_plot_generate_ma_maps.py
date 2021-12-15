@@ -36,7 +36,7 @@ dset = Dataset(dset_file)
 ###############################################################################
 # Each kernel can taken certain parameters that control behavior
 # --------------------------------------------------------------
-# For example, :class:`nimare.meta.kernel.MKDAKernel` kernel accepts an `r`
+# For example, :class:`~nimare.meta.kernel.MKDAKernel` kernel accepts an `r`
 # argument to control the radius of the kernel.
 
 kernel = MKDAKernel(r=2)
@@ -86,13 +86,13 @@ fig.show()
 ###############################################################################
 # There are several kernels available
 # --------------------------------------------------
-# :class:`nimare.meta.kernel.MKDAKernel` convolves coordinates with a
+# :class:`~nimare.meta.kernel.MKDAKernel` convolves coordinates with a
 # sphere and takes the union across voxels.
 #
-# :class:`nimare.meta.kernel.KDAKernel` convolves coordinates with a
+# :class:`~nimare.meta.kernel.KDAKernel` convolves coordinates with a
 # sphere as well, but takes the *sum* across voxels.
 #
-# :class:`nimare.meta.kernel.ALEKernel` convolves coordinates with a 3D
+# :class:`~nimare.meta.kernel.ALEKernel` convolves coordinates with a 3D
 # Gaussian, for which the FWHM is determined by the sample size of each study.
 kernel = MKDAKernel(r=10)
 mkda_res = kernel.transform(dset, return_type="image")

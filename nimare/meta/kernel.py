@@ -31,7 +31,7 @@ LGR = logging.getLogger(__name__)
 
 
 class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods in :mod:`nimare.meta.kernel`.
+    """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -84,7 +84,7 @@ class KernelTransformer(Transformer):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
+        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
         masker : img_like or None, optional
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
@@ -98,7 +98,7 @@ class KernelTransformer(Transformer):
         Returns
         -------
         imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
-               or :class:`nimare.dataset.Dataset`
+               or :class:`~nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images

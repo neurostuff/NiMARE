@@ -632,7 +632,7 @@ class PermutedOLS(MetaEstimator):
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             Result object from an ALE meta-analysis.
         n_iters : :obj:`int`, optional
             The number of iterations to run in estimating the null distribution.

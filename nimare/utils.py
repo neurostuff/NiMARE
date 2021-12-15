@@ -12,7 +12,6 @@ from tempfile import mkstemp
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
 from . import references
@@ -33,53 +32,63 @@ def get_resource_path():
 def get_template(space="mni152_2mm", mask=None):
     """Load template file.
 
+    .. versionchanged:: 0.0.11
+        - Remove the ``mask="gm"`` option.
+        - Replace the nilearn templates with ones downloaded directly from TemplateFlow.
+
     Parameters
     ----------
     space : {'mni152_1mm', 'mni152_2mm', 'ale_2mm'}, optional
-        Template to load. Default is 'mni152_1mm'.
-    mask : {None, 'brain', 'gm'}, optional
-        Whether to return the raw template (None), a brain mask ('brain'), or
-        a gray-matter mask ('gm'). Default is None.
+        Template to load. Default is 'mni152_2mm'.
+        The options are:
+
+            -   mni152_1mm: The MNI152NLin6Asym template at 1mm3 resolution,
+                downloaded from TemplateFlow. The shape of this template is 182x218x182 voxels.
+            -   mni152_2mm: The MNI152NLin6Asym template at 2mm3 resolution,
+                downloaded from TemplateFlow. The shape of this template is 91x109x91 voxels.
+            -   ale_2mm: The template used is the MNI152NLin6Asym template at 2mm3 resolution,
+                but if ``mask='brain'``, then a brain mask taken from GingerALE will be used.
+                The brain mask corresponds to GingerALE's "more conservative" mask.
+                The shape of this template is 91x109x91 voxels.
+    mask : {None, 'brain'}, optional
+        Whether to return the raw T1w template (None) or a brain mask ('brain').
+        Default is None.
 
     Returns
     -------
-    img : :obj:`nibabel.nifti1.Nifti1Image`
+    img : :obj:`~nibabel.nifti1.Nifti1Image`
         Template image object.
     """
+    template_dir = op.join(get_resource_path(), "templates")
     if space == "mni152_1mm":
         if mask is None:
-            img = nib.load(datasets.fetch_icbm152_2009()["t1"])
+            img = nib.load(op.join(template_dir, "tpl-MNI152NLin6Asym_res-01_T1w.nii.gz"))
         elif mask == "brain":
-            img = nib.load(datasets.fetch_icbm152_2009()["mask"])
-        elif mask == "gm":
-            img = datasets.fetch_icbm152_brain_gm_mask(threshold=0.2)
+            img = nib.load(
+                op.join(template_dir, "tpl-MNI152NLin6Asym_res-01_desc-brain_mask.nii.gz")
+            )
         else:
-            raise ValueError(f"Mask {mask} not supported")
+            raise ValueError(f"Mask option '{mask}' not supported")
     elif space == "mni152_2mm":
         if mask is None:
-            img = datasets.load_mni152_template()
+            img = nib.load(op.join(template_dir, "tpl-MNI152NLin6Asym_res-02_T1w.nii.gz"))
         elif mask == "brain":
-            img = datasets.load_mni152_brain_mask()
-        elif mask == "gm":
-            # this approach seems to approximate the 0.2 thresholded
-            # GM mask pretty well
-            temp_img = datasets.load_mni152_template()
-            data = temp_img.get_fdata()
-            data = data * -1
-            data[data != 0] += np.abs(np.min(data))
-            data = (data > 1200).astype(int)
-            img = nib.Nifti1Image(data, temp_img.affine)
+            img = nib.load(
+                op.join(template_dir, "tpl-MNI152NLin6Asym_res-02_desc-brain_mask.nii.gz")
+            )
         else:
-            raise ValueError(f"Mask {mask} not supported")
+            raise ValueError(f"Mask option '{mask}' not supported")
     elif space == "ale_2mm":
         if mask is None:
-            img = datasets.load_mni152_template()
-        else:
+            img = nib.load(op.join(template_dir, "tpl-MNI152NLin6Asym_res-02_T1w.nii.gz"))
+        elif mask == "brain":
             # Not the same as the nilearn brain mask, but should correspond to
             # the default "more conservative" MNI152 mask in GingerALE.
-            img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii"))
+            img = nib.load(op.join(template_dir, "MNI152_2x2x2_brainmask.nii.gz"))
+        else:
+            raise ValueError(f"Mask option '{mask}' not supported")
     else:
-        raise ValueError(f"Space {space} not supported")
+        raise ValueError(f"Space '{space}' not supported")
 
     # Coerce to array-image
     img = nib.Nifti1Image(img.get_fdata(), affine=img.affine, header=img.header)
@@ -816,7 +825,7 @@ def _add_metadata_to_dataframe(
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
+    dataset : :obj:`~nimare.dataset.Dataset`
         Dataset containing study IDs and metadata to feed into dataframe.
     dataframe : :obj:`pandas.DataFrame`
         DataFrame containing study IDs, into which Dataset metadata will be merged.
