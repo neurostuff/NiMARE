@@ -31,7 +31,7 @@ model = annotate.lda.LDAModel(n_topics=5, max_iter=1000, text_column="abstract")
 ###############################################################################
 # Run model
 # ---------
-new_dset = model.transform(dset)
+new_dset = model.fit(dset)
 
 ###############################################################################
 # View results
