@@ -7,6 +7,9 @@
 ================================
 Generate MA maps with peaks2maps
 ================================
+
+.. warning::
+    peaks2maps has been deprecated within NiMARE and will be removed in version 0.0.13.
 """
 ###############################################################################
 # Start with the necessary imports

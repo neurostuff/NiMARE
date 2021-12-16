@@ -9,6 +9,9 @@ changelog:
     - title: 🎉 Exciting New Features
       labels:
         - enhancement
+    - title: 👎 Deprecations
+      labels:
+        - deprecation
     - title: 🐛 Bug Fixes
       labels:
         - bug
