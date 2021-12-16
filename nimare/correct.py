@@ -165,7 +165,7 @@ class FWECorrector(Corrector):
     To determine what methods are available for the Estimator you're using,
     check the Estimator's documentation. Estimators have special methods
     following the naming convention correct_[correction-type]_[method]
-    (e.g., :func:`~nimare.meta.ale.ALE.correct_fwe_montecarlo`).
+    (e.g., :func:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`).
     """
 
     _correction_method = "fwe"

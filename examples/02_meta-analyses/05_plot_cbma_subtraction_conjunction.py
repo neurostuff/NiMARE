@@ -53,7 +53,7 @@ knowledge_corrected_results = corr.transform(knowledge_results)
 related_corrected_results = corr.transform(related_results)
 
 fig, axes = plt.subplots(figsize=(12, 10), nrows=2)
-img = knowledge_corrected_results.get_map("z_level-cluster_corr-FWE_method-montecarlo")
+img = knowledge_corrected_results.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo")
 plot_stat_map(
     img,
     cut_coords=4,
@@ -66,7 +66,7 @@ plot_stat_map(
     figure=fig,
 )
 
-img2 = related_corrected_results.get_map("z_level-cluster_corr-FWE_method-montecarlo")
+img2 = related_corrected_results.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo")
 plot_stat_map(
     img2,
     cut_coords=4,
@@ -85,7 +85,7 @@ fig.show()
 # -----------------------------------------------------------------------------
 
 jknife = Jackknife(
-    target_image="z_level-cluster_corr-FWE_method-montecarlo",
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
 knowledge_cluster_table, knowledge_cluster_img = jknife.transform(knowledge_corrected_results)
