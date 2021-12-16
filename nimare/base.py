@@ -576,9 +576,8 @@ class Decoder(NiMAREBase):
 class Annotator(NiMAREBase):
     """Base class for annotators in :mod:`nimare.annotate`.
 
-    Annotators operate like Transformers in that they ingest Datasets and output modified Datasets.
-    One difference between Annotators and Transformers is that Annotators retain extra information
-    in a ``distributions_`` attribute.
+    Annotators operate like Estimators in that they ingest Datasets and output a different object.
+    While Estimators output MetaResults, Annotators return Annotations.
 
     Depending on the Annotator, they may accept either a text column or a set of labels to use.
 
@@ -586,7 +585,7 @@ class Annotator(NiMAREBase):
 
     """
 
-    def transform(self, dataset):
+    def fit(self, dataset):
         """Annotate a dataset.
 
         Parameters
@@ -600,9 +599,9 @@ class Annotator(NiMAREBase):
 
         Notes
         -----
-        The `transform` method is a light wrapper that runs input validation and preprocessing
-        before fitting the actual model. Annotators' individual "transforming" methods are
-        implemented as `_transform`, although users should call `transform`.
+        The ``fit`` method is a light wrapper that runs input validation and preprocessing
+        before fitting the actual model. Annotators' individual "fitting" methods are
+        implemented as ``_fit``, although users should call ``fit``.
         """
         # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
@@ -610,11 +609,11 @@ class Annotator(NiMAREBase):
                 f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}"
             )
 
-        dataset = self._transform(dataset)
-        return dataset
+        annotation = self._fit(dataset)
+        return annotation
 
     @abstractmethod
-    def _transform(self, dataset):
+    def _fit(self, dataset):
         pass
 
 
