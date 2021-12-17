@@ -18,7 +18,6 @@ exclude = '''
     | build
     | dist
   )/
-  | get_version.py
   | versioneer.py
   | nimare/_version.py
   | nimare/due.py
