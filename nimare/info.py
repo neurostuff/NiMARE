@@ -50,7 +50,6 @@ REQUIRES = [
     "cognitiveatlas",
     "fuzzywuzzy",
     "indexed_gzip>=1.4.0",
-    "matplotlib<3.5",  # this is for nilearn, which doesn't include it in its reqs
     "nibabel>=3.0.0",
     "nilearn>=0.7.1",
     "numpy",
