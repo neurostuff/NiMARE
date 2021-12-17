@@ -18,7 +18,7 @@ jobs:
           paths:
               - src/NiMARE
       - restore_cache:  # ensure this step occurs *before* installing dependencies
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
       - run:  # will overwrite NiMARE installation each time
           name: Generate environment
           command:  |
@@ -31,7 +31,7 @@ jobs:
             fi
             pip install -e .[tests,peaks2maps-cpu]
       - save_cache:  # environment cache tied to requirements
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
           paths:
             - "/opt/conda/envs/py37_env"
 
@@ -91,7 +91,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
       - run:
           name: Run tests
           command:  |
@@ -164,7 +164,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
       - run:
           name: Linting
           command:  |
@@ -187,7 +187,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
       - run:
           name: Test reasonable output for combinations of estimators/kernels/correctors
           no_output_timeout: 30m
@@ -211,7 +211,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
       - run:
           name: Test reasonable output for combinations of estimators/kernels/correctors
           no_output_timeout: 30m
@@ -236,7 +236,7 @@ jobs:
           at: /tmp
       - checkout
       - restore_cache:
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
       - run:
           name: Merge coverage files
           command: |
@@ -259,7 +259,7 @@ jobs:
       - attach_workspace:  # get NiMARE
           at: /tmp
       - restore_cache:  # load environment
-          key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
+          key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
       - run:
           name: Linting
           command:  |
