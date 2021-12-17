@@ -20,9 +20,7 @@ from nimare.utils import get_resource_path
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-dset = Dataset(
-    os.path.join(get_resource_path(), "neurosynth_laird_studies.json")
-)
+dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 
 ###############################################################################
 # Download MALLET

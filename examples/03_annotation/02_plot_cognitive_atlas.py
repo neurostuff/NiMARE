@@ -23,16 +23,12 @@ from nimare.utils import get_resource_path
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-dset = Dataset(
-    os.path.join(get_resource_path(), "neurosynth_laird_studies.json")
-)
+dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 
 ###############################################################################
 # Download Cognitive Atlas
 # ------------------------
-cogatlas = extract.download_cognitive_atlas(
-    data_dir=get_resource_path(), overwrite=False
-)
+cogatlas = extract.download_cognitive_atlas(data_dir=get_resource_path(), overwrite=False)
 id_df = pd.read_csv(cogatlas["ids"])
 rel_df = pd.read_csv(cogatlas["relationships"])
 
