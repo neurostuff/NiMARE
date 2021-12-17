@@ -33,9 +33,7 @@ from nimare.utils import get_resource_path
 # ---------------------------
 # We'll load a small dataset composed only of studies in Neurosynth with
 # Angela Laird as a coauthor, for the sake of speed.
-dset = Dataset(
-    os.path.join(get_resource_path(), "neurosynth_laird_studies.json")
-)
+dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 dset.texts.head(2)
 
 ###############################################################################
