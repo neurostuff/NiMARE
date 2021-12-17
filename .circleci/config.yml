@@ -28,9 +28,8 @@ jobs:
             else
                 conda create -n py37_env python=3.7 -yq
                 source activate py37_env
-                pip install -e .[tests,peaks2maps-cpu]
             fi
-            python setup.py install --user
+            pip install -e .[tests,peaks2maps-cpu]
       - save_cache:  # environment cache tied to requirements
           key: deps10-{{ checksum "nimare/setup.cfg" }}-{{ checksum "setup.py" }}
           paths:
@@ -52,7 +51,6 @@ jobs:
             conda create -n py36_min_env python=3.6 -yq
             source activate py36_min_env
             pip install -e .[minimum,tests,peaks2maps-cpu]
-            python setup.py install --user
       - run:
           name: Run tests
           command:  |
@@ -77,7 +75,6 @@ jobs:
             conda create -n py36_env python=3.6 -yq
             source activate py36_env
             pip install -e .[tests,peaks2maps-cpu]
-            python setup.py install --user
       - run:
           name: Run tests
           command:  |
@@ -126,7 +123,6 @@ jobs:
             source activate py38_env
             pip install pip -U
             pip install -e .[tests,peaks2maps-cpu]
-            python setup.py install --user
       - run:
           name: Run tests
           command:  |
@@ -152,7 +148,6 @@ jobs:
             source activate py39_env
             pip install pip -U
             pip install -e .[tests,peaks2maps-cpu]
-            python setup.py install --user
       - run:
           name: Run tests
           command:  |
