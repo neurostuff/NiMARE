@@ -1,14 +1,13 @@
 """Utilities for generating data for testing."""
 from itertools import zip_longest
 
-import nilearn
 import numpy as np
 
 from .dataset import Dataset
 from .io import convert_neurovault_to_dataset
 from .meta.utils import compute_ale_ma, get_ale_kernel
 from .transforms import ImageTransformer
-from .utils import mm2vox, vox2mm
+from .utils import get_template, mm2vox, vox2mm
 
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
@@ -62,7 +61,7 @@ def create_coordinate_dataset(
     -------
     ground_truth_foci : :obj:`list`
         generated foci in xyz (mm) coordinates
-    dataset : :class:`nimare.Dataset`
+    dataset : :class:`~nimare.dataset.Dataset`
     """
     # set random state
     rng = np.random.RandomState(seed=seed)
@@ -156,11 +155,11 @@ def create_neurovault_dataset(
         statistic map in a nimare dataset. Default = None.
     **dset_kwargs : keyword arguments passed to Dataset
         Keyword arguments to pass in when creating the Dataset object.
-        see :obj:`nimare.dataset.Dataset` for details.
+        see :obj:`~nimare.dataset.Dataset` for details.
 
     Returns
     -------
-    :obj:`nimare.dataset.Dataset`
+    :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from neurovault.
     """
     dataset = convert_neurovault_to_dataset(
@@ -250,7 +249,7 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
         foci_percentage = float(foci_percentage[:-1]) / 100
 
     if space == "MNI":
-        template_img = nilearn.datasets.load_mni152_brain_mask()
+        template_img = get_template(space="mni152_2mm", mask="brain")
 
     # use a template to find all "valid" coordinates
     template_data = template_img.get_fdata()

@@ -24,6 +24,8 @@ API
 :mod:`nimare.meta`: Meta-analytic algorithms
 --------------------------------------------------
 
+For more information about the components of coordinate-based meta-analysis in NiMARE, see :doc:`cbma`.
+
 .. automodule:: nimare.meta
    :no-members:
    :no-inherited-members:
@@ -77,6 +79,24 @@ API
    correct.FDRCorrector
 
 
+.. _api_diagnostics_ref:
+
+:mod:`nimare.diagnostics`: Diagnostics
+------------------------------------------------------
+
+.. automodule:: nimare.diagnostics
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   diagnostics.Jackknife
+
+
 .. _api_annotate_ref:
 
 :mod:`nimare.annotate`: Automated annotation
@@ -103,7 +123,7 @@ API
 
 :mod:`nimare.decode`: Functional characterization analysis
 -----------------------------------------------------------
-For more information about functional characterization analysis, see :ref:`decoding methods`.
+For more information about functional characterization analysis, see :doc:`decoding`.
 
 .. automodule:: nimare.decode
    :no-members:
@@ -122,8 +142,8 @@ For more information about functional characterization analysis, see :ref:`decod
 
 .. _api_io_ref:
 
-:mod:`nimare.io`: Input/Output
------------------------------------------------------
+:mod:`nimare.io`: Tools for ingesting data in other formats
+-----------------------------------------------------------
 
 .. automodule:: nimare.io
    :no-members:
@@ -263,21 +283,9 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :toctree: generated/
    :template: function.rst
 
-   utils.dict_to_df
-   utils.dict_to_coordinates
-   utils.validate_df
-   utils.validate_images_df
    utils.get_template
    utils.get_masker
-   utils.listify
-   utils.round2
    utils.get_resource_path
-   utils.try_prepend
-   utils.find_stem
-   utils.uk_to_us
-   utils.use_memmap
-   utils.add_metadata_to_dataframe
-   utils.check_type
    utils.vox2mm
    utils.mm2vox
    utils.tal2mni

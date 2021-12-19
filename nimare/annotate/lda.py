@@ -10,7 +10,7 @@ from .. import references
 from ..base import NiMAREBase
 from ..due import due
 from ..extract import download_mallet, utils
-from ..utils import run_shell_command
+from ..utils import _run_shell_command
 
 LGR = logging.getLogger(__name__)
 
@@ -142,8 +142,8 @@ class LDAModel(NiMAREBase):
             Probability of each word given a topic
         """
         LGR.info("Generating topics...")
-        run_shell_command(self.commands_[0])
-        run_shell_command(self.commands_[1])
+        _run_shell_command(self.commands_[0])
+        _run_shell_command(self.commands_[1])
 
         # Read in and convert doc_topics and topic_keys.
         topic_names = [f"topic_{i:03d}" for i in range(self.params["n_topics"])]

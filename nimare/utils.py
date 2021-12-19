@@ -12,7 +12,6 @@ from tempfile import mkstemp
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn import datasets
 from nilearn.input_data import NiftiMasker
 
 from . import references
@@ -21,7 +20,324 @@ from .due import due
 LGR = logging.getLogger(__name__)
 
 
-def dict_to_df(id_df, data, key="labels"):
+def get_resource_path():
+    """Return the path to general resources, terminated with separator.
+
+    Resources are kept outside package folder in "datasets".
+    Based on function by Yaroslav Halchenko used in Neurosynth Python package.
+    """
+    return op.abspath(op.join(op.dirname(__file__), "resources") + op.sep)
+
+
+def get_template(space="mni152_2mm", mask=None):
+    """Load template file.
+
+    .. versionchanged:: 0.0.11
+        - Remove the ``mask="gm"`` option.
+        - Replace the nilearn templates with ones downloaded directly from TemplateFlow.
+
+    Parameters
+    ----------
+    space : {'mni152_1mm', 'mni152_2mm', 'ale_2mm'}, optional
+        Template to load. Default is 'mni152_2mm'.
+        The options are:
+
+            -   mni152_1mm: The MNI152NLin6Asym template at 1mm3 resolution,
+                downloaded from TemplateFlow. The shape of this template is 182x218x182 voxels.
+            -   mni152_2mm: The MNI152NLin6Asym template at 2mm3 resolution,
+                downloaded from TemplateFlow. The shape of this template is 91x109x91 voxels.
+            -   ale_2mm: The template used is the MNI152NLin6Asym template at 2mm3 resolution,
+                but if ``mask='brain'``, then a brain mask taken from GingerALE will be used.
+                The brain mask corresponds to GingerALE's "more conservative" mask.
+                The shape of this template is 91x109x91 voxels.
+    mask : {None, 'brain'}, optional
+        Whether to return the raw T1w template (None) or a brain mask ('brain').
+        Default is None.
+
+    Returns
+    -------
+    img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Template image object.
+    """
+    template_dir = op.join(get_resource_path(), "templates")
+    if space == "mni152_1mm":
+        if mask is None:
+            img = nib.load(op.join(template_dir, "tpl-MNI152NLin6Asym_res-01_T1w.nii.gz"))
+        elif mask == "brain":
+            img = nib.load(
+                op.join(template_dir, "tpl-MNI152NLin6Asym_res-01_desc-brain_mask.nii.gz")
+            )
+        else:
+            raise ValueError(f"Mask option '{mask}' not supported")
+    elif space == "mni152_2mm":
+        if mask is None:
+            img = nib.load(op.join(template_dir, "tpl-MNI152NLin6Asym_res-02_T1w.nii.gz"))
+        elif mask == "brain":
+            img = nib.load(
+                op.join(template_dir, "tpl-MNI152NLin6Asym_res-02_desc-brain_mask.nii.gz")
+            )
+        else:
+            raise ValueError(f"Mask option '{mask}' not supported")
+    elif space == "ale_2mm":
+        if mask is None:
+            img = nib.load(op.join(template_dir, "tpl-MNI152NLin6Asym_res-02_T1w.nii.gz"))
+        elif mask == "brain":
+            # Not the same as the nilearn brain mask, but should correspond to
+            # the default "more conservative" MNI152 mask in GingerALE.
+            img = nib.load(op.join(template_dir, "MNI152_2x2x2_brainmask.nii.gz"))
+        else:
+            raise ValueError(f"Mask option '{mask}' not supported")
+    else:
+        raise ValueError(f"Space '{space}' not supported")
+
+    # Coerce to array-image
+    img = nib.Nifti1Image(img.get_fdata(), affine=img.affine, header=img.header)
+    return img
+
+
+def get_masker(mask):
+    """Get an initialized, fitted nilearn Masker instance from passed argument.
+
+    Parameters
+    ----------
+    mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
+
+    Returns
+    -------
+    masker : an initialized, fitted instance of a subclass of
+        `nilearn.input_data.base_masker.BaseMasker`
+    """
+    if isinstance(mask, str):
+        mask = nib.load(mask)
+
+    if isinstance(mask, nib.nifti1.Nifti1Image):
+        # Coerce to array-image
+        mask = nib.Nifti1Image(mask.get_fdata(), affine=mask.affine, header=mask.header)
+
+        mask = NiftiMasker(mask)
+
+    if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
+        raise ValueError(
+            "mask argument must be a string, a nibabel image, or a Nilearn Masker instance."
+        )
+
+    # Fit the masker if needed
+    if not hasattr(mask, "mask_img_"):
+        mask.fit()
+
+    return mask
+
+
+def vox2mm(ijk, affine):
+    """Convert matrix subscripts to coordinates.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
+    Parameters
+    ----------
+    ijk : (X, 3) :obj:`numpy.ndarray`
+        Matrix subscripts for coordinates being transformed.
+        One row for each coordinate, with three columns: i, j, and k.
+    affine : (4, 4) :obj:`numpy.ndarray`
+        Affine matrix from image.
+
+    Returns
+    -------
+    xyz : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in image-space.
+
+    Notes
+    -----
+    From here:
+    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
+    """
+    xyz = nib.affines.apply_affine(affine, ijk)
+    return xyz
+
+
+def mm2vox(xyz, affine):
+    """Convert coordinates to matrix subscripts.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
+    Parameters
+    ----------
+    xyz : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in image-space.
+        One row for each coordinate, with three columns: x, y, and z.
+    affine : (4, 4) :obj:`numpy.ndarray`
+        Affine matrix from image.
+
+    Returns
+    -------
+    ijk : (X, 3) :obj:`numpy.ndarray`
+        Matrix subscripts for coordinates being transformed.
+
+    Notes
+    -----
+    From here:
+    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
+    """
+    ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz).astype(int)
+    return ijk
+
+
+@due.dcite(
+    references.LANCASTER_TRANSFORM,
+    description="Introduces the Lancaster MNI-to-Talairach transform, "
+    "as well as its inverse, the Talairach-to-MNI "
+    "transform.",
+)
+@due.dcite(
+    references.LANCASTER_TRANSFORM_VALIDATION,
+    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
+)
+def tal2mni(coords):
+    """Convert coordinates from Talairach space to MNI space.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
+    Parameters
+    ----------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in Talairach space to convert.
+        Each row is a coordinate, with three columns.
+
+    Returns
+    -------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in MNI space.
+        Each row is a coordinate, with three columns.
+
+    Notes
+    -----
+    Python version of BrainMap's tal2icbm_other.m.
+
+    This function converts coordinates from Talairach space to MNI
+    space (normalized using templates other than those contained
+    in SPM and FSL) using the tal2icbm transform developed and
+    validated by Jack Lancaster at the Research Imaging Center in
+    San Antonio, Texas.
+    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
+    """
+    # Find which dimensions are of size 3
+    shape = np.array(coords.shape)
+    if all(shape == 3):
+        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
+        use_dim = 1
+    elif not any(shape == 3):
+        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
+    else:
+        use_dim = np.where(shape == 3)[0][0]
+
+    # Transpose if necessary
+    if use_dim == 1:
+        coords = coords.transpose()
+
+    # Transformation matrices, different for each software package
+    icbm_other = np.array(
+        [
+            [0.9357, 0.0029, -0.0072, -1.0423],
+            [-0.0065, 0.9396, -0.0726, -1.3940],
+            [0.0103, 0.0752, 0.8967, 3.6475],
+            [0.0000, 0.0000, 0.0000, 1.0000],
+        ]
+    )
+
+    # Invert the transformation matrix
+    icbm_other = np.linalg.inv(icbm_other)
+
+    # Apply the transformation matrix
+    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
+    coords = np.dot(icbm_other, coords)
+
+    # Format the output, transpose if necessary
+    out_coords = coords[:3, :]
+    if use_dim == 1:
+        out_coords = out_coords.transpose()
+    return out_coords
+
+
+@due.dcite(
+    references.LANCASTER_TRANSFORM,
+    description="Introduces the Lancaster MNI-to-Talairach transform, "
+    "as well as its inverse, the Talairach-to-MNI "
+    "transform.",
+)
+@due.dcite(
+    references.LANCASTER_TRANSFORM_VALIDATION,
+    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
+)
+def mni2tal(coords):
+    """Convert coordinates from MNI space Talairach space.
+
+    .. versionchanged:: 0.0.8
+
+        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
+
+    Parameters
+    ----------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in MNI space to convert.
+        Each row is a coordinate, with three columns.
+
+    Returns
+    -------
+    coords : (X, 3) :obj:`numpy.ndarray`
+        Coordinates in Talairach space.
+        Each row is a coordinate, with three columns.
+
+    Notes
+    -----
+    Python version of BrainMap's icbm_other2tal.m.
+    This function converts coordinates from MNI space (normalized using
+    templates other than those contained in SPM and FSL) to Talairach space
+    using the icbm2tal transform developed and validated by Jack Lancaster at
+    the Research Imaging Center in San Antonio, Texas.
+    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
+    """
+    # Find which dimensions are of size 3
+    shape = np.array(coords.shape)
+    if all(shape == 3):
+        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
+        use_dim = 1
+    elif not any(shape == 3):
+        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
+    else:
+        use_dim = np.where(shape == 3)[0][0]
+
+    # Transpose if necessary
+    if use_dim == 1:
+        coords = coords.transpose()
+
+    # Transformation matrices, different for each software package
+    icbm_other = np.array(
+        [
+            [0.9357, 0.0029, -0.0072, -1.0423],
+            [-0.0065, 0.9396, -0.0726, -1.3940],
+            [0.0103, 0.0752, 0.8967, 3.6475],
+            [0.0000, 0.0000, 0.0000, 1.0000],
+        ]
+    )
+
+    # Apply the transformation matrix
+    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
+    coords = np.dot(icbm_other, coords)
+
+    # Format the output, transpose if necessary
+    out_coords = coords[:3, :]
+    if use_dim == 1:
+        out_coords = out_coords.transpose()
+    return out_coords
+
+
+def _dict_to_df(id_df, data, key="labels"):
     """Load a given data type in NIMADS-format dictionary into DataFrame.
 
     Parameters
@@ -59,7 +375,7 @@ def dict_to_df(id_df, data, key="labels"):
     return df
 
 
-def dict_to_coordinates(data, masker, space):
+def _dict_to_coordinates(data, masker, space):
     """Load coordinates in NIMADS-format dictionary into DataFrame."""
     # Required columns
     columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]
@@ -124,11 +440,11 @@ def dict_to_coordinates(data, masker, space):
     # replace nan with none
     df = df.where(pd.notnull(df), None)
     df[["x", "y", "z"]] = df[["x", "y", "z"]].astype(float)
-    df = transform_coordinates_to_space(df, masker, space)
+    df = _transform_coordinates_to_space(df, masker, space)
     return df
 
 
-def transform_coordinates_to_space(df, masker, space):
+def _transform_coordinates_to_space(df, masker, space):
     """Convert xyz coordinates in a DataFrame to ijk indices for a given target space.
 
     Parameters
@@ -168,13 +484,13 @@ def transform_coordinates_to_space(df, masker, space):
     return df
 
 
-def validate_df(df):
+def _validate_df(df):
     """Check that an input is a DataFrame and has a column for 'id'."""
     assert isinstance(df, pd.DataFrame)
     assert "id" in df.columns
 
 
-def validate_images_df(image_df):
+def _validate_images_df(image_df):
     """Check and update image paths in DataFrame.
 
     Parameters
@@ -223,7 +539,7 @@ def validate_images_df(image_df):
             # In the odd case where there's only one absolute path
             shared_path = op.dirname(all_files[0]) + op.sep
         else:
-            shared_path = find_stem(all_files)
+            shared_path = _find_stem(all_files)
 
         # Get parent *directory* if shared path includes common prefix.
         if not shared_path.endswith(op.sep):
@@ -241,96 +557,7 @@ def validate_images_df(image_df):
     return image_df
 
 
-def get_template(space="mni152_2mm", mask=None):
-    """Load template file.
-
-    Parameters
-    ----------
-    space : {'mni152_1mm', 'mni152_2mm', 'ale_2mm'}, optional
-        Template to load. Default is 'mni152_1mm'.
-    mask : {None, 'brain', 'gm'}, optional
-        Whether to return the raw template (None), a brain mask ('brain'), or
-        a gray-matter mask ('gm'). Default is None.
-
-    Returns
-    -------
-    img : :obj:`nibabel.nifti1.Nifti1Image`
-        Template image object.
-    """
-    if space == "mni152_1mm":
-        if mask is None:
-            img = nib.load(datasets.fetch_icbm152_2009()["t1"])
-        elif mask == "brain":
-            img = nib.load(datasets.fetch_icbm152_2009()["mask"])
-        elif mask == "gm":
-            img = datasets.fetch_icbm152_brain_gm_mask(threshold=0.2)
-        else:
-            raise ValueError(f"Mask {mask} not supported")
-    elif space == "mni152_2mm":
-        if mask is None:
-            img = datasets.load_mni152_template()
-        elif mask == "brain":
-            img = datasets.load_mni152_brain_mask()
-        elif mask == "gm":
-            # this approach seems to approximate the 0.2 thresholded
-            # GM mask pretty well
-            temp_img = datasets.load_mni152_template()
-            data = temp_img.get_fdata()
-            data = data * -1
-            data[data != 0] += np.abs(np.min(data))
-            data = (data > 1200).astype(int)
-            img = nib.Nifti1Image(data, temp_img.affine)
-        else:
-            raise ValueError(f"Mask {mask} not supported")
-    elif space == "ale_2mm":
-        if mask is None:
-            img = datasets.load_mni152_template()
-        else:
-            # Not the same as the nilearn brain mask, but should correspond to
-            # the default "more conservative" MNI152 mask in GingerALE.
-            img = nib.load(op.join(get_resource_path(), "templates/MNI152_2x2x2_brainmask.nii"))
-    else:
-        raise ValueError(f"Space {space} not supported")
-
-    # Coerce to array-image
-    img = nib.Nifti1Image(img.get_fdata(), affine=img.affine, header=img.header)
-    return img
-
-
-def get_masker(mask):
-    """Get an initialized, fitted nilearn Masker instance from passed argument.
-
-    Parameters
-    ----------
-    mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
-
-    Returns
-    -------
-    masker : an initialized, fitted instance of a subclass of
-        `nilearn.input_data.base_masker.BaseMasker`
-    """
-    if isinstance(mask, str):
-        mask = nib.load(mask)
-
-    if isinstance(mask, nib.nifti1.Nifti1Image):
-        # Coerce to array-image
-        mask = nib.Nifti1Image(mask.get_fdata(), affine=mask.affine, header=mask.header)
-
-        mask = NiftiMasker(mask)
-
-    if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
-        raise ValueError(
-            "mask argument must be a string, a nibabel image, or a Nilearn Masker instance."
-        )
-
-    # Fit the masker if needed
-    if not hasattr(mask, "mask_img_"):
-        mask.fit()
-
-    return mask
-
-
-def listify(obj):
+def _listify(obj):
     """Wrap all non-list or tuple objects in a list.
 
     This provides a simple way to accept flexible arguments.
@@ -338,7 +565,7 @@ def listify(obj):
     return obj if isinstance(obj, (list, tuple, type(None), np.ndarray)) else [obj]
 
 
-def round2(ndarray):
+def _round2(ndarray):
     """Round X.5 to the nearest integer away from zero.
 
     Numpy rounds X.5 values to nearest even integer.
@@ -354,16 +581,7 @@ def round2(ndarray):
     return rounded.astype(int)
 
 
-def get_resource_path():
-    """Return the path to general resources, terminated with separator.
-
-    Resources are kept outside package folder in "datasets".
-    Based on function by Yaroslav Halchenko used in Neurosynth Python package.
-    """
-    return op.abspath(op.join(op.dirname(__file__), "resources") + op.sep)
-
-
-def try_prepend(value, prefix):
+def _try_prepend(value, prefix):
     """Try to prepend a value to a string with a separator ('/').
 
     If not a string, will just return the original value.
@@ -374,7 +592,7 @@ def try_prepend(value, prefix):
         return value
 
 
-def find_stem(arr):
+def _find_stem(arr):
     """Find longest common substring in array of strings.
 
     From https://www.geeksforgeeks.org/longest-common-substring-array-strings/
@@ -405,7 +623,7 @@ def find_stem(arr):
     return res
 
 
-def uk_to_us(text):
+def _uk_to_us(text):
     """Convert UK spellings to US based on a converter.
 
     .. versionadded:: 0.0.2
@@ -507,7 +725,7 @@ BYTE_CONVERSION = {
 }
 
 
-def determine_chunk_size(limit, arr, multiplier=1):
+def _determine_chunk_size(limit, arr, multiplier=1):
     """Determine how many arrays can be read into memory at once.
 
     Parameters
@@ -537,7 +755,7 @@ def determine_chunk_size(limit, arr, multiplier=1):
     return chunk_size
 
 
-def safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None):
+def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None):
     """Apply a masker with limited memory usage.
 
     Parameters
@@ -579,7 +797,7 @@ def safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None)
         )
 
     # perform transform on chunks of the input maps
-    chunk_size = determine_chunk_size(memory_limit, first_img_data)
+    chunk_size = _determine_chunk_size(memory_limit, first_img_data)
     map_chunks = [imgs[i : i + chunk_size] for i in range(0, len(imgs), chunk_size)]
     idx = 0
     for map_chunk in map_chunks:
@@ -590,7 +808,7 @@ def safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None)
     return masked_data
 
 
-def add_metadata_to_dataframe(
+def _add_metadata_to_dataframe(
     dataset,
     dataframe,
     metadata_field,
@@ -607,7 +825,7 @@ def add_metadata_to_dataframe(
 
     Parameters
     ----------
-    dataset : :obj:`nimare.dataset.Dataset`
+    dataset : :obj:`~nimare.dataset.Dataset`
         Dataset containing study IDs and metadata to feed into dataframe.
     dataframe : :obj:`pandas.DataFrame`
         DataFrame containing study IDs, into which Dataset metadata will be merged.
@@ -658,7 +876,7 @@ def add_metadata_to_dataframe(
     return dataframe
 
 
-def check_type(obj, clss, **kwargs):
+def _check_type(obj, clss, **kwargs):
     """Check variable type and initialize if necessary.
 
     .. versionadded:: 0.0.8
@@ -690,220 +908,7 @@ def check_type(obj, clss, **kwargs):
     return obj
 
 
-def vox2mm(ijk, affine):
-    """
-    Convert matrix subscripts to coordinates.
-
-    .. versionchanged:: 0.0.8
-
-        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
-
-    Parameters
-    ----------
-    ijk : (X, 3) :obj:`numpy.ndarray`
-        Matrix subscripts for coordinates being transformed.
-        One row for each coordinate, with three columns: i, j, and k.
-    affine : (4, 4) :obj:`numpy.ndarray`
-        Affine matrix from image.
-
-    Returns
-    -------
-    xyz : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in image-space.
-
-    Notes
-    -----
-    From here:
-    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
-    """
-    xyz = nib.affines.apply_affine(affine, ijk)
-    return xyz
-
-
-def mm2vox(xyz, affine):
-    """
-    Convert coordinates to matrix subscripts.
-
-    .. versionchanged:: 0.0.8
-
-        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
-
-    Parameters
-    ----------
-    xyz : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in image-space.
-        One row for each coordinate, with three columns: x, y, and z.
-    affine : (4, 4) :obj:`numpy.ndarray`
-        Affine matrix from image.
-
-    Returns
-    -------
-    ijk : (X, 3) :obj:`numpy.ndarray`
-        Matrix subscripts for coordinates being transformed.
-
-    Notes
-    -----
-    From here:
-    http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
-    """
-    ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz).astype(int)
-    return ijk
-
-
-@due.dcite(
-    references.LANCASTER_TRANSFORM,
-    description="Introduces the Lancaster MNI-to-Talairach transform, "
-    "as well as its inverse, the Talairach-to-MNI "
-    "transform.",
-)
-@due.dcite(
-    references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
-)
-def tal2mni(coords):
-    """
-    Convert coordinates from Talairach space to MNI space.
-
-    .. versionchanged:: 0.0.8
-
-        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
-
-    Parameters
-    ----------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in Talairach space to convert.
-        Each row is a coordinate, with three columns.
-
-    Returns
-    -------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in MNI space.
-        Each row is a coordinate, with three columns.
-
-    Notes
-    -----
-    Python version of BrainMap's tal2icbm_other.m.
-
-    This function converts coordinates from Talairach space to MNI
-    space (normalized using templates other than those contained
-    in SPM and FSL) using the tal2icbm transform developed and
-    validated by Jack Lancaster at the Research Imaging Center in
-    San Antonio, Texas.
-    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
-    """
-    # Find which dimensions are of size 3
-    shape = np.array(coords.shape)
-    if all(shape == 3):
-        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
-        use_dim = 1
-    elif not any(shape == 3):
-        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
-    else:
-        use_dim = np.where(shape == 3)[0][0]
-
-    # Transpose if necessary
-    if use_dim == 1:
-        coords = coords.transpose()
-
-    # Transformation matrices, different for each software package
-    icbm_other = np.array(
-        [
-            [0.9357, 0.0029, -0.0072, -1.0423],
-            [-0.0065, 0.9396, -0.0726, -1.3940],
-            [0.0103, 0.0752, 0.8967, 3.6475],
-            [0.0000, 0.0000, 0.0000, 1.0000],
-        ]
-    )
-
-    # Invert the transformation matrix
-    icbm_other = np.linalg.inv(icbm_other)
-
-    # Apply the transformation matrix
-    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
-    coords = np.dot(icbm_other, coords)
-
-    # Format the output, transpose if necessary
-    out_coords = coords[:3, :]
-    if use_dim == 1:
-        out_coords = out_coords.transpose()
-    return out_coords
-
-
-@due.dcite(
-    references.LANCASTER_TRANSFORM,
-    description="Introduces the Lancaster MNI-to-Talairach transform, "
-    "as well as its inverse, the Talairach-to-MNI "
-    "transform.",
-)
-@due.dcite(
-    references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
-)
-def mni2tal(coords):
-    """
-    Convert coordinates from MNI space Talairach space.
-
-    .. versionchanged:: 0.0.8
-
-        * [ENH] This function was part of `nimare.transforms` in previous versions (0.0.3-0.0.7)
-
-    Parameters
-    ----------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in MNI space to convert.
-        Each row is a coordinate, with three columns.
-
-    Returns
-    -------
-    coords : (X, 3) :obj:`numpy.ndarray`
-        Coordinates in Talairach space.
-        Each row is a coordinate, with three columns.
-
-    Notes
-    -----
-    Python version of BrainMap's icbm_other2tal.m.
-    This function converts coordinates from MNI space (normalized using
-    templates other than those contained in SPM and FSL) to Talairach space
-    using the icbm2tal transform developed and validated by Jack Lancaster at
-    the Research Imaging Center in San Antonio, Texas.
-    http://www3.interscience.wiley.com/cgi-bin/abstract/114104479/ABSTRACT
-    """
-    # Find which dimensions are of size 3
-    shape = np.array(coords.shape)
-    if all(shape == 3):
-        LGR.info("Input is an ambiguous 3x3 matrix.\nAssuming coords are row vectors (Nx3).")
-        use_dim = 1
-    elif not any(shape == 3):
-        raise AttributeError("Input must be an Nx3 or 3xN matrix.")
-    else:
-        use_dim = np.where(shape == 3)[0][0]
-
-    # Transpose if necessary
-    if use_dim == 1:
-        coords = coords.transpose()
-
-    # Transformation matrices, different for each software package
-    icbm_other = np.array(
-        [
-            [0.9357, 0.0029, -0.0072, -1.0423],
-            [-0.0065, 0.9396, -0.0726, -1.3940],
-            [0.0103, 0.0752, 0.8967, 3.6475],
-            [0.0000, 0.0000, 0.0000, 1.0000],
-        ]
-    )
-
-    # Apply the transformation matrix
-    coords = np.concatenate((coords, np.ones((1, coords.shape[1]))))
-    coords = np.dot(icbm_other, coords)
-
-    # Format the output, transpose if necessary
-    out_coords = coords[:3, :]
-    if use_dim == 1:
-        out_coords = out_coords.transpose()
-    return out_coords
-
-
-def boolean_unmask(data_array, bool_array):
+def _boolean_unmask(data_array, bool_array):
     """Unmask data based on a boolean array, with NaNs in empty voxels.
 
     Parameters
@@ -938,7 +943,7 @@ def boolean_unmask(data_array, bool_array):
     return unmasked_data
 
 
-def run_shell_command(command, env=None):
+def _run_shell_command(command, env=None):
     """Run a given command with certain environment variables set."""
     merged_env = os.environ
     if env:

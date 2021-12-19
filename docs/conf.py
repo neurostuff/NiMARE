@@ -23,6 +23,7 @@ from distutils.version import LooseVersion
 
 import sphinx
 from m2r import MdInclude
+from sphinx_gallery.sorting import FileNameSortKey
 
 sys.path.insert(0, os.path.abspath(os.path.pardir))
 sys.path.insert(0, os.path.abspath("sphinxext"))
@@ -34,8 +35,7 @@ import nimare
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
-
-# needs_sphinx = '1.0'
+needs_sphinx = "3.5"
 
 # generate autosummary even if no references
 autosummary_generate = True
@@ -150,7 +150,7 @@ htmlhelp_basename = "nimaredoc"
 # The following is used by sphinx.ext.linkcode to provide links to github
 linkcode_resolve = make_linkcode_resolve(
     "nimare",
-    "https://github.com/neurostuff/nimare/blob/{revision}/" "{package}/{path}#L{lineno}",
+    "https://github.com/neurostuff/nimare/blob/{revision}/{package}/{path}#L{lineno}",
 )
 
 # -----------------------------------------------------------------------------
@@ -160,7 +160,7 @@ _python_version_str = "{0.major}.{0.minor}".format(sys.version_info)
 _python_doc_base = "https://docs.python.org/" + _python_version_str
 intersphinx_mapping = {
     "python": (_python_doc_base, None),
-    "numpy": ("https://docs.scipy.org/doc/numpy", (None, "./_intersphinx/numpy-objects.inv")),
+    "numpy": ("https://numpy.org/doc/stable/", (None, "./_intersphinx/numpy-objects.inv")),
     "scipy": (
         "https://docs.scipy.org/doc/scipy/reference",
         (None, "./_intersphinx/scipy-objects.inv"),
@@ -179,21 +179,25 @@ intersphinx_mapping = {
 sphinx_gallery_conf = {
     # path to your examples scripts
     "examples_dirs": "../examples",
+    # run examples with a number, then "plot"
+    "filename_pattern": "/[0-9]+_plot_",
     # path where to save gallery generated examples
     "gallery_dirs": "auto_examples",
     "backreferences_dir": "generated",
-    # Modules for which function level galleries are created.  In
-    # this case sphinx_gallery and numpy in a tuple of strings.
+    # Modules for which function level galleries are created.
+    # In this case sphinx_gallery and numpy in a tuple of strings.
     "doc_module": ("nimare"),
-    "ignore_pattern": r"utils/.",
+    "ignore_pattern": r"misc-notebooks/.",
     "reference_url": {
         # The module you locally document uses None
         "nimare": None
     },
+    "within_subsection_order": FileNameSortKey,
+    "default_thumb_file": "_static/nimare_favicon.png",
 }
 
 # Generate the plots for the gallery
-plot_gallery = "True"
+plot_gallery = True
 
 
 def setup(app):

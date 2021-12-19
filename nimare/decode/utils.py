@@ -3,8 +3,7 @@ import numpy as np
 
 
 def weight_priors(topic_priors, prior_weight):
-    """
-    Combine topic priors with prior weight.
+    """Combine topic priors with prior weight.
 
     Parameters
     ----------

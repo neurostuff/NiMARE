@@ -148,7 +148,9 @@ def _get_parser():
             "unthresholded maps from peak coordinates. The reconstructed "
             "maps are evaluated for statistical significance using a "
             "permutation-based approach with Family Wise Error multiple "
-            "comparison correction."
+            "comparison correction. "
+            "WARNING: "
+            "The peaks2maps workflow is deprecated and will be removed in NiMARE version 0.0.13."
         ),
     )
     peaks2maps_parser.set_defaults(func=peaks2maps_workflow)
