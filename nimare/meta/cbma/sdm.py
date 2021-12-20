@@ -77,23 +77,23 @@ def simulate_subject_values(n_studies, n_subjects):
     ...
 
 
-def zval():
+def zval(meta_result):
     """I think this converts to z-values."""
-    ...
+    zvals = meta_result.get_fe_stats()["z"]
+    return zvals
 
 
-def pval():
+def pval(meta_result):
     """I think this converts z-values to p-values."""
-    ...
-
-
-def c():
-    """I think this concatenates arrays. Could be wrong though."""
-    ...
+    pvals = meta_result.get_fe_stats()["p"]
+    return pvals
 
 
 def rma():
-    """This is metafor's random-effects model."""
+    """This is metafor's random-effects model.
+
+    I want to use PyMARE for this.
+    """
     ...
 
 
@@ -227,8 +227,12 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         z_unperm = zval(m_unperm)
 
         # Save null distributions of z-values
-        nd_z_perm_stud = z_unperm
-        nd_z_perm_subj = z_unperm
+        # NOTE: Not sure why the original z-values would be included in the null distribution
+        # so I replaced them with empty lists.
+        # nd_z_perm_stud = z_unperm
+        # nd_z_perm_subj = z_unperm
+        nd_z_perm_stud = []
+        nd_z_perm_subj = []
 
         # Time before study-based permutation test
         time0 = datetime.now()
@@ -242,7 +246,7 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
             m_stud_perm = rma(g_stud_perm, g_var_unperm)
 
             # Save null distribution of z-values
-            nd_z_perm_stud = c(nd_z_perm_stud, zval(m_stud_perm))
+            nd_z_perm_stud.append(zval(m_stud_perm))
 
         # Time between study-based and subject-based permutation tests
         time1 = datetime.now()
@@ -260,7 +264,7 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
             m_subj_perm = rma(g_subj_perm, g_var_subj_perm)
 
             # Save null distribution of z-values
-            nd_z_perm_subj = c(nd_z_perm_subj, zval(m_subj_perm))
+            nd_z_perm_subj.append(zval(m_subj_perm))
 
         # Time after subject-based permutation tests
         time2 = datetime.now()
