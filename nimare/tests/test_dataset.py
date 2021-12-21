@@ -16,15 +16,21 @@ def test_dataset_smoke():
     dset = dataset.Dataset(db_file)
     dset.update_path(get_test_data_path())
     assert isinstance(dset, nimare.dataset.Dataset)
+    # Test that Dataset.masker is portable
+    assert not nib.is_proxy(dset.masker.mask_img_.dataobj)
+
     methods = [dset.get_images, dset.get_labels, dset.get_metadata, dset.get_texts]
     for method in methods:
         assert isinstance(method(), list)
         assert isinstance(method(ids=dset.ids[:5]), list)
         assert isinstance(method(ids=dset.ids[0]), list)
+
     assert isinstance(dset.get_images(imtype="beta"), list)
     assert isinstance(dset.get_metadata(field="sample_sizes"), list)
     assert isinstance(dset.get_studies_by_label("cogat_cognitive_control"), list)
     assert isinstance(dset.get_studies_by_coordinate([20, 20, 20], r=20), list)
+    assert isinstance(dset.get_studies_by_coordinate(np.array([[20, 20, 20]])), list)
+
     assert len(dset.get_studies_by_coordinate([20, 20, 20], n=2)) == 2
     assert len(dset.get_studies_by_coordinate([20, 20, 20], n=3)) == 3
     with pytest.raises(ValueError):
@@ -32,6 +38,10 @@ def test_dataset_smoke():
 
     with pytest.raises(ValueError):
         dset.get_studies_by_coordinate([20, 20, 20], r=20, n=4)
+
+    # If label is not available, raise ValueError
+    with pytest.raises(ValueError):
+        dset.get_studies_by_label("dog")
 
     mask_data = np.zeros(dset.masker.mask_img.shape, int)
     mask_data[40, 40, 40] = 1

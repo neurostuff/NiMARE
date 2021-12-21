@@ -10,6 +10,7 @@ from nilearn.mass_univariate import permuted_ols
 
 from ..base import MetaEstimator
 from ..transforms import p_to_z, t_to_z
+from ..utils import _boolean_unmask
 
 LGR = logging.getLogger(__name__)
 
@@ -17,8 +18,7 @@ LGR = logging.getLogger(__name__)
 class Fishers(MetaEstimator):
     """An image-based meta-analytic test using t- or z-statistic images.
 
-    Requires z-statistic images, but will be extended to work with t-statistic
-    images as well.
+    Requires z-statistic images, but will be extended to work with t-statistic images as well.
 
     Notes
     -----
@@ -26,8 +26,6 @@ class Fishers(MetaEstimator):
 
     Warning
     -------
-    This method does not currently calculate p-values correctly. Do not use.
-
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
@@ -53,10 +51,11 @@ class Fishers(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
-        masker = self.masker or dataset.masker
-        if not isinstance(masker, NiftiMasker):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        if not isinstance(self.masker, NiftiMasker):
             raise ValueError(
-                f"A {type(masker)} mask has been detected. "
+                f"A {type(self.masker)} mask has been detected. "
                 "Only NiftiMaskers are allowed for this Estimator. "
                 "This is because aggregation, such as averaging values across ROIs, "
                 "will produce invalid results."
@@ -67,8 +66,8 @@ class Fishers(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "z": est_summary.z,
-            "p": est_summary.p,
+            "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -81,8 +80,8 @@ class Stouffers(MetaEstimator):
     Parameters
     ----------
     use_sample_size : :obj:`bool`, optional
-        Whether to use sample sizes for weights (i.e., "weighted Stouffer's")
-        or not. Default is False.
+        Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not.
+        Default is False.
 
     Notes
     -----
@@ -90,8 +89,6 @@ class Stouffers(MetaEstimator):
 
     Warning
     -------
-    This method does not currently calculate p-values correctly. Do not use.
-
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
@@ -125,10 +122,11 @@ class Stouffers(MetaEstimator):
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
     def _fit(self, dataset):
-        masker = self.masker or dataset.masker
-        if not isinstance(masker, NiftiMasker):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        if not isinstance(self.masker, NiftiMasker):
             raise ValueError(
-                f"A {type(masker)} mask has been detected. "
+                f"A {type(self.masker)} mask has been detected. "
                 "Only NiftiMaskers are allowed for this Estimator. "
                 "This is because aggregation, such as averaging values across ROIs, "
                 "will produce invalid results."
@@ -148,8 +146,8 @@ class Stouffers(MetaEstimator):
         est_summary = est.summary()
 
         results = {
-            "z": est_summary.z,
-            "p": est_summary.p,
+            "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -157,11 +155,11 @@ class Stouffers(MetaEstimator):
 class WeightedLeastSquares(MetaEstimator):
     """Weighted least-squares meta-regression.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Provides the weighted least-squares estimate of the fixed effects given
     known/assumed between-study variance tau^2.
@@ -206,10 +204,11 @@ class WeightedLeastSquares(MetaEstimator):
         self.tau2 = tau2
 
     def _fit(self, dataset):
-        masker = self.masker or dataset.masker
-        if not isinstance(masker, NiftiMasker):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        if not isinstance(self.masker, NiftiMasker):
             LGR.warning(
-                f"A {type(masker)} mask has been detected. "
+                f"A {type(self.masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
@@ -218,11 +217,17 @@ class WeightedLeastSquares(MetaEstimator):
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+        # tau2 is an float, not a map, so it can't go in the results dictionary
         results = {
-            "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"].squeeze(),
-            "p": est_summary.get_fe_stats()["p"].squeeze(),
-            "est": est_summary.get_fe_stats()["est"].squeeze(),
+            "z": _boolean_unmask(
+                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "p": _boolean_unmask(
+                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "est": _boolean_unmask(
+                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
         }
         return results
 
@@ -230,11 +235,11 @@ class WeightedLeastSquares(MetaEstimator):
 class DerSimonianLaird(MetaEstimator):
     """DerSimonian-Laird meta-regression estimator.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Estimates the between-subject variance tau^2 using the DerSimonian-Laird
     (1986) method-of-moments approach.
@@ -273,10 +278,11 @@ class DerSimonianLaird(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
-        masker = self.masker or dataset.masker
-        if not isinstance(masker, NiftiMasker):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        if not isinstance(self.masker, NiftiMasker):
             LGR.warning(
-                f"A {type(masker)} mask has been detected. "
+                f"A {type(self.masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
@@ -286,10 +292,16 @@ class DerSimonianLaird(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"].squeeze(),
-            "p": est_summary.get_fe_stats()["p"].squeeze(),
-            "est": est_summary.get_fe_stats()["est"].squeeze(),
+            "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
+            "z": _boolean_unmask(
+                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "p": _boolean_unmask(
+                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "est": _boolean_unmask(
+                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
         }
         return results
 
@@ -297,11 +309,11 @@ class DerSimonianLaird(MetaEstimator):
 class Hedges(MetaEstimator):
     """Hedges meta-regression estimator.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Estimates the between-subject variance tau^2 using the Hedges & Olkin (1985)
     approach.
@@ -336,10 +348,11 @@ class Hedges(MetaEstimator):
         super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
-        masker = self.masker or dataset.masker
-        if not isinstance(masker, NiftiMasker):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        if not isinstance(self.masker, NiftiMasker):
             LGR.warning(
-                f"A {type(masker)} mask has been detected. "
+                f"A {type(self.masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
@@ -349,10 +362,16 @@ class Hedges(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"].squeeze(),
-            "p": est_summary.get_fe_stats()["p"].squeeze(),
-            "est": est_summary.get_fe_stats()["est"].squeeze(),
+            "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
+            "z": _boolean_unmask(
+                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "p": _boolean_unmask(
+                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "est": _boolean_unmask(
+                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
         }
         return results
 
@@ -360,11 +379,11 @@ class Hedges(MetaEstimator):
 class SampleSizeBasedLikelihood(MetaEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     betas using the specified likelihood-based estimator (ML or REML).
@@ -373,8 +392,8 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     ----------
     method : {'ml', 'reml'}, optional
         The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml'
-        (restricted maximum-likelihood). Default is 'ml'.
+        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
+        Default is 'ml'.
 
     Notes
     -----
@@ -411,6 +430,9 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         self.method = method
 
     def _fit(self, dataset):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+
         sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
         n_maps = np.tile(sample_sizes, (self.inputs_["beta_maps"].shape[1], 1)).T
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], n=n_maps)
@@ -418,10 +440,16 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"].squeeze(),
-            "p": est_summary.get_fe_stats()["p"].squeeze(),
-            "est": est_summary.get_fe_stats()["est"].squeeze(),
+            "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
+            "z": _boolean_unmask(
+                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "p": _boolean_unmask(
+                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "est": _boolean_unmask(
+                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
         }
         return results
 
@@ -429,11 +457,11 @@ class SampleSizeBasedLikelihood(MetaEstimator):
 class VarianceBasedLikelihood(MetaEstimator):
     """A likelihood-based meta-analysis method for estimates with known variances.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
     coefficients using the specified likelihood-based estimator (ML or REML).
@@ -442,8 +470,8 @@ class VarianceBasedLikelihood(MetaEstimator):
     ----------
     method : {'ml', 'reml'}, optional
         The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml'
-        (restricted maximum-likelihood). Default is 'ml'.
+        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
+        Default is 'ml'.
 
     Notes
     -----
@@ -488,10 +516,12 @@ class VarianceBasedLikelihood(MetaEstimator):
         self.method = method
 
     def _fit(self, dataset):
-        masker = self.masker or dataset.masker
-        if not isinstance(masker, NiftiMasker):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+
+        if not isinstance(self.masker, NiftiMasker):
             LGR.warning(
-                f"A {type(masker)} mask has been detected. "
+                f"A {type(self.masker)} mask has been detected. "
                 "Masks which average across voxels will likely produce biased results when used "
                 "with this Estimator."
             )
@@ -502,10 +532,16 @@ class VarianceBasedLikelihood(MetaEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
         results = {
-            "tau2": est_summary.tau2,
-            "z": est_summary.get_fe_stats()["z"].squeeze(),
-            "p": est_summary.get_fe_stats()["p"].squeeze(),
-            "est": est_summary.get_fe_stats()["est"].squeeze(),
+            "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
+            "z": _boolean_unmask(
+                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "p": _boolean_unmask(
+                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "est": _boolean_unmask(
+                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
+            ),
         }
         return results
 
@@ -513,11 +549,11 @@ class VarianceBasedLikelihood(MetaEstimator):
 class PermutedOLS(MetaEstimator):
     r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
 
-    .. versionadded:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+    .. versionadded:: 0.0.4
 
     Parameters
     ----------
@@ -557,6 +593,7 @@ class PermutedOLS(MetaEstimator):
         self.parameters_ = {}
 
     def _fit(self, dataset):
+        self.dataset = dataset
         # Use intercept as explanatory variable
         self.parameters_["tested_vars"] = np.ones((self.inputs_["z_maps"].shape[0], 1))
         self.parameters_["confounding_vars"] = None
@@ -576,23 +613,26 @@ class PermutedOLS(MetaEstimator):
         # Convert t to z, preserving signs
         dof = self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
         z_map = t_to_z(t_map, dof)
-        images = {"t": t_map.squeeze(), "z": z_map.squeeze()}
+        images = {
+            "t": _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"]),
+            "z": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
+        }
         return images
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
         """Perform FWE correction using the max-value permutation method.
 
-        .. versionadded:: 0.0.4
-
         .. versionchanged:: 0.0.8
 
             * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
+
+        .. versionadded:: 0.0.4
 
         Only call this method from within a Corrector.
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             Result object from an ALE meta-analysis.
         n_iters : :obj:`int`, optional
             The number of iterations to run in estimating the null distribution.
@@ -643,5 +683,10 @@ class PermutedOLS(MetaEstimator):
         sign = np.sign(t_map)
         sign[sign == 0] = 1
         z_map = p_to_z(p_map, tail="two") * sign
-        images = {"logp_level-voxel": log_p_map.squeeze(), "z_level-voxel": z_map.squeeze()}
+        images = {
+            "logp_level-voxel": _boolean_unmask(
+                log_p_map.squeeze(), self.inputs_["aggressive_mask"]
+            ),
+            "z_level-voxel": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
+        }
         return images

@@ -8,6 +8,7 @@ from __future__ import division
 
 import logging
 import os
+import warnings
 from hashlib import md5
 
 import nibabel as nib
@@ -15,15 +16,23 @@ import numpy as np
 import pandas as pd
 from nilearn import image
 
+from .. import references
 from ..base import Transformer
-from ..utils import safe_transform, use_memmap, vox2mm
+from ..due import due
+from ..utils import (
+    _add_metadata_to_dataframe,
+    _safe_transform,
+    mm2vox,
+    use_memmap,
+    vox2mm,
+)
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
 
 
 class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods in :mod:`nimare.meta.kernel`.
+    """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -62,13 +71,13 @@ class KernelTransformer(Transformer):
 
         # Determine names for kernel-specific files
         keys = sorted(params.keys())
-        param_str = "_".join("{k}-{v}".format(k=k, v=str(params[k])) for k in keys)
+        param_str = "_".join(f"{k}-{str(params[k])}" for k in keys)
         self.filename_pattern = (
-            "study-[[id]]_{ps}_{n}.nii.gz".format(n=self.__class__.__name__, ps=param_str)
-            .replace("[[", "{")
-            .replace("]]", "}")
+            f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
+                "[[", "{"
+            ).replace("]]", "}")
         )
-        self.image_type = "{ps}_{n}".format(n=self.__class__.__name__, ps=param_str)
+        self.image_type = f"{param_str}_{self.__class__.__name__}"
 
     @use_memmap(LGR)
     def transform(self, dataset, masker=None, return_type="image"):
@@ -76,19 +85,21 @@ class KernelTransformer(Transformer):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
+        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
-        masker : img_like, optional
-            Only used if dataset is a DataFrame.
+        masker : img_like or None, optional
+            Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
+            If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
+            Default is None.
         return_type : {'array', 'image', 'dataset'}, optional
-            Whether to return a numpy array ('array'), a list of niimgs
-            ('image'), or a Dataset with MA images saved as files ('dataset').
-            Default is 'dataset'.
+            Whether to return a numpy array ('array'), a list of niimgs ('image'),
+            or a Dataset with MA images saved as files ('dataset').
+            Default is 'image'.
 
         Returns
         -------
-        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of
-               :class:`nibabel.Nifti1Image` or :class:`nimare.dataset.Dataset`
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
+               or :class:`~nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images
@@ -110,16 +121,20 @@ class KernelTransformer(Transformer):
         if isinstance(dataset, pd.DataFrame):
             assert (
                 masker is not None
-            ), 'Argument "masker" must be provided if dataset is a DataFrame'
+            ), "Argument 'masker' must be provided if dataset is a DataFrame."
             mask = masker.mask_img
             coordinates = dataset.copy()
             assert (
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
+
+            # Calculate IJK. Must assume that the masker is in same space,
+            # but has different affine, from original IJK.
+            coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
-            coordinates = dataset.coordinates
+            coordinates = dataset.coordinates.copy()
 
             # Determine MA map filenames. Must happen after parameters are set.
             self._infer_names(affine=md5(mask.affine).hexdigest())
@@ -132,16 +147,39 @@ class KernelTransformer(Transformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        masked_data = safe_transform(files, masker)
+                        masked_data = _safe_transform(files, masker)
                         return masked_data
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
                         return dataset.copy()
 
-        # Otherwise, generate the MA maps
+            # Calculate IJK
+            if not np.array_equal(mask.affine, dataset.masker.mask_img.affine):
+                LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
+
+            coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
+
+            # Add any metadata the Transformer might need to the coordinates DataFrame
+            # This approach is probably inferior to one which uses a _required_inputs attribute
+            # (like the MetaEstimators), but it should work just fine as long as individual
+            # requirements are written in here.
+            if (
+                hasattr(self, "sample_size")
+                and (self.sample_size is None)
+                and ("sample_size" not in coordinates.columns)
+            ):
+                coordinates = _add_metadata_to_dataframe(
+                    dataset,
+                    coordinates,
+                    metadata_field="sample_sizes",
+                    target_column="sample_size",
+                    filter_func=np.mean,
+                )
+
+        # Generate the MA maps if they weren't already available as images
         if return_type == "array":
-            mask_data = mask.get_fdata().astype(np.bool)
+            mask_data = mask.get_fdata().astype(bool)
         elif return_type == "image":
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
@@ -152,8 +190,8 @@ class KernelTransformer(Transformer):
                 )
             elif not os.path.isdir(dataset.basepath):
                 raise ValueError(
-                    "Output directory does not exist. Set the path to an "
-                    "existing folder with Dataset.update_path()."
+                    "Output directory does not exist. Set the path to an existing folder with "
+                    "Dataset.update_path()."
                 )
             dataset = dataset.copy()
 
@@ -219,8 +257,20 @@ class KernelTransformer(Transformer):
         pass
 
 
+@due.dcite(
+    references.ALE2,
+    description=(
+        "Modifies ALE algorithm to eliminate within-experiment "
+        "effects and generate MA maps based on subject group "
+        "instead of experiment."
+    ),
+)
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
+
+    By default (if neither ``fwhm`` nor ``sample_size`` is provided), the FWHM of the kernel
+    will be determined on a study-wise basis based on the sample sizes available in the input,
+    via the method described in [1]_.
 
     .. versionchanged:: 0.0.8
 
@@ -242,6 +292,11 @@ class ALEKernel(KernelTransformer):
         Otherwise, the memory limit will be used to (1) assign memory-mapped files and
         (2) restrict memory during array creation to the limit.
         Default is None.
+
+    References
+    ----------
+    .. [1] Eickhoff, Simon B., et al. "Activation likelihood estimation
+           meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
 
     def __init__(self, fwhm=None, sample_size=None, memory_limit=None):
@@ -275,6 +330,7 @@ class ALEKernel(KernelTransformer):
             if self.sample_size is not None:
                 sample_size = self.sample_size
             elif self.fwhm is None:
+                # Extract from input
                 sample_size = data.sample_size.astype(float).values[0]
 
             if self.fwhm is not None:
@@ -284,6 +340,7 @@ class ALEKernel(KernelTransformer):
                     kernels[self.fwhm] = kern
                 else:
                     kern = kernels[self.fwhm]
+
             else:
                 assert np.isfinite(sample_size), "Sample size must be finite number"
                 if sample_size not in kernels.keys():
@@ -291,6 +348,7 @@ class ALEKernel(KernelTransformer):
                     kernels[sample_size] = kern
                 else:
                     kern = kernels[sample_size]
+
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
             if self.memory_limit:
@@ -381,11 +439,13 @@ class MKDAKernel(KDAKernel):
 class Peaks2MapsKernel(KernelTransformer):
     """Generate peaks2maps modeled activation images from coordinates.
 
+    .. deprecated:: 0.0.11
+        `Peaks2MapsKernel` will be removed in NiMARE 0.0.13.
+
     Parameters
     ----------
-    resample_to_mask : :obj:`bool`, optional
-        If True, will resample the MA maps to the mask's header.
-        Default is True.
+    model_dir : :obj:`str`, optional
+        Path to model directory. Default is "auto".
 
     Warning
     -------
@@ -394,13 +454,14 @@ class Peaks2MapsKernel(KernelTransformer):
     """
 
     def __init__(self, model_dir="auto"):
+        warnings.warn(
+            "Peaks2MapsKernel is deprecated, and will be removed in NiMARE version 0.0.13.",
+            DeprecationWarning,
+        )
+
         # Use private attribute to hide value from get_params.
         # get_params will find model_dir=None, which is *very important* when a path is provided.
         self._model_dir = model_dir
-        LGR.warning(
-            "The Peaks2Maps kernel transformer is not intended for serious research. "
-            "We strongly recommend against using it for any meaningful analyses."
-        )
 
     def _transform(self, mask, coordinates):
         transformed = []

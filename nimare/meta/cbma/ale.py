@@ -35,15 +35,22 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
+        "approximate" is faster, but slightly less accurate.
+        "montecarlo" can be much slower, and is only slightly more accurate.
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        This is only used if ``null_method=="montecarlo"``.
+        If <=0, defaults to using all available cores.
+        Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -63,8 +70,10 @@ class ALE(CBMAEstimator):
 
     Notes
     -----
-    The ALE algorithm was originally developed in [1]_, then updated in [2]_
-    and [3]_.
+    The ALE algorithm was originally developed in [1]_, then updated in [2]_ and [3]_.
+
+    The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
+    organization (https://www.brainmap.org/ale/).
 
     Available correction methods: :func:`ALE.correct_fwe_montecarlo`
 
@@ -123,7 +132,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # Determine bins for null distribution histogram
         # Remember that numpy histogram bins are bin edges, not centers
@@ -156,7 +165,7 @@ class ALE(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
 
@@ -205,17 +214,17 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     r"""ALE subtraction analysis.
 
-    .. versionchanged:: 0.0.7
-
-        * [FIX] Assume a zero-centered and symmetric null distribution.
-
     .. versionchanged:: 0.0.8
 
         * [FIX] Assume non-symmetric null distribution.
 
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
+
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset.
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
@@ -233,6 +242,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
     Notes
     -----
     This method was originally developed in [1]_ and refined in [2]_.
+
+    The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
+    BrainMap organization (https://www.brainmap.org/ale/).
 
     Warning
     -------
@@ -354,6 +366,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    .. versionchanged:: 0.0.10
+
+        Replace ``ijk`` with ``xyz``. This should be easier for users to collect.
+
     Parameters
     ----------
     voxel_thresh : float, optional
@@ -363,13 +379,13 @@ class SCALE(CBMAEstimator):
     n_cores : int, optional
         Number of processes to use for meta-analysis. If -1, use all
         available cores. Default: -1
-    ijk : :obj:`str` or (N x 3) array_like
-        Tab-delimited file of coordinates from database or numpy array with ijk
-        coordinates. Voxels are rows and i, j, k (meaning matrix-space) values
+    xyz : :obj:`str` or (N x 3) array_like
+        Tab-delimited file of coordinates from database or numpy array with XYZ
+        coordinates. Voxels are rows and x, y, z (meaning coordinates) values
         are the three columnns.
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.ALEKernel`.
+        :class:`~nimare.meta.kernel.ALEKernel`.
     memory_limit : :obj:`str` or None, optional
         Memory limit to apply to data. If None, no memory management will be applied.
         Otherwise, the memory limit will be used to (1) assign memory-mapped files and
@@ -391,7 +407,7 @@ class SCALE(CBMAEstimator):
         voxel_thresh=0.001,
         n_iters=10000,
         n_cores=-1,
-        ijk=None,
+        xyz=None,
         kernel_transformer=ALEKernel,
         memory_limit=None,
         **kwargs,
@@ -407,7 +423,7 @@ class SCALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
         self.voxel_thresh = voxel_thresh
-        self.ijk = ijk
+        self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.memory_limit = memory_limit
@@ -418,7 +434,7 @@ class SCALE(CBMAEstimator):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
         """
         self.dataset = dataset
@@ -441,13 +457,13 @@ class SCALE(CBMAEstimator):
         stat_values = self._compute_summarystat(ma_values)
 
         iter_df = self.inputs_["coordinates"].copy()
-        rand_idx = np.random.choice(self.ijk.shape[0], size=(iter_df.shape[0], self.n_iters))
-        rand_ijk = self.ijk[rand_idx, :]
-        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+        rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
+        rand_xyz = self.xyz[rand_idx, :]
+        iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
 
         # Define parameters
         iter_dfs = [iter_df] * self.n_iters
-        params = zip(iter_dfs, iter_ijks)
+        params = zip(iter_dfs, iter_xyzs)
 
         if self.n_cores == 1:
             if self.memory_limit:
@@ -500,7 +516,7 @@ class SCALE(CBMAEstimator):
         elif isinstance(data, np.ndarray):
             ma_values = data.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(data)))
+            raise ValueError(f"Unsupported data type '{type(data)}'")
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
@@ -558,8 +574,8 @@ class SCALE(CBMAEstimator):
 
     def _run_permutation(self, params):
         """Run a single random SCALE permutation of a dataset."""
-        iter_df, iter_ijk = params
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[["i", "j", "k"]] = iter_ijk
+        iter_df, iter_xyz = params
+        iter_xyz = np.squeeze(iter_xyz)
+        iter_df[["x", "y", "z"]] = iter_xyz
         stat_values = self._compute_summarystat(iter_df)
         return stat_values

@@ -10,7 +10,7 @@ from scipy import ndimage
 from .. import references
 from ..due import due
 from ..extract import download_peaks2maps_model
-from ..utils import determine_chunk_size
+from ..utils import _determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
@@ -19,7 +19,10 @@ LGR = logging.getLogger(__name__)
 def model_fn(features, labels, mode, params):
     """Run model function used internally by peaks2maps.
 
-    .. versionadeed:: 0.0.4
+    .. deprecated:: 0.0.11
+        `model_fn` will be removed in NiMARE 0.0.13.
+
+    .. versionadded:: 0.0.4
 
     """
     import tensorflow as tf
@@ -163,7 +166,10 @@ def model_fn(features, labels, mode, params):
 def _get_resize_arg(target_shape):
     """Get resizing arguments, as used by peaks2maps.
 
-    .. versionadeed:: 0.0.1
+    .. deprecated:: 0.0.11
+        `_get_resize_arg` will be removed in NiMARE 0.0.13.
+
+    .. versionadded:: 0.0.1
 
     """
     mni_shape_mm = np.array([148.0, 184.0, 156.0])
@@ -183,11 +189,7 @@ def _get_resize_arg(target_shape):
 
 
 def _get_generator(contrasts_coordinates, target_shape, affine, skip_out_of_bounds=False):
-    """Get generator, as used by peaks2maps.
-
-    .. versionadeed:: 0.0.1
-
-    """
+    """Get generator, as used by peaks2maps."""
 
     def generator():
         for contrast in contrasts_coordinates:
@@ -212,7 +214,8 @@ def compute_p2m_ma(
 ):
     """Generate modeled activation (MA) maps using deep ConvNet model peaks2maps.
 
-    .. versionadeed:: 0.0.1
+    .. deprecated:: 0.0.11
+        `compute_p2m_ma` will be removed in NiMARE 0.0.13.
 
     Parameters
     ----------
@@ -285,11 +288,11 @@ def compute_kda_ma(
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
-    .. versionadeed:: 0.0.4
-
     .. versionchanged:: 0.0.8
 
         * [ENH] Add *memmap_filename* parameter for memory mapping arrays.
+
+    .. versionadded:: 0.0.4
 
     Replaces the values around each focus in ijk with binary sphere.
 
@@ -349,7 +352,7 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     if memory_limit:
-        chunk_size = determine_chunk_size(limit=memory_limit, arr=ijks[0])
+        chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
 
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
@@ -373,8 +376,6 @@ def compute_kda_ma(
 
 def compute_ale_ma(shape, ijk, kernel):
     """Generate ALE modeled activation (MA) maps.
-
-    .. versionadeed:: 0.0.1
 
     Replaces the values around each focus in ijk with the contrast-specific
     kernel. Takes the element-wise maximum when looping through foci, which
@@ -436,11 +437,7 @@ def compute_ale_ma(shape, ijk, kernel):
 
 @due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
 def get_ale_kernel(img, sample_size=None, fwhm=None):
-    """Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given sample size or fwhm.
-
-    .. versionadeed:: 0.0.1
-
-    """
+    """Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given sample size or fwhm."""
     if sample_size is not None and fwhm is not None:
         raise ValueError('Only one of "sample_size" and "fwhm" may be specified')
     elif sample_size is None and fwhm is None:

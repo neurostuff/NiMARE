@@ -8,7 +8,7 @@ import pandas as pd
 from .. import references
 from ..due import due
 from ..extract import download_cognitive_atlas
-from ..utils import uk_to_us
+from ..utils import _uk_to_us
 from . import utils
 
 LGR = logging.getLogger(__name__)
@@ -38,6 +38,11 @@ class CogAtLemmatizer(object):
     * Poldrack, Russell A., et al. "The cognitive atlas: toward a
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+
+    See Also
+    --------
+    nimare.extract.download_cognitive_atlas : This function will be called automatically if
+                                              ``ontology_df`` is not provided.
     """
 
     def __init__(self, ontology_df=None):
@@ -78,7 +83,7 @@ class CogAtLemmatizer(object):
             Atlas identifiers.
         """
         if convert_uk:
-            text = uk_to_us(text)
+            text = _uk_to_us(text)
 
         for term_idx in self.ontology_.index:
             term = self.ontology_["alias"].loc[term_idx]
@@ -116,6 +121,11 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
     * Poldrack, Russell A., et al. "The cognitive atlas: toward a
       knowledge foundation for cognitive neuroscience." Frontiers in
       neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+
+    See Also
+    --------
+    nimare.extract.download_cognitive_atlas : This function will be called automatically if
+                                              ``id_df`` is not provided.
     """
     text_df = text_df.copy()
     if id_df is None:
@@ -126,7 +136,7 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
         text_df.set_index("id", inplace=True)
 
     text_df[text_column] = text_df[text_column].fillna("")
-    text_df[text_column] = text_df[text_column].apply(uk_to_us)
+    text_df[text_column] = text_df[text_column].apply(_uk_to_us)
 
     # Create regex dictionary
     regex_dict = {}
@@ -180,7 +190,7 @@ def expand_counts(counts_df, rel_df=None, weights=None):
     w_not_c = set(weights_columns) - set(counts_columns)
     c_not_w = set(counts_columns) - set(weights_columns)
     if c_not_w:
-        raise Exception("Columns found in counts but not weights: {0}".format(", ".join(c_not_w)))
+        raise Exception(f"Columns found in counts but not weights: {', '.join(c_not_w)}")
 
     for col in w_not_c:
         counts_df[col] = 0

@@ -14,13 +14,23 @@ from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
 from .results import MetaResult
-from .utils import get_masker
+from .utils import get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
 
 class NiMAREBase(metaclass=ABCMeta):
     """Base class for NiMARE.
+
+    This class contains a few features that are useful throughout the library:
+
+    - Custom __repr__ method for printing the object.
+    - A private _check_ncores method to check if the common n_cores argument is valid.
+    - get_params from scikit-learn, with which parameters provided at __init__ can be viewed.
+    - set_params from scikit-learn, with which parameters provided at __init__ can be overwritten.
+      I'm not sure that this is actually used or useable in NiMARE.
+    - save to save the object to a Pickle file.
+    - load to load an instance of the object from a Pickle file.
 
     TODO: Actually write/refactor class methods. They mostly come directly from sklearn
     https://github.com/scikit-learn/scikit-learn/blob/
@@ -30,14 +40,48 @@ class NiMAREBase(metaclass=ABCMeta):
     def __init__(self):
         pass
 
+    def __repr__(self):
+        """Show basic NiMARE class representation.
+
+        Specifically, this shows the name of the class, along with any parameters
+        that are **not** set to the default.
+        """
+        # Get default parameter values for the object
+        signature = inspect.signature(self.__init__)
+        defaults = {
+            k: v.default
+            for k, v in signature.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
+
+        # Eliminate any sub-parameters (e.g., parameters for a MetaEstimator's KernelTransformer),
+        # as well as default values
+        params = self.get_params()
+        params = {k: v for k, v in params.items() if "__" not in k}
+        params = {k: v for k, v in params.items() if defaults.get(k) != v}
+
+        # Convert to strings
+        param_strs = []
+        for k, v in params.items():
+            if isinstance(v, str):
+                # Wrap string values in single quotes
+                param_str = f"{k}='{v}'"
+            else:
+                # Keep everything else as-is based on its own repr
+                param_str = f"{k}={v}"
+            param_strs.append(param_str)
+
+        rep = f"{self.__class__.__name__}({', '.join(param_strs)})"
+        return rep
+
     def _check_ncores(self, n_cores):
         """Check number of cores used for method."""
         if n_cores == -1:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
             LGR.warning(
-                "Desired number of cores ({0}) greater than number "
-                "available ({1}). Setting to {1}.".format(n_cores, mp.cpu_count())
+                f"Desired number of cores ({n_cores}) greater than number "
+                f"available ({mp.cpu_count()}). Setting to {mp.cpu_count()}."
             )
             n_cores = mp.cpu_count()
         return n_cores
@@ -188,13 +232,20 @@ class NiMAREBase(metaclass=ABCMeta):
                     obj = pickle.load(file_object, encoding="latin")
 
         if not isinstance(obj, cls):
-            raise IOError("Pickled object must be {0}, not {1}".format(cls, type(obj)))
+            raise IOError(f"Pickled object must be {cls}, not {type(obj)}")
 
         return obj
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults."""
+    """Estimators take in Datasets and return MetaResults.
+
+    All Estimators must have a ``_fit`` method implemented, which applies algorithm-specific
+    methods to a dataset and returns a dictionary of arrays to be converted into a MetaResult.
+    Users will interact with the ``_fit`` method by calling the user-facing ``fit`` method.
+    ``fit`` takes in a ``Dataset``, calls ``_validate_input``, then ``_preprocess_input``,
+    then ``_fit``, and finally converts the dictionary returned by ``_fit`` into a ``MetaResult``.
+    """
 
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
@@ -235,7 +286,7 @@ class Estimator(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
@@ -243,7 +294,7 @@ class Estimator(NiMAREBase):
 
         Returns
         -------
-        :obj:`nimare.results.MetaResult`
+        :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
         Attributes
@@ -281,13 +332,13 @@ class Estimator(NiMAREBase):
 
 
 class MetaEstimator(Estimator):
-    """Base class for meta-analysis methods in :mod:`nimare.meta`.
-
-    .. versionadded:: 0.0.3
+    """Base class for meta-analysis methods in :mod:`~nimare.meta`.
 
     .. versionchanged:: 0.0.8
 
         * [REF] Use saved MA maps, when available.
+
+    .. versionadded:: 0.0.3
 
     """
 
@@ -314,6 +365,12 @@ class MetaEstimator(Estimator):
         if isinstance(mask_img, str):
             mask_img = nb.load(mask_img)
 
+        # Ensure that protected values are not included among _required_inputs
+        assert "aggressive_mask" not in self._required_inputs.keys(), "This is a protected name."
+
+        # A dictionary to collect masked image data, to be further reduced by the aggressive mask.
+        temp_image_inputs = {}
+
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
                 # If no resampling is requested, check if resampling is required
@@ -337,12 +394,22 @@ class MetaEstimator(Estimator):
 
                 # An intermediate step to mask out bad voxels.
                 # Can be dropped once PyMARE is able to handle masked arrays or missing data.
-                bad_voxel_idx = np.where(temp_arr == 0)[1]
-                bad_voxel_idx = np.unique(bad_voxel_idx)
-                LGR.debug(f"Masking out {len(bad_voxel_idx)} 'bad' voxels")
-                temp_arr[:, bad_voxel_idx] = 0
+                nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
+                nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
+                good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
 
-                self.inputs_[name] = temp_arr
+                data = masker.transform(img4d)
+
+                temp_image_inputs[name] = data
+                if "aggressive_mask" not in self.inputs_.keys():
+                    self.inputs_["aggressive_mask"] = good_voxels_bool
+                else:
+                    # Remove any voxels that are bad in any image-based inputs
+                    self.inputs_["aggressive_mask"] = np.logical_or(
+                        self.inputs_["aggressive_mask"],
+                        good_voxels_bool,
+                    )
+
             elif type_ == "coordinates":
                 # Try to load existing MA maps
                 if hasattr(self, "kernel_transformer"):
@@ -354,6 +421,27 @@ class MetaEstimator(Estimator):
                         )
                         if all(f is not None for f in files):
                             self.inputs_["ma_maps"] = files
+
+                # Calculate IJK matrix indices for target mask
+                # Mask space is assumed to be the same as the Dataset's space
+                # These indices are used directly by any KernelTransformer
+                xyz = self.inputs_["coordinates"][["x", "y", "z"]].values
+                ijk = mm2vox(xyz, mask_img.affine)
+                self.inputs_["coordinates"][["i", "j", "k"]] = ijk
+
+        # Further reduce image-based inputs to remove "bad" voxels
+        # (voxels with zeros or NaNs in any studies)
+        if "aggressive_mask" in self.inputs_.keys():
+            n_bad_voxels = (
+                self.inputs_["aggressive_mask"].size - self.inputs_["aggressive_mask"].sum()
+            )
+            if n_bad_voxels:
+                LGR.warning(
+                    f"Masking out {n_bad_voxels} additional voxels. "
+                    "The updated masker is available in the Estimator.masker attribute."
+                )
+        for name, raw_masked_data in temp_image_inputs.items():
+            self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
 
 
 class Transformer(NiMAREBase):
@@ -371,19 +459,44 @@ class Transformer(NiMAREBase):
         # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
             raise ValueError(
-                'Argument "dataset" must be a valid Dataset '
-                "object, not a {0}".format(type(dataset))
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}"
             )
 
 
 class Decoder(NiMAREBase):
-    """Base class for decoders in :mod:`nimare.decode`.
+    """Base class for decoders in :mod:`~nimare.decode`.
 
     .. versionadded:: 0.0.3
 
     """
 
     __id_cols = ["id", "study_id", "contrast_id"]
+
+    def _validate_input(self, dataset, drop_invalid=True):
+        """Search for, and validate, required inputs as necessary."""
+        if not hasattr(dataset, "slice"):
+            raise ValueError(
+                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
+            )
+
+        if self._required_inputs:
+            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
+            # Do not overwrite existing inputs_ attribute.
+            # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
+            # in the same object.
+            # It makes the *strong* assumption that required inputs will not changes within an
+            # Estimator across fit calls, so all fields of inputs_ will be overwritten instead of
+            # retaining outdated fields from previous fit calls.
+            if not hasattr(self, "inputs_"):
+                self.inputs_ = {}
+
+            for k, v in data.items():
+                if v is None:
+                    raise ValueError(
+                        f"Estimator {self.__class__.__name__} requires input dataset to contain "
+                        f"{k}, but no matching data were found."
+                    )
+                self.inputs_[k] = v
 
     def _preprocess_input(self, dataset):
         """Select features for model based on requested features and feature_group.
@@ -395,7 +508,7 @@ class Decoder(NiMAREBase):
         if self.feature_group is not None:
             if not self.feature_group.endswith("__"):
                 self.feature_group += "__"
-            feature_names = dataset.annotations.columns.values
+            feature_names = self.inputs_["annotations"].columns.values
             feature_names = [f for f in feature_names if f.startswith(self.feature_group)]
             if self.features is not None:
                 features = [f.split("__")[-1] for f in feature_names if f in self.features]
@@ -403,28 +516,38 @@ class Decoder(NiMAREBase):
                 features = feature_names
         else:
             if self.features is None:
-                features = dataset.annotations.columns.values
+                features = self.inputs_["annotations"].columns.values
             else:
                 features = self.features
+
         features = [f for f in features if f not in self.__id_cols]
+        n_features_orig = len(features)
+
         # At least one study in the dataset much have each label
-        counts = (dataset.annotations[features] > self.frequency_threshold).sum(0)
+        counts = (self.inputs_["annotations"][features] > self.frequency_threshold).sum(0)
         features = counts[counts > 0].index.tolist()
         if not len(features):
             raise Exception("No features identified in Dataset!")
+        elif len(features) < n_features_orig:
+            LGR.info(f"Retaining {len(features)}/({n_features_orig} features.")
+
         self.features_ = features
 
-    def fit(self, dataset):
+    def fit(self, dataset, drop_invalid=True):
         """Fit Decoder to Dataset.
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset object to analyze.
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is True.
+
 
         Returns
         -------
-        :obj:`nimare.results.MetaResult`
+        :obj:`~nimare.results.MetaResult`
             Results of Decoder fitting.
 
         Notes
@@ -437,6 +560,7 @@ class Decoder(NiMAREBase):
         Selection of features based on requested features and feature group is performed in
         `Decoder._preprocess_input`.
         """
+        self._validate_input(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         self._fit(dataset)
 

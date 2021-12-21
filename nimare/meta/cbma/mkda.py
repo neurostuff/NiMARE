@@ -11,7 +11,7 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import use_memmap
+from ...utils import use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -24,15 +24,31 @@ class MKDADensity(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.MKDAKernel`.
+        :class:`~nimare.meta.kernel.MKDAKernel`.
+    null_method : {"approximate", "montecarlo"}, optional
+        Method by which to determine uncorrected p-values.
+        "approximate" is faster, but slightly less accurate.
+        "montecarlo" can be much slower, and is only slightly more accurate.
+    n_iters : int, optional
+        Number of iterations to use to define the null distribution.
+        This is only used if ``null_method=="montecarlo"``.
+        Default is 10000.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        This is only used if ``null_method=="montecarlo"``.
+        If <=0, defaults to using all available cores.
+        Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
     -----
+    The MKDA density algorithm is also implemented in MATLAB at
+    https://github.com/canlab/Canlab_MKDA_MetaAnalysis.
+
     Available correction methods: :func:`MKDADensity.correct_fwe_montecarlo`
 
     References
@@ -115,7 +131,7 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         prop_active = ma_values.mean(1)
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
@@ -138,7 +154,7 @@ class MKDADensity(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # MKDA maps are binary, so we only have k + 1 bins in the final
         # histogram, where k is the number of studies. We can analytically
@@ -161,18 +177,21 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     Parameters
     ----------
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        :class:`~nimare.meta.kernel.MKDAKernel`.
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
-        Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.MKDAKernel`.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
     Notes
     -----
+    The MKDA Chi-square algorithm was originally implemented as part of the Neurosynth Python
+    library (https://github.com/neurosynth/neurosynth).
+
     Available correction methods: :func:`MKDAChi2.correct_fwe_montecarlo`,
     :obj:`MKDAChi2.correct_fdr_bh`
 
@@ -282,23 +301,27 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return images
 
     def _run_fwe_permutation(self, params):
-        iter_df1, iter_df2, iter_ijk1, iter_ijk2 = params
-        iter_ijk1 = np.squeeze(iter_ijk1)
-        iter_ijk2 = np.squeeze(iter_ijk2)
-        iter_df1[["i", "j", "k"]] = iter_ijk1
-        iter_df2[["i", "j", "k"]] = iter_ijk2
+        iter_df1, iter_df2, iter_xyz1, iter_xyz2 = params
+        iter_xyz1 = np.squeeze(iter_xyz1)
+        iter_xyz2 = np.squeeze(iter_xyz2)
+        iter_df1[["x", "y", "z"]] = iter_xyz1
+        iter_df2[["x", "y", "z"]] = iter_xyz2
 
         temp_ma_maps1 = self.kernel_transformer.transform(
             iter_df1, self.masker, return_type="array"
         )
+        n_selected = temp_ma_maps1.shape[0]
+        n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
+
+        del temp_ma_maps1
+
         temp_ma_maps2 = self.kernel_transformer.transform(
             iter_df2, self.masker, return_type="array"
         )
-
-        n_selected = temp_ma_maps1.shape[0]
         n_unselected = temp_ma_maps2.shape[0]
-        n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
         n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
+
+        del temp_ma_maps2
 
         # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels / n_selected
@@ -331,7 +354,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
         n_iters : :obj:`int`, optional
             Number of iterations to build the vFWE null distribution.
@@ -360,7 +383,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+        null_xyz = vox2mm(
+            np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
+            self.masker.mask_img.affine,
+        )
         pAgF_chi2_vals = result.get_map("chi2_desc-consistency", return_type="array")
         pFgA_chi2_vals = result.get_map("chi2_desc-specificity", return_type="array")
         pAgF_z_vals = result.get_map("z_desc-consistency", return_type="array")
@@ -374,15 +400,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_df2 = self.inputs_["coordinates2"].copy()
         iter_dfs1 = [iter_df1] * n_iters
         iter_dfs2 = [iter_df2] * n_iters
-        rand_idx1 = np.random.choice(null_ijk.shape[0], size=(iter_df1.shape[0], n_iters))
-        rand_ijk1 = null_ijk[rand_idx1, :]
-        iter_ijks1 = np.split(rand_ijk1, rand_ijk1.shape[1], axis=1)
-        rand_idx2 = np.random.choice(null_ijk.shape[0], size=(iter_df2.shape[0], n_iters))
-        rand_ijk2 = null_ijk[rand_idx2, :]
-        iter_ijks2 = np.split(rand_ijk2, rand_ijk2.shape[1], axis=1)
+        rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
+        rand_xyz1 = null_xyz[rand_idx1, :]
+        iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
+        rand_idx2 = np.random.choice(null_xyz.shape[0], size=(iter_df2.shape[0], n_iters))
+        rand_xyz2 = null_xyz[rand_idx2, :]
+        iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
         eps = np.spacing(1)
 
-        params = zip(iter_dfs1, iter_dfs2, iter_ijks1, iter_ijks2)
+        params = zip(iter_dfs1, iter_dfs2, iter_xyzs1, iter_xyzs2)
 
         if n_cores == 1:
             perm_results = []
@@ -391,13 +417,22 @@ class MKDAChi2(PairwiseCBMAEstimator):
         else:
             with mp.Pool(n_cores) as p:
                 perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
+
+        del iter_df1, iter_df2, iter_dfs1, iter_dfs2, rand_idx1, rand_xyz1, iter_xyzs1
+        del rand_idx2, rand_xyz2, iter_xyzs2, params
+
         pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
+
+        del perm_results
 
         # pAgF_FWE
         pAgF_null_chi2_dist = np.squeeze(pAgF_null_chi2_dist)
         pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
             pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel], pAgF_null_chi2_dist, tail="upper")
+
+        del pAgF_null_chi2_dist
+
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to
         # 0 or 1. Prevents inf z-values.
         pAgF_p_FWE[pAgF_p_FWE < eps] = eps
@@ -409,6 +444,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
             pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_null_chi2_dist, tail="upper")
+
+        del pFgA_null_chi2_dist
+
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to
         # 0 or 1. Prevents inf z-values.
         pFgA_p_FWE[pFgA_p_FWE < eps] = eps
@@ -430,7 +468,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
+        result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
         alpha : :obj:`float`, optional
             Alpha. Default is 0.05.
@@ -483,9 +521,22 @@ class KDA(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.KDAKernel`.
+        :class:`~nimare.meta.kernel.KDAKernel`.
+    null_method : {"approximate", "montecarlo"}, optional
+        Method by which to determine uncorrected p-values.
+        "approximate" is faster, but slightly less accurate.
+        "montecarlo" can be much slower, and is only slightly more accurate.
+    n_iters : int, optional
+        Number of iterations to use to define the null distribution.
+        This is only used if ``null_method=="montecarlo"``.
+        Default is 10000.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        This is only used if ``null_method=="montecarlo"``.
+        If <=0, defaults to using all available cores.
+        Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -580,7 +631,7 @@ class KDA(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # assumes that groupby results in same order as MA maps
         n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
@@ -637,7 +688,7 @@ class KDA(CBMAEstimator):
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps.copy()
         else:
-            raise ValueError('Unsupported data type "{}"'.format(type(ma_maps)))
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         def just_histogram(*args, **kwargs):
             """Collect the first output (weights) from numpy histogram."""

@@ -1,5 +1,6 @@
 """Classes for representing datasets of images and/or coordinates."""
 import copy
+import inspect
 import json
 import logging
 import os.path as op
@@ -10,16 +11,16 @@ from nilearn._utils import load_niimg
 
 from .base import NiMAREBase
 from .utils import (
-    dict_to_coordinates,
-    dict_to_df,
+    _dict_to_coordinates,
+    _dict_to_df,
+    _listify,
+    _transform_coordinates_to_space,
+    _try_prepend,
+    _validate_df,
+    _validate_images_df,
     get_masker,
     get_template,
-    listify,
     mm2vox,
-    transform_coordinates_to_ijk,
-    try_prepend,
-    validate_df,
-    validate_images_df,
 )
 
 LGR = logging.getLogger(__name__)
@@ -28,13 +29,13 @@ LGR = logging.getLogger(__name__)
 class Dataset(NiMAREBase):
     """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
 
-    .. versionchanged:: 0.0.8
-
-        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
-
     .. versionchanged:: 0.0.9
 
         * [ENH] Add merge method to Dataset class
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Set ``nimare.dataset.Dataset.basepath`` in :func:`update_path` using absolute path.
 
     Parameters
     ----------
@@ -44,6 +45,7 @@ class Dataset(NiMAREBase):
     target : :obj:`str`, optional
         Desired coordinate space for coordinates. Names follow NIDM convention.
         Default is 'mni152_2mm' (MNI space with 2x2x2 voxels).
+        This parameter has no impact on images.
     mask : :obj:`str`, :class:`nibabel.nifti1.Nifti1Image`, \
     :class:`nilearn.input_data.NiftiMasker` or similar, or None, optional
         Mask(er) to use. If None, uses the target space image, with all
@@ -95,7 +97,7 @@ class Dataset(NiMAREBase):
         all_ids = []
         for pid in data.keys():
             for expid in data[pid]["contrasts"].keys():
-                id_ = "{0}-{1}".format(pid, expid)
+                id_ = f"{pid}-{expid}"
                 all_ids.append([id_, pid, expid])
         id_df = pd.DataFrame(columns=id_columns, data=all_ids)
         id_df = id_df.set_index("id", drop=False)
@@ -107,12 +109,52 @@ class Dataset(NiMAREBase):
         self.masker = mask
         self.space = target
 
-        self.annotations = dict_to_df(id_df, data, key="labels")
-        self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
-        self.images = dict_to_df(id_df, data, key="images")
-        self.metadata = dict_to_df(id_df, data, key="metadata")
-        self.texts = dict_to_df(id_df, data, key="text")
+        self.annotations = _dict_to_df(id_df, data, key="labels")
+        self.coordinates = _dict_to_coordinates(data, masker=self.masker, space=self.space)
+        self.images = _dict_to_df(id_df, data, key="images")
+        self.metadata = _dict_to_df(id_df, data, key="metadata")
+        self.texts = _dict_to_df(id_df, data, key="text")
         self.basepath = None
+
+    def __repr__(self):
+        """Show basic Dataset representation.
+
+        It's basically the same as the NiMAREBase representation, but with the number of
+        experiments in the Dataset represented as well.
+        """
+        # Get default parameter values for the object
+        signature = inspect.signature(self.__init__)
+        defaults = {
+            k: v.default
+            for k, v in signature.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
+
+        # Eliminate any sub-parameters (e.g., parameters for a MetaEstimator's KernelTransformer),
+        # as well as default values
+        params = self.get_params()
+        params = {k: v for k, v in params.items() if "__" not in k}
+        # Parameter "target" is stored as attribute "space"
+        # and we want to show it regardless of whether it's the default or not
+        params["space"] = self.space
+        params.pop("target")
+        params = {k: v for k, v in params.items() if defaults.get(k) != v}
+
+        # Convert to strings
+        param_strs = []
+        for k, v in params.items():
+            if isinstance(v, str):
+                # Wrap string values in single quotes
+                param_str = f"{k}='{v}'"
+            else:
+                # Keep everything else as-is based on its own repr
+                param_str = f"{k}={v}"
+            param_strs.append(param_str)
+
+        params_str = ", ".join(param_strs)
+        params_str = f"{len(self.ids)} experiments{', ' if params_str else ''}{params_str}"
+        rep = f"{self.__class__.__name__}({params_str})"
+        return rep
 
     @property
     def ids(self):
@@ -142,14 +184,10 @@ class Dataset(NiMAREBase):
         if hasattr(self, "masker") and not np.array_equal(
             self.masker.mask_img.affine, mask.mask_img.affine
         ):
-            LGR.info(
-                "New masker does not match old masker. "
-                "Space is assumed to be the same, but coordinates will "
-                "be transformed to new matrix."
-            )
-            coords = self.coordinates
-            coords[["i", "j", "k"]] = mm2vox(coords[["x", "y", "z"]], mask.mask_img.affine)
-            self.coordinates = coords
+            # This message does not have an associated effect,
+            # since matrix indices are calculated as necessary
+            LGR.warning("New masker does not match old masker. Space is assumed to be the same.")
+
         self.__masker = mask
 
     @property
@@ -165,23 +203,26 @@ class Dataset(NiMAREBase):
 
     @annotations.setter
     def annotations(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__annotations = df.sort_values(by="id")
 
     @property
     def coordinates(self):
         """:class:`pandas.DataFrame`: Coordinates in the dataset.
 
+        .. versionchanged:: 0.0.10
+
+            The coordinates attribute no longer includes the associated matrix indices
+            (columns 'i', 'j', and 'k'). These columns are calculated as needed.
+
         Each study has one row for each peak.
-        Columns include ['x', 'y', 'z'] (peak locations in mm),
-        ['i', 'j', 'k'] (peak locations in voxel index based on Dataset's space),
-        and 'space' (Dataset's space).
+        Columns include ['x', 'y', 'z'] (peak locations in mm) and 'space' (Dataset's space).
         """
         return self.__coordinates
 
     @coordinates.setter
     def coordinates(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__coordinates = df.sort_values(by="id")
 
     @property
@@ -203,8 +244,8 @@ class Dataset(NiMAREBase):
 
     @images.setter
     def images(self, df):
-        validate_df(df)
-        self.__images = validate_images_df(df).sort_values(by="id")
+        _validate_df(df)
+        self.__images = _validate_images_df(df).sort_values(by="id")
 
     @property
     def metadata(self):
@@ -217,7 +258,7 @@ class Dataset(NiMAREBase):
 
     @metadata.setter
     def metadata(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__metadata = df.sort_values(by="id")
 
     @property
@@ -231,7 +272,7 @@ class Dataset(NiMAREBase):
 
     @texts.setter
     def texts(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__texts = df.sort_values(by="id")
 
     def slice(self, ids):
@@ -244,7 +285,7 @@ class Dataset(NiMAREBase):
 
         Returns
         -------
-        new_dset : :obj:`nimare.dataset.Dataset`
+        new_dset : :obj:`~nimare.dataset.Dataset`
             Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
@@ -263,12 +304,12 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        right : :obj:`nimare.dataset.Dataset`
+        right : :obj:`~nimare.dataset.Dataset`
             Dataset to merge with.
 
         Returns
         -------
-        :obj:`nimare.dataset.Dataset`
+        :obj:`~nimare.dataset.Dataset`
             A Dataset of the two merged Datasets.
         """
         assert isinstance(right, Dataset)
@@ -289,7 +330,7 @@ class Dataset(NiMAREBase):
             new_df = new_df.where(~new_df.isna(), None)
             setattr(new_dset, attribute, new_df)
 
-        new_dset.coordinates = transform_coordinates_to_ijk(
+        new_dset.coordinates = _transform_coordinates_to_space(
             new_dset.coordinates,
             self.masker,
             self.space,
@@ -313,8 +354,8 @@ class Dataset(NiMAREBase):
         for col in relative_path_cols:
             abs_col = col.replace("__relative", "")
             if abs_col in df.columns:
-                LGR.info("Overwriting images column {}".format(abs_col))
-            df[abs_col] = df[col].apply(try_prepend, prefix=self.basepath)
+                LGR.info(f"Overwriting images column {abs_col}")
+            df[abs_col] = df[col].apply(_try_prepend, prefix=self.basepath)
         self.images = df
 
     def copy(self):
@@ -339,7 +380,7 @@ class Dataset(NiMAREBase):
         Returns
         -------
         results : :obj:`dict`
-            A dictionary of lists of requested data. Keys correspond to the keys in dict_.
+            A dictionary of lists of requested data. Keys correspond to the keys in ``dict_``.
 
         Examples
         --------
@@ -357,6 +398,11 @@ class Dataset(NiMAREBase):
             elif vals[0] == "coordinates":
                 # Break DataFrame down into a list of study-specific DataFrames
                 temp = [self.coordinates.loc[self.coordinates["id"] == id_] for id_ in self.ids]
+                # Replace empty DataFrames with Nones
+                temp = [t if t.size else None for t in temp]
+            elif vals[0] == "annotations":
+                # Break DataFrame down into a list of study-specific DataFrames
+                temp = [self.annotations.loc[self.annotations["id"] == id_] for id_ in self.ids]
                 # Replace empty DataFrames with Nones
                 temp = [t if t.size else None for t in temp]
             else:
@@ -378,7 +424,7 @@ class Dataset(NiMAREBase):
 
         for k in results:
             results[k] = [results[k][i] for i in keep_idx]
-            if dict_.get(k, [None])[0] == "coordinates":
+            if dict_.get(k, [None])[0] in ("coordinates", "annotations"):
                 results[k] = pd.concat(results[k])
 
         return results
@@ -416,7 +462,7 @@ class Dataset(NiMAREBase):
 
         if isinstance(ids, str) and column is not None:
             return_first = True
-        ids = listify(ids)
+        ids = _listify(ids)
 
         available_types = [c for c in df.columns if c not in self._id_cols]
         if (column is not None) and (column not in available_types):
@@ -457,7 +503,7 @@ class Dataset(NiMAREBase):
             List of labels for which there are annotations in the Dataset.
         """
         if not isinstance(ids, list) and ids is not None:
-            ids = listify(ids)
+            ids = _listify(ids)
 
         result = [c for c in self.annotations.columns if c not in self._id_cols]
         if ids is not None:
@@ -537,6 +583,10 @@ class Dataset(NiMAREBase):
     def get_studies_by_label(self, labels=None, label_threshold=0.001):
         """Extract list of studies with a given label.
 
+        .. versionchanged:: 0.0.10
+
+            Fix bug in which all IDs were returned when a label wasn't present in the Dataset.
+
         .. versionchanged:: 0.0.9
 
             Default value for label_threshold changed to 0.001.
@@ -558,19 +608,20 @@ class Dataset(NiMAREBase):
         """
         if isinstance(labels, str):
             labels = [labels]
-        elif labels is None:
-            # For now, labels are all we can search by.
-            return self.ids
         elif not isinstance(labels, list):
-            raise ValueError('Argument "labels" cannot be {0}'.format(type(labels)))
+            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
 
-        found_labels = [label for label in labels if label in self.annotations.columns]
-        temp_annotations = self.annotations[self._id_cols + found_labels]
-        found_rows = (temp_annotations[found_labels] >= label_threshold).all(axis=1)
+        missing_labels = [label for label in labels if label not in self.annotations.columns]
+        if missing_labels:
+            raise ValueError(f"Missing label(s): {', '.join(missing_labels)}")
+
+        temp_annotations = self.annotations[self._id_cols + labels]
+        found_rows = (temp_annotations[labels] >= label_threshold).all(axis=1)
         if any(found_rows):
             found_ids = temp_annotations.loc[found_rows, "id"].tolist()
         else:
             found_ids = []
+
         return found_ids
 
     def get_studies_by_mask(self, mask):
@@ -592,11 +643,11 @@ class Dataset(NiMAREBase):
 
         dset_mask = self.masker.mask_img
         if not np.array_equal(dset_mask.affine, mask.affine):
-            from nilearn.image import resample_to_img
+            LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
 
-            mask = resample_to_img(mask, dset_mask, interpolation="nearest")
+        dset_ijk = mm2vox(self.coordinates[["x", "y", "z"]].values, mask.affine)
         mask_ijk = np.vstack(np.where(mask.get_fdata())).T
-        distances = cdist(mask_ijk, self.coordinates[["i", "j", "k"]].values)
+        distances = cdist(mask_ijk, dset_ijk)
         distances = np.any(distances == 0, axis=0)
         found_ids = list(self.coordinates.loc[distances, "id"].unique())
         return found_ids

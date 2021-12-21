@@ -4,7 +4,6 @@ import os.path as op
 
 from nimare.io import convert_neurosynth_to_json, convert_sleuth_to_json
 from nimare.workflows.ale import ale_sleuth_workflow
-from nimare.workflows.cluster import meta_cluster_workflow
 from nimare.workflows.conperm import conperm_workflow
 from nimare.workflows.macm import macm_workflow
 from nimare.workflows.peaks2maps import peaks2maps_workflow
@@ -14,7 +13,7 @@ from nimare.workflows.scale import scale_workflow
 def _is_valid_file(parser, arg):
     """Check if argument is existing file."""
     if not op.isfile(arg) and arg is not None:
-        parser.error("The file {0} does not exist!".format(arg))
+        parser.error(f"The file {arg} does not exist!")
 
     return arg
 
@@ -149,7 +148,9 @@ def _get_parser():
             "unthresholded maps from peak coordinates. The reconstructed "
             "maps are evaluated for statistical significance using a "
             "permutation-based approach with Family Wise Error multiple "
-            "comparison correction."
+            "comparison correction. "
+            "WARNING: "
+            "The peaks2maps workflow is deprecated and will be removed in NiMARE version 0.0.13."
         ),
     )
     peaks2maps_parser.set_defaults(func=peaks2maps_workflow)
@@ -282,72 +283,6 @@ def _get_parser():
         type=int,
         default=1,
         help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
-    )
-
-    # Meta-analytic clustering
-    cluster_parser = subparsers.add_parser(
-        "metacluster",
-        help=(
-            "Method for investigating recurrent patterns of activation "
-            "across a meta-analytic dataset, thus identifying trends across "
-            "a collection of experiments."
-        ),
-    )
-    cluster_parser.set_defaults(func=meta_cluster_workflow)
-    cluster_parser.add_argument(
-        "dataset_file", type=lambda x: _is_valid_file(parser, x), help=("Dataset file to analyze.")
-    )
-    cluster_parser.add_argument(
-        "--output_dir",
-        dest="output_dir",
-        metavar="PATH",
-        type=str,
-        help=("Output directory."),
-        default=".",
-    )
-    cluster_parser.add_argument(
-        "--prefix", dest="prefix", type=str, help=("Common prefix for output maps."), default=""
-    )
-    cluster_parser.add_argument(
-        "--kernel",
-        dest="kernel",
-        choices=["ALEKernel", "MKDAKernel", "KDAKernel", "Peaks2MapsKernel"],
-        help=("Kernel estimator, for coordinate-based metaclustering."),
-        default="ALEKernel",
-    )
-    cluster_parser.add_argument(
-        "--algorithm",
-        dest="algorithm",
-        choices=["kmeans", "dbscan", "spectral"],
-        help=("Clustering algorithm to be used, from sklearn.cluster."),
-        default="kmeans",
-    )
-    cluster_parser.add_argument(
-        "--clust_range",
-        dest="clust_range",
-        type=int,
-        nargs=2,
-        help=(
-            "Select a range for k over which clustering solutions will be "
-            "evaluated (e.g., 2 10 will evaluate solutions with k = 2 "
-            "clusters to k = 10 clusters)."
-        ),
-        required=True,
-    )
-    type_group = cluster_parser.add_mutually_exclusive_group(required=True)
-    type_group.add_argument(
-        "--coord",
-        dest="coord",
-        action="store_true",
-        help=("Is input data coordinate-based?"),
-        default=False,
-    )
-    type_group.add_argument(
-        "--img",
-        dest="coord",
-        action="store_false",
-        help=("Is input data image-based?"),
-        default=False,
     )
 
     # Conversion workflows

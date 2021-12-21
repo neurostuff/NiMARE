@@ -78,22 +78,58 @@ def test_convert_sleuth_to_json_smoke():
 
 def test_convert_neurosynth_to_dataset_smoke():
     """Smoke test for Neurosynth file conversion."""
-    db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
-    features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")
+    coordinates_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_coordinates.tsv.gz",
+    )
+    metadata_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_metadata.tsv.gz",
+    )
+    features = {
+        "features": os.path.join(
+            get_test_data_path(),
+            "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
+        ),
+        "vocabulary": os.path.join(
+            get_test_data_path(), "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
+        ),
+    }
     dset = io.convert_neurosynth_to_dataset(
-        db_file,
-        {"Neurosynth_TEST": features_file},
+        coordinates_file,
+        metadata_file,
+        annotations_files=features,
     )
     assert isinstance(dset, nimare.dataset.Dataset)
-    assert "Neurosynth_TEST__abilities" in dset.annotations.columns
+    assert "terms_abstract_tfidf__abilities" in dset.annotations.columns
 
 
 def test_convert_neurosynth_to_json_smoke():
     """Smoke test for Neurosynth file conversion."""
     out_file = os.path.abspath("temp.json")
-    db_file = os.path.join(get_test_data_path(), "test_neurosynth_database.txt")
-    features_file = os.path.join(get_test_data_path(), "test_neurosynth_features.txt")
-    io.convert_neurosynth_to_json(db_file, out_file, annotations_file=features_file)
+    coordinates_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_coordinates.tsv.gz",
+    )
+    metadata_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_metadata.tsv.gz",
+    )
+    features = {
+        "features": os.path.join(
+            get_test_data_path(),
+            "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
+        ),
+        "vocabulary": os.path.join(
+            get_test_data_path(), "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
+        ),
+    }
+    io.convert_neurosynth_to_json(
+        coordinates_file,
+        metadata_file,
+        out_file,
+        annotations_files=features,
+    )
     dset = nimare.dataset.Dataset(out_file)
     assert os.path.isfile(out_file)
     assert isinstance(dset, nimare.dataset.Dataset)
@@ -132,6 +168,19 @@ def test_convert_neurosynth_to_json_smoke():
                 "map_type_conversion": {"univariate-beta map": "beta"},
             }
         ),
+        (
+            {
+                "collection_ids": (11303,),
+                "contrasts": {"rms": "rms"},
+                "map_type_conversion": {"univariate-beta map": "beta"},
+            }
+        ),
+        (
+            {
+                "collection_ids": (8836,),
+                "contrasts": {"crab_people": "cannot hurt you because they do not exist"},
+            }
+        ),
     ],
 )
 def test_convert_neurovault_to_dataset(kwargs):
@@ -140,6 +189,11 @@ def test_convert_neurovault_to_dataset(kwargs):
         with pytest.raises(ValueError) as excinfo:
             dset = io.convert_neurovault_to_dataset(**kwargs)
         assert "Collection 778 not found." in str(excinfo.value)
+        return
+    elif "crab_people" in kwargs["contrasts"].keys():
+        with pytest.raises(ValueError) as excinfo:
+            dset = io.convert_neurovault_to_dataset(**kwargs)
+        assert "No images were found for contrast crab_people" in str(excinfo.value)
         return
     else:
         dset = io.convert_neurovault_to_dataset(**kwargs)

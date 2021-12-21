@@ -15,7 +15,7 @@ def test_ale_workflow_function_smoke(tmp_path_factory):
     workflows.ale_sleuth_workflow(
         sleuth_file, output_dir=tmpdir, prefix=prefix, n_iters=10, n_cores=1
     )
-    assert op.isfile(op.join(tmpdir, "{}_input_coordinates.txt".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_input_coordinates.txt"))
 
 
 def test_ale_workflow_cli_smoke(tmp_path_factory):
@@ -38,7 +38,7 @@ def test_ale_workflow_cli_smoke(tmp_path_factory):
             sleuth_file,
         ]
     )
-    assert op.isfile(op.join(tmpdir, "{}_input_coordinates.txt".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_input_coordinates.txt"))
 
 
 def test_ale_workflow_function_smoke_2(tmp_path_factory):
@@ -56,7 +56,7 @@ def test_ale_workflow_function_smoke_2(tmp_path_factory):
         n_iters=10,
         n_cores=1,
     )
-    assert op.isfile(op.join(tmpdir, "{}_group2_input_coordinates.txt".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_group2_input_coordinates.txt"))
 
 
 def test_ale_workflow_cli_smoke_2(tmp_path_factory):
@@ -80,7 +80,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
             sleuth_file,
         ]
     )
-    assert op.isfile(op.join(tmpdir, "{}_group2_input_coordinates.txt".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_group2_input_coordinates.txt"))
 
 
 def test_scale_workflow_function_smoke(tmp_path_factory):
@@ -94,7 +94,7 @@ def test_scale_workflow_function_smoke(tmp_path_factory):
     workflows.scale_workflow(
         sleuth_file, baseline=baseline, output_dir=tmpdir, prefix=prefix, n_iters=5, n_cores=1
     )
-    assert op.isfile(op.join(tmpdir, "{}_input_coordinates.txt".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_input_coordinates.txt"))
 
 
 def test_scale_workflow_cli_smoke(tmp_path_factory):
@@ -120,7 +120,7 @@ def test_scale_workflow_cli_smoke(tmp_path_factory):
             sleuth_file,
         ]
     )
-    assert op.isfile(op.join(tmpdir, "{}_input_coordinates.txt".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_input_coordinates.txt"))
 
 
 def test_conperm_workflow_function_smoke(testdata_ibma, tmp_path_factory):
@@ -135,7 +135,7 @@ def test_conperm_workflow_function_smoke(testdata_ibma, tmp_path_factory):
     workflows.conperm_workflow(
         files, mask_image=mask_image, output_dir=tmpdir, prefix=prefix, n_iters=5
     )
-    assert op.isfile(op.join(tmpdir, "{}_logp.nii.gz".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_logp.nii.gz"))
 
 
 def test_conperm_workflow_cli_smoke(testdata_ibma, tmp_path_factory):
@@ -160,4 +160,4 @@ def test_conperm_workflow_cli_smoke(testdata_ibma, tmp_path_factory):
         ]
         + files
     )
-    assert op.isfile(op.join(tmpdir, "{}_logp.nii.gz".format(prefix)))
+    assert op.isfile(op.join(tmpdir, f"{prefix}_logp.nii.gz"))

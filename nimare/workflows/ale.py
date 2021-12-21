@@ -27,7 +27,7 @@ def ale_sleuth_workflow(
     LGR.info("Loading coordinates...")
 
     if fwhm:
-        fwhm_str = "of {0} mm".format(fwhm)
+        fwhm_str = f"of {fwhm} mm"
     else:
         fwhm_str = "determined by sample size"
 

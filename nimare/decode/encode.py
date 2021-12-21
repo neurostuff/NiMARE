@@ -8,33 +8,13 @@ from ..due import due
 from .utils import weight_priors
 
 
-@due.dcite(references.TEXT2BRAIN, description="Introduced text2brain models for annotation.")
-def text2brain():
-    """
-    Perform text-to-image encoding with the text2brain model.
-
-    Warnings
-    --------
-    This method is not yet implemented.
-
-    References
-    ----------
-    * Dockès, Jérôme, et al. "Text to brain: predicting the spatial
-      distribution of neuroimaging observations from text reports."
-      International Conference on Medical Image Computing and
-      Computer-Assisted Intervention. Springer, Cham, 2018.
-      https://doi.org/10.1007/978-3-030-00931-1_67
-    """
-    pass
-
-
 @due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA encoding.")
 def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0):
     r"""Perform text-to-image encoding according to the method described in Rubin et al. (2017).
 
     Parameters
     ----------
-    model : :obj:`nimare.annotate.topic.GCLDAModel`
+    model : :obj:`~nimare.annotate.gclda.GCLDAModel`
         Model object needed for decoding.
     text : :obj:`str` or :obj:`list`
         Text to encode into an image.
@@ -69,30 +49,32 @@ def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0
     :math:`\omega`            1d array from input image (``input_values``)
     ======================    ==============================================================
 
-    1.  Compute :math:`p(v|t)`
-        (``p_voxel_g_topic``).
+    1.  Compute :math:`p(v|t)` (``p_voxel_g_topic``).
+
             - From :func:`gclda.model.Model.get_spatial_probs()`
-    2.  Compute :math:`p(t|w)`
-        (``p_topic_g_word``).
+
+    2.  Compute :math:`p(t|w)` (``p_topic_g_word``).
     3.  Vectorize input text according to model vocabulary.
     4.  Reduce :math:`p(t|w)` to only include word types in input text.
-    5.  Compute :math:`p(t|h)` (``p_topic_g_text``) by multiplying
-        :math:`p(t|w)` by word counts for input text.
-    6.  Sum topic weights (:math:`\\tau_{t}`) across
-        words.
+    5.  Compute :math:`p(t|h)` (``p_topic_g_text``) by multiplying :math:`p(t|w)` by word counts
+        for input text.
+    6.  Sum topic weights (:math:`\\tau_{t}`) across words.
+
             - :math:`\\tau_{t} = \sum_{i}{p(t|h_{i})}`
-    7.  Compute voxel
-        weights.
+
+    7.  Compute voxel weights.
+
             - :math:`p(v|h) \propto p(v|t) \cdot \\tau_{t}`
-    8.  The resulting array (``voxel_weights``) reflects arbitrarily scaled
-        voxel weights for the input text.
+
+    8.  The resulting array (``voxel_weights``) reflects arbitrarily scaled voxel weights for the
+        input text.
     9.  Unmask and reshape ``voxel_weights`` into brain image.
 
     See Also
     --------
-    :class:`nimare.annotate.gclda.GCLDAModel`
-    :func:`nimare.decode.continuous.gclda_decode_map`
-    :func:`nimare.decode.discrete.gclda_decode_roi`
+    :class:`~nimare.annotate.gclda.GCLDAModel`
+    :func:`~nimare.decode.continuous.gclda_decode_map`
+    :func:`~nimare.decode.discrete.gclda_decode_roi`
 
     References
     ----------
