@@ -11,6 +11,8 @@ from scipy import spatial, stats
 def hedges_g(y, n_subjects, J):
     """Calculate Hedges' G.
 
+    NOTE: We probably want to support both two-sample and one-sample versions.
+
     R Code
     ------
     g <- function (y) { # Calculate Hedges' g
@@ -41,6 +43,8 @@ def hedges_g_var(g, n_subjects, df, J):
 def permute_study_effects(g, n_studies):
     """Permute study effects.
 
+    Randomly sign-flip ~50% of the studies.
+
     R Code
     ------
     perm1 <- function (g) { # Permute study effects
@@ -49,11 +53,17 @@ def permute_study_effects(g, n_studies):
         g
     }
     """
-    ...
+    code = np.random.randint(0, 2, size=n_studies).astype(bool)
+    out_g = g.copy()
+    out_g[code] *= -1
+    return out_g
 
 
 def permute_subject_values(y):
     """Permute subject values.
+
+    Seems to shuffle rows in each column independently.
+    When "size" isn't provided to ``sample()``, it just permutes the array.
 
     R Code
     ------
@@ -61,7 +71,8 @@ def permute_subject_values(y):
         apply(y, 2, sample)
     }
     """
-    ...
+    permuted = np.apply_along_axis(np.random.permutation, 0, y)
+    return permuted
 
 
 def simulate_subject_values(n_studies, n_subjects):
@@ -233,6 +244,8 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
             m_stud_perm = est_stud_perm.summary()
 
             # Save null distribution of z-values
+            # TODO: Fix this after testing. zvals should be an array across samples,
+            # so appending to a list doesn't make sense.
             zvals = m_stud_perm.get_fe_stats()["z"]
             nd_z_perm_stud.append(zvals)
 
@@ -284,7 +297,6 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         "Increase in MSE: "
         f"{np.round((np.mean(mse_perm_stud) - np.mean(mse_perm_stud)) / np.mean(mse_perm_subj))}"
     )
-    ...
 
 
 def compute_sdm_ma(
@@ -338,12 +350,12 @@ def compute_sdm_ma(
 
     kept_ijk = ijk[kept_peaks, :]
     peak_corrs = np.vstack(peak_corrs)
-    kept_effect_sizes = effect_sizes[kept_peaks]
+    # kept_effect_sizes = effect_sizes[kept_peaks]
 
     # real_distance is physical distance between voxel and peak
     # we need some way to select the appropriate peak for each voxel
     real_distances = spatial.distance.cdist(kept_ijk, mask_ijk)
-    closest_peak = np.argmin(real_distances, axis=0)
+    # closest_peak = np.argmin(real_distances, axis=0)
     virtual_distances = np.sqrt(
         (1 - alpha) * (real_distances ** 2) + alpha * 2 * kernel_sigma * np.log(peak_corr ** -1)
     )
