@@ -956,7 +956,6 @@ def _run_shell_command(command, env=None):
         shell=True,
         env=merged_env,
     )
-
     while True:
         line = process.stdout.readline()
         line = str(line, "utf-8")[:-1]
