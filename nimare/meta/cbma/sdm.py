@@ -13,6 +13,21 @@ def hedges_g(y, J, n_subjects=None):
 
     NOTE: We probably want to support both two-sample and one-sample versions.
 
+    Parameters
+    ----------
+    y : 2D array of shape (sample_size, n_variables)
+        Subject-level values for which to calculate Hedges G.
+        Multiple variables may be provided.
+    J : float
+        Hedges' correction factor.
+    n_subjects : None or int
+        Number of subjects in each group. If None, the dataset is assumed to be have one sample.
+        This assumes that two-sample datasets have the same number of subjects in each group.
+
+    Notes
+    -----
+    Clues for Python version from https://en.wikipedia.org/wiki/Effect_size#Hedges'_g.
+
     R Code
     ------
     g <- function (y) { # Calculate Hedges' g
@@ -45,8 +60,13 @@ def hedges_g(y, J, n_subjects=None):
     return g_arr
 
 
-def hedges_g_var(g, n_subjects, df, J):
+def hedges_g_var(g, n_subjects):
     """Calculate variance of Hedges' G.
+
+    Notes
+    -----
+    Clues for Python version from https://constantinyvesplessen.com/post/g/#hedges-g,
+    except using proper J instead of approximation.
 
     R Code
     ------
@@ -56,7 +76,8 @@ def hedges_g_var(g, n_subjects, df, J):
         1 / n.subj + (1 - (df - 2) / (df * J^2)) * g^2
     }
     """
-    g_var = (1 / n_subjects) + (1 - (df - 2) / (df * (J ** 2))) * (g ** 2)
+    n1 = n2 = n_subjects  # NOTE: Until different sample sizes are supported
+    g_var = ((n1 + n2) / (n1 * n2)) + ((g ** 2) / (2 * (n1 + n2)))
     return g_var
 
 
@@ -228,7 +249,7 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
 
     # Constants
     df = (2 * n_subjects) - 2  # degrees of freedom
-    J = gamma(df / 2) / gamma((df - 1) / 2) * np.sqrt(2 / df)  # Hedges' correction
+    J = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
 
     # Next is a parallelized for loop of 1:n_sims that somehow uses metafor.
     for i_sim in range(n_sims):
