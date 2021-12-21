@@ -8,7 +8,7 @@ from pymare import Dataset, estimators
 from scipy import spatial, stats
 
 
-def hedges_g(y, n_subjects, J):
+def hedges_g(y, J, n_subjects=None):
     """Calculate Hedges' G.
 
     NOTE: We probably want to support both two-sample and one-sample versions.
@@ -22,7 +22,18 @@ def hedges_g(y, n_subjects, J):
         })
     }
     """
-    ...
+    if n_subjects is None:
+        g_arr = J * np.mean(y, axis=0) / np.std(y, axis=0)
+
+    else:
+        g_arr = np.zeros(y.shape[1])
+        for i_col in range(y.shape[1]):
+            num = np.mean(y[:n_subjects, i_col]) - np.mean(y[n_subjects:, i_col])
+            denom = np.sqrt((np.var(y[:n_subjects, i_col]) + np.var(y[n_subjects:, i_col])) / 2)
+            g = num / denom
+            g_arr[i_col] = g
+
+    return g_arr
 
 
 def hedges_g_var(g, n_subjects, df, J):
@@ -99,9 +110,15 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
     n_sims : int
         Number of simulations.
     n_subjects : int
-        Number of subjects per group of a study
+        Number of subjects per group of a study.
+        2*n_subjects is the total number of subjects in each study.
     n_studies : int
-        Number of studies
+        Number of studies in the meta-analysis.
+
+    Notes
+    -----
+    TODO: Support array for number of subjects, so that each study has its own sample size.
+    TODO: Support one-sample studies.
 
     R Code
     ------
