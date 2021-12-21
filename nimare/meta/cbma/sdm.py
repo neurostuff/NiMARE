@@ -23,15 +23,24 @@ def hedges_g(y, J, n_subjects=None):
     }
     """
     if n_subjects is None:
-        g_arr = J * np.mean(y, axis=0) / np.std(y, axis=0)
+        g_arr = J * (y.shape[0] - 1) * np.mean(y, axis=0) / np.std(y, axis=0)
 
     else:
+        n1 = n_subjects
+        n2 = y.shape[0] - n_subjects
+        var1 = np.var(y[:n1], axis=0)
+        var2 = np.var(y[n1:], axis=0)
+
         g_arr = np.zeros(y.shape[1])
         for i_col in range(y.shape[1]):
-            num = np.mean(y[:n_subjects, i_col]) - np.mean(y[n_subjects:, i_col])
-            denom = np.sqrt((np.var(y[:n_subjects, i_col]) + np.var(y[n_subjects:, i_col])) / 2)
-            g = num / denom
+            mean_diff = np.mean(y[:n_subjects, i_col]) - np.mean(y[n_subjects:, i_col])
+            pooled_std = np.sqrt(
+                (((n1 - 1) * var1[i_col]) + ((n2 - 1) * var2[i_col])) / (n_subjects - 2)
+            )
+            g = mean_diff / pooled_std
             g_arr[i_col] = g
+
+        g_arr = g_arr * (J * (n1 + n2 - 2))
 
     return g_arr
 
@@ -339,7 +348,13 @@ def compute_sdm_ma(
     alpha : float
         User-selected degree of anisotropy. Default is 0.5.
     kernel_sigma : float
-        User-specified sigma of kernel. Default is 5.
+        User-specified sigma of kernel, in mm. Default is 5.
+
+    References
+    ----------
+    * Radua, J., Rubia, K., Canales, E. J., Pomarol-Clotet, E., Fusar-Poli, P., &
+        Mataix-Cols, D. (2014). Anisotropic kernels for coordinate-based meta-analyses of
+        neuroimaging studies. Frontiers in psychiatry, 5, 13.
     """
     df = np.sum(sample_sizes) - 2
     effect_size_threshold = stats.t.isf(significance_level, df)
