@@ -5,13 +5,25 @@ class Studyset:
     """A collection of studies for meta-analysis.
 
     This is the primary target for Estimators and Transformers in NiMARE.
+
+    Attributes
+    ----------
+    studies
     """
 
-    def __init__(self):
+    def __init__(self, source, target_space, mask):
+        ...
+
+    def from_nimads(self, filename):
+        """Create a Studyset from a NIMADS JSON file."""
         ...
 
     def to_nimads(self, filename):
         """Write the Studyset to a NIMADS JSON file."""
+        ...
+
+    def load(self, filename):
+        """Load a Studyset from a pickled file."""
         ...
 
     def save(self, filename):
@@ -31,15 +43,15 @@ class Studyset:
         ...
 
     def update_image_path(self, new_path):
-        """Point to a new location for image files on the filesystem."""
+        """Point to a new location for image files on the local filesystem."""
         ...
 
-    def get_analyses_by_coordinates(self):
-        """Extract a list of Analyses with at least one focus near the requested coordinates."""
+    def get_analyses_by_coordinates(self, xyz, r=None, n=None):
+        """Extract a list of Analyses with at least one Point near the requested coordinates."""
         ...
 
-    def get_analyses_by_mask(self):
-        """Extract a list of Analyses with at least one focus in the specified mask."""
+    def get_analyses_by_mask(self, img):
+        """Extract a list of Analyses with at least one Point in the specified mask."""
         ...
 
     def get_analyses_by_annotations(self):
@@ -58,8 +70,8 @@ class Studyset:
         """Extract a list of Analyses with a metadata field/value."""
         ...
 
-    def get_coordinates(self, analyses):
-        """Collect coordinates associated with specified Analyses."""
+    def get_points(self, analyses):
+        """Collect Points associated with specified Analyses."""
         ...
 
     def get_annotations(self, analyses):
@@ -80,7 +92,12 @@ class Studyset:
 
 
 class Study:
-    """A collection of Analyses from the same paper."""
+    """A collection of Analyses from the same paper.
+
+    Attributes
+    ----------
+    analyses
+    """
 
     def __init__(self):
         ...
@@ -91,7 +108,19 @@ class Study:
 
 
 class Analysis:
-    ...
+    """A single statistical analyses from a Study.
+
+    Attributes
+    ----------
+    conditions
+    annotations
+    texts
+    images
+    points
+    """
+
+    def __init__(self):
+        ...
 
 
 class Condition:
