@@ -799,3 +799,23 @@ def z_to_t(z_values, dof):
     t_values = np.zeros(z_values.shape)
     t_values[z_values != 0] = t_values_nonzero
     return t_values
+
+
+def t_to_hedges_g(t_values, sample_size):
+    """Convert t-statistics to Hedges' g values.
+
+    According to Radua 2012, the main conversion in (A)ES-SDM is t-statistic to Hedges g.
+
+    Notes
+    -----
+    Clues from https://imaging.mrc-cbu.cam.ac.uk/statswiki/FAQ/td.
+    """
+    # one sample t-test
+    cohens_d = t_values / np.sqrt(sample_size)
+    # two sample t-test
+    cohens_d = t * np.sqrt((1 / n1) + (1 / n2))
+    return cohens_d
+
+
+def f_to_hedges_g(f_values, sample_size):
+    ...
