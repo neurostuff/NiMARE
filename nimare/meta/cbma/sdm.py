@@ -4,6 +4,7 @@ from datetime import datetime
 import dijkstra3d
 import numpy as np
 from nilearn import masking
+from pymare import Dataset, estimators
 from scipy import spatial, stats
 
 
@@ -37,7 +38,7 @@ def hedges_g_var(g, n_subjects, df, J):
     return g_var
 
 
-def permute_study_effects(g):
+def permute_study_effects(g, n_studies):
     """Permute study effects.
 
     R Code
@@ -73,26 +74,6 @@ def simulate_subject_values(n_studies, n_subjects):
         y[1:n.subj,] <- y[1:n.subj,] + 0.2 # Add a small effect size
         y
     }
-    """
-    ...
-
-
-def zval(meta_result):
-    """I think this converts to z-values."""
-    zvals = meta_result.get_fe_stats()["z"]
-    return zvals
-
-
-def pval(meta_result):
-    """I think this converts z-values to p-values."""
-    pvals = meta_result.get_fe_stats()["p"]
-    return pvals
-
-
-def rma():
-    """This is metafor's random-effects model.
-
-    I want to use PyMARE for this.
     """
     ...
 
@@ -223,8 +204,11 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         g_var_unperm = hedges_g_var(g_unperm, n_subjects, df, J)
 
         # Meta-analysis
-        m_unperm = rma(g_unperm, g_var_unperm)
-        z_unperm = zval(m_unperm)
+        dset = Dataset(y=g_unperm, v=g_var_unperm)
+        est = estimators.VarianceBasedLikelihoodEstimator(method="REML")
+        est.fit_dataset(dset)
+        m_unperm = est.summary()
+        z_unperm = m_unperm.get_fe_stats()["z"]
 
         # Save null distributions of z-values
         # NOTE: Not sure why the original z-values would be included in the null distribution
@@ -243,10 +227,14 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
             g_stud_perm = permute_study_effects(g_unperm)
 
             # Meta-analysis of permuted study data
-            m_stud_perm = rma(g_stud_perm, g_var_unperm)
+            dset_stud_perm = Dataset(y=g_stud_perm, v=g_var_unperm)
+            est_stud_perm = estimators.VarianceBasedLikelihoodEstimator(method="REML")
+            est_stud_perm.fit_dataset(dset_stud_perm)
+            m_stud_perm = est_stud_perm.summary()
 
             # Save null distribution of z-values
-            nd_z_perm_stud.append(zval(m_stud_perm))
+            zvals = m_stud_perm.get_fe_stats()["z"]
+            nd_z_perm_stud.append(zvals)
 
         # Time between study-based and subject-based permutation tests
         time1 = datetime.now()
@@ -261,10 +249,14 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
             g_var_subj_perm = hedges_g_var(g_subj_perm)
 
             # Meta-analysis of permuted subject data
-            m_subj_perm = rma(g_subj_perm, g_var_subj_perm)
+            dset_subj_perm = Dataset(y=g_subj_perm, v=g_var_subj_perm)
+            est_subj_perm = estimators.VarianceBasedLikelihoodEstimator(method="REML")
+            est_subj_perm.fit_dataset(dset_subj_perm)
+            m_subj_perm = est_subj_perm.summary()
 
             # Save null distribution of z-values
-            nd_z_perm_subj.append(zval(m_subj_perm))
+            zvals = m_subj_perm.get_fe_stats()["z"]
+            nd_z_perm_subj.append(zvals)
 
         # Time after subject-based permutation tests
         time2 = datetime.now()
@@ -274,7 +266,7 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         out_dict = {
             "time_perm_stud": time1 - time0,
             "time_perm_subj": time2 - time1,
-            "p_z": pval(m_unperm),
+            "p_z": m_unperm.get_fe_stats()["p"],
             "p_perm_stud": 1 - 2 * np.abs(np.mean(z_unperm > nd_z_perm_stud) - 0.5),
             "p_perm_subj": 1 - 2 * np.abs(np.mean(z_unperm > nd_z_perm_subj) - 0.5),
         }
