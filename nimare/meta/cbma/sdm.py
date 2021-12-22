@@ -117,7 +117,7 @@ def permute_subject_values(y):
 
 
 def simulate_subject_values(n_studies, n_subjects):
-    """Simulate subject values.
+    """Simulate (true) subject values.
 
     R Code
     ------
@@ -127,7 +127,10 @@ def simulate_subject_values(n_studies, n_subjects):
         y
     }
     """
-    ...
+    y = np.random.normal(size=(n_subjects * 2, n_studies))
+    # Add a small effect size
+    y[:n_subjects, :] = y[:n_subjects, :].copy() + 0.2
+    return y
 
 
 def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
