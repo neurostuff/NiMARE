@@ -5,7 +5,6 @@ import logging
 import os
 import os.path as op
 import re
-import subprocess
 from functools import wraps
 from tempfile import mkstemp
 
@@ -937,28 +936,3 @@ def _boolean_unmask(data_array, bool_array):
     unmasked_data[bool_array] = data_array
     unmasked_data = unmasked_data.T
     return unmasked_data
-
-
-def _run_shell_command(command, env=None):
-    """Run a given command with certain environment variables set."""
-    merged_env = os.environ
-    if env:
-        merged_env.update(env)
-
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        shell=True,
-        env=merged_env,
-    )
-    while True:
-        line = process.stdout.readline()
-        line = str(line, "utf-8")[:-1]
-        LGR.info(line)
-        if line == "" and process.poll() is not None:
-            break
-
-    if process.returncode != 0:
-        stderr_line = str(process.stderr.read(), "utf-8")[:-1]
-        raise Exception(f"Non zero return code: {process.returncode}\n{command}\n\n{stderr_line}")
