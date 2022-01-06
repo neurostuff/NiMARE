@@ -15,13 +15,14 @@ import os
 
 import pandas as pd
 
-from nimare import annotate, dataset
+from nimare import annotate
+from nimare.dataset import Dataset
 from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
-dset = dataset.Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
+dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 
 ###############################################################################
 # Initialize LDA model
