@@ -35,7 +35,6 @@ import nimare
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
-
 needs_sphinx = "3.5"
 
 # generate autosummary even if no references
@@ -151,7 +150,7 @@ htmlhelp_basename = "nimaredoc"
 # The following is used by sphinx.ext.linkcode to provide links to github
 linkcode_resolve = make_linkcode_resolve(
     "nimare",
-    "https://github.com/neurostuff/nimare/blob/{revision}/" "{package}/{path}#L{lineno}",
+    "https://github.com/neurostuff/nimare/blob/{revision}/{package}/{path}#L{lineno}",
 )
 
 # -----------------------------------------------------------------------------

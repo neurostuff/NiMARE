@@ -8,6 +8,7 @@ from __future__ import division
 
 import logging
 import os
+import warnings
 from hashlib import md5
 
 import nibabel as nib
@@ -438,6 +439,9 @@ class MKDAKernel(KDAKernel):
 class Peaks2MapsKernel(KernelTransformer):
     """Generate peaks2maps modeled activation images from coordinates.
 
+    .. deprecated:: 0.0.11
+        `Peaks2MapsKernel` will be removed in NiMARE 0.0.13.
+
     Parameters
     ----------
     model_dir : :obj:`str`, optional
@@ -450,13 +454,14 @@ class Peaks2MapsKernel(KernelTransformer):
     """
 
     def __init__(self, model_dir="auto"):
+        warnings.warn(
+            "Peaks2MapsKernel is deprecated, and will be removed in NiMARE version 0.0.13.",
+            DeprecationWarning,
+        )
+
         # Use private attribute to hide value from get_params.
         # get_params will find model_dir=None, which is *very important* when a path is provided.
         self._model_dir = model_dir
-        LGR.warning(
-            "The Peaks2Maps kernel transformer is not intended for serious research. "
-            "We strongly recommend against using it for any meaningful analyses."
-        )
 
     def _transform(self, mask, coordinates):
         transformed = []

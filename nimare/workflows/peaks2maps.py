@@ -16,7 +16,12 @@ LGR = logging.getLogger(__name__)
 
 
 def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000):
-    """Run the peaks2maps workflow."""
+    """Run the peaks2maps workflow.
+
+    .. deprecated:: 0.0.11
+        `peaks2maps_workflow` will be removed in NiMARE 0.0.13.
+
+    """
     LGR.info("Loading coordinates...")
     dset = convert_sleuth_to_dataset(sleuth_file)
 

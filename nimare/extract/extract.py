@@ -473,6 +473,9 @@ def download_abstracts(dataset, email):
 def download_peaks2maps_model(data_dir=None, overwrite=False):
     """Download the trained Peaks2Maps model from OHBM 2018.
 
+    .. deprecated:: 0.0.11
+        `download_peaks2maps_model` will be removed in NiMARE 0.0.13.
+
     .. versionadded:: 0.0.2
 
     Parameters

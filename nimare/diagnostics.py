@@ -52,7 +52,7 @@ class Jackknife(NiMAREBase):
 
     def __init__(
         self,
-        target_image="z_level-cluster_corr-FWE_method-montecarlo",
+        target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
         voxel_thresh=None,
         n_cores=1,
     ):

@@ -55,20 +55,39 @@ def test_find_stem():
 
 def test_get_template():
     """Test nimare.utils.get_template."""
+    # 1mm template
     img = utils.get_template(space="mni152_1mm", mask=None)
     assert isinstance(img, nib.Nifti1Image)
     assert not nib.is_proxy(img.dataobj)
     img = utils.get_template(space="mni152_1mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
-    img = utils.get_template(space="mni152_1mm", mask="gm")
-    assert isinstance(img, nib.Nifti1Image)
+
+    # 2mm template (default)
     img = utils.get_template(space="mni152_2mm", mask=None)
     assert isinstance(img, nib.Nifti1Image)
     img = utils.get_template(space="mni152_2mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
-    img = utils.get_template(space="mni152_2mm", mask="gm")
+    assert not nib.is_proxy(img.dataobj)
+
+    # ALE template
+    img = utils.get_template(space="ale_2mm", mask=None)
+    assert isinstance(img, nib.Nifti1Image)
+    img = utils.get_template(space="ale_2mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
     assert not nib.is_proxy(img.dataobj)
+
+    # Expect exceptions when incompatible spaces or masks are requested.
+    with pytest.raises(ValueError):
+        utils.get_template(space="something", mask=None)
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="mni152_1mm", mask="gm")
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="mni152_2mm", mask="gm")
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="ale_2mm", mask="gm")
 
 
 def test_get_resource_path():
@@ -151,7 +170,7 @@ def test_mni2tal():
 def test_vox2mm():
     """Test vox2mm."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
-    true = np.array([[50.0, -86.0, -32.0], [90.0, -126.0, -72.0]])
+    true = np.array([[-50.0, -86.0, -32.0], [-90.0, -126.0, -72.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.vox2mm(test, aff), true)
@@ -160,7 +179,7 @@ def test_vox2mm():
 def test_mm2vox():
     """Test mm2vox."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
-    true = np.array([[35.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
+    true = np.array([[55.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.mm2vox(test, aff), true)
