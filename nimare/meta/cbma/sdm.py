@@ -247,12 +247,22 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         2) * 100, "%\n", sep = "")
     """
     from math import gamma
+    from pprint import pprint
 
     import numpy as np
 
     # Constants
     df = (2 * n_subjects) - 2  # degrees of freedom
     J = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+
+    # Predefine outputs dictionary
+    out_dict = {
+        "time_perm_stud": np.empty(n_sims),
+        "time_perm_subj": np.empty(n_sims),
+        "p_z": np.empty(n_sims),
+        "p_perm_stud": np.empty(n_sims),
+        "p_perm_subj": np.empty(n_sims),
+    }
 
     # Next is a parallelized for loop of 1:n_sims that somehow uses metafor.
     for i_sim in range(n_sims):
@@ -261,8 +271,8 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         y_unperm = simulate_subject_values(n_studies, n_subjects)
 
         # Calculate Hedges' g
-        g_unperm = hedges_g(y_unperm, n_subjects, J)
-        g_var_unperm = hedges_g_var(g_unperm, n_subjects, df, J)
+        g_unperm = hedges_g(y_unperm, J, n_subjects)
+        g_var_unperm = hedges_g_var(g_unperm, n_subjects)  # , df, J)
 
         # Meta-analysis
         dset = Dataset(y=g_unperm, v=g_var_unperm)
@@ -276,8 +286,8 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         # so I replaced them with empty lists.
         # nd_z_perm_stud = z_unperm
         # nd_z_perm_subj = z_unperm
-        nd_z_perm_stud = []
-        nd_z_perm_subj = []
+        nd_z_perm_stud = np.empty(n_perms)
+        nd_z_perm_subj = np.empty(n_perms)
 
         # Time before study-based permutation test
         time0 = datetime.now()
@@ -285,7 +295,7 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         # Study-based permutation test
         for j_perm in range(n_perms):
             # Permute study data
-            g_stud_perm = permute_study_effects(g_unperm)
+            g_stud_perm = permute_study_effects(g_unperm, n_studies)
 
             # Meta-analysis of permuted study data
             dset_stud_perm = Dataset(y=g_stud_perm, v=g_var_unperm)
@@ -294,10 +304,8 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
             m_stud_perm = est_stud_perm.summary()
 
             # Save null distribution of z-values
-            # TODO: Fix this after testing. zvals should be an array across samples,
-            # so appending to a list doesn't make sense.
             zvals = m_stud_perm.get_fe_stats()["z"]
-            nd_z_perm_stud.append(zvals)
+            nd_z_perm_stud[j_perm] = zvals
 
         # Time between study-based and subject-based permutation tests
         time1 = datetime.now()
@@ -308,8 +316,8 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
             y_subj_perm = permute_subject_values(y_unperm)
 
             # Calculate Hedges' g of permuted subject data
-            g_subj_perm = hedges_g(y_subj_perm)
-            g_var_subj_perm = hedges_g_var(g_subj_perm)
+            g_subj_perm = hedges_g(y_subj_perm, J, n_subjects)
+            g_var_subj_perm = hedges_g_var(g_subj_perm, n_subjects)
 
             # Meta-analysis of permuted subject data
             dset_subj_perm = Dataset(y=g_subj_perm, v=g_var_subj_perm)
@@ -319,20 +327,17 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
 
             # Save null distribution of z-values
             zvals = m_subj_perm.get_fe_stats()["z"]
-            nd_z_perm_subj.append(zvals)
+            nd_z_perm_subj[j_perm] = zvals
 
         # Time after subject-based permutation tests
         time2 = datetime.now()
 
         # Save times and two-tailed p-values
-        # TODO: Store data across simulations
-        out_dict = {
-            "time_perm_stud": time1 - time0,
-            "time_perm_subj": time2 - time1,
-            "p_z": m_unperm.get_fe_stats()["p"],
-            "p_perm_stud": 1 - 2 * np.abs(np.mean(z_unperm > nd_z_perm_stud) - 0.5),
-            "p_perm_subj": 1 - 2 * np.abs(np.mean(z_unperm > nd_z_perm_subj) - 0.5),
-        }
+        out_dict["time_perm_stud"][i_sim] = (time1 - time0).total_seconds()
+        out_dict["time_perm_subj"][i_sim] = (time2 - time1).total_seconds()
+        out_dict["p_z"][i_sim] = m_unperm.get_fe_stats()["p"]
+        out_dict["p_perm_stud"][i_sim] = 1 - 2 * np.abs(np.mean(z_unperm > nd_z_perm_stud) - 0.5)
+        out_dict["p_perm_subj"][i_sim] = 1 - 2 * np.abs(np.mean(z_unperm > nd_z_perm_subj) - 0.5)
 
     # Output results
     time_perm_stud = out_dict["time_perm_stud"]
@@ -341,12 +346,14 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
     mse_perm_subj = (out_dict["p_perm_subj"] - out_dict["p_z"]) ** 2
     print(
         "Decrease in execution time: "
-        f"{np.round(np.mean(time_perm_subj) - np.mean(time_perm_stud))}\n",
+        f"{np.mean(time_perm_subj) - np.mean(time_perm_stud)}\n",
     )
     print(
         "Increase in MSE: "
-        f"{np.round((np.mean(mse_perm_stud) - np.mean(mse_perm_stud)) / np.mean(mse_perm_subj))}"
+        f"{(np.mean(mse_perm_stud) - np.mean(mse_perm_subj)) / np.mean(mse_perm_subj)}"
     )
+
+    pprint(out_dict)
 
 
 def compute_sdm_ma(
