@@ -8,18 +8,17 @@ from pymare import Dataset, estimators
 from scipy import spatial, stats
 
 
-def hedges_g(y, J, n_subjects=None):
+def hedges_g(y, n_subjects1, n_subjects2=None):
     """Calculate Hedges' G.
-
-    NOTE: We probably want to support both two-sample and one-sample versions.
 
     Parameters
     ----------
-    y : 2D array of shape (sample_size, n_variables)
+    y : 2D array of shape (n_studies, max_study_size)
         Subject-level values for which to calculate Hedges G.
-        Multiple variables may be provided.
-    J : float
-        Hedges' correction factor.
+        Multiple studies may be provided.
+        The array contains as many rows as there are studies, and as many columns as the maximum
+        sample size in the studyset. Extra columns in each row should be filled with NaNs.
+    n_subjects1 : :obj:`numpy.ndarray` of shape (n_studies)
     n_subjects : None or int
         Number of subjects in each group. If None, the dataset is assumed to be have one sample.
         This assumes that two-sample datasets have the same number of subjects in each group.
@@ -37,31 +36,53 @@ def hedges_g(y, J, n_subjects=None):
         })
     }
     """
-    if n_subjects is None:
-        g_arr = J * (y.shape[0] - 1) * np.mean(y, axis=0) / np.std(y, axis=0)
+    from scipy.special import gamma
+
+    if n_subjects2 is not None:
+        # Must be an array
+        assert n_subjects2.shape == n_subjects1.shape
+
+        # Constants
+        df = (n_subjects1 + n_subjects2) - 2  # degrees of freedom
+        J_arr = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+
+        g_arr = np.zeros(y.shape[0])
+        for i_study in range(y.shape[0]):
+            n1, n2 = n_subjects1[i_study], n_subjects2[i_study]
+            study_data = y[i_study, : n1 + n2]
+            var1 = np.var(study_data[:n1], axis=0)
+            var2 = np.var(study_data[n1:], axis=0)
+
+            mean_diff = np.mean(study_data[:n1]) - np.mean(study_data[n1:])
+            pooled_std = np.sqrt((((n1 - 1) * var1) + ((n2 - 1) * var2)) / ((n1 + n2) - 2))
+            g = mean_diff / pooled_std
+            g_arr[i_study] = g
+
+        g_arr = g_arr * (J_arr * ((n_subjects1 + n_subjects2) - 2))
 
     else:
-        n1 = n_subjects
-        n2 = y.shape[0] - n_subjects
-        var1 = np.var(y[:n1], axis=0)
-        var2 = np.var(y[n1:], axis=0)
-
-        g_arr = np.zeros(y.shape[1])
-        for i_col in range(y.shape[1]):
-            mean_diff = np.mean(y[:n_subjects, i_col]) - np.mean(y[n_subjects:, i_col])
-            pooled_std = np.sqrt(
-                (((n1 - 1) * var1[i_col]) + ((n2 - 1) * var2[i_col])) / (n_subjects - 2)
-            )
-            g = mean_diff / pooled_std
-            g_arr[i_col] = g
-
-        g_arr = g_arr * (J * (n1 + n2 - 2))
+        df = n_subjects1 - 1
+        J_arr = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+        g_arr = J_arr * df * np.nanmean(y, axis=1) / np.nanstd(y, axis=1)
 
     return g_arr
 
 
-def hedges_g_var(g, n_subjects):
+def hedges_g_var(g, n_subjects1, n_subjects2=None):
     """Calculate variance of Hedges' G.
+
+    Parameters
+    ----------
+    g : :obj:`numpy.ndarray` of shape (n_studies,)
+        Hedges' G values.
+    n_subjects : :obj:`numpy.ndarray` of shape (n_studies,)
+    n_subjects2 : None or :obj:`numpy.ndarray` of shape (n_studies,)
+        Can be None if the G values come from one-sample tests.
+
+    Returns
+    -------
+    g_var : :obj:`numpy.ndarray` of shape (n_studies,)
+        Hedges' G variance values.
 
     Notes
     -----
@@ -76,8 +97,14 @@ def hedges_g_var(g, n_subjects):
         1 / n.subj + (1 - (df - 2) / (df * J^2)) * g^2
     }
     """
-    n1 = n2 = n_subjects  # NOTE: Until different sample sizes are supported
-    g_var = ((n1 + n2) / (n1 * n2)) + ((g ** 2) / (2 * (n1 + n2)))
+    if n_subjects2 is not None:
+        assert g.shape == n_subjects1.shape == n_subjects2.shape
+        g_var = ((n_subjects1 + n_subjects2) / (n_subjects1 * n_subjects2)) + (
+            (g ** 2) / (2 * (n_subjects1 + n_subjects2))
+        )
+    else:
+        raise ValueError("One-sample tests are not yet supported.")
+
     return g_var
 
 
@@ -100,10 +127,10 @@ def permute_study_effects(g, n_studies):
     return out_g
 
 
-def permute_subject_values(y):
+def permute_subject_values(y, n_subjects):
     """Permute subject values.
 
-    Seems to shuffle rows in each column independently.
+    Seems to shuffle columns in each row independently.
     When "size" isn't provided to ``sample()``, it just permutes the array.
 
     R Code
@@ -112,11 +139,15 @@ def permute_subject_values(y):
         apply(y, 2, sample)
     }
     """
-    permuted = np.apply_along_axis(np.random.permutation, 0, y)
+    permuted = np.full(y.shape, np.nan)
+    for i_study in range(y.shape[0]):
+        study_data = y[i_study, :n_subjects[i_study]]
+        permuted[i_study, :n_subjects[i_study]] = np.random.permutation(study_data)
+
     return permuted
 
 
-def simulate_subject_values(n_studies, n_subjects):
+def simulate_subject_values(n_subjects1, n_subjects2):
     """Simulate (true) subject values.
 
     R Code
@@ -127,9 +158,16 @@ def simulate_subject_values(n_studies, n_subjects):
         y
     }
     """
-    y = np.random.normal(size=(n_subjects * 2, n_studies))
-    # Add a small effect size
-    y[:n_subjects, :] = y[:n_subjects, :].copy() + 0.2
+    n_studies = len(n_subjects1)
+    max_total_sample = np.max(n_subjects1 + n_subjects2)
+
+    y = np.random.normal(size=(n_studies, max_total_sample))
+    for i_study in range(y.shape[0]):
+        # Any columns outside of the individual study's sample size will have NaNs
+        y[i_study, (n_subjects1[i_study] + n_subjects2[i_study]) :] = np.nan
+        # Add a small effect size
+        y[i_study, : (n_subjects1[i_study] + n_subjects2[i_study])] += 0.2
+
     return y
 
 
@@ -246,14 +284,11 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         (mean(mse.perm_stud) - mean(mse.perm_subj)) / mean(mse.perm_subj),
         2) * 100, "%\n", sep = "")
     """
-    from math import gamma
     from pprint import pprint
 
-    import numpy as np
-
-    # Constants
-    df = (2 * n_subjects) - 2  # degrees of freedom
-    J = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+    # Create simulation-specific sample sizes
+    n_subs1 = np.random.randint(10, 50, size=(n_studies, n_sims))
+    n_subs2 = np.random.randint(10, 50, size=(n_studies, n_sims))
 
     # Predefine outputs dictionary
     out_dict = {
@@ -264,15 +299,19 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         "p_perm_subj": np.empty(n_sims),
     }
 
-    # Next is a parallelized for loop of 1:n_sims that somehow uses metafor.
+    # Next is a parallelized for loop of 1:n_sims that uses metafor.
     for i_sim in range(n_sims):
 
+        n_subs1_sim = n_subs1[:, i_sim]
+        n_subs2_sim = n_subs2[:, i_sim]
+        n_subjects_total = n_subs1_sim + n_subs2_sim
+
         # Simulate subject data of all studies
-        y_unperm = simulate_subject_values(n_studies, n_subjects)
+        y_unperm = simulate_subject_values(n_subs1_sim, n_subs2_sim)
 
         # Calculate Hedges' g
-        g_unperm = hedges_g(y_unperm, J, n_subjects)
-        g_var_unperm = hedges_g_var(g_unperm, n_subjects)  # , df, J)
+        g_unperm = hedges_g(y_unperm, n_subs1_sim, n_subs2_sim)
+        g_var_unperm = hedges_g_var(g_unperm, n_subs1_sim, n_subs2_sim)
 
         # Meta-analysis
         dset = Dataset(y=g_unperm, v=g_var_unperm)
@@ -313,11 +352,11 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
         # Subject-based permutation test
         for j_perm in range(n_perms):
             # Permute subject data
-            y_subj_perm = permute_subject_values(y_unperm)
+            y_subj_perm = permute_subject_values(y_unperm, n_subjects_total)
 
             # Calculate Hedges' g of permuted subject data
-            g_subj_perm = hedges_g(y_subj_perm, J, n_subjects)
-            g_var_subj_perm = hedges_g_var(g_subj_perm, n_subjects)
+            g_subj_perm = hedges_g(y_subj_perm, n_subs1_sim, n_subs2_sim)
+            g_var_subj_perm = hedges_g_var(g_subj_perm, n_subs1_sim, n_subs2_sim)
 
             # Meta-analysis of permuted subject data
             dset_subj_perm = Dataset(y=g_subj_perm, v=g_var_subj_perm)
@@ -345,8 +384,7 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
     mse_perm_stud = (out_dict["p_perm_stud"] - out_dict["p_z"]) ** 2
     mse_perm_subj = (out_dict["p_perm_subj"] - out_dict["p_z"]) ** 2
     print(
-        "Decrease in execution time: "
-        f"{np.mean(time_perm_subj) - np.mean(time_perm_stud)}\n",
+        "Decrease in execution time: " f"{np.mean(time_perm_subj) - np.mean(time_perm_stud)}\n",
     )
     print(
         "Increase in MSE: "
