@@ -430,7 +430,7 @@ def run_sdm(coords, n_imputations=1000):
     meta_effect_size_img, meta_tau_img = _mle_estimation(lower_bound_imgs, upper_bound_imgs)
 
     # Step 4a: Create base set of simulated subject maps.
-    raw_subject_effect_size_imgs = _simulate_subject_maps(lower_bound_imgs, upper_bound_imgs)
+    raw_subject_effect_size_imgs = _simulate_subject_maps(meta_effect_size_img, meta_tau_img)
 
     for i_imp in range(n_imputations):
         # Step 3: Impute study-wise effect size and variance maps.
