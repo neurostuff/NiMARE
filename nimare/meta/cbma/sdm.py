@@ -2,6 +2,7 @@
 from datetime import datetime
 
 import dijkstra3d
+import nibabel as nib
 import numpy as np
 from nilearn import masking
 from pymare import Dataset, estimators
@@ -145,8 +146,13 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
     return y
 
 
-def _simulate_subject_maps(study_maps, n_subjects):
+def _simulate_subject_maps(study_maps, n_subjects, masker, correlation_maps):
     """Simulate the subject maps.
+
+    Parameters
+    ----------
+    correlation_maps : dict of 3 91x109x91 arrays
+        right, posterior, and inferior
 
     Notes
     -----
@@ -194,45 +200,97 @@ def _simulate_subject_maps(study_maps, n_subjects):
     -   For two-sample studies, SDM-PSI imputes subject values separately for each sample, and it
         only adds the effect size to the patient (or non-control) subject images.
     """
+    study_img = masker.inverse_transform(study_maps[0])
+    n_x, n_y, n_z = study_img.shape
     n_voxels = study_maps[0].shape[0]
     subject_maps = np.empty((np.sum(n_subjects), n_voxels))
     subject_counter = 0
     for i_study, study_map in enumerate(study_maps):
+        study_map_3d = masker.inverse_transform(study_map).get_fdata()
         n_study_subjects = n_subjects[i_study]
-        for i_voxel, voxel in enumerate(study_map):
-            # NOTE: This is nonsense. I need to figure out how to actually loop through the voxels
-            # while also tracking the neighbors. It basically needs to be a searchlight of some
-            # kind.
-            if i_voxel == 0:
-                subject_maps[
-                    subject_counter:n_study_subjects, i_voxel
-                ] = _simulate_voxel_with_no_neighbors(n_study_subjects)
-            elif i_voxel == 1:
-                A_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 1]
-                r_ay = 0.5
-                subject_maps[
-                    subject_counter:n_study_subjects, i_voxel
-                ] = _simulate_voxel_with_one_neighbor(A_data, r_ay)
-            elif i_voxel == 2:
-                A_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 2]
-                B_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 1]
-                r_ay = 0.5
-                r_by = 0.5
-                subject_maps[
-                    subject_counter:n_study_subjects, i_voxel
-                ] = _simulate_voxel_with_two_neighbors(A_data, B_data, r_ay, r_by)
-            else:
-                A_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 3]
-                B_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 2]
-                C_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 1]
-                r_ay = 0.5
-                r_by = 0.5
-                r_cy = 0.5
-                subject_maps[
-                    subject_counter:n_study_subjects, i_voxel
-                ] = _simulate_voxel_with_two_neighbors(A_data, B_data, C_data, r_ay, r_by, r_cy)
+        study_subject_maps = np.full(np.nan, (n_x, n_y, n_z, n_study_subjects))
+        for i_x in range(n_x):
+            for j_y in range(n_y):
+                for k_z in range(n_z):
+                    if np.isnan(study_map_3d[i_x, j_y, k_z]):
+                        continue
 
+                    if not np.isnan(study_map_3d[i_x - 1, j_y, k_z]):
+                        use_right = True
+                    else:
+                        use_right = False
+
+                    if not np.isnan(study_map_3d[i_x, j_y - 1, k_z]):
+                        use_posterior = True
+                    else:
+                        use_posterior = False
+
+                    if not np.isnan(study_map_3d[i_x, j_y, k_z - 1]):
+                        use_inferior = True
+                    else:
+                        use_inferior = False
+
+                    n_directions = sum((use_right, use_posterior, use_inferior))
+                    if n_directions == 0:
+                        study_subject_maps[i_x, j_y, k_z, :] = _simulate_voxel_with_no_neighbors(
+                            n_study_subjects
+                        )
+
+                    elif n_directions == 1:
+                        if use_right:
+                            A_data = study_subject_maps[i_x - 1, j_y, k_z, :]
+                            r_ay = correlation_maps["right"][i_x, j_y, k_z]
+                        elif use_posterior:
+                            A_data = study_subject_maps[i_x, j_y - 1, k_z, :]
+                            r_ay = correlation_maps["posterior"][i_x, j_y, k_z]
+                        else:
+                            A_data = study_subject_maps[i_x, j_y, k_z - 1, :]
+                            r_ay = correlation_maps["inferior"][i_x, j_y, k_z]
+
+                        study_subject_maps[i_x, j_y, k_z, :] = _simulate_voxel_with_one_neighbor(
+                            A_data, r_ay
+                        )
+
+                    elif n_directions == 2:
+                        if use_right:
+                            A_data = study_subject_maps[i_x - 1, j_y, k_z, :]
+                            r_ay = correlation_maps["right"][i_x, j_y, k_z]
+
+                            if use_posterior:
+                                B_data = study_subject_maps[i_x, j_y - 1, k_z, :]
+                                r_by = correlation_maps["posterior"][i_x, j_y, k_z]
+                            else:
+                                B_data = study_subject_maps[i_x, j_y, k_z - 1, :]
+                                r_by = correlation_maps["inferior"][i_x, j_y, k_z]
+                        elif use_posterior:
+                            A_data = study_subject_maps[i_x, j_y - 1, k_z, :]
+                            r_ay = correlation_maps["posterior"][i_x, j_y, k_z]
+
+                            B_data = study_subject_maps[i_x, j_y, k_z - 1, :]
+                            r_by = correlation_maps["inferior"][i_x, j_y, k_z]
+
+                        study_subject_maps[i_x, j_y, k_z, :] = _simulate_voxel_with_two_neighbors(
+                            A_data, B_data, r_ay, r_by
+                        )
+
+                    else:
+                        A_data = study_subject_maps[i_x - 1, j_y, k_z, :]
+                        B_data = study_subject_maps[i_x, j_y - 1, k_z, :]
+                        C_data = study_subject_maps[i_x, j_y, k_z - 1, :]
+                        r_ay = correlation_maps["right"][i_x, j_y, k_z]
+                        r_by = correlation_maps["posterior"][i_x, j_y, k_z]
+                        r_cy = correlation_maps["inferior"][i_x, j_y, k_z]
+                        study_subject_maps[i_x, j_y, k_z, :] = _simulate_voxel_with_two_neighbors(
+                            A_data, B_data, C_data, r_ay, r_by, r_cy
+                        )
+
+        study_subject_img = nib.Nifti1Image(
+            study_subject_maps, masker.mask_img.affine, masker.mask_img.header
+        )
+        study_subject_data = masker.transform(study_subject_img)
+        subject_maps[subject_counter : subject_counter + n_study_subjects, :] = study_subject_data
         subject_counter += n_study_subjects
+
     return subject_maps
 
 
@@ -312,6 +370,9 @@ def run_sdm(coords, n_imputations=1000):
     1.  Use anisotropic Gaussian kernels, plus effect size estimates and metadata,
         to produce lower-bound and upper-bound effect size maps from the coordinates.
         -   We need generic inter-voxel correlation maps for this.
+            NOTE: Correlation maps are unidirectional. There are 26 directions for each voxel,
+            but the flipped versions (e.g., right and left) use equivalent maps so there are only
+            13 correlation maps.
         -   We also need a fast implementation of Dijkstra's algorithm to estimate the shortest
             path (i.e., "virtual distance") between two voxels based on the map of correlations
             between each voxel and its neighbors. I think ``dijkstra3d`` might be useful here.
