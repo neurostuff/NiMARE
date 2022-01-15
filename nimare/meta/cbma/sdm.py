@@ -8,6 +8,403 @@ from pymare import Dataset, estimators
 from scipy import spatial, stats
 
 
+def _mle_estimation():
+    ...
+
+
+def _impute_studywise_imgs():
+    ...
+
+
+def _simulate_voxel_with_no_neighbors(n_subjects):
+    y = np.random.normal(loc=0, scale=1, size=n_subjects)
+    y = stats.zscore(y)
+    return y
+
+
+def _simulate_voxel_with_one_neighbor(A, r_ay):
+    """Simulate the data for a voxel with one neighbor.
+
+    Parameters
+    ----------
+    A : numpy.ndarray of shape (n_subjects,)
+        Subject values for the neighboring voxel.
+    r_ay : float
+        Desired correlation between A and Y.
+    """
+    # Random normal values with null mean and unit variance.
+    R = _simulate_voxel_with_no_neighbors(A.size)
+    # Correlation between A and R.
+    r_ar = np.corrcoef((A, R))[1, 0]
+
+    w_r = np.sqrt((1 - (r_ay ** 2)) / (1 - (r_ar ** 2)))
+    w_a = r_ay - (w_r * r_ar)
+    y = (w_a * A) + (w_r * R)
+    return y
+
+
+def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
+    """Simulate the data for a voxel with one neighbor.
+
+    Parameters
+    ----------
+    A, B : numpy.ndarray of shape (n_subjects,)
+        Subject values for the neighboring voxels.
+    r_ay, r_by : float
+        Desired correlation between A and Y, and between B and Y.
+    """
+    R = _simulate_voxel_with_no_neighbors(A.size)
+    r_ab = np.corrcoef((A, B))[1, 0]
+    r_ar = np.corrcoef((A, R))[1, 0]
+    r_br = np.corrcoef((B, R))[1, 0]
+
+    w_r = np.sqrt(
+        (1 - (r_ab ** 2) - (r_ay ** 2) - (r_by ** 2) + (2 * r_ab * r_ay * r_by))
+        / (1 - (r_ab ** 2) - (r_ar ** 2) - (r_br ** 2) + (2 * r_ab * r_ar * r_br))
+    )
+    w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar)))) / (1 - (r_ab ** 2))
+    w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
+
+    y = (w_a * A) + (w_b * B) + (w_r * R)
+    return y
+
+
+def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
+    """Simulate the data for a voxel with one neighbor.
+
+    Parameters
+    ----------
+    A, B, C : numpy.ndarray of shape (n_subjects,)
+        Subject values for the neighboring voxels.
+    r_ay, r_by, r_cy : float
+        Desired correlation between A and Y, B and Y, and C and Y.
+    """
+    R = _simulate_voxel_with_no_neighbors(A.size)
+    r_ab = np.corrcoef((A, B))[1, 0]
+    r_ac = np.corrcoef((A, C))[1, 0]
+    r_bc = np.corrcoef((B, C))[1, 0]
+    r_ar = np.corrcoef((A, R))[1, 0]
+    r_br = np.corrcoef((B, R))[1, 0]
+    r_cr = np.corrcoef((C, R))[1, 0]
+
+    w_r_num1 = (
+        1
+        - (r_ab ** 2)
+        - (r_ac ** 2)
+        - (r_bc ** 2)
+        + (2 * r_ab * r_ac * r_bc)
+        - ((r_ay ** 2) * (1 - (r_bc ** 2)))
+        - ((r_by ** 2) * (1 - (r_ac ** 2)))
+        - ((r_cy ** 2) * (1 - (r_ab ** 2)))
+    )
+    w_r_num2 = (
+        (2 * r_ay * r_by * (r_ab - (r_ac * r_bc)))
+        + (2 * r_ay * r_cy * (r_ac - (r_ab * r_bc)))
+        + (2 * r_by * r_cy * (r_bc - (r_ab * r_ac)))
+    )
+    w_r_num = w_r_num1 + w_r_num2
+
+    w_r_den1 = (
+        1
+        - (r_ab ** 2)
+        - (r_ac ** 2)
+        - (r_bc ** 2)
+        + (2 * r_ab * r_ac * r_bc)
+        - ((r_ar ** 2) * (1 - (r_bc ** 2)))
+        - ((r_br ** 2) * (1 - (r_ac ** 2)))
+        - ((r_cr ** 2) * (1 - (r_ab ** 2)))
+    )
+    w_r_den2 = (
+        (2 * r_ar * r_br * (r_ab - (r_ac * r_bc)))
+        + (2 * r_ar * r_cr * (r_ac - (r_ab * r_bc)))
+        + (2 * r_br * r_cr * (r_bc - (r_ab * r_ac)))
+    )
+    w_r_den = w_r_den1 + w_r_den2
+    w_r = w_r_num / w_r_den
+
+    w_c_num1 = (
+        (r_cy * (1 - (r_ab ** 2)))
+        - (r_ac * (r_ay - (r_ab * r_by)))
+        - (r_bc * (r_by - (r_ab * r_ay)))
+    )
+    w_c_num2 = w_r * (
+        (r_cr * (1 - (r_ab ** 2)))
+        - (r_ac * (r_ar - (r_ab * r_br)))
+        - (r_bc * (r_br - (r_ab * r_ar)))
+    )
+    w_c_num = w_c_num1 - w_c_num2
+    w_c_den = 1 - (r_ab ** 2) - (r_ac ** 2) - (r_bc ** 2) + (2 * r_ab * r_ac * r_bc)
+    w_c = w_c_num / w_c_den
+
+    w_b = (
+        (r_by - (r_ab * r_ay)) - (w_c * (r_bc - (r_ab * r_ac))) - (w_r * (r_br - (r_ab * r_ar)))
+    ) / (1 - (r_ab ** 2))
+    w_a = r_ay - (w_b * r_ab) - (w_c * r_ac) - (w_r * r_ar)
+
+    y = (w_a * A) + (w_b * B) + (w_c * C) + (w_r * R)
+    return y
+
+
+def _simulate_subject_maps(study_maps, n_subjects):
+    """Simulate the subject maps.
+
+    Notes
+    -----
+    -   For simplicity, the imputation function in SDM-PSI is a generation of random normal numbers
+        with their mean equal to the sample effect size of the voxel in the (unpermuted) study
+        image and unit variance.
+    -   Note that the sample effect size is the effect size of the study after removing
+        (i.e., dividing by) the J Hedge correction factor.
+    -   In the common preliminary set, the values of any voxel have null mean, and adjacent voxels
+        show the expected correlations. For instance, if the correlation observed in humans
+        between voxels A and B is 0.67, the correlation between these two voxels in the imputed
+        subject images must be 0.67.
+        SDM-PSI uses the correlation templates created for AES-SDM to know the correlation between
+        every pair of two voxels (i.e., to take the irregular spatial covariance of the brain into
+        account), but other approaches are possible.
+    -   For imputing subject values (Y) in a voxel that has no neighboring voxels imputed yet,
+        SDM-PSI simply creates random normal values and standardizes them to have null mean and
+        unit variance (R):
+        -   Y = R
+    -   For imputing subject values in a voxel that has one neighboring voxel already imputed,
+        SDM-PSI conducts a weighted average of the subject values of the neighboring voxel (A) and
+        new standardized random normal values.
+        -   Y = (w_a * A) + (w_r * R), where w are the weights that ensure that the resulting
+            subject values have unit variance and the desired correlation.
+        -   w_a = r_ay - (w_r * r_ar * w_r) = np.sqrt((1 - (r_ay ** 2)) / (1 - (r_ar ** 2)))
+    -   For imputing subject values in a voxel that has two neighboring voxels already imputed,
+        SDM-PSI conducts again a weighted average of the subject values of the neighboring voxels
+        (A and B) and new standardized random normal values.
+        -   Y = (w_a * A) + (w_b * B) + (w_r * R), where again w are the weights that ensure that
+            the resulting subject values have unit variance and the desired correlations.
+        -   w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
+        -   w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar))) / (1 - (r_ab ** 2)))
+        -   w_r = np.sqrt((1 - (r_ab ** 2) - (r_ay ** 2) - (r_by ** 2) + (2 * r_ab * r_ay * r_by))
+            / (1 - (r_ab ** 2) - (r_ar ** 2) - (r_br ** 2) + (2 * r_ab * r_ar * r_br))
+
+    -   Note that as far as the imputation of the voxels follows a simple order and the software
+        only accounts for correlations between voxels sharing a face, a voxel cannot have more than
+        three neighbor voxels already imputed. For example, imagine that the imputation follows a
+        left/posterior/inferior to right/anterior/superior direction. When the software imputes a
+        given voxel, it will have already imputed the three neighbors in the left,
+        behind and below, while it will impute later the three neighbors in the right,
+        in front and above.
+        The number of neighbor voxels imputed or to impute will be lower if some of them are
+        outside the mask.
+    -   For two-sample studies, SDM-PSI imputes subject values separately for each sample, and it
+        only adds the effect size to the patient (or non-control) subject images.
+    """
+    n_voxels = study_maps[0].shape[0]
+    subject_maps = np.empty((np.sum(n_subjects), n_voxels))
+    subject_counter = 0
+    for i_study, study_map in enumerate(study_maps):
+        n_study_subjects = n_subjects[i_study]
+        for i_voxel, voxel in enumerate(study_map):
+            # NOTE: This is nonsense. I need to figure out how to actually loop through the voxels
+            # while also tracking the neighbors. It basically needs to be a searchlight of some
+            # kind.
+            if i_voxel == 0:
+                subject_maps[
+                    subject_counter:n_study_subjects, i_voxel
+                ] = _simulate_voxel_with_no_neighbors(n_study_subjects)
+            elif i_voxel == 1:
+                A_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 1]
+                r_ay = 0.5
+                subject_maps[
+                    subject_counter:n_study_subjects, i_voxel
+                ] = _simulate_voxel_with_one_neighbor(A_data, r_ay)
+            elif i_voxel == 2:
+                A_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 2]
+                B_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 1]
+                r_ay = 0.5
+                r_by = 0.5
+                subject_maps[
+                    subject_counter:n_study_subjects, i_voxel
+                ] = _simulate_voxel_with_two_neighbors(A_data, B_data, r_ay, r_by)
+            else:
+                A_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 3]
+                B_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 2]
+                C_data = subject_maps[subject_counter:n_study_subjects, i_voxel - 1]
+                r_ay = 0.5
+                r_by = 0.5
+                r_cy = 0.5
+                subject_maps[
+                    subject_counter:n_study_subjects, i_voxel
+                ] = _simulate_voxel_with_two_neighbors(A_data, B_data, C_data, r_ay, r_by, r_cy)
+
+        subject_counter += n_study_subjects
+    return subject_maps
+
+
+def _scale_subject_maps(
+    studylevel_effect_size_maps,
+    studylevel_variance_maps,
+    prelim_subjectlevel_maps,
+):
+    """Scale the "preliminary" set of subject-level maps for each dataset for a given imputation.
+
+    Parameters
+    ----------
+    studylevel_effect_size_maps : numpy.ndarray of shape (S, V)
+        S is study, V is voxel.
+    studylevel_variance_maps : numpy.ndarray of shape (S, V)
+    prelim_subjectlevel_maps : S-length list of numpy.ndarray of shape (N, V)
+        List with one entry per study (S), where each entry is an array that is subjects (N) by
+        voxels (V).
+
+    Returns
+    -------
+    scaled_subjectlevel_maps : S-length list of numpy.ndarray of shape (N, V)
+        List with one entry per study (S), where each entry is an array that is subjects (N) by
+        voxels (V).
+
+    Notes
+    -----
+    -   The mean across subject-level images, for each voxel, must equal the value from the
+        study-level effect size map.
+    -   Values for each voxel, across subjects, must correlate with the values for the same
+        voxel at 1 in all other imputations.
+    -   Values of adjacent voxels must show "realistic" correlations as well.
+        SDM uses tissue-type masks for this.
+    -   SDM simplifies the simulation process by creating a single "preliminary" set of
+        subject-level maps for each dataset (across imputations), and scaling it across
+        imputations.
+    """
+    scaled_subjectlevel_maps = []
+    for i_study in range(studylevel_effect_size_maps.shape[0]):
+        study_mean = studylevel_effect_size_maps[i_study, :]
+        study_var = studylevel_variance_maps[i_study, :]
+
+        study_subject_level_maps = prelim_subjectlevel_maps[i_study]
+        study_subject_level_maps_scaled = (study_subject_level_maps * study_var) + study_mean
+        scaled_subjectlevel_maps.append(study_subject_level_maps_scaled)
+
+    return scaled_subjectlevel_maps
+
+
+def _calculate_hedges_maps():
+    ...
+
+
+def _run_variance_meta():
+    ...
+
+
+def _combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_stats):
+    """Use Rubin's rules to combine meta-analysis results across imputations.
+
+    Notes
+    -----
+    "Finally, SDM-PSI uses Rubin's rules to combine the coefficients of the model,
+    their covariance and the heterogeneity statistics I and Q of the different imputed datasets.
+    Note that Q follows a χ2 distribution, but its combined statistic follows an F distribution.
+    For convenience, SDM-PSI converts FQ back into a Q (i.e. converts an F statistic to a χ2
+    statistic with the same p-value). It also derives H-combined from I-combined."
+    """
+    ...
+
+
+def run_sdm(coords, n_imputations=1000):
+    """Run the SDM algorithm.
+
+    Notes
+    -----
+    1.  Use anisotropic Gaussian kernels, plus effect size estimates and metadata,
+        to produce lower-bound and upper-bound effect size maps from the coordinates.
+        -   We need generic inter-voxel correlation maps for this.
+        -   We also need a fast implementation of Dijkstra's algorithm to estimate the shortest
+            path (i.e., "virtual distance") between two voxels based on the map of correlations
+            between each voxel and its neighbors. I think ``dijkstra3d`` might be useful here.
+    2.  Use maximum likelihood estimation to estimate the most likely effect size and variance
+        maps across studies (i.e., a meta-analytic map).
+        -   Can we use NiMARE IBMAs for this?
+    3.  Use the MLE map and each study's upper- and lower-bound effect size maps to impute
+        study-wise effect size and variance images that meet specific requirements.
+    4.  For each imputed pair of effect size and variance images, simulate subject-level images.
+        -   The mean across subject-level images, for each voxel, must equal the value from the
+            study-level effect size map.
+        -   Values for each voxel, across subjects, must correlate with the values for the same
+            voxel at 1 in all other imputations.
+        -   Values of adjacent voxels must show "realistic" correlations as well.
+            SDM uses tissue-type masks for this.
+        -   SDM simplifies the simulation process by creating a single "preliminary" set of
+            subject-level maps for each dataset (across imputations), and scaling it across
+            imputations.
+    5.  Subject-based permutation test.
+        a.  Create one random permutation of the subjects and apply it to the subject images of
+            the different imputed datasets.
+    6.  Separately for each imputed dataset, conduct a group analysis of the permuted subject
+        images to obtain one study image per study, and then conduct a meta-analysis of the
+        study images to obtain one meta-analysis image.
+        -   "In SDM-PSI, the group analysis is the estimation of Hedge-corrected effect sizes.
+            In practice, this estimation simply consists of calculating the mean
+            (or the difference of means in two-sample studies) and multiplying by J,
+            given that imputed subject values have unit variance."
+    7.  Perform meta-analysis across study-level effect size maps using random effects model.
+        Performed separately for each imputation.
+        -   "The meta-analysis consists of the fitting of a standard random-effects model.
+            The design matrix includes any covariate used in the MLE step,
+            and the weight of a study is the inverse of the sum of its variance and the
+            between-study heterogeneity τ2, which in SDM-PSI may be estimated using either the
+            DerSimonian-Laird or the slightly more accurate restricted-maximum likelihood (REML)
+            method. After fitting the model, SDM conducts a standard linear hypothesis contrast
+            and derives standard heterogeneity statistics H2, I2 and Q."
+        -   One of NiMARE's IBMA interfaces should be able to handle the meta-analysis part.
+            Either DerSimonianLaird or VarianceBasedLikelihood.
+            We'll need to add heterogeneity statistic calculation either to PyMARE or NiMARE.
+    8.  Compute imputation-wise heterogeneity statistics.
+    9.  Use "Rubin's rules" to combine heterogeneity statistics, coefficients, and variance for
+        each imputed dataset. This should result in a combined meta-analysis image.
+    10. Save a maximum statistic from the combined meta-analysis image (e.g., the largest z-value).
+        This is the last step within the iteration loop.
+    11. Perform Monte Carlo-like maximum statistic procedure to get null distributions for vFWE or
+        cFWE. Or do TFCE.
+        -   "After enough iterations of steps a) to d), use the distribution of the maximum
+            statistic to threshold the combined meta-analysis image obtained from unpermuted data."
+    """
+    # Step 1: Estimate lower- and upper-bound effect size maps from coordinates.
+    lower_bound_imgs, upper_bound_imgs = compute_sdm_ma(coords)
+
+    # Step 2: Estimate the most likely effect size and variance maps across studies.
+    meta_effect_size_img, meta_tau_img = _mle_estimation(lower_bound_imgs, upper_bound_imgs)
+
+    # Step 4a: Create base set of simulated subject maps.
+    raw_subject_effect_size_imgs = _simulate_subject_maps(lower_bound_imgs, upper_bound_imgs)
+
+    for i_imp in range(n_imputations):
+        # Step 3: Impute study-wise effect size and variance maps.
+        study_effect_size_imgs, study_var_imgs = _impute_studywise_imgs(
+            meta_effect_size_img,
+            meta_tau_img,
+            lower_bound_imgs,
+            upper_bound_imgs,
+            seed=i_imp,
+        )
+
+        # Step 4: Simulate subject-wise effect size and variance maps.
+        subject_effect_size_imgs, subject_var_imgs = _scale_subject_maps(
+            study_effect_size_imgs,
+            study_var_imgs,
+            raw_subject_effect_size_imgs,
+        )
+
+        # Step 5: Permutations...
+
+        # Step 6: Calculate study-level Hedges-corrected effect size maps.
+        study_hedge_imgs = _calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs)
+
+        # Step 7: Meta-analyze imputed effect size maps.
+        imp_meta_effect_size_img = _run_variance_meta(study_hedge_imgs)
+
+        # Step 8: Heterogeneity statistics.
+        heterogeneity_stats = _combine_imputation_results(imp_meta_effect_size_img)
+
+    # Step 9: Rubin's rules...?
+
+    # Step 10: Monte Carlo simulations.
+    ...
+
+
 def hedges_g(y, n_subjects1, n_subjects2=None):
     """Calculate Hedges' G.
 
@@ -19,13 +416,18 @@ def hedges_g(y, n_subjects1, n_subjects2=None):
         The array contains as many rows as there are studies, and as many columns as the maximum
         sample size in the studyset. Extra columns in each row should be filled with NaNs.
     n_subjects1 : :obj:`numpy.ndarray` of shape (n_studies)
-    n_subjects : None or int
-        Number of subjects in each group. If None, the dataset is assumed to be have one sample.
-        This assumes that two-sample datasets have the same number of subjects in each group.
+        Number of subjects in the first group of each study.
+    n_subjects2 : None or int
+        Number of subjects in the second group of each study.
+        If None, the dataset is assumed to be have one sample.
+        Technically, this parameter is probably unnecessary, since the second group's sample size
+        can be inferred from ``n_subjects1`` and ``y``.
 
     Notes
     -----
     Clues for Python version from https://en.wikipedia.org/wiki/Effect_size#Hedges'_g.
+
+    I also updated the original code to support varying sample sizes across studies.
 
     R Code
     ------
@@ -75,7 +477,7 @@ def hedges_g_var(g, n_subjects1, n_subjects2=None):
     ----------
     g : :obj:`numpy.ndarray` of shape (n_studies,)
         Hedges' G values.
-    n_subjects : :obj:`numpy.ndarray` of shape (n_studies,)
+    n_subjects1 : :obj:`numpy.ndarray` of shape (n_studies,)
     n_subjects2 : None or :obj:`numpy.ndarray` of shape (n_studies,)
         Can be None if the G values come from one-sample tests.
 
@@ -88,6 +490,9 @@ def hedges_g_var(g, n_subjects1, n_subjects2=None):
     -----
     Clues for Python version from https://constantinyvesplessen.com/post/g/#hedges-g,
     except using proper J instead of approximation.
+
+    I also updated the original code to support varying sample sizes across studies.
+    I still need to support one-sample tests though.
 
     R Code
     ------
@@ -113,6 +518,10 @@ def permute_study_effects(g, n_studies):
 
     Randomly sign-flip ~50% of the studies.
 
+    Notes
+    -----
+    This is included for the simulations, but I don't think it would be used for SDM-PSI.
+
     R Code
     ------
     perm1 <- function (g) { # Permute study effects
@@ -133,6 +542,23 @@ def permute_subject_values(y, n_subjects):
     Seems to shuffle columns in each row independently.
     When "size" isn't provided to ``sample()``, it just permutes the array.
 
+    Parameters
+    ----------
+    y : 2D array of shape (n_studies, max_study_size)
+        Subject-level values for which to calculate Hedges G.
+        Multiple studies may be provided.
+        The array contains as many rows as there are studies, and as many columns as the maximum
+        sample size in the studyset. Extra columns in each row should be filled with NaNs.
+    n_subjects : :obj:`numpy.ndarray` of shape (n_studies,)
+        The total number of subjects in each study.
+
+    Notes
+    -----
+    This works for one estimate per particiipant per study.
+    We need something that works for statistical maps.
+
+    I also think this might not be usable on one-sample studies.
+
     R Code
     ------
     perm2 <- function (y) { # Permute subject values
@@ -141,14 +567,27 @@ def permute_subject_values(y, n_subjects):
     """
     permuted = np.full(y.shape, np.nan)
     for i_study in range(y.shape[0]):
-        study_data = y[i_study, :n_subjects[i_study]]
-        permuted[i_study, :n_subjects[i_study]] = np.random.permutation(study_data)
+        study_data = y[i_study, : n_subjects[i_study]]
+        permuted[i_study, : n_subjects[i_study]] = np.random.permutation(study_data)
 
     return permuted
 
 
 def simulate_subject_values(n_subjects1, n_subjects2):
     """Simulate (true) subject values.
+
+    Parameters
+    ----------
+    n_subjects1, n_subjects2 : :obj:`numpy.ndarray` of shape (n_studies,)
+        Number of subjects in each sample of each study. This does not support one-sample analyses.
+
+    Returns
+    -------
+    y : 2D array of shape (n_studies, max_study_size)
+        Subject-level values for which to calculate Hedges G.
+        Multiple studies may be provided.
+        The array contains as many rows as there are studies, and as many columns as the maximum
+        sample size in the studyset. Extra columns in each row should be filled with NaNs.
 
     R Code
     ------
@@ -188,8 +627,8 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
 
     Notes
     -----
-    TODO: Support array for number of subjects, so that each study has its own sample size.
     TODO: Support one-sample studies.
+    TODO: Support voxel-wise data, instead of single points per subject.
 
     R Code
     ------
@@ -384,7 +823,7 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
     mse_perm_stud = (out_dict["p_perm_stud"] - out_dict["p_z"]) ** 2
     mse_perm_subj = (out_dict["p_perm_subj"] - out_dict["p_z"]) ** 2
     print(
-        "Decrease in execution time: " f"{np.mean(time_perm_subj) - np.mean(time_perm_stud)}\n",
+        f"Decrease in execution time: {np.mean(time_perm_subj) - np.mean(time_perm_stud)}\n",
     )
     print(
         "Increase in MSE: "
@@ -418,6 +857,10 @@ def compute_sdm_ma(
         User-selected degree of anisotropy. Default is 0.5.
     kernel_sigma : float
         User-specified sigma of kernel, in mm. Default is 5.
+
+    Returns
+    -------
+    y_lower_img, y_upper_img
 
     References
     ----------
