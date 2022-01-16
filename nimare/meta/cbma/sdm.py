@@ -362,13 +362,24 @@ def _combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_st
     ...
 
 
-def run_sdm(coords, n_imputations=1000):
+def run_sdm(coords, n_imputations=50, n_iters=1000):
     """Run the SDM algorithm.
+
+    Parameters
+    ----------
+    coords
+        Coordinates.
+    n_imputations : int
+        Number of imputations. Default is 50, based on the SDM software.
+    n_iters : int
+        Number of iterations for the Monte Carlo FWE correction procedure.
+        Default is 1000, based on the SDM software.
 
     Notes
     -----
     1.  Use anisotropic Gaussian kernels, plus effect size estimates and metadata,
         to produce lower-bound and upper-bound effect size maps from the coordinates.
+
         -   We need generic inter-voxel correlation maps for this.
             NOTE: Correlation maps are unidirectional. There are 26 directions for each voxel,
             but the flipped versions (e.g., right and left) use equivalent maps so there are only
@@ -376,12 +387,16 @@ def run_sdm(coords, n_imputations=1000):
         -   We also need a fast implementation of Dijkstra's algorithm to estimate the shortest
             path (i.e., "virtual distance") between two voxels based on the map of correlations
             between each voxel and its neighbors. I think ``dijkstra3d`` might be useful here.
+
     2.  Use maximum likelihood estimation to estimate the most likely effect size and variance
         maps across studies (i.e., a meta-analytic map).
+
         -   Can we use NiMARE IBMAs for this?
+
     3.  Use the MLE map and each study's upper- and lower-bound effect size maps to impute
         study-wise effect size and variance images that meet specific requirements.
     4.  For each imputed pair of effect size and variance images, simulate subject-level images.
+
         -   The mean across subject-level images, for each voxel, must equal the value from the
             study-level effect size map.
         -   Values for each voxel, across subjects, must correlate with the values for the same
@@ -391,18 +406,24 @@ def run_sdm(coords, n_imputations=1000):
         -   SDM simplifies the simulation process by creating a single "preliminary" set of
             subject-level maps for each dataset (across imputations), and scaling it across
             imputations.
+
     5.  Subject-based permutation test.
+
         a.  Create one random permutation of the subjects and apply it to the subject images of
             the different imputed datasets.
+
     6.  Separately for each imputed dataset, conduct a group analysis of the permuted subject
         images to obtain one study image per study, and then conduct a meta-analysis of the
         study images to obtain one meta-analysis image.
+
         -   "In SDM-PSI, the group analysis is the estimation of Hedge-corrected effect sizes.
             In practice, this estimation simply consists of calculating the mean
             (or the difference of means in two-sample studies) and multiplying by J,
             given that imputed subject values have unit variance."
+
     7.  Perform meta-analysis across study-level effect size maps using random effects model.
         Performed separately for each imputation.
+
         -   "The meta-analysis consists of the fitting of a standard random-effects model.
             The design matrix includes any covariate used in the MLE step,
             and the weight of a study is the inverse of the sum of its variance and the
@@ -413,6 +434,7 @@ def run_sdm(coords, n_imputations=1000):
         -   One of NiMARE's IBMA interfaces should be able to handle the meta-analysis part.
             Either DerSimonianLaird or VarianceBasedLikelihood.
             We'll need to add heterogeneity statistic calculation either to PyMARE or NiMARE.
+
     8.  Compute imputation-wise heterogeneity statistics.
     9.  Use "Rubin's rules" to combine heterogeneity statistics, coefficients, and variance for
         each imputed dataset. This should result in a combined meta-analysis image.
@@ -420,6 +442,7 @@ def run_sdm(coords, n_imputations=1000):
         This is the last step within the iteration loop.
     11. Perform Monte Carlo-like maximum statistic procedure to get null distributions for vFWE or
         cFWE. Or do TFCE.
+
         -   "After enough iterations of steps a) to d), use the distribution of the maximum
             statistic to threshold the combined meta-analysis image obtained from unpermuted data."
     """
