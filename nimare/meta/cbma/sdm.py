@@ -18,13 +18,25 @@ def _impute_studywise_imgs():
 
 
 def _simulate_voxel_with_no_neighbors(n_subjects):
+    """Simulate the data for a voxel with no neighbors.
+
+    Parameters
+    ----------
+    n_subjects : int
+        Number of subjects in the dataset.
+
+    Returns
+    -------
+    y : numpy.ndarray of shape (n_subjects,)
+        Data for the voxel across subjects.
+    """
     y = np.random.normal(loc=0, scale=1, size=n_subjects)
     y = stats.zscore(y)
     return y
 
 
 def _simulate_voxel_with_one_neighbor(A, r_ay):
-    """Simulate the data for a voxel with one neighbor.
+    """Simulate the data for a voxel with one neighbor that has already been simulated.
 
     Parameters
     ----------
@@ -32,6 +44,11 @@ def _simulate_voxel_with_one_neighbor(A, r_ay):
         Subject values for the neighboring voxel.
     r_ay : float
         Desired correlation between A and Y.
+
+    Returns
+    -------
+    y : numpy.ndarray of shape (n_subjects,)
+        Data for the voxel across subjects.
     """
     # Random normal values with null mean and unit variance.
     R = _simulate_voxel_with_no_neighbors(A.size)
@@ -45,7 +62,7 @@ def _simulate_voxel_with_one_neighbor(A, r_ay):
 
 
 def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
-    """Simulate the data for a voxel with one neighbor.
+    """Simulate the data for a voxel with two neighbors that have already been simulated.
 
     Parameters
     ----------
@@ -53,6 +70,11 @@ def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
         Subject values for the neighboring voxels.
     r_ay, r_by : float
         Desired correlation between A and Y, and between B and Y.
+
+    Returns
+    -------
+    y : numpy.ndarray of shape (n_subjects,)
+        Data for the voxel across subjects.
     """
     R = _simulate_voxel_with_no_neighbors(A.size)
     r_ab = np.corrcoef((A, B))[1, 0]
@@ -71,7 +93,7 @@ def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
 
 
 def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
-    """Simulate the data for a voxel with one neighbor.
+    """Simulate the data for a voxel with three neighbors that have already been simulated.
 
     Parameters
     ----------
@@ -79,6 +101,11 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
         Subject values for the neighboring voxels.
     r_ay, r_by, r_cy : float
         Desired correlation between A and Y, B and Y, and C and Y.
+
+    Returns
+    -------
+    y : numpy.ndarray of shape (n_subjects,)
+        Data for the voxel across subjects.
     """
     R = _simulate_voxel_with_no_neighbors(A.size)
     r_ab = np.corrcoef((A, B))[1, 0]
@@ -151,6 +178,9 @@ def _simulate_subject_maps(study_maps, n_subjects, masker, correlation_maps):
 
     Parameters
     ----------
+    study_maps
+    n_subjects
+    masker
     correlation_maps : dict of 3 91x109x91 arrays
         right, posterior, and inferior
 
@@ -171,7 +201,9 @@ def _simulate_subject_maps(study_maps, n_subjects, masker, correlation_maps):
     -   For imputing subject values (Y) in a voxel that has no neighboring voxels imputed yet,
         SDM-PSI simply creates random normal values and standardizes them to have null mean and
         unit variance (R):
+
         -   Y = R
+
     -   For imputing subject values in a voxel that has one neighboring voxel already imputed,
         SDM-PSI conducts a weighted average of the subject values of the neighboring voxel (A) and
         new standardized random normal values.
@@ -544,7 +576,7 @@ def hedges_g(y, n_subjects1, n_subjects2=None):
             g = mean_diff / pooled_std
             g_arr[i_study] = g
 
-        g_arr = g_arr * (J_arr * ((n_subjects1 + n_subjects2) - 2))
+        g_arr = g_arr * J_arr * df
 
     else:
         df = n_subjects1 - 1

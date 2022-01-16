@@ -810,15 +810,38 @@ def t_to_hedges_g(t_values, sample_size1, sample_size2=None):
     -----
     Clues from https://imaging.mrc-cbu.cam.ac.uk/statswiki/FAQ/td.
     """
+    from scipy.special import gamma
+
     if sample_size2 is None:
+        df = sample_size1 - 1
+        J = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+
         # one sample t-test
         cohens_d = t_values / np.sqrt(sample_size1)
+
+        hedges_g = cohens_d * J * df
+
     else:
+        df = sample_size1 + sample_size2 - 2
+        J = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+
         # two sample t-test
         cohens_d = t_values * np.sqrt((1 / sample_size1) + (1 / sample_size2))
 
-    return cohens_d
+        hedges_g = cohens_d * J * df
+
+    return hedges_g
 
 
-def f_to_hedges_g(f_values, sample_size):
-    ...
+def f_to_hedges_g(f_values, sample_size1, sample_size2):
+    """Convert F-statistics to Hedges' g values.
+
+    Notes
+    -----
+    Clues from
+    https://github.com/strengejacke/esc/blob/eba3c6a62875d9c894466012fe82c0d2253e6137/R/esc_f.R.
+    """
+    pseudo_t_values = np.sqrt(f_values)
+    hedges_g = t_to_hedges_g(pseudo_t_values, sample_size1, sample_size2)
+
+    return hedges_g
