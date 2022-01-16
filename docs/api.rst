@@ -39,6 +39,7 @@ For more information about the components of coordinate-based meta-analysis in N
    meta.ibma
    meta.cbma.ale
    meta.cbma.mkda
+   meta.cbma.sdm
    meta.cbma.base
    meta.kernel
 

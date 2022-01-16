@@ -457,13 +457,13 @@ def run_sdm(coords, n_imputations=1000):
         # Step 7: Meta-analyze imputed effect size maps.
         imp_meta_effect_size_img = _run_variance_meta(study_hedge_imgs)
 
-        # Step 8: Heterogeneity statistics.
-        heterogeneity_stats = _combine_imputation_results(imp_meta_effect_size_img)
+    # Step 8: Heterogeneity statistics.
+    heterogeneity_stats = _combine_imputation_results(imp_meta_effect_size_img)
 
     # Step 9: Rubin's rules...?
 
     # Step 10: Monte Carlo simulations.
-    ...
+    return heterogeneity_stats
 
 
 def hedges_g(y, n_subjects1, n_subjects2=None):
