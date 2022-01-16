@@ -17,6 +17,24 @@ def _impute_studywise_imgs():
     ...
 
 
+def _run_permutations():
+    """Run permutations.
+
+    Notes
+    -----
+    "PSI methods must randomly assign "1" or "-1" to each subject of a one-sample study,
+    or randomly reassign each of the subjects of a two-sample study to one of the two groups...
+    PSI methods must also swap subjects in a correlation meta-analysis."
+    The assignments must be the same across imputations.
+    """
+    ...
+
+
+def _extract_max_statistics():
+    """Extract maximum statistics from permuted data for Monte Carlo FWE correction."""
+    ...
+
+
 def _simulate_voxel_with_no_neighbors(n_subjects):
     """Simulate the data for a voxel with no neighbors.
 
@@ -390,8 +408,13 @@ def _combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_st
     Note that Q follows a χ2 distribution, but its combined statistic follows an F distribution.
     For convenience, SDM-PSI converts FQ back into a Q (i.e. converts an F statistic to a χ2
     statistic with the same p-value). It also derives H-combined from I-combined."
+
+    Clues from https://stats.stackexchange.com/a/476849.
     """
-    ...
+    point_estimates = np.mean(coefficient_maps, axis=0)
+    mean_within_imputation_var = np.mean(covariance_maps, axis=0)
+    # The B term is the sum of squared differences
+    b = (1 / (coefficient_maps.shape[0] - 1)) * 5
 
 
 def run_sdm(coords, n_imputations=50, n_iters=1000):
@@ -439,10 +462,13 @@ def run_sdm(coords, n_imputations=50, n_iters=1000):
             subject-level maps for each dataset (across imputations), and scaling it across
             imputations.
 
-    5.  Subject-based permutation test.
+    5.  Subject-based permutation test on all of the pre-generated imputations.
 
-        a.  Create one random permutation of the subjects and apply it to the subject images of
+        -   Create one random permutation of the subjects and apply it to the subject images of
             the different imputed datasets.
+        -   For one-sample tests, randomly assign "1" or "-1" to each subject.
+        -   For two-sample tests, randomly reassign each of the subjects.
+        -   For correlation meta-analyses, randomly swap subjects.
 
     6.  Separately for each imputed dataset, conduct a group analysis of the permuted subject
         images to obtain one study image per study, and then conduct a meta-analysis of the
@@ -482,11 +508,13 @@ def run_sdm(coords, n_imputations=50, n_iters=1000):
     lower_bound_imgs, upper_bound_imgs = compute_sdm_ma(coords)
 
     # Step 2: Estimate the most likely effect size and variance maps across studies.
+    # This should be the meta-analysis map we care about.
     meta_effect_size_img, meta_tau_img = _mle_estimation(lower_bound_imgs, upper_bound_imgs)
 
     # Step 4a: Create base set of simulated subject maps.
     raw_subject_effect_size_imgs = _simulate_subject_maps(meta_effect_size_img, meta_tau_img)
 
+    all_subject_effect_size_imgs, all_subject_var_imgs = [], []
     for i_imp in range(n_imputations):
         # Step 3: Impute study-wise effect size and variance maps.
         study_effect_size_imgs, study_var_imgs = _impute_studywise_imgs(
@@ -498,27 +526,38 @@ def run_sdm(coords, n_imputations=50, n_iters=1000):
         )
 
         # Step 4: Simulate subject-wise effect size and variance maps.
-        subject_effect_size_imgs, subject_var_imgs = _scale_subject_maps(
+        imp_subject_effect_size_imgs, imp_subject_var_imgs = _scale_subject_maps(
             study_effect_size_imgs,
             study_var_imgs,
             raw_subject_effect_size_imgs,
         )
+        # This is just a stand-in.
+        all_subject_effect_size_imgs.append(imp_subject_effect_size_imgs)
+        all_subject_var_imgs.append(imp_subject_var_imgs)
 
-        # Step 5: Permutations...
+    # Step 5: Permutations...
+    max_stats = {}
+    for j_iter in range(n_iters):
+        permuted_subject_effect_size_imgs, permuted_subject_var_imgs = _run_permutations(
+            all_subject_effect_size_imgs, all_subject_var_imgs
+        )
 
         # Step 6: Calculate study-level Hedges-corrected effect size maps.
-        study_hedge_imgs = _calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs)
+        perm_study_hedge_imgs = _calculate_hedges_maps(
+            permuted_subject_effect_size_imgs, permuted_subject_var_imgs
+        )
 
         # Step 7: Meta-analyze imputed effect size maps.
-        imp_meta_effect_size_img = _run_variance_meta(study_hedge_imgs)
+        perm_meta_effect_size_imgs = _run_variance_meta(perm_study_hedge_imgs)
 
-    # Step 8: Heterogeneity statistics.
-    heterogeneity_stats = _combine_imputation_results(imp_meta_effect_size_img)
+        # Step 8: Heterogeneity statistics and combine with Rubin's rules.
+        perm_meta_effect_size_img = _combine_imputation_results(perm_meta_effect_size_imgs)
 
-    # Step 9: Rubin's rules...?
+        # Max statistic
+        perm_max_stats = _extract_max_statistics(perm_meta_effect_size_img)
+        max_stats.update(perm_max_stats)
 
-    # Step 10: Monte Carlo simulations.
-    return heterogeneity_stats
+    return meta_effect_size_img, meta_tau_img, max_stats
 
 
 def hedges_g(y, n_subjects1, n_subjects2=None):
