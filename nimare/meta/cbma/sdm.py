@@ -946,6 +946,11 @@ def compute_sdm_ma(
     -------
     y_lower_img, y_upper_img
 
+    Notes
+    -----
+    Use anisotropic Gaussian kernels, plus effect size estimates and metadata,
+    to produce lower-bound and upper-bound effect size maps from the coordinates.
+
     References
     ----------
     * Radua, J., Rubia, K., Canales, E. J., Pomarol-Clotet, E., Fusar-Poli, P., &

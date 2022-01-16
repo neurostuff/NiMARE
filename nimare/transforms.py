@@ -801,7 +801,7 @@ def z_to_t(z_values, dof):
     return t_values
 
 
-def t_to_hedges_g(t_values, sample_size):
+def t_to_hedges_g(t_values, sample_size1, sample_size2=None):
     """Convert t-statistics to Hedges' g values.
 
     According to Radua 2012, the main conversion in (A)ES-SDM is t-statistic to Hedges g.
@@ -810,10 +810,13 @@ def t_to_hedges_g(t_values, sample_size):
     -----
     Clues from https://imaging.mrc-cbu.cam.ac.uk/statswiki/FAQ/td.
     """
-    # one sample t-test
-    cohens_d = t_values / np.sqrt(sample_size)
-    # two sample t-test
-    cohens_d = t * np.sqrt((1 / n1) + (1 / n2))
+    if sample_size2 is None:
+        # one sample t-test
+        cohens_d = t_values / np.sqrt(sample_size1)
+    else:
+        # two sample t-test
+        cohens_d = t_values * np.sqrt((1 / sample_size1) + (1 / sample_size2))
+
     return cohens_d
 
 
