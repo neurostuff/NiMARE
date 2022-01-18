@@ -191,12 +191,11 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
     return y
 
 
-def _simulate_subject_maps(study_maps, n_subjects, masker, correlation_maps):
+def _simulate_subject_maps(n_subjects, masker, correlation_maps):
     """Simulate the subject maps.
 
     Parameters
     ----------
-    study_maps
     n_subjects
     masker
     correlation_maps : dict of 3 91x109x91 arrays
@@ -250,32 +249,31 @@ def _simulate_subject_maps(study_maps, n_subjects, masker, correlation_maps):
     -   For two-sample studies, SDM-PSI imputes subject values separately for each sample, and it
         only adds the effect size to the patient (or non-control) subject images.
     """
-    study_img = masker.inverse_transform(study_maps[0])
-    n_x, n_y, n_z = study_img.shape
-    n_voxels = study_maps[0].shape[0]
+    mask_vec = masker.transform(masker.mask_img)
+    mask_arr = masker.mask_img.get_fdata()
+    n_x, n_y, n_z = masker.mask_img.shape
+    n_voxels = mask_vec.size
     subject_maps = np.empty((np.sum(n_subjects), n_voxels))
     subject_counter = 0
-    for i_study, study_map in enumerate(study_maps):
-        study_map_3d = masker.inverse_transform(study_map).get_fdata()
-        n_study_subjects = n_subjects[i_study]
+    for i_study, n_study_subjects in enumerate(n_subjects):
         study_subject_maps = np.full(np.nan, (n_x, n_y, n_z, n_study_subjects))
         for i_x in range(n_x):
             for j_y in range(n_y):
                 for k_z in range(n_z):
-                    if np.isnan(study_map_3d[i_x, j_y, k_z]):
+                    if np.isnan(mask_arr[i_x, j_y, k_z]):
                         continue
 
-                    if not np.isnan(study_map_3d[i_x - 1, j_y, k_z]):
+                    if not np.isnan(mask_arr[i_x - 1, j_y, k_z]):
                         use_right = True
                     else:
                         use_right = False
 
-                    if not np.isnan(study_map_3d[i_x, j_y - 1, k_z]):
+                    if not np.isnan(mask_arr[i_x, j_y - 1, k_z]):
                         use_posterior = True
                     else:
                         use_posterior = False
 
-                    if not np.isnan(study_map_3d[i_x, j_y, k_z - 1]):
+                    if not np.isnan(mask_arr[i_x, j_y, k_z - 1]):
                         use_inferior = True
                     else:
                         use_inferior = False
@@ -417,7 +415,7 @@ def _combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_st
     b = (1 / (coefficient_maps.shape[0] - 1)) * 5
 
 
-def run_sdm(coords, n_imputations=50, n_iters=1000):
+def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
     """Run the SDM algorithm.
 
     Parameters
@@ -504,6 +502,9 @@ def run_sdm(coords, n_imputations=50, n_iters=1000):
         -   "After enough iterations of steps a) to d), use the distribution of the maximum
             statistic to threshold the combined meta-analysis image obtained from unpermuted data."
     """
+    # Extract sample size information from the coordinates DataFrame.
+    n_subjects = coords.groupby("id")["sample_sizes"].values
+
     # Step 1: Estimate lower- and upper-bound effect size maps from coordinates.
     lower_bound_imgs, upper_bound_imgs = compute_sdm_ma(coords)
 
@@ -512,7 +513,7 @@ def run_sdm(coords, n_imputations=50, n_iters=1000):
     meta_effect_size_img, meta_tau_img = _mle_estimation(lower_bound_imgs, upper_bound_imgs)
 
     # Step 4a: Create base set of simulated subject maps.
-    raw_subject_effect_size_imgs = _simulate_subject_maps(meta_effect_size_img, meta_tau_img)
+    raw_subject_effect_size_imgs = _simulate_subject_maps(n_subjects, masker, correlation_maps)
 
     all_subject_effect_size_imgs, all_subject_var_imgs = [], []
     for i_imp in range(n_imputations):
