@@ -76,7 +76,7 @@ class NiMAREBase(metaclass=ABCMeta):
 
     def _check_ncores(self, n_cores):
         """Check number of cores used for method."""
-        if n_cores == -1:
+        if n_cores <= 0:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
             LGR.warning(
