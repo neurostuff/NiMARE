@@ -8,7 +8,8 @@ class Studyset:
 
     Attributes
     ----------
-    studies
+    studies : list of Study objects
+        The Study objects comprising the Studyset.
     """
 
     def __init__(self, source, target_space, mask):
@@ -96,14 +97,22 @@ class Study:
 
     Attributes
     ----------
-    analyses
+    id : str
+        A unique identifier for the Study.
+    analyses : list of Analysis objects
+        The Analysis objects comprising the Study.
     """
 
     def __init__(self):
         ...
 
     def get_analyses(self):
-        """Collect Analyses from the Study."""
+        """Collect Analyses from the Study.
+
+        Notes
+        -----
+        What filters, if any, should we support in this method?
+        """
         ...
 
 
@@ -112,11 +121,25 @@ class Analysis:
 
     Attributes
     ----------
-    conditions
-    annotations
-    texts
-    images
-    points
+    id : str
+        A unique identifier for the Analysis.
+    conditions : list of Condition objects
+        The Conditions in the Analysis.
+    annotations : list of Annotation objects
+        Any Annotations available for the Analysis.
+        Each Annotation should come from the same Annotator.
+    texts : dict
+        A dictionary of source: text pairs.
+    images : dict of Image objects
+        A dictionary of type: Image pairs.
+    points : list of Point objects
+        Any significant Points from the Analysis.
+
+    Notes
+    -----
+    Should the images attribute be a list instead, if the Images contain type information?
+
+    Should the conditions be linked to the annotations, images, and points at all?
     """
 
     def __init__(self):
@@ -124,6 +147,13 @@ class Analysis:
 
 
 class Condition:
+    """A condition within an Analysis.
+
+    Attributes
+    ----------
+    name
+    description
+    """
     ...
 
 
@@ -156,6 +186,11 @@ class Image:
     Attributes
     ----------
     filename
+    type?
+
+    Notes
+    -----
+    Should we support remote paths, with some kind of fetching method?
     """
 
     def __init__(self):
@@ -167,7 +202,12 @@ class Point:
 
     Attributes
     ----------
-    coordinates : 3-tuple
+    x : float
+    y : float
+    z : float
+    space
+    kind
+    image
     point_values
     """
 
