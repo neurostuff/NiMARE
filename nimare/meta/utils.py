@@ -10,7 +10,7 @@ from scipy import ndimage
 from .. import references
 from ..due import due
 from ..extract import download_peaks2maps_model
-from ..utils import determine_chunk_size
+from ..utils import _determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
@@ -18,6 +18,9 @@ LGR = logging.getLogger(__name__)
 
 def model_fn(features, labels, mode, params):
     """Run model function used internally by peaks2maps.
+
+    .. deprecated:: 0.0.11
+        `model_fn` will be removed in NiMARE 0.0.13.
 
     .. versionadded:: 0.0.4
 
@@ -163,6 +166,9 @@ def model_fn(features, labels, mode, params):
 def _get_resize_arg(target_shape):
     """Get resizing arguments, as used by peaks2maps.
 
+    .. deprecated:: 0.0.11
+        `_get_resize_arg` will be removed in NiMARE 0.0.13.
+
     .. versionadded:: 0.0.1
 
     """
@@ -207,6 +213,9 @@ def compute_p2m_ma(
     contrasts_coordinates, skip_out_of_bounds=True, tf_verbosity_level=None, model_dir="auto"
 ):
     """Generate modeled activation (MA) maps using deep ConvNet model peaks2maps.
+
+    .. deprecated:: 0.0.11
+        `compute_p2m_ma` will be removed in NiMARE 0.0.13.
 
     Parameters
     ----------
@@ -343,7 +352,7 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     if memory_limit:
-        chunk_size = determine_chunk_size(limit=memory_limit, arr=ijks[0])
+        chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
 
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)

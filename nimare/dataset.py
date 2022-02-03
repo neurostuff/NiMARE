@@ -11,16 +11,16 @@ from nilearn._utils import load_niimg
 
 from .base import NiMAREBase
 from .utils import (
-    dict_to_coordinates,
-    dict_to_df,
+    _dict_to_coordinates,
+    _dict_to_df,
+    _listify,
+    _transform_coordinates_to_space,
+    _try_prepend,
+    _validate_df,
+    _validate_images_df,
     get_masker,
     get_template,
-    listify,
     mm2vox,
-    transform_coordinates_to_space,
-    try_prepend,
-    validate_df,
-    validate_images_df,
 )
 
 LGR = logging.getLogger(__name__)
@@ -109,11 +109,11 @@ class Dataset(NiMAREBase):
         self.masker = mask
         self.space = target
 
-        self.annotations = dict_to_df(id_df, data, key="labels")
-        self.coordinates = dict_to_coordinates(data, masker=self.masker, space=self.space)
-        self.images = dict_to_df(id_df, data, key="images")
-        self.metadata = dict_to_df(id_df, data, key="metadata")
-        self.texts = dict_to_df(id_df, data, key="text")
+        self.annotations = _dict_to_df(id_df, data, key="labels")
+        self.coordinates = _dict_to_coordinates(data, masker=self.masker, space=self.space)
+        self.images = _dict_to_df(id_df, data, key="images")
+        self.metadata = _dict_to_df(id_df, data, key="metadata")
+        self.texts = _dict_to_df(id_df, data, key="text")
         self.basepath = None
 
     def __repr__(self):
@@ -203,7 +203,7 @@ class Dataset(NiMAREBase):
 
     @annotations.setter
     def annotations(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__annotations = df.sort_values(by="id")
 
     @property
@@ -222,7 +222,7 @@ class Dataset(NiMAREBase):
 
     @coordinates.setter
     def coordinates(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__coordinates = df.sort_values(by="id")
 
     @property
@@ -244,8 +244,8 @@ class Dataset(NiMAREBase):
 
     @images.setter
     def images(self, df):
-        validate_df(df)
-        self.__images = validate_images_df(df).sort_values(by="id")
+        _validate_df(df)
+        self.__images = _validate_images_df(df).sort_values(by="id")
 
     @property
     def metadata(self):
@@ -258,7 +258,7 @@ class Dataset(NiMAREBase):
 
     @metadata.setter
     def metadata(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__metadata = df.sort_values(by="id")
 
     @property
@@ -272,7 +272,7 @@ class Dataset(NiMAREBase):
 
     @texts.setter
     def texts(self, df):
-        validate_df(df)
+        _validate_df(df)
         self.__texts = df.sort_values(by="id")
 
     def slice(self, ids):
@@ -285,7 +285,7 @@ class Dataset(NiMAREBase):
 
         Returns
         -------
-        new_dset : :obj:`nimare.dataset.Dataset`
+        new_dset : :obj:`~nimare.dataset.Dataset`
             Reduced Dataset containing only requested studies.
         """
         new_dset = copy.deepcopy(self)
@@ -304,12 +304,12 @@ class Dataset(NiMAREBase):
 
         Parameters
         ----------
-        right : :obj:`nimare.dataset.Dataset`
+        right : :obj:`~nimare.dataset.Dataset`
             Dataset to merge with.
 
         Returns
         -------
-        :obj:`nimare.dataset.Dataset`
+        :obj:`~nimare.dataset.Dataset`
             A Dataset of the two merged Datasets.
         """
         assert isinstance(right, Dataset)
@@ -330,7 +330,7 @@ class Dataset(NiMAREBase):
             new_df = new_df.where(~new_df.isna(), None)
             setattr(new_dset, attribute, new_df)
 
-        new_dset.coordinates = transform_coordinates_to_space(
+        new_dset.coordinates = _transform_coordinates_to_space(
             new_dset.coordinates,
             self.masker,
             self.space,
@@ -355,7 +355,7 @@ class Dataset(NiMAREBase):
             abs_col = col.replace("__relative", "")
             if abs_col in df.columns:
                 LGR.info(f"Overwriting images column {abs_col}")
-            df[abs_col] = df[col].apply(try_prepend, prefix=self.basepath)
+            df[abs_col] = df[col].apply(_try_prepend, prefix=self.basepath)
         self.images = df
 
     def copy(self):
@@ -462,7 +462,7 @@ class Dataset(NiMAREBase):
 
         if isinstance(ids, str) and column is not None:
             return_first = True
-        ids = listify(ids)
+        ids = _listify(ids)
 
         available_types = [c for c in df.columns if c not in self._id_cols]
         if (column is not None) and (column not in available_types):
@@ -503,7 +503,7 @@ class Dataset(NiMAREBase):
             List of labels for which there are annotations in the Dataset.
         """
         if not isinstance(ids, list) and ids is not None:
-            ids = listify(ids)
+            ids = _listify(ids)
 
         result = [c for c in self.annotations.columns if c not in self._id_cols]
         if ids is not None:

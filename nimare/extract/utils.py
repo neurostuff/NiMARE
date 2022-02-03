@@ -10,7 +10,7 @@ import pandas as pd
 import requests
 from fuzzywuzzy import fuzz
 
-from ..utils import uk_to_us
+from ..utils import _uk_to_us
 
 LGR = logging.getLogger(__name__)
 
@@ -274,7 +274,7 @@ def _expand_df(df):
     original name is done in order to select most appropriate term to associate with alias.
     """
     df = df.copy()
-    df["alias"] = df["alias"].apply(uk_to_us)
+    df["alias"] = df["alias"].apply(_uk_to_us)
     new_rows = []
     for index, row in df.iterrows():
         alias = row["alias"]

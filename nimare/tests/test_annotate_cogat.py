@@ -1,16 +1,14 @@
 """Test nimare.annotate.cogat (Cognitive Atlas extraction methods)."""
 import pandas as pd
 
-from nimare import annotate, extract
-
-from .utils import get_test_data_path
+from nimare import annotate, extract, utils
 
 
 def test_cogat(testdata_laird):
     """A smoke test for CogAt-related functions."""
     # A small test dataset with abstracts
     ns_dset_laird = testdata_laird.copy()
-    cogat = extract.download_cognitive_atlas(data_dir=get_test_data_path(), overwrite=False)
+    cogat = extract.download_cognitive_atlas(data_dir=utils.get_resource_path(), overwrite=False)
     id_df = pd.read_csv(cogat["ids"])
     rel_df = pd.read_csv(cogat["relationships"])
     weights = {"isKindOf": 1, "isPartOf": 1, "inCategory": 1}
@@ -24,7 +22,7 @@ def test_cogat(testdata_laird):
 
 def test_CogAtLemmatizer():
     """A smoke test for CogAtLemmatizer."""
-    cogat = extract.download_cognitive_atlas(data_dir=get_test_data_path(), overwrite=False)
+    cogat = extract.download_cognitive_atlas(data_dir=utils.get_resource_path(), overwrite=False)
     id_df = pd.read_csv(cogat["ids"])
     id_df = id_df.loc[id_df["id"] == "trm_4aae62e4ad209"]
     lem = annotate.cogat.CogAtLemmatizer(id_df)

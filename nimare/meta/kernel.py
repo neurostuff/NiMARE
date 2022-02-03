@@ -8,6 +8,7 @@ from __future__ import division
 
 import logging
 import os
+import warnings
 from hashlib import md5
 
 import nibabel as nib
@@ -19,9 +20,9 @@ from .. import references
 from ..base import Transformer
 from ..due import due
 from ..utils import (
-    add_metadata_to_dataframe,
+    _add_metadata_to_dataframe,
+    _safe_transform,
     mm2vox,
-    safe_transform,
     use_memmap,
     vox2mm,
 )
@@ -31,7 +32,7 @@ LGR = logging.getLogger(__name__)
 
 
 class KernelTransformer(Transformer):
-    """Base class for modeled activation-generating methods in :mod:`nimare.meta.kernel`.
+    """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -84,7 +85,7 @@ class KernelTransformer(Transformer):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
+        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
             Dataset for which to make images. Can be a DataFrame if necessary.
         masker : img_like or None, optional
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
@@ -98,7 +99,7 @@ class KernelTransformer(Transformer):
         Returns
         -------
         imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
-               or :class:`nimare.dataset.Dataset`
+               or :class:`~nimare.dataset.Dataset`
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images
@@ -146,7 +147,7 @@ class KernelTransformer(Transformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        masked_data = safe_transform(files, masker)
+                        masked_data = _safe_transform(files, masker)
                         return masked_data
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
@@ -168,7 +169,7 @@ class KernelTransformer(Transformer):
                 and (self.sample_size is None)
                 and ("sample_size" not in coordinates.columns)
             ):
-                coordinates = add_metadata_to_dataframe(
+                coordinates = _add_metadata_to_dataframe(
                     dataset,
                     coordinates,
                     metadata_field="sample_sizes",
@@ -438,6 +439,9 @@ class MKDAKernel(KDAKernel):
 class Peaks2MapsKernel(KernelTransformer):
     """Generate peaks2maps modeled activation images from coordinates.
 
+    .. deprecated:: 0.0.11
+        `Peaks2MapsKernel` will be removed in NiMARE 0.0.13.
+
     Parameters
     ----------
     model_dir : :obj:`str`, optional
@@ -450,13 +454,14 @@ class Peaks2MapsKernel(KernelTransformer):
     """
 
     def __init__(self, model_dir="auto"):
+        warnings.warn(
+            "Peaks2MapsKernel is deprecated, and will be removed in NiMARE version 0.0.13.",
+            DeprecationWarning,
+        )
+
         # Use private attribute to hide value from get_params.
         # get_params will find model_dir=None, which is *very important* when a path is provided.
         self._model_dir = model_dir
-        LGR.warning(
-            "The Peaks2Maps kernel transformer is not intended for serious research. "
-            "We strongly recommend against using it for any meaningful analyses."
-        )
 
     def _transform(self, mask, coordinates):
         transformed = []

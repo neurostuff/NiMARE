@@ -13,9 +13,9 @@ from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
 from ...utils import (
-    add_metadata_to_dataframe,
-    check_type,
-    safe_transform,
+    _add_metadata_to_dataframe,
+    _check_type,
+    _safe_transform,
     tqdm_joblib,
     use_memmap,
     vox2mm,
@@ -37,14 +37,14 @@ class CBMAEstimator(MetaEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
         __init__ (called automatically).
     """
 
@@ -57,7 +57,7 @@ class CBMAEstimator(MetaEstimator):
         kernel_args = {
             k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
         }
-        kernel_transformer = check_type(kernel_transformer, KernelTransformer, **kernel_args)
+        kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
     @use_memmap(LGR, n_files=1)
@@ -67,7 +67,7 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
         """
         self.dataset = dataset
@@ -124,7 +124,7 @@ class CBMAEstimator(MetaEstimator):
         # Integrate "sample_size" from metadata into DataFrame so that
         # kernel_transformer can access it.
         if "sample_size" in kt_args:
-            self.inputs_["coordinates"] = add_metadata_to_dataframe(
+            self.inputs_["coordinates"] = _add_metadata_to_dataframe(
                 dataset,
                 self.inputs_["coordinates"],
                 metadata_field="sample_sizes",
@@ -159,7 +159,7 @@ class CBMAEstimator(MetaEstimator):
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
             if self.memory_limit:
                 # perform transform on chunks of the input maps
-                ma_maps = safe_transform(
+                ma_maps = _safe_transform(
                     self.inputs_[maps_key],
                     masker=self.masker,
                     memory_limit=self.memory_limit,
@@ -470,9 +470,9 @@ class CBMAEstimator(MetaEstimator):
 
         Returns
         -------
-        (iter_max value, iter_max_cluster)
-            A 2-tuple of floats giving the maximum voxel-wise value, and maximum
-            cluster size for the permuted dataset.
+        (iter_max value, iter_max_cluster, iter_max_mass)
+            A 3-tuple of floats giving the maximum voxel-wise value, maximum cluster size,
+            and maximum cluster mass for the permuted dataset.
         """
         # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
         # be safe.
@@ -488,21 +488,32 @@ class CBMAEstimator(MetaEstimator):
 
         del iter_ma_maps
 
+        # Voxel-level inference
         iter_max_value = np.max(iter_ss_map)
+
+        # Cluster-level inference
         iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
         iter_ss_map[iter_ss_map <= voxel_thresh] = 0
-
         labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
+        clust_vals, clust_sizes = np.unique(labeled_matrix, return_counts=True)
+        assert clust_vals[0] == 0
 
-        del iter_ss_map
+        # Cluster mass-based inference
+        iter_max_mass = 0
+        for unique_val in clust_vals[1:]:
+            ss_vals = iter_ss_map[labeled_matrix == unique_val] - voxel_thresh
+            iter_max_mass = np.maximum(iter_max_mass, np.sum(ss_vals))
 
-        _, clust_sizes = np.unique(labeled_matrix, return_counts=True)
+        del iter_ss_map, labeled_matrix
+
+        # Cluster size-based inference
         clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
         if clust_sizes.size:
             iter_max_cluster = np.max(clust_sizes)
         else:
             iter_max_cluster = 0
-        return iter_max_value, iter_max_cluster
+
+        return iter_max_value, iter_max_cluster, iter_max_mass
 
     def correct_fwe_montecarlo(
         self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1, vfwe_only=False
@@ -511,29 +522,79 @@ class CBMAEstimator(MetaEstimator):
 
         Only call this method from within a Corrector.
 
+        .. versionchanged:: 0.0.11
+
+            * Rename ``*_level-cluster`` maps to ``*_desc-size_level-cluster``.
+            * Add new ``*_desc-mass_level-cluster`` maps that use cluster mass-based inference.
+
         Parameters
         ----------
-        result : :obj:`nimare.results.MetaResult`
-            Result object from a KDA meta-analysis.
+        result : :obj:`~nimare.results.MetaResult`
+            Result object from a CBMA meta-analysis.
         voxel_thresh : :obj:`float`, optional
             Cluster-defining p-value threshold. Default is 0.001.
         n_iters : :obj:`int`, optional
-            Number of iterations to build the vFWE and cFWE null distributions.
-            Default is 10000.
+            Number of iterations to build the voxel-level, cluster-size, and cluster-mass FWE
+            null distributions. Default is 10000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is -1.
+        vfwe_only : :obj:`bool`, optional
+            If True, only calculate the voxel-level FWE-corrected maps. Voxel-level correction
+            can be performed very quickly if the Estimator's ``null_method`` was "montecarlo".
+            If this is set to True and the original null method was not montecarlo, an exception
+            will be raised.
+            Default is False.
 
         Returns
         -------
         images : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked images generated by
             the correction procedure. The following arrays are generated by
-            this method: 'vthresh', 'logp_level-cluster', and 'logp_level-voxel'.
+            this method:
+
+            -   ``logp_desc-size_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
+                based on cluster size. This was previously simply called "logp_level-cluster".
+                This array is **not** generated if ``vfwe_only`` is ``True``.
+            -   ``logp_desc-mass_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
+                based on cluster mass. According to [1]_ and [2]_, cluster mass-based inference is
+                more powerful than cluster size.
+                This array is **not** generated if ``vfwe_only`` is ``True``.
+            -   ``logp_level-voxel``: Voxel-level FWE-corrected ``-log10(p)`` map.
+                Voxel-level correction is generally more conservative than cluster-level
+                correction, so it is only recommended for very large meta-analyses
+                (i.e., hundreds of studies), per [3]_.
+
+        Notes
+        -----
+        If ``vfwe_only`` is ``False``, this method adds three new keys to the
+        ``null_distributions_`` attribute:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-size_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                size from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                mass from each Monte Carlo iteration. An array of shape (n_iters,).
 
         See Also
         --------
         nimare.correct.FWECorrector : The Corrector from which to call this method.
+
+        References
+        ----------
+        .. [1] Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., Taylor, E., &
+               Brammer, M. J. (1999). Global, voxel, and cluster tests, by theory and permutation,
+               for a difference between two groups of structural MR images of the brain.
+               IEEE transactions on medical imaging, 18(1), 32-42. doi: 10.1109/42.750253
+        .. [2] Zhang, H., Nichols, T. E., & Johnson, T. D. (2009).
+               Cluster mass inference via random field theory. Neuroimage, 44(1), 51-61.
+               doi: 10.1016/j.neuroimage.2008.08.017
+        .. [3] Eickhoff, S. B., Nichols, T. E., Laird, A. R., Hoffstaedter, F., Amunts, K.,
+               Fox, P. T., ... & Eickhoff, C. R. (2016).
+               Behavior, sensitivity, and power of activation likelihood estimation characterized
+               by massive empirical simulation. Neuroimage, 137, 70-85.
+               doi: 10.1016/j.neuroimage.2016.04.072
 
         Examples
         --------
@@ -575,8 +636,7 @@ class CBMAEstimator(MetaEstimator):
             iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
             iter_df = self.inputs_["coordinates"].copy()
 
-            # Find number of voxels per cluster (includes 0, which is empty space in
-            # the matrix)
+            # Define connectivity matrix for cluster labeling
             conn = np.zeros((3, 3, 3), int)
             conn[:, :, 1] = 1
             conn[:, 1, :] = 1
@@ -590,26 +650,51 @@ class CBMAEstimator(MetaEstimator):
                     for i_iter in range(n_iters)
                 )
 
-            fwe_voxel_max, fwe_clust_max = zip(*perm_results)
+            fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
 
             # Cluster-level FWE
+            # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
             thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
             thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
             labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
 
-            _, idx, sizes = np.unique(labeled_matrix, return_inverse=True, return_counts=True)
-            # first cluster has value 0 (i.e., all non-zero voxels in brain), so replace
-            # with 0, which gives us a p-value of 1.
-            sizes[0] = 0
-            p_vals = null_to_p(sizes, fwe_clust_max, "upper")
-            p_cfwe_map = p_vals[np.reshape(idx, labeled_matrix.shape)]
-
-            p_cfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_cfwe_map, self.masker.mask_img.affine))
+            cluster_labels, idx, cluster_sizes = np.unique(
+                labeled_matrix,
+                return_inverse=True,
+                return_counts=True,
             )
-            logp_cfwe_values = -np.log10(p_cfwe_values)
-            logp_cfwe_values[np.isinf(logp_cfwe_values)] = -np.log10(np.finfo(float).eps)
-            z_cfwe_values = p_to_z(p_cfwe_values, tail="one")
+            assert cluster_labels[0] == 0
+
+            # Cluster mass-based inference
+            cluster_masses = np.zeros(cluster_labels.shape)
+            for i_val in cluster_labels:
+                if i_val == 0:
+                    cluster_masses[i_val] = 0
+
+                cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
+                cluster_masses[i_val] = cluster_mass
+
+            p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
+            p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+            p_cmfwe_values = np.squeeze(
+                self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
+            )
+            logp_cmfwe_values = -np.log10(p_cmfwe_values)
+            logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
+            z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
+
+            # Cluster size-based inference
+            cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
+            p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
+            p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+            p_csfwe_values = np.squeeze(
+                self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
+            )
+            logp_csfwe_values = -np.log10(p_csfwe_values)
+            logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
+            z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
 
             # Voxel-level FWE
             LGR.info("Using null distribution for voxel-level FWE correction.")
@@ -618,27 +703,32 @@ class CBMAEstimator(MetaEstimator):
                 "values_level-voxel_corr-fwe_method-montecarlo"
             ] = fwe_voxel_max
             self.null_distributions_[
-                "values_level-cluster_corr-fwe_method-montecarlo"
-            ] = fwe_clust_max
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+            ] = fwe_cluster_size_max
+            self.null_distributions_[
+                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+            ] = fwe_cluster_mass_max
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
         logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
 
         if vfwe_only:
-            # Write out unthresholded value images
+            # Return unthresholded value images
             images = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
             }
 
         else:
-            # Write out unthresholded value images
+            # Return unthresholded value images
             images = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
-                "logp_level-cluster": logp_cfwe_values,
-                "z_level-cluster": z_cfwe_values,
+                "logp_desc-size_level-cluster": logp_csfwe_values,
+                "z_desc-size_level-cluster": z_csfwe_values,
+                "logp_desc-mass_level-cluster": logp_cmfwe_values,
+                "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
         return images
@@ -655,14 +745,14 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
         __init__ (called automatically).
     """
 
@@ -672,12 +762,12 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         Parameters
         ----------
-        dataset1/dataset2 : :obj:`nimare.dataset.Dataset`
+        dataset1/dataset2 : :obj:`~nimare.dataset.Dataset`
             Dataset objects to analyze.
 
         Returns
         -------
-        :obj:`nimare.results.MetaResult`
+        :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
         Notes

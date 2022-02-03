@@ -13,7 +13,7 @@ from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
-from ..utils import check_type, safe_transform
+from ..utils import _check_type, _safe_transform
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     Parameters
     ----------
-    model : :obj:`nimare.annotate.topic.GCLDAModel`
+    model : :obj:`~nimare.annotate.gclda.GCLDAModel`
         Model object needed for decoding.
     image : :obj:`nibabel.nifti1.Nifti1Image` or :obj:`str`
         Whole-brain image to decode into text. Must be in same space as
@@ -79,9 +79,9 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     See Also
     --------
-    :class:`nimare.annotate.gclda.GCLDAModel`
-    :func:`nimare.decode.discrete.gclda_decode_roi`
-    :func:`nimare.decode.encode.gclda_encode`
+    :class:`~nimare.annotate.gclda.GCLDAModel`
+    :func:`~nimare.decode.discrete.gclda_decode_roi`
+    :func:`~nimare.decode.encode.gclda_encode`
 
     References
     ----------
@@ -126,8 +126,8 @@ class CorrelationDecoder(Decoder):
         Features
     frequency_threshold : :obj:`float`
         Frequency threshold
-    meta_estimator : :class:`nimare.base.CBMAEstimator`, optional
-        Meta-analysis estimator. Default is :class:`nimare.meta.mkda.MKDAChi2`.
+    meta_estimator : :class:`~nimare.base.CBMAEstimator`, optional
+        Meta-analysis estimator. Default is :class:`~nimare.meta.mkda.MKDAChi2`.
     target_image : :obj:`str`
         Name of meta-analysis results image to use for decoding.
 
@@ -156,7 +156,7 @@ class CorrelationDecoder(Decoder):
         if meta_estimator is None:
             meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
         else:
-            meta_estimator = check_type(meta_estimator, CBMAEstimator)
+            meta_estimator = _check_type(meta_estimator, CBMAEstimator)
 
         self.feature_group = feature_group
         self.features = features
@@ -170,7 +170,7 @@ class CorrelationDecoder(Decoder):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset for which to run meta-analyses to generate maps.
 
         Attributes
@@ -282,7 +282,7 @@ class CorrelationDistributionDecoder(Decoder):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset for which to run meta-analyses to generate maps.
 
         Attributes
@@ -309,7 +309,7 @@ class CorrelationDistributionDecoder(Decoder):
                 img for i_img, img in enumerate(self.inputs_["images"]) if i_img in selected_id_idx
             ]
             if len(test_imgs):
-                feature_arr = safe_transform(
+                feature_arr = _safe_transform(
                     test_imgs,
                     self.masker,
                     memory_limit=self.memory_limit,

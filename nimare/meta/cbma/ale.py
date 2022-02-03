@@ -35,7 +35,7 @@ class ALE(CBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     null_method : {"approximate", "montecarlo"}, optional
@@ -70,8 +70,7 @@ class ALE(CBMAEstimator):
 
     Notes
     -----
-    The ALE algorithm was originally developed in [1]_, then updated in [2]_
-    and [3]_.
+    The ALE algorithm was originally developed in [1]_, then updated in [2]_ and [3]_.
 
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
@@ -225,7 +224,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset.
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
@@ -384,9 +383,9 @@ class SCALE(CBMAEstimator):
         Tab-delimited file of coordinates from database or numpy array with XYZ
         coordinates. Voxels are rows and x, y, z (meaning coordinates) values
         are the three columnns.
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
-        :class:`nimare.meta.kernel.ALEKernel`.
+        :class:`~nimare.meta.kernel.ALEKernel`.
     memory_limit : :obj:`str` or None, optional
         Memory limit to apply to data. If None, no memory management will be applied.
         Otherwise, the memory limit will be used to (1) assign memory-mapped files and
@@ -437,7 +436,7 @@ class SCALE(CBMAEstimator):
 
         Parameters
         ----------
-        dataset : :obj:`nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
         """
         self.dataset = dataset

@@ -2,21 +2,23 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _datasets1:
+.. _datasets_object:
 
 =========================
 The NiMARE Dataset object
 =========================
 
-This is a brief walkthrough of the :class:`nimare.dataset.Dataset` class and its methods.
+This is a brief walkthrough of the :class:`~nimare.dataset.Dataset` class and its methods.
 """
 ###############################################################################
 # Start with the necessary imports
 # --------------------------------
 import os
 
-import nimare
-from nimare.tests.utils import get_test_data_path
+from nimare.dataset import Dataset
+from nimare.extract import download_nidm_pain
+from nimare.transforms import ImageTransformer
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Datasets are stored as json or pkl[.gz] files
@@ -29,13 +31,13 @@ from nimare.tests.utils import get_test_data_path
 # Dataset is no longer a dictionary.
 
 # Let's start by downloading a dataset
-dset_dir = nimare.extract.download_nidm_pain()
+dset_dir = download_nidm_pain()
 
 # Now we can load and save the Dataset object
-dset_file = os.path.join(get_test_data_path(), "nidm_pain_dset.json")
-dset = nimare.dataset.Dataset(dset_file, target="mni152_2mm", mask=None)
+dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
+dset = Dataset(dset_file, target="mni152_2mm", mask=None)
 dset.save("pain_dset.pkl")
-dset = nimare.dataset.Dataset.load("pain_dset.pkl")
+dset = Dataset.load("pain_dset.pkl")
 os.remove("pain_dset.pkl")  # cleanup
 
 ###############################################################################
@@ -105,7 +107,7 @@ print(f"Template space: {dset.space}")
 # Instead, relative paths to image files are retained in the Dataset.images
 # attribute.
 # When loading a Dataset, you will likely need to specify the path to the images.
-# To do this, you can use :func:`nimare.dataset.Dataset.update_path`.
+# To do this, you can use :func:`~nimare.dataset.Dataset.update_path`.
 dset.update_path(dset_dir)
 columns_to_show = ["id", "study_id", "contrast_id", "beta", "beta__relative"]
 dset.images[columns_to_show].head()
@@ -119,9 +121,9 @@ dset.images[columns_to_show].head()
 # For example, ``varcope = t / beta``, so if you have t-statistic images and
 # beta images, you can also calculate varcope (variance) images.
 #
-# We use :mod:`nimare.transforms` to perform these transformations
-# (especially :class:`nimare.transforms.ImageTransformer`)
-varcope_transformer = nimare.transforms.ImageTransformer(target="varcope")
+# We use the :mod:`~nimare.transforms` module to perform these transformations
+# (especially :class:`~nimare.transforms.ImageTransformer`)
+varcope_transformer = ImageTransformer(target="varcope")
 dset = varcope_transformer.transform(dset)
 dset.images[["id", "varcope"]].head()
 
@@ -145,7 +147,7 @@ print("\n".join(z_images))
 ###############################################################################
 # Let's try to fill in missing z images
 # `````````````````````````````````````````````````````````````````````````````
-z_transformer = nimare.transforms.ImageTransformer(target="z")
+z_transformer = ImageTransformer(target="z")
 dset = z_transformer.transform(dset)
 z_images = dset.get_images(imtype="z")
 z_images = [str(z) for z in z_images]
@@ -166,6 +168,6 @@ print("\n".join(sel_studies))
 # to image files, most elements are not.
 # NiMARE Estimators operate on Datasets and return *new*, updated Datasets.
 # If you want to reduce a Dataset based on a subset of the studies in the
-# Dataset, you need to use :func:`nimare.dataset.Dataset.slice`.
+# Dataset, you need to use :meth:`~nimare.dataset.Dataset.slice`.
 sub_dset = dset.slice(ids=sel_studies)
 print("\n".join(sub_dset.ids))

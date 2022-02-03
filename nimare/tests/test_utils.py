@@ -2,7 +2,6 @@
 import logging
 import os
 import os.path as op
-import time
 
 import nibabel as nib
 import numpy as np
@@ -12,7 +11,7 @@ from nimare import utils
 
 
 def test_find_stem():
-    """Test nimare.utils.find_stem."""
+    """Test nimare.utils._find_stem."""
     test_array = [
         "/home/data/dataset/file1.nii.gz",
         "/home/data/dataset/file2.nii.gz",
@@ -20,7 +19,7 @@ def test_find_stem():
         "/home/data/dataset/file4.nii.gz",
         "/home/data/dataset/file5.nii.gz",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == "/home/data/dataset/file"
 
     test_array = [
@@ -30,7 +29,7 @@ def test_find_stem():
         "/home/data/dataset/subfolder2/file4.nii.gz",
         "/home/data/dataset/subfolder3/file5.nii.gz",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == "/home/data/dataset/subfolder"
 
     test_array = [
@@ -40,7 +39,7 @@ def test_find_stem():
         "/home/data/file4_test-filename_test.nii.gz",
         "/home/data/file5_test-filename_test.nii.gz",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == "/home/data/file"
 
     test_array = [
@@ -50,26 +49,45 @@ def test_find_stem():
         "mouse",
         "louse",
     ]
-    stem = utils.find_stem(test_array)
+    stem = utils._find_stem(test_array)
     assert stem == ""
 
 
 def test_get_template():
     """Test nimare.utils.get_template."""
+    # 1mm template
     img = utils.get_template(space="mni152_1mm", mask=None)
     assert isinstance(img, nib.Nifti1Image)
     assert not nib.is_proxy(img.dataobj)
     img = utils.get_template(space="mni152_1mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
-    img = utils.get_template(space="mni152_1mm", mask="gm")
-    assert isinstance(img, nib.Nifti1Image)
+
+    # 2mm template (default)
     img = utils.get_template(space="mni152_2mm", mask=None)
     assert isinstance(img, nib.Nifti1Image)
     img = utils.get_template(space="mni152_2mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
-    img = utils.get_template(space="mni152_2mm", mask="gm")
+    assert not nib.is_proxy(img.dataobj)
+
+    # ALE template
+    img = utils.get_template(space="ale_2mm", mask=None)
+    assert isinstance(img, nib.Nifti1Image)
+    img = utils.get_template(space="ale_2mm", mask="brain")
     assert isinstance(img, nib.Nifti1Image)
     assert not nib.is_proxy(img.dataobj)
+
+    # Expect exceptions when incompatible spaces or masks are requested.
+    with pytest.raises(ValueError):
+        utils.get_template(space="something", mask=None)
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="mni152_1mm", mask="gm")
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="mni152_2mm", mask="gm")
+
+    with pytest.raises(ValueError):
+        utils.get_template(space="ale_2mm", mask="gm")
 
 
 def test_get_resource_path():
@@ -152,7 +170,7 @@ def test_mni2tal():
 def test_vox2mm():
     """Test vox2mm."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
-    true = np.array([[50.0, -86.0, -32.0], [90.0, -126.0, -72.0]])
+    true = np.array([[-50.0, -86.0, -32.0], [-90.0, -126.0, -72.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.vox2mm(test, aff), true)
@@ -161,31 +179,7 @@ def test_vox2mm():
 def test_mm2vox():
     """Test mm2vox."""
     test = np.array([[20, 20, 20], [0, 0, 0]])
-    true = np.array([[35.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
+    true = np.array([[55.0, 73.0, 46.0], [45.0, 63.0, 36.0]])
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.mm2vox(test, aff), true)
-
-
-def test_run_shell_command(caplog):
-    """Test run_shell_command."""
-    with caplog.at_level(logging.INFO):
-        utils.run_shell_command("echo 'output'")
-    assert "output" in caplog.text
-
-    # Check that the exception is registered as such
-    with pytest.raises(Exception) as execinfo:
-        utils.run_shell_command("echo 'Error!' 1>&2;exit 64")
-    assert "Error!" in str(execinfo.value)
-
-    # Check that the function actually waits until the command completes
-    dur = 3
-    start = time.time()
-    with caplog.at_level(logging.INFO):
-        utils.run_shell_command(f"echo 'hi';sleep {dur}s;echo 'bye'")
-    end = time.time()
-
-    assert "hi" in caplog.text
-    assert "bye" in caplog.text
-    duration = end - start
-    assert duration >= dur

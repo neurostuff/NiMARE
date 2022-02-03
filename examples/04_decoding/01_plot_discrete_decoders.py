@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _decode1:
+.. _decode_discrete:
 
 ============================
 Discrete functional decoding
@@ -17,16 +17,16 @@ import nibabel as nib
 import numpy as np
 from nilearn.plotting import plot_roi
 
-import nimare
+from nimare.dataset import Dataset
 from nimare.decode import discrete
-from nimare.tests.utils import get_test_data_path
+from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
 # ---------------------------
 # We'll load a small dataset composed only of studies in Neurosynth with
 # Angela Laird as a coauthor, for the sake of speed.
-dset = nimare.dataset.Dataset(os.path.join(get_test_data_path(), "neurosynth_laird_studies.json"))
+dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 dset.annotations.head(5)
 
 ###############################################################################

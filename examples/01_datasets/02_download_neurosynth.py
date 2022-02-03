@@ -2,13 +2,18 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _datasets2:
+.. _datasets_databases:
 
 =========================
 Neurosynth and NeuroQuery
 =========================
 
-Download and convert the Neurosynth database (with abstracts) for analysis with NiMARE.
+Neurosynth and NeuroQuery are the two largest publicly-available coordinate-based databases.
+NiMARE includes functions for downloading releases of each database and converting the databases
+to NiMARE Datasets.
+
+In this example, we download and convert the Neurosynth and NeuroQuery databases for analysis with
+NiMARE.
 
 .. warning::
     In August 2021, the Neurosynth database was reorganized according to a new file format.
@@ -25,7 +30,7 @@ Download and convert the Neurosynth database (with abstracts) for analysis with 
         )
 
 For information about where these files will be downloaded to on your machine,
-see :ref:`fetching tools`.
+see :doc:`../../fetching`.
 """
 ###############################################################################
 # Start with the necessary imports
@@ -33,7 +38,8 @@ see :ref:`fetching tools`.
 import os
 from pprint import pprint
 
-import nimare
+from nimare.extract import download_abstracts, fetch_neuroquery, fetch_neurosynth
+from nimare.io import convert_neurosynth_to_dataset
 
 ###############################################################################
 # Download Neurosynth
@@ -42,7 +48,7 @@ import nimare
 out_dir = os.path.abspath("../example_data/")
 os.makedirs(out_dir, exist_ok=True)
 
-files = nimare.extract.fetch_neurosynth(
+files = fetch_neurosynth(
     data_dir=out_dir,
     version="7",
     overwrite=False,
@@ -56,7 +62,7 @@ neurosynth_db = files[0]
 ###############################################################################
 # Convert Neurosynth database to NiMARE dataset file
 # --------------------------------------------------
-neurosynth_dset = nimare.io.convert_neurosynth_to_dataset(
+neurosynth_dset = convert_neurosynth_to_dataset(
     coordinates_file=neurosynth_db["coordinates"],
     metadata_file=neurosynth_db["metadata"],
     annotations_files=neurosynth_db["features"],
@@ -70,14 +76,14 @@ print(neurosynth_dset)
 # This is only possible because Neurosynth uses PMIDs as study IDs.
 #
 # Make sure you replace the example email address with your own.
-neurosynth_dset = nimare.extract.download_abstracts(neurosynth_dset, "example@example.edu")
+neurosynth_dset = download_abstracts(neurosynth_dset, "example@example.edu")
 neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pkl.gz"))
 
 ###############################################################################
 # Do the same with NeuroQuery
 # ---------------------------
 # NeuroQuery's data files are stored at https://github.com/neuroquery/neuroquery_data.
-files = nimare.extract.fetch_neuroquery(
+files = fetch_neuroquery(
     data_dir=out_dir,
     version="1",
     overwrite=False,
@@ -91,7 +97,7 @@ neuroquery_db = files[0]
 
 # Note that the conversion function says "neurosynth".
 # This is just for backwards compatibility.
-neuroquery_dset = nimare.io.convert_neurosynth_to_dataset(
+neuroquery_dset = convert_neurosynth_to_dataset(
     coordinates_file=neuroquery_db["coordinates"],
     metadata_file=neuroquery_db["metadata"],
     annotations_files=neuroquery_db["features"],
@@ -100,5 +106,5 @@ neuroquery_dset.save(os.path.join(out_dir, "neuroquery_dataset.pkl.gz"))
 print(neuroquery_dset)
 
 # NeuroQuery also uses PMIDs as study IDs.
-neuroquery_dset = nimare.extract.download_abstracts(neuroquery_dset, "example@example.edu")
+neuroquery_dset = download_abstracts(neuroquery_dset, "example@example.edu")
 neuroquery_dset.save(os.path.join(out_dir, "neuroquery_dataset_with_abstracts.pkl.gz"))

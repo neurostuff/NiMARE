@@ -12,7 +12,7 @@ from ..due import due
 from ..meta.kernel import KernelTransformer, MKDAKernel
 from ..stats import one_way, pearson, two_way
 from ..transforms import p_to_z
-from ..utils import check_type, get_masker
+from ..utils import _check_type, get_masker
 from .utils import weight_priors
 
 
@@ -22,7 +22,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 
     Parameters
     ----------
-    model : :obj:`nimare.annotate.topic.GCLDAModel`
+    model : :obj:`~nimare.annotate.gclda.GCLDAModel`
         Model object needed for decoding.
     roi : :obj:`nibabel.nifti1.Nifti1Image` or :obj:`str`
         Binary image to decode into text. If string, path to a file with
@@ -72,9 +72,9 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 
     See Also
     --------
-    :class:`nimare.annotate.gclda.GCLDAModel`
-    :func:`nimare.decode.continuous.gclda_decode_map`
-    :func:`nimare.decode.encode.gclda_encode`
+    :class:`~nimare.annotate.gclda.GCLDAModel`
+    :func:`~nimare.decode.continuous.gclda_decode_map`
+    :func:`~nimare.decode.encode.gclda_encode`
 
     References
     ----------
@@ -148,7 +148,7 @@ class BrainMapDecoder(Decoder):
 
     See Also
     --------
-    :func:`nimare.decode.discrete.brainmap_decode`: The associated function for this method.
+    :func:`~nimare.decode.discrete.brainmap_decode`: The associated function for this method.
 
     References
     ----------
@@ -271,7 +271,7 @@ def brainmap_decode(
 
     See Also
     --------
-    :func:`nimare.decode.discrete.BrainMapDecoder`: The associated class for this method.
+    :func:`~nimare.decode.discrete.BrainMapDecoder`: The associated class for this method.
 
     References
     ----------
@@ -433,7 +433,7 @@ class NeurosynthDecoder(Decoder):
 
     See Also
     --------
-    :func:`nimare.decode.discrete.neurosynth_decode`: The associated function for this method.
+    :func:`~nimare.decode.discrete.neurosynth_decode`: The associated function for this method.
 
     References
     ----------
@@ -571,8 +571,8 @@ def neurosynth_decode(
 
     See Also
     --------
-    :class:`nimare.decode.discrete.NeurosynthDecoder`: The associated class for this method.
-    :func:`nimare.decode.continuous.CorrelationDecoder`: The correlation-based decoding
+    :class:`~nimare.decode.discrete.NeurosynthDecoder`: The associated class for this method.
+    :func:`~nimare.decode.continuous.CorrelationDecoder`: The correlation-based decoding
         method employed in Neurosynth and NeuroVault.
 
     References
@@ -682,7 +682,7 @@ class ROIAssociationDecoder(Decoder):
     ----------
     masker : :class:`nilearn.input_data.NiftiMasker`, img_like, or similar
         Masker for region of interest.
-    kernel_transformer : :obj:`nimare.meta.kernel.KernelTransformer`, optional
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to create modeled activation maps. Default is MKDAKernel.
     feature_group : :obj:`str`, optional
         Feature group name used to select labels from a specific source.
@@ -730,7 +730,7 @@ class ROIAssociationDecoder(Decoder):
         kernel_args = {
             k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
         }
-        kernel_transformer = check_type(kernel_transformer, KernelTransformer, **kernel_args)
+        kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
         self.feature_group = feature_group

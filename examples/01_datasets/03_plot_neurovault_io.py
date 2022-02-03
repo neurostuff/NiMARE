@@ -1,13 +1,17 @@
 """
 
-.. _datasets3:
+.. _datasets_neurovault:
 
 =========================================
 Use NeuroVault statistical maps in NiMARE
 =========================================
 
-Download statistical maps from NeuroVault, then use them in a meta-analysis, with NiMARE.
+Download statistical maps from NeuroVault, then use them in a meta-analysis,
+with NiMARE.
 """
+import matplotlib.pyplot as plt
+from nilearn.plotting import plot_stat_map
+
 ###############################################################################
 # Neurovault + NiMARE: Load freely shared statistical maps for Meta-Analysis
 # --------------------------------------------------------------------------
@@ -68,16 +72,15 @@ dset = convert_neurovault_to_dataset(
 from nimare.transforms import ImageTransformer
 
 # Not all studies have Z maps!
-print(dset.images["z"])
+dset.images[["z"]]
 
+###############################################################################
 z_transformer = ImageTransformer(target="z")
 dset = z_transformer.transform(dset)
 
+###############################################################################
 # All studies now have Z maps!
-print(dset.images["z"])
-
-
-from nilearn.plotting import plot_stat_map
+dset.images[["z"]]
 
 ###############################################################################
 # Run a Meta-Analysis
@@ -86,10 +89,15 @@ from nilearn.plotting import plot_stat_map
 # and plot our results
 from nimare.meta.ibma import Fishers
 
-meta = Fishers()
+# The default template has a slightly different, but completely compatible,
+# affine than the NeuroVault images, so we allow the Estimator to resample
+# images during the fitting process.
+meta = Fishers(resample=True)
 
 meta_res = meta.fit(dset)
 
-plot_stat_map(meta_res.get_map("z"), threshold=3.3)
+fig, ax = plt.subplots()
+display = plot_stat_map(meta_res.get_map("z"), threshold=3.3, axes=ax, figure=fig)
+fig.show()
 # The result may look questionable, but this code provides
 # a template on how to use neurovault in your meta analysis.

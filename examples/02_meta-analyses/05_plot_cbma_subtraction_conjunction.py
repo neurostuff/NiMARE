@@ -2,7 +2,7 @@
 # ex: set sts=4 ts=4 sw=4 et:
 """
 
-.. _metas5:
+.. _metas_subtraction:
 
 =================================
 Subtraction and conjunction CBMAs
@@ -18,11 +18,10 @@ import matplotlib.pyplot as plt
 from nilearn.image import math_img
 from nilearn.plotting import plot_stat_map
 
+from nimare import io, utils
 from nimare.correct import FWECorrector
 from nimare.diagnostics import Jackknife
-from nimare.io import convert_sleuth_to_dataset
 from nimare.meta.cbma import ALE, ALESubtraction
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
 # Load Sleuth text files into Datasets
@@ -33,11 +32,11 @@ from nimare.tests.utils import get_test_data_path
 # hearing its auditory description) while a second group of studies asked
 # children to decide if two (or more) words were semantically related to one
 # another or not.
-knowledge_file = os.path.join(get_test_data_path(), "semantic_knowledge_children.txt")
-related_file = os.path.join(get_test_data_path(), "semantic_relatedness_children.txt")
+knowledge_file = os.path.join(utils.get_resource_path(), "semantic_knowledge_children.txt")
+related_file = os.path.join(utils.get_resource_path(), "semantic_relatedness_children.txt")
 
-knowledge_dset = convert_sleuth_to_dataset(knowledge_file)
-related_dset = convert_sleuth_to_dataset(related_file)
+knowledge_dset = io.convert_sleuth_to_dataset(knowledge_file)
+related_dset = io.convert_sleuth_to_dataset(related_file)
 
 ###############################################################################
 # Individual group ALEs
@@ -54,7 +53,7 @@ knowledge_corrected_results = corr.transform(knowledge_results)
 related_corrected_results = corr.transform(related_results)
 
 fig, axes = plt.subplots(figsize=(12, 10), nrows=2)
-img = knowledge_corrected_results.get_map("z_level-cluster_corr-FWE_method-montecarlo")
+img = knowledge_corrected_results.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo")
 plot_stat_map(
     img,
     cut_coords=4,
@@ -67,7 +66,7 @@ plot_stat_map(
     figure=fig,
 )
 
-img2 = related_corrected_results.get_map("z_level-cluster_corr-FWE_method-montecarlo")
+img2 = related_corrected_results.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo")
 plot_stat_map(
     img2,
     cut_coords=4,
@@ -86,7 +85,7 @@ fig.show()
 # -----------------------------------------------------------------------------
 
 jknife = Jackknife(
-    target_image="z_level-cluster_corr-FWE_method-montecarlo",
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
 knowledge_cluster_table, knowledge_cluster_img = jknife.transform(knowledge_corrected_results)

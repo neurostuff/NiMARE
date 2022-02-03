@@ -1,1 +1,2 @@
 include versioneer.py
+include nimare/_version.py
