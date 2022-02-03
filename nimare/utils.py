@@ -713,12 +713,12 @@ def use_memmap(logger, n_files=1):
 
 
 BYTE = 2
-KILOBYTE = BYTE ** 10
+KILOBYTE = BYTE**10
 BYTE_CONVERSION = {
     "kb": KILOBYTE,
-    "mb": KILOBYTE ** 2,
-    "gb": KILOBYTE ** 3,
-    "tb": KILOBYTE ** 4,
+    "mb": KILOBYTE**2,
+    "gb": KILOBYTE**3,
+    "tb": KILOBYTE**4,
 }
 
 
