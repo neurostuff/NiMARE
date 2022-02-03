@@ -378,7 +378,7 @@ class SCALE(CBMAEstimator):
         Number of iterations for correction. Default: 10000
     n_cores : int, optional
         Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
+        available cores. Default: 1
     xyz : :obj:`str` or (N x 3) array_like
         Tab-delimited file of coordinates from database or numpy array with XYZ
         coordinates. Voxels are rows and x, y, z (meaning coordinates) values
@@ -406,7 +406,7 @@ class SCALE(CBMAEstimator):
         self,
         voxel_thresh=0.001,
         n_iters=10000,
-        n_cores=-1,
+        n_cores=1,
         use_joblib=False,
         xyz=None,
         kernel_transformer=ALEKernel,

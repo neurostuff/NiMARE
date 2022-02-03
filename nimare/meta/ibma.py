@@ -619,7 +619,7 @@ class PermutedOLS(MetaEstimator):
         }
         return images
 
-    def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         .. versionchanged:: 0.0.8
@@ -639,7 +639,7 @@ class PermutedOLS(MetaEstimator):
             Default is 10000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
-            If <=0, defaults to using all available cores. Default is -1.
+            If <=0, defaults to using all available cores. Default is 1.
 
         Returns
         -------

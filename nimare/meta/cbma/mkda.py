@@ -351,7 +351,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
         return iter_pAgF_chi2, iter_pFgA_chi2
 
-    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -365,7 +365,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             Default is 5000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
-            If <=0, defaults to using all available cores. Default is -1.
+            If <=0, defaults to using all available cores. Default is 1.
 
         Returns
         -------

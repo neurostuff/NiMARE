@@ -516,7 +516,7 @@ class CBMAEstimator(MetaEstimator):
         return iter_max_value, iter_max_cluster, iter_max_mass
 
     def correct_fwe_montecarlo(
-        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1, vfwe_only=False
+        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=1, vfwe_only=False
     ):
         """Perform FWE correction using the max-value permutation method.
 
@@ -538,7 +538,7 @@ class CBMAEstimator(MetaEstimator):
             null distributions. Default is 10000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
-            If <=0, defaults to using all available cores. Default is -1.
+            If <=0, defaults to using all available cores. Default is 1.
         vfwe_only : :obj:`bool`, optional
             If True, only calculate the voxel-level FWE-corrected maps. Voxel-level correction
             can be performed very quickly if the Estimator's ``null_method`` was "montecarlo".
