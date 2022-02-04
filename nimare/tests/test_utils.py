@@ -105,7 +105,7 @@ def test_get_resource_path():
 )
 def test_use_memmap(caplog, has_low_memory, memory_limit):
     """Test the memmapping decorator."""
-    LGR = logging.getLogger(__name__)
+    LGR = logging.getLogger("nimare")
 
     class DummyClass:
         def __init__(self, has_low_memory, memory_limit):

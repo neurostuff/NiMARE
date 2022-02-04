@@ -7,7 +7,7 @@ from nibabel.funcs import squeeze_image
 
 from .utils import get_masker
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 class MetaResult(object):

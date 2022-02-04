@@ -15,7 +15,7 @@ from .base import Transformer
 from .due import due
 from .utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 class ImageTransformer(Transformer):

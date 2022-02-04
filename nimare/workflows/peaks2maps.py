@@ -12,7 +12,7 @@ from ..base import MetaResult
 from ..io import convert_sleuth_to_dataset
 from ..meta.kernel import Peaks2MapsKernel
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 def peaks2maps_workflow(sleuth_file, output_dir=None, prefix=None, n_iters=10000):

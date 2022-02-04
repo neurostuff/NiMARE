@@ -6,7 +6,7 @@ import numpy as np
 
 from . import utils
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 def one_way(data, n):

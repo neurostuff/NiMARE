@@ -16,7 +16,7 @@ from nilearn.image import concat_imgs, resample_to_img
 from .results import MetaResult
 from .utils import get_masker, mm2vox
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 class NiMAREBase(metaclass=ABCMeta):

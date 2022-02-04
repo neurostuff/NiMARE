@@ -23,7 +23,7 @@ from .utils import (
     mm2vox,
 )
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 class Dataset(NiMAREBase):

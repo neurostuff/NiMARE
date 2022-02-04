@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 from .base import NiMAREBase
 from .utils import vox2mm
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 class Jackknife(NiMAREBase):

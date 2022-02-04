@@ -10,7 +10,7 @@ from nilearn.mass_univariate import permuted_ols
 from ..results import MetaResult
 from ..utils import get_template
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="", n_iters=10000):

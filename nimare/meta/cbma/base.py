@@ -21,7 +21,7 @@ from ...utils import (
 )
 from ..kernel import KernelTransformer
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 class CBMAEstimator(MetaEstimator):

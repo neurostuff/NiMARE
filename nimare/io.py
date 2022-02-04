@@ -15,7 +15,7 @@ from scipy import sparse
 from .dataset import Dataset
 from .extract.utils import _get_dataset_dir
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 DEFAULT_MAP_TYPE_CONVERSION = {
     "T map": "t",

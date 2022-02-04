@@ -28,7 +28,7 @@ from .utils import (
     _longify,
 )
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 VALID_ENTITIES = {
     "coordinates.tsv.gz": ["data", "version"],

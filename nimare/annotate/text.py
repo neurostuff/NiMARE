@@ -7,7 +7,7 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 from ..utils import get_resource_path
 
-LGR = logging.getLogger(__name__)
+LGR = logging.getLogger("nimare")
 
 
 def generate_counts(text_df, text_column="abstract", tfidf=True, min_df=50, max_df=0.5):
