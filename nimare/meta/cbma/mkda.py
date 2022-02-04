@@ -78,7 +78,7 @@ class MKDADensity(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
         self.results = None
 
@@ -592,7 +592,7 @@ class KDA(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
         self.results = None
 
