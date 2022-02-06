@@ -74,11 +74,13 @@ class CBMAEstimator(MetaEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
+        LGR.debug("_collect_ma_maps started")
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
             fname_idx=0,
         )
+        LGR.debug("_collect_ma_maps done")
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
@@ -158,6 +160,7 @@ class CBMAEstimator(MetaEstimator):
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
             if self.memory_limit:
+                LGR.debug("_safe_transform started")
                 # perform transform on chunks of the input maps
                 ma_maps = _safe_transform(
                     self.inputs_[maps_key],
@@ -165,6 +168,7 @@ class CBMAEstimator(MetaEstimator):
                     memory_limit=self.memory_limit,
                     memfile=self.memmap_filenames[fname_idx],
                 )
+                LGR.debug("_safe_transform done")
             else:
                 ma_maps = self.masker.transform(self.inputs_[maps_key])
         else:

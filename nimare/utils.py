@@ -703,6 +703,8 @@ def use_memmap(logger, n_files=1):
                         if os.path.isfile(filename):
                             logger.debug(f"Removing temporary file: {filename}")
                             os.remove(filename)
+                        else:
+                            logger.debug(f"Temporary file DNE: {filename}")
 
         return memmap_context
 
@@ -773,6 +775,7 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
         Masked data in a 2D array.
         Either an ndarray (if memfile is None) or a memmap array (if memfile is a string).
     """
+    LGR.debug(f"_safe_transform started: {memfile}")
     assert isinstance(memfile, (type(None), str))
 
     first_img_data = masker.transform(imgs[0])
@@ -784,6 +787,7 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
             mode="w+",
             shape=masked_shape,
         )
+        LGR.debug(f"_safe_transform: {memfile} created.")
     else:
         masked_data = np.empty(
             masked_shape,
@@ -796,9 +800,11 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
     idx = 0
     for map_chunk in map_chunks:
         end_idx = idx + len(map_chunk)
+        LGR.debug(f"Masking {idx}:{end_idx}/{masked_data.shape[0]}")
         masked_data[idx:end_idx, :] = masker.transform(map_chunk)
         idx = end_idx
 
+    LGR.debug("_safe_transform ended")
     return masked_data
 
 
