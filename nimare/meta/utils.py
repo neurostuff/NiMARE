@@ -450,7 +450,7 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
         uncertain_subjects = (11.6 / (2 * np.sqrt(2 / np.pi)) * np.sqrt(8 * np.log(2))) / np.sqrt(
             sample_size
         )  # pylint: disable=no-member
-        fwhm = np.sqrt(uncertain_subjects ** 2 + uncertain_templates ** 2)
+        fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = (
