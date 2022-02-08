@@ -801,7 +801,9 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
     for map_chunk in map_chunks:
         end_idx = idx + len(map_chunk)
         LGR.debug(f"Masking {idx}:{end_idx}/{masked_data.shape[0]}")
-        masked_data[idx:end_idx, :] = masker.transform(map_chunk)
+        map_chunk_data = masker.transform(map_chunk)
+        LGR.debug(f"Saving {idx}:{end_idx}/{masked_data.shape[0]}")
+        masked_data[idx:end_idx, :] = map_chunk_data
         idx = end_idx
 
     LGR.debug("_safe_transform ended")
