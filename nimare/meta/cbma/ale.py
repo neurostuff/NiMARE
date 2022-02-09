@@ -555,22 +555,9 @@ class SCALE(CBMAEstimator):
         voxel_null[scale_zeros] = np.nan
         scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
         scale_hist[0] = n_zeros
-        scale_hist[1:] = self._make_hist(voxel_null)
 
-        p_value = nullhist_to_p(
-            stat_value,
-            scale_hist,
-            self.null_distributions_["histogram_bins"],
-        )
-        return p_value, i_voxel
-
-    def _make_hist(self, oned_arr):
-        """Make a histogram from a 1d array and histogram bins.
-
-        Meant to be applied along an axis to a 2d array.
-        """
-        hist_ = np.histogram(
-            a=oned_arr,
+        scale_hist[1:] = np.histogram(
+            a=voxel_null,
             bins=self.null_distributions_["histogram_bins"],
             range=(
                 np.min(self.null_distributions_["histogram_bins"]),
@@ -578,7 +565,13 @@ class SCALE(CBMAEstimator):
             ),
             density=False,
         )[0]
-        return hist_
+
+        p_value = nullhist_to_p(
+            stat_value,
+            scale_hist,
+            self.null_distributions_["histogram_bins"],
+        )
+        return p_value, i_voxel
 
     def _run_permutation(self, i_row, iter_xyz, iter_df, perm_scale_values):
         """Run a single random SCALE permutation of a dataset."""
