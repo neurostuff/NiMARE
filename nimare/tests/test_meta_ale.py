@@ -216,6 +216,22 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
         np.ndarray,
     )
 
+    # Check that the updated null distribution is in the corrected MetaResult's Estimator,
+    # but not the original one.
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        in cres.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in meta.null_distributions_.keys()
+    )
+    # For some reason this doesn't work...
+    # assert (
+    #     "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+    #     not in meta.results.estimator.null_distributions_.keys()
+    # )
+
     # Bonferroni FWE
     corr = FWECorrector(method="bonferroni")
     cres = corr.transform(res)
