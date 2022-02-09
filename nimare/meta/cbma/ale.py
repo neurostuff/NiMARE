@@ -529,18 +529,23 @@ class SCALE(CBMAEstimator):
         -----
         This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
-        scale_zeros = scale_values == 0
-        n_zeros = np.sum(scale_zeros, axis=0)
-        scale_values[scale_values == 0] = np.nan
-        scale_hists = np.zeros(
-            ((len(self.null_distributions_["histogram_bins"]),) + n_zeros.shape)
-        )
-        scale_hists[0, :] = n_zeros
-        scale_hists[1:, :] = np.apply_along_axis(self._make_hist, 0, scale_values)
+        p_values = np.empty_like(stat_values)
 
-        p_values = nullhist_to_p(
-            stat_values, scale_hists, self.null_distributions_["histogram_bins"]
-        )
+        for i_voxel in range(stat_values.shape[0]):
+            voxel_null = scale_values[:, i_voxel]
+            scale_zeros = voxel_null == 0
+            n_zeros = np.sum(scale_zeros)
+            voxel_null[scale_zeros] = np.nan
+            scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
+            scale_hist[0] = n_zeros
+            scale_hist[1:] = self._make_hist(voxel_null)
+
+            p_values[i_voxel] = nullhist_to_p(
+                stat_values[i_voxel],
+                scale_hist,
+                self.null_distributions_["histogram_bins"],
+            )
+
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 
