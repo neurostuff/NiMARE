@@ -153,8 +153,16 @@ class Condition:
     ----------
     name
     description
+
+    Notes
+    -----
+    Condition-level Annotations, like condition-wise trial counts, are stored in the parent
+    Analysis's Annotations, preferably with names that make it clear that they correspond to a
+    specific Condition.
     """
-    ...
+
+    def __init__(self):
+        ...
 
 
 class Annotation:
