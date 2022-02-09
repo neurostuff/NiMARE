@@ -136,6 +136,10 @@ class Corrector(metaclass=ABCMeta):
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
         result.maps.update(corr_maps)
+
+        # Update the estimator as well, in order to retain updated null distributions
+        result.estimator = est
+
         return result
 
     @abstractmethod
