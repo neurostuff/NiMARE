@@ -647,7 +647,7 @@ class CBMAEstimator(MetaEstimator):
             conn[1, :, :] = 1
 
             with tqdm_joblib(tqdm(total=n_iters)):
-                perm_results = Parallel(n_jobs=self.n_cores)(
+                perm_results = Parallel(n_jobs=n_cores)(
                     delayed(self._correct_fwe_montecarlo_permutation)(
                         iter_xyzs[i_iter], iter_df=iter_df, conn=conn, voxel_thresh=ss_thresh
                     )
