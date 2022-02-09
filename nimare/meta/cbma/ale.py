@@ -529,25 +529,40 @@ class SCALE(CBMAEstimator):
         -----
         This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
-        p_values = np.empty_like(stat_values)
+        n_voxels = stat_values.shape[0]
 
-        for i_voxel in range(stat_values.shape[0]):
-            voxel_null = scale_values[:, i_voxel]
-            scale_zeros = voxel_null == 0
-            n_zeros = np.sum(scale_zeros)
-            voxel_null[scale_zeros] = np.nan
-            scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
-            scale_hist[0] = n_zeros
-            scale_hist[1:] = self._make_hist(voxel_null)
-
-            p_values[i_voxel] = nullhist_to_p(
-                stat_values[i_voxel],
-                scale_hist,
-                self.null_distributions_["histogram_bins"],
+        # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
+        # the iteration as well and sort the resulting p-value array based on that.
+        with tqdm_joblib(tqdm(total=n_voxels)):
+            p_values, voxel_idx = zip(
+                *Parallel(n_jobs=self.n_cores)(
+                    delayed(self._scale_to_p_voxel)(
+                        i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
+                    )
+                    for i_voxel in range(n_voxels)
+                )
             )
+        # Convert to an array and sort the p-values array based on the voxel index.
+        p_values = np.array(p_values)[np.array(voxel_idx)]
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
+
+    def _scale_to_p_voxel(self, i_voxel, stat_value, voxel_null):
+        """Compute one voxel's p-value from its specific null distribution."""
+        scale_zeros = voxel_null == 0
+        n_zeros = np.sum(scale_zeros)
+        voxel_null[scale_zeros] = np.nan
+        scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
+        scale_hist[0] = n_zeros
+        scale_hist[1:] = self._make_hist(voxel_null)
+
+        p_value = nullhist_to_p(
+            stat_value,
+            scale_hist,
+            self.null_distributions_["histogram_bins"],
+        )
+        return p_value, i_voxel
 
     def _make_hist(self, oned_arr):
         """Make a histogram from a 1d array and histogram bins.
