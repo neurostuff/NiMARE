@@ -229,6 +229,10 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     # For some reason this doesn't work...
     # assert (
     #     "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+    #     not in res.estimator.null_distributions_.keys()
+    # )
+    # assert (
+    #     "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
     #     not in meta.results.estimator.null_distributions_.keys()
     # )
 
