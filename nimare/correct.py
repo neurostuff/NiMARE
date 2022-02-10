@@ -115,11 +115,13 @@ class Corrector(metaclass=ABCMeta):
         result : :obj:`~nimare.results.MetaResult`
             MetaResult with new corrected maps added.
         """
-        est = result.estimator
         correction_method = f"correct_{self._correction_method}_{self.method}"
 
         # Make sure we return a copy of the MetaResult
         result = result.copy()
+
+        # Also operate on a copy of the estimator
+        est = result.estimator
 
         # If a correction method with the same name exists in the current
         # MetaEstimator, use it. Otherwise fall back on _transform.
