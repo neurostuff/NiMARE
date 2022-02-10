@@ -242,6 +242,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
 
         # Remove large arrays
+        if isinstance(ma_maps1, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
+            ma_maps1._mmap.close()
+
+        if isinstance(ma_maps2, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
+            ma_maps2._mmap.close()
+
         del ma_maps1, ma_maps2
 
         # Nomenclature for variables below: p = probability,

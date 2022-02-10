@@ -45,6 +45,14 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
         meta.fit(dset)
     assert "Loading pre-generated MA maps" in caplog.text
 
+    # If there is a memory limit along with pre-generated images, then we should still see the
+    # logger message.
+    meta = ale.ALE(kernel__sample_size=20, memory_limit="100mb")
+    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
+        meta.fit(dset)
+    assert "Loading pre-generated MA maps" in caplog.text
+    assert "Closing memmap at" in caplog.text
+
 
 def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     """Test that MA maps are re-used when appropriate."""

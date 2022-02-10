@@ -204,6 +204,7 @@ class KernelTransformer(Transformer):
                 ma_arr = transformed_maps[0][:, mask_data]
                 # If this array is a memmap, then the file needs to be closed
                 if isinstance(transformed_maps[0], np.memmap):
+                    LGR.debug(f"Closing memmap at {transformed_maps[0].filename}")
                     transformed_maps[0]._mmap.close()
 
                 return ma_arr
@@ -235,6 +236,7 @@ class KernelTransformer(Transformer):
 
         # If this array is a memmap, then the file needs to be closed
         if isinstance(transformed_maps[0][0], np.memmap):
+            LGR.debug(f"Closing memmap at {transformed_maps[0][0].filename}")
             transformed_maps[0][0]._mmap.close()
 
         del kernel_data, transformed_maps

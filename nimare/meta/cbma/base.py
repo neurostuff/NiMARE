@@ -96,6 +96,12 @@ class CBMAEstimator(MetaEstimator):
             # A hidden option only used for internal validation/testing
             self._compute_null_reduced_montecarlo(ma_values, n_iters=self.n_iters)
 
+        # Only should occur when MA maps have been pre-generated in the Dataset and a memory_limit
+        # is set. The memmap must be closed.
+        if isinstance(ma_values, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_values.filename}")
+            ma_values._mmap.close()
+
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
@@ -152,8 +158,9 @@ class CBMAEstimator(MetaEstimator):
 
         Returns
         -------
-        ma_maps : :obj:`numpy.ndarray`
+        ma_maps : :obj:`numpy.ndarray` or :obj:`numpy.memmap`
             2D numpy array of shape (n_studies, n_voxels) with MA values.
+            This will be a memmap if MA maps have been pre-generated.
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")

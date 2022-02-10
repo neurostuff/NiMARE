@@ -305,6 +305,14 @@ class ALESubtraction(PairwiseCBMAEstimator):
         id_idx = np.arange(ma_arr.shape[0])
         n_voxels = ma_arr.shape[1]
 
+        if isinstance(ma_maps1, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
+            ma_maps1._mmap.close()
+
+        if isinstance(ma_maps2, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
+            ma_maps2._mmap.close()
+
         # Get ALE values for first group.
         grp1_ma_arr = ma_arr[:n_grp1, :]
         grp1_ale_values = 1.0 - np.prod(1.0 - grp1_ma_arr, axis=0)
@@ -347,6 +355,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=False
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
+
+        if isinstance(iter_diff_values, np.memmap):
+            LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
+            iter_diff_values._mmap.close()
 
         del iter_diff_values
 
@@ -458,6 +470,10 @@ class SCALE(CBMAEstimator):
 
         stat_values = self._compute_summarystat(ma_values)
 
+        if isinstance(ma_values, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_values.filename}")
+            ma_values._mmap.close()
+
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
         rand_xyz = self.xyz[rand_idx, :]
@@ -478,6 +494,10 @@ class SCALE(CBMAEstimator):
             )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
+
+        if isinstance(perm_scale_values, np.memmap):
+            LGR.debug(f"Closing memmap at {perm_scale_values.filename}")
+            perm_scale_values._mmap.close()
 
         del perm_scale_values
 
