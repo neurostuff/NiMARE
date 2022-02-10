@@ -147,9 +147,7 @@ class KernelTransformer(Transformer):
                 if all(f is not None for f in files):
                     LGR.debug("Files already exist. Using them.")
                     if return_type == "array":
-                        LGR.debug("_safe_transform in kernel started")
                         masked_data = _safe_transform(files, masker)
-                        LGR.debug("_safe_transform in kernel ended")
                         return masked_data
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
