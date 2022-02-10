@@ -198,6 +198,8 @@ class KernelTransformer(Transformer):
         transformed_maps = self._transform(mask, coordinates)
 
         if not isinstance(transformed_maps[0], (list, tuple)):
+            raise Exception(f"{type(self)}, {type(dataset)}")
+
             if return_type == "array":
                 return transformed_maps[0][:, mask_data]
             else:
