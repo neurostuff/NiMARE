@@ -467,10 +467,16 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        params : tuple
-            A tuple containing 4 elements, respectively providing (1) the permuted
-            coordinates; (2) the original coordinate DataFrame; (3) a 3d structuring
-            array passed to ndimage.label; and (4) the voxel-wise intensity threshold.
+        iter_xyz : :obj:`numpy.ndarray` of shape (C, 3)
+            The permuted coordinates. One row for each peak.
+            Columns correspond to x, y, and z coordinates.
+        iter_df : :obj:`pandas.DataFrame`
+            The coordinates DataFrame, to be filled with the permuted coordinates in ``iter_xyz``
+            before permutation MA maps are generated.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            The 3D structuring array for labeling clusters.
+        voxel_thresh : :obj:`float`
+            Uncorrected summary statistic threshold for defining clusters.
 
         Returns
         -------
@@ -478,8 +484,6 @@ class CBMAEstimator(MetaEstimator):
             A 3-tuple of floats giving the maximum voxel-wise value, maximum cluster size,
             and maximum cluster mass for the permuted dataset.
         """
-        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
-        # be safe.
         iter_df = iter_df.copy()
 
         iter_xyz = np.squeeze(iter_xyz)
