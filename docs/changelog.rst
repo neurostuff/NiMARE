@@ -22,6 +22,8 @@ latest
 Other Changes
 #############
 
+* Reduce SCALE memory usage by @tsalo in https://github.com/neurostuff/NiMARE/pull/632
+
 0.0.11 (2022-01-06)
 -------------------
 
