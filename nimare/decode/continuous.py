@@ -184,10 +184,6 @@ class CorrelationDecoder(Decoder):
         """
         self.masker = dataset.masker
 
-        # Pre-generate MA maps to speed things up
-        kernel_transformer = self.meta_estimator.kernel_transformer
-        dataset = kernel_transformer.transform(dataset, return_type="dataset")
-
         for i, feature in enumerate(self.features_):
             feature_ids = dataset.get_studies_by_label(
                 labels=[feature], label_threshold=self.frequency_threshold
@@ -199,8 +195,9 @@ class CorrelationDecoder(Decoder):
                 f"{len(dataset.ids)} studies"
             )
             feature_dset = dataset.slice(feature_ids)
-            # This seems like a somewhat inelegant solution
+
             # Check if the meta method is a pairwise estimator
+            # This seems like a somewhat inelegant solution
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
