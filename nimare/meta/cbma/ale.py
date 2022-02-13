@@ -1,16 +1,16 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 import logging
-import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
 from ... import references
 from ...due import due
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import use_memmap
+from ...utils import tqdm_joblib, use_memmap
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -108,7 +108,7 @@ class ALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
         self.results = None
 
@@ -305,6 +305,14 @@ class ALESubtraction(PairwiseCBMAEstimator):
         id_idx = np.arange(ma_arr.shape[0])
         n_voxels = ma_arr.shape[1]
 
+        if isinstance(ma_maps1, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
+            ma_maps1._mmap.close()
+
+        if isinstance(ma_maps2, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
+            ma_maps2._mmap.close()
+
         # Get ALE values for first group.
         grp1_ma_arr = ma_arr[:n_grp1, :]
         grp1_ale_values = 1.0 - np.prod(1.0 - grp1_ma_arr, axis=0)
@@ -348,6 +356,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
             )
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
 
+        if isinstance(iter_diff_values, np.memmap):
+            LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
+            iter_diff_values._mmap.close()
+
         del iter_diff_values
 
         z_arr = p_to_z(p_arr, tail="two") * diff_signs
@@ -378,7 +390,7 @@ class SCALE(CBMAEstimator):
         Number of iterations for correction. Default: 10000
     n_cores : int, optional
         Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
+        available cores. Default: 1
     xyz : :obj:`str` or (N x 3) array_like
         Tab-delimited file of coordinates from database or numpy array with XYZ
         coordinates. Voxels are rows and x, y, z (meaning coordinates) values
@@ -406,7 +418,8 @@ class SCALE(CBMAEstimator):
         self,
         voxel_thresh=0.001,
         n_iters=10000,
-        n_cores=-1,
+        n_cores=1,
+        use_joblib=False,
         xyz=None,
         kernel_transformer=ALEKernel,
         memory_limit=None,
@@ -426,7 +439,8 @@ class SCALE(CBMAEstimator):
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.memory_limit = memory_limit
+        self.use_joblib = use_joblib
+        self.memory_limit = True
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
@@ -456,40 +470,34 @@ class SCALE(CBMAEstimator):
 
         stat_values = self._compute_summarystat(ma_values)
 
+        if isinstance(ma_values, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_values.filename}")
+            ma_values._mmap.close()
+
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
         rand_xyz = self.xyz[rand_idx, :]
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
 
-        # Define parameters
-        iter_dfs = [iter_df] * self.n_iters
-        params = zip(iter_dfs, iter_xyzs)
-
-        if self.n_cores == 1:
-            if self.memory_limit:
-                perm_scale_values = np.memmap(
-                    self.memmap_filenames[1],
-                    dtype=stat_values.dtype,
-                    mode="w+",
-                    shape=(self.n_iters, stat_values.shape[0]),
+        perm_scale_values = np.memmap(
+            self.memmap_filenames[1],
+            dtype=stat_values.dtype,
+            mode="w+",
+            shape=(self.n_iters, stat_values.shape[0]),
+        )
+        with tqdm_joblib(tqdm(total=self.n_iters)):
+            Parallel(n_jobs=self.n_cores)(
+                delayed(self._run_permutation)(
+                    i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
                 )
-            else:
-                perm_scale_values = np.zeros(
-                    (self.n_iters, stat_values.shape[0]), dtype=stat_values.dtype
-                )
-            for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
-                perm_scale_values[i_iter, :] = self._run_permutation(pp)
-                if self.memory_limit:
-                    # Write changes to disk
-                    perm_scale_values.flush()
-        else:
-            with mp.Pool(self.n_cores) as p:
-                perm_scale_values = list(
-                    tqdm(p.imap(self._run_permutation, params), total=self.n_iters)
-                )
-            perm_scale_values = np.stack(perm_scale_values)
+                for i_iter in range(self.n_iters)
+            )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
+
+        if isinstance(perm_scale_values, np.memmap):
+            LGR.debug(f"Closing memmap at {perm_scale_values.filename}")
+            perm_scale_values._mmap.close()
 
         del perm_scale_values
 
@@ -541,33 +549,35 @@ class SCALE(CBMAEstimator):
         -----
         This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
-        p_values = np.empty_like(stat_values)
+        n_voxels = stat_values.shape[0]
 
-        for i_voxel in range(stat_values.shape[0]):
-            voxel_null = scale_values[:, i_voxel]
-            scale_zeros = voxel_null == 0
-            n_zeros = np.sum(scale_zeros)
-            voxel_null[scale_zeros] = np.nan
-            scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
-            scale_hist[0] = n_zeros
-            scale_hist[1:] = self._make_hist(voxel_null)
-
-            p_values[i_voxel] = nullhist_to_p(
-                stat_values[i_voxel],
-                scale_hist,
-                self.null_distributions_["histogram_bins"],
+        # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
+        # the iteration as well and sort the resulting p-value array based on that.
+        with tqdm_joblib(tqdm(total=n_voxels)):
+            p_values, voxel_idx = zip(
+                *Parallel(n_jobs=self.n_cores)(
+                    delayed(self._scale_to_p_voxel)(
+                        i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
+                    )
+                    for i_voxel in range(n_voxels)
+                )
             )
+        # Convert to an array and sort the p-values array based on the voxel index.
+        p_values = np.array(p_values)[np.array(voxel_idx)]
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 
-    def _make_hist(self, oned_arr):
-        """Make a histogram from a 1d array and histogram bins.
+    def _scale_to_p_voxel(self, i_voxel, stat_value, voxel_null):
+        """Compute one voxel's p-value from its specific null distribution."""
+        scale_zeros = voxel_null == 0
+        n_zeros = np.sum(scale_zeros)
+        voxel_null[scale_zeros] = np.nan
+        scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
+        scale_hist[0] = n_zeros
 
-        Meant to be applied along an axis to a 2d array.
-        """
-        hist_ = np.histogram(
-            a=oned_arr,
+        scale_hist[1:] = np.histogram(
+            a=voxel_null,
             bins=self.null_distributions_["histogram_bins"],
             range=(
                 np.min(self.null_distributions_["histogram_bins"]),
@@ -575,12 +585,17 @@ class SCALE(CBMAEstimator):
             ),
             density=False,
         )[0]
-        return hist_
 
-    def _run_permutation(self, params):
+        p_value = nullhist_to_p(
+            stat_value,
+            scale_hist,
+            self.null_distributions_["histogram_bins"],
+        )
+        return p_value, i_voxel
+
+    def _run_permutation(self, i_row, iter_xyz, iter_df, perm_scale_values):
         """Run a single random SCALE permutation of a dataset."""
-        iter_df, iter_xyz = params
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
         stat_values = self._compute_summarystat(iter_df)
-        return stat_values
+        perm_scale_values[i_row, :] = stat_values

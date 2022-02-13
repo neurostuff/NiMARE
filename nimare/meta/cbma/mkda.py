@@ -1,8 +1,8 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
 import logging
-import multiprocessing as mp
 
 import numpy as np
+from joblib import Parallel, delayed
 from scipy import special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
@@ -11,7 +11,7 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
-from ...utils import use_memmap, vox2mm
+from ...utils import tqdm_joblib, use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -78,7 +78,7 @@ class MKDADensity(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
         self.results = None
 
@@ -242,6 +242,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
 
         # Remove large arrays
+        if isinstance(ma_maps1, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
+            ma_maps1._mmap.close()
+
+        if isinstance(ma_maps2, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
+            ma_maps2._mmap.close()
+
         del ma_maps1, ma_maps2
 
         # Nomenclature for variables below: p = probability,
@@ -300,8 +308,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def _run_fwe_permutation(self, params):
-        iter_df1, iter_df2, iter_xyz1, iter_xyz2 = params
+    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2):
+        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
+        # be safe.
+        iter_df1 = iter_df1.copy()
+        iter_df2 = iter_df2.copy()
+
         iter_xyz1 = np.squeeze(iter_xyz1)
         iter_xyz2 = np.squeeze(iter_xyz2)
         iter_df1[["x", "y", "z"]] = iter_xyz1
@@ -347,7 +359,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
         return iter_pAgF_chi2, iter_pFgA_chi2
 
-    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=-1):
+    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -361,7 +373,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             Default is 5000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
-            If <=0, defaults to using all available cores. Default is -1.
+            If <=0, defaults to using all available cores. Default is 1.
 
         Returns
         -------
@@ -398,8 +410,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         iter_df1 = self.inputs_["coordinates1"].copy()
         iter_df2 = self.inputs_["coordinates2"].copy()
-        iter_dfs1 = [iter_df1] * n_iters
-        iter_dfs2 = [iter_df2] * n_iters
         rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
         rand_xyz1 = null_xyz[rand_idx1, :]
         iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
@@ -408,18 +418,19 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
         eps = np.spacing(1)
 
-        params = zip(iter_dfs1, iter_dfs2, iter_xyzs1, iter_xyzs2)
+        with tqdm_joblib(tqdm(total=n_iters)):
+            perm_results = Parallel(n_jobs=n_cores)(
+                delayed(self._run_fwe_permutation)(
+                    iter_xyz1=iter_xyzs1[i_iter],
+                    iter_xyz2=iter_xyzs2[i_iter],
+                    iter_df1=iter_df1,
+                    iter_df2=iter_df2,
+                )
+                for i_iter in range(n_iters)
+            )
 
-        if n_cores == 1:
-            perm_results = []
-            for pp in tqdm(params, total=n_iters):
-                perm_results.append(self._run_fwe_permutation(pp))
-        else:
-            with mp.Pool(n_cores) as p:
-                perm_results = list(tqdm(p.imap(self._run_fwe_permutation, params), total=n_iters))
-
-        del iter_df1, iter_df2, iter_dfs1, iter_dfs2, rand_idx1, rand_xyz1, iter_xyzs1
-        del rand_idx2, rand_xyz2, iter_xyzs2, params
+        del iter_df1, iter_df2, rand_idx1, rand_xyz1, iter_xyzs1
+        del rand_idx2, rand_xyz2, iter_xyzs2
 
         pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
 
@@ -589,7 +600,7 @@ class KDA(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
         self.results = None
 

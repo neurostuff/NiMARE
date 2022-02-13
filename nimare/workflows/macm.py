@@ -12,7 +12,7 @@ LGR = logging.getLogger(__name__)
 
 
 def macm_workflow(
-    dataset_file, mask_file, output_dir=None, prefix=None, n_iters=10000, v_thr=0.001, n_cores=-1
+    dataset_file, mask_file, output_dir=None, prefix=None, n_iters=10000, v_thr=0.001, n_cores=1
 ):
     """Perform MACM with ALE algorithm."""
     LGR.info("Loading coordinates...")
