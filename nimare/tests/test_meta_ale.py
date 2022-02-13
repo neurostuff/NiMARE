@@ -45,6 +45,14 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
         meta.fit(dset)
     assert "Loading pre-generated MA maps" in caplog.text
 
+    # If there is a memory limit along with pre-generated images, then we should still see the
+    # logger message.
+    meta = ale.ALE(kernel__sample_size=20, memory_limit="100mb")
+    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
+        meta.fit(dset)
+    assert "Loading pre-generated MA maps" in caplog.text
+    assert "Closing memmap at" in caplog.text
+
 
 def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     """Test that MA maps are re-used when appropriate."""
@@ -214,6 +222,26 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     assert isinstance(
         cres.get_map("z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"),
         np.ndarray,
+    )
+
+    # Check that the updated null distribution is in the corrected MetaResult's Estimator.
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        in cres.estimator.null_distributions_.keys()
+    )
+    # The updated null distribution should *not* be in the original Estimator, nor in the
+    # uncorrected MetaResult's Estimator.
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in meta.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in res.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in meta.results.estimator.null_distributions_.keys()
     )
 
     # Bonferroni FWE

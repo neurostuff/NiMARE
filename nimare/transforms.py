@@ -545,7 +545,7 @@ def se_to_varcope(se):
     -----
     Sampling variance is standard error squared.
     """
-    varcope = se ** 2
+    varcope = se**2
     return varcope
 
 

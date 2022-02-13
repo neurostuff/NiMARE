@@ -197,15 +197,31 @@ class KernelTransformer(Transformer):
 
         transformed_maps = self._transform(mask, coordinates)
 
+        # This will be a numpy.ndarray or numpy.memmap if the kernel is an (M)KDAKernel or
+        # memory_limit is set, respectively.
         if not isinstance(transformed_maps[0], (list, tuple)):
             if return_type == "array":
-                return transformed_maps[0][:, mask_data]
+                ma_arr = transformed_maps[0][:, mask_data]
+                # If this array is a memmap, then the file needs to be closed
+                if isinstance(transformed_maps[0], np.memmap):
+                    LGR.debug(f"Closing memmap at {transformed_maps[0].filename}")
+                    transformed_maps[0]._mmap.close()
+
+                return ma_arr
             else:
+                # Transform into an length-N list of length-2 tuples,
+                # composed of a 3D array/memmap and a string with the ID.
                 transformed_maps = list(zip(*transformed_maps))
 
         imgs = []
         for (kernel_data, id_) in transformed_maps:
+            if isinstance(kernel_data, np.memmap):
+                # Convert data to a numpy array if it's a memmap
+                kernel_data = np.array(kernel_data)
+
             if return_type == "array":
+                # NOTE: This will never be a memmap because memory_limit[!None]+return_type[array]
+                # is dealt with above.
                 img = kernel_data[mask_data]
                 imgs.append(img)
             elif return_type == "image":
@@ -218,15 +234,18 @@ class KernelTransformer(Transformer):
                 img.to_filename(out_file)
                 dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
-        del kernel_data
+        # If this array is a memmap, then the file needs to be closed
+        if isinstance(transformed_maps[0][0], np.memmap):
+            LGR.debug(f"Closing memmap at {transformed_maps[0][0].filename}")
+            transformed_maps[0][0]._mmap.close()
+
+        del kernel_data, transformed_maps
 
         if return_type == "array":
             return np.vstack(imgs)
         elif return_type == "image":
-            del transformed_maps
             return imgs
         elif return_type == "dataset":
-            del transformed_maps
             # Replace NaNs with Nones
             dataset.images[self.image_type] = dataset.images[self.image_type].where(
                 dataset.images[self.image_type].notnull(), None
@@ -250,9 +269,20 @@ class KernelTransformer(Transformer):
 
         Returns
         -------
-        transformed_maps : list of (3D array, str) tuples
+        transformed_maps : N-length list of (3D array, str) tuples or (4D array, 1D array) tuple \
+                or (4D memmap, 1D array) tuple
             Transformed data, containing one element for each study.
-            Each element is composed of a 3D array (the MA map) and the study's ID.
+
+            -   Case 1: A kernel that is not an (M)KDAKernel, with no memory limit.
+                Each list entry is composed of a 3D array (the MA map) and the study's ID.
+
+            -   Case 2: (M)KDAKernel, with no memory limit.
+                There is a length-2 tuple with a 4D numpy array of the shape (N, X, Y, Z),
+                containing all of the MA maps, and a numpy array of shape (N,) with the study IDs.
+
+            -   Case 3: Any kernel, with memory_limit set, so memmaps will be used.
+                There is a length-2 tuple with a 4D memmap array of the shape (N, X, Y, Z),
+                containing all of the MA maps, and a numpy array of shape (N,) with the study IDs.
         """
         pass
 

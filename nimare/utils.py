@@ -1,4 +1,5 @@
 """Utility functions for NiMARE."""
+import contextlib
 import datetime
 import inspect
 import logging
@@ -8,6 +9,7 @@ import re
 from functools import wraps
 from tempfile import mkstemp
 
+import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
@@ -696,14 +698,13 @@ def use_memmap(logger, n_files=1):
                     logger.error(f"{function.__name__} failed, removing {filename}")
                 raise
             finally:
-                if (
-                    hasattr(self, "memory_limit")
-                    and self.memory_limit
-                    and os.path.isfile(filename)
-                ):
+                if hasattr(self, "memory_limit") and self.memory_limit:
                     for filename in filenames:
-                        logger.debug(f"Removing temporary file: {filename}")
-                        os.remove(filename)
+                        if os.path.isfile(filename):
+                            logger.debug(f"Removing temporary file: {filename}")
+                            os.remove(filename)
+                        else:
+                            logger.debug(f"Temporary file DNE: {filename}")
 
         return memmap_context
 
@@ -711,12 +712,12 @@ def use_memmap(logger, n_files=1):
 
 
 BYTE = 2
-KILOBYTE = BYTE ** 10
+KILOBYTE = BYTE**10
 BYTE_CONVERSION = {
     "kb": KILOBYTE,
-    "mb": KILOBYTE ** 2,
-    "gb": KILOBYTE ** 3,
-    "tb": KILOBYTE ** 4,
+    "mb": KILOBYTE**2,
+    "gb": KILOBYTE**3,
+    "tb": KILOBYTE**4,
 }
 
 
@@ -797,7 +798,8 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
     idx = 0
     for map_chunk in map_chunks:
         end_idx = idx + len(map_chunk)
-        masked_data[idx:end_idx, :] = masker.transform(map_chunk)
+        map_chunk_data = masker.transform(map_chunk)
+        masked_data[idx:end_idx, :] = map_chunk_data
         idx = end_idx
 
     return masked_data
@@ -936,3 +938,27 @@ def _boolean_unmask(data_array, bool_array):
     unmasked_data[bool_array] = data_array
     unmasked_data = unmasked_data.T
     return unmasked_data
+
+
+@contextlib.contextmanager
+def tqdm_joblib(tqdm_object):
+    """Context manager to patch joblib to report into tqdm progress bar given as argument.
+
+    From https://stackoverflow.com/a/58936697/2589328.
+    """
+
+    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def __call__(self, *args, **kwargs):
+            tqdm_object.update(n=self.batch_size)
+            return super().__call__(*args, **kwargs)
+
+    old_batch_callback = joblib.parallel.BatchCompletionCallBack
+    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
+    try:
+        yield tqdm_object
+    finally:
+        joblib.parallel.BatchCompletionCallBack = old_batch_callback
+        tqdm_object.close()

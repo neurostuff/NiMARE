@@ -21,7 +21,7 @@ def ale_sleuth_workflow(
     n_iters=10000,
     v_thr=0.001,
     fwhm=None,
-    n_cores=-1,
+    n_cores=1,
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
     LGR.info("Loading coordinates...")
