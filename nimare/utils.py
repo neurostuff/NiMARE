@@ -16,7 +16,7 @@ from nilearn.input_data import NiftiMasker
 from . import references
 from .due import due
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 def get_resource_path():

@@ -9,7 +9,7 @@ import statsmodels.stats.multitest as mc
 from .results import MetaResult
 from .transforms import p_to_z
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 class Corrector(metaclass=ABCMeta):

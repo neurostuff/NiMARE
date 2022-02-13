@@ -10,7 +10,7 @@ from ..correct import FWECorrector
 from ..io import convert_sleuth_to_dataset
 from ..meta import ALE, ALESubtraction
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 def ale_sleuth_workflow(

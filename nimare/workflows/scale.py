@@ -11,7 +11,7 @@ from ..io import convert_sleuth_to_dataset
 from ..meta import SCALE
 from ..utils import vox2mm
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 def scale_workflow(

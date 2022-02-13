@@ -13,7 +13,7 @@ from ..base import NiMAREBase
 from ..due import due
 from ..utils import get_template
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.GCLDAMODEL)

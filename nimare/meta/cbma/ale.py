@@ -14,7 +14,7 @@ from ...utils import use_memmap
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.ALE1, description="Introduces ALE.")

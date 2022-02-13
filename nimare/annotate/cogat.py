@@ -11,7 +11,7 @@ from ..extract import download_cognitive_atlas
 from ..utils import _uk_to_us
 from . import utils
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.COGNITIVE_ATLAS, description="Introduces the Cognitive Atlas.")

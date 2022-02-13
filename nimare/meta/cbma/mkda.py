@@ -15,7 +15,7 @@ from ...utils import use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")

@@ -12,7 +12,7 @@ from ..base import MetaEstimator
 from ..transforms import p_to_z, t_to_z
 from ..utils import _boolean_unmask
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 class Fishers(MetaEstimator):

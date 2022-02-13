@@ -13,7 +13,7 @@ from ..extract import download_peaks2maps_model
 from ..utils import _determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 def model_fn(features, labels, mode, params):

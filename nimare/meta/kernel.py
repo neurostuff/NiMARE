@@ -28,7 +28,7 @@ from ..utils import (
 )
 from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 class KernelTransformer(Transformer):

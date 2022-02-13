@@ -8,7 +8,7 @@ from ..correct import FWECorrector
 from ..dataset import Dataset
 from ..meta import ALE
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 def macm_workflow(

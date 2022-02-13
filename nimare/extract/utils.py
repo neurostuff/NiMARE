@@ -12,7 +12,7 @@ from fuzzywuzzy import fuzz
 
 from ..utils import _uk_to_us
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 def get_data_dirs(data_dir=None):

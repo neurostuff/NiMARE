@@ -16,7 +16,7 @@ from ..stats import pearson
 from ..utils import _check_type, _safe_transform
 from .utils import weight_priors
 
-LGR = logging.getLogger("nimare")
+LGR = logging.getLogger(__name__)
 
 
 @due.dcite(references.GCLDA_DECODING, description="Describes decoding methods using GC-LDA.")
