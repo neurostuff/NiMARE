@@ -232,7 +232,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_selected = ma_maps1.shape[0]
         n_selected_active_voxels = np.sum(ma_maps1.astype(bool), axis=0)
 
-        # Close the memmap. 
+        # Close the memmap.
         # Deleting the variable should be enough, but I'd prefer to be explicit.
         if isinstance(ma_maps1, np.memmap):
             LGR.debug(f"Closing memmap at {ma_maps1.filename}")
@@ -249,7 +249,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_unselected = ma_maps2.shape[0]
         n_unselected_active_voxels = np.sum(ma_maps2.astype(bool), axis=0)
 
-        # Close the memmap. 
+        # Close the memmap.
         # Deleting the variable should be enough, but I'd prefer to be explicit.
         if isinstance(ma_maps2, np.memmap):
             LGR.debug(f"Closing memmap at {ma_maps2.filename}")
