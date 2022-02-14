@@ -223,34 +223,41 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
+        # Generate MA maps and calculate count variables for first dataset
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
             fname_idx=0,
         )
+        n_selected = ma_maps1.shape[0]
+        n_selected_active_voxels = np.sum(ma_maps1.astype(bool), axis=0)
+
+        # Close the memmap.
+        # Deleting the variable should be enough, but I'd prefer to be explicit.
+        if isinstance(ma_maps1, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
+            ma_maps1._mmap.close()
+
+        del ma_maps1
+
+        # Generate MA maps and calculate count variables for second dataset
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
             fname_idx=1,
         )
-
-        # Calculate different count variables
-        n_selected = ma_maps1.shape[0]
         n_unselected = ma_maps2.shape[0]
-        n_mappables = n_selected + n_unselected
-        n_selected_active_voxels = np.sum(ma_maps1, axis=0)
-        n_unselected_active_voxels = np.sum(ma_maps2, axis=0)
+        n_unselected_active_voxels = np.sum(ma_maps2.astype(bool), axis=0)
 
-        # Remove large arrays
-        if isinstance(ma_maps1, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
-            ma_maps1._mmap.close()
-
+        # Close the memmap.
+        # Deleting the variable should be enough, but I'd prefer to be explicit.
         if isinstance(ma_maps2, np.memmap):
             LGR.debug(f"Closing memmap at {ma_maps2.filename}")
             ma_maps2._mmap.close()
 
-        del ma_maps1, ma_maps2
+        del ma_maps2
+
+        n_mappables = n_selected + n_unselected
 
         # Nomenclature for variables below: p = probability,
         # F = feature present, g = given, U = unselected, A = activation.
@@ -260,6 +267,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pA = np.array(
             (n_selected_active_voxels + n_unselected_active_voxels) / n_mappables
         ).squeeze()
+
+        del n_mappables
 
         # Conditional probabilities
         pAgF = n_selected_active_voxels / n_selected
@@ -276,6 +285,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = p_to_z(pAgF_p_vals, tail="two") * pAgF_sign
 
+        del pAgF_sign
+
         # Two-way chi-square for specificity of activation
         cells = np.squeeze(
             np.array(
@@ -288,11 +299,19 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 ]
             ).T
         )
+        del n_selected, n_unselected
+
         pFgA_chi2_vals = two_way(cells)
+
+        del n_selected_active_voxels, n_unselected_active_voxels
+
         pFgA_p_vals = special.chdtrc(1, pFgA_chi2_vals)
         pFgA_p_vals[pFgA_p_vals < 1e-240] = 1e-240
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = p_to_z(pFgA_p_vals, tail="two") * pFgA_sign
+
+        del pFgA_sign, pAgU
+
         images = {
             "prob_desc-A": pA,
             "prob_desc-AgF": pAgF,
@@ -319,20 +338,20 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_df1[["x", "y", "z"]] = iter_xyz1
         iter_df2[["x", "y", "z"]] = iter_xyz2
 
+        # Generate MA maps and calculate count variables for first dataset
         temp_ma_maps1 = self.kernel_transformer.transform(
             iter_df1, self.masker, return_type="array"
         )
         n_selected = temp_ma_maps1.shape[0]
         n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
-
         del temp_ma_maps1
 
+        # Generate MA maps and calculate count variables for second dataset
         temp_ma_maps2 = self.kernel_transformer.transform(
             iter_df2, self.masker, return_type="array"
         )
         n_unselected = temp_ma_maps2.shape[0]
         n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
-
         del temp_ma_maps2
 
         # Currently unused conditional probabilities
