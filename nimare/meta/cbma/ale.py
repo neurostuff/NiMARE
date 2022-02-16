@@ -263,7 +263,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
+    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the
         false discovery rate and performing statistical contrasts." Human
         brain mapping 25.1 (2005): 155-164.
         https://doi.org/10.1002/hbm.20136
