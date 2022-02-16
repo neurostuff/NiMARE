@@ -421,19 +421,22 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    .. versionchanged:: 0.0.12
+
+        - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
+        - Use memmapped array for null distribution.
+
     .. versionchanged:: 0.0.10
 
         Replace ``ijk`` with ``xyz``. This should be easier for users to collect.
 
     Parameters
     ----------
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Default: 0.001
     n_iters : int, optional
-        Number of iterations for correction. Default: 10000
+        Number of iterations for statistical inference. Default: 10000
     n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: 1
+        Number of processes to use for meta-analysis. If -1, use all available cores.
+        Default: 1
     xyz : :obj:`str` or (N x 3) array_like
         Tab-delimited file of coordinates from database or numpy array with XYZ
         coordinates. Voxels are rows and x, y, z (meaning coordinates) values
@@ -441,11 +444,6 @@ class SCALE(CBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -459,13 +457,10 @@ class SCALE(CBMAEstimator):
 
     def __init__(
         self,
-        voxel_thresh=0.001,
         n_iters=10000,
         n_cores=1,
-        use_joblib=False,
         xyz=None,
         kernel_transformer=ALEKernel,
-        memory_limit=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -478,12 +473,9 @@ class SCALE(CBMAEstimator):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
-        self.voxel_thresh = voxel_thresh
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.use_joblib = use_joblib
-        self.memory_limit = True
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
