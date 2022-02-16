@@ -32,7 +32,7 @@ To install NiMARE check out our `installation guide`_.
    :target: http://nimare.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
 
-.. image:: https://codecov.io/gh/neurostuff/NiMARE/branch/master/graph/badge.svg
+.. image:: https://codecov.io/gh/neurostuff/NiMARE/branch/main/graph/badge.svg
    :target: https://codecov.io/gh/neurostuff/nimare
    :alt: Codecov
 
