@@ -4,7 +4,7 @@ import logging
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from tqdm.auto import tqdm
+from tqdm.auto import tqdm, trange
 
 from ... import references
 from ...due import due
@@ -335,7 +335,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         else:
             iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
 
-        for i_iter in range(self.n_iters):
+        for i_iter in trange(self.n_iters):
             np.random.shuffle(id_idx)
             iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
             iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
