@@ -288,7 +288,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.results = None
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.memory_limit = True  # to trigger use_memmap in _fit
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
 
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
@@ -489,7 +491,9 @@ class SCALE(CBMAEstimator):
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.memory_limit = True  # to trigger use_memmap in _fit
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
