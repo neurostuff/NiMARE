@@ -1,15 +1,10 @@
 """Test nimare.meta.kernel (CBMA kernel estimators)."""
-import shutil
-
 import nibabel as nib
 import numpy as np
 import pytest
 from scipy.ndimage.measurements import center_of_mass
 
-import nimare
-from nimare import extract
-from nimare.dataset import Dataset
-from nimare.meta import MKDADensity, kernel
+from nimare.meta import kernel
 from nimare.utils import get_masker, get_template, mm2vox
 
 
