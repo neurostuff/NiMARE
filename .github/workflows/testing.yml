@@ -37,7 +37,7 @@ jobs:
         matrix:
             os: ["ubuntu-latest", "macos-latest"]
             python-version: ["3.6", "3.7", "3.8", "3.9"]
-    name: ${{ matrix.os }} with Python ${{ matrix.python-version }}
+    name: Unit tests
     defaults:
       run:
         shell: bash
@@ -47,9 +47,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
             python-version: ${{ matrix.python-version }}
-      - name: 'Display Python version'
-        shell: bash {0}
-        run: python -c "import sys; print(sys.version)"
       - name: 'Install NiMARE'
         shell: bash {0}
         run: pip install -e .[tests,peaks2maps-cpu]
@@ -67,8 +64,9 @@ jobs:
     strategy:
         fail-fast: false
         matrix:
-            os: ["ubuntu-latest", "macos-latest"]
-    name: ${{ matrix.os }} with Python 3.6 and minimum dependencies
+            os: ["ubuntu-latest"]
+            python-version: ["3.6"]
+    name: Unit tests with minimum dependency versions
     defaults:
       run:
         shell: bash
@@ -78,9 +76,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
             python-version: 3.6
-      - name: 'Display Python version'
-        shell: bash {0}
-        run: python -c "import sys; print(sys.version)"
       - name: 'Install NiMARE'
         shell: bash {0}
         run: pip install -e .[minimum,tests,peaks2maps-cpu]
@@ -100,7 +95,7 @@ jobs:
         matrix:
             os: ["ubuntu-latest"]
             python-version: ["3.7"]
-    name: Estimator performance tests (${{ matrix.os }}|${{ matrix.python-version }})
+    name: Estimator performance tests
     defaults:
       run:
         shell: bash
@@ -110,9 +105,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
             python-version: ${{ matrix.python-version }}
-      - name: 'Display Python version'
-        shell: bash {0}
-        run: python -c "import sys; print(sys.version)"
       - name: 'Install NiMARE'
         shell: bash {0}
         run: pip install -e .[tests,peaks2maps-cpu]
@@ -132,7 +124,7 @@ jobs:
         matrix:
             os: ["ubuntu-latest"]
             python-version: ["3.7"]
-    name: Corrector performance tests (${{ matrix.os }}|${{ matrix.python-version }})
+    name: Corrector performance tests
     defaults:
       run:
         shell: bash
@@ -142,9 +134,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
             python-version: ${{ matrix.python-version }}
-      - name: 'Display Python version'
-        shell: bash {0}
-        run: python -c "import sys; print(sys.version)"
       - name: 'Install NiMARE'
         shell: bash {0}
         run: pip install -e .[tests,peaks2maps-cpu]
@@ -164,7 +153,7 @@ jobs:
         matrix:
             os: ["ubuntu-latest"]
             python-version: ["3.7"]
-    name: Smoke performance tests (${{ matrix.os }}|${{ matrix.python-version }})
+    name: Smoke performance tests
     defaults:
       run:
         shell: bash
@@ -174,9 +163,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
             python-version: ${{ matrix.python-version }}
-      - name: 'Display Python version'
-        shell: bash {0}
-        run: python -c "import sys; print(sys.version)"
       - name: 'Install NiMARE'
         shell: bash {0}
         run: pip install -e .[tests,peaks2maps-cpu]
@@ -206,12 +192,9 @@ jobs:
         uses: actions/setup-python@v2
         with:
             python-version: ${{ matrix.python-version }}
-      - name: 'Display Python version'
-        shell: bash {0}
-        run: python -c "import sys; print(sys.version)"
       - name: 'Install NiMARE'
         shell: bash {0}
         run: pip install -e .[tests]
-      - name: 'Run tests'
+      - name: 'Run linter'
         shell: bash {0}
         run: make lint
