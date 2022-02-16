@@ -433,15 +433,20 @@ class SCALE(CBMAEstimator):
 
     Parameters
     ----------
+    xyz : (N x 3) :obj:`numpy.ndarray`
+        Numpy array with XYZ coordinates.
+        Voxels are rows and x, y, z (meaning coordinates) values are the three columnns.
+
+        .. versionchanged:: 0.0.12
+
+            This parameter was previously incorrectly labeled as "optional" and indicated that
+            it supports tab-delimited files, which it does not (yet).
+
     n_iters : int, optional
         Number of iterations for statistical inference. Default: 10000
     n_cores : int, optional
         Number of processes to use for meta-analysis. If -1, use all available cores.
         Default: 1
-    xyz : :obj:`str` or (N x 3) array_like
-        Tab-delimited file of coordinates from database or numpy array with XYZ
-        coordinates. Voxels are rows and x, y, z (meaning coordinates) values
-        are the three columnns.
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
@@ -458,9 +463,9 @@ class SCALE(CBMAEstimator):
 
     def __init__(
         self,
+        xyz,
         n_iters=10000,
         n_cores=1,
-        xyz=None,
         kernel_transformer=ALEKernel,
         **kwargs,
     ):
@@ -473,6 +478,13 @@ class SCALE(CBMAEstimator):
 
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+
+        if not isinstance(xyz, np.ndarray):
+            raise TypeError(f"Parameter 'xyz' must be a numpy.ndarray, not a {type(xyz)}")
+        elif xyz.ndim != 2:
+            raise ValueError(f"Parameter 'xyz' must be a 2D array, but has {xyz.ndim} dimensions")
+        elif xyz.shape[1] != 3:
+            raise ValueError(f"Parameter 'xyz' must have 3 columns, but has shape {xyz.shape}")
 
         self.xyz = xyz
         self.n_iters = n_iters
