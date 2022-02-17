@@ -29,7 +29,7 @@ jobs:
                 conda create -n py37_env python=3.7 -yq
                 source activate py37_env
             fi
-            pip install -e .[tests,peaks2maps-cpu]
+            pip install -e .[tests]
       - save_cache:  # environment cache tied to requirements
           key: deps10-{{ checksum "setup.cfg" }}-{{ checksum "setup.py" }}
           paths:
@@ -50,7 +50,7 @@ jobs:
           command:  |
             conda create -n py36_min_env python=3.6 -yq
             source activate py36_min_env
-            pip install -e .[minimum,tests,peaks2maps-cpu]
+            pip install -e .[minimum,tests]
       - run:
           name: Run tests
           command:  |
@@ -74,7 +74,7 @@ jobs:
           command:  |
             conda create -n py36_env python=3.6 -yq
             source activate py36_env
-            pip install -e .[tests,peaks2maps-cpu]
+            pip install -e .[tests]
       - run:
           name: Run tests
           command:  |
@@ -122,7 +122,7 @@ jobs:
             conda create -n py38_env python=3.8 -yq
             source activate py38_env
             pip install pip -U
-            pip install -e .[tests,peaks2maps-cpu]
+            pip install -e .[tests]
       - run:
           name: Run tests
           command:  |
@@ -147,7 +147,7 @@ jobs:
             conda create -n py39_env python=3.9 -yq
             source activate py39_env
             pip install pip -U
-            pip install -e .[tests,peaks2maps-cpu]
+            pip install -e .[tests]
       - run:
           name: Run tests
           command:  |

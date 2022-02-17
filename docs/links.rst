@@ -56,8 +56,6 @@
 
 .. _OpenNeuro: https://openneuro.org
 
-.. _peaks2maps: https://doi.org/10.7490/f1000research.1116395.1
-
 .. _PyMARE: https://pymare.readthedocs.io/en/latest/
 
 .. _scikit-learn: https://scikit-learn.org/stable/developers/index.html
