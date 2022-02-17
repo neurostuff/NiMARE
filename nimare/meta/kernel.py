@@ -8,25 +8,17 @@ from __future__ import division
 
 import logging
 import os
-import warnings
 from hashlib import md5
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn import image
 
 from .. import references
 from ..base import Transformer
 from ..due import due
-from ..utils import (
-    _add_metadata_to_dataframe,
-    _safe_transform,
-    mm2vox,
-    use_memmap,
-    vox2mm,
-)
-from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
+from ..utils import _add_metadata_to_dataframe, _safe_transform, mm2vox, use_memmap
+from .utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
 

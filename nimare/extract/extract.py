@@ -5,18 +5,13 @@ import logging
 import os
 import os.path as op
 import shutil
-import tarfile
 import time
 import zipfile
 from glob import glob
-from io import BytesIO
-from lzma import LZMAFile
 from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
-import requests
-from tqdm.auto import tqdm
 
 from ..dataset import Dataset
 from ..utils import get_resource_path
