@@ -270,7 +270,7 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    sub_meta = ale.ALESubtraction(n_iters=10, memory_limit=None)
+    sub_meta = ale.ALESubtraction(n_iters=10, n_cores=1)
     sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
@@ -285,53 +285,32 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     assert os.path.isfile(out_file)
 
 
-def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
-    """Smoke test for ALESubtraction with low memory settings."""
-    tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke_lowmem")
-    out_file = os.path.join(tmpdir, "file.pkl.gz")
-
-    sub_meta = ale.ALESubtraction(n_iters=10, memory_limit="1gb")
-    sub_meta.fit(testdata_cbma, testdata_cbma)
-    assert isinstance(sub_meta.results, nimare.results.MetaResult)
-    assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
-    assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
-    )
-    assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
-    )
-
-    sub_meta.save(out_file)
-    assert os.path.isfile(out_file)
-
-
-def test_SCALE_smoke(testdata_cbma):
+def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
     """Smoke test for SCALE."""
+    tmpdir = tmp_path_factory.mktemp("test_SCALE_smoke")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
     dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+
+    with pytest.raises(TypeError):
+        ale.SCALE(xyz="dog", n_iters=5, n_cores=1)
+
+    with pytest.raises(ValueError):
+        ale.SCALE(xyz=np.random.random((5, 3, 1)), n_iters=5, n_cores=1)
+
+    with pytest.raises(ValueError):
+        ale.SCALE(xyz=np.random.random((3, 10)), n_iters=5, n_cores=1)
+
     xyz = vox2mm(
         np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
         testdata_cbma.masker.mask_img.affine,
     )
-    xyz = xyz[:, :20]
-    meta = ale.SCALE(n_iters=5, n_cores=1, xyz=xyz)
+    xyz = xyz[:20, :]
+    meta = ale.SCALE(xyz, n_iters=5, n_cores=1)
     res = meta.fit(dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert "z" in res.maps.keys()
     assert isinstance(res.get_map("z", return_type="image"), nib.Nifti1Image)
     assert isinstance(res.get_map("z", return_type="array"), np.ndarray)
 
-
-def test_SCALE_smoke_lowmem(testdata_cbma):
-    """Smoke test for SCALE with low memory settings."""
-    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
-    xyz = vox2mm(
-        np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
-        testdata_cbma.masker.mask_img.affine,
-    )
-    xyz = xyz[:, :20]
-    meta = ale.SCALE(n_iters=5, n_cores=1, xyz=xyz, memory_limit="1gb")
-    res = meta.fit(dset)
-    assert isinstance(res, nimare.results.MetaResult)
-    assert "z" in res.maps.keys()
-    assert isinstance(res.get_map("z", return_type="image"), nib.Nifti1Image)
-    assert isinstance(res.get_map("z", return_type="array"), np.ndarray)
+    meta.save(out_file)
+    assert os.path.isfile(out_file)

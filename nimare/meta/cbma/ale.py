@@ -212,7 +212,13 @@ class ALE(CBMAEstimator):
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
-    r"""ALE subtraction analysis.
+    """ALE subtraction analysis.
+
+    .. versionchanged:: 0.0.12
+
+        - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
+        - Support parallelization and add progress bar.
+        - Add ALE-difference (stat) and -log10(p) (logp) maps to results.
 
     .. versionchanged:: 0.0.8
 
@@ -229,14 +235,14 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
         Default is 10000.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
+    n_cores : :obj:`int`, optional
+        Number of processes to use for meta-analysis. If -1, use all available cores.
+        Default is 1.
+
+        .. versionadded:: 0.0.12
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
+        here, with the prefix 'kernel__' in the variable name.
         Another optional argument is ``mask``.
 
     Notes
@@ -257,7 +263,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
+    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the
         false discovery rate and performing statistical contrasts." Human
         brain mapping 25.1 (2005): 155-164.
         https://doi.org/10.1002/hbm.20136
@@ -266,7 +272,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
-    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, memory_limit=None, **kwargs):
+    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -281,7 +287,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset2 = None
         self.results = None
         self.n_iters = n_iters
-        self.memory_limit = memory_limit
+        self.n_cores = self._check_ncores(n_cores)
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
 
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
@@ -300,10 +309,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
             fname_idx=1,
         )
 
-        n_grp1 = ma_maps1.shape[0]
+        n_grp1, n_voxels = ma_maps1.shape
+
+        # Get ALE values for the two groups and difference scores
+        grp1_ale_values = 1.0 - np.prod(1.0 - ma_maps1, axis=0)
+        grp2_ale_values = 1.0 - np.prod(1.0 - ma_maps2, axis=0)
+        diff_ale_values = grp1_ale_values - grp2_ale_values
+        del grp1_ale_values, grp2_ale_values
+
+        # Combine the MA maps into a single array to draw from for null distribution
         ma_arr = np.vstack((ma_maps1, ma_maps2))
-        id_idx = np.arange(ma_arr.shape[0])
-        n_voxels = ma_arr.shape[1]
 
         if isinstance(ma_maps1, np.memmap):
             LGR.debug(f"Closing memmap at {ma_maps1.filename}")
@@ -313,47 +328,40 @@ class ALESubtraction(PairwiseCBMAEstimator):
             LGR.debug(f"Closing memmap at {ma_maps2.filename}")
             ma_maps2._mmap.close()
 
-        # Get ALE values for first group.
-        grp1_ma_arr = ma_arr[:n_grp1, :]
-        grp1_ale_values = 1.0 - np.prod(1.0 - grp1_ma_arr, axis=0)
-
-        # Get ALE values for second group.
-        grp2_ma_arr = ma_arr[n_grp1:, :]
-        grp2_ale_values = 1.0 - np.prod(1.0 - grp2_ma_arr, axis=0)
-
-        diff_ale_values = grp1_ale_values - grp2_ale_values
+        del ma_maps1, ma_maps2
 
         # Calculate null distribution for each voxel based on group-assignment randomization
-        if self.memory_limit:
-            # Use a memmapped 4D array
-            iter_diff_values = np.memmap(
-                self.memmap_filenames[2],
-                dtype=ma_arr.dtype,
-                mode="w+",
-                shape=(self.n_iters, n_voxels),
-            )
-        else:
-            iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
+        # Use a memmapped 2D array
+        iter_diff_values = np.memmap(
+            self.memmap_filenames[2],
+            dtype=ma_arr.dtype,
+            mode="w+",
+            shape=(self.n_iters, n_voxels),
+        )
 
-        for i_iter in range(self.n_iters):
-            np.random.shuffle(id_idx)
-            iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
-            iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
-            iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
-            del iter_grp1_ale_values, iter_grp2_ale_values
-            if self.memory_limit:
-                # Write changes to disk
-                iter_diff_values.flush()
+        with tqdm_joblib(tqdm(total=self.n_iters)):
+            Parallel(n_jobs=self.n_cores)(
+                delayed(self._run_permutation)(i_iter, n_grp1, ma_arr, iter_diff_values)
+                for i_iter in range(self.n_iters)
+            )
 
         # Determine p-values based on voxel-wise null distributions
-        # In cases with differently-sized groups,
-        # the ALE-difference values will be biased and skewed,
-        # but the null distributions will be too, so symmetric should be False.
-        p_arr = np.ones(n_voxels)
-        for voxel in range(n_voxels):
-            p_arr[voxel] = null_to_p(
-                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=False
+        # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
+        # the iteration as well and sort the resulting p-value array based on that.
+        with tqdm_joblib(tqdm(total=n_voxels)):
+            p_values, voxel_idx = zip(
+                *Parallel(n_jobs=self.n_cores)(
+                    delayed(self._alediff_to_p_voxel)(
+                        i_voxel,
+                        diff_ale_values[i_voxel],
+                        iter_diff_values[:, i_voxel],
+                    )
+                    for i_voxel in range(n_voxels)
+                )
             )
+        # Convert to an array and sort the p-values array based on the voxel index.
+        p_values = np.array(p_values)[np.array(voxel_idx)]
+
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
 
         if isinstance(iter_diff_values, np.memmap):
@@ -362,13 +370,51 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         del iter_diff_values
 
-        z_arr = p_to_z(p_arr, tail="two") * diff_signs
+        z_arr = p_to_z(p_values, tail="two") * diff_signs
+        logp_arr = -np.log10(p_values)
 
         images = {
+            "stat_desc-group1MinusGroup2": diff_ale_values,
+            "p_desc-group1MinusGroup2": p_values,
             "z_desc-group1MinusGroup2": z_arr,
-            "p_desc-group1MinusGroup2": p_arr,
+            "logp_desc-group1MinusGroup2": logp_arr,
         }
         return images
+
+    def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
+        """Run a single permutations of the ALESubtraction null distribution procedure.
+
+        This method writes out a single row to the memmapped array in ``iter_diff_values``.
+
+        Parameters
+        ----------
+        i_iter : :obj:`int`
+            The iteration number.
+        n_grp1 : :obj:`int`
+            The number of experiments in the first group (of two, total).
+        ma_arr : :obj:`numpy.ndarray` of shape (E, V)
+            The voxel-wise (V) modeled activation values for all experiments E.
+        iter_diff_values : :obj:`numpy.memmap` of shape (I, V)
+            The null distribution of ALE-difference scores, with one row per iteration (I)
+            and one column per voxel (V).
+        """
+        gen = np.random.default_rng(seed=i_iter)
+        id_idx = np.arange(ma_arr.shape[0])
+        gen.shuffle(id_idx)
+        iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
+        iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
+        iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+
+    def _alediff_to_p_voxel(self, i_voxel, stat_value, voxel_null):
+        """Compute one voxel's p-value from its specific null distribution.
+
+        Notes
+        -----
+        In cases with differently-sized groups, the ALE-difference values will be biased and
+        skewed, but the null distributions will be too, so symmetric should be False.
+        """
+        p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
+        return p_value, i_voxel
 
 
 @due.dcite(
@@ -378,31 +424,34 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    .. versionchanged:: 0.0.12
+
+        - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
+        - Use memmapped array for null distribution.
+
     .. versionchanged:: 0.0.10
 
         Replace ``ijk`` with ``xyz``. This should be easier for users to collect.
 
     Parameters
     ----------
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Default: 0.001
+    xyz : (N x 3) :obj:`numpy.ndarray`
+        Numpy array with XYZ coordinates.
+        Voxels are rows and x, y, z (meaning coordinates) values are the three columnns.
+
+        .. versionchanged:: 0.0.12
+
+            This parameter was previously incorrectly labeled as "optional" and indicated that
+            it supports tab-delimited files, which it does not (yet).
+
     n_iters : int, optional
-        Number of iterations for correction. Default: 10000
+        Number of iterations for statistical inference. Default: 10000
     n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: 1
-    xyz : :obj:`str` or (N x 3) array_like
-        Tab-delimited file of coordinates from database or numpy array with XYZ
-        coordinates. Voxels are rows and x, y, z (meaning coordinates) values
-        are the three columnns.
+        Number of processes to use for meta-analysis. If -1, use all available cores.
+        Default: 1
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -416,13 +465,10 @@ class SCALE(CBMAEstimator):
 
     def __init__(
         self,
-        voxel_thresh=0.001,
+        xyz,
         n_iters=10000,
         n_cores=1,
-        use_joblib=False,
-        xyz=None,
         kernel_transformer=ALEKernel,
-        memory_limit=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -435,12 +481,19 @@ class SCALE(CBMAEstimator):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
-        self.voxel_thresh = voxel_thresh
+        if not isinstance(xyz, np.ndarray):
+            raise TypeError(f"Parameter 'xyz' must be a numpy.ndarray, not a {type(xyz)}")
+        elif xyz.ndim != 2:
+            raise ValueError(f"Parameter 'xyz' must be a 2D array, but has {xyz.ndim} dimensions")
+        elif xyz.shape[1] != 3:
+            raise ValueError(f"Parameter 'xyz' must have 3 columns, but has shape {xyz.shape}")
+
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.use_joblib = use_joblib
-        self.memory_limit = True
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
