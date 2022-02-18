@@ -1,0 +1,202 @@
+name: "Run Tests"
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - '*'
+
+concurrency:
+  group: environment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Determine if tests should be run based on commit message.
+  check_skip:
+    name: Determine if CI should be skipped
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.result_step.outputs.ci-skip }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - id: result_step
+        uses: mstachniuk/ci-skip@master
+        with:
+          commit-filter: '[skip ci];[ci skip];[skip github]'
+          commit-filter-separator: ';'
+
+  run_unit_tests:
+    name: Unit tests
+    needs: check_skip
+    if: ${{ needs.check_skip.outputs.skip == 'false' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+        fail-fast: false
+        matrix:
+            os: ["ubuntu-latest", "macos-latest"]
+            python-version: ["3.6", "3.7", "3.8", "3.9"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - name: 'Set up python'
+        uses: actions/setup-python@v2
+        with:
+            python-version: ${{ matrix.python-version }}
+      - name: 'Install NiMARE'
+        shell: bash {0}
+        run: pip install -e .[tests,peaks2maps-cpu]
+      - name: 'Run tests'
+        shell: bash {0}
+        run: make unittest
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Coverage Report Unit (${{ matrix.os }}, ${{ matrix.python-version }})
+          path: .codecov.yml
+        if: success()
+
+  run_unit_tests_with_minimum_dependencies:
+    name: Unit tests with minimum dependency versions
+    needs: check_skip
+    if: ${{ needs.check_skip.outputs.skip == 'false' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+        fail-fast: false
+        matrix:
+            os: ["ubuntu-latest"]
+            python-version: ["3.6"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - name: 'Set up python'
+        uses: actions/setup-python@v2
+        with:
+            python-version: 3.6
+      - name: 'Install NiMARE'
+        shell: bash {0}
+        run: pip install -e .[minimum,tests,peaks2maps-cpu]
+      - name: 'Run tests'
+        shell: bash {0}
+        run: make unittest
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Coverage Report Unit (minimum)
+          path: .codecov.yml
+        if: success()
+
+  test_performance_estimators:
+    name: Estimator performance tests
+    needs: check_skip
+    if: ${{ needs.check_skip.outputs.skip == 'false' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+        fail-fast: false
+        matrix:
+            os: ["ubuntu-latest"]
+            python-version: ["3.7"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - name: 'Set up python'
+        uses: actions/setup-python@v2
+        with:
+            python-version: ${{ matrix.python-version }}
+      - name: 'Install NiMARE'
+        shell: bash {0}
+        run: pip install -e .[tests,peaks2maps-cpu]
+      - name: 'Run tests'
+        shell: bash {0}
+        run: make test_performance_estimators
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Coverage Report Performance (Estimator)
+          path: .codecov.yml
+        if: success()
+
+  test_performance_correctors:
+    name: Corrector performance tests
+    needs: check_skip
+    if: ${{ needs.check_skip.outputs.skip == 'false' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+        fail-fast: false
+        matrix:
+            os: ["ubuntu-latest"]
+            python-version: ["3.7"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - name: 'Set up python'
+        uses: actions/setup-python@v2
+        with:
+            python-version: ${{ matrix.python-version }}
+      - name: 'Install NiMARE'
+        shell: bash {0}
+        run: pip install -e .[tests,peaks2maps-cpu]
+      - name: 'Run tests'
+        shell: bash {0}
+        run: make test_performance_correctors
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Coverage Report Performance (Corrector)
+          path: .codecov.yml
+        if: success()
+
+  test_performance_smoke:
+    name: Smoke performance tests
+    needs: check_skip
+    if: ${{ needs.check_skip.outputs.skip == 'false' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+        fail-fast: false
+        matrix:
+            os: ["ubuntu-latest"]
+            python-version: ["3.7"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - name: 'Set up python'
+        uses: actions/setup-python@v2
+        with:
+            python-version: ${{ matrix.python-version }}
+      - name: 'Install NiMARE'
+        shell: bash {0}
+        run: pip install -e .[tests,peaks2maps-cpu]
+      - name: 'Run tests'
+        shell: bash {0}
+        run: make test_performance_smoke
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Coverage Report Performance (Smoke)
+          path: .codecov.yml
+        if: success()
+
+  upload_to_codecov:
+    name: Upload coverage
+    needs: [run_unit_tests,run_unit_tests_with_minimum_dependencies,test_performance_estimators,test_performance_correctors,test_performance_smoke]
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+      - name: Upload to CodeCov
+        uses: codecov/codecov-action@v2
