@@ -56,7 +56,9 @@ jobs:
         run: make unittest
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
-        path: .codecov.yml
+        with:
+          name: Coverage Report
+          path: .codecov.yml
         if: success()
 
   run_unit_tests_with_minimum_dependencies:
@@ -86,7 +88,9 @@ jobs:
         run: make unittest
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
-        path: .codecov.yml
+        with:
+          name: Coverage Report
+          path: .codecov.yml
         if: success()
 
   test_performance_estimators:
@@ -116,7 +120,9 @@ jobs:
         run: make test_performance_estimators
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
-        path: .codecov.yml
+        with:
+          name: Coverage Report
+          path: .codecov.yml
         if: success()
 
   test_performance_correctors:
@@ -146,7 +152,9 @@ jobs:
         run: make test_performance_correctors
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
-        path: .codecov.yml
+        with:
+          name: Coverage Report
+          path: .codecov.yml
         if: success()
 
   test_performance_smoke:
@@ -176,7 +184,9 @@ jobs:
         run: make test_performance_smoke
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
-        path: .codecov.yml
+        with:
+          name: Coverage Report
+          path: .codecov.yml
         if: success()
 
   upload_to_codecov:
