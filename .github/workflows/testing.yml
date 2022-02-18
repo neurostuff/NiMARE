@@ -15,6 +15,7 @@ concurrency:
 jobs:
   # Determine if tests should be run based on commit message.
   check_skip:
+    name: Determine if CI should be skipped
     runs-on: ubuntu-latest
     outputs:
       skip: ${{ steps.result_step.outputs.ci-skip }}
@@ -29,6 +30,7 @@ jobs:
           commit-filter-separator: ';'
 
   run_unit_tests:
+    name: Unit tests
     needs: check_skip
     if: ${{ needs.check_skip.outputs.skip == 'false' }}
     runs-on: ${{ matrix.os }}
@@ -37,7 +39,6 @@ jobs:
         matrix:
             os: ["ubuntu-latest", "macos-latest"]
             python-version: ["3.6", "3.7", "3.8", "3.9"]
-    name: Unit tests
     defaults:
       run:
         shell: bash
@@ -53,11 +54,13 @@ jobs:
       - name: 'Run tests'
         shell: bash {0}
         run: make unittest
-      - name: 'Upload coverage to CodeCov'
-        uses: codecov/codecov-action@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        path: .codecov.yml
         if: success()
 
   run_unit_tests_with_minimum_dependencies:
+    name: Unit tests with minimum dependency versions
     needs: check_skip
     if: ${{ needs.check_skip.outputs.skip == 'false' }}
     runs-on: ${{ matrix.os }}
@@ -66,7 +69,6 @@ jobs:
         matrix:
             os: ["ubuntu-latest"]
             python-version: ["3.6"]
-    name: Unit tests with minimum dependency versions
     defaults:
       run:
         shell: bash
@@ -82,11 +84,13 @@ jobs:
       - name: 'Run tests'
         shell: bash {0}
         run: make unittest
-      - name: 'Upload coverage to CodeCov'
-        uses: codecov/codecov-action@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        path: .codecov.yml
         if: success()
 
   test_performance_estimators:
+    name: Estimator performance tests
     needs: check_skip
     if: ${{ needs.check_skip.outputs.skip == 'false' }}
     runs-on: ${{ matrix.os }}
@@ -95,7 +99,6 @@ jobs:
         matrix:
             os: ["ubuntu-latest"]
             python-version: ["3.7"]
-    name: Estimator performance tests
     defaults:
       run:
         shell: bash
@@ -111,11 +114,13 @@ jobs:
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_estimators
-      - name: 'Upload coverage to CodeCov'
-        uses: codecov/codecov-action@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        path: .codecov.yml
         if: success()
 
   test_performance_correctors:
+    name: Corrector performance tests
     needs: check_skip
     if: ${{ needs.check_skip.outputs.skip == 'false' }}
     runs-on: ${{ matrix.os }}
@@ -124,7 +129,6 @@ jobs:
         matrix:
             os: ["ubuntu-latest"]
             python-version: ["3.7"]
-    name: Corrector performance tests
     defaults:
       run:
         shell: bash
@@ -140,11 +144,13 @@ jobs:
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_correctors
-      - name: 'Upload coverage to CodeCov'
-        uses: codecov/codecov-action@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        path: .codecov.yml
         if: success()
 
   test_performance_smoke:
+    name: Smoke performance tests
     needs: check_skip
     if: ${{ needs.check_skip.outputs.skip == 'false' }}
     runs-on: ${{ matrix.os }}
@@ -153,7 +159,6 @@ jobs:
         matrix:
             os: ["ubuntu-latest"]
             python-version: ["3.7"]
-    name: Smoke performance tests
     defaults:
       run:
         shell: bash
@@ -169,6 +174,18 @@ jobs:
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_smoke
-      - name: 'Upload coverage to CodeCov'
-        uses: codecov/codecov-action@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        path: .codecov.yml
         if: success()
+
+  upload_to_codecov:
+    needs: [run_unit_tests,run_unit_tests_with_minimum_dependencies,test_performance_estimators,test_performance_correctors,test_performance_smoke]
+    name: Upload coverage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+      - name: Upload to CodeCov
+        uses: codecov/codecov-action@v2
