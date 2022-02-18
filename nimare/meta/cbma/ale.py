@@ -416,6 +416,17 @@ class ALESubtraction(PairwiseCBMAEstimator):
         p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
         return p_value, i_voxel
 
+    def correct_fwe_montecarlo(self):
+        """Perform Monte Carlo-based FWE correction.
+
+        Warning
+        -------
+        This method is not implemented for this class.
+        """
+        raise NotImplementedError(
+            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        )
+
 
 @due.dcite(
     references.SCALE,
@@ -651,3 +662,14 @@ class SCALE(CBMAEstimator):
         iter_df[["x", "y", "z"]] = iter_xyz
         stat_values = self.__compute_summarystat(iter_df)
         perm_scale_values[i_row, :] = stat_values
+
+    def correct_fwe_montecarlo(self):
+        """Perform Monte Carlo-based FWE correction.
+
+        Warning
+        -------
+        This method is not implemented for this class.
+        """
+        raise NotImplementedError(
+            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        )
