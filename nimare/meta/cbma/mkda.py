@@ -107,7 +107,7 @@ class MKDADensity(CBMAEstimator):
         assert weight_vec.shape[0] == ma_values.shape[0]
         return weight_vec
 
-    def _compute_summarystat(self, ma_values):
+    def __compute_summarystat(self, ma_values):
         # Note: .dot should be faster, but causes multiprocessing to stall
         # on some (Mac) architectures. If this is ever resolved, we can
         # replace with the commented line.
@@ -623,7 +623,7 @@ class KDA(CBMAEstimator):
         self.dataset = None
         self.results = None
 
-    def _compute_summarystat(self, ma_values):
+    def __compute_summarystat(self, ma_values):
         """Compute OF scores from data.
 
         Parameters
@@ -674,7 +674,7 @@ class KDA(CBMAEstimator):
             # We grab the weighting factor from the kernel transformer.
             step_size = self.kernel_transformer.value  # typically 1
             max_ma_values = step_size * n_foci_per_study
-            max_poss_value = self._compute_summarystat(max_ma_values)
+            max_poss_value = self.__compute_summarystat(max_ma_values)
         else:
             # Continuous-sphere kernels (ALE)
             LGR.info(
@@ -689,7 +689,7 @@ class KDA(CBMAEstimator):
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
             max_ma_values = np.ceil(max_ma_values * 1000) / 1000
-            max_poss_value = self.compute_summarystat(max_ma_values)
+            max_poss_value = self._compute_summarystat(max_ma_values)
 
             # create bin centers
             hist_bins = np.linspace(0, max_poss_value, N_BINS - 1)

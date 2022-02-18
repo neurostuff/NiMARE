@@ -82,7 +82,7 @@ class CBMAEstimator(MetaEstimator):
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
-        stat_values = self.compute_summarystat(ma_values)
+        stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
         self._determine_histogram_bins(ma_values)
@@ -183,7 +183,7 @@ class CBMAEstimator(MetaEstimator):
             )
         return ma_maps
 
-    def compute_summarystat(self, data):
+    def _compute_summarystat(self, data):
         """Compute summary statistics from data.
 
         The actual summary statistic varies across Estimators.
@@ -216,9 +216,9 @@ class CBMAEstimator(MetaEstimator):
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
-        return self._compute_summarystat(ma_values)
+        return self.__compute_summarystat(ma_values)
 
-    def _compute_summarystat(self, ma_values):
+    def __compute_summarystat(self, ma_values):
         """Compute summary statistic according to estimator-specific method.
 
         Must be overriden by subclasses.
@@ -366,7 +366,7 @@ class CBMAEstimator(MetaEstimator):
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self.compute_summarystat(iter_ma_values)
+        null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
     def _compute_null_montecarlo_permutation(self, iter_xyz, iter_df):
@@ -395,7 +395,7 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
         del iter_ma_maps
 
@@ -495,7 +495,7 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
         del iter_ma_maps
 

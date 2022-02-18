@@ -112,7 +112,7 @@ class ALE(CBMAEstimator):
         self.dataset = None
         self.results = None
 
-    def _compute_summarystat(self, ma_values):
+    def __compute_summarystat(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
@@ -142,7 +142,7 @@ class ALE(CBMAEstimator):
         max_ma_values = np.max(ma_values, axis=1)
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
-        max_poss_ale = self.compute_summarystat(max_ma_values)
+        max_poss_ale = self._compute_summarystat(max_ma_values)
         # create bin centers
         hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
@@ -516,12 +516,12 @@ class SCALE(CBMAEstimator):
 
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
-        max_poss_ale = self._compute_summarystat(max_ma_values)
+        max_poss_ale = self.__compute_summarystat(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
 
-        stat_values = self._compute_summarystat(ma_values)
+        stat_values = self.__compute_summarystat(ma_values)
 
         if isinstance(ma_values, np.memmap):
             LGR.debug(f"Closing memmap at {ma_values.filename}")
@@ -561,7 +561,7 @@ class SCALE(CBMAEstimator):
         images = {"stat": stat_values, "logp": logp_values, "z": z_values}
         return images
 
-    def _compute_summarystat(self, data):
+    def __compute_summarystat(self, data):
         """Generate ALE-value array and null distribution from list of contrasts.
 
         For ALEs on the original dataset, computes the null distribution.
@@ -583,8 +583,7 @@ class SCALE(CBMAEstimator):
         return stat_values
 
     def _scale_to_p(self, stat_values, scale_values):
-        """
-        Compute p- and z-values.
+        """Compute p- and z-values.
 
         Parameters
         ----------
@@ -650,5 +649,5 @@ class SCALE(CBMAEstimator):
         """Run a single random SCALE permutation of a dataset."""
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
-        stat_values = self._compute_summarystat(iter_df)
+        stat_values = self.__compute_summarystat(iter_df)
         perm_scale_values[i_row, :] = stat_values
