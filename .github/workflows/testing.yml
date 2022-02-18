@@ -172,29 +172,3 @@ jobs:
       - name: 'Upload coverage to CodeCov'
         uses: codecov/codecov-action@v1
         if: success()
-
-  style_check:
-    needs: check_skip
-    if: ${{ needs.check_skip.outputs.skip == 'false' }}
-    runs-on: "ubuntu-latest"
-    strategy:
-        fail-fast: false
-        matrix:
-            os: ["ubuntu-latest"]
-            python-version: ["3.7"]
-    name: Style check
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v2
-      - name: 'Set up python'
-        uses: actions/setup-python@v2
-        with:
-            python-version: ${{ matrix.python-version }}
-      - name: 'Install NiMARE'
-        shell: bash {0}
-        run: pip install -e .[tests]
-      - name: 'Run linter'
-        shell: bash {0}
-        run: make lint
