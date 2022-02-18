@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
+from tqdm.auto import tqdm
 
 from .. import references
 from ..base import Decoder
@@ -184,23 +185,20 @@ class CorrelationDecoder(Decoder):
         """
         self.masker = dataset.masker
 
-        # Pre-generate MA maps to speed things up
-        kernel_transformer = self.meta_estimator.kernel_transformer
-        dataset = kernel_transformer.transform(dataset, return_type="dataset")
-
-        for i, feature in enumerate(self.features_):
+        n_features = len(self.features_)
+        for i_feature, feature in enumerate(tqdm(self.features_, total=n_features)):
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
             )
+            # Limit selected studies to studies with valid data
             feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
 
-            LGR.info(
-                f"Decoding {feature} ({i}/{len(self.features_)}): {len(feature_ids)}/"
-                f"{len(dataset.ids)} studies"
-            )
+            # Create the reduced Dataset
             feature_dset = dataset.slice(feature_ids)
-            # This seems like a somewhat inelegant solution
+
             # Check if the meta method is a pairwise estimator
+            # This seems like a somewhat inelegant solution
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
@@ -209,11 +207,14 @@ class CorrelationDecoder(Decoder):
                 self.meta_estimator.fit(feature_dset)
 
             feature_data = self.meta_estimator.results.get_map(
-                self.target_image, return_type="array"
+                self.target_image,
+                return_type="array",
             )
-            if i == 0:
-                images_ = np.zeros((len(self.features_), len(feature_data)))
-            images_[i, :] = feature_data
+            if i_feature == 0:
+                images_ = np.zeros((len(self.features_), len(feature_data)), feature_data.dtype)
+
+            images_[i_feature, :] = feature_data
+
         self.images_ = images_
 
     def transform(self, img):
@@ -221,7 +222,7 @@ class CorrelationDecoder(Decoder):
 
         Parameters
         ----------
-        img : :obj:`nibabel.nifti1.Nifti1Image`
+        img : :obj:`~nibabel.nifti1.Nifti1Image`
             Image to decode. Must be in same space as ``dataset``.
 
         Returns
