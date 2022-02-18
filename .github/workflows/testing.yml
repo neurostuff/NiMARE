@@ -57,7 +57,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report
+          name: Coverage Report Unit (${{ matrix.os }}, ${{ matrix.python-version }})
           path: .codecov.yml
         if: success()
 
@@ -89,7 +89,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report
+          name: Coverage Report Unit (minimum)
           path: .codecov.yml
         if: success()
 
@@ -121,7 +121,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report
+          name: Coverage Report Performance (Estimator)
           path: .codecov.yml
         if: success()
 
@@ -153,7 +153,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report
+          name: Coverage Report Performance (Corrector)
           path: .codecov.yml
         if: success()
 
@@ -185,13 +185,14 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report
+          name: Coverage Report Performance (Smoke)
           path: .codecov.yml
         if: success()
 
   upload_to_codecov:
-    needs: [run_unit_tests,run_unit_tests_with_minimum_dependencies,test_performance_estimators,test_performance_correctors,test_performance_smoke]
     name: Upload coverage
+    needs: [run_unit_tests,run_unit_tests_with_minimum_dependencies,test_performance_estimators,test_performance_correctors,test_performance_smoke]
+    runs-on: "ubuntu-latest"
     steps:
       - name: Checkout
         uses: actions/checkout@v2
