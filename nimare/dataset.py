@@ -42,33 +42,42 @@ class Dataset(NiMAREBase):
     source : :obj:`str` or :obj:`dict`
         JSON file containing dictionary with database information or the dict()
         object
+
     target : :obj:`str`, optional
         Desired coordinate space for coordinates. Names follow NIDM convention.
         Default is 'mni152_2mm' (MNI space with 2x2x2 voxels).
         This parameter has no impact on images.
-    mask : :obj:`str`, :class:`nibabel.nifti1.Nifti1Image`, \
-    :class:`nilearn.input_data.NiftiMasker` or similar, or None, optional
+
+    mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, \
+    :class:`~nilearn.input_data.NiftiMasker` or similar, or None, optional
         Mask(er) to use. If None, uses the target space image, with all
         non-zero voxels included in the mask.
 
     Attributes
     ----------
-    ids : 1D :class:`numpy.ndarray`
+    ids : 1D :class:`~numpy.ndarray`
         Identifiers
-    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object defining the space and location of the area of interest
         (e.g., 'brain').
+
     space : :obj:`str`
         Standard space. Same as ``target`` parameter.
-    annotations : :class:`pandas.DataFrame`
+
+    annotations : :class:`~pandas.DataFrame`
         Labels describing studies
-    coordinates : :class:`pandas.DataFrame`
+
+    coordinates : :class:`~pandas.DataFrame`
         Peak coordinates from studies
-    images : :class:`pandas.DataFrame`
+
+    images : :class:`~pandas.DataFrame`
         Images from studies
-    metadata : :class:`pandas.DataFrame`
+
+    metadata : :class:`~pandas.DataFrame`
         Metadata describing studies
-    texts : :class:`pandas.DataFrame`
+
+    texts : :class:`~pandas.DataFrame`
         Texts associated with studies
 
     Notes
