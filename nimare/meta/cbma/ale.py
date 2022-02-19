@@ -591,7 +591,6 @@ class SCALE(CBMAEstimator):
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
-        raise Exception(stat_values)
         return stat_values
 
     def _scale_to_p(self, stat_values, scale_values):
