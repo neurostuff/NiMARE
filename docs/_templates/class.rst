@@ -4,13 +4,33 @@
 .. currentmodule:: {{ module }}
 
 .. autoclass:: {{ objname }}
+   :members:
    :show-inheritance:
-   :members:  # option to generate document for the members of the target module, class or exception
-   :undoc-members:  # option to generate document for the members not having docstrings
-   :inherited-members:  # option to include members inherited from base classes
-   :private-members:  # option to generate document for the private members
-   :special-members:  # option to generate document for the special members (like __special__)
+
    {% block methods %}
+   {% if methods %}
+   .. rubric:: Methods
+
+   .. autosummary::
+
+   {% for item in methods %}
+   {%- if not item.startswith('_') or item in ['__call__'] %}   ~{{ name }}.{{ item }}
+   {% endif %}
+   {%- endfor %}
+   {% endif %}
+   {% endblock %}
+
+   {% block attributes %}
+   {% if attributes %}
+   .. rubric:: Properties
+
+   .. autosummary::
+
+   {% for item in attributes %}
+   {%- if not item.startswith('_') or item in ['__call__'] %}   ~{{ name }}.{{ item }}
+   {% endif %}
+   {%- endfor %}
+   {% endif %}
    {% endblock %}
 
 .. include:: {{fullname}}.examples
