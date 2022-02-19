@@ -59,14 +59,44 @@ class ALE(CBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
         This is an edited version of the dataset's coordinates DataFrame.
     null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
-        Null distributions for ALE and any multiple-comparisons correction methods.
-        Entries are added to this attribute if and when the corresponding method is fit.
+        Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
+        multiple-comparisons correction methods.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        If ``null_method == "approximate"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-approximate``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+
+        If ``null_method == "montecarlo"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-montecarlo``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+                These values are derived from the full set of summary statistics from each
+                iteration of the Monte Carlo procedure.
+            -   ``histweights_level-voxel_corr-fwe_method-montecarlo``: Array of weights for the
+                voxel-level FWE-correction null distribution, with one value for each bin in
+                ``histogram_bins``. These values are derived from the maximum summary statistic
+                from each iteration of the Monte Carlo procedure.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-size_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                size from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                mass from each Monte Carlo iteration. An array of shape (n_iters,).
 
     Notes
     -----
@@ -158,7 +188,9 @@ class ALE(CBMAEstimator):
         Notes
         -----
         This method adds two entries to the null_distributions_ dict attribute:
-        "histogram_bins" and "histogram_weights".
+
+            - "histogram_bins"
+            - "histweights_corr-none_method-approximate"
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
@@ -244,12 +276,23 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix ``kernel__`` in the variable name. Another optional argument is ``mask``.
 
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+
     Notes
     -----
     This method was originally developed in [1]_ and refined in [2]_.
 
     The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
     BrainMap organization (https://www.brainmap.org/ale/).
+
+    The voxel-wise null distributions used by this Estimator are very large, so they are not
+    retained as Estimator attributes.
 
     Warnings
     --------
@@ -465,6 +508,26 @@ class SCALE(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix '\kernel__' in the variable name.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distribution information.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        .. important::
+            The voxel-wise null distributions used by this Estimator are very large, so they are
+            not retained as Estimator attributes.
+
+        If :meth:`fit` is applied:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
 
     References
     ----------

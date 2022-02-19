@@ -385,7 +385,7 @@ class CBMAEstimator(MetaEstimator):
         counts : 1D array_like
             Weights associated with the attribute `null_distributions_["histogram_bins"]`.
         """
-        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
+        # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df = iter_df.copy()
 

@@ -178,7 +178,7 @@ class CorrelationDecoder(Decoder):
 
         Attributes
         ----------
-        masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        masker : :class:`~nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
         features_ : :obj:`list`
             Reduced list of features
@@ -290,7 +290,7 @@ class CorrelationDistributionDecoder(Decoder):
 
         Attributes
         ----------
-        masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        masker : :class:`~nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
         features_ : :obj:`list`
             Reduced list of features

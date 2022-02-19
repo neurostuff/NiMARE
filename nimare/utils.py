@@ -451,7 +451,7 @@ def _transform_coordinates_to_space(df, masker, space):
     Parameters
     ----------
     df : :obj:`pandas.DataFrame`
-    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object defining the space and location of the area of interest
         (e.g., 'brain').
     space : :obj:`str`

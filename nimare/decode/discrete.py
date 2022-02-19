@@ -690,7 +690,7 @@ class ROIAssociationDecoder(Decoder):
 
     Parameters
     ----------
-    masker : :class:`nilearn.input_data.NiftiMasker`, img_like, or similar
+    masker : :class:`~nilearn.input_data.NiftiMasker`, img_like, or similar
         Masker for region of interest.
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to create modeled activation maps. Default is MKDAKernel.
