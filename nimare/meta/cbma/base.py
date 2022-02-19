@@ -216,9 +216,9 @@ class CBMAEstimator(MetaEstimator):
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
-        return self.__compute_summarystat(ma_values)
+        return self._compute_summarystat_est(ma_values)
 
-    def __compute_summarystat(self, ma_values):
+    def _compute_summarystat_est(self, ma_values):
         """Compute summary statistic according to estimator-specific method.
 
         Must be overriden by subclasses.
