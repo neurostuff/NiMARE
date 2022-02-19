@@ -241,9 +241,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         .. versionadded:: 0.0.12
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix 'kernel__' in the variable name.
-        Another optional argument is ``mask``.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix ``kernel__`` in the variable name. Another optional argument is ``mask``.
 
     Notes
     -----
@@ -255,21 +254,21 @@ class ALESubtraction(PairwiseCBMAEstimator):
     Warnings
     --------
     This implementation contains one key difference from the original version.
+
     In the original version, group 1 > group 2 difference values are only evaluated for voxels
     significant in the group 1 meta-analysis, and group 2 > group 1 difference values are only
     evaluated for voxels significant in the group 2 meta-analysis.
+
     In NiMARE's implementation, the analysis is run in a two-sided manner for *all* voxels in the
     mask.
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the
-        false discovery rate and performing statistical contrasts." Human
-        brain mapping 25.1 (2005): 155-164.
-        https://doi.org/10.1002/hbm.20136
-    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
-        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
-        https://doi.org/10.1016/j.neuroimage.2011.09.017
+    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the false discovery rate and
+       performing statistical contrasts." Human brain mapping 25.1 (2005): 155-164.
+       https://doi.org/10.1002/hbm.20136
+    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation meta-analysis revisited."
+       Neuroimage 59.3 (2012): 2349-2361. https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):

@@ -47,13 +47,11 @@ class LDAModel(NiMAREBase):
 
     References
     ----------
-    .. [1] Blei, David M., Andrew Y. Ng, and Michael I. Jordan. "Latent
-        dirichlet allocation." Journal of machine Learning research 3.Jan
-        (2003): 993-1022.
-    .. [2] Poldrack, Russell A., et al. "Discovering relations between mind,
-        brain, and mental disorders using topic mapping." PLoS computational
-        biology 8.10 (2012): e1002707.
-        https://doi.org/10.1371/journal.pcbi.1002707
+    .. [1] Blei, David M., Andrew Y. Ng, and Michael I. Jordan. "Latent dirichlet allocation."
+       Journal of machine Learning research 3.Jan (2003): 993-1022.
+    .. [2] Poldrack, Russell A., et al. "Discovering relations between mind, brain, and mental
+       disorders using topic mapping." PLoS computational biology 8.10 (2012): e1002707.
+       https://doi.org/10.1371/journal.pcbi.1002707
 
     See Also
     --------
