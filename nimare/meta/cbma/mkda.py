@@ -577,8 +577,8 @@ class KDA(CBMAEstimator):
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
-    Warning
-    -------
+    Warnings
+    --------
     The KDA algorithm has been replaced in the literature with the MKDA algorithm.
     As such, this estimator should almost never be used, outside of systematic
     comparisons between algorithms.

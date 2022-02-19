@@ -55,30 +55,8 @@ class Dataset(NiMAREBase):
 
     Attributes
     ----------
-    ids : 1D :class:`~numpy.ndarray`
-        Identifiers
-
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
-        Masker object defining the space and location of the area of interest
-        (e.g., 'brain').
-
     space : :obj:`str`
         Standard space. Same as ``target`` parameter.
-
-    annotations : :class:`~pandas.DataFrame`
-        Labels describing studies
-
-    coordinates : :class:`~pandas.DataFrame`
-        Peak coordinates from studies
-
-    images : :class:`~pandas.DataFrame`
-        Images from studies
-
-    metadata : :class:`~pandas.DataFrame`
-        Metadata describing studies
-
-    texts : :class:`~pandas.DataFrame`
-        Texts associated with studies
 
     Notes
     -----

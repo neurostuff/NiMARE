@@ -36,12 +36,13 @@ class ALE(CBMAEstimator):
     Parameters
     ----------
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
-        Kernel with which to convolve coordinates from dataset. Default is
-        ALEKernel.
+        Kernel with which to convolve coordinates from dataset.
+        Default is ALEKernel.
     null_method : {"approximate", "montecarlo"}, optional
         Method by which to determine uncorrected p-values.
         "approximate" is faster, but slightly less accurate.
         "montecarlo" can be much slower, and is only slightly more accurate.
+        Default is "approximate".
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
@@ -52,21 +53,20 @@ class ALE(CBMAEstimator):
         If <=0, defaults to using all available cores.
         Default is 1.
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix '\kernel__' in the variable name.
         Another optional argument is ``mask``.
 
     Attributes
     ----------
-    masker
+    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMA estimators, there is only one key:
-        coordinates. This is an edited version of the dataset's coordinates
-        DataFrame.
-    null_distributions_ : :obj:`dict` or :class:`numpy.ndarray`
-        Null distributions for ALE and any multiple-comparisons correction
-        methods. Entries are added to this attribute if and when the
-        corresponding method is fit.
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distributions for ALE and any multiple-comparisons correction methods.
+        Entries are added to this attribute if and when the corresponding method is fit.
 
     Notes
     -----
@@ -75,16 +75,16 @@ class ALE(CBMAEstimator):
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
 
-    Available correction methods: :func:`ALE.correct_fwe_montecarlo`
+    Available correction methods: :meth:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`.
 
     References
     ----------
     .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
         neuroanatomy of single-word reading: method and validation."
         Neuroimage 16.3 (2002): 765-780.
-    .. [2] Turkeltaub, Peter E., et al. "Minimizing within‐experiment and
-        within‐group effects in activation likelihood estimation
-        meta‐analyses." Human brain mapping 33.1 (2012): 1-13.
+    .. [2] Turkeltaub, Peter E., et al. "Minimizing within-experiment and
+        within-group effects in activation likelihood estimation
+        meta-analyses." Human brain mapping 33.1 (2012): 1-13.
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
@@ -252,14 +252,14 @@ class ALESubtraction(PairwiseCBMAEstimator):
     The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
     BrainMap organization (https://www.brainmap.org/ale/).
 
-    Warning
-    -------
+    Warnings
+    --------
     This implementation contains one key difference from the original version.
-    In the original version, group 1 > group 2 difference values are only
-    evaluated for voxels significant in the group 1 meta-analysis, and group 2
-    > group 1 difference values are only evaluated for voxels significant in
-    the group 2 meta-analysis. In NiMARE's implementation, the analysis is run
-    in a two-sided manner for *all* voxels in the mask.
+    In the original version, group 1 > group 2 difference values are only evaluated for voxels
+    significant in the group 1 meta-analysis, and group 2 > group 1 difference values are only
+    evaluated for voxels significant in the group 2 meta-analysis.
+    In NiMARE's implementation, the analysis is run in a two-sided manner for *all* voxels in the
+    mask.
 
     References
     ----------
@@ -419,8 +419,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
     def correct_fwe_montecarlo(self):
         """Perform Monte Carlo-based FWE correction.
 
-        Warning
-        -------
+        Warnings
+        --------
         This method is not implemented for this class.
         """
         raise NotImplementedError(
@@ -464,8 +464,8 @@ class SCALE(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix '\kernel__' in the variable name.
 
     References
     ----------
@@ -666,8 +666,8 @@ class SCALE(CBMAEstimator):
     def correct_fwe_montecarlo(self):
         """Perform Monte Carlo-based FWE correction.
 
-        Warning
-        -------
+        Warnings
+        --------
         This method is not implemented for this class.
         """
         raise NotImplementedError(

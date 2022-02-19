@@ -132,8 +132,8 @@ class CorrelationDecoder(Decoder):
     target_image : :obj:`str`
         Name of meta-analysis results image to use for decoding.
 
-    Warning
-    -------
+    Warnings
+    --------
     Coefficients from correlating two maps have very large degrees of freedom,
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.
@@ -252,8 +252,8 @@ class CorrelationDistributionDecoder(Decoder):
     target_image : {'z', 'con'}, optional
         Name of meta-analysis results image to use for decoding. Default is 'z'.
 
-    Warning
-    -------
+    Warnings
+    --------
     Coefficients from correlating two maps have very large degrees of freedom,
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.

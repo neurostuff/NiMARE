@@ -359,8 +359,8 @@ class CBMAEstimator(MetaEstimator):
         This method adds one entry to the null_distributions_ dict attribute:
         "values_corr-none_method-reducedMontecarlo".
 
-        Warning
-        -------
+        Warnings
+        --------
         This method is only retained for testing and algorithm development.
         """
         n_studies, n_voxels = ma_maps.shape
