@@ -234,6 +234,10 @@ div.deprecated > ul.simple {
 .versionmodified.deprecated {
   font-style: normal;
   font-weight: 700;
+  border-radius: 0rem;
+  border-left: 0rem;
+  background-color: inherit;
+  box-shadow: None;
 }
 
 .versionmodified.deprecated::before {
@@ -242,4 +246,3 @@ div.deprecated > ul.simple {
   content: var(--pst-icon-versionmodified-deprecated);
   color: rgba(var(--pst-color-versionmodified-deprecated), 1);
 }
-
