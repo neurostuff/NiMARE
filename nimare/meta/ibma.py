@@ -391,9 +391,12 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     Parameters
     ----------
     method : {'ml', 'reml'}, optional
-        The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
-        Default is 'ml'.
+        The estimation method to use. The available options are
+
+        ============== =============================
+        "ml" (default) Maximum likelihood
+        "reml"         Restricted maximum likelihood
+        ============== =============================
 
     Notes
     -----
@@ -469,15 +472,18 @@ class VarianceBasedLikelihood(MetaEstimator):
     Parameters
     ----------
     method : {'ml', 'reml'}, optional
-        The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
-        Default is 'ml'.
+        The estimation method to use. The available options are
+
+        ============== =============================
+        "ml" (default) Maximum likelihood
+        "reml"         Restricted maximum likelihood
+        ============== =============================
 
     Notes
     -----
     Requires ``beta`` and ``varcope`` images.
 
-    The ML and REML solutions are obtained via SciPy’s scalar function
+    The ML and REML solutions are obtained via SciPy's scalar function
     minimizer (:func:`scipy.optimize.minimize`).
     Parameters to ``minimize()`` can be passed in as keyword arguments.
 

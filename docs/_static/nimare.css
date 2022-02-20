@@ -157,6 +157,11 @@
   background-color: rgba(var(--pst-color-versionmodified-default), 0.1);
 }
 
+div.admonition-references.admonition .label {
+  border-left: 0px !important;
+  background: inherit !important;
+}
+
 div.versionchanged > p {
   margin-bottom: 5px;
   margin-top: 5px;

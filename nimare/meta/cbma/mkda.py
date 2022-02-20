@@ -28,9 +28,23 @@ class MKDADensity(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.MKDAKernel`.
     null_method : {"approximate", "montecarlo"}, optional
-        Method by which to determine uncorrected p-values.
-        "approximate" is faster, but slightly less accurate.
-        "montecarlo" can be much slower, and is only slightly more accurate.
+        Method by which to determine uncorrected p-values. The available options are
+
+        ======================= =================================================================
+        "approximate" (default) Build a histogram of summary-statistic values and their
+                                expected frequencies under the assumption of random spatial
+                                associated between studies, via a weighted convolution.
+
+                                This method is much faster, but slightly less accurate.
+        "montecarlo"            Perform a large number of permutations, in which the coordinates
+                                in the studies are randomly drawn from the Estimator's brain mask
+                                and the full set of resulting summary-statistic values are
+                                incorporated into a null distribution (stored as a histogram for
+                                memory reasons).
+
+                                This method is must slower, and is only slightly more accurate.
+        ======================= =================================================================
+
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
@@ -639,9 +653,23 @@ class KDA(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.KDAKernel`.
     null_method : {"approximate", "montecarlo"}, optional
-        Method by which to determine uncorrected p-values.
-        "approximate" is faster, but slightly less accurate.
-        "montecarlo" can be much slower, and is only slightly more accurate.
+        Method by which to determine uncorrected p-values. The available options are
+
+        ======================= =================================================================
+        "approximate" (default) Build a histogram of summary-statistic values and their
+                                expected frequencies under the assumption of random spatial
+                                associated between studies, via a weighted convolution.
+
+                                This method is much faster, but slightly less accurate.
+        "montecarlo"            Perform a large number of permutations, in which the coordinates
+                                in the studies are randomly drawn from the Estimator's brain mask
+                                and the full set of resulting summary-statistic values are
+                                incorporated into a null distribution (stored as a histogram for
+                                memory reasons).
+
+                                This method is must slower, and is only slightly more accurate.
+        ======================= =================================================================
+
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
