@@ -57,8 +57,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: unit_${{ matrix.os }}_${{ matrix.python-version }}).codecov.yml
-          path: .codecov.yml
+          name: unit_${{ matrix.os }}_${{ matrix.python-version }}_coverage.xml
+          path: coverage.xml
         if: success()
 
   run_unit_tests_with_minimum_dependencies:
@@ -89,8 +89,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: unit_minimum.codecov.yml
-          path: .codecov.yml
+          name: unit_minimum.codecov.xml
+          path: .codecov.xml
         if: success()
 
   test_performance_estimators:
@@ -121,8 +121,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: performance_estimator.codecov.yml
-          path: .codecov.yml
+          name: performance_estimator.codecov.xml
+          path: .codecov.xml
         if: success()
 
   test_performance_correctors:
@@ -153,8 +153,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: performance_corrector.codecov.yml
-          path: .codecov.yml
+          name: performance_corrector.codecov.xml
+          path: .codecov.xml
         if: success()
 
   test_performance_smoke:
@@ -185,8 +185,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: performance_smoke.codecov.yml
-          path: .codecov.yml
+          name: performance_smoke.codecov.xml
+          path: .codecov.xml
         if: success()
 
   upload_to_codecov:
@@ -200,3 +200,5 @@ jobs:
         uses: actions/download-artifact@v2
       - name: Upload to CodeCov
         uses: codecov/codecov-action@v2
+        with:
+          fail_ci_if_error: true
