@@ -57,7 +57,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report Unit (${{ matrix.os }}, ${{ matrix.python-version }})
+          name: unit_${{ matrix.os }}_${{ matrix.python-version }}).codecov.yml
           path: .codecov.yml
         if: success()
 
@@ -89,7 +89,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report Unit (minimum)
+          name: unit_minimum.codecov.yml
           path: .codecov.yml
         if: success()
 
@@ -121,7 +121,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report Performance (Estimator)
+          name: performance_estimator.codecov.yml
           path: .codecov.yml
         if: success()
 
@@ -153,7 +153,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report Performance (Corrector)
+          name: performance_corrector.codecov.yml
           path: .codecov.yml
         if: success()
 
@@ -185,7 +185,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Coverage Report Performance (Smoke)
+          name: performance_smoke.codecov.yml
           path: .codecov.yml
         if: success()
 
