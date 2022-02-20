@@ -225,3 +225,21 @@ div.deprecated > ul.simple {
   content: var(--pst-icon-versionmodified-changed);
   color: rgba(var(--pst-color-versionmodified-changed), 1);
 }
+
+.deprecated {
+  background-color: rgba(var(--pst-color-versionmodified-deprecated), 0.1);
+  border-color: rgba(var(--pst-color-versionmodified-deprecated), 1);
+}
+
+.versionmodified.deprecated {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.versionmodified.deprecated::before {
+  font-family: "FontAwesome";
+  margin-right: 0.6rem;
+  content: var(--pst-icon-versionmodified-deprecated);
+  color: rgba(var(--pst-color-versionmodified-deprecated), 1);
+}
+
