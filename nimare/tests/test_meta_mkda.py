@@ -83,6 +83,14 @@ def test_MKDAChi2_fwe_1core(testdata_cbma):
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
+    assert (
+        "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
+        in cres.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
+        in cres.estimator.null_distributions_.keys()
+    )
 
 
 def test_MKDAChi2_fwe_2core(testdata_cbma):

@@ -24,6 +24,8 @@ LGR = logging.getLogger(__name__)
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
+    The method used in this function was originally described in Rubin et al. (2017) [1]_.
+
     Parameters
     ----------
     model : :obj:`~nimare.annotate.gclda.GCLDAModel`
@@ -86,10 +88,10 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     References
     ----------
-    * Rubin, Timothy N., et al. "Decoding brain activity using a
-      large-scale probabilistic functional-anatomical atlas of human
-      cognition." PLoS computational biology 13.10 (2017): e1005649.
-      https://doi.org/10.1371/journal.pcbi.1005649
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
+       functional-anatomical atlas of human cognition."
+       PLoS computational biology 13.10 (2017): e1005649.
+       https://doi.org/10.1371/journal.pcbi.1005649
     """
     image = load_niimg(image)
 
@@ -132,8 +134,8 @@ class CorrelationDecoder(Decoder):
     target_image : :obj:`str`
         Name of meta-analysis results image to use for decoding.
 
-    Warning
-    -------
+    Warnings
+    --------
     Coefficients from correlating two maps have very large degrees of freedom,
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.
@@ -176,7 +178,7 @@ class CorrelationDecoder(Decoder):
 
         Attributes
         ----------
-        masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        masker : :class:`~nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
         features_ : :obj:`list`
             Reduced list of features
@@ -252,8 +254,8 @@ class CorrelationDistributionDecoder(Decoder):
     target_image : {'z', 'con'}, optional
         Name of meta-analysis results image to use for decoding. Default is 'z'.
 
-    Warning
-    -------
+    Warnings
+    --------
     Coefficients from correlating two maps have very large degrees of freedom,
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.
@@ -288,7 +290,7 @@ class CorrelationDistributionDecoder(Decoder):
 
         Attributes
         ----------
-        masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        masker : :class:`~nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
         features_ : :obj:`list`
             Reduced list of features

@@ -82,7 +82,7 @@ class CBMAEstimator(MetaEstimator):
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
-        stat_values = self.compute_summarystat(ma_values)
+        stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
         self._determine_histogram_bins(ma_values)
@@ -183,7 +183,7 @@ class CBMAEstimator(MetaEstimator):
             )
         return ma_maps
 
-    def compute_summarystat(self, data):
+    def _compute_summarystat(self, data):
         """Compute summary statistics from data.
 
         The actual summary statistic varies across Estimators.
@@ -216,9 +216,9 @@ class CBMAEstimator(MetaEstimator):
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
-        return self._compute_summarystat(ma_values)
+        return self._compute_summarystat_est(ma_values)
 
-    def _compute_summarystat(self, ma_values):
+    def _compute_summarystat_est(self, ma_values):
         """Compute summary statistic according to estimator-specific method.
 
         Must be overriden by subclasses.
@@ -359,14 +359,14 @@ class CBMAEstimator(MetaEstimator):
         This method adds one entry to the null_distributions_ dict attribute:
         "values_corr-none_method-reducedMontecarlo".
 
-        Warning
-        -------
+        Warnings
+        --------
         This method is only retained for testing and algorithm development.
         """
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self.compute_summarystat(iter_ma_values)
+        null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
     def _compute_null_montecarlo_permutation(self, iter_xyz, iter_df):
@@ -385,7 +385,7 @@ class CBMAEstimator(MetaEstimator):
         counts : 1D array_like
             Weights associated with the attribute `null_distributions_["histogram_bins"]`.
         """
-        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
+        # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df = iter_df.copy()
 
@@ -395,7 +395,7 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
         del iter_ma_maps
 
@@ -495,7 +495,7 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
         del iter_ma_maps
 
@@ -568,13 +568,13 @@ class CBMAEstimator(MetaEstimator):
                 based on cluster size. This was previously simply called "logp_level-cluster".
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_desc-mass_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
-                based on cluster mass. According to [1]_ and [2]_, cluster mass-based inference is
+                based on cluster mass. According to [4]_ and [5]_, cluster mass-based inference is
                 more powerful than cluster size.
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_level-voxel``: Voxel-level FWE-corrected ``-log10(p)`` map.
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
-                (i.e., hundreds of studies), per [3]_.
+                (i.e., hundreds of studies), per [6]_.
 
         Notes
         -----
@@ -594,14 +594,14 @@ class CBMAEstimator(MetaEstimator):
 
         References
         ----------
-        .. [1] Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., Taylor, E., &
+        .. [4] Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., Taylor, E., &
                Brammer, M. J. (1999). Global, voxel, and cluster tests, by theory and permutation,
                for a difference between two groups of structural MR images of the brain.
                IEEE transactions on medical imaging, 18(1), 32-42. doi: 10.1109/42.750253
-        .. [2] Zhang, H., Nichols, T. E., & Johnson, T. D. (2009).
+        .. [5] Zhang, H., Nichols, T. E., & Johnson, T. D. (2009).
                Cluster mass inference via random field theory. Neuroimage, 44(1), 51-61.
                doi: 10.1016/j.neuroimage.2008.08.017
-        .. [3] Eickhoff, S. B., Nichols, T. E., Laird, A. R., Hoffstaedter, F., Amunts, K.,
+        .. [6] Eickhoff, S. B., Nichols, T. E., Laird, A. R., Hoffstaedter, F., Amunts, K.,
                Fox, P. T., ... & Eickhoff, C. R. (2016).
                Behavior, sensitivity, and power of activation likelihood estimation characterized
                by massive empirical simulation. Neuroimage, 137, 70-85.

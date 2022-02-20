@@ -24,8 +24,8 @@ class Fishers(MetaEstimator):
     -----
     Requires ``z`` images.
 
-    Warning
-    -------
+    Warnings
+    --------
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
@@ -87,8 +87,8 @@ class Stouffers(MetaEstimator):
     -----
     Requires ``z`` images and optionally the sample size metadata field.
 
-    Warning
-    -------
+    Warnings
+    --------
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
@@ -102,8 +102,8 @@ class Stouffers(MetaEstimator):
       Williams Jr, R. M. (1949). The American Soldier: Adjustment during
       army life. Studies in social psychology in World War II, vol. 1.
       https://psycnet.apa.org/record/1950-00790-000
-    * Zaykin, D. V. (2011). Optimally weighted Z‐test is a powerful method for
-      combining probabilities in meta‐analysis. Journal of evolutionary
+    * Zaykin, D. V. (2011). Optimally weighted Z-test is a powerful method for
+      combining probabilities in meta-analysis. Journal of evolutionary
       biology, 24(8), 1836-1841.
       https://doi.org/10.1111/j.1420-9101.2011.02297.x
 
@@ -175,8 +175,8 @@ class WeightedLeastSquares(MetaEstimator):
     -----
     Requires ``beta`` and ``varcope`` images.
 
-    Warning
-    -------
+    Warnings
+    --------
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
     unknown.
@@ -248,8 +248,8 @@ class DerSimonianLaird(MetaEstimator):
     -----
     Requires ``beta`` and ``varcope`` images.
 
-    Warning
-    -------
+    Warnings
+    --------
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
     unknown.
@@ -322,8 +322,8 @@ class Hedges(MetaEstimator):
     -----
     Requires ``beta`` and ``varcope`` images.
 
-    Warning
-    -------
+    Warnings
+    --------
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
     unknown.
@@ -334,7 +334,7 @@ class Hedges(MetaEstimator):
 
     References
     ----------
-    * Hedges LV, Olkin I. 1985. Statistical Methods for Meta‐Analysis.
+    * Hedges LV, Olkin I. 1985. Statistical Methods for Meta-Analysis.
 
     See Also
     --------
@@ -391,9 +391,12 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     Parameters
     ----------
     method : {'ml', 'reml'}, optional
-        The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
-        Default is 'ml'.
+        The estimation method to use. The available options are
+
+        ============== =============================
+        "ml" (default) Maximum likelihood
+        "reml"         Restricted maximum likelihood
+        ============== =============================
 
     Notes
     -----
@@ -404,8 +407,8 @@ class SampleSizeBasedLikelihood(MetaEstimator):
     minimizer (:func:`scipy.optimize.minimize`).
     Parameters to ``minimize()`` can be passed in as keyword arguments.
 
-    Warning
-    -------
+    Warnings
+    --------
     Likelihood-based estimators are not parallelized across voxels, so this
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
@@ -469,20 +472,23 @@ class VarianceBasedLikelihood(MetaEstimator):
     Parameters
     ----------
     method : {'ml', 'reml'}, optional
-        The estimation method to use.
-        Either 'ml' (for maximum-likelihood) or 'reml' (restricted maximum-likelihood).
-        Default is 'ml'.
+        The estimation method to use. The available options are
+
+        ============== =============================
+        "ml" (default) Maximum likelihood
+        "reml"         Restricted maximum likelihood
+        ============== =============================
 
     Notes
     -----
     Requires ``beta`` and ``varcope`` images.
 
-    The ML and REML solutions are obtained via SciPy’s scalar function
+    The ML and REML solutions are obtained via SciPy's scalar function
     minimizer (:func:`scipy.optimize.minimize`).
     Parameters to ``minimize()`` can be passed in as keyword arguments.
 
-    Warning
-    -------
+    Warnings
+    --------
     Likelihood-based estimators are not parallelized across voxels, so this
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
@@ -569,8 +575,8 @@ class PermutedOLS(MetaEstimator):
 
     Available correction methods: :func:`PermutedOLS.correct_fwe_montecarlo`
 
-    Warning
-    -------
+    Warnings
+    --------
     All image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
     will be removed from the analysis.

@@ -477,8 +477,8 @@ class Peaks2MapsKernel(KernelTransformer):
     model_dir : :obj:`str`, optional
         Path to model directory. Default is "auto".
 
-    Warning
-    -------
+    Warnings
+    --------
     Peaks2MapsKernel is not intended for serious research.
     We strongly recommend against using it for any meaningful analyses.
     """

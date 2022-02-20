@@ -36,12 +36,26 @@ class ALE(CBMAEstimator):
     Parameters
     ----------
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
-        Kernel with which to convolve coordinates from dataset. Default is
-        ALEKernel.
+        Kernel with which to convolve coordinates from dataset.
+        Default is ALEKernel.
     null_method : {"approximate", "montecarlo"}, optional
-        Method by which to determine uncorrected p-values.
-        "approximate" is faster, but slightly less accurate.
-        "montecarlo" can be much slower, and is only slightly more accurate.
+        Method by which to determine uncorrected p-values. The available options are
+
+        ======================= =================================================================
+        "approximate" (default) Build a histogram of summary-statistic values and their
+                                expected frequencies under the assumption of random spatial
+                                associated between studies, via a weighted convolution.
+
+                                This method is much faster, but slightly less accurate.
+        "montecarlo"            Perform a large number of permutations, in which the coordinates
+                                in the studies are randomly drawn from the Estimator's brain mask
+                                and the full set of resulting summary-statistic values are
+                                incorporated into a null distribution (stored as a histogram for
+                                memory reasons).
+
+                                This method is must slower, and is only slightly more accurate.
+        ======================= =================================================================
+
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
@@ -52,21 +66,50 @@ class ALE(CBMAEstimator):
         If <=0, defaults to using all available cores.
         Default is 1.
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix '\kernel__' in the variable name.
         Another optional argument is ``mask``.
 
     Attributes
     ----------
-    masker
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMA estimators, there is only one key:
-        coordinates. This is an edited version of the dataset's coordinates
-        DataFrame.
-    null_distributions_ : :obj:`dict` or :class:`numpy.ndarray`
-        Null distributions for ALE and any multiple-comparisons correction
-        methods. Entries are added to this attribute if and when the
-        corresponding method is fit.
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
+        multiple-comparisons correction methods.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        If ``null_method == "approximate"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-approximate``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+
+        If ``null_method == "montecarlo"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-montecarlo``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+                These values are derived from the full set of summary statistics from each
+                iteration of the Monte Carlo procedure.
+            -   ``histweights_level-voxel_corr-fwe_method-montecarlo``: Array of weights for the
+                voxel-level FWE-correction null distribution, with one value for each bin in
+                ``histogram_bins``. These values are derived from the maximum summary statistic
+                from each iteration of the Monte Carlo procedure.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-size_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                size from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                mass from each Monte Carlo iteration. An array of shape (n_iters,).
 
     Notes
     -----
@@ -75,16 +118,16 @@ class ALE(CBMAEstimator):
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
 
-    Available correction methods: :func:`ALE.correct_fwe_montecarlo`
+    Available correction methods: :meth:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`.
 
     References
     ----------
     .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
         neuroanatomy of single-word reading: method and validation."
         Neuroimage 16.3 (2002): 765-780.
-    .. [2] Turkeltaub, Peter E., et al. "Minimizing within‐experiment and
-        within‐group effects in activation likelihood estimation
-        meta‐analyses." Human brain mapping 33.1 (2012): 1-13.
+    .. [2] Turkeltaub, Peter E., et al. "Minimizing within-experiment and
+        within-group effects in activation likelihood estimation
+        meta-analyses." Human brain mapping 33.1 (2012): 1-13.
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
@@ -112,7 +155,7 @@ class ALE(CBMAEstimator):
         self.dataset = None
         self.results = None
 
-    def _compute_summarystat(self, ma_values):
+    def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
@@ -142,7 +185,7 @@ class ALE(CBMAEstimator):
         max_ma_values = np.max(ma_values, axis=1)
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
-        max_poss_ale = self.compute_summarystat(max_ma_values)
+        max_poss_ale = self._compute_summarystat(max_ma_values)
         # create bin centers
         hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
@@ -158,7 +201,9 @@ class ALE(CBMAEstimator):
         Notes
         -----
         This method adds two entries to the null_distributions_ dict attribute:
-        "histogram_bins" and "histogram_weights".
+
+            - "histogram_bins"
+            - "histweights_corr-none_method-approximate"
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
@@ -241,9 +286,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         .. versionadded:: 0.0.12
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix 'kernel__' in the variable name.
-        Another optional argument is ``mask``.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix ``kernel__`` in the variable name. Another optional argument is ``mask``.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
 
     Notes
     -----
@@ -252,24 +304,27 @@ class ALESubtraction(PairwiseCBMAEstimator):
     The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
     BrainMap organization (https://www.brainmap.org/ale/).
 
-    Warning
-    -------
+    The voxel-wise null distributions used by this Estimator are very large, so they are not
+    retained as Estimator attributes.
+
+    Warnings
+    --------
     This implementation contains one key difference from the original version.
-    In the original version, group 1 > group 2 difference values are only
-    evaluated for voxels significant in the group 1 meta-analysis, and group 2
-    > group 1 difference values are only evaluated for voxels significant in
-    the group 2 meta-analysis. In NiMARE's implementation, the analysis is run
-    in a two-sided manner for *all* voxels in the mask.
+
+    In the original version, group 1 > group 2 difference values are only evaluated for voxels
+    significant in the group 1 meta-analysis, and group 2 > group 1 difference values are only
+    evaluated for voxels significant in the group 2 meta-analysis.
+
+    In NiMARE's implementation, the analysis is run in a two-sided manner for *all* voxels in the
+    mask.
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the
-        false discovery rate and performing statistical contrasts." Human
-        brain mapping 25.1 (2005): 155-164.
-        https://doi.org/10.1002/hbm.20136
-    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
-        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
-        https://doi.org/10.1016/j.neuroimage.2011.09.017
+    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the false discovery rate and
+       performing statistical contrasts." Human brain mapping 25.1 (2005): 155-164.
+       https://doi.org/10.1002/hbm.20136
+    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation meta-analysis revisited."
+       Neuroimage 59.3 (2012): 2349-2361. https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
@@ -416,6 +471,17 @@ class ALESubtraction(PairwiseCBMAEstimator):
         p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
         return p_value, i_voxel
 
+    def correct_fwe_montecarlo(self):
+        """Perform Monte Carlo-based FWE correction.
+
+        Warnings
+        --------
+        This method is not implemented for this class.
+        """
+        raise NotImplementedError(
+            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        )
+
 
 @due.dcite(
     references.SCALE,
@@ -453,8 +519,28 @@ class SCALE(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix '\kernel__' in the variable name.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distribution information.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        .. important::
+            The voxel-wise null distributions used by this Estimator are very large, so they are
+            not retained as Estimator attributes.
+
+        If :meth:`fit` is applied:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
 
     References
     ----------
@@ -516,12 +602,12 @@ class SCALE(CBMAEstimator):
 
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
-        max_poss_ale = self._compute_summarystat(max_ma_values)
+        max_poss_ale = self._compute_summarystat_est(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
 
-        stat_values = self._compute_summarystat(ma_values)
+        stat_values = self._compute_summarystat_est(ma_values)
 
         if isinstance(ma_values, np.memmap):
             LGR.debug(f"Closing memmap at {ma_values.filename}")
@@ -561,7 +647,7 @@ class SCALE(CBMAEstimator):
         images = {"stat": stat_values, "logp": logp_values, "z": z_values}
         return images
 
-    def _compute_summarystat(self, data):
+    def _compute_summarystat_est(self, data):
         """Generate ALE-value array and null distribution from list of contrasts.
 
         For ALEs on the original dataset, computes the null distribution.
@@ -583,8 +669,7 @@ class SCALE(CBMAEstimator):
         return stat_values
 
     def _scale_to_p(self, stat_values, scale_values):
-        """
-        Compute p- and z-values.
+        """Compute p- and z-values.
 
         Parameters
         ----------
@@ -650,5 +735,16 @@ class SCALE(CBMAEstimator):
         """Run a single random SCALE permutation of a dataset."""
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
-        stat_values = self._compute_summarystat(iter_df)
+        stat_values = self._compute_summarystat_est(iter_df)
         perm_scale_values[i_row, :] = stat_values
+
+    def correct_fwe_montecarlo(self):
+        """Perform Monte Carlo-based FWE correction.
+
+        Warnings
+        --------
+        This method is not implemented for this class.
+        """
+        raise NotImplementedError(
+            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        )

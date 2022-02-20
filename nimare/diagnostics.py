@@ -43,8 +43,8 @@ class Jackknife(NiMAREBase):
     summary statistics by the summary statistics from the original meta-analysis, and finally
     averaging the resulting proportion values across all voxels in each cluster.
 
-    Warning
-    -------
+    Warnings
+    --------
     Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
     method.
     """
