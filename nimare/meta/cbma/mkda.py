@@ -3,7 +3,7 @@ import logging
 
 import numpy as np
 from joblib import Parallel, delayed
-from scipy import ndimage, special
+from scipy import ndimage, stats
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
@@ -362,7 +362,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_p_vals = special.chdtrc(1, pAgF_chi2_vals)
+        pAgF_p_vals = stats.chi2.sf(pAgF_chi2_vals, 1)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = p_to_z(pAgF_p_vals, tail="two") * pAgF_sign
 
@@ -386,7 +386,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del n_selected_active_voxels, n_unselected_active_voxels
 
-        pFgA_p_vals = special.chdtrc(1, pFgA_chi2_vals)
+        pFgA_p_vals = stats.chi2.sf(pFgA_chi2_vals, 1)
         pFgA_p_vals[pFgA_p_vals < 1e-240] = 1e-240
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = p_to_z(pFgA_p_vals, tail="two") * pFgA_sign
@@ -575,7 +575,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         eps = np.spacing(1)
 
         # Identify summary statistic corresponding to intensity threshold
-        ss_thresh = self._p_to_summarystat(voxel_thresh)
+        ss_thresh = stats.chi2.isf(voxel_thresh, 1)
 
         # Define connectivity matrix for cluster labeling
         conn = np.zeros((3, 3, 3), int)
@@ -596,8 +596,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 for i_iter in range(n_iters)
             )
 
-        del iter_df1, iter_df2, rand_idx1, rand_xyz1, iter_xyzs1
-        del rand_idx2, rand_xyz2, iter_xyzs2
+        del iter_df1, rand_idx1, rand_xyz1, iter_xyzs1
+        del iter_df2, rand_idx2, rand_xyz2, iter_xyzs2
+        del conn
 
         pAgF_vfwe, pAgF_cfwe_size, pAgF_cfwe_mass, pFgA_vfwe, pFgA_cfwe_size, pFgA_cfwe_mass = zip(
             *perm_results
@@ -621,8 +622,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del pAgF_vfwe, pAgF_cfwe_size, pAgF_cfwe_mass
 
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to
-        # 0 or 1. Prevents inf z-values.
+        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
+        # Prevents inf z-values.
         pAgF_p_FWE[pAgF_p_FWE < eps] = eps
         pAgF_p_FWE[pAgF_p_FWE > (1.0 - eps)] = 1.0 - eps
         pAgF_z_FWE = p_to_z(pAgF_p_FWE, tail="two") * pAgF_sign
@@ -643,8 +644,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del pFgA_vfwe, pFgA_cfwe_size, pFgA_cfwe_mass
 
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to
-        # 0 or 1. Prevents inf z-values.
+        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
+        # Prevents inf z-values.
         pFgA_p_FWE[pFgA_p_FWE < eps] = eps
         pFgA_p_FWE[pFgA_p_FWE > (1.0 - eps)] = 1.0 - eps
         pFgA_z_FWE = p_to_z(pFgA_p_FWE, tail="two") * pFgA_sign
