@@ -3,7 +3,8 @@ import logging
 
 import numpy as np
 from joblib import Parallel, delayed
-from scipy import ndimage, stats
+from scipy import ndimage
+from scipy.stats import chi2
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
@@ -356,13 +357,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgU = n_unselected_active_voxels / n_unselected
         pFgA = pAgF * pF / pA
 
+        del pF
+
         # Recompute conditionals with uniform prior
         pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
         pFgA_prior = pAgF * self.prior / pAgF_prior
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_p_vals = stats.chi2.sf(pAgF_chi2_vals, 1)
+        pAgF_p_vals = chi2.sf(pAgF_chi2_vals, 1)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = p_to_z(pAgF_p_vals, tail="two") * pAgF_sign
 
@@ -380,14 +383,16 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 ]
             ).T
         )
+
         del n_selected, n_unselected
 
         pFgA_chi2_vals = two_way(cells)
 
         del n_selected_active_voxels, n_unselected_active_voxels
 
-        pFgA_p_vals = stats.chi2.sf(pFgA_chi2_vals, 1)
-        pFgA_p_vals[pFgA_p_vals < 1e-240] = 1e-240
+        eps = np.spacing(1)
+        pFgA_p_vals = chi2.sf(pFgA_chi2_vals, 1)
+        pFgA_p_vals[pFgA_p_vals < eps] = eps
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = p_to_z(pFgA_p_vals, tail="two") * pFgA_sign
 
@@ -575,7 +580,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         eps = np.spacing(1)
 
         # Identify summary statistic corresponding to intensity threshold
-        ss_thresh = stats.chi2.isf(voxel_thresh, 1)
+        ss_thresh = chi2.isf(voxel_thresh, 1)
 
         # Define connectivity matrix for cluster labeling
         conn = np.zeros((3, 3, 3), int)
