@@ -408,7 +408,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2):
+    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, voxel_thresh):
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df1 = iter_df1.copy()
@@ -441,7 +441,31 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        iter_pAgF_chi2 = np.max(pAgF_chi2_vals)
+
+        # Voxel-level inference
+        pAgF_chi2_max_value = np.max(pAgF_chi2_vals)
+
+        # Cluster-level inference
+        pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata().copy()
+        pAgF_chi2_map[pAgF_chi2_map <= voxel_thresh] = 0
+        pAgF_labeled_matrix = ndimage.measurements.label(pAgF_chi2_map, conn)[0]
+        clust_vals, clust_sizes = np.unique(pAgF_labeled_matrix, return_counts=True)
+        assert clust_vals[0] == 0
+
+        # Cluster mass-based inference
+        iter_max_mass = 0
+        for unique_val in clust_vals[1:]:
+            ss_vals = pAgF_chi2_map[pAgF_labeled_matrix == unique_val] - voxel_thresh
+            pAgF_max_mass = np.maximum(iter_max_mass, np.sum(ss_vals))
+
+        del pAgF_chi2_map, pAgF_labeled_matrix
+
+        # Cluster size-based inference
+        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+        if clust_sizes.size:
+            pAgF_max_cluster = np.max(clust_sizes)
+        else:
+            pAgF_max_cluster = 0
 
         # Two-way chi-square for specificity of activation
         cells = np.squeeze(
@@ -459,7 +483,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
         return iter_pAgF_chi2, iter_pFgA_chi2
 
-    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -529,6 +553,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
         eps = np.spacing(1)
 
+        # Identify summary statistic corresponding to intensity threshold
+        ss_thresh = self._p_to_summarystat(voxel_thresh)
+
+        # Define connectivity matrix for cluster labeling
+        conn = np.zeros((3, 3, 3), int)
+        conn[:, :, 1] = 1
+        conn[:, 1, :] = 1
+        conn[1, :, :] = 1
+
         with tqdm_joblib(tqdm(total=n_iters)):
             perm_results = Parallel(n_jobs=n_cores)(
                 delayed(self._run_fwe_permutation)(
@@ -536,6 +569,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
                     iter_xyz2=iter_xyzs2[i_iter],
                     iter_df1=iter_df1,
                     iter_df2=iter_df2,
+                    conn=conn,
+                    voxel_thresh=ss_thresh,
                 )
                 for i_iter in range(n_iters)
             )
