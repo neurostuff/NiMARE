@@ -26,7 +26,7 @@ class MetaResult(object):
     ----------
     estimator : :class:`~nimare.base.Estimator`
         The Estimator used to generate the maps in the MetaResult.
-    masker : :class:`nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object.
     maps : :obj:`dict`
         Keys are map names and values are arrays.

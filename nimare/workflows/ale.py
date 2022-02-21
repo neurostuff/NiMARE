@@ -21,7 +21,7 @@ def ale_sleuth_workflow(
     n_iters=10000,
     v_thr=0.001,
     fwhm=None,
-    n_cores=-1,
+    n_cores=1,
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
     LGR.info("Loading coordinates...")
@@ -165,7 +165,7 @@ Neuroimage, 54(1), 313-327.
 (2009). Unbiased nonlinear average age-appropriate brain templates from birth
 to adulthood. NeuroImage, (47), S102.
 - Laird, A. R., Fox, P. M., Price, C. J., Glahn, D. C., Uecker, A. M.,
-Lancaster, J. L., ... & Fox, P. T. (2005). ALE meta‐analysis: Controlling the
+Lancaster, J. L., ... & Fox, P. T. (2005). ALE meta-analysis: Controlling the
 false discovery rate and performing statistical contrasts. Human brain mapping,
 25(1), 155-164.
         """

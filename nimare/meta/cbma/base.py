@@ -1,10 +1,10 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
-import multiprocessing as mp
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from scipy import ndimage
 from tqdm.auto import tqdm
 
@@ -16,6 +16,7 @@ from ...utils import (
     _add_metadata_to_dataframe,
     _check_type,
     _safe_transform,
+    tqdm_joblib,
     use_memmap,
     vox2mm,
 )
@@ -81,7 +82,7 @@ class CBMAEstimator(MetaEstimator):
 
         self.weight_vec_ = self._compute_weights(ma_values)
 
-        stat_values = self.compute_summarystat(ma_values)
+        stat_values = self._compute_summarystat(ma_values)
 
         # Determine null distributions for summary stat (OF) to p conversion
         self._determine_histogram_bins(ma_values)
@@ -94,6 +95,12 @@ class CBMAEstimator(MetaEstimator):
         else:
             # A hidden option only used for internal validation/testing
             self._compute_null_reduced_montecarlo(ma_values, n_iters=self.n_iters)
+
+        # Only should occur when MA maps have been pre-generated in the Dataset and a memory_limit
+        # is set. The memmap must be closed.
+        if isinstance(ma_values, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_values.filename}")
+            ma_values._mmap.close()
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
@@ -151,8 +158,9 @@ class CBMAEstimator(MetaEstimator):
 
         Returns
         -------
-        ma_maps : :obj:`numpy.ndarray`
+        ma_maps : :obj:`numpy.ndarray` or :obj:`numpy.memmap`
             2D numpy array of shape (n_studies, n_voxels) with MA values.
+            This will be a memmap if MA maps have been pre-generated.
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
@@ -175,7 +183,7 @@ class CBMAEstimator(MetaEstimator):
             )
         return ma_maps
 
-    def compute_summarystat(self, data):
+    def _compute_summarystat(self, data):
         """Compute summary statistics from data.
 
         The actual summary statistic varies across Estimators.
@@ -208,9 +216,9 @@ class CBMAEstimator(MetaEstimator):
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
-        return self._compute_summarystat(ma_values)
+        return self._compute_summarystat_est(ma_values)
 
-    def _compute_summarystat(self, ma_values):
+    def _compute_summarystat_est(self, ma_values):
         """Compute summary statistic according to estimator-specific method.
 
         Must be overriden by subclasses.
@@ -351,17 +359,17 @@ class CBMAEstimator(MetaEstimator):
         This method adds one entry to the null_distributions_ dict attribute:
         "values_corr-none_method-reducedMontecarlo".
 
-        Warning
-        -------
+        Warnings
+        --------
         This method is only retained for testing and algorithm development.
         """
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
-        null_dist = self.compute_summarystat(iter_ma_values)
+        null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
-    def _compute_null_montecarlo_permutation(self, params):
+    def _compute_null_montecarlo_permutation(self, iter_xyz, iter_df):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between uncorrected stat-to-p conversion and vFWE.
@@ -377,7 +385,9 @@ class CBMAEstimator(MetaEstimator):
         counts : 1D array_like
             Weights associated with the attribute `null_distributions_["histogram_bins"]`.
         """
-        iter_xyz, iter_df = params
+        # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
+        # be safe.
+        iter_df = iter_df.copy()
 
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
@@ -385,7 +395,7 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
         del iter_ma_maps
 
@@ -426,19 +436,14 @@ class CBMAEstimator(MetaEstimator):
         rand_xyz = vox2mm(rand_ijk, self.masker.mask_img.affine)
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
-        iter_dfs = [iter_df] * n_iters
 
-        params = zip(iter_xyzs, iter_dfs)
-        if n_cores == 1:
-            perm_histograms = []
-            for pp in tqdm(params, total=n_iters):
-                perm_histograms.append(self._compute_null_montecarlo_permutation(pp))
-
-        else:
-            with mp.Pool(n_cores) as p:
-                perm_histograms = list(
-                    tqdm(p.imap(self._compute_null_montecarlo_permutation, params), total=n_iters)
+        with tqdm_joblib(tqdm(total=n_iters)):
+            perm_histograms = Parallel(n_jobs=n_cores)(
+                delayed(self._compute_null_montecarlo_permutation)(
+                    iter_xyzs[i_iter], iter_df=iter_df
                 )
+                for i_iter in range(n_iters)
+            )
 
         perm_histograms = np.vstack(perm_histograms)
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
@@ -458,17 +463,23 @@ class CBMAEstimator(MetaEstimator):
             "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = fwe_voxel_max
 
-    def _correct_fwe_montecarlo_permutation(self, params):
+    def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between vFWE and cFWE.
 
         Parameters
         ----------
-        params : tuple
-            A tuple containing 4 elements, respectively providing (1) the permuted
-            coordinates; (2) the original coordinate DataFrame; (3) a 3d structuring
-            array passed to ndimage.label; and (4) the voxel-wise intensity threshold.
+        iter_xyz : :obj:`numpy.ndarray` of shape (C, 3)
+            The permuted coordinates. One row for each peak.
+            Columns correspond to x, y, and z coordinates.
+        iter_df : :obj:`pandas.DataFrame`
+            The coordinates DataFrame, to be filled with the permuted coordinates in ``iter_xyz``
+            before permutation MA maps are generated.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            The 3D structuring array for labeling clusters.
+        voxel_thresh : :obj:`float`
+            Uncorrected summary statistic threshold for defining clusters.
 
         Returns
         -------
@@ -476,7 +487,7 @@ class CBMAEstimator(MetaEstimator):
             A 3-tuple of floats giving the maximum voxel-wise value, maximum cluster size,
             and maximum cluster mass for the permuted dataset.
         """
-        iter_xyz, iter_df, conn, voxel_thresh = params
+        iter_df = iter_df.copy()
 
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
@@ -484,7 +495,7 @@ class CBMAEstimator(MetaEstimator):
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
         )
-        iter_ss_map = self.compute_summarystat(iter_ma_maps)
+        iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
         del iter_ma_maps
 
@@ -516,7 +527,7 @@ class CBMAEstimator(MetaEstimator):
         return iter_max_value, iter_max_cluster, iter_max_mass
 
     def correct_fwe_montecarlo(
-        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=-1, vfwe_only=False
+        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=1, vfwe_only=False
     ):
         """Perform FWE correction using the max-value permutation method.
 
@@ -538,7 +549,7 @@ class CBMAEstimator(MetaEstimator):
             null distributions. Default is 10000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
-            If <=0, defaults to using all available cores. Default is -1.
+            If <=0, defaults to using all available cores. Default is 1.
         vfwe_only : :obj:`bool`, optional
             If True, only calculate the voxel-level FWE-corrected maps. Voxel-level correction
             can be performed very quickly if the Estimator's ``null_method`` was "montecarlo".
@@ -557,13 +568,13 @@ class CBMAEstimator(MetaEstimator):
                 based on cluster size. This was previously simply called "logp_level-cluster".
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_desc-mass_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
-                based on cluster mass. According to [1]_ and [2]_, cluster mass-based inference is
+                based on cluster mass. According to [4]_ and [5]_, cluster mass-based inference is
                 more powerful than cluster size.
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_level-voxel``: Voxel-level FWE-corrected ``-log10(p)`` map.
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
-                (i.e., hundreds of studies), per [3]_.
+                (i.e., hundreds of studies), per [6]_.
 
         Notes
         -----
@@ -583,14 +594,14 @@ class CBMAEstimator(MetaEstimator):
 
         References
         ----------
-        .. [1] Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., Taylor, E., &
+        .. [4] Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., Taylor, E., &
                Brammer, M. J. (1999). Global, voxel, and cluster tests, by theory and permutation,
                for a difference between two groups of structural MR images of the brain.
                IEEE transactions on medical imaging, 18(1), 32-42. doi: 10.1109/42.750253
-        .. [2] Zhang, H., Nichols, T. E., & Johnson, T. D. (2009).
+        .. [5] Zhang, H., Nichols, T. E., & Johnson, T. D. (2009).
                Cluster mass inference via random field theory. Neuroimage, 44(1), 51-61.
                doi: 10.1016/j.neuroimage.2008.08.017
-        .. [3] Eickhoff, S. B., Nichols, T. E., Laird, A. R., Hoffstaedter, F., Amunts, K.,
+        .. [6] Eickhoff, S. B., Nichols, T. E., Laird, A. R., Hoffstaedter, F., Amunts, K.,
                Fox, P. T., ... & Eickhoff, C. R. (2016).
                Behavior, sensitivity, and power of activation likelihood estimation characterized
                by massive empirical simulation. Neuroimage, 137, 70-85.
@@ -635,7 +646,6 @@ class CBMAEstimator(MetaEstimator):
             rand_xyz = null_xyz[rand_idx, :]
             iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
             iter_df = self.inputs_["coordinates"].copy()
-            iter_dfs = [iter_df] * n_iters
 
             # Define connectivity matrix for cluster labeling
             conn = np.zeros((3, 3, 3), int)
@@ -643,23 +653,13 @@ class CBMAEstimator(MetaEstimator):
             conn[:, 1, :] = 1
             conn[1, :, :] = 1
 
-            # Define parameters
-            iter_conn = [conn] * n_iters
-            iter_ss_thresh = [ss_thresh] * n_iters
-            params = zip(iter_xyzs, iter_dfs, iter_conn, iter_ss_thresh)
-
-            if n_cores == 1:
-                perm_results = []
-                for pp in tqdm(params, total=n_iters):
-                    perm_results.append(self._correct_fwe_montecarlo_permutation(pp))
-
-            else:
-                with mp.Pool(n_cores) as p:
-                    perm_results = list(
-                        tqdm(
-                            p.imap(self._correct_fwe_montecarlo_permutation, params), total=n_iters
-                        )
+            with tqdm_joblib(tqdm(total=n_iters)):
+                perm_results = Parallel(n_jobs=n_cores)(
+                    delayed(self._correct_fwe_montecarlo_permutation)(
+                        iter_xyzs[i_iter], iter_df=iter_df, conn=conn, voxel_thresh=ss_thresh
                     )
+                    for i_iter in range(n_iters)
+                )
 
             fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
 

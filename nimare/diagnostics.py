@@ -1,19 +1,18 @@
 """Methods for diagnosing problems in meta-analytic datasets or analyses."""
 import copy
 import logging
-from functools import partial
-from multiprocessing import Pool
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from nibabel.funcs import squeeze_image
 from nilearn import image, input_data
 from scipy import ndimage
 from tqdm.auto import tqdm
 
 from .base import NiMAREBase
-from .utils import vox2mm
+from .utils import tqdm_joblib, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -44,8 +43,8 @@ class Jackknife(NiMAREBase):
     summary statistics by the summary statistics from the original meta-analysis, and finally
     averaging the resulting proportion values across all voxels in each cluster.
 
-    Warning
-    -------
+    Warnings
+    --------
     Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
     method.
     """
@@ -174,21 +173,20 @@ class Jackknife(NiMAREBase):
         contribution_table.index.name = "Cluster ID"
         contribution_table.loc["Center of Mass"] = cluster_com_strs
 
-        # For the private method that does the work of the analysis, we have a lot of constant
-        # parameters, and only one that varies (the ID of the study being removed),
-        # so we use functools.partial.
-        transform_method = partial(
-            self._transform,
-            all_ids=meta_ids,
-            dset=dset,
-            estimator=estimator,
-            target_value_map=target_value_map,
-            stat_values=stat_values,
-            original_masker=original_masker,
-            cluster_masker=cluster_masker,
-        )
-        with Pool(self.n_cores) as p:
-            jackknife_results = list(tqdm(p.imap(transform_method, meta_ids), total=len(meta_ids)))
+        with tqdm_joblib(tqdm(total=len(meta_ids))):
+            jackknife_results = Parallel(n_jobs=self.n_cores)(
+                delayed(self._transform)(
+                    study_id,
+                    all_ids=meta_ids,
+                    dset=dset,
+                    estimator=estimator,
+                    target_value_map=target_value_map,
+                    stat_values=stat_values,
+                    original_masker=original_masker,
+                    cluster_masker=cluster_masker,
+                )
+                for study_id in meta_ids
+            )
 
         # Add the results to the table
         for expid, stat_prop_values in jackknife_results:
