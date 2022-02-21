@@ -612,6 +612,60 @@ class MKDAChi2(PairwiseCBMAEstimator):
         del perm_results
 
         # pAgF_FWE
+        # Voxel-level FWE
+        LGR.info("Using null distribution for voxel-level FWE correction.")
+        pAgF_p_FWE = null_to_p(pAgF_chi2_vals, pAgF_vfwe, tail="upper")
+
+        # Cluster-level FWE
+        # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
+        thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
+        thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
+        labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
+
+        cluster_labels, idx, cluster_sizes = np.unique(
+            labeled_matrix,
+            return_inverse=True,
+            return_counts=True,
+        )
+        assert cluster_labels[0] == 0
+
+        # Cluster mass-based inference
+        cluster_masses = np.zeros(cluster_labels.shape)
+        for i_val in cluster_labels:
+            if i_val == 0:
+                cluster_masses[i_val] = 0
+
+            cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
+            cluster_masses[i_val] = cluster_mass
+
+        pAgF_p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
+        pAgF_p_cmfwe_map = pAgF_p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+        pAgF_p_cmfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(pAgF_p_cmfwe_map, self.masker.mask_img.affine))
+        )
+        pAgF_logp_cmfwe_values = -np.log10(pAgF_p_cmfwe_values)
+        pAgF_logp_cmfwe_values[np.isinf(pAgF_logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
+        pAgF_z_cmfwe_values = p_to_z(pAgF_p_cmfwe_values, tail="one")
+
+        # Cluster size-based inference
+        cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
+        pAgF_p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
+        pAgF_p_csfwe_map = pAgF_p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+        pAgF_p_csfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(pAgF_p_csfwe_map, self.masker.mask_img.affine))
+        )
+        pAgF_logp_csfwe_values = -np.log10(pAgF_p_csfwe_values)
+        pAgF_logp_csfwe_values[np.isinf(pAgF_logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
+        pAgF_z_csfwe_values = p_to_z(pAgF_p_csfwe_values, tail="one")
+
+        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
+        # Prevents inf z-values.
+        pAgF_p_FWE[pAgF_p_FWE < eps] = eps
+        pAgF_p_FWE[pAgF_p_FWE > (1.0 - eps)] = 1.0 - eps
+        pAgF_z_FWE = p_to_z(pAgF_p_FWE, tail="two") * pAgF_sign
+
         self.null_distributions_[
             "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
         ] = pAgF_vfwe
@@ -621,28 +675,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.null_distributions_[
             "values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo"
         ] = pAgF_cfwe_mass
-        pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
-        for voxel in range(pFgA_chi2_vals.shape[0]):
-            pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel], pAgF_vfwe, tail="upper")
 
         del pAgF_vfwe, pAgF_cfwe_size, pAgF_cfwe_mass
 
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
-        # Prevents inf z-values.
-        pAgF_p_FWE[pAgF_p_FWE < eps] = eps
-        pAgF_p_FWE[pAgF_p_FWE > (1.0 - eps)] = 1.0 - eps
-        pAgF_z_FWE = p_to_z(pAgF_p_FWE, tail="two") * pAgF_sign
-
         # pFgA_FWE
-        self.null_distributions_[
-            "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
-        ] = pFgA_vfwe
-        self.null_distributions_[
-            "values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo"
-        ] = pFgA_cfwe_size
-        self.null_distributions_[
-            "values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo"
-        ] = pFgA_cfwe_mass
         pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
             pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_vfwe, tail="upper")
@@ -654,6 +690,16 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_p_FWE[pFgA_p_FWE < eps] = eps
         pFgA_p_FWE[pFgA_p_FWE > (1.0 - eps)] = 1.0 - eps
         pFgA_z_FWE = p_to_z(pFgA_p_FWE, tail="two") * pFgA_sign
+
+        self.null_distributions_[
+            "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
+        ] = pFgA_vfwe
+        self.null_distributions_[
+            "values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo"
+        ] = pFgA_cfwe_size
+        self.null_distributions_[
+            "values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo"
+        ] = pFgA_cfwe_mass
 
         images = {
             "p_desc-consistency_level-voxel": pAgF_p_FWE,
