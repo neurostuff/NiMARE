@@ -3,7 +3,7 @@ import logging
 
 import numpy as np
 from joblib import Parallel, delayed
-from scipy import special
+from scipy import ndimage, special
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
@@ -408,7 +408,28 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, voxel_thresh):
+    def _calculate_cluster_measures(self, arr3d, threshold, conn):
+        arr3d[arr3d <= threshold] = 0
+        labeled_arr3d = ndimage.measurements.label(arr3d, conn)[0]
+        clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
+        assert clust_vals[0] == 0
+
+        # Cluster mass-based inference
+        max_mass = 0
+        for unique_val in clust_vals[1:]:
+            ss_vals = arr3d[labeled_arr3d == unique_val] - threshold
+            max_mass = np.maximum(max_mass, np.sum(ss_vals))
+
+        # Cluster size-based inference
+        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+        if clust_sizes.size:
+            max_size = np.max(clust_sizes)
+        else:
+            max_size = 0
+
+        return max_size, max_mass
+
+    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df1 = iter_df1.copy()
@@ -443,29 +464,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
 
         # Voxel-level inference
-        pAgF_chi2_max_value = np.max(pAgF_chi2_vals)
+        pAgF_max_chi2_value = np.max(pAgF_chi2_vals)
 
         # Cluster-level inference
         pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata().copy()
-        pAgF_chi2_map[pAgF_chi2_map <= voxel_thresh] = 0
-        pAgF_labeled_matrix = ndimage.measurements.label(pAgF_chi2_map, conn)[0]
-        clust_vals, clust_sizes = np.unique(pAgF_labeled_matrix, return_counts=True)
-        assert clust_vals[0] == 0
-
-        # Cluster mass-based inference
-        iter_max_mass = 0
-        for unique_val in clust_vals[1:]:
-            ss_vals = pAgF_chi2_map[pAgF_labeled_matrix == unique_val] - voxel_thresh
-            pAgF_max_mass = np.maximum(iter_max_mass, np.sum(ss_vals))
-
-        del pAgF_chi2_map, pAgF_labeled_matrix
-
-        # Cluster size-based inference
-        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        if clust_sizes.size:
-            pAgF_max_cluster = np.max(clust_sizes)
-        else:
-            pAgF_max_cluster = 0
+        pAgF_max_size, pAgF_max_mass = self._calculate_cluster_measures(
+            pAgF_chi2_map, voxel_thresh, conn
+        )
 
         # Two-way chi-square for specificity of activation
         cells = np.squeeze(
@@ -480,8 +485,24 @@ class MKDAChi2(PairwiseCBMAEstimator):
             ).T
         )
         pFgA_chi2_vals = two_way(cells)
-        iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
-        return iter_pAgF_chi2, iter_pFgA_chi2
+
+        # Voxel-level inference
+        pFgA_max_chi2_value = np.max(pFgA_chi2_vals)
+
+        # Cluster-level inference
+        pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata().copy()
+        pFgA_max_size, pFgA_max_mass = self._calculate_cluster_measures(
+            pFgA_chi2_map, voxel_thresh, conn
+        )
+
+        return (
+            pAgF_max_chi2_value,
+            pAgF_max_size,
+            pAgF_max_mass,
+            pFgA_max_chi2_value,
+            pFgA_max_size,
+            pFgA_max_mass,
+        )
 
     def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
@@ -578,20 +599,27 @@ class MKDAChi2(PairwiseCBMAEstimator):
         del iter_df1, iter_df2, rand_idx1, rand_xyz1, iter_xyzs1
         del rand_idx2, rand_xyz2, iter_xyzs2
 
-        pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
+        pAgF_vfwe, pAgF_cfwe_size, pAgF_cfwe_mass, pFgA_vfwe, pFgA_cfwe_size, pFgA_cfwe_mass = zip(
+            *perm_results
+        )
 
         del perm_results
 
         # pAgF_FWE
-        pAgF_null_chi2_dist = np.squeeze(pAgF_null_chi2_dist)
         self.null_distributions_[
             "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
-        ] = pAgF_null_chi2_dist
+        ] = pAgF_vfwe
+        self.null_distributions_[
+            "values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgF_cfwe_size
+        self.null_distributions_[
+            "values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgF_cfwe_mass
         pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
-            pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel], pAgF_null_chi2_dist, tail="upper")
+            pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel], pAgF_vfwe, tail="upper")
 
-        del pAgF_null_chi2_dist
+        del pAgF_vfwe, pAgF_cfwe_size, pAgF_cfwe_mass
 
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to
         # 0 or 1. Prevents inf z-values.
@@ -600,15 +628,20 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_z_FWE = p_to_z(pAgF_p_FWE, tail="two") * pAgF_sign
 
         # pFgA_FWE
-        pFgA_null_chi2_dist = np.squeeze(pFgA_null_chi2_dist)
         self.null_distributions_[
             "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
-        ] = pFgA_null_chi2_dist
+        ] = pFgA_vfwe
+        self.null_distributions_[
+            "values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo"
+        ] = pFgA_cfwe_size
+        self.null_distributions_[
+            "values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo"
+        ] = pFgA_cfwe_mass
         pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
-            pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_null_chi2_dist, tail="upper")
+            pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_vfwe, tail="upper")
 
-        del pFgA_null_chi2_dist
+        del pFgA_vfwe, pFgA_cfwe_size, pFgA_cfwe_mass
 
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to
         # 0 or 1. Prevents inf z-values.
