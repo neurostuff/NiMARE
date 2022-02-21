@@ -82,6 +82,6 @@ plotting.plot_stat_map(
 # First, we must define our null model of reported coordinates in the literature.
 # We will use the coordinates in Neurosynth
 xyz = dset.coordinates[["x", "y", "z"]].values
-scale = SCALE(xyz=xyz, n_iters=10000, kernel__n=20)
+scale = SCALE(xyz=xyz, n_iters=10000, n_cores=1, kernel__n=20)
 scale.fit(dset_sel)
 plotting.plot_stat_map(scale.results.get_map("z_vthresh"), draw_cross=False, cmap="RdBu_r")

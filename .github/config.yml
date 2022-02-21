@@ -5,11 +5,11 @@ newPRWelcomeComment: >
   Thanks for opening this pull request!
   We have detected this is the first time you have contributed
   to *NiMARE*.
-  Please check out our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/master/CONTRIBUTING.md).
+  Please check out our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/main/CONTRIBUTING.md).
 
   We invite you to list yourself as a *NiMARE* contributor, so if your name
   is not already mentioned, please modify the
-  [``.zenodo.json``](https://github.com/neurostuff/NiMARE/blob/master/.zenodo.json)
+  [``.zenodo.json``](https://github.com/neurostuff/NiMARE/blob/main/.zenodo.json)
   file with your data right above Angie's entry. Example:
 
   ```

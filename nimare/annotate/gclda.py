@@ -20,6 +20,8 @@ LGR = logging.getLogger(__name__)
 class GCLDAModel(NiMAREBase):
     """Generate a generalized correspondence latent Dirichlet allocation (GCLDA) topic model.
 
+    This model was originally described in Rubin et al. (2017) [1]_.
+
     .. versionchanged:: 0.0.8
 
         * [ENH] Support symmetric GC-LDA topics with more than two subregions.
@@ -78,10 +80,10 @@ class GCLDAModel(NiMAREBase):
 
     References
     ----------
-    * Rubin, Timothy N., et al. "Decoding brain activity using a
-      large-scale probabilistic functional-anatomical atlas of human
-      cognition." PLoS computational biology 13.10 (2017): e1005649.
-      https://doi.org/10.1371/journal.pcbi.1005649
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
+       functional-anatomical atlas of human cognition."
+       PLoS computational biology 13.10 (2017): e1005649.
+       https://doi.org/10.1371/journal.pcbi.1005649
 
     See Also
     --------
@@ -725,20 +727,20 @@ class GCLDAModel(NiMAREBase):
     def compute_log_likelihood(self, model=None, update_vectors=True):
         """Compute log-likelihood of a model object given current model.
 
-        Computes the log-likelihood of data in any model object (either train
-        or test) given the posterior predictive distributions over peaks and
-        word-types for the model, using the method described in
-        Newman et al. (2009) [1]_. Note that this is not computing the joint
-        log-likelihood of model parameters and data.
+        Computes the log-likelihood of data in any model object (either train or test) given the
+        posterior predictive distributions over peaks and word-types for the model,
+        using the method described in Newman et al. (2009) [2]_.
+        Note that this is not computing the joint log-likelihood of model parameters and data.
 
         Parameters
         ----------
-        model : :obj:`gclda.Model`, optional
+        model : :obj:`~nimare.annotate.gclda.GCLDAModel`, optional
             The model for which log-likelihoods will be calculated.
-            If not provided, log-likelihood will be calculated for the current
-            model (self).
+            If not provided, log-likelihood will be calculated for the current model (self).
+            Default is None.
         update_vectors : :obj:`bool`, optional
             Whether to update model's log-likelihood vectors or not.
+            Default is True.
 
         Returns
         -------
@@ -751,7 +753,7 @@ class GCLDAModel(NiMAREBase):
 
         References
         ----------
-        .. [1] Newman, D., Asuncion, A., Smyth, P., & Welling, M. (2009).
+        .. [2] Newman, D., Asuncion, A., Smyth, P., & Welling, M. (2009).
             Distributed algorithms for topic models. Journal of Machine
             Learning Research, 10(Aug), 1801-1828.
         """

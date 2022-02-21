@@ -28,9 +28,23 @@ class MKDADensity(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.MKDAKernel`.
     null_method : {"approximate", "montecarlo"}, optional
-        Method by which to determine uncorrected p-values.
-        "approximate" is faster, but slightly less accurate.
-        "montecarlo" can be much slower, and is only slightly more accurate.
+        Method by which to determine uncorrected p-values. The available options are
+
+        ======================= =================================================================
+        "approximate" (default) Build a histogram of summary-statistic values and their
+                                expected frequencies under the assumption of random spatial
+                                associated between studies, via a weighted convolution.
+
+                                This method is much faster, but slightly less accurate.
+        "montecarlo"            Perform a large number of permutations, in which the coordinates
+                                in the studies are randomly drawn from the Estimator's brain mask
+                                and the full set of resulting summary-statistic values are
+                                incorporated into a null distribution (stored as a histogram for
+                                memory reasons).
+
+                                This method is must slower, and is only slightly more accurate.
+        ======================= =================================================================
+
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
@@ -43,6 +57,47 @@ class MKDADensity(CBMAEstimator):
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
+        multiple-comparisons correction methods.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        If ``null_method == "approximate"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-approximate``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+
+        If ``null_method == "montecarlo"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-montecarlo``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+                These values are derived from the full set of summary statistics from each
+                iteration of the Monte Carlo procedure.
+            -   ``histweights_level-voxel_corr-fwe_method-montecarlo``: Array of weights for the
+                voxel-level FWE-correction null distribution, with one value for each bin in
+                ``histogram_bins``. These values are derived from the maximum summary statistic
+                from each iteration of the Monte Carlo procedure.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-size_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                size from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                mass from each Monte Carlo iteration. An array of shape (n_iters,).
 
     Notes
     -----
@@ -107,7 +162,7 @@ class MKDADensity(CBMAEstimator):
         assert weight_vec.shape[0] == ma_values.shape[0]
         return weight_vec
 
-    def _compute_summarystat(self, ma_values):
+    def _compute_summarystat_est(self, ma_values):
         # Note: .dot should be faster, but causes multiprocessing to stall
         # on some (Mac) architectures. If this is ever resolved, we can
         # replace with the commented line.
@@ -187,13 +242,39 @@ class MKDAChi2(PairwiseCBMAEstimator):
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distributions for any multiple-comparisons correction methods.
+
+        .. important::
+            MKDAChi2 does not retain uncorrected summary-statistic-to-p null distributions,
+            since the summary statistic in this case is the chi-squared value, which has an
+            established null distribution.
+
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo``: The maximum
+                chi-squared value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo``: The maximum
+                chi-squared value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+
     Notes
     -----
     The MKDA Chi-square algorithm was originally implemented as part of the Neurosynth Python
     library (https://github.com/neurosynth/neurosynth).
 
-    Available correction methods: :func:`MKDAChi2.correct_fwe_montecarlo`,
-    :obj:`MKDAChi2.correct_fdr_bh`
+    Available correction methods: :meth:`MKDAChi2.correct_fwe_montecarlo`,
+    :meth:`MKDAChi2.correct_fdr_bh`.
 
     References
     ----------
@@ -328,7 +409,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return images
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2):
-        # Not sure if partial will automatically use a copy of the object, but I'll make a copy to
+        # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df1 = iter_df1.copy()
         iter_df2 = iter_df2.copy()
@@ -403,6 +484,17 @@ class MKDAChi2(PairwiseCBMAEstimator):
             'z_desc-consistency_level-voxel', 'p_desc-specificity_level-voxel',
             and 'p_desc-specificity_level-voxel'.
 
+        Notes
+        -----
+        This method adds three new keys to the ``null_distributions_`` attribute:
+
+            -   ``values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo``: The maximum
+                chi-squared value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo``: The maximum
+                chi-squared value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+
         See Also
         --------
         nimare.correct.FWECorrector : The Corrector from which to call this method.
@@ -457,6 +549,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # pAgF_FWE
         pAgF_null_chi2_dist = np.squeeze(pAgF_null_chi2_dist)
+        self.null_distributions_[
+            "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
+        ] = pAgF_null_chi2_dist
         pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
             pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel], pAgF_null_chi2_dist, tail="upper")
@@ -471,6 +566,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # pFgA_FWE
         pFgA_null_chi2_dist = np.squeeze(pFgA_null_chi2_dist)
+        self.null_distributions_[
+            "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
+        ] = pFgA_null_chi2_dist
         pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
         for voxel in range(pFgA_chi2_vals.shape[0]):
             pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_null_chi2_dist, tail="upper")
@@ -508,7 +606,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         images : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked images generated by
             the correction procedure. The following arrays are generated by
-            this method: 'consistency_z_FDR' and 'specificity_z_FDR'.
+            this method: 'z_desc-consistency_level-voxel' and 'z_desc-specificity_level-voxel'.
 
         See Also
         --------
@@ -555,9 +653,23 @@ class KDA(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.KDAKernel`.
     null_method : {"approximate", "montecarlo"}, optional
-        Method by which to determine uncorrected p-values.
-        "approximate" is faster, but slightly less accurate.
-        "montecarlo" can be much slower, and is only slightly more accurate.
+        Method by which to determine uncorrected p-values. The available options are
+
+        ======================= =================================================================
+        "approximate" (default) Build a histogram of summary-statistic values and their
+                                expected frequencies under the assumption of random spatial
+                                associated between studies, via a weighted convolution.
+
+                                This method is much faster, but slightly less accurate.
+        "montecarlo"            Perform a large number of permutations, in which the coordinates
+                                in the studies are randomly drawn from the Estimator's brain mask
+                                and the full set of resulting summary-statistic values are
+                                incorporated into a null distribution (stored as a histogram for
+                                memory reasons).
+
+                                This method is must slower, and is only slightly more accurate.
+        ======================= =================================================================
+
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
@@ -571,14 +683,55 @@ class KDA(CBMAEstimator):
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
 
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
+        multiple-comparisons correction methods.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        If ``null_method == "approximate"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-approximate``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+
+        If ``null_method == "montecarlo"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-montecarlo``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+                These values are derived from the full set of summary statistics from each
+                iteration of the Monte Carlo procedure.
+            -   ``histweights_level-voxel_corr-fwe_method-montecarlo``: Array of weights for the
+                voxel-level FWE-correction null distribution, with one value for each bin in
+                ``histogram_bins``. These values are derived from the maximum summary statistic
+                from each iteration of the Monte Carlo procedure.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-size_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                size from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                mass from each Monte Carlo iteration. An array of shape (n_iters,).
+
     Notes
     -----
     Kernel density analysis was first introduced in [1]_ and [2]_.
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
-    Warning
-    -------
+    Warnings
+    --------
     The KDA algorithm has been replaced in the literature with the MKDA algorithm.
     As such, this estimator should almost never be used, outside of systematic
     comparisons between algorithms.
@@ -623,7 +776,7 @@ class KDA(CBMAEstimator):
         self.dataset = None
         self.results = None
 
-    def _compute_summarystat(self, ma_values):
+    def _compute_summarystat_est(self, ma_values):
         """Compute OF scores from data.
 
         Parameters
@@ -674,7 +827,7 @@ class KDA(CBMAEstimator):
             # We grab the weighting factor from the kernel transformer.
             step_size = self.kernel_transformer.value  # typically 1
             max_ma_values = step_size * n_foci_per_study
-            max_poss_value = self._compute_summarystat(max_ma_values)
+            max_poss_value = self._compute_summarystat_est(max_ma_values)
         else:
             # Continuous-sphere kernels (ALE)
             LGR.info(
@@ -689,7 +842,7 @@ class KDA(CBMAEstimator):
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
             max_ma_values = np.ceil(max_ma_values * 1000) / 1000
-            max_poss_value = self.compute_summarystat(max_ma_values)
+            max_poss_value = self._compute_summarystat(max_ma_values)
 
             # create bin centers
             hist_bins = np.linspace(0, max_poss_value, N_BINS - 1)

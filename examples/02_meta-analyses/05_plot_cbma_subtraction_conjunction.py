@@ -104,7 +104,7 @@ related_cluster_table.head(10)
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 10000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
-sub = ALESubtraction(n_iters=100, memory_limit=None)
+sub = ALESubtraction(n_iters=100, n_cores=1)
 res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
@@ -142,7 +142,7 @@ plot_stat_map(
 ###############################################################################
 # References
 # -----------------------------------------------------------------------------
-# .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
+# .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the
 #     false discovery rate and performing statistical contrasts." Human
 #     brain mapping 25.1 (2005): 155-164.
 #     https://doi.org/10.1002/hbm.20136

@@ -172,8 +172,8 @@ def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
     -----
     This function was adapted from neurosynth.base.dataset.download().
 
-    Warning
-    -------
+    Warnings
+    --------
     Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
     format. Old code using this function **will not work** with the new version.
     """
@@ -424,8 +424,8 @@ def download_abstracts(dataset, email):
     -------
     dataset : :obj:`~nimare.dataset.Dataset`
 
-    Warning
-    -------
+    Warnings
+    --------
     This function assumes that the dataset uses identifiers in the format
     [PMID-EXPID]. Thus, the ``study_id`` column of the
     :py:attr:`~nimare.dataset.Dataset.texts` DataFrame should correspond to PMID.
