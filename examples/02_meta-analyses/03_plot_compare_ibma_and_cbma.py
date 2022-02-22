@@ -19,6 +19,7 @@ import pandas as pd
 from nilearn.plotting import plot_stat_map
 
 from nimare.dataset import Dataset
+from nimare.diagnostics import Jackknife
 from nimare.extract import download_nidm_pain
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import DerSimonianLaird
@@ -74,3 +75,17 @@ stat_df = pd.DataFrame(
     }
 )
 print(stat_df.corr())
+
+###############################################################################
+# Characterize the relative contributions of experiments in the results
+# -----------------------------------------------------------------------------
+
+jknife = Jackknife(target_image="z", voxel_thresh=1.645)
+cbma_cluster_table, cbma_cluster_img = jknife.transform(meta_cbma.results)
+ibma_cluster_table, ibma_cluster_img = jknife.transform(meta_ibma.results)
+
+###############################################################################
+cbma_cluster_table.head(10)
+
+###############################################################################
+ibma_cluster_table.head(10)

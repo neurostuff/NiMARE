@@ -20,7 +20,7 @@ from nilearn.plotting import plot_stat_map
 
 from nimare import io, utils
 from nimare.correct import FWECorrector
-from nimare.diagnostics import Jackknife
+from nimare.diagnostics import FocusCounter
 from nimare.meta.cbma import ALE, ALESubtraction
 
 ###############################################################################
@@ -84,12 +84,12 @@ fig.show()
 # Characterize the relative contributions of experiments in the ALE results
 # -----------------------------------------------------------------------------
 
-jknife = Jackknife(
+counter = FocusCounter(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
-knowledge_cluster_table, knowledge_cluster_img = jknife.transform(knowledge_corrected_results)
-related_cluster_table, related_cluster_img = jknife.transform(related_corrected_results)
+knowledge_cluster_table, knowledge_cluster_img = counter.transform(knowledge_corrected_results)
+related_cluster_table, related_cluster_img = counter.transform(related_corrected_results)
 
 # %%
 # #############################################################################
