@@ -236,7 +236,7 @@ class Jackknife(NiMAREBase):
 
 
 class FocusCounter(NiMAREBase):
-    """Run a focus-count analysis on a meta-analysis result.
+    """Run a focus-count analysis on a coordinate-based meta-analysis result.
 
     Parameters
     ----------
@@ -256,13 +256,13 @@ class FocusCounter(NiMAREBase):
     Notes
     -----
     This analysis characterizes the relative contribution of each experiment in a meta-analysis
-    to the resulting clusters by looping through experiments, calculating the Estimator's summary
-    statistic for all experiments *except* the target experiment, dividing the resulting test
-    summary statistics by the summary statistics from the original meta-analysis, and finally
-    averaging the resulting proportion values across all voxels in each cluster.
+    to the resulting clusters by counting the number of peaks from each experiment that fall within
+    each significant cluster.
 
     Warnings
     --------
+    This method only works for coordinate-based meta-analyses.
+
     Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
     method.
     """
@@ -368,10 +368,6 @@ class FocusCounter(NiMAREBase):
             xyz_str = f"({x}, {y}, {z})"
             cluster_com_strs.append(xyz_str)
 
-        # Mask using a labels masker, so that we can easily get the mean value for each cluster
-        cluster_masker = input_data.NiftiLabelsMasker(labeled_cluster_img)
-        cluster_masker.fit(labeled_cluster_img)
-
         # Create empty contribution table
         contribution_table = pd.DataFrame(index=rows, columns=cluster_ids)
         contribution_table.index.name = "Cluster ID"
@@ -381,8 +377,9 @@ class FocusCounter(NiMAREBase):
             jackknife_results = Parallel(n_jobs=self.n_cores)(
                 delayed(self._transform)(
                     study_id,
-                    coords_df=estimator.inputs_["coordinates"],
-                    cluster_masker=cluster_masker,
+                    coordinates_df=estimator.inputs_["coordinates"],
+                    labeled_cluster_map=labeled_cluster_arr,
+                    affine=target_img.affine,
                 )
                 for study_id in meta_ids
             )
