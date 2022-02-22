@@ -6,9 +6,9 @@ from shutil import copyfile
 
 import numpy as np
 
-from ..correct import FWECorrector
-from ..io import convert_sleuth_to_dataset
-from ..meta import ALE, ALESubtraction
+from nimare.correct import FWECorrector
+from nimare.io import convert_sleuth_to_dataset
+from nimare.meta import ALE, ALESubtraction
 
 LGR = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ References
 ----------
 - Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
 Activation likelihood estimation meta-analysis revisited. NeuroImage,
-59(3), 2349–2361.
+59(3), 2349-2361.
 - Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
 Collins, D. L., & Brain Development Cooperative Group. (2011).
 Unbiased average age-appropriate atlases for pediatric studies.
@@ -82,11 +82,11 @@ Neuroimage, 54(1), 313-327.
 to adulthood. NeuroImage, (47), S102.
 - Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
 Meta-analysis of the functional neuroanatomy of single-word reading: method
-and validation. NeuroImage, 16(3 Pt 1), 765–780.
+and validation. NeuroImage, 16(3 Pt 1), 765-780.
 - Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
 & Fox, P. (2012). Minimizing within-experiment and within-group effects in
 Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-33(1), 1–13.
+33(1), 1-13.
         """
 
         ale = ALE(kernel__fwhm=fwhm)
@@ -149,14 +149,14 @@ References
 ----------
 - Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
 Meta-analysis of the functional neuroanatomy of single-word reading: method
-and validation. NeuroImage, 16(3 Pt 1), 765–780.
+and validation. NeuroImage, 16(3 Pt 1), 765-780.
 - Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
 Activation likelihood estimation meta-analysis revisited. NeuroImage,
-59(3), 2349–2361.
+59(3), 2349-2361.
 - Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
 & Fox, P. (2012). Minimizing within-experiment and within-group effects in
 Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-33(1), 1–13.
+33(1), 1-13.
 - Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
 Collins, D. L., & Brain Development Cooperative Group. (2011).
 Unbiased average age-appropriate atlases for pediatric studies.
