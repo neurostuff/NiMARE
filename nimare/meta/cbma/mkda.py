@@ -1,6 +1,7 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
 import logging
 
+import nibabel as nib
 import numpy as np
 from joblib import Parallel, delayed
 from scipy import ndimage
@@ -509,6 +510,77 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pFgA_max_mass,
         )
 
+    def _apply_correction(
+        self,
+        stat_values,
+        voxel_thresh,
+        vfwe_null=None,
+        csfwe_null=None,
+        cmfwe_null=None,
+        tail="two",
+    ):
+        eps = np.spacing(1)
+
+        # Define connectivity matrix for cluster labeling
+        conn = np.zeros((3, 3, 3), int)
+        conn[:, :, 1] = 1
+        conn[:, 1, :] = 1
+        conn[1, :, :] = 1
+
+        # Voxel-level FWE
+        p_vfwe_values = null_to_p(stat_values, vfwe_null, tail=tail)
+
+        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
+        # Prevents inf z-values.
+        p_vfwe_values[p_vfwe_values < eps] = eps
+        p_vfwe_values[p_vfwe_values > (1.0 - eps)] = 1.0 - eps
+
+        # Cluster-level FWE
+        # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
+        stat_map_thresh = self.masker.inverse_transform(stat_values).get_fdata()
+
+        if tail == "upper":
+            stat_map_thresh[stat_map_thresh <= voxel_thresh] = 0
+        elif tail == "two":
+            stat_map_thresh[np.abs(stat_map_thresh) <= voxel_thresh] = 0
+        else:
+            raise ValueError("Not sure what to do here.")
+
+        labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh, conn)
+
+        cluster_labels, idx, cluster_sizes = np.unique(
+            labeled_matrix,
+            return_inverse=True,
+            return_counts=True,
+        )
+        assert cluster_labels[0] == 0
+
+        # Cluster mass-based inference
+        cluster_masses = np.zeros(cluster_labels.shape)
+        for i_val in cluster_labels:
+            if i_val == 0:
+                cluster_masses[i_val] = 0
+
+            cluster_mass = np.sum(stat_map_thresh[stat_map_thresh == i_val] - voxel_thresh)
+            cluster_masses[i_val] = cluster_mass
+
+        p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail)
+        p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+        p_cmfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
+        )
+
+        # Cluster size-based inference
+        cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
+        p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail)
+        p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+        p_csfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
+        )
+
+        return p_vfwe_values, p_csfwe_values, p_cmfwe_values
+
     def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
@@ -603,109 +675,106 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del iter_df1, rand_idx1, rand_xyz1, iter_xyzs1
         del iter_df2, rand_idx2, rand_xyz2, iter_xyzs2
-        del conn
 
-        pAgF_vfwe, pAgF_cfwe_size, pAgF_cfwe_mass, pFgA_vfwe, pFgA_cfwe_size, pFgA_cfwe_mass = zip(
-            *perm_results
-        )
+        (
+            pAgF_vfwe_null,
+            pAgF_csfwe_null,
+            pAgF_cmfwe_null,
+            pFgA_vfwe_null,
+            pFgA_csfwe_null,
+            pFgA_cmfwe_null,
+        ) = zip(*perm_results)
 
         del perm_results
 
         # pAgF_FWE
-        # Voxel-level FWE
-        LGR.info("Using null distribution for voxel-level FWE correction.")
-        pAgF_p_FWE = null_to_p(pAgF_chi2_vals, pAgF_vfwe, tail="upper")
-
-        # Cluster-level FWE
-        # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
-        thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
-        thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-        labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
-
-        cluster_labels, idx, cluster_sizes = np.unique(
-            labeled_matrix,
-            return_inverse=True,
-            return_counts=True,
+        pAgF_p_vfwe_vals, pAgF_p_csfwe_vals, pAgF_p_cmfwe_vals = self._apply_correction(
+            pAgF_chi2_vals,
+            ss_thresh,
+            vfwe_null=pAgF_vfwe_null,
+            csfwe_null=pAgF_csfwe_null,
+            cmfwe_null=pAgF_cmfwe_null,
+            tail="two",
         )
-        assert cluster_labels[0] == 0
-
-        # Cluster mass-based inference
-        cluster_masses = np.zeros(cluster_labels.shape)
-        for i_val in cluster_labels:
-            if i_val == 0:
-                cluster_masses[i_val] = 0
-
-            cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
-            cluster_masses[i_val] = cluster_mass
-
-        pAgF_p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
-        pAgF_p_cmfwe_map = pAgF_p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
-
-        pAgF_p_cmfwe_values = np.squeeze(
-            self.masker.transform(nib.Nifti1Image(pAgF_p_cmfwe_map, self.masker.mask_img.affine))
-        )
-        pAgF_logp_cmfwe_values = -np.log10(pAgF_p_cmfwe_values)
-        pAgF_logp_cmfwe_values[np.isinf(pAgF_logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
-        pAgF_z_cmfwe_values = p_to_z(pAgF_p_cmfwe_values, tail="one")
-
-        # Cluster size-based inference
-        cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
-        pAgF_p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
-        pAgF_p_csfwe_map = pAgF_p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
-
-        pAgF_p_csfwe_values = np.squeeze(
-            self.masker.transform(nib.Nifti1Image(pAgF_p_csfwe_map, self.masker.mask_img.affine))
-        )
-        pAgF_logp_csfwe_values = -np.log10(pAgF_p_csfwe_values)
-        pAgF_logp_csfwe_values[np.isinf(pAgF_logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
-        pAgF_z_csfwe_values = p_to_z(pAgF_p_csfwe_values, tail="one")
-
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
-        # Prevents inf z-values.
-        pAgF_p_FWE[pAgF_p_FWE < eps] = eps
-        pAgF_p_FWE[pAgF_p_FWE > (1.0 - eps)] = 1.0 - eps
-        pAgF_z_FWE = p_to_z(pAgF_p_FWE, tail="two") * pAgF_sign
 
         self.null_distributions_[
             "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
-        ] = pAgF_vfwe
+        ] = pAgF_vfwe_null
         self.null_distributions_[
             "values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo"
-        ] = pAgF_cfwe_size
+        ] = pAgF_csfwe_null
         self.null_distributions_[
             "values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo"
-        ] = pAgF_cfwe_mass
+        ] = pAgF_cmfwe_null
 
-        del pAgF_vfwe, pAgF_cfwe_size, pAgF_cfwe_mass
+        del pAgF_vfwe_null, pAgF_csfwe_null, pAgF_cmfwe_null
 
         # pFgA_FWE
-        pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
-        for voxel in range(pFgA_chi2_vals.shape[0]):
-            pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_vfwe, tail="upper")
-
-        del pFgA_vfwe, pFgA_cfwe_size, pFgA_cfwe_mass
-
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
-        # Prevents inf z-values.
-        pFgA_p_FWE[pFgA_p_FWE < eps] = eps
-        pFgA_p_FWE[pFgA_p_FWE > (1.0 - eps)] = 1.0 - eps
-        pFgA_z_FWE = p_to_z(pFgA_p_FWE, tail="two") * pFgA_sign
+        pFgA_p_vfwe_vals, pFgA_p_csfwe_vals, pFgA_p_cmfwe_vals = self._apply_correction(
+            pFgA_chi2_vals,
+            ss_thresh,
+            vfwe_null=pFgA_vfwe_null,
+            csfwe_null=pFgA_csfwe_null,
+            cmfwe_null=pFgA_cmfwe_null,
+            tail="two",
+        )
 
         self.null_distributions_[
             "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
-        ] = pFgA_vfwe
+        ] = pFgA_vfwe_null
         self.null_distributions_[
             "values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo"
-        ] = pFgA_cfwe_size
+        ] = pFgA_csfwe_null
         self.null_distributions_[
             "values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo"
-        ] = pFgA_cfwe_mass
+        ] = pFgA_cmfwe_null
+
+        del pFgA_vfwe_null, pFgA_csfwe_null, pFgA_cmfwe_null
+
+        # Convert p-values
+        # pAgF
+        pAgF_z_vfwe_vals = p_to_z(pAgF_p_vfwe_vals, tail="two") * pAgF_sign
+        pAgF_logp_vfwe_vals = -np.log10(pAgF_p_vfwe_vals)
+        pAgF_logp_vfwe_vals[np.isinf(pAgF_logp_vfwe_vals)] = -np.log10(eps)
+        pAgF_z_cmfwe_vals = p_to_z(pAgF_p_cmfwe_vals, tail="one")
+        pAgF_logp_cmfwe_vals = -np.log10(pAgF_p_cmfwe_vals)
+        pAgF_logp_cmfwe_vals[np.isinf(pAgF_logp_cmfwe_vals)] = -np.log10(eps)
+        pAgF_z_csfwe_vals = p_to_z(pAgF_p_csfwe_vals, tail="one")
+        pAgF_logp_csfwe_vals = -np.log10(pAgF_p_csfwe_vals)
+        pAgF_logp_csfwe_vals[np.isinf(pAgF_logp_csfwe_vals)] = -np.log10(eps)
+
+        # pFgA
+        pFgA_z_vfwe_vals = p_to_z(pFgA_p_vfwe_vals, tail="two") * pFgA_sign
+        pFgA_logp_vfwe_vals = -np.log10(pFgA_p_vfwe_vals)
+        pFgA_logp_vfwe_vals[np.isinf(pFgA_logp_vfwe_vals)] = -np.log10(eps)
+        pFgA_z_cmfwe_vals = p_to_z(pFgA_p_cmfwe_vals, tail="one")
+        pFgA_logp_cmfwe_vals = -np.log10(pFgA_p_cmfwe_vals)
+        pFgA_logp_cmfwe_vals[np.isinf(pFgA_logp_cmfwe_vals)] = -np.log10(eps)
+        pFgA_z_csfwe_vals = p_to_z(pFgA_p_csfwe_vals, tail="one")
+        pFgA_logp_csfwe_vals = -np.log10(pFgA_p_csfwe_vals)
+        pFgA_logp_csfwe_vals[np.isinf(pFgA_logp_csfwe_vals)] = -np.log10(eps)
 
         images = {
-            "p_desc-consistency_level-voxel": pAgF_p_FWE,
-            "z_desc-consistency_level-voxel": pAgF_z_FWE,
-            "p_desc-specificity_level-voxel": pFgA_p_FWE,
-            "z_desc-specificity_level-voxel": pFgA_z_FWE,
+            # Consistency analysis
+            "p_desc-consistency_level-voxel": pAgF_p_vfwe_vals,
+            "z_desc-consistency_level-voxel": pAgF_z_vfwe_vals,
+            "logp_desc-consistency_level-voxel": pAgF_logp_vfwe_vals,
+            "p_desc-consistencyMass_level-cluster": pAgF_p_cmfwe_vals,
+            "z_desc-consistencyMass_level-cluster": pAgF_z_cmfwe_vals,
+            "logp_desc-consistencyMass_level-cluster": pAgF_logp_cmfwe_vals,
+            "p_desc-consistencySize_level-cluster": pAgF_p_csfwe_vals,
+            "z_desc-consistencySize_level-cluster": pAgF_z_csfwe_vals,
+            "logp_desc-consistencySize_level-cluster": pAgF_logp_csfwe_vals,
+            # Specificity analysis
+            "p_desc-specificity_level-voxel": pFgA_p_vfwe_vals,
+            "z_desc-specificity_level-voxel": pFgA_z_vfwe_vals,
+            "logp_desc-specificity_level-voxel": pFgA_logp_vfwe_vals,
+            "p_desc-specificityMass_level-cluster": pFgA_p_cmfwe_vals,
+            "z_desc-specificityMass_level-cluster": pFgA_z_cmfwe_vals,
+            "logp_desc-specificityMass_level-cluster": pFgA_logp_cmfwe_vals,
+            "p_desc-specificitySize_level-cluster": pFgA_p_csfwe_vals,
+            "z_desc-specificitySize_level-cluster": pFgA_z_csfwe_vals,
+            "logp_desc-specificitySize_level-cluster": pFgA_logp_csfwe_vals,
         }
         return images
 
