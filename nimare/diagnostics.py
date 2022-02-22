@@ -9,10 +9,11 @@ from joblib import Parallel, delayed
 from nibabel.funcs import squeeze_image
 from nilearn import image, input_data
 from scipy import ndimage
+from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
-from .base import NiMAREBase
-from .utils import tqdm_joblib, vox2mm
+from nimare.base import NiMAREBase
+from nimare.utils import mm2vox, tqdm_joblib, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -307,11 +308,10 @@ class FocusCounter(NiMAREBase):
                 "This may be because the Estimator was a pairwise Estimator. "
                 "The Jackknife method does not currently work with pairwise Estimators."
             )
-        dset = result.estimator.dataset
+
         # We need to copy the estimator because it will otherwise overwrite the original version
         # with one missing a study in its inputs.
         estimator = copy.deepcopy(result.estimator)
-        original_masker = estimator.masker
 
         # Collect the thresholded cluster map
         if self.target_image in result.maps:
@@ -357,9 +357,7 @@ class FocusCounter(NiMAREBase):
         # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
         cluster_ids = list(range(1, n_clusters + 1))
         cluster_coms = ndimage.center_of_mass(
-            labeled_cluster_arr,
-            labeled_cluster_arr,
-            cluster_ids,
+            labeled_cluster_arr, labeled_cluster_arr, cluster_ids
         )
         cluster_coms = np.array(cluster_coms)
         cluster_coms = vox2mm(cluster_coms, target_img.affine)
@@ -383,58 +381,32 @@ class FocusCounter(NiMAREBase):
             jackknife_results = Parallel(n_jobs=self.n_cores)(
                 delayed(self._transform)(
                     study_id,
-                    all_ids=meta_ids,
-                    dset=dset,
-                    estimator=estimator,
-                    target_value_map=target_value_map,
-                    stat_values=stat_values,
-                    original_masker=original_masker,
+                    coords_df=estimator.inputs_["coordinates"],
                     cluster_masker=cluster_masker,
                 )
                 for study_id in meta_ids
             )
 
         # Add the results to the table
-        for expid, stat_prop_values in jackknife_results:
-            contribution_table.loc[expid] = stat_prop_values
+        for expid, focus_counts in jackknife_results:
+            contribution_table.loc[expid] = focus_counts
 
         return contribution_table, labeled_cluster_img
 
-    def _transform(
-        self,
-        expid,
-        all_ids,
-        dset,
-        estimator,
-        target_value_map,
-        stat_values,
-        original_masker,
-        cluster_masker,
-    ):
-        # Fit Estimator to all studies except the target study
-        other_ids = [id_ for id_ in all_ids if id_ != expid]
-        temp_dset = dset.slice(other_ids)
-        temp_result = estimator.fit(temp_dset)
+    def _transform(self, expid, coordinates_df, labeled_cluster_map, affine):
+        coords = coordinates_df.loc[coordinates_df["id"] == expid]
+        ijk = mm2vox(coords[["x", "y", "z"]], affine)
 
-        # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
-        temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
-        temp_stat_vals = np.squeeze(original_masker.transform(temp_stat_img))
+        clust_ids = sorted(list(np.unique(labeled_cluster_map)[1:]))
+        focus_counts = []
 
-        # Voxelwise proportional reduction of each statistic after removal of the experiment
-        with np.errstate(divide="ignore", invalid="ignore"):
-            prop_values = np.true_divide(temp_stat_vals, stat_values)
-            prop_values = np.nan_to_num(prop_values)
+        for i_cluster, c_val in enumerate(clust_ids):
+            cluster_mask = labeled_cluster_map == c_val
+            cluster_idx = np.vstack(np.where(cluster_mask))
+            distances = cdist(cluster_idx.T, ijk)
+            distances = distances < 1
+            distances = np.any(distances, axis=0)
+            n_included_voxels = np.sum(distances)
+            focus_counts.append(n_included_voxels)
 
-        voxelwise_stat_prop_values = 1 - prop_values
-
-        # Now get the cluster-wise mean of the proportion values
-        # pending resolution of https://github.com/nilearn/nilearn/issues/2724
-        try:
-            stat_prop_img = original_masker.inverse_transform(voxelwise_stat_prop_values)
-        except IndexError:
-            stat_prop_img = squeeze_image(
-                original_masker.inverse_transform([voxelwise_stat_prop_values])
-            )
-
-        stat_prop_values = cluster_masker.transform(stat_prop_img)
-        return expid, stat_prop_values
+        return expid, focus_counts
