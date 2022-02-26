@@ -206,6 +206,8 @@ class Jackknife(NiMAREBase):
         original_masker,
         cluster_masker,
     ):
+        estimator = copy.deepcopy(estimator)
+
         # Fit Estimator to all studies except the target study
         other_ids = [id_ for id_ in all_ids if id_ != expid]
         temp_dset = dset.slice(other_ids)
