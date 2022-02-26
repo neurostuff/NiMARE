@@ -439,7 +439,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         labeled_arr3d = np.empty(arr3d.shape, int)
         labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
         n_positive_clusters = np.max(labeled_arr3d)
-        temp_labeled_arr3d = ndimage.measurements.label(arr3d < 0, conn)
+        temp_labeled_arr3d, _ = ndimage.measurements.label(arr3d < 0, conn)
         temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
         labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
         del temp_labeled_arr3d
@@ -624,7 +624,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         labeled_matrix = np.empty(stat_map_thresh.shape, int)
         labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh > 0, conn)
         n_positive_clusters = np.max(labeled_matrix)
-        temp_labeled_matrix = ndimage.measurements.label(stat_map_thresh < 0, conn)
+        temp_labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh < 0, conn)
         temp_labeled_matrix[temp_labeled_matrix > 0] += n_positive_clusters
         labeled_matrix = labeled_matrix + temp_labeled_matrix
         del temp_labeled_matrix
