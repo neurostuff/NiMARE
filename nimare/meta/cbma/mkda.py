@@ -415,15 +415,42 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return images
 
     def _calculate_cluster_measures(self, arr3d, threshold, conn):
-        arr3d[arr3d <= threshold] = 0
-        labeled_arr3d = ndimage.measurements.label(arr3d, conn)[0]
+        """Calculate maximum cluster mass and size for an array.
+
+        This method assesses both positive and negative clusters.
+
+        Parameters
+        ----------
+        arr3d : :obj:`numpy.ndarray`
+            Unthresholded 3D summary-statistic matrix.
+        threshold : :obj:`float`
+            Uncorrected summary-statistic thresholded for defining clusters.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            Connectivity matrix for defining clusters.
+
+        Returns
+        -------
+        max_size, max_mass : :obj:`float`
+            Maximum cluster size and mass from the matrix.
+        """
+        arr3d[np.abs(arr3d) <= threshold] = 0
+
+        # Label positive and negative clusters separately
+        labeled_arr3d = np.empty(arr3d.shape, int)
+        labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
+        n_positive_clusters = np.max(labeled_arr3d)
+        temp_labeled_arr3d = ndimage.measurements.label(arr3d < 0, conn)
+        temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
+        labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
+        del temp_labeled_arr3d
+
         clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
         assert clust_vals[0] == 0
 
         # Cluster mass-based inference
         max_mass = 0
         for unique_val in clust_vals[1:]:
-            ss_vals = arr3d[labeled_arr3d == unique_val] - threshold
+            ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
             max_mass = np.maximum(max_mass, np.sum(ss_vals))
 
         # Cluster size-based inference
@@ -436,6 +463,35 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return max_size, max_mass
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
+        """Run a single permutation of the Monte Carlo FWE correction procedure.
+
+        Parameters
+        ----------
+        iter_xyz1, iter_xyz2 : :obj:`numpy.ndarray`
+            Random coordinates for the permutation.
+        iter_df1, iter_df2 : :obj:`pandas.DataFrame`
+            DataFrames with as many rows as there are coordinates in each of the two datasets,
+            to be filled in with random coordinates for the permutation.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            Connectivity matrix for defining clusters.
+        voxel_thresh : :obj:`float`
+            Uncorrected summary-statistic thresholded for defining clusters.
+
+        Returns
+        -------
+        pAgF_max_chi2_value : :obj:`float`
+            Forward inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgF_max_size : :obj:`float`
+            Forward inference maximum cluster size, for cluster-level FWE correction.
+        pAgF_max_mass : :obj:`float`
+            Forward inference maximum cluster mass, for cluster-level FWE correction.
+        pFgA_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pFgA_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pFgA_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
+        """
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df1 = iter_df1.copy()
@@ -519,6 +575,24 @@ class MKDAChi2(PairwiseCBMAEstimator):
         cmfwe_null=None,
         tail="two",
     ):
+        """Apply different kinds of FWE correction to statistical value matrix.
+
+        Parameters
+        ----------
+        stat_values : :obj:`numpy.ndarray`
+            1D array of summary-statistic values.
+        voxel_thresh : :obj:`float`
+            Summary statistic threshold for defining clusters.
+        vfwe_null, csfwe_null, cmfwe_null : :obj:`numpy.ndarray`
+            Null distributions for FWE correction.
+        tail : {"upper", "two"}, optional
+            Whether to perform upper or two-tailed thresholding.
+
+        Returns
+        -------
+        p_vfwe_values, p_csfwe_values, p_cmfwe_values : :obj:`numpy.ndarray`
+            1D arrays of FWE-corrected p-values.
+        """
         eps = np.spacing(1)
 
         # Define connectivity matrix for cluster labeling
@@ -546,7 +620,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         else:
             raise ValueError("Not sure what to do here.")
 
-        labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh, conn)
+        # Label positive and negative clusters separately
+        labeled_matrix = np.empty(stat_map_thresh.shape, int)
+        labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh > 0, conn)
+        n_positive_clusters = np.max(labeled_matrix)
+        temp_labeled_matrix = ndimage.measurements.label(stat_map_thresh < 0, conn)
+        temp_labeled_matrix[temp_labeled_matrix > 0] += n_positive_clusters
+        labeled_matrix = labeled_matrix + temp_labeled_matrix
+        del temp_labeled_matrix
 
         cluster_labels, idx, cluster_sizes = np.unique(
             labeled_matrix,
@@ -736,10 +817,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_z_vfwe_vals = p_to_z(pAgF_p_vfwe_vals, tail="two") * pAgF_sign
         pAgF_logp_vfwe_vals = -np.log10(pAgF_p_vfwe_vals)
         pAgF_logp_vfwe_vals[np.isinf(pAgF_logp_vfwe_vals)] = -np.log10(eps)
-        pAgF_z_cmfwe_vals = p_to_z(pAgF_p_cmfwe_vals, tail="one")
+        pAgF_z_cmfwe_vals = p_to_z(pAgF_p_cmfwe_vals, tail="two") * pAgF_sign
         pAgF_logp_cmfwe_vals = -np.log10(pAgF_p_cmfwe_vals)
         pAgF_logp_cmfwe_vals[np.isinf(pAgF_logp_cmfwe_vals)] = -np.log10(eps)
-        pAgF_z_csfwe_vals = p_to_z(pAgF_p_csfwe_vals, tail="one")
+        pAgF_z_csfwe_vals = p_to_z(pAgF_p_csfwe_vals, tail="two") * pAgF_sign
         pAgF_logp_csfwe_vals = -np.log10(pAgF_p_csfwe_vals)
         pAgF_logp_csfwe_vals[np.isinf(pAgF_logp_csfwe_vals)] = -np.log10(eps)
 
@@ -747,10 +828,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_z_vfwe_vals = p_to_z(pFgA_p_vfwe_vals, tail="two") * pFgA_sign
         pFgA_logp_vfwe_vals = -np.log10(pFgA_p_vfwe_vals)
         pFgA_logp_vfwe_vals[np.isinf(pFgA_logp_vfwe_vals)] = -np.log10(eps)
-        pFgA_z_cmfwe_vals = p_to_z(pFgA_p_cmfwe_vals, tail="one")
+        pFgA_z_cmfwe_vals = p_to_z(pFgA_p_cmfwe_vals, tail="two") * pFgA_sign
         pFgA_logp_cmfwe_vals = -np.log10(pFgA_p_cmfwe_vals)
         pFgA_logp_cmfwe_vals[np.isinf(pFgA_logp_cmfwe_vals)] = -np.log10(eps)
-        pFgA_z_csfwe_vals = p_to_z(pFgA_p_csfwe_vals, tail="one")
+        pFgA_z_csfwe_vals = p_to_z(pFgA_p_csfwe_vals, tail="two") * pFgA_sign
         pFgA_logp_csfwe_vals = -np.log10(pFgA_p_csfwe_vals)
         pFgA_logp_csfwe_vals[np.isinf(pFgA_logp_csfwe_vals)] = -np.log10(eps)
 
