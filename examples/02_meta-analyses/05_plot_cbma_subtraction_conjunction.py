@@ -94,12 +94,15 @@ counter = FocusCounter(
 knowledge_count_table, knowledge_cluster_img = counter.transform(knowledge_corrected_results)
 related_count_table, related_cluster_img = counter.transform(related_corrected_results)
 
+# %%
 # #############################################################################
 knowledge_count_table.head(10)
 
+# %%
 # #############################################################################
 related_count_table.head(10)
 
+# %%
 # #############################################################################
 jackknife = Jackknife(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
@@ -108,9 +111,11 @@ jackknife = Jackknife(
 knowledge_jackknife_table, _ = jackknife.transform(knowledge_corrected_results)
 related_jackknife_table, _ = jackknife.transform(related_corrected_results)
 
+# %%
 # #############################################################################
 knowledge_jackknife_table.head(10)
 
+# %%
 # #############################################################################
 related_jackknife_table.head(10)
 
