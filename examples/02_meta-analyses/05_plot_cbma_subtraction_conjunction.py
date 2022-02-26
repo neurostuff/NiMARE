@@ -20,7 +20,7 @@ from nilearn.plotting import plot_stat_map
 
 from nimare import io, utils
 from nimare.correct import FWECorrector
-from nimare.diagnostics import FocusCounter
+from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALE, ALESubtraction
 
 ###############################################################################
@@ -83,21 +83,36 @@ fig.show()
 ###############################################################################
 # Characterize the relative contributions of experiments in the ALE results
 # -----------------------------------------------------------------------------
+# NiMARE contains two methods for this: :class:`~nimare.diagnostics.Jackknife`
+# and :class:`~nimare.diagnostics.FocusCounter`.
+# We will show both below.
 
 counter = FocusCounter(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
-knowledge_cluster_table, knowledge_cluster_img = counter.transform(knowledge_corrected_results)
-related_cluster_table, related_cluster_img = counter.transform(related_corrected_results)
+knowledge_count_table, knowledge_cluster_img = counter.transform(knowledge_corrected_results)
+related_count_table, related_cluster_img = counter.transform(related_corrected_results)
 
-# %%
 # #############################################################################
-knowledge_cluster_table.head(10)
+knowledge_count_table.head(10)
 
-# %%
 # #############################################################################
-related_cluster_table.head(10)
+related_count_table.head(10)
+
+# #############################################################################
+jackknife = Jackknife(
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
+)
+knowledge_jackknife_table, _ = jackknife.transform(knowledge_corrected_results)
+related_jackknife_table, _ = jackknife.transform(related_corrected_results)
+
+# #############################################################################
+knowledge_jackknife_table.head(10)
+
+# #############################################################################
+related_jackknife_table.head(10)
 
 ###############################################################################
 # Subtraction analysis
