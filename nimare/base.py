@@ -440,8 +440,9 @@ class MetaEstimator(Estimator):
                     f"Masking out {n_bad_voxels} additional voxels. "
                     "The updated masker is available in the Estimator.masker attribute."
                 )
-        for name, raw_masked_data in temp_image_inputs.items():
-            self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
+
+            for name, raw_masked_data in temp_image_inputs.items():
+                self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
 
 
 class Transformer(NiMAREBase):
