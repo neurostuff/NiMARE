@@ -102,7 +102,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
             target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
             voxel_thresh=None,
         )
-        count_df = fcounter.transform(cres)
+        count_df, _ = fcounter.transform(cres)
 
         boilerplate = boilerplate.format(
             n_exps=len(dset.ids),
@@ -190,10 +190,10 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
             target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
             voxel_thresh=None,
         )
-        count_df1 = fcounter.transform(cres1)
+        count_df1, _ = fcounter.transform(cres1)
 
         cres2 = corr.transform(res2)
-        count_df2 = fcounter.transform(cres2)
+        count_df2, _ = fcounter.transform(cres2)
 
         sub = ALESubtraction(n_iters=n_iters, kernel__fwhm=fwhm)
         sres = sub.fit(dset1, dset2)
