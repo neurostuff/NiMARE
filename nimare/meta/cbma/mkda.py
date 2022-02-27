@@ -266,8 +266,20 @@ class MKDAChi2(PairwiseCBMAEstimator):
             -   ``values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(A|F) one-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
             -   ``values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(F|A) two-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
 
     Notes
@@ -641,13 +653,25 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Notes
         -----
-        This method adds three new keys to the ``null_distributions_`` attribute:
+        This method adds six new keys to the ``null_distributions_`` attribute:
 
             -   ``values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(A|F) one-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
             -   ``values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(F|A) two-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
 
         See Also
