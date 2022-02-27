@@ -7,6 +7,7 @@ from shutil import copyfile
 import numpy as np
 
 from nimare.correct import FWECorrector
+from nimare.diagnostics import FocusCounter
 from nimare.io import convert_sleuth_to_dataset
 from nimare.meta import ALE, ALESubtraction
 
@@ -97,6 +98,11 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
             method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
         )
         cres = corr.transform(results)
+        fcounter = FocusCounter(
+            target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+            voxel_thresh=None,
+        )
+        count_df = fcounter.transform(cres)
 
         boilerplate = boilerplate.format(
             n_exps=len(dset.ids),
@@ -180,7 +186,15 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
             method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
         )
         cres1 = corr.transform(res1)
+        fcounter = FocusCounter(
+            target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+            voxel_thresh=None,
+        )
+        count_df1 = fcounter.transform(cres1)
+
         cres2 = corr.transform(res2)
+        count_df2 = fcounter.transform(cres2)
+
         sub = ALESubtraction(n_iters=n_iters, kernel__fwhm=fwhm)
         sres = sub.fit(dset1, dset2)
 
@@ -211,13 +225,16 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
     LGR.info("Saving output maps...")
     if not sleuth_file2:
         cres.save_maps(output_dir=output_dir, prefix=prefix)
+        count_df.to_csv(os.path.join(output_dir, prefix + "_clust.tsv"), index=False, sep="\t")
         copyfile(sleuth_file, os.path.join(output_dir, prefix + "input_coordinates.txt"))
     else:
         prefix1 = os.path.splitext(os.path.basename(sleuth_file))[0] + "_"
         prefix2 = os.path.splitext(os.path.basename(sleuth_file2))[0] + "_"
         prefix3 = prefix + "subtraction_"
         cres1.save_maps(output_dir=output_dir, prefix=prefix1)
+        count_df1.to_csv(os.path.join(output_dir, prefix1 + "_clust.tsv"), index=False, sep="\t")
         cres2.save_maps(output_dir=output_dir, prefix=prefix2)
+        count_df2.to_csv(os.path.join(output_dir, prefix2 + "_clust.tsv"), index=False, sep="\t")
         sres.save_maps(output_dir=output_dir, prefix=prefix3)
         copyfile(sleuth_file, os.path.join(output_dir, prefix + "group1_input_coordinates.txt"))
         copyfile(sleuth_file2, os.path.join(output_dir, prefix + "group2_input_coordinates.txt"))
