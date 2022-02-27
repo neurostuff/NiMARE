@@ -21,6 +21,8 @@ LGR = logging.getLogger(__name__)
 class Jackknife(NiMAREBase):
     """Run a jackknife analysis on a meta-analysis result.
 
+    .. versionadded:: 0.0.11
+
     Parameters
     ----------
     target_image : :obj:`str`, optional
@@ -239,6 +241,8 @@ class Jackknife(NiMAREBase):
 
 class FocusCounter(NiMAREBase):
     """Run a focus-count analysis on a coordinate-based meta-analysis result.
+
+    .. versionadded:: 0.0.12
 
     Parameters
     ----------
