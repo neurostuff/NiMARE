@@ -75,8 +75,8 @@ plot_stat_map(
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
 plot_stat_map(
-    cres.get_map("z_desc-consistency_level-voxel_corr-FWE_method-montecarlo"),
-    threshold=1.65,
+    cres.get_map("z_desc-consistencySize_level-cluster_corr-FWE_method-montecarlo"),
+    threshold=0.001,
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
