@@ -490,7 +490,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
 
         # Voxel-level inference
-        pAgF_max_chi2_value = np.max(pAgF_chi2_vals)
+        pAgF_max_chi2_value = np.max(np.abs(pAgF_chi2_vals))
 
         # Cluster-level inference
         pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata().copy()
@@ -513,7 +513,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_chi2_vals = two_way(cells)
 
         # Voxel-level inference
-        pFgA_max_chi2_value = np.max(pFgA_chi2_vals)
+        pFgA_max_chi2_value = np.max(np.abs(pFgA_chi2_vals))
 
         # Cluster-level inference
         pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata().copy()
@@ -530,15 +530,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pFgA_max_mass,
         )
 
-    def _apply_correction(
-        self,
-        stat_values,
-        voxel_thresh,
-        vfwe_null=None,
-        csfwe_null=None,
-        cmfwe_null=None,
-        tail="two",
-    ):
+    def _apply_correction(self, stat_values, voxel_thresh, vfwe_null, csfwe_null, cmfwe_null):
         """Apply different kinds of FWE correction to statistical value matrix.
 
         Parameters
@@ -549,8 +541,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
             Summary statistic threshold for defining clusters.
         vfwe_null, csfwe_null, cmfwe_null : :obj:`numpy.ndarray`
             Null distributions for FWE correction.
-        tail : {"upper", "two"}, optional
-            Whether to perform upper or two-tailed thresholding.
 
         Returns
         -------
@@ -566,7 +556,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         conn[1, :, :] = 1
 
         # Voxel-level FWE
-        p_vfwe_values = null_to_p(stat_values, vfwe_null, tail=tail)
+        p_vfwe_values = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
 
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
         # Prevents inf z-values.
@@ -577,12 +567,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
         stat_map_thresh = self.masker.inverse_transform(stat_values).get_fdata()
 
-        if tail == "upper":
-            stat_map_thresh[stat_map_thresh <= voxel_thresh] = 0
-        elif tail == "two":
-            stat_map_thresh[np.abs(stat_map_thresh) <= voxel_thresh] = 0
-        else:
-            raise ValueError("Not sure what to do here.")
+        stat_map_thresh[np.abs(stat_map_thresh) <= voxel_thresh] = 0
 
         # Label positive and negative clusters separately
         labeled_matrix = np.empty(stat_map_thresh.shape, int)
@@ -606,10 +591,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             if i_val == 0:
                 cluster_masses[i_val] = 0
 
-            cluster_mass = np.sum(stat_map_thresh[stat_map_thresh == i_val] - voxel_thresh)
+            cluster_mass = np.sum(np.abs(stat_map_thresh[labeled_matrix == i_val]) - voxel_thresh)
             cluster_masses[i_val] = cluster_mass
 
-        p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail)
+        p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail="upper")
         p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
 
         p_cmfwe_values = np.squeeze(
@@ -618,7 +603,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Cluster size-based inference
         cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
-        p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail)
+        p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail="upper")
         p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
         p_csfwe_values = np.squeeze(
             self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
@@ -790,7 +775,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
             vfwe_null=pAgF_vfwe_null,
             csfwe_null=pAgF_csfwe_null,
             cmfwe_null=pAgF_cmfwe_null,
-            tail="two",
         )
 
         self.null_distributions_[
@@ -812,7 +796,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
             vfwe_null=pFgA_vfwe_null,
             csfwe_null=pFgA_csfwe_null,
             cmfwe_null=pFgA_cmfwe_null,
-            tail="two",
         )
 
         self.null_distributions_[
