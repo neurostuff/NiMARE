@@ -463,6 +463,59 @@ class CBMAEstimator(MetaEstimator):
             "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = fwe_voxel_max
 
+    def _calculate_cluster_measures(self, arr3d, threshold, conn, tail="upper"):
+        """Calculate maximum cluster mass and size for an array.
+
+        This method assesses both positive and negative clusters.
+
+        Parameters
+        ----------
+        arr3d : :obj:`numpy.ndarray`
+            Unthresholded 3D summary-statistic matrix. This matrix will end up changed in place.
+        threshold : :obj:`float`
+            Uncorrected summary-statistic thresholded for defining clusters.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            Connectivity matrix for defining clusters.
+
+        Returns
+        -------
+        max_size, max_mass : :obj:`float`
+            Maximum cluster size and mass from the matrix.
+        """
+        if tail == "upper":
+            arr3d[arr3d <= threshold] = 0
+        else:
+            arr3d[np.abs(arr3d) <= threshold] = 0
+
+        labeled_arr3d = np.empty(arr3d.shape, int)
+        labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
+
+        if tail == "two":
+            # Label positive and negative clusters separately
+            n_positive_clusters = np.max(labeled_arr3d)
+            temp_labeled_arr3d, _ = ndimage.measurements.label(arr3d < 0, conn)
+            temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
+            labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
+            del temp_labeled_arr3d
+
+        clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
+        assert clust_vals[0] == 0
+
+        # Cluster mass-based inference
+        max_mass = 0
+        for unique_val in clust_vals[1:]:
+            ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
+            max_mass = np.maximum(max_mass, np.sum(ss_vals))
+
+        # Cluster size-based inference
+        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+        if clust_sizes.size:
+            max_size = np.max(clust_sizes)
+        else:
+            max_size = 0
+
+        return max_size, max_mass
+
     def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh):
         """Run a single Monte Carlo permutation of a dataset.
 
@@ -480,6 +533,8 @@ class CBMAEstimator(MetaEstimator):
             The 3D structuring array for labeling clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary statistic threshold for defining clusters.
+        tail : {"upper", "two"}, optional
+            Whether to perform upper or two-tailed thresholding.
 
         Returns
         -------
@@ -504,27 +559,11 @@ class CBMAEstimator(MetaEstimator):
 
         # Cluster-level inference
         iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
-        iter_ss_map[iter_ss_map <= voxel_thresh] = 0
-        labeled_matrix = ndimage.measurements.label(iter_ss_map, conn)[0]
-        clust_vals, clust_sizes = np.unique(labeled_matrix, return_counts=True)
-        assert clust_vals[0] == 0
+        iter_max_size, iter_max_mass = self._calculate_cluster_measures(
+            iter_ss_map, voxel_thresh, conn, tail="upper"
+        )
 
-        # Cluster mass-based inference
-        iter_max_mass = 0
-        for unique_val in clust_vals[1:]:
-            ss_vals = iter_ss_map[labeled_matrix == unique_val] - voxel_thresh
-            iter_max_mass = np.maximum(iter_max_mass, np.sum(ss_vals))
-
-        del iter_ss_map, labeled_matrix
-
-        # Cluster size-based inference
-        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        if clust_sizes.size:
-            iter_max_cluster = np.max(clust_sizes)
-        else:
-            iter_max_cluster = 0
-
-        return iter_max_value, iter_max_cluster, iter_max_mass
+        return iter_max_value, iter_max_size, iter_max_mass
 
     def correct_fwe_montecarlo(
         self, result, voxel_thresh=0.001, n_iters=10000, n_cores=1, vfwe_only=False
