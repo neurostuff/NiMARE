@@ -48,7 +48,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    threshold=0.001,
+    threshold=0.1,
 )
 
 ###############################################################################
@@ -65,7 +65,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    threshold=0.001,
+    threshold=0.1,
 )
 
 ###############################################################################
@@ -79,7 +79,7 @@ plot_stat_map(
     cres.get_map("z_desc-consistencySize_level-cluster_corr-FWE_method-montecarlo"),
     draw_cross=False,
     cmap="RdBu_r",
-    threshold=0.001,
+    threshold=0.1,
 )
 
 ###############################################################################
@@ -94,7 +94,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    threshold=0.001,
+    threshold=0.1,
 )
 
 ###############################################################################
@@ -109,5 +109,5 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    threshold=0.001,
+    threshold=0.1,
 )
