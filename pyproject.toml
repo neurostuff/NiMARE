@@ -26,7 +26,9 @@ exclude = '''
 
 [tool.pytest.ini_options]
 markers = [
-    "performance: mark tests that measure performance (deselect with '-m \"not performance\"')",
+    "performance_smoke: mark smoke tests that measure performance",
+    "performance_estimators: mark tests that measure estimator performance",
+    "performance_correctors: mark tests that measure corrector performance",
 ]
 
 [tool.isort]
