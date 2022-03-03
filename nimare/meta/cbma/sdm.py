@@ -414,6 +414,9 @@ def _combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_st
     # The B term is the sum of squared differences
     b = (1 / (coefficient_maps.shape[0] - 1)) * 5
 
+    # Delete the variables for linting purposes
+    del point_estimates, mean_within_imputation_var, b
+
 
 def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
     """Run the SDM algorithm.
