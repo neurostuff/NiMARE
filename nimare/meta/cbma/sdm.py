@@ -73,7 +73,7 @@ def _simulate_voxel_with_one_neighbor(A, r_ay):
     # Correlation between A and R.
     r_ar = np.corrcoef((A, R))[1, 0]
 
-    w_r = np.sqrt((1 - (r_ay ** 2)) / (1 - (r_ar ** 2)))
+    w_r = np.sqrt((1 - (r_ay**2)) / (1 - (r_ar**2)))
     w_a = r_ay - (w_r * r_ar)
     y = (w_a * A) + (w_r * R)
     return y
@@ -100,10 +100,10 @@ def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
     r_br = np.corrcoef((B, R))[1, 0]
 
     w_r = np.sqrt(
-        (1 - (r_ab ** 2) - (r_ay ** 2) - (r_by ** 2) + (2 * r_ab * r_ay * r_by))
-        / (1 - (r_ab ** 2) - (r_ar ** 2) - (r_br ** 2) + (2 * r_ab * r_ar * r_br))
+        (1 - (r_ab**2) - (r_ay**2) - (r_by**2) + (2 * r_ab * r_ay * r_by))
+        / (1 - (r_ab**2) - (r_ar**2) - (r_br**2) + (2 * r_ab * r_ar * r_br))
     )
-    w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar)))) / (1 - (r_ab ** 2))
+    w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar)))) / (1 - (r_ab**2))
     w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
 
     y = (w_a * A) + (w_b * B) + (w_r * R)
@@ -135,13 +135,13 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
 
     w_r_num1 = (
         1
-        - (r_ab ** 2)
-        - (r_ac ** 2)
-        - (r_bc ** 2)
+        - (r_ab**2)
+        - (r_ac**2)
+        - (r_bc**2)
         + (2 * r_ab * r_ac * r_bc)
-        - ((r_ay ** 2) * (1 - (r_bc ** 2)))
-        - ((r_by ** 2) * (1 - (r_ac ** 2)))
-        - ((r_cy ** 2) * (1 - (r_ab ** 2)))
+        - ((r_ay**2) * (1 - (r_bc**2)))
+        - ((r_by**2) * (1 - (r_ac**2)))
+        - ((r_cy**2) * (1 - (r_ab**2)))
     )
     w_r_num2 = (
         (2 * r_ay * r_by * (r_ab - (r_ac * r_bc)))
@@ -152,13 +152,13 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
 
     w_r_den1 = (
         1
-        - (r_ab ** 2)
-        - (r_ac ** 2)
-        - (r_bc ** 2)
+        - (r_ab**2)
+        - (r_ac**2)
+        - (r_bc**2)
         + (2 * r_ab * r_ac * r_bc)
-        - ((r_ar ** 2) * (1 - (r_bc ** 2)))
-        - ((r_br ** 2) * (1 - (r_ac ** 2)))
-        - ((r_cr ** 2) * (1 - (r_ab ** 2)))
+        - ((r_ar**2) * (1 - (r_bc**2)))
+        - ((r_br**2) * (1 - (r_ac**2)))
+        - ((r_cr**2) * (1 - (r_ab**2)))
     )
     w_r_den2 = (
         (2 * r_ar * r_br * (r_ab - (r_ac * r_bc)))
@@ -169,22 +169,22 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
     w_r = w_r_num / w_r_den
 
     w_c_num1 = (
-        (r_cy * (1 - (r_ab ** 2)))
+        (r_cy * (1 - (r_ab**2)))
         - (r_ac * (r_ay - (r_ab * r_by)))
         - (r_bc * (r_by - (r_ab * r_ay)))
     )
     w_c_num2 = w_r * (
-        (r_cr * (1 - (r_ab ** 2)))
+        (r_cr * (1 - (r_ab**2)))
         - (r_ac * (r_ar - (r_ab * r_br)))
         - (r_bc * (r_br - (r_ab * r_ar)))
     )
     w_c_num = w_c_num1 - w_c_num2
-    w_c_den = 1 - (r_ab ** 2) - (r_ac ** 2) - (r_bc ** 2) + (2 * r_ab * r_ac * r_bc)
+    w_c_den = 1 - (r_ab**2) - (r_ac**2) - (r_bc**2) + (2 * r_ab * r_ac * r_bc)
     w_c = w_c_num / w_c_den
 
     w_b = (
         (r_by - (r_ab * r_ay)) - (w_c * (r_bc - (r_ab * r_ac))) - (w_r * (r_br - (r_ab * r_ar)))
-    ) / (1 - (r_ab ** 2))
+    ) / (1 - (r_ab**2))
     w_a = r_ay - (w_b * r_ab) - (w_c * r_ac) - (w_r * r_ar)
 
     y = (w_a * A) + (w_b * B) + (w_c * C) + (w_r * R)
@@ -664,7 +664,7 @@ def hedges_g_var(g, n_subjects1, n_subjects2=None):
     if n_subjects2 is not None:
         assert g.shape == n_subjects1.shape == n_subjects2.shape
         g_var = ((n_subjects1 + n_subjects2) / (n_subjects1 * n_subjects2)) + (
-            (g ** 2) / (2 * (n_subjects1 + n_subjects2))
+            (g**2) / (2 * (n_subjects1 + n_subjects2))
         )
     else:
         raise ValueError("One-sample tests are not yet supported.")
@@ -975,12 +975,12 @@ def compute_sdm_ma(
     real_distances = spatial.distance.cdist(kept_ijk, mask_ijk)
     # closest_peak = np.argmin(real_distances, axis=0)
     virtual_distances = np.sqrt(
-        (1 - alpha) * (real_distances ** 2) + alpha * 2 * kernel_sigma * np.log(peak_corr ** -1)
+        (1 - alpha) * (real_distances**2) + alpha * 2 * kernel_sigma * np.log(peak_corr**-1)
     )
-    y_lower = min_effect_size + np.exp((-(virtual_distances ** 2)) / (2 * kernel_sigma)) * (
+    y_lower = min_effect_size + np.exp((-(virtual_distances**2)) / (2 * kernel_sigma)) * (
         peak_t - min_effect_size
     )
-    y_upper = max_effect_size + np.exp((-(virtual_distances ** 2)) / (2 * kernel_sigma)) * (
+    y_upper = max_effect_size + np.exp((-(virtual_distances**2)) / (2 * kernel_sigma)) * (
         peak_t - max_effect_size
     )
     y_lower_img = masking.unmask(y_lower, mask_img)
