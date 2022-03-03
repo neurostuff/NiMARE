@@ -1,15 +1,10 @@
 """Test nimare.meta.kernel (CBMA kernel estimators)."""
-import shutil
-
 import nibabel as nib
 import numpy as np
 import pytest
 from scipy.ndimage.measurements import center_of_mass
 
-import nimare
-from nimare import extract
-from nimare.dataset import Dataset
-from nimare.meta import MKDADensity, kernel
+from nimare.meta import kernel
 from nimare.utils import get_masker, get_template, mm2vox
 
 
@@ -194,46 +189,3 @@ def test_ALEKernel_sample_size(testdata_cbma):
     max_idx = np.array(np.where(kern_data == np.max(kern_data))).T
     max_ijk = np.squeeze(max_idx)
     assert np.array_equal(ijk, max_ijk)
-
-
-def test_Peaks2MapsKernel(testdata_cbma, tmp_path_factory):
-    """Test Peaks2MapsKernel."""
-    tmpdir = tmp_path_factory.mktemp("test_Peaks2MapsKernel")
-
-    model_dir = extract.download_peaks2maps_model()
-
-    testdata_cbma.update_path(tmpdir)
-    kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
-    # MA map generation from transformer
-    ma_maps = kern.transform(testdata_cbma, return_type="image")
-    ma_arr = kern.transform(testdata_cbma, return_type="array")
-    dset = kern.transform(testdata_cbma, return_type="dataset")
-    # Load generated MA maps
-    ma_maps_from_dset = kern.transform(dset, return_type="image")
-    ma_arr_from_dset = kern.transform(dset, return_type="array")
-    dset_from_dset = kern.transform(dset, return_type="dataset")
-    ma_maps_arr = testdata_cbma.masker.transform(ma_maps)
-    ma_maps_from_dset_arr = dset.masker.transform(ma_maps_from_dset)
-    ids = dset.coordinates["id"].unique()
-    ma_maps_dset = testdata_cbma.masker.transform(dset.get_images(ids=ids, imtype=kern.image_type))
-    assert isinstance(dset_from_dset, Dataset)
-    assert np.array_equal(ma_arr, ma_maps_arr)
-    assert np.array_equal(ma_arr, ma_maps_dset)
-    assert np.array_equal(ma_arr, ma_maps_from_dset_arr)
-    assert np.array_equal(ma_arr, ma_arr_from_dset)
-    shutil.rmtree(model_dir)
-
-
-def test_Peaks2MapsKernel_MKDADensity(testdata_cbma, tmp_path_factory):
-    """Test that the Peaks2Maps kernel can work with an estimator."""
-    tmpdir = tmp_path_factory.mktemp("test_Peaks2MapsKernel_MKDADensity")
-
-    model_dir = extract.download_peaks2maps_model()
-
-    testdata_cbma.update_path(tmpdir)
-    kern = kernel.Peaks2MapsKernel(model_dir=model_dir)
-
-    est = MKDADensity(kernel_transformer=kern, null_method="approximate")
-    res = est.fit(testdata_cbma)
-    assert isinstance(res, nimare.results.MetaResult)
-    assert res.get_map("p", return_type="array").dtype == np.float64

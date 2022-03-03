@@ -26,7 +26,7 @@ However, all potential changes are explicitly and openly discussed in the descri
 
 ## Code of conduct
 
-All ``NiMARE`` community members are expected to follow our [code of conduct](https://github.com/neurostuff/NiMARE/blob/master/CODE_OF_CONDUCT.md) during any interaction with the project.
+All ``NiMARE`` community members are expected to follow our [code of conduct](https://github.com/neurostuff/NiMARE/blob/main/CODE_OF_CONDUCT.md) during any interaction with the project.
 That includes- but is not limited to- online conversations, in-person workshops or development sprints, and when giving talks about the software.
 
 As stated in the code, severe or repeated violations by community members may result in exclusion from collective decision-making and rejection of future contributions to the ``NiMARE`` project.
@@ -75,7 +75,7 @@ This allows other members of the NiMARE development team to confirm that you are
 This is now your own unique copy of NiMARE.
 Changes here won't effect anyone else's work, so it's a safe space to explore edits to the code!
 
-Make sure to [keep your fork up to date][link_updateupstreamwiki] with the master repository.
+Make sure to [keep your fork up to date][link_updateupstreamwiki] with the main repository.
 
 **3. Make the changes you've discussed.**
 
@@ -122,4 +122,4 @@ You're awesome.
 [link_branches]: https://help.github.com/articles/creating-and-deleting-branches-within-your-repository/
 [link_updateupstreamwiki]: https://help.github.com/articles/syncing-a-fork/
 [link_stemmrolemodels]: https://github.com/KirstieJane/STEMMRoleModels
-[link_zenodo]: https://github.com/neurostuff/NiMARE/blob/master/.zenodo.json
+[link_zenodo]: https://github.com/neurostuff/NiMARE/blob/main/.zenodo.json

@@ -14,13 +14,13 @@ lint:
 	@flake8 nimare
 
 unittest:
-	@py.test -m "not performance_estimators and not performance_correctors and not performance_smoke" --cov-append --cov-report term-missing --cov=nimare nimare
+	@py.test -m "not performance_estimators and not performance_correctors and not performance_smoke" --cov-append --cov-report=xml --cov=nimare nimare
 
 test_performance_estimators:
-	@py.test -m "performance_estimators" --cov-append --cov-report term-missing --cov=nimare nimare
+	@py.test -m "performance_estimators" --cov-append --cov-report=xml --cov=nimare nimare
 
 test_performance_correctors:
-	@py.test -m "performance_correctors" --cov-append --cov-report term-missing --cov=nimare nimare
+	@py.test -m "performance_correctors" --cov-append --cov-report=xml --cov=nimare nimare
 
 test_performance_smoke:
-	@py.test -m "performance_smoke" --cov-append --cov-report term-missing --cov=nimare nimare
+	@py.test -m "performance_smoke" --cov-append --cov-report=xml --cov=nimare nimare

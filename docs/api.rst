@@ -96,6 +96,7 @@ For more information about the components of coordinate-based meta-analysis in N
    :template: class.rst
 
    diagnostics.Jackknife
+   diagnostics.FocusCounter
 
 
 .. _api_annotate_ref:
@@ -219,7 +220,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    extract.fetch_neuroquery
    extract.fetch_neurosynth
    extract.download_nidm_pain
-   extract.download_mallet
    extract.download_cognitive_atlas
    extract.download_abstracts
    extract.download_peaks2maps_model

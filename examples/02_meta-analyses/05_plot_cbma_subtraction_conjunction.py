@@ -20,7 +20,7 @@ from nilearn.plotting import plot_stat_map
 
 from nimare import io, utils
 from nimare.correct import FWECorrector
-from nimare.diagnostics import Jackknife
+from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALE, ALESubtraction
 
 ###############################################################################
@@ -83,28 +83,48 @@ fig.show()
 ###############################################################################
 # Characterize the relative contributions of experiments in the ALE results
 # -----------------------------------------------------------------------------
+# NiMARE contains two methods for this: :class:`~nimare.diagnostics.Jackknife`
+# and :class:`~nimare.diagnostics.FocusCounter`.
+# We will show both below.
 
-jknife = Jackknife(
+counter = FocusCounter(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
-knowledge_cluster_table, knowledge_cluster_img = jknife.transform(knowledge_corrected_results)
-related_cluster_table, related_cluster_img = jknife.transform(related_corrected_results)
+knowledge_count_table, knowledge_cluster_img = counter.transform(knowledge_corrected_results)
+related_count_table, related_cluster_img = counter.transform(related_corrected_results)
 
 # %%
 # #############################################################################
-knowledge_cluster_table.head(10)
+knowledge_count_table.head(10)
 
 # %%
 # #############################################################################
-related_cluster_table.head(10)
+related_count_table.head(10)
+
+# %%
+# #############################################################################
+jackknife = Jackknife(
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
+)
+knowledge_jackknife_table, _ = jackknife.transform(knowledge_corrected_results)
+related_jackknife_table, _ = jackknife.transform(related_corrected_results)
+
+# %%
+# #############################################################################
+knowledge_jackknife_table.head(10)
+
+# %%
+# #############################################################################
+related_jackknife_table.head(10)
 
 ###############################################################################
 # Subtraction analysis
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 10000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
-sub = ALESubtraction(n_iters=100, memory_limit=None)
+sub = ALESubtraction(n_iters=100, n_cores=1)
 res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
@@ -142,7 +162,7 @@ plot_stat_map(
 ###############################################################################
 # References
 # -----------------------------------------------------------------------------
-# .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
+# .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the
 #     false discovery rate and performing statistical contrasts." Human
 #     brain mapping 25.1 (2005): 155-164.
 #     https://doi.org/10.1002/hbm.20136

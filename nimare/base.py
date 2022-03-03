@@ -76,7 +76,7 @@ class NiMAREBase(metaclass=ABCMeta):
 
     def _check_ncores(self, n_cores):
         """Check number of cores used for method."""
-        if n_cores == -1:
+        if n_cores <= 0:
             n_cores = mp.cpu_count()
         elif n_cores > mp.cpu_count():
             LGR.warning(
@@ -368,6 +368,10 @@ class MetaEstimator(Estimator):
         # Ensure that protected values are not included among _required_inputs
         assert "aggressive_mask" not in self._required_inputs.keys(), "This is a protected name."
 
+        if "aggressive_mask" in self.inputs_.keys():
+            LGR.warning("Removing existing 'aggressive_mask' from Estimator.")
+            self.inputs_.pop("aggressive_mask")
+
         # A dictionary to collect masked image data, to be further reduced by the aggressive mask.
         temp_image_inputs = {}
 
@@ -440,8 +444,9 @@ class MetaEstimator(Estimator):
                     f"Masking out {n_bad_voxels} additional voxels. "
                     "The updated masker is available in the Estimator.masker attribute."
                 )
-        for name, raw_masked_data in temp_image_inputs.items():
-            self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
+
+            for name, raw_masked_data in temp_image_inputs.items():
+                self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
 
 
 class Transformer(NiMAREBase):

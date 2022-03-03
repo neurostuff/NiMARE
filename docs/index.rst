@@ -24,15 +24,15 @@ To install NiMARE check out our `installation guide`_.
    :target: https://opensource.org/licenses/MIT
    :alt: License
 
-.. image:: https://circleci.com/gh/neurostuff/NiMARE.svg?style=shield
-   :target: https://circleci.com/gh/neurostuff/NiMARE
-   :alt: CircleCI
+.. image:: https://github.com/neurostuff/NiMARE/actions/workflows/testing.yml/badge.svg
+   :target: https://github.com/neurostuff/NiMARE/actions/workflows/testing.yml
+   :alt: Test Status
 
 .. image:: https://readthedocs.org/projects/nimare/badge/?version=latest
    :target: http://nimare.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
 
-.. image:: https://codecov.io/gh/neurostuff/NiMARE/branch/master/graph/badge.svg
+.. image:: https://codecov.io/gh/neurostuff/NiMARE/branch/main/graph/badge.svg
    :target: https://codecov.io/gh/neurostuff/nimare
    :alt: Codecov
 
