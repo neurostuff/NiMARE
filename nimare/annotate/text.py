@@ -59,7 +59,7 @@ def generate_counts(text_df, text_column="abstract", tfidf=True, min_df=50, max_
             stop_words=stop_words,
         )
     weights = vectorizer.fit_transform(text).toarray()
-    names = vectorizer.get_feature_names()
+    names = vectorizer.get_feature_names_out()
     names = [str(name) for name in names]
     weights_df = pd.DataFrame(weights, columns=names, index=ids)
     weights_df.index.name = "id"
