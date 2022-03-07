@@ -42,3 +42,31 @@ Currently, those methods are spread out across a range of programming languages 
 or are never even translated from the original papers into useable tools.
 NiMARE operates on NIMADS-format datasets, which users will be able to compile by searching the NeuroStore database with the pyNIMADS library.
 A number of other services in the ecosystem will then use NiMARE functions to perform meta-analyses, including Neurosynth 2.0 and `NeuroVault`_.
+
+Other Meta-Analytic Tools
+-------------------------
+
+Outside of the shared ecosystem detailed above, there are a number of tools.
+
+Coordinate-based meta-analysis tools
+````````````````````````````````````
+
+`BrainMap`_: The `BrainMap`_ suite includes applications for the `ALE`_ CBMA algorithm (via the `GingerALE`_ app) and
+interacting with the BrainMap database (via the `Sleuth`_ and `Scribe`_ apps).
+
+The `MKDA Toolbox`_: This toolbox implements the MKDA algorithm, as well as a range derivative analyses.
+
+The `SDM`_ Toolbox: This toolbox contains the hybrid coordinate/image-based seed-based d-mapping algorithm.
+
+`NeuRoi Toolbox`_: This toolbox contains an implementation of the `Analysis of Brain Coordinates`_ (ABC) CBMA algorithm.
+
+Image-based meta-analysis tools
+```````````````````````````````
+
+`IBMA SPM extension`_: This SPM extension implements a number of image-based meta-analysis algorithms.
+
+Meta-analysis tools for other neuroimaging modalities
+`````````````````````````````````````````````````````
+
+`ERPscanr`_: A resource for semi-automated, large-scale meta-analyses of ERP data.
+
