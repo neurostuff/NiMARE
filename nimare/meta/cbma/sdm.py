@@ -504,6 +504,8 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
 
         -   "After enough iterations of steps a) to d), use the distribution of the maximum
             statistic to threshold the combined meta-analysis image obtained from unpermuted data."
+        -   This approach is used for the main analysis (i.e., the mean), but for meta-regressions
+            we need to use the Freedman-Lane permutation method on the study-level maps.
     """
     # Extract sample size information from the coordinates DataFrame.
     n_subjects = coords.groupby("id")["sample_sizes"].values
