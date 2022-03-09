@@ -5,6 +5,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from nilearn._utils import new_img_like
 from scipy import ndimage
 from tqdm.auto import tqdm
 
@@ -16,6 +17,7 @@ from ...utils import (
     _add_metadata_to_dataframe,
     _check_type,
     _safe_transform,
+    calculate_tfce,
     tqdm_joblib,
     use_memmap,
     vox2mm,
@@ -515,7 +517,7 @@ class CBMAEstimator(MetaEstimator):
 
         return max_size, max_mass
 
-    def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh):
+    def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh, tfce):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between vFWE and cFWE.
@@ -532,8 +534,7 @@ class CBMAEstimator(MetaEstimator):
             The 3D structuring array for labeling clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary statistic threshold for defining clusters.
-        tail : {"upper", "two"}, optional
-            Whether to perform upper or two-tailed thresholding.
+        tfce
 
         Returns
         -------
@@ -556,16 +557,30 @@ class CBMAEstimator(MetaEstimator):
         # Voxel-level inference
         iter_max_value = np.max(iter_ss_map)
 
+        # TFCE-based inference
+        if tfce:
+            _, iter_z_map = self._summarystat_to_p(iter_ss_map, null_method=self.null_method)
+            iter_z_map = self.masker.inverse_transform(iter_z_map).get_fdata().copy()
+            iter_max_tfce = calculate_tfce(iter_z_map)
+        else:
+            iter_max_tfce = None
+
         # Cluster-level inference
         iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
         iter_max_size, iter_max_mass = self._calculate_cluster_measures(
             iter_ss_map, voxel_thresh, conn, tail="upper"
         )
 
-        return iter_max_value, iter_max_size, iter_max_mass
+        return iter_max_value, iter_max_size, iter_max_mass, iter_max_tfce
 
     def correct_fwe_montecarlo(
-        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=1, vfwe_only=False
+        self,
+        result,
+        voxel_thresh=0.001,
+        n_iters=10000,
+        n_cores=1,
+        vfwe_only=False,
+        tfce=False,
     ):
         """Perform FWE correction using the max-value permutation method.
 
@@ -594,6 +609,8 @@ class CBMAEstimator(MetaEstimator):
             If this is set to True and the original null method was not montecarlo, an exception
             will be raised.
             Default is False.
+        tfce : :obj:`bool`, optional
+            Include TFCE-based correction as well. Default is False.
 
         Returns
         -------
@@ -626,6 +643,11 @@ class CBMAEstimator(MetaEstimator):
             -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
                 mass from each Monte Carlo iteration. An array of shape (n_iters,).
 
+        If ``tfce`` is ``True``, this method adds one more new key to ``null_distributions_``:
+
+            -   ``values_desc-tfce_level-voxel_corr-fwe_method-montecarlo``: The maximum TFCE value
+                from each Monte Carlo iteration. An array of shape (n_iters,).
+
         See Also
         --------
         nimare.correct.FWECorrector : The Corrector from which to call this method.
@@ -654,6 +676,7 @@ class CBMAEstimator(MetaEstimator):
         >>> cresult = corrector.transform(result)
         """
         stat_values = result.get_map("stat", return_type="array")
+
         if vfwe_only:
             assert self.null_method == "montecarlo"
 
@@ -665,117 +688,148 @@ class CBMAEstimator(MetaEstimator):
                 self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
                 self.null_distributions_["histogram_bins"],
             )
+            z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
+            logp_vfwe_values = -np.log10(p_vfwe_values)
+            logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
 
-        else:
-            null_xyz = vox2mm(
-                np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
-                self.masker.mask_img.affine,
-            )
+            # Return unthresholded value images
+            images = {
+                "logp_level-voxel": logp_vfwe_values,
+                "z_level-voxel": z_vfwe_values,
+            }
+            return images
 
-            n_cores = self._check_ncores(n_cores)
+        # Otherwise, do both voxel-level and cluster-level correction
+        null_xyz = vox2mm(
+            np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
+            self.masker.mask_img.affine,
+        )
 
-            # Identify summary statistic corresponding to intensity threshold
-            ss_thresh = self._p_to_summarystat(voxel_thresh)
+        n_cores = self._check_ncores(n_cores)
 
-            rand_idx = np.random.choice(
-                null_xyz.shape[0],
-                size=(self.inputs_["coordinates"].shape[0], n_iters),
-            )
-            rand_xyz = null_xyz[rand_idx, :]
-            iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
-            iter_df = self.inputs_["coordinates"].copy()
+        # Identify summary statistic corresponding to intensity threshold
+        ss_thresh = self._p_to_summarystat(voxel_thresh)
 
-            # Define connectivity matrix for cluster labeling
-            conn = ndimage.generate_binary_structure(3, 2)
+        rand_idx = np.random.choice(
+            null_xyz.shape[0],
+            size=(self.inputs_["coordinates"].shape[0], n_iters),
+        )
+        rand_xyz = null_xyz[rand_idx, :]
+        iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
+        iter_df = self.inputs_["coordinates"].copy()
 
-            with tqdm_joblib(tqdm(total=n_iters)):
-                perm_results = Parallel(n_jobs=n_cores)(
-                    delayed(self._correct_fwe_montecarlo_permutation)(
-                        iter_xyzs[i_iter], iter_df=iter_df, conn=conn, voxel_thresh=ss_thresh
-                    )
-                    for i_iter in range(n_iters)
+        # Define connectivity matrix for cluster labeling
+        conn = ndimage.generate_binary_structure(3, 2)
+
+        with tqdm_joblib(tqdm(total=n_iters)):
+            perm_results = Parallel(n_jobs=n_cores)(
+                delayed(self._correct_fwe_montecarlo_permutation)(
+                    iter_xyzs[i_iter],
+                    iter_df=iter_df,
+                    conn=conn,
+                    voxel_thresh=ss_thresh,
+                    tfce=tfce,
                 )
-
-            fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
-
-            # Cluster-level FWE
-            # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
-            thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
-            thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-            labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
-
-            cluster_labels, idx, cluster_sizes = np.unique(
-                labeled_matrix,
-                return_inverse=True,
-                return_counts=True,
+                for i_iter in range(n_iters)
             )
-            assert cluster_labels[0] == 0
 
-            # Cluster mass-based inference
-            cluster_masses = np.zeros(cluster_labels.shape)
-            for i_val in cluster_labels:
-                if i_val == 0:
-                    cluster_masses[i_val] = 0
+        fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max, fwe_tfce_max = zip(
+            *perm_results
+        )
 
-                cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
-                cluster_masses[i_val] = cluster_mass
+        # Cluster-level FWE
+        # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
+        thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
+        thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
+        labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
 
-            p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
-            p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+        cluster_labels, idx, cluster_sizes = np.unique(
+            labeled_matrix,
+            return_inverse=True,
+            return_counts=True,
+        )
+        assert cluster_labels[0] == 0
 
-            p_cmfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
-            )
-            logp_cmfwe_values = -np.log10(p_cmfwe_values)
-            logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
-            z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
+        # Cluster mass-based inference
+        cluster_masses = np.zeros(cluster_labels.shape)
+        for i_val in cluster_labels:
+            if i_val == 0:
+                cluster_masses[i_val] = 0
 
-            # Cluster size-based inference
-            cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
-            p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
-            p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+            cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
+            cluster_masses[i_val] = cluster_mass
 
-            p_csfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
-            )
-            logp_csfwe_values = -np.log10(p_csfwe_values)
-            logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
-            z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
+        p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
+        p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
 
-            # Voxel-level FWE
-            LGR.info("Using null distribution for voxel-level FWE correction.")
-            p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
-            self.null_distributions_[
-                "values_level-voxel_corr-fwe_method-montecarlo"
-            ] = fwe_voxel_max
-            self.null_distributions_[
-                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-            ] = fwe_cluster_size_max
-            self.null_distributions_[
-                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-            ] = fwe_cluster_mass_max
+        p_cmfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
+        )
+        logp_cmfwe_values = -np.log10(p_cmfwe_values)
+        logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
+        z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
 
+        # Cluster size-based inference
+        cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
+        p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
+        p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+        p_csfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
+        )
+        logp_csfwe_values = -np.log10(p_csfwe_values)
+        logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
+        z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
+
+        # Voxel-level FWE
+        p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
         logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
 
-        if vfwe_only:
-            # Return unthresholded value images
-            images = {
-                "logp_level-voxel": logp_vfwe_values,
-                "z_level-voxel": z_vfwe_values,
-            }
+        # TFCE-based FWE
+        if tfce:
+            _, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
+            # 1D --> 3D array
+            z_values = self.masker.inverse_transform(z_values).get_fdata().copy()
+            tfce_values = calculate_tfce(z_values)
+            # 3D --> 1D array
+            tfce_values = self.masker.transform(new_img_like(tfce_values, self.masker.mask_img))
+            p_tfwe_values = null_to_p(tfce_values, fwe_tfce_max, tail="upper")
 
-        else:
-            # Return unthresholded value images
-            images = {
-                "logp_level-voxel": logp_vfwe_values,
-                "z_level-voxel": z_vfwe_values,
-                "logp_desc-size_level-cluster": logp_csfwe_values,
-                "z_desc-size_level-cluster": z_csfwe_values,
-                "logp_desc-mass_level-cluster": logp_cmfwe_values,
-                "z_desc-mass_level-cluster": z_cmfwe_values,
-            }
+            logp_tfwe_values = -np.log10(p_tfwe_values)
+            logp_tfwe_values[np.isinf(logp_tfwe_values)] = -np.log10(np.finfo(float).eps)
+            z_tfwe_values = p_to_z(p_tfwe_values, tail="one")
+
+        # Store the null distributions
+        self.null_distributions_[
+            "values_level-voxel_corr-fwe_method-montecarlo"
+        ] = fwe_voxel_max
+        self.null_distributions_[
+            "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        ] = fwe_cluster_size_max
+        self.null_distributions_[
+            "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        ] = fwe_cluster_mass_max
+
+        if tfce:
+            self.null_distributions_[
+                "values_desc-tfce_level-voxel_corr-fwe_method-montecarlo"
+            ] = fwe_tfce_max
+
+        # Return unthresholded value images
+        images = {
+            "logp_level-voxel": logp_vfwe_values,
+            "z_level-voxel": z_vfwe_values,
+            "logp_desc-size_level-cluster": logp_csfwe_values,
+            "z_desc-size_level-cluster": z_csfwe_values,
+            "logp_desc-mass_level-cluster": logp_cmfwe_values,
+            "z_desc-mass_level-cluster": z_cmfwe_values,
+        }
+
+        if tfce:
+            images["logp_desc-tfce_level-voxel"] = logp_tfwe_values
+            images["z_desc-tfce_level-voxel"] = z_tfwe_values
 
         return images
 
