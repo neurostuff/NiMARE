@@ -17,12 +17,12 @@ from ...utils import (
     _add_metadata_to_dataframe,
     _check_type,
     _safe_transform,
-    calculate_tfce,
     tqdm_joblib,
     use_memmap,
     vox2mm,
 )
 from ..kernel import KernelTransformer
+from ..utils import calculate_tfce
 
 LGR = logging.getLogger(__name__)
 
