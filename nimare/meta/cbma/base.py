@@ -802,9 +802,7 @@ class CBMAEstimator(MetaEstimator):
             z_tfwe_values = p_to_z(p_tfwe_values, tail="one")
 
         # Store the null distributions
-        self.null_distributions_[
-            "values_level-voxel_corr-fwe_method-montecarlo"
-        ] = fwe_voxel_max
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
         self.null_distributions_[
             "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
         ] = fwe_cluster_size_max
