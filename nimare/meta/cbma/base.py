@@ -5,7 +5,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from nilearn._utils import new_img_like
+from nilearn.image import new_img_like
 from scipy import ndimage
 from tqdm.auto import tqdm
 
