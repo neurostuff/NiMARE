@@ -5,7 +5,7 @@
 .. _metas_cbma:
 
 ==============================
-Coordinate-based meta-analysis
+CBMA algorithms in NiMARE
 ==============================
 
 Perform CBMAs on a toy dataset.
