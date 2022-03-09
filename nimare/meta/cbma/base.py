@@ -487,7 +487,6 @@ class CBMAEstimator(MetaEstimator):
         else:
             arr3d[np.abs(arr3d) <= threshold] = 0
 
-        labeled_arr3d = np.empty(arr3d.shape, int)
         labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
 
         if tail == "two":
@@ -687,10 +686,7 @@ class CBMAEstimator(MetaEstimator):
             iter_df = self.inputs_["coordinates"].copy()
 
             # Define connectivity matrix for cluster labeling
-            conn = np.zeros((3, 3, 3), int)
-            conn[:, :, 1] = 1
-            conn[:, 1, :] = 1
-            conn[1, :, :] = 1
+            conn = ndimage.generate_binary_structure(3, 2)
 
             with tqdm_joblib(tqdm(total=n_iters)):
                 perm_results = Parallel(n_jobs=n_cores)(

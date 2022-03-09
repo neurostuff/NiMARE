@@ -134,10 +134,7 @@ class Jackknife(NiMAREBase):
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
+        conn = ndimage.generate_binary_structure(3, 2)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,
@@ -343,10 +340,7 @@ class FocusCounter(NiMAREBase):
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
+        conn = ndimage.generate_binary_structure(3, 2)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,
