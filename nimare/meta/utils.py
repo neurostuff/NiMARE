@@ -16,6 +16,60 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
 
 
+def calculate_tfce(z_map, E=0.5, H=2, dh=0.1):
+    """Calculate TFCE from a z-statistic map.
+
+    The TFCE calculation is implemented as described in [1]_.
+
+    Parameters
+    ----------
+    z_map : :obj:`numpy.ndarray` of shape (X, Y, Z)
+        Z-statistic map.
+    E : :obj:`float`, optional
+        Extent weight. Default is 0.5.
+    H : :obj:`float`, optional
+        Height weight. Default is 2.
+    dh : :obj:`float`, optional
+        Step size for TFCE calculation. Default is 0.1.
+
+    Returns
+    -------
+    tfce_map : :obj:`numpy.ndarray` of shape (X, Y, Z)
+        The map of TFCE values.
+
+    References
+    ----------
+    .. [1] Smith, S. M., & Nichols, T. E. (2009). Threshold-free cluster enhancement: addressing
+        problems of smoothing, threshold dependence and localisation in cluster inference.
+        Neuroimage, 44(1), 83-98.
+    """
+    # Define connectivity matrix for cluster labeling
+    conn = ndimage.generate_binary_structure(3, 2)
+
+    # Get the step right before the maximum z-statistic in the map
+    max_z = np.floor(np.max(z_map) / dh) * dh
+
+    tfce_map = np.zeros_like(z_map)
+    for z_threshold in np.arange(dh, max_z + dh, dh):
+        # Threshold map
+        thresh_z = z_map.copy()
+        thresh_z[thresh_z < z_threshold] = 0
+
+        # Derive clusters
+        labeled_arr3d, n_clusters = ndimage.measurements.label(thresh_z, conn)
+
+        # Label each cluster with its extent
+        cluster_map = np.zeros(z_map.shape, int)
+        for cluster_val in range(1, n_clusters + 1):
+            cluster_map[labeled_arr3d == cluster_val] = sum(labeled_arr3d == cluster_val)
+
+        # Calculate each voxel's tfce value based on its cluster extent and z-value
+        tfce_step_values = (cluster_map**E) * (z_threshold**H)
+        tfce_map += tfce_step_values
+
+    return tfce_map
+
+
 def model_fn(features, labels, mode, params):
     """Run model function used internally by peaks2maps.
 
