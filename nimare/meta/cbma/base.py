@@ -262,6 +262,7 @@ class CBMAEstimator(MetaEstimator):
         elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
+
             p_values = nullhist_to_p(
                 stat_values,
                 self.null_distributions_["histweights_corr-none_method-montecarlo"],
@@ -270,6 +271,7 @@ class CBMAEstimator(MetaEstimator):
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
+
             p_values = null_to_p(
                 stat_values,
                 self.null_distributions_["values_corr-none_method-reducedMontecarlo"],
@@ -462,9 +464,13 @@ class CBMAEstimator(MetaEstimator):
             return last_bin
 
         fwe_voxel_max = np.apply_along_axis(get_last_bin, 1, perm_histograms)
+        histweights = np.zeros(perm_histograms.shape[1], dtype=perm_histograms.dtype)
+        for perm in fwe_voxel_max:
+            histweights[perm] += 1
+
         self.null_distributions_[
             "histweights_level-voxel_corr-fwe_method-montecarlo"
-        ] = fwe_voxel_max
+        ] = histweights
 
     def _calculate_cluster_measures(self, arr3d, threshold, conn, tail="upper"):
         """Calculate maximum cluster mass and size for an array.
