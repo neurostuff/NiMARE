@@ -289,7 +289,8 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        p : The p-value that corresponds to the summary statistic threshold
+        p : :obj:`float`
+            The p-value that corresponds to the summary statistic threshold
         null_method : {None, "approximate", "montecarlo"}, optional
             Whether to use approximate null or montecarlo null. If None, defaults to using
             whichever method was set at initialization.
@@ -534,7 +535,8 @@ class CBMAEstimator(MetaEstimator):
             The 3D structuring array for labeling clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary statistic threshold for defining clusters.
-        tfce
+        tfce : :obj:`bool`
+            Include TFCE-based correction as well.
 
         Returns
         -------
@@ -585,6 +587,10 @@ class CBMAEstimator(MetaEstimator):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.12
+
+            * Add an option for TFCE-based FWE correction.
 
         .. versionchanged:: 0.0.11
 
@@ -787,6 +793,25 @@ class CBMAEstimator(MetaEstimator):
         logp_vfwe_values = -np.log10(p_vfwe_values)
         logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
 
+        # Store the null distributions
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
+        self.null_distributions_[
+            "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        ] = fwe_cluster_size_max
+        self.null_distributions_[
+            "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        ] = fwe_cluster_mass_max
+
+        # Return unthresholded value images
+        images = {
+            "logp_level-voxel": logp_vfwe_values,
+            "z_level-voxel": z_vfwe_values,
+            "logp_desc-size_level-cluster": logp_csfwe_values,
+            "z_desc-size_level-cluster": z_csfwe_values,
+            "logp_desc-mass_level-cluster": logp_cmfwe_values,
+            "z_desc-mass_level-cluster": z_cmfwe_values,
+        }
+
         # TFCE-based FWE
         if tfce:
             _, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
@@ -801,31 +826,12 @@ class CBMAEstimator(MetaEstimator):
             logp_tfwe_values[np.isinf(logp_tfwe_values)] = -np.log10(np.finfo(float).eps)
             z_tfwe_values = p_to_z(p_tfwe_values, tail="one")
 
-        # Store the null distributions
-        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
-        self.null_distributions_[
-            "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-        ] = fwe_cluster_size_max
-        self.null_distributions_[
-            "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-        ] = fwe_cluster_mass_max
-
-        if tfce:
+            # Store the null distribution
             self.null_distributions_[
                 "values_desc-tfce_level-voxel_corr-fwe_method-montecarlo"
             ] = fwe_tfce_max
 
-        # Return unthresholded value images
-        images = {
-            "logp_level-voxel": logp_vfwe_values,
-            "z_level-voxel": z_vfwe_values,
-            "logp_desc-size_level-cluster": logp_csfwe_values,
-            "z_desc-size_level-cluster": z_csfwe_values,
-            "logp_desc-mass_level-cluster": logp_cmfwe_values,
-            "z_desc-mass_level-cluster": z_cmfwe_values,
-        }
-
-        if tfce:
+            # Store the unthresholded value images
             images["logp_desc-tfce_level-voxel"] = logp_tfwe_values
             images["z_desc-tfce_level-voxel"] = z_tfwe_values
 

@@ -112,9 +112,15 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     with pytest.raises(OSError):
         ale.ALE.load(out_file, compressed=True)
 
+
+def test_ALE_approximate_null_corr_unit(testdata_cbma):
+    """Unit test for ALE with FWE correction and approximate null_method."""
+    meta = ale.ALE(null_method="approximate")
+    meta.fit(testdata_cbma)
+
     # Test MCC methods
     # Monte Carlo FWE
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1, tfce=True)
     cres = corr.transform(meta.results)
     assert isinstance(cres, nimare.results.MetaResult)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
@@ -139,7 +145,18 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
         cres.get_map("z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"),
         np.ndarray,
     )
+    assert isinstance(
+        cres.get_map("z_desc-tfce_level-voxel_corr-FWE_method-montecarlo", return_type="array"),
+        np.ndarray,
+    )
 
+
+def test_ALE_approximate_null_corr_unit2(testdata_cbma):
+    """Second unit test for ALE with FWE correction and approximate null_method."""
+    meta = ale.ALE(null_method="approximate")
+    res = meta.fit(testdata_cbma)
+
+    # Test MCC methods
     # Bonferroni FWE
     corr = FWECorrector(method="bonferroni")
     cres = corr.transform(res)
@@ -196,6 +213,12 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     with pytest.raises(OSError):
         ale.ALE.load(out_file, compressed=True)
 
+
+def test_ALE_montecarlo_null_corr_unit(testdata_cbma, tmp_path_factory):
+    """Unit test for ALE with an montecarlo null_method and FWE correction."""
+    meta = ale.ALE(null_method="montecarlo", n_iters=10)
+    res = meta.fit(testdata_cbma)
+
     # Test MCC methods
     # Monte Carlo FWE
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
@@ -244,6 +267,13 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
         not in meta.results.estimator.null_distributions_.keys()
     )
 
+
+def test_ALE_montecarlo_null_corr_unit2(testdata_cbma):
+    """Unit test for ALE with an montecarlo null_method and FWE/FDR correction."""
+    meta = ale.ALE(null_method="montecarlo", n_iters=10)
+    res = meta.fit(testdata_cbma)
+
+    # Test MCC methods
     # Bonferroni FWE
     corr = FWECorrector(method="bonferroni")
     cres = corr.transform(res)
