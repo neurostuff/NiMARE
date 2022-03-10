@@ -61,7 +61,8 @@ def calculate_tfce(z_map, E=0.5, H=2, dh=0.1):
         # Label each cluster with its extent
         cluster_map = np.zeros(z_map.shape, int)
         for cluster_val in range(1, n_clusters + 1):
-            cluster_map[labeled_arr3d == cluster_val] = sum(labeled_arr3d == cluster_val)
+            bool_map = labeled_arr3d == cluster_val
+            cluster_map[bool_map] = np.sum(bool_map)
 
         # Calculate each voxel's tfce value based on its cluster extent and z-value
         tfce_step_values = (cluster_map**E) * (z_threshold**H)
