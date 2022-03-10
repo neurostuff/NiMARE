@@ -22,7 +22,7 @@ from ...utils import (
     vox2mm,
 )
 from ..kernel import KernelTransformer
-from ..utils import calculate_tfce
+from ..utils import _calculate_cluster_measures, _get_last_bin, calculate_tfce
 
 LGR = logging.getLogger(__name__)
 
@@ -335,6 +335,7 @@ class CBMAEstimator(MetaEstimator):
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
+
             null_dist = np.sort(
                 self.null_distributions_["values_corr-none_method-reducedMontecarlo"]
             )
@@ -455,15 +456,7 @@ class CBMAEstimator(MetaEstimator):
             perm_histograms, axis=0
         )
 
-        def get_last_bin(arr1d):
-            """Index the last location in a 1D array with a non-zero value."""
-            if np.any(arr1d):
-                last_bin = np.where(arr1d)[0][-1]
-            else:
-                last_bin = 0
-            return last_bin
-
-        fwe_voxel_max = np.apply_along_axis(get_last_bin, 1, perm_histograms)
+        fwe_voxel_max = np.apply_along_axis(_get_last_bin, 1, perm_histograms)
         histweights = np.zeros(perm_histograms.shape[1], dtype=perm_histograms.dtype)
         for perm in fwe_voxel_max:
             histweights[perm] += 1
@@ -471,58 +464,6 @@ class CBMAEstimator(MetaEstimator):
         self.null_distributions_[
             "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = histweights
-
-    def _calculate_cluster_measures(self, arr3d, threshold, conn, tail="upper"):
-        """Calculate maximum cluster mass and size for an array.
-
-        This method assesses both positive and negative clusters.
-
-        Parameters
-        ----------
-        arr3d : :obj:`numpy.ndarray`
-            Unthresholded 3D summary-statistic matrix. This matrix will end up changed in place.
-        threshold : :obj:`float`
-            Uncorrected summary-statistic thresholded for defining clusters.
-        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
-            Connectivity matrix for defining clusters.
-
-        Returns
-        -------
-        max_size, max_mass : :obj:`float`
-            Maximum cluster size and mass from the matrix.
-        """
-        if tail == "upper":
-            arr3d[arr3d <= threshold] = 0
-        else:
-            arr3d[np.abs(arr3d) <= threshold] = 0
-
-        labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
-
-        if tail == "two":
-            # Label positive and negative clusters separately
-            n_positive_clusters = np.max(labeled_arr3d)
-            temp_labeled_arr3d, _ = ndimage.measurements.label(arr3d < 0, conn)
-            temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
-            labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
-            del temp_labeled_arr3d
-
-        clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
-        assert clust_vals[0] == 0
-
-        # Cluster mass-based inference
-        max_mass = 0
-        for unique_val in clust_vals[1:]:
-            ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
-            max_mass = np.maximum(max_mass, np.sum(ss_vals))
-
-        # Cluster size-based inference
-        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        if clust_sizes.size:
-            max_size = np.max(clust_sizes)
-        else:
-            max_size = 0
-
-        return max_size, max_mass
 
     def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh, tfce):
         """Run a single Monte Carlo permutation of a dataset.
@@ -575,7 +516,7 @@ class CBMAEstimator(MetaEstimator):
 
         # Cluster-level inference
         iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
-        iter_max_size, iter_max_mass = self._calculate_cluster_measures(
+        iter_max_size, iter_max_mass = _calculate_cluster_measures(
             iter_ss_map, voxel_thresh, conn, tail="upper"
         )
 
@@ -597,6 +538,7 @@ class CBMAEstimator(MetaEstimator):
         .. versionchanged:: 0.0.12
 
             * Add an option for TFCE-based FWE correction.
+            * Fix the ``vfwe_only`` option.
 
         .. versionchanged:: 0.0.11
 
@@ -622,7 +564,8 @@ class CBMAEstimator(MetaEstimator):
             will be raised.
             Default is False.
         tfce : :obj:`bool`, optional
-            Include TFCE-based correction as well. Default is False.
+            Include TFCE-based correction as well. Calculating TFCE for each iteration can slow
+            down the Monte Carlo procedure, so this is disabled by default.
 
         Returns
         -------
