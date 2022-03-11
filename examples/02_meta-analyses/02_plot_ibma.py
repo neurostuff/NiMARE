@@ -19,7 +19,6 @@ from nilearn.plotting import plot_stat_map
 from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
 from nimare.extract import download_nidm_pain
-from nimare.meta import ibma
 from nimare.transforms import ImageTransformer
 from nimare.utils import get_resource_path
 
@@ -42,38 +41,64 @@ dset = xformer.transform(dset)
 ###############################################################################
 # Stouffer's
 # --------------------------------------------------
-meta = ibma.Stouffers(use_sample_size=False, resample=True)
-meta.fit(dset)
-plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
+from nimare.meta.ibma import Stouffers
+
+meta = Stouffers(use_sample_size=False, resample=True)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+)
 
 ###############################################################################
 # Stouffer's with weighting by sample size
 # -----------------------------------------------------------------------------
-meta = ibma.Stouffers(use_sample_size=True, resample=True)
-meta.fit(dset)
-plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
+meta = Stouffers(use_sample_size=True, resample=True)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+)
 
 ###############################################################################
 # Fisher's
 # -----------------------------------------------------------------------------
-meta = ibma.Fishers(resample=True)
-meta.fit(dset)
-plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
+from nimare.meta.ibma import Fishers
+
+meta = Fishers(resample=True)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+)
 
 ###############################################################################
 # Permuted OLS
 # -----------------------------------------------------------------------------
-meta = ibma.PermutedOLS(two_sided=True, resample=True)
-meta.fit(dset)
-plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
+from nimare.meta.ibma import PermutedOLS
 
-###############################################################################
-# Permuted OLS with FWE Correction
-# -----------------------------------------------------------------------------
-meta = ibma.PermutedOLS(two_sided=True, resample=True)
-meta.fit(dset)
+meta = PermutedOLS(two_sided=True, resample=True)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+)
+
 corrector = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
-cresult = corrector.transform(meta.results)
+cresult = corrector.transform(results)
+
 plot_stat_map(
     cresult.get_map("z_level-voxel_corr-FWE_method-montecarlo"),
     cut_coords=[0, 0, -8],
@@ -84,20 +109,44 @@ plot_stat_map(
 ###############################################################################
 # Weighted Least Squares
 # -----------------------------------------------------------------------------
-meta = ibma.WeightedLeastSquares(tau2=0, resample=True)
-meta.fit(dset)
-plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
+from nimare.meta.ibma import WeightedLeastSquares
+
+meta = WeightedLeastSquares(tau2=0, resample=True)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+)
 
 ###############################################################################
 # DerSimonian-Laird
 # -----------------------------------------------------------------------------
-meta = ibma.DerSimonianLaird(resample=True)
-meta.fit(dset)
-plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
+from nimare.meta.ibma import DerSimonianLaird
+
+meta = DerSimonianLaird(resample=True)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+)
 
 ###############################################################################
 # Hedges
 # -----------------------------------------------------------------------------
-meta = ibma.Hedges(resample=True)
-meta.fit(dset)
-plot_stat_map(meta.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r")
+from nimare.meta.ibma import Hedges
+
+meta = Hedges(resample=True)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+)

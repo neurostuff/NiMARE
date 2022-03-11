@@ -122,7 +122,7 @@ from nimare.utils import vox2mm
 # Dataset is drawn.
 # However, for the sake of a light-weight example, we will just first the
 # coordinates in the brain mask.
-xyz = vox2mm(
+"""xyz = vox2mm(
     np.vstack(np.where(dset.masker.mask_img.get_fdata())).T,
     dset.masker.mask_img.affine,
 )
@@ -137,7 +137,7 @@ plot_stat_map(
     cmap="RdBu_r",
     threshold=0.1,
 )
-
+"""
 ###############################################################################
 # ALE-Based Subtraction Analysis
 # --------------------------------------------------

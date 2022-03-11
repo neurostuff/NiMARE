@@ -68,7 +68,7 @@ plot_stat_map(
 stat_df = pd.DataFrame(
     {
         "CBMA": meta_cbma.results.get_map("z", return_type="array"),
-        "IBMA": meta_ibma.results.get_map("z", return_type="array").squeeze(),
+        "IBMA": meta_ibma.results.get_map("z", return_type="array"),
     }
 )
 print(stat_df.corr())
