@@ -2,16 +2,15 @@
 
 .. _metas_ibma:
 
-=========================
-Image-based meta-analysis
-=========================
+====================================
+Image-based meta-analysis Algorithms
+====================================
 
-Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
-uploaded by Dr. Camille Maumet.
+A tour of CBMA algorithms in NiMARE.
 
-.. caution::
-    Dataset querying will likely change as we work to shift database querying
-    to a remote database, rather than handling it locally with NiMARE.
+.. note::
+    The data used in this example come from a collection of NIDM-Results packs
+    downloaded from Neurovault collection 1425, uploaded by Dr. Camille Maumet.
 """
 import os
 

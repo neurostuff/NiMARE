@@ -2,16 +2,16 @@
 
 .. _metas_cbma:
 
-=========================================
-Coordinate-Based Meta-Analysis Algorithms
-=========================================
+==============================
+CBMA algorithms in NiMARE
+==============================
 
-A tour of CBMA algorithms in NiMARE.
+Perform CBMAs on a toy dataset.
+
+Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
+uploaded by Dr. Camille Maumet.
 
 .. note::
-    The data used in this example come from a collection of NIDM-Results packs
-    downloaded from Neurovault collection 1425, uploaded by Dr. Camille Maumet.
-
     Creation of the Dataset from the NIDM-Results packs was done with custom
     code. The Results packs for collection 1425 are not completely
     NIDM-Results-compliant, so the nidmresults library could not be used to
@@ -19,11 +19,11 @@ A tour of CBMA algorithms in NiMARE.
 """
 import os
 
-import numpy as np
 from nilearn.plotting import plot_stat_map
 
-from nimare.correct import FWECorrector
+from nimare.correct import FDRCorrector, FWECorrector
 from nimare.dataset import Dataset
+from nimare.meta import ALE, KDA, MKDAChi2, MKDADensity
 from nimare.utils import get_resource_path
 
 ###############################################################################
@@ -32,19 +32,13 @@ from nimare.utils import get_resource_path
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 
-# Some of the CBMA algorithms compare two Datasets,
-# so we'll split this example Dataset in half.
-dset1 = dset.slice(dset.ids[:10])
-dset2 = dset.slice(dset.ids[10:])
+mask_img = dset.masker.mask_img
 
 ###############################################################################
-# Multilevel Kernel Density Analysis
+# MKDA density analysis
 # --------------------------------------------------
-from nimare.meta.cbma.mkda import MKDADensity
-
-mkda = MKDADensity()
+mkda = MKDADensity(kernel__r=10, null_method="approximate")
 mkda.fit(dset)
-
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
 plot_stat_map(
@@ -56,13 +50,27 @@ plot_stat_map(
 )
 
 ###############################################################################
-# MKDA Chi-Squared
+# MKDA Chi2 with FDR correction
 # --------------------------------------------------
-from nimare.meta.cbma.mkda import MKDAChi2
-
 mkda = MKDAChi2(kernel__r=10)
+dset1 = dset.slice(dset.ids)
+dset2 = dset.slice(dset.ids)
 mkda.fit(dset1, dset2)
+corr = FDRCorrector(method="bh", alpha=0.001)
+cres = corr.transform(mkda.results)
+plot_stat_map(
+    cres.get_map("z_desc-consistency_level-voxel_corr-FDR_method-bh"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    threshold=1.65,
+)
 
+###############################################################################
+# MKDA Chi2 with FWE correction
+# --------------------------------------------------
+# Since we've already fitted the Estimator, we can just apply a new Corrector
+# to the estimator.
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(mkda.results)
 plot_stat_map(
@@ -73,11 +81,9 @@ plot_stat_map(
 )
 
 ###############################################################################
-# Kernel Density Analysis
+# KDA
 # --------------------------------------------------
-from nimare.meta.cbma.mkda import KDA
-
-kda = KDA()
+kda = KDA(kernel__r=10, null_method="approximate")
 kda.fit(dset)
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(kda.results)
@@ -90,59 +96,14 @@ plot_stat_map(
 )
 
 ###############################################################################
-# Activation Likelihood Estimation
+# ALE
 # --------------------------------------------------
-from nimare.meta.cbma.ale import ALE
-
-ale = ALE()
+ale = ALE(null_method="approximate")
 ale.fit(dset)
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(ale.results)
 plot_stat_map(
     cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    threshold=0.1,
-)
-
-###############################################################################
-# Specific Co-Activation Likelihood Estimation
-# --------------------------------------------------
-from nimare.meta.cbma.ale import SCALE
-from nimare.utils import vox2mm
-
-# Here, we would use a list of coordinates from the database from which the
-# Dataset is drawn.
-# However, for the sake of a light-weight example, we will just first the
-# coordinates in the brain mask.
-
-
-xyz = vox2mm(
-    np.vstack(np.where(dset.masker.mask_img.get_fdata())).T,
-    dset.masker.mask_img.affine,
-)
-
-meta = SCALE(xyz=xyz, n_iters=10)
-results = meta.fit(dset)
-plot_stat_map(
-    cres.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    threshold=0.1,
-)
-
-###############################################################################
-# ALE-Based Subtraction Analysis
-# --------------------------------------------------
-from nimare.meta.cbma.ale import ALESubtraction
-
-meta = ALESubtraction(n_iters=10, n_cores=1)
-results = meta.fit(dset1, dset2)
-
-plot_stat_map(
-    cres.get_map("z_desc-group1MinusGroup2"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
