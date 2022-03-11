@@ -16,7 +16,8 @@ from nilearn import datasets, image, plotting
 
 from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
-from nimare.meta import SCALE, MKDAChi2
+from nimare.meta.cbma.ale import SCALE
+from nimare.meta.cbma.mkda import MKDAChi2
 
 ###############################################################################
 # Load Dataset
