@@ -42,11 +42,12 @@ dset2 = dset.slice(dset.ids[10:])
 # --------------------------------------------------
 from nimare.meta.cbma.mkda import MKDADensity
 
-mkda = MKDADensity()
-mkda.fit(dset)
+meta = MKDADensity()
+results = meta.fit(dset)
 
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
-cres = corr.transform(mkda.results)
+cres = corr.transform(results)
+
 plot_stat_map(
     cres.get_map("z_level-voxel_corr-FWE_method-montecarlo"),
     cut_coords=[0, 0, -8],
@@ -60,11 +61,12 @@ plot_stat_map(
 # --------------------------------------------------
 from nimare.meta.cbma.mkda import MKDAChi2
 
-mkda = MKDAChi2(kernel__r=10)
-mkda.fit(dset1, dset2)
+meta = MKDAChi2(kernel__r=10)
+results = meta.fit(dset1, dset2)
 
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
-cres = corr.transform(mkda.results)
+cres = corr.transform(results)
+
 plot_stat_map(
     cres.get_map("z_desc-consistencySize_level-cluster_corr-FWE_method-montecarlo"),
     draw_cross=False,
@@ -77,10 +79,12 @@ plot_stat_map(
 # --------------------------------------------------
 from nimare.meta.cbma.mkda import KDA
 
-kda = KDA()
-kda.fit(dset)
+meta = KDA()
+results = meta.fit(dset)
+
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
-cres = corr.transform(kda.results)
+cres = corr.transform(results)
+
 plot_stat_map(
     cres.get_map("z_level-voxel_corr-FWE_method-montecarlo"),
     cut_coords=[0, 0, -8],
@@ -94,10 +98,12 @@ plot_stat_map(
 # --------------------------------------------------
 from nimare.meta.cbma.ale import ALE
 
-ale = ALE()
-ale.fit(dset)
+meta = ALE()
+results = meta.fit(dset)
+
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
-cres = corr.transform(ale.results)
+cres = corr.transform(results)
+
 plot_stat_map(
     cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
     cut_coords=[0, 0, -8],
@@ -116,8 +122,6 @@ from nimare.utils import vox2mm
 # Dataset is drawn.
 # However, for the sake of a light-weight example, we will just first the
 # coordinates in the brain mask.
-
-
 xyz = vox2mm(
     np.vstack(np.where(dset.masker.mask_img.get_fdata())).T,
     dset.masker.mask_img.affine,
@@ -125,8 +129,9 @@ xyz = vox2mm(
 
 meta = SCALE(xyz=xyz, n_iters=10)
 results = meta.fit(dset)
+
 plot_stat_map(
-    cres.get_map("z"),
+    results.get_map("z"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -142,7 +147,7 @@ meta = ALESubtraction(n_iters=10, n_cores=1)
 results = meta.fit(dset1, dset2)
 
 plot_stat_map(
-    cres.get_map("z_desc-group1MinusGroup2"),
+    results.get_map("z_desc-group1MinusGroup2"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
