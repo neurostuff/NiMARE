@@ -8,41 +8,36 @@ Multiple comparisons correction and Correctors
 
 Here we take a look at multiple comparisons correction in meta-analyses.
 """
-import os
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from nilearn.plotting import plot_stat_map
 
-from nimare.correct import FDRCorrector, FWECorrector
-from nimare.dataset import Dataset
-from nimare.extract import download_nidm_pain
-from nimare.meta.cbma.ale import ALE
-from nimare.meta.ibma import Stouffers
-from nimare.transforms import ImageTransformer
-from nimare.utils import get_resource_path
-
 ###############################################################################
 # Download data
 # --------------------------------
+from nimare.extract import download_nidm_pain
+
 dset_dir = download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
 # --------------------------------------------------
+import os
+
+from nimare.dataset import Dataset
+from nimare.utils import get_resource_path
+
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 dset.update_path(dset_dir)
-
-# Calculate missing images
-xformer = ImageTransformer(target=["z"])
-dset = xformer.transform(dset)
 
 mask_img = dset.masker.mask_img
 
 ###############################################################################
 # Multiple comparisons correction in coordinate-based meta-analyses
 # -----------------------------------------------------------------
+from nimare.meta.cbma.ale import ALE
 
 # First, we need to fit the Estimator to the Dataset.
 meta = ALE(null_method="approximate")
@@ -50,6 +45,8 @@ results = meta.fit(dset)
 
 # We can check which FWE correction methods are available for the ALE Estimator
 # with the ``inspect`` class method.
+from nimare.correct import FWECorrector
+
 print(FWECorrector.inspect(results))
 
 ###############################################################################
@@ -116,9 +113,13 @@ for i_ax, map_name in enumerate(MAPS_TO_PLOT):
     )
     axes[i_ax].set_title(title)
 
+from nimare.correct import FDRCorrector
+
 ###############################################################################
 # Multiple comparisons correction in image-based meta-analyses
 # ------------------------------------------------------------
+from nimare.meta.ibma import Stouffers
+
 meta = Stouffers(resample=True)
 results = meta.fit(dset)
 print(FWECorrector.inspect(results))
