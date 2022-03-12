@@ -3,33 +3,37 @@
 .. _metas_ibma:
 
 ====================================
-Image-based meta-analysis Algorithms
+Image-based meta-analysis algorithms
 ====================================
 
-A tour of CBMA algorithms in NiMARE.
+A tour of IBMA algorithms in NiMARE.
 
-.. note::
-    The data used in this example come from a collection of NIDM-Results packs
-    downloaded from Neurovault collection 1425, uploaded by Dr. Camille Maumet.
+This tutorial is intended to provide a brief description and example of each of
+the IBMA algorithms implemented in NiMARE.
+For a more detailed introduction to the elements of an image-based
+meta-analysis, see other stuff.
 """
-import os
-
 from nilearn.plotting import plot_stat_map
-
-from nimare.correct import FWECorrector
-from nimare.dataset import Dataset
-from nimare.extract import download_nidm_pain
-from nimare.transforms import ImageTransformer
-from nimare.utils import get_resource_path
 
 ###############################################################################
 # Download data
-# --------------------------------
+# -----------------------------------------------------------------------------
+# .. note::
+#   The data used in this example come from a collection of NIDM-Results packs
+#   downloaded from Neurovault collection 1425, uploaded by Dr. Camille Maumet.
+from nimare.extract import download_nidm_pain
+
 dset_dir = download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
+import os
+
+from nimare.dataset import Dataset
+from nimare.transforms import ImageTransformer
+from nimare.utils import get_resource_path
+
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 dset.update_path(dset_dir)
@@ -40,7 +44,7 @@ dset = xformer.transform(dset)
 
 ###############################################################################
 # Stouffer's
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 from nimare.meta.ibma import Stouffers
 
 meta = Stouffers(use_sample_size=False, resample=True)
@@ -84,6 +88,7 @@ plot_stat_map(
 ###############################################################################
 # Permuted OLS
 # -----------------------------------------------------------------------------
+from nimare.correct import FWECorrector
 from nimare.meta.ibma import PermutedOLS
 
 meta = PermutedOLS(two_sided=True, resample=True)
