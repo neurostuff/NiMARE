@@ -38,6 +38,8 @@ The Estimator classes take a kernel object as a parameter, and use that kernel t
 (3) derive a transformation from summary statistic to z-score, and
 (4) estimate `uncorrected` significance of the summary statistics.
 
+.. _null methods:
+
 Null methods
 ````````````
 

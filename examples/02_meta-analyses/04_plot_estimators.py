@@ -90,21 +90,33 @@ print(meta.kernel_transformer)
 meta = ALE(kernel__sample_size=20)
 print(meta.kernel_transformer)
 
-###############################################################################
-# Most CBMA Estimators also generate null distributions
-# -----------------------------------------------------------------------------
-# These null distributions determine how the Estimator's summary statistic,
-# such as ALE values for ALE meta-analyses or OF values for MKDA meta-analyses,
-# convert to test statistics- especially z-statistics.
-
-# First, we fit the Estimator
-meta = ALE()
+######################################################################################
+# Most CBMA Estimators have multiple ways to test uncorrected statistical significance
+# ------------------------------------------------------------------------------------
+# For most Estimators, the two options, defined with the ``null_method``
+# parameter, are ``"approximate"`` and ``"montecarlo"``.
+# For more information about these options, see :ref:`null methods`.
+meta = ALE(null_method="approximate")
 results = meta.fit(dset)
 
+mc_meta = ALE(null_method="montecarlo", n_iters=10, n_cores=1)
+mc_results = mc_meta.fit(dset)
+
 ###############################################################################
-# The null distributions are available in the fitted Estimator
-print(meta.null_distributions_)
+# The null distributions are stored within the Estimators
+# `````````````````````````````````````````````````````````````````````````````
+from pprint import pprint
+
+pprint(meta.null_distributions_)
 
 ###############################################################################
 # As well as the MetaResult, which stores a copy of the Estimator
-print(results.estimator.null_distributions_)
+pprint(results.estimator.null_distributions_)
+
+###############################################################################
+# The null distributions also differ based on the null method.
+# For example, the ``"montecarlo"`` option creates a
+# ``histweights_corr-none_method-montecarlo`` distribution, instead of the
+# ``histweights_corr-none_method-approximate`` produced by the
+# ``"approximate"`` method.
+pprint(mc_meta.null_distributions_)
