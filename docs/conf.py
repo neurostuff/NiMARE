@@ -197,6 +197,7 @@ sphinx_gallery_conf = {
     },
     "within_subsection_order": FileNameSortKey,
     "default_thumb_file": "_static/nimare_favicon.png",
+    "remove_config_comments": True,
 }
 
 # Generate the plots for the gallery
