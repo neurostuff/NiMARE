@@ -36,7 +36,7 @@ dset = Dataset(dset_file)
 dset.update_path(dset_dir)
 
 # Calculate missing statistical images from the available stats.
-xformer = ImageTransformer(target=["z", "varcope"])
+xformer = ImageTransformer(target=["varcope"])
 dset = xformer.transform(dset)
 
 # create coordinates from statistical maps

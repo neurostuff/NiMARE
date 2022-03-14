@@ -6,8 +6,8 @@
 KernelTransformers and CBMA
 ===========================
 
-:py:class:`~nimare.meta.kernel.KernelTransformer`s are tools for converting
-individual studies' coordinates into images.
+``KernelTransformer``s are tools for converting individual studies' coordinates
+into images.
 
 For coordinate-based meta-analyses, individual studies' statistical maps are
 mimicked by generating "modeled activation" (MA) maps from the coordinates.
@@ -36,17 +36,23 @@ dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 
 # First, let us reduce this Dataset to only two studies
-dset = dset.slice[dset.ids[2:4]]
+dset = dset.slice(dset.ids[2:4])
 
 ###############################################################################
 # Kernels ingest Datasets and can produce a few types of outputs
 # -----------------------------------------------------------------------------
 from nimare.meta.kernel import MKDAKernel
 
+# First, the kernel should be initialized with any parameters.
 kernel = MKDAKernel()
 
+# Then, the ``transform`` method takes in the Dataset and produces the MA maps.
+output = kernel.transform(dset)
+
 ###############################################################################
-# ``return_type="image"`` returns a list of 3D niimg objects
+# ``return_type="image"`` returns a list of 3D niimg objects.
+#
+# This is the default option.
 image_output = kernel.transform(dset, return_type="image")
 print(type(image_output))
 print(type(image_output[0]))
