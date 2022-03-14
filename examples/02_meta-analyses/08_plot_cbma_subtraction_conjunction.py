@@ -119,7 +119,7 @@ related_jackknife_table.head(10)
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 10000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
-sub = ALESubtraction(n_iters=100, n_cores=2)
+sub = ALESubtraction(n_iters=100, n_cores=1)
 res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
