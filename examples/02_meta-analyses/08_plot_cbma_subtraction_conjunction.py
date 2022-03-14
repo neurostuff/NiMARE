@@ -8,7 +8,7 @@ Two-sample ALE meta-analysis
 
 Meta-analytic projects often involve a number of common steps comparing two or more samples.
 
-In this example, we replicate the ALE-based analyses from [3]_.
+In this example, we replicate the ALE-based analyses from [1]_.
 
 A common project workflow with two meta-analytic samples involves the following:
 
@@ -22,28 +22,25 @@ A common project workflow with two meta-analytic samples involves the following:
 import os
 
 import matplotlib.pyplot as plt
-from nilearn.image import math_img
 from nilearn.plotting import plot_stat_map
-
-from nimare import io, utils
-from nimare.correct import FWECorrector
-from nimare.diagnostics import FocusCounter, Jackknife
-from nimare.meta.cbma import ALE, ALESubtraction
 
 ###############################################################################
 # Load Sleuth text files into Datasets
 # -----------------------------------------------------------------------------
 # The data for this example are a subset of studies from a meta-analysis on
-# semantic cognition in children. [3]_ A first group of studies probed
+# semantic cognition in children. [1]_ A first group of studies probed
 # children's semantic world knowledge (e.g., correctly naming an object after
 # hearing its auditory description) while a second group of studies asked
 # children to decide if two (or more) words were semantically related to one
 # another or not.
-knowledge_file = os.path.join(utils.get_resource_path(), "semantic_knowledge_children.txt")
-related_file = os.path.join(utils.get_resource_path(), "semantic_relatedness_children.txt")
+from nimare.io import convert_sleuth_to_dataset
+from nimare.utils import get_resource_path
 
-knowledge_dset = io.convert_sleuth_to_dataset(knowledge_file)
-related_dset = io.convert_sleuth_to_dataset(related_file)
+knowledge_file = os.path.join(get_resource_path(), "semantic_knowledge_children.txt")
+related_file = os.path.join(get_resource_path(), "semantic_relatedness_children.txt")
+
+knowledge_dset = convert_sleuth_to_dataset(knowledge_file)
+related_dset = convert_sleuth_to_dataset(related_file)
 
 ###############################################################################
 # Individual group ALEs
@@ -51,6 +48,9 @@ related_dset = io.convert_sleuth_to_dataset(related_file)
 # Computing separate ALE analyses for each group is not strictly necessary for
 # performing the subtraction analysis but will help the experimenter to appreciate the
 # similarities and differences between the groups.
+from nimare.correct import FWECorrector
+from nimare.meta.cbma import ALE
+
 ale = ALE(null_method="approximate")
 knowledge_results = ale.fit(knowledge_dset)
 related_results = ale.fit(related_dset)
@@ -60,9 +60,11 @@ knowledge_corrected_results = corr.transform(knowledge_results)
 related_corrected_results = corr.transform(related_results)
 
 fig, axes = plt.subplots(figsize=(12, 10), nrows=2)
-img = knowledge_corrected_results.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo")
+knowledge_img = knowledge_corrected_results.get_map(
+    "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
+)
 plot_stat_map(
-    img,
+    knowledge_img,
     cut_coords=4,
     display_mode="z",
     title="Semantic knowledge",
@@ -73,9 +75,11 @@ plot_stat_map(
     figure=fig,
 )
 
-img2 = related_corrected_results.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo")
+related_img = related_corrected_results.get_map(
+    "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
+)
 plot_stat_map(
-    img2,
+    related_img,
     cut_coords=4,
     display_mode="z",
     title="Semantic relatedness",
@@ -94,24 +98,23 @@ fig.show()
 # and :class:`~nimare.diagnostics.FocusCounter`.
 # We will show both below, but for the sake of speed we will only apply one to
 # each subgroup meta-analysis.
+from nimare.diagnostics import FocusCounter
 
 counter = FocusCounter(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
-knowledge_count_table, knowledge_cluster_img = counter.transform(knowledge_corrected_results)
-
-###############################################################################
+knowledge_count_table, _ = counter.transform(knowledge_corrected_results)
 knowledge_count_table.head(10)
 
 ###############################################################################
+from nimare.diagnostics import Jackknife
+
 jackknife = Jackknife(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
 related_jackknife_table, _ = jackknife.transform(related_corrected_results)
-
-###############################################################################
 related_jackknife_table.head(10)
 
 ###############################################################################
@@ -119,6 +122,8 @@ related_jackknife_table.head(10)
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 10000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
+from nimare.meta.cbma import ALESubtraction
+
 sub = ALESubtraction(n_iters=100, n_cores=1)
 res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
@@ -138,11 +143,13 @@ plot_stat_map(
 # To determine the overlap of the meta-analytic results, a conjunction image
 # can be computed by (a) identifying voxels that were statistically significant
 # in *both* individual group maps and (b) selecting, for each of these voxels,
-# the smaller of the two group-specific *z* values. [4]_ Since this is simple
+# the smaller of the two group-specific *z* values. [2]_ Since this is simple
 # arithmetic on images, conjunction is not implemented as a separate method in
 # :code:`NiMARE` but can easily be achieved with :func:`nilearn.image.math_img`.
-formula = "np.where(img * img2 > 0, np.minimum(img, img2), 0)"
-img_conj = math_img(formula, img=img, img2=img2)
+from nilearn.image import math_img
+
+formula = "np.where(img1 * img2 > 0, np.minimum(img1, img2), 0)"
+img_conj = math_img(formula, img1=knowledge_img, img2=related_img)
 
 plot_stat_map(
     img_conj,
@@ -157,16 +164,9 @@ plot_stat_map(
 ###############################################################################
 # References
 # -----------------------------------------------------------------------------
-# .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the
-#     false discovery rate and performing statistical contrasts." Human
-#     brain mapping 25.1 (2005): 155-164.
-#     https://doi.org/10.1002/hbm.20136
-# .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
-#     meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
-#     https://doi.org/10.1016/j.neuroimage.2011.09.017
-# .. [3] Enge, Alexander, et al. "A meta-analysis of fMRI studies of
+# .. [1] Enge, Alexander, et al. "A meta-analysis of fMRI studies of
 #     semantic cognition in children." Neuroimage 241 (2021): 118436.
 #     https://doi.org/10.1016/j.neuroimage.2021.118436
-# .. [4] Nichols, Thomas, et al. "Valid conjunction inference with the
+# .. [2] Nichols, Thomas, et al. "Valid conjunction inference with the
 #     minimum statistic." Neuroimage 25.3 (2005): 653-660.
 #     https://doi.org/10.1016/j.neuroimage.2004.12.005
