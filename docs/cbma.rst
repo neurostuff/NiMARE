@@ -61,7 +61,8 @@ and then comparing the summary statistics from the real Dataset to these "null" 
 This method may take a long time, and is only slightly more accurate than the approximate method,
 as long as there are enough iterations.
 
-**In general, we recommend using the approximate method.**
+.. tip::
+    In general, we recommend using the ``approximate`` method.
 
 Example: :ref:`metas_estimators`
 
@@ -87,7 +88,9 @@ These methods can be broadly separated into two groups: generic methods and Esti
 Generic methods rely on tools like ``statsmodels`` to correct the results as an array,
 without accounting for any of the idiosyncrasies of neuroimaging data (e.g., autocorrelation).
 One example of a generic method is the "bonferroni" method for the FWECorrector.
-**We do not recommend using the generic methods.**
+
+.. tip::
+    We do not recommend using the generic methods.
 
 Estimator-specific methods are approaches that are implemented within the Estimator as class methods
 that are then called by the Corrector.
