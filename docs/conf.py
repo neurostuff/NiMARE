@@ -101,7 +101,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "utils/*"]
 default_role = "autolink"
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "sphinx"
+pygments_style = "default"
 
 # -----------------------------------------------------------------------------
 # Napoleon settings

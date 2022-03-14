@@ -1,6 +1,6 @@
 """
 
-.. _metas_cbma:
+.. _metas_estimators:
 
 ===================
 The Estimator class
@@ -57,7 +57,7 @@ results = meta.fit(dset)
 ###############################################################################
 from nilearn.plotting import plot_stat_map
 
-plot_stat_map(results.get_map("z"), draw_cross=False)
+plot_stat_map(results.get_map("z"), draw_cross=False, cmap="RdBu_r")
 
 ###############################################################################
 # CBMA Estimators can accept KernelTransformers a few different ways
@@ -129,23 +129,29 @@ pprint(mc_meta.null_distributions_)
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-fig, axes = plt.subplots(figsize=(8, 8), sharex=True, nrows=3)
-sns.histplot(
-    x=meta.null_distributions_["histweights_corr-none_method-approximate"],
-    bins=meta.null_distributions_["histogram_bins"],
-    ax=axes[0],
-)
-axes[0].set_title("Approximate Null Distribution")
-sns.histplot(
-    x=mc_meta.null_distributions_["histweights_corr-none_method-montecarlo"],
-    bins=mc_meta.null_distributions_["histogram_bins"],
-    ax=axes[1],
-)
-axes[1].set_title("Monte Carlo Null Distribution")
-sns.histplot(
-    x=mc_meta.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
-    bins=mc_meta.null_distributions_["histogram_bins"],
-    ax=axes[2],
-)
-axes[2].set_title("Monte Carlo Voxel-Level FWE Null Distribution")
-fig.tight_layout()
+with sns.axes_style("whitegrid"):
+    fig, axes = plt.subplots(figsize=(8, 8), sharex=True, nrows=3)
+    sns.histplot(
+        x=meta.null_distributions_["histogram_bins"],
+        weights=meta.null_distributions_["histweights_corr-none_method-approximate"],
+        bins=100,
+        ax=axes[0],
+    )
+    axes[0].set_xlim(0, None)
+    axes[0].set_title("Approximate Null Distribution")
+    sns.histplot(
+        x=mc_meta.null_distributions_["histogram_bins"],
+        weights=mc_meta.null_distributions_["histweights_corr-none_method-montecarlo"],
+        bins=100,
+        ax=axes[1],
+    )
+    axes[1].set_title("Monte Carlo Null Distribution")
+    sns.histplot(
+        x=mc_meta.null_distributions_["histogram_bins"],
+        weights=mc_meta.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
+        bins=100,
+        ax=axes[2],
+    )
+    axes[2].set_title("Monte Carlo Voxel-Level FWE Null Distribution")
+    axes[2].set_xlabel("ALE Value")
+    fig.tight_layout()

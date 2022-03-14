@@ -6,8 +6,8 @@
 KernelTransformers and CBMA
 ===========================
 
-``KernelTransformer``s are tools for converting individual studies' coordinates
-into images.
+``KernelTransformer`` classes are tools for converting individual studies'
+coordinates into images.
 
 For coordinate-based meta-analyses, individual studies' statistical maps are
 mimicked by generating "modeled activation" (MA) maps from the coordinates.
@@ -17,9 +17,6 @@ used to generate the MA maps differs by algorithm.
 This example provides an introduction to the ``KernelTransformer`` class and
 a tour of available types.
 """
-###############################################################################
-# Start with the necessary imports
-# -----------------------------------------------------------------------------
 # sphinx_gallery_thumbnail_number = 2
 import os
 
@@ -85,7 +82,7 @@ help(MKDAKernel)
 ###############################################################################
 # For example, :class:`~nimare.meta.kernel.MKDAKernel` kernel accepts an ``r``
 # argument to control the radius of the kernel.
-RADIUS_VALUES = [2, 6, 10]
+RADIUS_VALUES = [4, 8, 12]
 fig, axes = plt.subplots(ncols=3, figsize=(20, 10))
 
 for i, radius in enumerate(RADIUS_VALUES):
@@ -95,11 +92,13 @@ for i, radius in enumerate(RADIUS_VALUES):
     plot_stat_map(
         ma_maps[0],
         display_mode="z",
-        cut_coords=[-4],
+        cut_coords=[-2],
         title=f"r={radius}mm",
-        vmax=2,
         axes=axes[i],
         draw_cross=False,
+        annotate=False,
+        colorbar=False,
+        cmap="RdBu_r",
     )
 
 ###############################################################################
@@ -115,6 +114,7 @@ plot_stat_map(
     cut_coords=[-2, -10, -4],
     title="MKDA",
     draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -130,6 +130,7 @@ plot_stat_map(
     cut_coords=[-2, -10, -4],
     title="KDA",
     draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -148,4 +149,5 @@ plot_stat_map(
     cut_coords=[-2, -10, -4],
     title="ALE",
     draw_cross=False,
+    cmap="RdBu_r",
 )

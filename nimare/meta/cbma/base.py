@@ -21,6 +21,7 @@ from ...utils import (
     vox2mm,
 )
 from ..kernel import KernelTransformer
+from ..utils import _get_last_bin
 
 LGR = logging.getLogger(__name__)
 
@@ -450,18 +451,14 @@ class CBMAEstimator(MetaEstimator):
             perm_histograms, axis=0
         )
 
-        def get_last_bin(arr1d):
-            """Index the last location in a 1D array with a non-zero value."""
-            if np.any(arr1d):
-                last_bin = np.where(arr1d)[0][-1]
-            else:
-                last_bin = 0
-            return last_bin
+        fwe_voxel_max = np.apply_along_axis(_get_last_bin, 1, perm_histograms)
+        histweights = np.zeros(perm_histograms.shape[1], dtype=perm_histograms.dtype)
+        for perm in fwe_voxel_max:
+            histweights[perm] += 1
 
-        fwe_voxel_max = np.apply_along_axis(get_last_bin, 1, perm_histograms)
         self.null_distributions_[
             "histweights_level-voxel_corr-fwe_method-montecarlo"
-        ] = fwe_voxel_max
+        ] = histweights
 
     def _calculate_cluster_measures(self, arr3d, threshold, conn, tail="upper"):
         """Calculate maximum cluster mass and size for an array.

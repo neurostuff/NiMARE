@@ -55,7 +55,7 @@ ale = ALE(null_method="approximate")
 knowledge_results = ale.fit(knowledge_dset)
 related_results = ale.fit(related_dset)
 
-corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=1)
+corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
 knowledge_corrected_results = corr.transform(knowledge_results)
 related_corrected_results = corr.transform(related_results)
 
@@ -119,7 +119,7 @@ related_jackknife_table.head(10)
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 10000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
-sub = ALESubtraction(n_iters=100, n_cores=1)
+sub = ALESubtraction(n_iters=100, n_cores=2)
 res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
