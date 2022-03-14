@@ -1,6 +1,6 @@
 """
 
-.. _metas_ma_maps:
+.. _metas_kernels:
 
 ===========================
 KernelTransformers and CBMA

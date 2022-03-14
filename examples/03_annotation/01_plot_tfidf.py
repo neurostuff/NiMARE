@@ -6,8 +6,7 @@
 Simple annotation from text
 ===========================
 
-NiMARE contains a function for simple term count or tf-idf value extraction
-from texts stored in a Dataset.
+Perform simple term count or tf-idf value extraction from texts stored in a Dataset.
 """
 import os
 

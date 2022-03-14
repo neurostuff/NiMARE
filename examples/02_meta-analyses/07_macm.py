@@ -6,6 +6,8 @@
 Meta-analytic coactivation modeling analysis
 ============================================
 
+Perform a MACM analysis with Neurosynth data.
+
 Meta-analytic coactivation modeling (MACM) is a common coordinate-based
 analysis in which task-independent "connectivity" is assessed by selecting
 studies within a larger database based on locations of report coordinates.

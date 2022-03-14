@@ -6,8 +6,7 @@
 LDA topic modeling
 ==================
 
-This example trains a latent Dirichlet allocation model with scikit-learn
-using abstracts from Neurosynth.
+Trains a latent Dirichlet allocation model with scikit-learn using abstracts from Neurosynth.
 """
 import os
 

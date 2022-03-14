@@ -28,6 +28,8 @@ and the :class:`~nimare.meta.kernel.MKDAKernel`, which creates a binary sphere a
     that doesn't mean that modeled activation maps can actually be used as statistical maps.
     We still need meta-analytic algorithms that are designed for coordinates, rather than images.
 
+Example: :ref:`metas_kernels`
+
 Estimators
 ----------
 
@@ -61,6 +63,10 @@ as long as there are enough iterations.
 
 **In general, we recommend using the approximate method.**
 
+Example: :ref:`metas_estimators`
+
+.. _multiple comparisons correction:
+
 Multiple comparisons correction
 -------------------------------
 
@@ -88,6 +94,8 @@ that are then called by the Corrector.
 These methods are generally designed specifically for neruoimaging, or event coordinate-based, data,
 and are thus generally preferable to generic methods.
 One such method is the Monte Carlo method (``method="montecarlo"``).
+
+Example: :ref:`corrector-cbma-example`
 
 The Monte Carlo multiple comparisons correction method
 ``````````````````````````````````````````````````````

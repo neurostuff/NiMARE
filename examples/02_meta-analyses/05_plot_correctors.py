@@ -2,9 +2,9 @@
 
 .. _metas_correctors:
 
-==============================================
-Multiple comparisons correction and Correctors
-==============================================
+===================
+The Corrector class
+===================
 
 Here we take a look at multiple comparisons correction in meta-analyses.
 """
@@ -35,8 +35,13 @@ dset.update_path(dset_dir)
 mask_img = dset.masker.mask_img
 
 ###############################################################################
+# .. _corrector-cbma-example:
+#
 # Multiple comparisons correction in coordinate-based meta-analyses
 # -----------------------------------------------------------------
+# .. tip::
+#   For more information multiple comparisons correction and CBMA in NiMARE,
+#   see :ref:`multiple comparisons correction`.
 from nimare.meta.cbma.ale import ALE
 
 # First, we need to fit the Estimator to the Dataset.

@@ -6,6 +6,8 @@
 Discrete functional decoding
 ============================
 
+Perform meta-analytic functional decoding on regions of interest.
+
 We can use the methods in ``nimare.decode.discrete`` to apply functional
 characterization analysis to regions of interest or subsets of the Dataset.
 """
