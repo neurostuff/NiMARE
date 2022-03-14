@@ -64,27 +64,27 @@ plot_stat_map(results.get_map("z"), draw_cross=False)
 # -----------------------------------------------------------------------------
 from nimare.meta.kernel import ALEKernel
 
-# -----------------------------------------------------------------------------
+###############################################################################
 # Initializing the Estimator with a KernelTransformer class alone will use
 # its default settings.
 meta = ALE(kernel_transformer=ALEKernel)
 print(meta.kernel_transformer)
 
-# -----------------------------------------------------------------------------
+###############################################################################
 # You can also initialize the Estimator with an initialized KernelTransformer
 # object.
 kernel = ALEKernel()
 meta = ALE(kernel_transformer=kernel)
 print(meta.kernel_transformer)
 
-# -----------------------------------------------------------------------------
+###############################################################################
 # This is especially useful if you want to initialize the KernelTransformer
 # with parameters with non-default values.
 kernel = ALEKernel(sample_size=20)
 meta = ALE(kernel_transformer=kernel)
 print(meta.kernel_transformer)
 
-# -----------------------------------------------------------------------------
+###############################################################################
 # You can also provide specific initialization values to the KernelTransformer
 # via the Estimator, by including keyword arguments starting with ``kernel__``.
 meta = ALE(kernel__sample_size=20)
@@ -99,6 +99,10 @@ print(meta.kernel_transformer)
 meta = ALE(null_method="approximate")
 results = meta.fit(dset)
 
+######################################################################################
+# Note that, to measure significance appropriately with the montecarlo method,
+# you need a lot more than 10 iterations.
+# We recommend 10000 (the default value).
 mc_meta = ALE(null_method="montecarlo", n_iters=10, n_cores=1)
 mc_results = mc_meta.fit(dset)
 
@@ -120,3 +124,28 @@ pprint(results.estimator.null_distributions_)
 # ``histweights_corr-none_method-approximate`` produced by the
 # ``"approximate"`` method.
 pprint(mc_meta.null_distributions_)
+
+###############################################################################
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+fig, axes = plt.subplots(figsize=(8, 8), sharex=True, nrows=3)
+sns.histplot(
+    x=meta.null_distributions_["histweights_corr-none_method-approximate"],
+    bins=meta.null_distributions_["histogram_bins"],
+    ax=axes[0],
+)
+axes[0].set_title("Approximate Null Distribution")
+sns.histplot(
+    x=mc_meta.null_distributions_["histweights_corr-none_method-montecarlo"],
+    bins=mc_meta.null_distributions_["histogram_bins"],
+    ax=axes[1],
+)
+axes[1].set_title("Monte Carlo Null Distribution")
+sns.histplot(
+    x=mc_meta.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
+    bins=mc_meta.null_distributions_["histogram_bins"],
+    ax=axes[2],
+)
+axes[2].set_title("Monte Carlo Voxel-Level FWE Null Distribution")
+fig.tight_layout()
