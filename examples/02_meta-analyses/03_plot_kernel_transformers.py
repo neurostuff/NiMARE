@@ -88,7 +88,7 @@ help(MKDAKernel)
 RADIUS_VALUES = [2, 6, 10]
 fig, axes = plt.subplots(ncols=3, figsize=(20, 10))
 
-for i, radius in RADIUS_VALUES:
+for i, radius in enumerate(RADIUS_VALUES):
     kernel = MKDAKernel(r=radius)
     ma_maps = kernel.transform(dset, return_type="image")
 
