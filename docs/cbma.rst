@@ -125,3 +125,9 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
     the voxel's summary statistic value lands on this null distribution.
     **Voxel-level correction is generally more conservative than cluster-level correction,
     so it is only recommended for very large meta-analyses (i.e., hundreds of studies).**
+-   ``<z|logp>_desc-tfce_level-voxel_corr-FWE_method-montecarlo``:
+    Voxel-level FWE-corrected map based on threshold-free cluster enhancement values.
+    `Threshold-free cluster enhancement <TFCE>`_ is a generalization of the cluster mass measure that
+    eliminates the need for a cluster-defining threshold, by essentially calculating cluster mass
+    across a range of thresholds, for each voxel, and then summing those masses across thresholds.
+    **These maps are only produced if ``tfce`` is enabled in the ``FWECorrector``.**

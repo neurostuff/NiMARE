@@ -79,3 +79,5 @@
 .. _Sleuth: http://www.brainmap.org/software.html#Sleuth
 
 .. _SPM: https://www.fil.ion.ucl.ac.uk/spm/
+
+.. _TFCE: https://pubmed.ncbi.nlm.nih.gov/18501637/
