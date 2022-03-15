@@ -60,7 +60,7 @@ Correlation-based decoding
 ``````````````````````````````
 :class:`~nimare.decode.continuous.CorrelationDecoder`
 
-The correlation-based decoding is implemented in NiMARE’s `CorrelationDecoder` class object.
+The correlation-based decoding is implemented in NiMARE's `CorrelationDecoder` class object.
 
 .. code-block:: python
 
@@ -79,7 +79,7 @@ Correlation distribution-based decoding
 ``````````````````````````````````````````
 :class:`~nimare.decode.continuous.CorrelationDistributionDecoder`
 
-The distribution-based decoding is implemented in NiMARE’s ``CorrelationDistributionDecoder``
+The distribution-based decoding is implemented in NiMARE's ``CorrelationDistributionDecoder``
 class object.
 
 
@@ -130,7 +130,7 @@ dataset's labels.
 
 A more theoretically driven approach to ROI decoding is to use chi-square-based methods. The two
 methods which use chi-squared tests are the BrainMap decoding method and an adaptation of
-Neurosynth’s meta-analysis method.
+Neurosynth's meta-analysis method.
 
 In both chi-square-based methods, studies are first selected from a coordinate-based database
 according to some criterion. For example, if decoding a region of interest, users might select
@@ -255,14 +255,14 @@ The Neurosynth approach
 :class:`~nimare.decode.discrete.NeurosynthDecoder`, :func:`~nimare.decode.discrete.neurosynth_decode`
 
 The implementation of the MKDA Chi-squared meta-analysis method used by Neurosynth is quite
-similar to BrainMap’s method for decoding, if applied to annotations instead of modeled activation
+similar to BrainMap's method for decoding, if applied to annotations instead of modeled activation
 values. This method compares the distributions of studies with each label within the sample against
 those in a larger database, but, unlike the BrainMap method, does not take foci into account. For
 this reason, the Neurosynth method would likely be more appropriate for selection criteria not
 based on regions of interest (e.g., for characterizing meta-analytic groupings from a
 meta-analytic clustering analysis). However, the Neurosynth method requires user-provided
 information that BrainMap does not. Namely, in order to estimate probabilities for the consistency
-and specificity analyses with Bayes’ Theorem, the Neurosynth method requires a prior probability of
+and specificity analyses with Bayes' Theorem, the Neurosynth method requires a prior probability of
 a given label. Typically, a value of 0.5 is used (i.e., the estimated probability that an
 individual is undergoing a given mental process described by a label, barring any evidence from
 neuroimaging data, is predicted to be 50%). This is, admittedly, a poor prediction, which means

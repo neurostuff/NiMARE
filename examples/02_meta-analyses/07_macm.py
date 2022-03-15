@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _metas_macm:
@@ -7,6 +5,8 @@
 ============================================
 Meta-analytic coactivation modeling analysis
 ============================================
+
+Perform a MACM analysis with Neurosynth data.
 
 Meta-analytic coactivation modeling (MACM) is a common coordinate-based
 analysis in which task-independent "connectivity" is assessed by selecting
@@ -18,7 +18,8 @@ from nilearn import datasets, image, plotting
 
 from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
-from nimare.meta import SCALE, MKDAChi2
+from nimare.meta.cbma.ale import SCALE
+from nimare.meta.cbma.mkda import MKDAChi2
 
 ###############################################################################
 # Load Dataset

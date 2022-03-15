@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _decode_discrete:
@@ -7,6 +5,8 @@
 ============================
 Discrete functional decoding
 ============================
+
+Perform meta-analytic functional decoding on regions of interest.
 
 We can use the methods in ``nimare.decode.discrete`` to apply functional
 characterization analysis to regions of interest or subsets of the Dataset.

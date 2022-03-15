@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _annotations_tfidf:
@@ -8,8 +6,7 @@
 Simple annotation from text
 ===========================
 
-NiMARE contains a function for simple term count or tf-idf value extraction
-from texts stored in a Dataset.
+Perform simple term count or tf-idf value extraction from texts stored in a Dataset.
 """
 import os
 

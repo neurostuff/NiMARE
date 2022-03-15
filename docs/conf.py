@@ -101,7 +101,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "utils/*"]
 default_role = "autolink"
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "sphinx"
+pygments_style = "default"
 
 # -----------------------------------------------------------------------------
 # Napoleon settings
@@ -197,6 +197,7 @@ sphinx_gallery_conf = {
     },
     "within_subsection_order": FileNameSortKey,
     "default_thumb_file": "_static/nimare_favicon.png",
+    "remove_config_comments": True,
 }
 
 # Generate the plots for the gallery

@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _annotations_gclda:
@@ -8,8 +6,7 @@
 GCLDA topic modeling
 ====================
 
-This example trains a generalized correspondence latent Dirichlet allocation
-model using abstracts from Neurosynth and then uses it for decoding.
+Train a generalized correspondence latent Dirichlet allocation model using abstracts.
 
 .. warning::
     The model in this example is trained using (1) a very small,
