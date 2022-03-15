@@ -97,15 +97,17 @@ MAPS_TO_PLOT = [
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     "z_desc-mass_level-cluster_corr-FWE_method-montecarlo",
     "z_level-voxel_corr-FWE_method-montecarlo",
+    "z_desc-tfce_level-voxel_corr-FWE_method-montecarlo",
 ]
 TITLES = [
     "Uncorrected z-statistics",
     "Cluster-size FWE-corrected z-statistics",
     "Cluster-mass FWE-corrected z-statistics",
     "Voxel-level FWE-corrected z-statistics",
+    "TFCE FWE-corrected z-statistics",
 ]
 
-fig, axes = plt.subplots(figsize=(8, 10), nrows=4)
+fig, axes = plt.subplots(figsize=(8, 12), nrows=len(MAPS_TO_PLOT))
 
 for i_ax, map_name in enumerate(MAPS_TO_PLOT):
     title = TITLES[i_ax]
