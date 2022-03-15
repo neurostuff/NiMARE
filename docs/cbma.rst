@@ -64,7 +64,7 @@ as long as there are enough iterations.
 .. tip::
     In general, we recommend using the ``approximate`` method.
 
-Example: :ref:`metas_estimators`
+Example: :ref:`null-method-example`
 
 .. _multiple comparisons correction:
 

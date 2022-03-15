@@ -91,6 +91,8 @@ meta = ALE(kernel__sample_size=20)
 print(meta.kernel_transformer)
 
 ######################################################################################
+# .. _null-method-example:
+#
 # Most CBMA Estimators have multiple ways to test uncorrected statistical significance
 # ------------------------------------------------------------------------------------
 # For most Estimators, the two options, defined with the ``null_method``
