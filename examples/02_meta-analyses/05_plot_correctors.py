@@ -15,14 +15,14 @@ from nilearn.plotting import plot_stat_map
 
 ###############################################################################
 # Download data
-# --------------------------------
+# -----------------------------------------------------------------------------
 from nimare.extract import download_nidm_pain
 
 dset_dir = download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 import os
 
 from nimare.dataset import Dataset
@@ -38,7 +38,7 @@ mask_img = dset.masker.mask_img
 # .. _corrector-cbma-example:
 #
 # Multiple comparisons correction in coordinate-based meta-analyses
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # .. tip::
 #   For more information multiple comparisons correction and CBMA in NiMARE,
 #   see :ref:`multiple comparisons correction`.
@@ -56,26 +56,28 @@ print(FWECorrector.inspect(results))
 
 ###############################################################################
 # Apply the Corrector to the MetaResult
-# =====================================
+# =============================================================================
 # Now that we know what FWE correction methods are available, we can use one.
 #
 # The "montecarlo" method is a special one that is implemented within the
 # Estimator, rather than in the Corrector.
-corr = FWECorrector(method="montecarlo", n_iters=50, n_cores=2)
+corr = FWECorrector(method="montecarlo", n_iters=50, n_cores=2, tfce=True)
 cres = corr.transform(results)
 
 DISTS_TO_PLOT = [
     "values_desc-size_level-cluster_corr-fwe_method-montecarlo",
     "values_desc-mass_level-cluster_corr-fwe_method-montecarlo",
     "values_level-voxel_corr-fwe_method-montecarlo",
+    "values_desc-tfce_level-voxel_corr-fwe_method-montecarlo",
 ]
 XLABELS = [
     "Maximum Cluster Size (Voxels)",
     "Maximum Cluster Mass",
     "Maximum Summary Statistic (ALE Value)",
+    "Maximum TFCE Value",
 ]
 
-fig, axes = plt.subplots(figsize=(8, 8), nrows=3)
+fig, axes = plt.subplots(figsize=(8, 8), nrows=len(DISTS_TO_PLOT))
 null_dists = cres.estimator.null_distributions_
 
 for i_ax, dist_name in enumerate(DISTS_TO_PLOT):
@@ -89,7 +91,7 @@ fig.tight_layout()
 
 ###############################################################################
 # Show corrected results
-# ======================
+# =============================================================================
 MAPS_TO_PLOT = [
     "z",
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo",
@@ -122,7 +124,7 @@ from nimare.correct import FDRCorrector
 
 ###############################################################################
 # Multiple comparisons correction in image-based meta-analyses
-# ------------------------------------------------------------
+# -----------------------------------------------------------------------------
 from nimare.meta.ibma import Stouffers
 
 meta = Stouffers(resample=True)
@@ -138,13 +140,13 @@ print(FDRCorrector.inspect(results))
 
 ###############################################################################
 # Apply the Corrector to the MetaResult
-# =====================================
+# =============================================================================
 corr = FDRCorrector(method="indep", alpha=0.05)
 cres = corr.transform(results)
 
 ###############################################################################
 # Show corrected results
-# ======================
+# =============================================================================
 fig, axes = plt.subplots(figsize=(8, 6), nrows=2)
 plot_stat_map(
     cres.get_map("z"),
