@@ -587,3 +587,14 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
     kernel = kernel[mn : mx + 1, mn : mx + 1, mn : mx + 1]
     mid = int(np.floor(data.shape[0] / 2.0))
     return sigma_vox, kernel
+
+
+def _get_last_bin(arr1d):
+    """Index the last location in a 1D array with a non-zero value."""
+    if np.any(arr1d):
+        last_bin = np.where(arr1d)[0][-1]
+
+    else:
+        last_bin = 0
+
+    return last_bin

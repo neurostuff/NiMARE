@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _datasets_object:
@@ -10,6 +8,7 @@ The NiMARE Dataset object
 
 This is a brief walkthrough of the :class:`~nimare.dataset.Dataset` class and its methods.
 """
+
 ###############################################################################
 # Start with the necessary imports
 # --------------------------------

@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _annotations_lda:
@@ -8,8 +6,7 @@
 LDA topic modeling
 ==================
 
-This example trains a latent Dirichlet allocation model with scikit-learn
-using abstracts from Neurosynth.
+Trains a latent Dirichlet allocation model with scikit-learn using abstracts from Neurosynth.
 """
 import os
 

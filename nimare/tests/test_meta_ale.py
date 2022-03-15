@@ -322,7 +322,7 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    sub_meta = ale.ALESubtraction(n_iters=10, n_cores=1)
+    sub_meta = ale.ALESubtraction(n_iters=10, n_cores=2)
     sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(sub_meta.results, nimare.results.MetaResult)
     assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
