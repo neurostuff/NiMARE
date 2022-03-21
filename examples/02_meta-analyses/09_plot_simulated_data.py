@@ -18,7 +18,7 @@ from nimare.meta import ALE
 
 ###############################################################################
 # Create function to perform a meta-analysis and plot results
-# -----------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 
 def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=False):
@@ -61,7 +61,7 @@ def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=Fal
 
 ###############################################################################
 # Create Dataset
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 # In this example, each of the 30 generated fake studies
 # select 4 coordinates from a probability map representing the probability
 # that particular coordinate will be chosen.
@@ -76,7 +76,7 @@ ground_truth_foci, dset = create_coordinate_dataset(foci=4, sample_size=(20, 40)
 
 ###############################################################################
 # Analyze and plot simple dataset
-# -------------------------------
+# -----------------------------------------------------------------------------
 # The red dots in this plot and subsequent plots represent the
 # simulated ground truth foci, and the clouds represent the statistical
 # maps of the simulated data.
@@ -85,7 +85,7 @@ analyze_and_plot(dset, ground_truth_foci)
 
 ###############################################################################
 # Fine-tune dataset creation
-# --------------------------
+# -----------------------------------------------------------------------------
 # Perhaps you want more control over the studies being generated.
 # you can set:
 #
@@ -110,14 +110,14 @@ _, manual_dset = create_coordinate_dataset(
 
 ###############################################################################
 # Analyze and plot manual dataset
-# -------------------------------
+# -----------------------------------------------------------------------------
 
 fig = analyze_and_plot(manual_dset, ground_truth_foci)
 fig.show()
 
 ###############################################################################
 # Control percentage of studies with the foci of interest
-# -------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Often times a converging peak is not found in all studies within
 # the meta-analysis, but only a portion.
 # We can select a percentage of studies where a coordinate
@@ -129,14 +129,14 @@ _, perc_foci_dset = create_coordinate_dataset(
 
 ###############################################################################
 # Analyze and plot the 50% foci dataset
-# -------------------------------------
+# -----------------------------------------------------------------------------
 
 fig = analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
 fig.show()
 
 ###############################################################################
 # Create a null dataset
-# --------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Perhaps you are interested in the number of false positives your favorite
 # meta-analysis algorithm typically gives.
 # At an alpha of 0.05 we would expect no more than 5% of results to be false positives.
@@ -149,7 +149,7 @@ _, no_foci_dset = create_coordinate_dataset(
 
 ###############################################################################
 # Analyze and plot no foci dataset
-# --------------------------------
+# -----------------------------------------------------------------------------
 # When not performing a multiple comparisons correction,
 # there is a false positive rate of approximately 5%.
 
