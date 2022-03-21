@@ -119,6 +119,7 @@ for i_ax, map_name in enumerate(MAPS_TO_PLOT):
         cut_coords=[0, 0, -8],
         figure=fig,
         axes=axes[i_ax],
+        annotate=False,
     )
     axes[i_ax].set_title(title)
 
