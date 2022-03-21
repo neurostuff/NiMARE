@@ -69,7 +69,7 @@ rates. NeuroImage, 99, 559-570.
         xyz = np.loadtxt(baseline)
 
     estimator = SCALE(xyz=xyz, n_iters=n_iters, n_cores=n_cores)
-    estimator.fit(dset)
+    results = estimator.fit(dset)
 
     if output_dir is None:
         output_dir = os.path.dirname(dataset_file)
@@ -83,7 +83,7 @@ rates. NeuroImage, 99, 559-570.
     elif not prefix.endswith("_"):
         prefix = prefix + "_"
 
-    estimator.results.save_maps(output_dir=output_dir, prefix=prefix)
+    results.save_maps(output_dir=output_dir, prefix=prefix)
     copyfile(dataset_file, os.path.join(output_dir, prefix + "input_coordinates.txt"))
 
     LGR.info("Workflow completed.")
