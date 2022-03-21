@@ -203,11 +203,11 @@ class CorrelationDecoder(Decoder):
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
-                self.meta_estimator.fit(feature_dset, nonfeature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset, nonfeature_dset)
             else:
-                self.meta_estimator.fit(feature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset)
 
-            feature_data = self.meta_estimator.results.get_map(
+            feature_data = meta_results.get_map(
                 self.target_image,
                 return_type="array",
             )

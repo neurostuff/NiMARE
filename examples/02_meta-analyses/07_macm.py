@@ -60,10 +60,10 @@ print(f"{len(no_roi_ids)}/{len(dset.ids)} studies report zero coordinates in the
 # MKDA Chi2 with FWE correction
 # --------------------------------------------------
 mkda = MKDAChi2(kernel__r=10)
-mkda.fit(dset_sel, dset_unsel)
+results = mkda.fit(dset_sel, dset_unsel)
 
 corr = FWECorrector(method="montecarlo", n_iters=10000)
-cres = corr.transform(mkda.results)
+cres = corr.transform(results)
 
 # We want the "specificity" map (2-way chi-square between sel and unsel)
 plotting.plot_stat_map(
@@ -84,5 +84,5 @@ plotting.plot_stat_map(
 # We will use the coordinates in Neurosynth
 xyz = dset.coordinates[["x", "y", "z"]].values
 scale = SCALE(xyz=xyz, n_iters=10000, n_cores=1, kernel__n=20)
-scale.fit(dset_sel)
-plotting.plot_stat_map(scale.results.get_map("z_vthresh"), draw_cross=False, cmap="RdBu_r")
+results = scale.fit(dset_sel)
+plotting.plot_stat_map(results.get_map("z"), draw_cross=False, cmap="RdBu_r")

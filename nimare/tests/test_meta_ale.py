@@ -267,14 +267,14 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
     sub_meta = ale.ALESubtraction(n_iters=10, n_cores=2)
-    sub_meta.fit(testdata_cbma, testdata_cbma)
-    assert isinstance(sub_meta.results, nimare.results.MetaResult)
-    assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
+    results = sub_meta.fit(testdata_cbma, testdata_cbma)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert "z_desc-group1MinusGroup2" in results.maps.keys()
     assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
+        results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
+        results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
     )
 
     sub_meta.save(out_file)
