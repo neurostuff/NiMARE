@@ -21,7 +21,7 @@ from ...utils import (
     vox2mm,
 )
 from ..kernel import KernelTransformer
-from ..utils import _get_last_bin
+from ..utils import _calculate_cluster_measures, _get_last_bin
 
 LGR = logging.getLogger(__name__)
 
@@ -261,6 +261,7 @@ class CBMAEstimator(MetaEstimator):
         elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
+
             p_values = nullhist_to_p(
                 stat_values,
                 self.null_distributions_["histweights_corr-none_method-montecarlo"],
@@ -269,6 +270,7 @@ class CBMAEstimator(MetaEstimator):
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
+
             p_values = null_to_p(
                 stat_values,
                 self.null_distributions_["values_corr-none_method-reducedMontecarlo"],
@@ -288,7 +290,8 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        p : The p-value that corresponds to the summary statistic threshold
+        p : :obj:`float`
+            The p-value that corresponds to the summary statistic threshold.
         null_method : {None, "approximate", "montecarlo"}, optional
             Whether to use approximate null or montecarlo null. If None, defaults to using
             whichever method was set at initialization.
@@ -331,6 +334,7 @@ class CBMAEstimator(MetaEstimator):
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
+
             null_dist = np.sort(
                 self.null_distributions_["values_corr-none_method-reducedMontecarlo"]
             )
@@ -460,59 +464,6 @@ class CBMAEstimator(MetaEstimator):
             "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = histweights
 
-    def _calculate_cluster_measures(self, arr3d, threshold, conn, tail="upper"):
-        """Calculate maximum cluster mass and size for an array.
-
-        This method assesses both positive and negative clusters.
-
-        Parameters
-        ----------
-        arr3d : :obj:`numpy.ndarray`
-            Unthresholded 3D summary-statistic matrix. This matrix will end up changed in place.
-        threshold : :obj:`float`
-            Uncorrected summary-statistic thresholded for defining clusters.
-        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
-            Connectivity matrix for defining clusters.
-
-        Returns
-        -------
-        max_size, max_mass : :obj:`float`
-            Maximum cluster size and mass from the matrix.
-        """
-        if tail == "upper":
-            arr3d[arr3d <= threshold] = 0
-        else:
-            arr3d[np.abs(arr3d) <= threshold] = 0
-
-        labeled_arr3d = np.empty(arr3d.shape, int)
-        labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
-
-        if tail == "two":
-            # Label positive and negative clusters separately
-            n_positive_clusters = np.max(labeled_arr3d)
-            temp_labeled_arr3d, _ = ndimage.measurements.label(arr3d < 0, conn)
-            temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
-            labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
-            del temp_labeled_arr3d
-
-        clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
-        assert clust_vals[0] == 0
-
-        # Cluster mass-based inference
-        max_mass = 0
-        for unique_val in clust_vals[1:]:
-            ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
-            max_mass = np.maximum(max_mass, np.sum(ss_vals))
-
-        # Cluster size-based inference
-        clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-        if clust_sizes.size:
-            max_size = np.max(clust_sizes)
-        else:
-            max_size = 0
-
-        return max_size, max_mass
-
     def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh):
         """Run a single Monte Carlo permutation of a dataset.
 
@@ -530,8 +481,6 @@ class CBMAEstimator(MetaEstimator):
             The 3D structuring array for labeling clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary statistic threshold for defining clusters.
-        tail : {"upper", "two"}, optional
-            Whether to perform upper or two-tailed thresholding.
 
         Returns
         -------
@@ -556,18 +505,27 @@ class CBMAEstimator(MetaEstimator):
 
         # Cluster-level inference
         iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
-        iter_max_size, iter_max_mass = self._calculate_cluster_measures(
+        iter_max_size, iter_max_mass = _calculate_cluster_measures(
             iter_ss_map, voxel_thresh, conn, tail="upper"
         )
 
         return iter_max_value, iter_max_size, iter_max_mass
 
     def correct_fwe_montecarlo(
-        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=1, vfwe_only=False
+        self,
+        result,
+        voxel_thresh=0.001,
+        n_iters=10000,
+        n_cores=1,
+        vfwe_only=False,
     ):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.12
+
+            * Fix the ``vfwe_only`` option.
 
         .. versionchanged:: 0.0.11
 
@@ -652,8 +610,13 @@ class CBMAEstimator(MetaEstimator):
         >>> cresult = corrector.transform(result)
         """
         stat_values = result.get_map("stat", return_type="array")
+
         if vfwe_only:
-            assert self.null_method == "montecarlo"
+            if self.null_method != "montecarlo":
+                raise ValueError(
+                    "In order to run this method with the 'vfwe_only' option, "
+                    "the Estimator must use the 'montecarlo' null_method."
+                )
 
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
 
@@ -684,10 +647,7 @@ class CBMAEstimator(MetaEstimator):
             iter_df = self.inputs_["coordinates"].copy()
 
             # Define connectivity matrix for cluster labeling
-            conn = np.zeros((3, 3, 3), int)
-            conn[:, :, 1] = 1
-            conn[:, 1, :] = 1
-            conn[1, :, :] = 1
+            conn = ndimage.generate_binary_structure(3, 2)
 
             with tqdm_joblib(tqdm(total=n_iters)):
                 perm_results = Parallel(n_jobs=n_cores)(

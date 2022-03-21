@@ -1,5 +1,6 @@
 """Test nimare.meta.mkda (KDA-based meta-analytic algorithms)."""
 import numpy as np
+import pytest
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -34,23 +35,47 @@ def test_MKDADensity_kernel_instance(testdata_cbma):
 
 
 def test_MKDADensity_approximate_null(testdata_cbma_full):
-    """Smoke test for MKDADensity."""
+    """Smoke test for MKDADensity with the "approximate" null_method."""
     meta = MKDADensity(null="approximate")
     res = meta.fit(testdata_cbma_full)
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=1, n_cores=1)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
 
+    # Check that the vfwe_only option does not work
+    corr2 = FWECorrector(
+        method="montecarlo",
+        voxel_thresh=0.001,
+        n_iters=5,
+        n_cores=1,
+        vfwe_only=True,
+    )
+    with pytest.raises(ValueError):
+        corr2.transform(res)
 
-def test_MKDADensity(testdata_cbma):
-    """Smoke test for MKDADensity."""
+
+def test_MKDADensity_montecarlo_null(testdata_cbma):
+    """Smoke test for MKDADensity with the "montecarlo" null_method."""
     meta = MKDADensity(null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
+
+    # Check that the vfwe_only option works
+    corr2 = FWECorrector(
+        method="montecarlo",
+        voxel_thresh=0.001,
+        n_iters=5,
+        n_cores=1,
+        vfwe_only=True,
+    )
+    cres2 = corr2.transform(res)
+    assert isinstance(cres2, nimare.results.MetaResult)
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in cres2.maps
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" not in cres2.maps
 
 
 def test_MKDADensity_memory_limit(testdata_cbma):

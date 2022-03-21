@@ -14,7 +14,7 @@ from nilearn.plotting import plot_stat_map
 
 ###############################################################################
 # Neurovault + NiMARE: Load freely shared statistical maps for Meta-Analysis
-# --------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # `Neurovault <https://neurovault.org/>`_ is an online platform that hosts
 # unthresholded statistical maps, including group statistical maps.
 # NiMARE can read these statistical maps when given a list of collection_ids.
@@ -64,7 +64,7 @@ dset = convert_neurovault_to_dataset(
 
 ###############################################################################
 # Conversion of Statistical Maps
-# ------------------------------
+# -----------------------------------------------------------------------------
 # Some of the statistical maps are T statistics and others are Z statistics.
 # To perform a Fisher's meta analysis, we need all Z maps.
 # Thoughtfully, NiMARE has a class named ``ImageTransformer`` that will
@@ -84,7 +84,7 @@ dset.images[["z"]]
 
 ###############################################################################
 # Run a Meta-Analysis
-# -------------------
+# -----------------------------------------------------------------------------
 # With the missing Z maps filled in, we can run a Meta-Analysis
 # and plot our results
 from nimare.meta.ibma import Fishers
