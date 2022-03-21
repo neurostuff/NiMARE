@@ -550,10 +550,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         eps = np.spacing(1)
 
         # Define connectivity matrix for cluster labeling
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
+        conn = ndimage.generate_binary_structure(3, 2)
 
         # Voxel-level FWE
         p_vfwe_values = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
@@ -736,10 +733,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ss_thresh = chi2.isf(voxel_thresh, 1)
 
         # Define connectivity matrix for cluster labeling
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
+        conn = ndimage.generate_binary_structure(3, 2)
 
         with tqdm_joblib(tqdm(total=n_iters)):
             perm_results = Parallel(n_jobs=n_cores)(
