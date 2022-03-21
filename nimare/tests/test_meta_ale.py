@@ -115,7 +115,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     # Test MCC methods
     # Monte Carlo FWE
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
@@ -153,7 +153,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
 
     # FDR
     corr = FDRCorrector(method="indep", alpha=0.05)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
         cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
@@ -199,7 +199,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     # Test MCC methods
     # Monte Carlo FWE
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
@@ -239,10 +239,6 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
         "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
         not in res.estimator.null_distributions_.keys()
     )
-    assert (
-        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-        not in meta.results.estimator.null_distributions_.keys()
-    )
 
     # Bonferroni FWE
     corr = FWECorrector(method="bonferroni")
@@ -257,7 +253,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
 
     # FDR
     corr = FDRCorrector(method="indep", alpha=0.05)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
         cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image

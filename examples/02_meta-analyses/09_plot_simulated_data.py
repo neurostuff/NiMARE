@@ -23,12 +23,12 @@ from nimare.meta import ALE
 
 def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=False):
     meta = ALE(kernel__fwhm=10)
-    meta.fit(dset)
+    results = meta.fit(dset)
     if correct:
         corr = FDRCorrector()
-        cres = corr.transform(meta.results)
+        cres = corr.transform(results)
     else:
-        cres = meta.results
+        cres = results
 
     # get the z coordinates
     if ground_truth_foci:
