@@ -261,6 +261,7 @@ class CBMAEstimator(MetaEstimator):
         elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
+
             p_values = nullhist_to_p(
                 stat_values,
                 self.null_distributions_["histweights_corr-none_method-montecarlo"],
@@ -269,6 +270,7 @@ class CBMAEstimator(MetaEstimator):
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
+
             p_values = null_to_p(
                 stat_values,
                 self.null_distributions_["values_corr-none_method-reducedMontecarlo"],
@@ -288,7 +290,8 @@ class CBMAEstimator(MetaEstimator):
 
         Parameters
         ----------
-        p : The p-value that corresponds to the summary statistic threshold
+        p : :obj:`float`
+            The p-value that corresponds to the summary statistic threshold.
         null_method : {None, "approximate", "montecarlo"}, optional
             Whether to use approximate null or montecarlo null. If None, defaults to using
             whichever method was set at initialization.
