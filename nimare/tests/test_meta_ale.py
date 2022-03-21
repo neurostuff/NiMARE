@@ -273,9 +273,7 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     assert isinstance(
         results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
-    assert isinstance(
-        results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
-    )
+    assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
