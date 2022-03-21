@@ -179,7 +179,7 @@ class GCLDAModel(NiMAREBase):
 
         # Create docidx column
         count_df["docidx"] = count_df["id"].map(docidx_mapper)
-        count_df = count_df.drop("id", 1)
+        count_df = count_df.drop(columns=["id"])
 
         # Remove words not found anywhere in the corpus
         n_terms = len(count_df.columns) - 1  # number of columns minus one for docidx

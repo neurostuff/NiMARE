@@ -95,6 +95,7 @@ For more information about the components of coordinate-based meta-analysis in N
    :template: class.rst
 
    diagnostics.Jackknife
+   diagnostics.FocusCounter
 
 
 .. _api_annotate_ref:

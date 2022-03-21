@@ -4,6 +4,8 @@
 
 .. _Anaconda: https://www.anaconda.com/download/#macos
 
+.. _Analysis of Brain Coordinates: https://www.biorxiv.org/content/10.1101/2020.12.03.409953v1
+
 .. _BrainMap: http://www.brainmap.org
 
 .. _BrainSpell: http://brainspell.org/
@@ -14,13 +16,21 @@
 
 .. _command line interface: cli.html
 
+.. _ERPscanr: https://erpscanr.github.io/ERPscanr/
+
 .. _flake8: https://flake8.pycqa.org/en/latest/
 
 .. _FSL: https://fsl.fmrib.ox.ac.uk
 
 .. _GingerALE: https://www.brainmap.org/ale/
 
+.. _IBMA SPM extension: https://github.com/NeuroimagingMetaAnalysis/ibma
+
 .. _metaCurious: https://github.com/neurostuff/metaCurious
+
+.. _MKDA Toolbox: https://github.com/canlab/Canlab_MKDA_MetaAnalysis
+
+.. _NeuRoi Toolbox: https://www.nottingham.ac.uk/research/groups/clinicalneurology/neuroi.aspx
 
 .. _NeuroPower: http://neuropowertools.org
 
@@ -59,6 +69,10 @@
 .. _PyMARE: https://pymare.readthedocs.io/en/latest/
 
 .. _scikit-learn: https://scikit-learn.org/stable/developers/index.html
+
+.. _Scribe: https://brainmap.org/scribe/
+
+.. _SDM: https://www.sdmproject.com
 
 .. _Sleuth: http://www.brainmap.org/software.html#Sleuth
 

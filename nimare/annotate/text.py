@@ -59,7 +59,15 @@ def generate_counts(text_df, text_column="abstract", tfidf=True, min_df=50, max_
             stop_words=stop_words,
         )
     weights = vectorizer.fit_transform(text).toarray()
-    names = vectorizer.get_feature_names()
+
+    if hasattr(vectorizer, "get_feature_names_out"):
+        # scikit-learn >= 1.0.0
+        names = vectorizer.get_feature_names_out()
+    else:
+        # scikit-learn < 1.0.0
+        # To remove when we drop support for 3.6 and increase minimum sklearn version to 1.0.0.
+        names = vectorizer.get_feature_names()
+
     names = [str(name) for name in names]
     weights_df = pd.DataFrame(weights, columns=names, index=ids)
     weights_df.index.name = "id"

@@ -1,9 +1,11 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
 import logging
 
+import nibabel as nib
 import numpy as np
 from joblib import Parallel, delayed
-from scipy import special
+from scipy import ndimage
+from scipy.stats import chi2
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
@@ -13,6 +15,7 @@ from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
 from ...utils import tqdm_joblib, use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
+from ..utils import _calculate_cluster_measures
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
 LGR = logging.getLogger(__name__)
@@ -264,8 +267,20 @@ class MKDAChi2(PairwiseCBMAEstimator):
             -   ``values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(A|F) one-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
             -   ``values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(F|A) two-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
 
     Notes
@@ -356,13 +371,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgU = n_unselected_active_voxels / n_unselected
         pFgA = pAgF * pF / pA
 
+        del pF
+
         # Recompute conditionals with uniform prior
         pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
         pFgA_prior = pAgF * self.prior / pAgF_prior
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_p_vals = special.chdtrc(1, pAgF_chi2_vals)
+        pAgF_p_vals = chi2.sf(pAgF_chi2_vals, 1)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = p_to_z(pAgF_p_vals, tail="two") * pAgF_sign
 
@@ -380,14 +397,16 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 ]
             ).T
         )
+
         del n_selected, n_unselected
 
         pFgA_chi2_vals = two_way(cells)
 
         del n_selected_active_voxels, n_unselected_active_voxels
 
-        pFgA_p_vals = special.chdtrc(1, pFgA_chi2_vals)
-        pFgA_p_vals[pFgA_p_vals < 1e-240] = 1e-240
+        eps = np.spacing(1)
+        pFgA_p_vals = chi2.sf(pFgA_chi2_vals, 1)
+        pFgA_p_vals[pFgA_p_vals < eps] = eps
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = p_to_z(pFgA_p_vals, tail="two") * pFgA_sign
 
@@ -408,7 +427,36 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2):
+    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
+        """Run a single permutation of the Monte Carlo FWE correction procedure.
+
+        Parameters
+        ----------
+        iter_xyz1, iter_xyz2 : :obj:`numpy.ndarray`
+            Random coordinates for the permutation.
+        iter_df1, iter_df2 : :obj:`pandas.DataFrame`
+            DataFrames with as many rows as there are coordinates in each of the two datasets,
+            to be filled in with random coordinates for the permutation.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            Connectivity matrix for defining clusters.
+        voxel_thresh : :obj:`float`
+            Uncorrected summary-statistic thresholded for defining clusters.
+
+        Returns
+        -------
+        pAgF_max_chi2_value : :obj:`float`
+            Forward inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgF_max_size : :obj:`float`
+            Forward inference maximum cluster size, for cluster-level FWE correction.
+        pAgF_max_mass : :obj:`float`
+            Forward inference maximum cluster mass, for cluster-level FWE correction.
+        pFgA_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pFgA_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pFgA_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
+        """
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df1 = iter_df1.copy()
@@ -441,7 +489,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # One-way chi-square test for consistency of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        iter_pAgF_chi2 = np.max(pAgF_chi2_vals)
+
+        # Voxel-level inference
+        pAgF_max_chi2_value = np.max(np.abs(pAgF_chi2_vals))
+
+        # Cluster-level inference
+        pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata().copy()
+        pAgF_max_size, pAgF_max_mass = _calculate_cluster_measures(
+            pAgF_chi2_map, voxel_thresh, conn, tail="two"
+        )
 
         # Two-way chi-square for specificity of activation
         cells = np.squeeze(
@@ -456,13 +512,111 @@ class MKDAChi2(PairwiseCBMAEstimator):
             ).T
         )
         pFgA_chi2_vals = two_way(cells)
-        iter_pFgA_chi2 = np.max(pFgA_chi2_vals)
-        return iter_pAgF_chi2, iter_pFgA_chi2
 
-    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
+        # Voxel-level inference
+        pFgA_max_chi2_value = np.max(np.abs(pFgA_chi2_vals))
+
+        # Cluster-level inference
+        pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata().copy()
+        pFgA_max_size, pFgA_max_mass = _calculate_cluster_measures(
+            pFgA_chi2_map, voxel_thresh, conn, tail="two"
+        )
+
+        return (
+            pAgF_max_chi2_value,
+            pAgF_max_size,
+            pAgF_max_mass,
+            pFgA_max_chi2_value,
+            pFgA_max_size,
+            pFgA_max_mass,
+        )
+
+    def _apply_correction(self, stat_values, voxel_thresh, vfwe_null, csfwe_null, cmfwe_null):
+        """Apply different kinds of FWE correction to statistical value matrix.
+
+        Parameters
+        ----------
+        stat_values : :obj:`numpy.ndarray`
+            1D array of summary-statistic values.
+        voxel_thresh : :obj:`float`
+            Summary statistic threshold for defining clusters.
+        vfwe_null, csfwe_null, cmfwe_null : :obj:`numpy.ndarray`
+            Null distributions for FWE correction.
+
+        Returns
+        -------
+        p_vfwe_values, p_csfwe_values, p_cmfwe_values : :obj:`numpy.ndarray`
+            1D arrays of FWE-corrected p-values.
+        """
+        eps = np.spacing(1)
+
+        # Define connectivity matrix for cluster labeling
+        conn = ndimage.generate_binary_structure(3, 2)
+
+        # Voxel-level FWE
+        p_vfwe_values = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
+
+        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
+        # Prevents inf z-values.
+        p_vfwe_values[p_vfwe_values < eps] = eps
+        p_vfwe_values[p_vfwe_values > (1.0 - eps)] = 1.0 - eps
+
+        # Cluster-level FWE
+        # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
+        stat_map_thresh = self.masker.inverse_transform(stat_values).get_fdata()
+
+        stat_map_thresh[np.abs(stat_map_thresh) <= voxel_thresh] = 0
+
+        # Label positive and negative clusters separately
+        labeled_matrix = np.empty(stat_map_thresh.shape, int)
+        labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh > 0, conn)
+        n_positive_clusters = np.max(labeled_matrix)
+        temp_labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh < 0, conn)
+        temp_labeled_matrix[temp_labeled_matrix > 0] += n_positive_clusters
+        labeled_matrix = labeled_matrix + temp_labeled_matrix
+        del temp_labeled_matrix
+
+        cluster_labels, idx, cluster_sizes = np.unique(
+            labeled_matrix,
+            return_inverse=True,
+            return_counts=True,
+        )
+        assert cluster_labels[0] == 0
+
+        # Cluster mass-based inference
+        cluster_masses = np.zeros(cluster_labels.shape)
+        for i_val in cluster_labels:
+            if i_val == 0:
+                cluster_masses[i_val] = 0
+
+            cluster_mass = np.sum(np.abs(stat_map_thresh[labeled_matrix == i_val]) - voxel_thresh)
+            cluster_masses[i_val] = cluster_mass
+
+        p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail="upper")
+        p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+
+        p_cmfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
+        )
+
+        # Cluster size-based inference
+        cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
+        p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail="upper")
+        p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+        p_csfwe_values = np.squeeze(
+            self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
+        )
+
+        return p_vfwe_values, p_csfwe_values, p_cmfwe_values
+
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.12
+
+            Include cluster level-corrected results in Monte Carlo null method.
 
         Parameters
         ----------
@@ -480,19 +634,66 @@ class MKDAChi2(PairwiseCBMAEstimator):
         images : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked images generated by
             the correction procedure. The following arrays are generated by
-            this method: 'p_desc-consistency_level-voxel',
-            'z_desc-consistency_level-voxel', 'p_desc-specificity_level-voxel',
-            and 'p_desc-specificity_level-voxel'.
+            this method:
+
+            -   ``p_desc-consistency_level-voxel``: Voxel-level FWE-corrected p-values from the
+                consistency/forward inference analysis.
+            -   ``z_desc-consistency_level-voxel``: Voxel-level FWE-corrected z-values from the
+                consistency/forward inference analysis.
+            -   ``logp_desc-consistency_level-voxel``: Voxel-level FWE-corrected -log10 p-values
+                from the consistency/forward inference analysis.
+            -   ``p_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected p-values
+                from the consistency/forward inference analysis, using cluster mass.
+            -   ``z_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected z-values
+                from the consistency/forward inference analysis, using cluster mass.
+            -   ``logp_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the consistency/forward inference analysis, using cluster mass.
+            -   ``p_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected p-values
+                from the consistency/forward inference analysis, using cluster size.
+            -   ``z_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected z-values
+                from the consistency/forward inference analysis, using cluster size.
+            -   ``logp_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the consistency/forward inference analysis, using cluster size.
+            -   ``p_desc-specificity_level-voxel``: Voxel-level FWE-corrected p-values from the
+                specificity/reverse inference analysis.
+            -   ``z_desc-specificity_level-voxel``: Voxel-level FWE-corrected z-values from the
+                specificity/reverse inference analysis.
+            -   ``logp_desc-specificity_level-voxel``: Voxel-level FWE-corrected -log10 p-values
+                from the specificity/reverse inference analysis.
+            -   ``p_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected p-values
+                from the specificity/reverse inference analysis, using cluster mass.
+            -   ``z_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected z-values
+                from the specificity/reverse inference analysis, using cluster mass.
+            -   ``logp_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the specificity/reverse inference analysis, using cluster mass.
+            -   ``p_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected p-values
+                from the specificity/reverse inference analysis, using cluster size.
+            -   ``z_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected z-values
+                from the specificity/reverse inference analysis, using cluster size.
+            -   ``logp_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the specificity/reverse inference analysis, using cluster size.
 
         Notes
         -----
-        This method adds three new keys to the ``null_distributions_`` attribute:
+        This method adds six new keys to the ``null_distributions_`` attribute:
 
             -   ``values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(A|F) one-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(A|F) one-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
             -   ``values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster size value from the p(F|A) two-way chi-squared test from each Monte Carlo
+                iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
+                cluster mass value from the p(F|A) two-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
 
         See Also
@@ -529,6 +730,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
         eps = np.spacing(1)
 
+        # Identify summary statistic corresponding to intensity threshold
+        ss_thresh = chi2.isf(voxel_thresh, 1)
+
+        # Define connectivity matrix for cluster labeling
+        conn = ndimage.generate_binary_structure(3, 2)
+
         with tqdm_joblib(tqdm(total=n_iters)):
             perm_results = Parallel(n_jobs=n_cores)(
                 delayed(self._run_fwe_permutation)(
@@ -536,56 +743,112 @@ class MKDAChi2(PairwiseCBMAEstimator):
                     iter_xyz2=iter_xyzs2[i_iter],
                     iter_df1=iter_df1,
                     iter_df2=iter_df2,
+                    conn=conn,
+                    voxel_thresh=ss_thresh,
                 )
                 for i_iter in range(n_iters)
             )
 
-        del iter_df1, iter_df2, rand_idx1, rand_xyz1, iter_xyzs1
-        del rand_idx2, rand_xyz2, iter_xyzs2
+        del iter_df1, rand_idx1, rand_xyz1, iter_xyzs1
+        del iter_df2, rand_idx2, rand_xyz2, iter_xyzs2
 
-        pAgF_null_chi2_dist, pFgA_null_chi2_dist = zip(*perm_results)
+        (
+            pAgF_vfwe_null,
+            pAgF_csfwe_null,
+            pAgF_cmfwe_null,
+            pFgA_vfwe_null,
+            pFgA_csfwe_null,
+            pFgA_cmfwe_null,
+        ) = zip(*perm_results)
 
         del perm_results
 
         # pAgF_FWE
-        pAgF_null_chi2_dist = np.squeeze(pAgF_null_chi2_dist)
+        pAgF_p_vfwe_vals, pAgF_p_csfwe_vals, pAgF_p_cmfwe_vals = self._apply_correction(
+            pAgF_chi2_vals,
+            ss_thresh,
+            vfwe_null=pAgF_vfwe_null,
+            csfwe_null=pAgF_csfwe_null,
+            cmfwe_null=pAgF_cmfwe_null,
+        )
+
         self.null_distributions_[
             "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
-        ] = pAgF_null_chi2_dist
-        pAgF_p_FWE = np.empty_like(pAgF_chi2_vals).astype(float)
-        for voxel in range(pFgA_chi2_vals.shape[0]):
-            pAgF_p_FWE[voxel] = null_to_p(pAgF_chi2_vals[voxel], pAgF_null_chi2_dist, tail="upper")
+        ] = pAgF_vfwe_null
+        self.null_distributions_[
+            "values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgF_csfwe_null
+        self.null_distributions_[
+            "values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgF_cmfwe_null
 
-        del pAgF_null_chi2_dist
-
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to
-        # 0 or 1. Prevents inf z-values.
-        pAgF_p_FWE[pAgF_p_FWE < eps] = eps
-        pAgF_p_FWE[pAgF_p_FWE > (1.0 - eps)] = 1.0 - eps
-        pAgF_z_FWE = p_to_z(pAgF_p_FWE, tail="two") * pAgF_sign
+        del pAgF_vfwe_null, pAgF_csfwe_null, pAgF_cmfwe_null
 
         # pFgA_FWE
-        pFgA_null_chi2_dist = np.squeeze(pFgA_null_chi2_dist)
+        pFgA_p_vfwe_vals, pFgA_p_csfwe_vals, pFgA_p_cmfwe_vals = self._apply_correction(
+            pFgA_chi2_vals,
+            ss_thresh,
+            vfwe_null=pFgA_vfwe_null,
+            csfwe_null=pFgA_csfwe_null,
+            cmfwe_null=pFgA_cmfwe_null,
+        )
+
         self.null_distributions_[
             "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
-        ] = pFgA_null_chi2_dist
-        pFgA_p_FWE = np.empty_like(pFgA_chi2_vals).astype(float)
-        for voxel in range(pFgA_chi2_vals.shape[0]):
-            pFgA_p_FWE[voxel] = null_to_p(pFgA_chi2_vals[voxel], pFgA_null_chi2_dist, tail="upper")
+        ] = pFgA_vfwe_null
+        self.null_distributions_[
+            "values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo"
+        ] = pFgA_csfwe_null
+        self.null_distributions_[
+            "values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo"
+        ] = pFgA_cmfwe_null
 
-        del pFgA_null_chi2_dist
+        del pFgA_vfwe_null, pFgA_csfwe_null, pFgA_cmfwe_null
 
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to
-        # 0 or 1. Prevents inf z-values.
-        pFgA_p_FWE[pFgA_p_FWE < eps] = eps
-        pFgA_p_FWE[pFgA_p_FWE > (1.0 - eps)] = 1.0 - eps
-        pFgA_z_FWE = p_to_z(pFgA_p_FWE, tail="two") * pFgA_sign
+        # Convert p-values
+        # pAgF
+        pAgF_z_vfwe_vals = p_to_z(pAgF_p_vfwe_vals, tail="two") * pAgF_sign
+        pAgF_logp_vfwe_vals = -np.log10(pAgF_p_vfwe_vals)
+        pAgF_logp_vfwe_vals[np.isinf(pAgF_logp_vfwe_vals)] = -np.log10(eps)
+        pAgF_z_cmfwe_vals = p_to_z(pAgF_p_cmfwe_vals, tail="two") * pAgF_sign
+        pAgF_logp_cmfwe_vals = -np.log10(pAgF_p_cmfwe_vals)
+        pAgF_logp_cmfwe_vals[np.isinf(pAgF_logp_cmfwe_vals)] = -np.log10(eps)
+        pAgF_z_csfwe_vals = p_to_z(pAgF_p_csfwe_vals, tail="two") * pAgF_sign
+        pAgF_logp_csfwe_vals = -np.log10(pAgF_p_csfwe_vals)
+        pAgF_logp_csfwe_vals[np.isinf(pAgF_logp_csfwe_vals)] = -np.log10(eps)
+
+        # pFgA
+        pFgA_z_vfwe_vals = p_to_z(pFgA_p_vfwe_vals, tail="two") * pFgA_sign
+        pFgA_logp_vfwe_vals = -np.log10(pFgA_p_vfwe_vals)
+        pFgA_logp_vfwe_vals[np.isinf(pFgA_logp_vfwe_vals)] = -np.log10(eps)
+        pFgA_z_cmfwe_vals = p_to_z(pFgA_p_cmfwe_vals, tail="two") * pFgA_sign
+        pFgA_logp_cmfwe_vals = -np.log10(pFgA_p_cmfwe_vals)
+        pFgA_logp_cmfwe_vals[np.isinf(pFgA_logp_cmfwe_vals)] = -np.log10(eps)
+        pFgA_z_csfwe_vals = p_to_z(pFgA_p_csfwe_vals, tail="two") * pFgA_sign
+        pFgA_logp_csfwe_vals = -np.log10(pFgA_p_csfwe_vals)
+        pFgA_logp_csfwe_vals[np.isinf(pFgA_logp_csfwe_vals)] = -np.log10(eps)
 
         images = {
-            "p_desc-consistency_level-voxel": pAgF_p_FWE,
-            "z_desc-consistency_level-voxel": pAgF_z_FWE,
-            "p_desc-specificity_level-voxel": pFgA_p_FWE,
-            "z_desc-specificity_level-voxel": pFgA_z_FWE,
+            # Consistency analysis
+            "p_desc-consistency_level-voxel": pAgF_p_vfwe_vals,
+            "z_desc-consistency_level-voxel": pAgF_z_vfwe_vals,
+            "logp_desc-consistency_level-voxel": pAgF_logp_vfwe_vals,
+            "p_desc-consistencyMass_level-cluster": pAgF_p_cmfwe_vals,
+            "z_desc-consistencyMass_level-cluster": pAgF_z_cmfwe_vals,
+            "logp_desc-consistencyMass_level-cluster": pAgF_logp_cmfwe_vals,
+            "p_desc-consistencySize_level-cluster": pAgF_p_csfwe_vals,
+            "z_desc-consistencySize_level-cluster": pAgF_z_csfwe_vals,
+            "logp_desc-consistencySize_level-cluster": pAgF_logp_csfwe_vals,
+            # Specificity analysis
+            "p_desc-specificity_level-voxel": pFgA_p_vfwe_vals,
+            "z_desc-specificity_level-voxel": pFgA_z_vfwe_vals,
+            "logp_desc-specificity_level-voxel": pFgA_logp_vfwe_vals,
+            "p_desc-specificityMass_level-cluster": pFgA_p_cmfwe_vals,
+            "z_desc-specificityMass_level-cluster": pFgA_z_cmfwe_vals,
+            "logp_desc-specificityMass_level-cluster": pFgA_logp_cmfwe_vals,
+            "p_desc-specificitySize_level-cluster": pFgA_p_csfwe_vals,
+            "z_desc-specificitySize_level-cluster": pFgA_z_csfwe_vals,
+            "logp_desc-specificitySize_level-cluster": pFgA_logp_csfwe_vals,
         }
         return images
 

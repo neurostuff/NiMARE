@@ -187,7 +187,11 @@ class FWECorrector(Corrector):
 
     def _transform(self, result):
         p = result.maps["p"]
-        _, p_corr, _, _ = mc.multipletests(p, method=self.method, is_sorted=False)
+        nonnan_mask = ~np.isnan(p)
+        p_corr = np.empty_like(p)
+        p_no_nans = p[nonnan_mask]
+        _, p_corr_no_nans, _, _ = mc.multipletests(p_no_nans, method=self.method, is_sorted=False)
+        p_corr[nonnan_mask] = p_corr_no_nans
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps
@@ -229,7 +233,13 @@ class FDRCorrector(Corrector):
 
     def _transform(self, result):
         p = result.maps["p"]
-        _, p_corr = mc.fdrcorrection(p, alpha=self.alpha, method=self.method, is_sorted=False)
+        nonnan_mask = ~np.isnan(p)
+        p_corr = np.empty_like(p)
+        p_no_nans = p[nonnan_mask]
+        _, p_corr_no_nans = mc.fdrcorrection(
+            p_no_nans, alpha=self.alpha, method=self.method, is_sorted=False
+        )
+        p_corr[nonnan_mask] = p_corr_no_nans
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps
