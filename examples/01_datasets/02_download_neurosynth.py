@@ -32,7 +32,7 @@ see :doc:`../../fetching`.
 """
 ###############################################################################
 # Start with the necessary imports
-# --------------------------------
+# -----------------------------------------------------------------------------
 import os
 from pprint import pprint
 
@@ -41,7 +41,7 @@ from nimare.io import convert_neurosynth_to_dataset
 
 ###############################################################################
 # Download Neurosynth
-# -------------------
+# -----------------------------------------------------------------------------
 # Neurosynth's data files are stored at https://github.com/neurosynth/neurosynth-data.
 out_dir = os.path.abspath("../example_data/")
 os.makedirs(out_dir, exist_ok=True)
@@ -59,7 +59,7 @@ neurosynth_db = files[0]
 
 ###############################################################################
 # Convert Neurosynth database to NiMARE dataset file
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 neurosynth_dset = convert_neurosynth_to_dataset(
     coordinates_file=neurosynth_db["coordinates"],
     metadata_file=neurosynth_db["metadata"],
@@ -70,7 +70,7 @@ print(neurosynth_dset)
 
 ###############################################################################
 # Add article abstracts to dataset
-# --------------------------------
+# -----------------------------------------------------------------------------
 # This is only possible because Neurosynth uses PMIDs as study IDs.
 #
 # Make sure you replace the example email address with your own.
@@ -79,7 +79,7 @@ neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pk
 
 ###############################################################################
 # Do the same with NeuroQuery
-# ---------------------------
+# -----------------------------------------------------------------------------
 # NeuroQuery's data files are stored at https://github.com/neuroquery/neuroquery_data.
 files = fetch_neuroquery(
     data_dir=out_dir,

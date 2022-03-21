@@ -292,7 +292,7 @@ class CBMAEstimator(MetaEstimator):
         Parameters
         ----------
         p : :obj:`float`
-            The p-value that corresponds to the summary statistic threshold
+            The p-value that corresponds to the summary statistic threshold.
         null_method : {None, "approximate", "montecarlo"}, optional
             Whether to use approximate null or montecarlo null. If None, defaults to using
             whichever method was set at initialization.
@@ -633,7 +633,11 @@ class CBMAEstimator(MetaEstimator):
         stat_values = result.get_map("stat", return_type="array")
 
         if vfwe_only:
-            assert self.null_method == "montecarlo"
+            if self.null_method != "montecarlo":
+                raise ValueError(
+                    "In order to run this method with the 'vfwe_only' option, "
+                    "the Estimator must use the 'montecarlo' null_method."
+                )
 
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
 

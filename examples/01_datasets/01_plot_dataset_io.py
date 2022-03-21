@@ -11,7 +11,7 @@ This is a brief walkthrough of the :class:`~nimare.dataset.Dataset` class and it
 
 ###############################################################################
 # Start with the necessary imports
-# --------------------------------
+# -----------------------------------------------------------------------------
 import os
 
 from nimare.dataset import Dataset

@@ -27,12 +27,12 @@ from nimare.utils import get_resource_path
 
 ###############################################################################
 # Download data
-# --------------------------------
+# -----------------------------------------------------------------------------
 dset_dir = download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 dset.update_path(dset_dir)
@@ -53,7 +53,7 @@ dset.coordinates = dset.coordinates.query(f"id != '{study_no_coordinates}'")
 
 ###############################################################################
 # Inspect Dataset
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 
 # There is only one study contrast with coordinates, but no images
 print(f"studies with only coordinates: {set(dset.coordinates['id']) - set(dset.images['id'])}\n")
@@ -69,7 +69,7 @@ print(f"columns in coordinates dataframe: {dset.coordinates.columns}\n")
 
 ###############################################################################
 # Use different strategies to overwrite existing coordinate data
-# --------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # There are three choices for how to treat existing coordinate
 # data in the dataset which are named: 'fill', 'replace', and 'demolish'.
 #
@@ -101,7 +101,7 @@ dset_demolish = coord_demolish.transform(dset)
 
 ###############################################################################
 # Inspect generated datasets
-# --------------------------
+# -----------------------------------------------------------------------------
 
 example_study = "pain_01.nidm-1"
 
