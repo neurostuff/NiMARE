@@ -512,7 +512,12 @@ class CBMAEstimator(MetaEstimator):
         return iter_max_value, iter_max_size, iter_max_mass
 
     def correct_fwe_montecarlo(
-        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=1, vfwe_only=False
+        self,
+        result,
+        voxel_thresh=0.001,
+        n_iters=10000,
+        n_cores=1,
+        vfwe_only=False,
     ):
         """Perform FWE correction using the max-value permutation method.
 
@@ -601,6 +606,7 @@ class CBMAEstimator(MetaEstimator):
         >>> cresult = corrector.transform(result)
         """
         stat_values = result.get_map("stat", return_type="array")
+
         if vfwe_only:
             assert self.null_method == "montecarlo"
 

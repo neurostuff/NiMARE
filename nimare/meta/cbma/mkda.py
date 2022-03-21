@@ -15,6 +15,7 @@ from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
 from ...utils import tqdm_joblib, use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
+from ..utils import _calculate_cluster_measures
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
 LGR = logging.getLogger(__name__)
@@ -494,7 +495,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Cluster-level inference
         pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata().copy()
-        pAgF_max_size, pAgF_max_mass = self._calculate_cluster_measures(
+        pAgF_max_size, pAgF_max_mass = _calculate_cluster_measures(
             pAgF_chi2_map, voxel_thresh, conn, tail="two"
         )
 
@@ -517,7 +518,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Cluster-level inference
         pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata().copy()
-        pFgA_max_size, pFgA_max_mass = self._calculate_cluster_measures(
+        pFgA_max_size, pFgA_max_mass = _calculate_cluster_measures(
             pFgA_chi2_map, voxel_thresh, conn, tail="two"
         )
 
