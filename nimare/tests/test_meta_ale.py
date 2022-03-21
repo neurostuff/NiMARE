@@ -178,28 +178,6 @@ def test_ALE_approximate_null_corr_unit2(testdata_cbma):
     assert isinstance(cres.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray)
 
 
-def test_ALE_FWECorrector_vfwe_only(testdata_cbma):
-    """Second unit test for ALE with FWE correction and approximate null_method."""
-    meta = ale.ALE(null_method="montecarlo", n_iters=10)
-    meta.fit(testdata_cbma)
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, vfwe_only=True)
-    cres = corr.transform(meta.results)
-    assert (
-        "histweights_level-voxel_corr-fwe_method-montecarlo"
-        in cres.estimator.null_distributions_.keys()
-    )
-    assert (
-        "values_level-voxel_corr-fwe_method-montecarlo"
-        not in cres.estimator.null_distributions_.keys()
-    )
-
-    meta = ale.ALE(null_method="approximate")
-    meta.fit(testdata_cbma)
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, vfwe_only=True)
-    with pytest.raises(AssertionError):
-        corr.transform(meta.results)
-
-
 def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     """Unit test for ALE with an montecarlo null_method.
 
