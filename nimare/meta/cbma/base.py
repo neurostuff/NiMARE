@@ -523,6 +523,10 @@ class CBMAEstimator(MetaEstimator):
 
         Only call this method from within a Corrector.
 
+        .. versionchanged:: 0.0.12
+
+            * Fix the ``vfwe_only`` option.
+
         .. versionchanged:: 0.0.11
 
             * Rename ``*_level-cluster`` maps to ``*_desc-size_level-cluster``.
@@ -608,7 +612,11 @@ class CBMAEstimator(MetaEstimator):
         stat_values = result.get_map("stat", return_type="array")
 
         if vfwe_only:
-            assert self.null_method == "montecarlo"
+            if self.null_method != "montecarlo":
+                raise ValueError(
+                    "In order to run this method with the 'vfwe_only' option, "
+                    "the Estimator must use the 'montecarlo' null_method."
+                )
 
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
 
