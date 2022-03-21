@@ -334,6 +334,7 @@ class CBMAEstimator(MetaEstimator):
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
+
             null_dist = np.sort(
                 self.null_distributions_["values_corr-none_method-reducedMontecarlo"]
             )
@@ -480,8 +481,6 @@ class CBMAEstimator(MetaEstimator):
             The 3D structuring array for labeling clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary statistic threshold for defining clusters.
-        tail : {"upper", "two"}, optional
-            Whether to perform upper or two-tailed thresholding.
 
         Returns
         -------
