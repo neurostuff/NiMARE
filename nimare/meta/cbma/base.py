@@ -464,7 +464,14 @@ class CBMAEstimator(MetaEstimator):
             "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = histweights
 
-    def _correct_fwe_montecarlo_permutation(self, iter_xyz, iter_df, conn, voxel_thresh):
+    def _correct_fwe_montecarlo_permutation(
+        self,
+        null_xyz,
+        conn,
+        voxel_thresh,
+        i_iter,
+        vfwe_only=False,
+    ):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between vFWE and cFWE.
@@ -488,10 +495,13 @@ class CBMAEstimator(MetaEstimator):
             A 3-tuple of floats giving the maximum voxel-wise value, maximum cluster size,
             and maximum cluster mass for the permuted dataset.
         """
-        iter_df = iter_df.copy()
-
-        iter_xyz = np.squeeze(iter_xyz)
-        iter_df[["x", "y", "z"]] = iter_xyz
+        rand_idx = np.random.choice(
+            null_xyz.shape[0],
+            size=self.inputs_["coordinates"].shape[0],
+        )
+        rand_xyz = null_xyz[rand_idx, :]
+        iter_df = self.inputs_["coordinates"].copy()
+        iter_df[["x", "y", "z"]] = rand_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="array"
@@ -503,11 +513,14 @@ class CBMAEstimator(MetaEstimator):
         # Voxel-level inference
         iter_max_value = np.max(iter_ss_map)
 
-        # Cluster-level inference
-        iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
-        iter_max_size, iter_max_mass = _calculate_cluster_measures(
-            iter_ss_map, voxel_thresh, conn, tail="upper"
-        )
+        if vfwe_only:
+            iter_max_size, iter_max_mass = None, None
+        else:
+            # Cluster-level inference
+            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
+            iter_max_size, iter_max_mass = _calculate_cluster_measures(
+                iter_ss_map, voxel_thresh, conn, tail="upper"
+            )
 
         return iter_max_value, iter_max_size, iter_max_mass
 
@@ -611,13 +624,7 @@ class CBMAEstimator(MetaEstimator):
         """
         stat_values = result.get_map("stat", return_type="array")
 
-        if vfwe_only:
-            if self.null_method != "montecarlo":
-                raise ValueError(
-                    "In order to run this method with the 'vfwe_only' option, "
-                    "the Estimator must use the 'montecarlo' null_method."
-                )
-
+        if vfwe_only and (self.null_method == "montecarlo"):
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
 
             # Determine p- and z-values from stat values and null distribution.
@@ -628,6 +635,13 @@ class CBMAEstimator(MetaEstimator):
             )
 
         else:
+            if vfwe_only:
+                LGR.warn(
+                    "In order to run this method with the 'vfwe_only' option, "
+                    "the Estimator must use the 'montecarlo' null_method. "
+                    "Running permutations from scratch."
+                )
+
             null_xyz = vox2mm(
                 np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
                 self.masker.mask_img.affine,
@@ -638,21 +652,17 @@ class CBMAEstimator(MetaEstimator):
             # Identify summary statistic corresponding to intensity threshold
             ss_thresh = self._p_to_summarystat(voxel_thresh)
 
-            rand_idx = np.random.choice(
-                null_xyz.shape[0],
-                size=(self.inputs_["coordinates"].shape[0], n_iters),
-            )
-            rand_xyz = null_xyz[rand_idx, :]
-            iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
-            iter_df = self.inputs_["coordinates"].copy()
-
             # Define connectivity matrix for cluster labeling
             conn = ndimage.generate_binary_structure(3, 2)
 
             with tqdm_joblib(tqdm(total=n_iters)):
                 perm_results = Parallel(n_jobs=n_cores)(
                     delayed(self._correct_fwe_montecarlo_permutation)(
-                        iter_xyzs[i_iter], iter_df=iter_df, conn=conn, voxel_thresh=ss_thresh
+                        null_xyz=null_xyz,
+                        conn=conn,
+                        voxel_thresh=ss_thresh,
+                        seed=i_iter,
+                        vfwe_only=vfwe_only,
                     )
                     for i_iter in range(n_iters)
                 )
