@@ -469,7 +469,7 @@ class CBMAEstimator(MetaEstimator):
         null_xyz,
         conn,
         voxel_thresh,
-        i_iter,
+        seed,
         vfwe_only=False,
     ):
         """Run a single Monte Carlo permutation of a dataset.
@@ -495,7 +495,8 @@ class CBMAEstimator(MetaEstimator):
             A 3-tuple of floats giving the maximum voxel-wise value, maximum cluster size,
             and maximum cluster mass for the permuted dataset.
         """
-        rand_idx = np.random.choice(
+        rng = np.random.default_rng(seed)
+        rand_idx = rng.choice(
             null_xyz.shape[0],
             size=self.inputs_["coordinates"].shape[0],
         )
@@ -671,7 +672,8 @@ class CBMAEstimator(MetaEstimator):
 
             if not vfwe_only:
                 # Cluster-level FWE
-                # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
+                # Extract the summary statistics in voxel-wise (3D) form, threshold, and
+                # cluster-label
                 thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
                 thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
                 labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
