@@ -669,49 +669,61 @@ class CBMAEstimator(MetaEstimator):
 
             fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
 
-            # Cluster-level FWE
-            # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
-            thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
-            thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-            labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
+            if not vfwe_only:
+                # Cluster-level FWE
+                # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
+                thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
+                thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
+                labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
 
-            cluster_labels, idx, cluster_sizes = np.unique(
-                labeled_matrix,
-                return_inverse=True,
-                return_counts=True,
-            )
-            assert cluster_labels[0] == 0
+                cluster_labels, idx, cluster_sizes = np.unique(
+                    labeled_matrix,
+                    return_inverse=True,
+                    return_counts=True,
+                )
+                assert cluster_labels[0] == 0
 
-            # Cluster mass-based inference
-            cluster_masses = np.zeros(cluster_labels.shape)
-            for i_val in cluster_labels:
-                if i_val == 0:
-                    cluster_masses[i_val] = 0
+                # Cluster mass-based inference
+                cluster_masses = np.zeros(cluster_labels.shape)
+                for i_val in cluster_labels:
+                    if i_val == 0:
+                        cluster_masses[i_val] = 0
 
-                cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
-                cluster_masses[i_val] = cluster_mass
+                    cluster_mass = np.sum(thresh_stat_values[labeled_matrix == i_val] - ss_thresh)
+                    cluster_masses[i_val] = cluster_mass
 
-            p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
-            p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+                p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, "upper")
+                p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
 
-            p_cmfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
-            )
-            logp_cmfwe_values = -np.log10(p_cmfwe_values)
-            logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
-            z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
+                p_cmfwe_values = np.squeeze(
+                    self.masker.transform(
+                        nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine)
+                    )
+                )
+                logp_cmfwe_values = -np.log10(p_cmfwe_values)
+                logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
+                z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
 
-            # Cluster size-based inference
-            cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
-            p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
-            p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
+                # Cluster size-based inference
+                cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
+                p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, "upper")
+                p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
 
-            p_csfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
-            )
-            logp_csfwe_values = -np.log10(p_csfwe_values)
-            logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
-            z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
+                p_csfwe_values = np.squeeze(
+                    self.masker.transform(
+                        nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine)
+                    )
+                )
+                logp_csfwe_values = -np.log10(p_csfwe_values)
+                logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
+                z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
+
+                self.null_distributions_[
+                    "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                ] = fwe_cluster_size_max
+                self.null_distributions_[
+                    "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                ] = fwe_cluster_mass_max
 
             # Voxel-level FWE
             LGR.info("Using null distribution for voxel-level FWE correction.")
@@ -719,12 +731,6 @@ class CBMAEstimator(MetaEstimator):
             self.null_distributions_[
                 "values_level-voxel_corr-fwe_method-montecarlo"
             ] = fwe_voxel_max
-            self.null_distributions_[
-                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-            ] = fwe_cluster_size_max
-            self.null_distributions_[
-                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-            ] = fwe_cluster_mass_max
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)
