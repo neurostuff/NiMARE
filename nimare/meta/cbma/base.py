@@ -38,14 +38,15 @@ class CBMAEstimator(MetaEstimator):
 
     Parameters
     ----------
-    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`
-        Kernel with which to convolve coordinates from dataset.
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        ALEKernel.
     *args
-        Optional arguments to the :obj:`~nimare.base.MetaEstimator` ``__init__``
+        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator` ``__init__``
-        (called automatically).
+        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
+        __init__ (called automatically).
     """
 
     _required_inputs = {"coordinates": ("coordinates", None)}
