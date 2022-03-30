@@ -228,14 +228,22 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
 
 
 def _simulate_subject_maps(n_subjects, masker, correlation_maps):
-    """Simulate the subject maps.
+    """Simulate the preliminary set of subject maps.
 
     Parameters
     ----------
-    n_subjects
-    masker
+    n_subjects : :obj:`list` of :obj:`int`
+        Number of subjects in each study in the meta-analytic dataset.
+        The list has one element for each study.
+    masker : :obj:`nilearn.maskers.NiftiMasker`
+        Masker object.
     correlation_maps : dict of 3 91x109x91 arrays
         right, posterior, and inferior
+
+    Returns
+    -------
+    subject_maps : :obj:`numpy.ndarray` of shape (sum(n_subjects), n_voxels)
+        The base subject-wise statistical maps.
 
     Notes
     -----
@@ -263,35 +271,35 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
     -   For two-sample studies, SDM-PSI imputes subject values separately for each sample, and it
         only adds the effect size to the patient (or non-control) subject images.
     """
-    mask_vec = masker.transform(masker.mask_img)
     mask_arr = masker.mask_img.get_fdata()
     n_x, n_y, n_z = masker.mask_img.shape
     xyz = np.vstack(np.where(mask_arr)).T
+    # Sort xyz coordinates by X, then Y, then Z
     # From https://opensourceoptions.com/blog/sort-numpy-arrays-by-columns-or-rows/
     xyz = xyz[xyz[:, 2].argsort()]  # sort by z
     xyz = xyz[xyz[:, 1].argsort(kind="mergesort")]  # sort by y
     xyz = xyz[xyz[:, 0].argsort(kind="mergesort")]  # sort by x
-    n_voxels = mask_vec.size
-    assert xyz.shape[0] == n_voxels
-    subject_maps = np.empty((np.sum(n_subjects), n_voxels))
+
+    subject_maps = np.empty((np.sum(n_subjects), xyz.shape[0]))
     subject_counter = 0
-    bad_directions, good_directions = [], []
+
+    # NOTE: We can use joblib here.
     for i_study, n_study_subjects in enumerate(tqdm(n_subjects, desc="Studies")):
         study_subject_maps = np.full((n_x, n_y, n_z, n_study_subjects), fill_value=np.nan)
         for coord in trange(xyz.shape[0], leave=False, desc="Voxel"):
-            i_x, j_y, k_z = xyz[coord, :]
+            x, y, z = xyz[coord, :]
 
-            if mask_arr[i_x - 1, j_y, k_z] == 1:
+            if mask_arr[x - 1, y, z] == 1:
                 use_right = True
             else:
                 use_right = False
 
-            if mask_arr[i_x, j_y - 1, k_z] == 1:
+            if mask_arr[x, y - 1, z] == 1:
                 use_posterior = True
             else:
                 use_posterior = False
 
-            if mask_arr[i_x, j_y, k_z - 1] == 1:
+            if mask_arr[x, y, z - 1] == 1:
                 use_inferior = True
             else:
                 use_inferior = False
@@ -302,44 +310,48 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
 
             elif n_directions == 1:
                 if use_right:
-                    A_data = study_subject_maps[i_x - 1, j_y, k_z, :]
-                    r_ay = correlation_maps["right"][i_x, j_y, k_z]
+                    A_data = study_subject_maps[x - 1, y, z, :]
+                    r_ay = correlation_maps["right"][x, y, z]
+
                 elif use_posterior:
-                    A_data = study_subject_maps[i_x, j_y - 1, k_z, :]
-                    r_ay = correlation_maps["posterior"][i_x, j_y, k_z]
+                    A_data = study_subject_maps[x, y - 1, z, :]
+                    r_ay = correlation_maps["posterior"][x, y, z]
+
                 else:
-                    A_data = study_subject_maps[i_x, j_y, k_z - 1, :]
-                    r_ay = correlation_maps["inferior"][i_x, j_y, k_z]
+                    A_data = study_subject_maps[x, y, z - 1, :]
+                    r_ay = correlation_maps["inferior"][x, y, z]
 
                 voxel_values = _simulate_voxel_with_one_neighbor(A_data, r_ay)
 
             elif n_directions == 2:
                 if use_right:
-                    A_data = study_subject_maps[i_x - 1, j_y, k_z, :]
-                    r_ay = correlation_maps["right"][i_x, j_y, k_z]
+                    A_data = study_subject_maps[x - 1, y, z, :]
+                    r_ay = correlation_maps["right"][x, y, z]
 
                     if use_posterior:
-                        B_data = study_subject_maps[i_x, j_y - 1, k_z, :]
-                        r_by = correlation_maps["posterior"][i_x, j_y, k_z]
-                    else:
-                        B_data = study_subject_maps[i_x, j_y, k_z - 1, :]
-                        r_by = correlation_maps["inferior"][i_x, j_y, k_z]
-                elif use_posterior:
-                    A_data = study_subject_maps[i_x, j_y - 1, k_z, :]
-                    r_ay = correlation_maps["posterior"][i_x, j_y, k_z]
+                        B_data = study_subject_maps[x, y - 1, z, :]
+                        r_by = correlation_maps["posterior"][x, y, z]
 
-                    B_data = study_subject_maps[i_x, j_y, k_z - 1, :]
-                    r_by = correlation_maps["inferior"][i_x, j_y, k_z]
+                    else:
+                        B_data = study_subject_maps[x, y, z - 1, :]
+                        r_by = correlation_maps["inferior"][x, y, z]
+
+                elif use_posterior:
+                    A_data = study_subject_maps[x, y - 1, z, :]
+                    r_ay = correlation_maps["posterior"][x, y, z]
+
+                    B_data = study_subject_maps[x, y, z - 1, :]
+                    r_by = correlation_maps["inferior"][x, y, z]
 
                 voxel_values = _simulate_voxel_with_two_neighbors(A_data, B_data, r_ay, r_by)
 
             else:
-                A_data = study_subject_maps[i_x - 1, j_y, k_z, :]
-                B_data = study_subject_maps[i_x, j_y - 1, k_z, :]
-                C_data = study_subject_maps[i_x, j_y, k_z - 1, :]
-                r_ay = correlation_maps["right"][i_x, j_y, k_z]
-                r_by = correlation_maps["posterior"][i_x, j_y, k_z]
-                r_cy = correlation_maps["inferior"][i_x, j_y, k_z]
+                A_data = study_subject_maps[x - 1, y, z, :]
+                B_data = study_subject_maps[x, y - 1, z, :]
+                C_data = study_subject_maps[x, y, z - 1, :]
+                r_ay = correlation_maps["right"][x, y, z]
+                r_by = correlation_maps["posterior"][x, y, z]
+                r_cy = correlation_maps["inferior"][x, y, z]
                 voxel_values = _simulate_voxel_with_three_neighbors(
                     A_data,
                     B_data,
@@ -349,14 +361,8 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
                     r_cy,
                 )
 
-            study_subject_maps[i_x, j_y, k_z, :] = voxel_values
-            if np.any(np.isnan(voxel_values)):
-                bad_directions.append(n_directions)
-            else:
-                good_directions.append(n_directions)
+            study_subject_maps[x, y, z, :] = voxel_values
 
-        print(np.unique(bad_directions))
-        print(np.unique(good_directions))
         study_subject_img = nib.Nifti1Image(
             study_subject_maps, masker.mask_img.affine, masker.mask_img.header
         )
@@ -401,6 +407,8 @@ def _scale_subject_maps(
         subject-level maps for each dataset (across imputations), and scaling it across
         imputations.
     """
+    assert len(prelim_subjectlevel_maps) == studylevel_effect_size_maps.shape[0]
+
     scaled_subjectlevel_maps = []
     for i_study in range(studylevel_effect_size_maps.shape[0]):
         study_mean = studylevel_effect_size_maps[i_study, :]
