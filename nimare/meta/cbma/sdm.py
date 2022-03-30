@@ -132,9 +132,8 @@ def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
     r_ar = np.corrcoef((A, R))[1, 0]
     r_br = np.corrcoef((B, R))[1, 0]
 
-    w_r = (
-        (1 - (r_ab**2) - (r_ay**2) - (r_by**2) + (2 * r_ab * r_ay * r_by))
-        / (1 - (r_ab**2) - (r_ar**2) - (r_br**2) + (2 * r_ab * r_ar * r_br))
+    w_r = (1 - (r_ab**2) - (r_ay**2) - (r_by**2) + (2 * r_ab * r_ay * r_by)) / (
+        1 - (r_ab**2) - (r_ar**2) - (r_br**2) + (2 * r_ab * r_ar * r_br)
     )
     w_r = np.sqrt(np.abs(w_r))  # NOTE: The abs isn't part of the math
     w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar)))) / (1 - (r_ab**2))
