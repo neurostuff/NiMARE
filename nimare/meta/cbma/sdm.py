@@ -16,12 +16,55 @@ def _mle_estimation():
     ...
 
 
-def _impute_studywise_imgs():
-    ...
+def _impute_studywise_imgs(
+    meta_effect_size_img,
+    meta_tau_img,
+    lower_bound_imgs,
+    upper_bound_imgs,
+    seed=0,
+):
+    """Impute study-wise images.
+
+    Parameters
+    ----------
+    meta_effect_size_img : nibabel.Nifti1Image
+    meta_tau_img : nibabel.Nifti1Image
+    lower_bound_imgs : S-length list of nibabel.Nifti1Image
+    upper_bound_imgs : S-length list of nibabel.Nifti1Image
+    seed : int
+
+    Returns
+    -------
+    study_effect_size_imgs : S-length list of nibabel.Nifti1Image
+    study_var_imgs : S-length list of nibabel.Nifti1Image
+    """
+    # Nonsense for now
+    study_effect_size_imgs = lower_bound_imgs[:]
+    study_var_imgs = lower_bound_imgs[:]
+    return study_effect_size_imgs, study_var_imgs
 
 
-def _run_permutations():
+def _run_permutations(all_subject_effect_size_imgs, all_subject_var_imgs, seed=0):
     """Run permutations.
+
+    Parameters
+    ----------
+    all_subject_effect_size_imgs : I-length list of S-length lists of numpy.ndarray of shape (N, V)
+        I = imputations
+        S = studies
+        N = study sample sizes
+        V = voxels
+    all_subject_var_imgs : I-length list of S-length lists of numpy.ndarray of shape (N, V)
+        I = imputations
+        S = studies
+        N = study sample sizes
+        V = voxels
+
+    Returns
+    -------
+    permuted_subject_effect_size_imgs : \
+            I-length list of S-length lists of numpy.ndarray of shape (N, V)
+    permuted_subject_var_imgs : I-length list of S-length lists of numpy.ndarray of shape (N, V)
 
     Notes
     -----
@@ -30,7 +73,9 @@ def _run_permutations():
     PSI methods must also swap subjects in a correlation meta-analysis."
     The assignments must be the same across imputations.
     """
-    ...
+    permuted_subject_effect_size_imgs = all_subject_effect_size_imgs[:]
+    permuted_subject_var_imgs = all_subject_var_imgs[:]
+    return permuted_subject_effect_size_imgs, permuted_subject_var_imgs
 
 
 def _extract_max_statistics():
@@ -577,7 +622,9 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
     max_stats = {}
     for j_iter in range(n_iters):
         permuted_subject_effect_size_imgs, permuted_subject_var_imgs = _run_permutations(
-            all_subject_effect_size_imgs, all_subject_var_imgs
+            all_subject_effect_size_imgs,
+            all_subject_var_imgs,
+            seed=j_iter,
         )
 
         # Step 6: Calculate study-level Hedges-corrected effect size maps.
