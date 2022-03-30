@@ -12,6 +12,8 @@ from .utils import weight_priors
 def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0):
     r"""Perform text-to-image encoding according to the method described in Rubin et al. (2017).
 
+    This method was originally described in Rubin et al. (2017) [1]_.
+
     Parameters
     ----------
     model : :obj:`~nimare.annotate.gclda.GCLDAModel`
@@ -78,10 +80,10 @@ def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0
 
     References
     ----------
-    * Rubin, Timothy N., et al. "Decoding brain activity using a
-      large-scale probabilistic functional-anatomical atlas of human
-      cognition." PLoS computational biology 13.10 (2017): e1005649.
-      https://doi.org/10.1371/journal.pcbi.1005649
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
+       functional-anatomical atlas of human cognition."
+       PLoS computational biology 13.10 (2017): e1005649.
+       https://doi.org/10.1371/journal.pcbi.1005649
     """
     if isinstance(text, list):
         text = " ".join(text)

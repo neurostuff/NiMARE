@@ -21,23 +21,27 @@ class CogAtLemmatizer(object):
     Parameters
     ----------
     ontology_df : :obj:`pandas.DataFrame`, optional
-        DataFrame with three columns (id, name, alias) and one row for each
-        alias (e.g., synonym or abbreviation) for each term in the Cognitive
-        Atlas. If None, loads ontology file from resources folder.
+        DataFrame with three columns (id, name, alias) and one row for each alias
+        (e.g., synonym or abbreviation) for each term in the Cognitive Atlas.
+        If None, loads ontology file from resources folder. Default is None.
 
     Attributes
     ----------
     ontology_ : :obj:`pandas.DataFrame`
         Ontology in DataFrame form.
     regex_ : :obj:`dict`
-        Dictionary linking aliases in ontology to regular expressions for
-        lemmatization.
+        Dictionary linking aliases in ontology to regular expressions for lemmatization.
+
+    Notes
+    -----
+    The Cognitive Atlas [1]_ is an ontology for describing cognitive neuroscience concepts and
+    tasks.
 
     References
     ----------
-    * Poldrack, Russell A., et al. "The cognitive atlas: toward a
-      knowledge foundation for cognitive neuroscience." Frontiers in
-      neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+    .. [1] Poldrack, Russell A., et al. "The cognitive atlas: toward a knowledge foundation for
+       cognitive neuroscience." Frontiers in neuroinformatics 5 (2011): 17.
+       https://doi.org/10.3389/fninf.2011.00017
 
     See Also
     --------
@@ -101,11 +105,14 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
     text_df : (D x 2) :obj:`pandas.DataFrame`
         Pandas dataframe with at least two columns: 'id' and the text.
         D = document.
+
     id_df : (T x 3) :obj:`pandas.DataFrame`
-        Cognitive Atlas ontology dataframe with at least three columns:
-        'id' (unique identifier for term), 'alias' (natural language expression
-        of term), and 'name' (preferred name of term; currently unused).
-        T = term.
+        Cognitive Atlas ontology dataframe with one row for each term and at least three columns:
+
+        - ``"id"``: A unique identifier for each term.
+        - ``"alias"``: A natural language expression for each term.
+        - ``"name"``: The preferred name of each term. Currently unused.
+
     text_column : :obj:`str`, optional
         Name of column in text_df that contains text. Default is 'abstract'.
 
@@ -113,14 +120,22 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
     -------
     counts_df : (D x T) :obj:`pandas.DataFrame`
         Term counts for documents in the corpus.
+        One row for each document and one column for each term.
+
     rep_text_df : (D x 2) :obj:`pandas.DataFrame`
-        Text DataFrame with terms replaced with their CogAt IDs.
+        An updated version of the ``text_df`` DataFrame with terms in the text column replaced
+        with their CogAt IDs.
+
+    Notes
+    -----
+    The Cognitive Atlas [1]_ is an ontology for describing cognitive neuroscience concepts and
+    tasks.
 
     References
     ----------
-    * Poldrack, Russell A., et al. "The cognitive atlas: toward a
-      knowledge foundation for cognitive neuroscience." Frontiers in
-      neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+    .. [1]  Poldrack, Russell A., et al. "The cognitive atlas: toward a
+            knowledge foundation for cognitive neuroscience." Frontiers in
+            neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
 
     See Also
     --------

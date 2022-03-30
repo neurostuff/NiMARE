@@ -450,7 +450,7 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
         uncertain_subjects = (11.6 / (2 * np.sqrt(2 / np.pi)) * np.sqrt(8 * np.log(2))) / np.sqrt(
             sample_size
         )  # pylint: disable=no-member
-        fwhm = np.sqrt(uncertain_subjects ** 2 + uncertain_templates ** 2)
+        fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = (
@@ -468,3 +468,68 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
     kernel = kernel[mn : mx + 1, mn : mx + 1, mn : mx + 1]
     mid = int(np.floor(data.shape[0] / 2.0))
     return sigma_vox, kernel
+
+
+def _get_last_bin(arr1d):
+    """Index the last location in a 1D array with a non-zero value."""
+    if np.any(arr1d):
+        last_bin = np.where(arr1d)[0][-1]
+
+    else:
+        last_bin = 0
+
+    return last_bin
+
+
+def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
+    """Calculate maximum cluster mass and size for an array.
+
+    This method assesses both positive and negative clusters.
+
+    Parameters
+    ----------
+    arr3d : :obj:`numpy.ndarray`
+        Unthresholded 3D summary-statistic matrix. This matrix will end up changed in place.
+    threshold : :obj:`float`
+        Uncorrected summary-statistic thresholded for defining clusters.
+    conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+        Connectivity matrix for defining clusters.
+
+    Returns
+    -------
+    max_size, max_mass : :obj:`float`
+        Maximum cluster size and mass from the matrix.
+    """
+    if tail == "upper":
+        arr3d[arr3d <= threshold] = 0
+    else:
+        arr3d[np.abs(arr3d) <= threshold] = 0
+
+    labeled_arr3d = np.empty(arr3d.shape, int)
+    labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
+
+    if tail == "two":
+        # Label positive and negative clusters separately
+        n_positive_clusters = np.max(labeled_arr3d)
+        temp_labeled_arr3d, _ = ndimage.measurements.label(arr3d < 0, conn)
+        temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
+        labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
+        del temp_labeled_arr3d
+
+    clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
+    assert clust_vals[0] == 0
+
+    # Cluster mass-based inference
+    max_mass = 0
+    for unique_val in clust_vals[1:]:
+        ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
+        max_mass = np.maximum(max_mass, np.sum(ss_vals))
+
+    # Cluster size-based inference
+    clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
+    if clust_sizes.size:
+        max_size = np.max(clust_sizes)
+    else:
+        max_size = 0
+
+    return max_size, max_mass

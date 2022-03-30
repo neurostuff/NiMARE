@@ -115,11 +115,13 @@ class Corrector(metaclass=ABCMeta):
         result : :obj:`~nimare.results.MetaResult`
             MetaResult with new corrected maps added.
         """
-        est = result.estimator
         correction_method = f"correct_{self._correction_method}_{self.method}"
 
         # Make sure we return a copy of the MetaResult
         result = result.copy()
+
+        # Also operate on a copy of the estimator
+        est = result.estimator
 
         # If a correction method with the same name exists in the current
         # MetaEstimator, use it. Otherwise fall back on _transform.
@@ -136,6 +138,10 @@ class Corrector(metaclass=ABCMeta):
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
         result.maps.update(corr_maps)
+
+        # Update the estimator as well, in order to retain updated null distributions
+        result.estimator = est
+
         return result
 
     @abstractmethod
@@ -181,7 +187,11 @@ class FWECorrector(Corrector):
 
     def _transform(self, result):
         p = result.maps["p"]
-        _, p_corr, _, _ = mc.multipletests(p, method=self.method, is_sorted=False)
+        nonnan_mask = ~np.isnan(p)
+        p_corr = np.empty_like(p)
+        p_no_nans = p[nonnan_mask]
+        _, p_corr_no_nans, _, _ = mc.multipletests(p_no_nans, method=self.method, is_sorted=False)
+        p_corr[nonnan_mask] = p_corr_no_nans
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps
@@ -223,7 +233,13 @@ class FDRCorrector(Corrector):
 
     def _transform(self, result):
         p = result.maps["p"]
-        _, p_corr = mc.fdrcorrection(p, alpha=self.alpha, method=self.method, is_sorted=False)
+        nonnan_mask = ~np.isnan(p)
+        p_corr = np.empty_like(p)
+        p_no_nans = p[nonnan_mask]
+        _, p_corr_no_nans = mc.fdrcorrection(
+            p_no_nans, alpha=self.alpha, method=self.method, is_sorted=False
+        )
+        p_corr[nonnan_mask] = p_corr_no_nans
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
         return corr_maps

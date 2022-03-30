@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _metas_macm:
@@ -7,6 +5,8 @@
 ============================================
 Meta-analytic coactivation modeling analysis
 ============================================
+
+Perform a MACM analysis with Neurosynth data.
 
 Meta-analytic coactivation modeling (MACM) is a common coordinate-based
 analysis in which task-independent "connectivity" is assessed by selecting
@@ -18,11 +18,12 @@ from nilearn import datasets, image, plotting
 
 from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
-from nimare.meta import SCALE, MKDAChi2
+from nimare.meta.cbma.ale import SCALE
+from nimare.meta.cbma.mkda import MKDAChi2
 
 ###############################################################################
 # Load Dataset
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 # We will assume that the Neurosynth database has already been downloaded and
 # converted to a NiMARE dataset.
 dset_file = "neurosynth_nimare_with_abstracts.pkl.gz"
@@ -30,7 +31,7 @@ dset = Dataset.load(dset_file)
 
 ###############################################################################
 # Define a region of interest
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 # We'll use the right amygdala from the Harvard-Oxford atlas
 atlas = datasets.fetch_atlas_harvard_oxford("sub-maxprob-thr50-2mm")
 img = nib.load(atlas["maps"])
@@ -42,14 +43,14 @@ roi_img = image.math_img(f"img1 == {roi_val}", img1=img)
 
 ###############################################################################
 # Select studies with a reported coordinate in the ROI
-# ----------------------------------------------------
+# -----------------------------------------------------------------------------
 roi_ids = dset.get_studies_by_mask(roi_img)
 dset_sel = dset.slice(roi_ids)
 print(f"{len(roi_ids)}/{len(dset.ids)} studies report at least one coordinate in the ROI")
 
 ###############################################################################
 # Select studies with *no* reported coordinates in the ROI
-# --------------------------------------------------------
+# -----------------------------------------------------------------------------
 no_roi_ids = list(set(dset.ids).difference(roi_ids))
 dset_unsel = dset.slice(no_roi_ids)
 print(f"{len(no_roi_ids)}/{len(dset.ids)} studies report zero coordinates in the ROI")
@@ -57,7 +58,7 @@ print(f"{len(no_roi_ids)}/{len(dset.ids)} studies report zero coordinates in the
 
 ###############################################################################
 # MKDA Chi2 with FWE correction
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 mkda = MKDAChi2(kernel__r=10)
 mkda.fit(dset_sel, dset_unsel)
 
@@ -74,7 +75,7 @@ plotting.plot_stat_map(
 
 ###############################################################################
 # SCALE
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 # Another good option for a MACM analysis is the SCALE algorithm, which was
 # designed specifically for MACM. Unfortunately, SCALE does not support
 # multiple-comparisons correction.
@@ -82,6 +83,6 @@ plotting.plot_stat_map(
 # First, we must define our null model of reported coordinates in the literature.
 # We will use the coordinates in Neurosynth
 xyz = dset.coordinates[["x", "y", "z"]].values
-scale = SCALE(xyz=xyz, n_iters=10000, kernel__n=20)
+scale = SCALE(xyz=xyz, n_iters=10000, n_cores=1, kernel__n=20)
 scale.fit(dset_sel)
 plotting.plot_stat_map(scale.results.get_map("z_vthresh"), draw_cross=False, cmap="RdBu_r")

@@ -2,7 +2,6 @@
 import logging
 import os
 import os.path as op
-import time
 
 import nibabel as nib
 import numpy as np
@@ -184,27 +183,3 @@ def test_mm2vox():
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.mm2vox(test, aff), true)
-
-
-def test_run_shell_command(caplog):
-    """Test _run_shell_command."""
-    with caplog.at_level(logging.INFO):
-        utils._run_shell_command("echo 'output'")
-    assert "output" in caplog.text
-
-    # Check that the exception is registered as such
-    with pytest.raises(Exception) as execinfo:
-        utils._run_shell_command("echo 'Error!' 1>&2;exit 64")
-    assert "Error!" in str(execinfo.value)
-
-    # Check that the function actually waits until the command completes
-    dur = 3
-    start = time.time()
-    with caplog.at_level(logging.INFO):
-        utils._run_shell_command(f"echo 'hi';sleep {dur}s;echo 'bye'")
-    end = time.time()
-
-    assert "hi" in caplog.text
-    assert "bye" in caplog.text
-    duration = end - start
-    assert duration >= dur

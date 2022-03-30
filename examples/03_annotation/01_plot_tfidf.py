@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _annotations_tfidf:
@@ -8,8 +6,7 @@
 Simple annotation from text
 ===========================
 
-NiMARE contains a function for simple term count or tf-idf value extraction
-from texts stored in a Dataset.
+Perform simple term count or tf-idf value extraction from texts stored in a Dataset.
 """
 import os
 
@@ -17,7 +14,7 @@ from nimare import annotate, dataset, utils
 
 ###############################################################################
 # Load dataset with abstracts
-# ---------------------------
+# -----------------------------------------------------------------------------
 # We'll load a small dataset composed only of studies in Neurosynth with
 # Angela Laird as a coauthor, for the sake of speed.
 dset = dataset.Dataset(os.path.join(utils.get_resource_path(), "neurosynth_laird_studies.json"))
@@ -25,7 +22,7 @@ dset.texts.head(2)
 
 ###############################################################################
 # Generate term counts
-# --------------------
+# -----------------------------------------------------------------------------
 # Let's start by extracting terms and their associated counts from article
 # abstracts.
 counts_df = annotate.text.generate_counts(
@@ -39,7 +36,7 @@ counts_df.head(5)
 
 ###############################################################################
 # Generate term counts
-# --------------------
+# -----------------------------------------------------------------------------
 # We can also extract term frequency-inverse document frequency (tf-idf)
 # values from text using the same function.
 # While the terms and values will differ based on the dataset provided and the
