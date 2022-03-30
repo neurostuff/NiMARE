@@ -50,9 +50,16 @@ def _simulate_voxel_with_no_neighbors(n_subjects):
     -------
     y : numpy.ndarray of shape (n_subjects,)
         Data for the voxel across subjects.
+
+    Notes
+    -----
+    For imputing subject values (Y) in a voxel that has no neighboring voxels imputed yet,
+    SDM-PSI simply creates random normal values and standardizes them to have null mean and
+    unit variance (R):
+
+        -   Y = R
     """
     y = np.random.normal(loc=0, scale=1, size=n_subjects)
-    y = stats.zscore(y)
     return y
 
 
@@ -70,6 +77,15 @@ def _simulate_voxel_with_one_neighbor(A, r_ay):
     -------
     y : numpy.ndarray of shape (n_subjects,)
         Data for the voxel across subjects.
+
+    Notes
+    -----
+    For imputing subject values in a voxel that has one neighboring voxel already imputed,
+    SDM-PSI conducts a weighted average of the subject values of the neighboring voxel (A) and
+    new standardized random normal values.
+    -   Y = (w_a * A) + (w_r * R), where w are the weights that ensure that the resulting
+        subject values have unit variance and the desired correlation.
+    -   w_a = r_ay - (w_r * r_ar * w_r) = np.sqrt((1 - (r_ay ** 2)) / (1 - (r_ar ** 2)))
     """
     # Random normal values with null mean and unit variance.
     R = _simulate_voxel_with_no_neighbors(A.size)
@@ -78,7 +94,9 @@ def _simulate_voxel_with_one_neighbor(A, r_ay):
 
     w_r = np.sqrt((1 - (r_ay**2)) / (1 - (r_ar**2)))
     w_a = r_ay - (w_r * r_ar)
+
     y = (w_a * A) + (w_r * R)
+    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scores by w*
     return y
 
 
@@ -96,20 +114,34 @@ def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
     -------
     y : numpy.ndarray of shape (n_subjects,)
         Data for the voxel across subjects.
+
+    Notes
+    -----
+    For imputing subject values in a voxel that has two neighboring voxels already imputed,
+    SDM-PSI conducts again a weighted average of the subject values of the neighboring voxels
+    (A and B) and new standardized random normal values.
+    -   Y = (w_a * A) + (w_b * B) + (w_r * R), where again w are the weights that ensure that
+        the resulting subject values have unit variance and the desired correlations.
+    -   w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
+    -   w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar))) / (1 - (r_ab ** 2)))
+    -   w_r = np.sqrt((1 - (r_ab ** 2) - (r_ay ** 2) - (r_by ** 2) + (2 * r_ab * r_ay * r_by))
+        / (1 - (r_ab ** 2) - (r_ar ** 2) - (r_br ** 2) + (2 * r_ab * r_ar * r_br))
     """
     R = _simulate_voxel_with_no_neighbors(A.size)
     r_ab = np.corrcoef((A, B))[1, 0]
     r_ar = np.corrcoef((A, R))[1, 0]
     r_br = np.corrcoef((B, R))[1, 0]
 
-    w_r = np.sqrt(
+    w_r = (
         (1 - (r_ab**2) - (r_ay**2) - (r_by**2) + (2 * r_ab * r_ay * r_by))
         / (1 - (r_ab**2) - (r_ar**2) - (r_br**2) + (2 * r_ab * r_ar * r_br))
     )
+    w_r = np.sqrt(np.abs(w_r))  # NOTE: The abs isn't part of the math
     w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar)))) / (1 - (r_ab**2))
     w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
 
     y = (w_a * A) + (w_b * B) + (w_r * R)
+    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scores by w*
     return y
 
 
@@ -191,6 +223,7 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
     w_a = r_ay - (w_b * r_ab) - (w_c * r_ac) - (w_r * r_ar)
 
     y = (w_a * A) + (w_b * B) + (w_c * C) + (w_r * R)
+    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scores by w*
     return y
 
 
@@ -218,28 +251,6 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
         SDM-PSI uses the correlation templates created for AES-SDM to know the correlation between
         every pair of two voxels (i.e., to take the irregular spatial covariance of the brain into
         account), but other approaches are possible.
-    -   For imputing subject values (Y) in a voxel that has no neighboring voxels imputed yet,
-        SDM-PSI simply creates random normal values and standardizes them to have null mean and
-        unit variance (R):
-
-        -   Y = R
-
-    -   For imputing subject values in a voxel that has one neighboring voxel already imputed,
-        SDM-PSI conducts a weighted average of the subject values of the neighboring voxel (A) and
-        new standardized random normal values.
-        -   Y = (w_a * A) + (w_r * R), where w are the weights that ensure that the resulting
-            subject values have unit variance and the desired correlation.
-        -   w_a = r_ay - (w_r * r_ar * w_r) = np.sqrt((1 - (r_ay ** 2)) / (1 - (r_ar ** 2)))
-    -   For imputing subject values in a voxel that has two neighboring voxels already imputed,
-        SDM-PSI conducts again a weighted average of the subject values of the neighboring voxels
-        (A and B) and new standardized random normal values.
-        -   Y = (w_a * A) + (w_b * B) + (w_r * R), where again w are the weights that ensure that
-            the resulting subject values have unit variance and the desired correlations.
-        -   w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
-        -   w_b = ((r_by - (r_ab * r_ay)) - (w_r * (r_br - (r_ab * r_ar))) / (1 - (r_ab ** 2)))
-        -   w_r = np.sqrt((1 - (r_ab ** 2) - (r_ay ** 2) - (r_by ** 2) + (2 * r_ab * r_ay * r_by))
-            / (1 - (r_ab ** 2) - (r_ar ** 2) - (r_br ** 2) + (2 * r_ab * r_ar * r_br))
-
     -   Note that as far as the imputation of the voxels follows a simple order and the software
         only accounts for correlations between voxels sharing a face, a voxel cannot have more than
         three neighbor voxels already imputed. For example, imagine that the imputation follows a
@@ -266,7 +277,7 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
     subject_counter = 0
     bad_directions, good_directions = [], []
     for i_study, n_study_subjects in enumerate(tqdm(n_subjects, desc="Studies")):
-        study_subject_maps = np.full((n_x, n_y, n_z, n_study_subjects), fill_value=0)
+        study_subject_maps = np.full((n_x, n_y, n_z, n_study_subjects), fill_value=np.nan)
         for coord in trange(xyz.shape[0], leave=False, desc="Voxel"):
             i_x, j_y, k_z = xyz[coord, :]
 
