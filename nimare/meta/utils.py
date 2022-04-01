@@ -16,7 +16,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
 
 
-def calculate_tfce(z_map, E=0.5, H=2, dh=0.1):
+def calculate_tfce(z_map, E=0.5, H=2, dh="auto", two_sided=True):
     """Calculate TFCE from a z-statistic map.
 
     The TFCE calculation is implemented as described in [1]_.
@@ -29,13 +29,19 @@ def calculate_tfce(z_map, E=0.5, H=2, dh=0.1):
         Extent weight. Default is 0.5.
     H : :obj:`float`, optional
         Height weight. Default is 2.
-    dh : :obj:`float`, optional
-        Step size for TFCE calculation. Default is 0.1.
+    dh : :obj:`float` or "auto", optional
+        Step size for TFCE calculation.
+        Default is "auto", which employs 100 steps from 0 to the max observed value in z_map.
 
     Returns
     -------
     tfce_map : :obj:`numpy.ndarray` of shape (X, Y, Z)
         The map of TFCE values.
+
+    Notes
+    -----
+    This should be equivalent to ``fslmaths {z_map} -tfce {H} {E} 18 {tfce_map}``,
+    for 6.0.3 at least.
 
     References
     ----------
@@ -43,30 +49,38 @@ def calculate_tfce(z_map, E=0.5, H=2, dh=0.1):
         problems of smoothing, threshold dependence and localisation in cluster inference.
         Neuroimage, 44(1), 83-98.
     """
-    # Define connectivity matrix for cluster labeling
-    conn = ndimage.generate_binary_structure(3, 2)
+    z_map = z_map.copy()
+    if not two_sided:
+        z_map[z_map < 0] = 0
 
-    # Get the step right before the maximum z-statistic in the map
-    max_z = np.floor(np.max(z_map) / dh) * dh
+    max_z = np.max(np.abs(z_map))
+    if dh == "auto":
+        # The default approach in fslmaths
+        dh = max_z / 100
+
+    # Define connectivity matrix for cluster labeling, set to NiMARE's default 18-connectivity
+    conn = ndimage.generate_binary_structure(3, 2)
 
     tfce_map = np.zeros_like(z_map)
     for z_threshold in np.arange(dh, max_z + dh, dh):
-        # Threshold map
-        thresh_z = z_map.copy()
-        thresh_z[thresh_z < z_threshold] = 0
+        for sign in np.unique(np.sign(z_map)):
+            temp_z_map = z_map * sign
 
-        # Derive clusters
-        labeled_arr3d, n_clusters = ndimage.measurements.label(thresh_z, conn)
+            # Threshold map
+            temp_z_map[temp_z_map < z_threshold] = 0
 
-        # Label each cluster with its extent
-        cluster_map = np.zeros(z_map.shape, int)
-        for cluster_val in range(1, n_clusters + 1):
-            bool_map = labeled_arr3d == cluster_val
-            cluster_map[bool_map] = np.sum(bool_map)
+            # Derive clusters
+            labeled_arr3d, n_clusters = ndimage.measurements.label(temp_z_map, conn)
 
-        # Calculate each voxel's tfce value based on its cluster extent and z-value
-        tfce_step_values = (cluster_map**E) * (z_threshold**H)
-        tfce_map += tfce_step_values
+            # Label each cluster with its extent
+            cluster_map = np.zeros(temp_z_map.shape, int)
+            for cluster_val in range(1, n_clusters + 1):
+                bool_map = labeled_arr3d == cluster_val
+                cluster_map[bool_map] = np.sum(bool_map)
+
+            # Calculate each voxel's tfce value based on its cluster extent and z-value
+            tfce_step_values = (cluster_map**E) * (z_threshold**H)
+            tfce_map += sign * tfce_step_values
 
     return tfce_map
 
