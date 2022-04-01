@@ -61,7 +61,7 @@ print(FWECorrector.inspect(results))
 #
 # The "montecarlo" method is a special one that is implemented within the
 # Estimator, rather than in the Corrector.
-corr = FWECorrector(method="montecarlo", n_iters=50, n_cores=2, tfce=True)
+corr = FWECorrector(method="montecarlo", n_iters=25, n_cores=2, tfce=True)
 cres = corr.transform(results)
 
 DISTS_TO_PLOT = [
@@ -82,7 +82,7 @@ null_dists = cres.estimator.null_distributions_
 
 for i_ax, dist_name in enumerate(DISTS_TO_PLOT):
     xlabel = XLABELS[i_ax]
-    sns.histplot(x=null_dists[dist_name], bins=40, ax=axes[i_ax])
+    sns.histplot(x=null_dists[dist_name], bins=20, ax=axes[i_ax])
     axes[i_ax].set_title(dist_name)
     axes[i_ax].set_xlabel(xlabel)
     axes[i_ax].set_xlim(0, None)
