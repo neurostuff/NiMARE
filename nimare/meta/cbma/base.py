@@ -510,7 +510,7 @@ class CBMAEstimator(MetaEstimator):
         if tfce:
             _, iter_z_map = self._summarystat_to_p(iter_ss_map, null_method=self.null_method)
             iter_z_map = self.masker.inverse_transform(iter_z_map).get_fdata().copy()
-            iter_max_tfce = np.max(calculate_tfce(iter_z_map))
+            iter_max_tfce = np.max(calculate_tfce(iter_z_map, two_sided=False))
         else:
             iter_max_tfce = None
 
@@ -770,7 +770,7 @@ class CBMAEstimator(MetaEstimator):
             _, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
             # 1D --> 3D array
             z_values = self.masker.inverse_transform(z_values).get_fdata().copy()
-            tfce_values = calculate_tfce(z_values)
+            tfce_values = calculate_tfce(z_values, two_sided=False)
             # 3D --> 1D array
             tfce_values = np.squeeze(
                 self.masker.transform(new_img_like(self.masker.mask_img, tfce_values))
