@@ -504,7 +504,7 @@ class CBMAEstimator(MetaEstimator):
         iter_max_value = np.max(iter_ss_map)
 
         # Cluster-level inference
-        iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
+        iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata()
         iter_max_size, iter_max_mass = _calculate_cluster_measures(
             iter_ss_map, voxel_thresh, conn, tail="upper"
         )

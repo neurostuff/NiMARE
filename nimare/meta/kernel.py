@@ -152,7 +152,7 @@ class KernelTransformer(Transformer):
                     elif return_type == "image":
                         return [nib.load(f) for f in files]
                     elif return_type == "dataset":
-                        return dataset.copy()
+                        return dataset
 
             # Calculate IJK
             if not np.array_equal(mask.affine, dataset.masker.mask_img.affine):

@@ -187,7 +187,7 @@ class MKDADensity(CBMAEstimator):
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -210,7 +210,7 @@ class MKDADensity(CBMAEstimator):
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -494,7 +494,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_max_chi2_value = np.max(np.abs(pAgF_chi2_vals))
 
         # Cluster-level inference
-        pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata().copy()
+        pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata()
         pAgF_max_size, pAgF_max_mass = _calculate_cluster_measures(
             pAgF_chi2_map, voxel_thresh, conn, tail="two"
         )
@@ -517,7 +517,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_max_chi2_value = np.max(np.abs(pFgA_chi2_vals))
 
         # Cluster-level inference
-        pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata().copy()
+        pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata()
         pFgA_max_size, pFgA_max_mass = _calculate_cluster_measures(
             pFgA_chi2_map, voxel_thresh, conn, tail="two"
         )
@@ -720,8 +720,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         n_cores = self._check_ncores(n_cores)
 
-        iter_df1 = self.inputs_["coordinates1"].copy()
-        iter_df2 = self.inputs_["coordinates2"].copy()
+        iter_df1 = self.inputs_["coordinates1"]
+        iter_df2 = self.inputs_["coordinates2"]
         rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
         rand_xyz1 = null_xyz[rand_idx1, :]
         iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
@@ -749,8 +749,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 for i_iter in range(n_iters)
             )
 
-        del iter_df1, rand_idx1, rand_xyz1, iter_xyzs1
-        del iter_df2, rand_idx2, rand_xyz2, iter_xyzs2
+        del rand_idx1, rand_xyz1, iter_xyzs1
+        del rand_idx2, rand_xyz2, iter_xyzs2
 
         (
             pAgF_vfwe_null,
@@ -1075,7 +1075,7 @@ class KDA(CBMAEstimator):
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -1132,7 +1132,7 @@ class KDA(CBMAEstimator):
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
