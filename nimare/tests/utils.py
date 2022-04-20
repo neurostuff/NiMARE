@@ -87,7 +87,7 @@ def _check_p_values(
         for j in range(3)
     ]
 
-    best_chance_p_values = p_map[gtf_idx]
+    best_chance_p_values = p_map[tuple(gtf_idx)]
     assert all(best_chance_p_values < ALPHA) == good_sensitivity
 
     p_array_sig = p_array[sig_idx]

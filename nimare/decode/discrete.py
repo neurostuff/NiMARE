@@ -179,7 +179,6 @@ class BrainMapDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.u = u
         self.correction = correction
-        self.results = None
 
     def _fit(self, dataset):
         pass
@@ -215,7 +214,7 @@ class BrainMapDecoder(Decoder):
             u=self.u,
             correction=self.correction,
         )
-        self.results = results
+
         return results
 
 
@@ -469,7 +468,6 @@ class NeurosynthDecoder(Decoder):
         self.prior = prior
         self.u = u
         self.correction = correction
-        self.results = None
 
     def _fit(self, dataset):
         pass
@@ -506,7 +504,6 @@ class NeurosynthDecoder(Decoder):
             u=self.u,
             correction=self.correction,
         )
-        self.results = results
         return results
 
 
@@ -746,7 +743,6 @@ class ROIAssociationDecoder(Decoder):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = 0
-        self.results = None
 
     def _fit(self, dataset):
         roi_values = self.kernel_transformer.transform(
@@ -769,5 +765,4 @@ class ROIAssociationDecoder(Decoder):
         corrs = pearson(self.roi_values_, feature_values.T)
         out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
         out_df.index.name = "feature"
-        self.results = out_df
         return out_df

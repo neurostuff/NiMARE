@@ -166,7 +166,6 @@ class CorrelationDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.meta_estimator = meta_estimator
         self.target_image = target_image
-        self.results = None
 
     def _fit(self, dataset):
         """Generate feature-specific meta-analytic maps for dataset.
@@ -204,11 +203,11 @@ class CorrelationDecoder(Decoder):
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
-                self.meta_estimator.fit(feature_dset, nonfeature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset, nonfeature_dset)
             else:
-                self.meta_estimator.fit(feature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset)
 
-            feature_data = self.meta_estimator.results.get_map(
+            feature_data = meta_results.get_map(
                 self.target_image,
                 return_type="array",
             )
@@ -236,7 +235,6 @@ class CorrelationDecoder(Decoder):
         corrs = pearson(img_vec, self.images_)
         out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
         out_df.index.name = "feature"
-        self.results = out_df
         return out_df
 
 
@@ -277,7 +275,6 @@ class CorrelationDistributionDecoder(Decoder):
         self.features = features
         self.frequency_threshold = frequency_threshold
         self.memory_limit = memory_limit
-        self.results = None
         self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
@@ -349,5 +346,5 @@ class CorrelationDistributionDecoder(Decoder):
             corrs_z = np.arctanh(corrs)
             out_df.loc[feature, "mean"] = np.mean(corrs_z)
             out_df.loc[feature, "std"] = np.std(corrs_z)
-        self.results = out_df
+
         return out_df

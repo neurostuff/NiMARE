@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _metas_cbma_vs_ibma:
@@ -27,31 +25,34 @@ from nimare.utils import get_resource_path
 
 ###############################################################################
 # Download data
-# --------------------------------
+# -----------------------------------------------------------------------------
 dset_dir = download_nidm_pain()
 
 ###############################################################################
 # Load Dataset
-# --------------------------------------------------
+# -----------------------------------------------------------------------------
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 dset.update_path(dset_dir)
 
 # Calculate missing statistical images from the available stats.
-xformer = ImageTransformer(target=["z", "varcope"])
+xformer = ImageTransformer(target=["varcope"])
 dset = xformer.transform(dset)
 
 # create coordinates from statistical maps
-coord_gen = ImagesToCoordinates(merge_strategy="replace")
+coord_gen = ImagesToCoordinates(merge_strategy="fill")
 dset = coord_gen.transform(dset)
 
 ###############################################################################
 # ALE (CBMA)
 # -----------------------------------------------------------------------------
 meta_cbma = ALE()
-meta_cbma.fit(dset)
+cbma_results = meta_cbma.fit(dset)
 plot_stat_map(
-    meta_cbma.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r"
+    cbma_results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -59,9 +60,12 @@ plot_stat_map(
 # -----------------------------------------------------------------------------
 # We must resample the image data to the same MNI template as the Dataset.
 meta_ibma = DerSimonianLaird(resample=True)
-meta_ibma.fit(dset)
+ibma_results = meta_ibma.fit(dset)
 plot_stat_map(
-    meta_ibma.results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r"
+    ibma_results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -69,8 +73,8 @@ plot_stat_map(
 # -----------------------------------------------------------------------------
 stat_df = pd.DataFrame(
     {
-        "CBMA": meta_cbma.results.get_map("z", return_type="array"),
-        "IBMA": meta_ibma.results.get_map("z", return_type="array").squeeze(),
+        "CBMA": cbma_results.get_map("z", return_type="array"),
+        "IBMA": ibma_results.get_map("z", return_type="array"),
     }
 )
 print(stat_df.corr())
