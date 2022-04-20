@@ -138,7 +138,6 @@ class MKDADensity(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_weights(self, ma_values):
         """Determine experiment-wise weights per the conventional MKDA approach."""
@@ -1037,7 +1036,6 @@ class KDA(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_summarystat_est(self, ma_values):
         """Compute OF scores from data.

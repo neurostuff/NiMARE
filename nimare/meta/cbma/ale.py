@@ -153,7 +153,6 @@ class ALE(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -340,7 +339,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         self.dataset1 = None
         self.dataset2 = None
-        self.results = None
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if

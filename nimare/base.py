@@ -318,8 +318,7 @@ class Estimator(NiMAREBase):
         else:
             masker = dataset.masker
 
-        self.results = MetaResult(self, masker, maps)
-        return self.results
+        return MetaResult(self, masker, maps)
 
     @abstractmethod
     def _fit(self, dataset):
