@@ -9,20 +9,11 @@ from nimare.decode import continuous
 from nimare.meta import kernel, mkda
 
 
-def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
+def test_CorrelationDecoder_smoke(testdata_laird):
     """Smoke test for continuous.CorrelationDecoder."""
-    tmpdir = tmp_path_factory.mktemp("test_CorrelationDecoder")
-
     testdata_laird = testdata_laird.copy()
     features = testdata_laird.get_labels(ids=testdata_laird.ids[0])[:5]
     decoder = continuous.CorrelationDecoder(features=features)
-
-    # No basepath
-    with pytest.raises(ValueError):
-        decoder.fit(testdata_laird)
-
-    # Let's add the path
-    testdata_laird.update_path(tmpdir)
     decoder.fit(testdata_laird)
 
     # Make an image to decode

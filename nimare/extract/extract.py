@@ -177,8 +177,8 @@ def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
     -----
     This function was adapted from neurosynth.base.dataset.download().
 
-    Warning
-    -------
+    Warnings
+    --------
     Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
     format. Old code using this function **will not work** with the new version.
     """
@@ -302,55 +302,6 @@ def download_nidm_pain(data_dir=None, overwrite=False):
 
     with open(desc_file, "w") as fo:
         fo.write("21 pain studies in NIDM-results packs.")
-    return data_dir
-
-
-def download_mallet(data_dir=None, overwrite=False):
-    """Download the MALLET toolbox for LDA topic modeling.
-
-    .. versionadded:: 0.0.2
-
-    Parameters
-    ----------
-    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
-        Path where data should be downloaded. By default, files are downloaded in home directory.
-    overwrite : :obj:`bool`, optional
-        Whether to overwrite existing files or not. Default is False.
-
-    Returns
-    -------
-    data_dir : :obj:`str`
-        Updated data directory pointing to MALLET files.
-    """
-    url = "http://mallet.cs.umass.edu/dist/mallet-2.0.7.tar.gz"
-
-    temp_dataset_name = "mallet__temp"
-    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir)
-
-    dataset_name = "mallet"
-    data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
-
-    desc_file = op.join(data_dir, "description.txt")
-    if op.isfile(desc_file) and overwrite is False:
-        shutil.rmtree(temp_data_dir)
-        return data_dir
-
-    mallet_file = op.join(temp_data_dir, op.basename(url))
-    _download_zipped_file(url, mallet_file)
-
-    with tarfile.open(mallet_file) as tf:
-        tf.extractall(path=temp_data_dir)
-
-    os.rename(op.join(temp_data_dir, "mallet-2.0.7"), data_dir)
-
-    os.remove(mallet_file)
-    shutil.rmtree(temp_data_dir)
-
-    with open(desc_file, "w") as fo:
-        fo.write("The MALLET toolbox for latent Dirichlet allocation.")
-
-    LGR.debug(f"Dataset moved to {data_dir}")
-
     return data_dir
 
 
@@ -478,8 +429,8 @@ def download_abstracts(dataset, email):
     -------
     dataset : :obj:`~nimare.dataset.Dataset`
 
-    Warning
-    -------
+    Warnings
+    --------
     This function assumes that the dataset uses identifiers in the format
     [PMID-EXPID]. Thus, the ``study_id`` column of the
     :py:attr:`~nimare.dataset.Dataset.texts` DataFrame should correspond to PMID.

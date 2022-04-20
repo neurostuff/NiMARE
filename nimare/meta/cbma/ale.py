@@ -1,16 +1,16 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 import logging
-import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
 from ... import references
 from ...due import due
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import use_memmap
+from ...utils import tqdm_joblib, use_memmap
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -36,12 +36,26 @@ class ALE(CBMAEstimator):
     Parameters
     ----------
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
-        Kernel with which to convolve coordinates from dataset. Default is
-        ALEKernel.
+        Kernel with which to convolve coordinates from dataset.
+        Default is ALEKernel.
     null_method : {"approximate", "montecarlo"}, optional
-        Method by which to determine uncorrected p-values.
-        "approximate" is faster, but slightly less accurate.
-        "montecarlo" can be much slower, and is only slightly more accurate.
+        Method by which to determine uncorrected p-values. The available options are
+
+        ======================= =================================================================
+        "approximate" (default) Build a histogram of summary-statistic values and their
+                                expected frequencies under the assumption of random spatial
+                                associated between studies, via a weighted convolution.
+
+                                This method is much faster, but slightly less accurate.
+        "montecarlo"            Perform a large number of permutations, in which the coordinates
+                                in the studies are randomly drawn from the Estimator's brain mask
+                                and the full set of resulting summary-statistic values are
+                                incorporated into a null distribution (stored as a histogram for
+                                memory reasons).
+
+                                This method is must slower, and is only slightly more accurate.
+        ======================= =================================================================
+
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
@@ -52,21 +66,50 @@ class ALE(CBMAEstimator):
         If <=0, defaults to using all available cores.
         Default is 1.
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix '\kernel__' in the variable name.
         Another optional argument is ``mask``.
 
     Attributes
     ----------
-    masker
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMA estimators, there is only one key:
-        coordinates. This is an edited version of the dataset's coordinates
-        DataFrame.
-    null_distributions_ : :obj:`dict` or :class:`numpy.ndarray`
-        Null distributions for ALE and any multiple-comparisons correction
-        methods. Entries are added to this attribute if and when the
-        corresponding method is fit.
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
+        multiple-comparisons correction methods.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        If ``null_method == "approximate"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-approximate``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+
+        If ``null_method == "montecarlo"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-montecarlo``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+                These values are derived from the full set of summary statistics from each
+                iteration of the Monte Carlo procedure.
+            -   ``histweights_level-voxel_corr-fwe_method-montecarlo``: Array of weights for the
+                voxel-level FWE-correction null distribution, with one value for each bin in
+                ``histogram_bins``. These values are derived from the maximum summary statistic
+                from each iteration of the Monte Carlo procedure.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-size_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                size from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                mass from each Monte Carlo iteration. An array of shape (n_iters,).
 
     Notes
     -----
@@ -75,16 +118,16 @@ class ALE(CBMAEstimator):
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
 
-    Available correction methods: :func:`ALE.correct_fwe_montecarlo`
+    Available correction methods: :meth:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`.
 
     References
     ----------
     .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
         neuroanatomy of single-word reading: method and validation."
         Neuroimage 16.3 (2002): 765-780.
-    .. [2] Turkeltaub, Peter E., et al. "Minimizing within‐experiment and
-        within‐group effects in activation likelihood estimation
-        meta‐analyses." Human brain mapping 33.1 (2012): 1-13.
+    .. [2] Turkeltaub, Peter E., et al. "Minimizing within-experiment and
+        within-group effects in activation likelihood estimation
+        meta-analyses." Human brain mapping 33.1 (2012): 1-13.
     .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
         meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
     """
@@ -108,11 +151,10 @@ class ALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = n_cores
+        self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
-    def _compute_summarystat(self, ma_values):
+    def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
         return stat_values
 
@@ -142,7 +184,7 @@ class ALE(CBMAEstimator):
         max_ma_values = np.max(ma_values, axis=1)
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
-        max_poss_ale = self.compute_summarystat(max_ma_values)
+        max_poss_ale = self._compute_summarystat(max_ma_values)
         # create bin centers
         hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
         self.null_distributions_["histogram_bins"] = hist_bins
@@ -158,7 +200,9 @@ class ALE(CBMAEstimator):
         Notes
         -----
         This method adds two entries to the null_distributions_ dict attribute:
-        "histogram_bins" and "histogram_weights".
+
+            - "histogram_bins"
+            - "histweights_corr-none_method-approximate"
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
@@ -212,7 +256,13 @@ class ALE(CBMAEstimator):
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
-    r"""ALE subtraction analysis.
+    """ALE subtraction analysis.
+
+    .. versionchanged:: 0.0.12
+
+        - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
+        - Support parallelization and add progress bar.
+        - Add ALE-difference (stat) and -log10(p) (logp) maps to results.
 
     .. versionchanged:: 0.0.8
 
@@ -229,15 +279,22 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
         Default is 10000.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
+    n_cores : :obj:`int`, optional
+        Number of processes to use for meta-analysis. If -1, use all available cores.
+        Default is 1.
+
+        .. versionadded:: 0.0.12
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
-        Another optional argument is ``mask``.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix ``kernel__`` in the variable name. Another optional argument is ``mask``.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
 
     Notes
     -----
@@ -246,27 +303,30 @@ class ALESubtraction(PairwiseCBMAEstimator):
     The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
     BrainMap organization (https://www.brainmap.org/ale/).
 
-    Warning
-    -------
+    The voxel-wise null distributions used by this Estimator are very large, so they are not
+    retained as Estimator attributes.
+
+    Warnings
+    --------
     This implementation contains one key difference from the original version.
-    In the original version, group 1 > group 2 difference values are only
-    evaluated for voxels significant in the group 1 meta-analysis, and group 2
-    > group 1 difference values are only evaluated for voxels significant in
-    the group 2 meta-analysis. In NiMARE's implementation, the analysis is run
-    in a two-sided manner for *all* voxels in the mask.
+
+    In the original version, group 1 > group 2 difference values are only evaluated for voxels
+    significant in the group 1 meta-analysis, and group 2 > group 1 difference values are only
+    evaluated for voxels significant in the group 2 meta-analysis.
+
+    In NiMARE's implementation, the analysis is run in a two-sided manner for *all* voxels in the
+    mask.
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta‐analysis: Controlling the
-        false discovery rate and performing statistical contrasts." Human
-        brain mapping 25.1 (2005): 155-164.
-        https://doi.org/10.1002/hbm.20136
-    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation
-        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
-        https://doi.org/10.1016/j.neuroimage.2011.09.017
+    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the false discovery rate and
+       performing statistical contrasts." Human brain mapping 25.1 (2005): 155-164.
+       https://doi.org/10.1002/hbm.20136
+    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation meta-analysis revisited."
+       Neuroimage 59.3 (2012): 2349-2361. https://doi.org/10.1016/j.neuroimage.2011.09.017
     """
 
-    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, memory_limit=None, **kwargs):
+    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -279,9 +339,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         self.dataset1 = None
         self.dataset2 = None
-        self.results = None
         self.n_iters = n_iters
-        self.memory_limit = memory_limit
+        self.n_cores = self._check_ncores(n_cores)
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
 
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
@@ -300,63 +362,123 @@ class ALESubtraction(PairwiseCBMAEstimator):
             fname_idx=1,
         )
 
-        n_grp1 = ma_maps1.shape[0]
-        ma_arr = np.vstack((ma_maps1, ma_maps2))
-        id_idx = np.arange(ma_arr.shape[0])
-        n_voxels = ma_arr.shape[1]
+        n_grp1, n_voxels = ma_maps1.shape
 
-        # Get ALE values for first group.
-        grp1_ma_arr = ma_arr[:n_grp1, :]
-        grp1_ale_values = 1.0 - np.prod(1.0 - grp1_ma_arr, axis=0)
-
-        # Get ALE values for second group.
-        grp2_ma_arr = ma_arr[n_grp1:, :]
-        grp2_ale_values = 1.0 - np.prod(1.0 - grp2_ma_arr, axis=0)
-
+        # Get ALE values for the two groups and difference scores
+        grp1_ale_values = 1.0 - np.prod(1.0 - ma_maps1, axis=0)
+        grp2_ale_values = 1.0 - np.prod(1.0 - ma_maps2, axis=0)
         diff_ale_values = grp1_ale_values - grp2_ale_values
+        del grp1_ale_values, grp2_ale_values
+
+        # Combine the MA maps into a single array to draw from for null distribution
+        ma_arr = np.vstack((ma_maps1, ma_maps2))
+
+        if isinstance(ma_maps1, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
+            ma_maps1._mmap.close()
+
+        if isinstance(ma_maps2, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
+            ma_maps2._mmap.close()
+
+        del ma_maps1, ma_maps2
 
         # Calculate null distribution for each voxel based on group-assignment randomization
-        if self.memory_limit:
-            # Use a memmapped 4D array
-            iter_diff_values = np.memmap(
-                self.memmap_filenames[2],
-                dtype=ma_arr.dtype,
-                mode="w+",
-                shape=(self.n_iters, n_voxels),
-            )
-        else:
-            iter_diff_values = np.zeros((self.n_iters, n_voxels), dtype=ma_arr.dtype)
+        # Use a memmapped 2D array
+        iter_diff_values = np.memmap(
+            self.memmap_filenames[2],
+            dtype=ma_arr.dtype,
+            mode="w+",
+            shape=(self.n_iters, n_voxels),
+        )
 
-        for i_iter in range(self.n_iters):
-            np.random.shuffle(id_idx)
-            iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
-            iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
-            iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
-            del iter_grp1_ale_values, iter_grp2_ale_values
-            if self.memory_limit:
-                # Write changes to disk
-                iter_diff_values.flush()
+        with tqdm_joblib(tqdm(total=self.n_iters)):
+            Parallel(n_jobs=self.n_cores)(
+                delayed(self._run_permutation)(i_iter, n_grp1, ma_arr, iter_diff_values)
+                for i_iter in range(self.n_iters)
+            )
 
         # Determine p-values based on voxel-wise null distributions
-        # In cases with differently-sized groups,
-        # the ALE-difference values will be biased and skewed,
-        # but the null distributions will be too, so symmetric should be False.
-        p_arr = np.ones(n_voxels)
-        for voxel in range(n_voxels):
-            p_arr[voxel] = null_to_p(
-                diff_ale_values[voxel], iter_diff_values[:, voxel], tail="two", symmetric=False
+        # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
+        # the iteration as well and sort the resulting p-value array based on that.
+        with tqdm_joblib(tqdm(total=n_voxels)):
+            p_values, voxel_idx = zip(
+                *Parallel(n_jobs=self.n_cores)(
+                    delayed(self._alediff_to_p_voxel)(
+                        i_voxel,
+                        diff_ale_values[i_voxel],
+                        iter_diff_values[:, i_voxel],
+                    )
+                    for i_voxel in range(n_voxels)
+                )
             )
+        # Convert to an array and sort the p-values array based on the voxel index.
+        p_values = np.array(p_values)[np.array(voxel_idx)]
+
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
+
+        if isinstance(iter_diff_values, np.memmap):
+            LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
+            iter_diff_values._mmap.close()
 
         del iter_diff_values
 
-        z_arr = p_to_z(p_arr, tail="two") * diff_signs
+        z_arr = p_to_z(p_values, tail="two") * diff_signs
+        logp_arr = -np.log10(p_values)
 
         images = {
+            "stat_desc-group1MinusGroup2": diff_ale_values,
+            "p_desc-group1MinusGroup2": p_values,
             "z_desc-group1MinusGroup2": z_arr,
-            "p_desc-group1MinusGroup2": p_arr,
+            "logp_desc-group1MinusGroup2": logp_arr,
         }
         return images
+
+    def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
+        """Run a single permutations of the ALESubtraction null distribution procedure.
+
+        This method writes out a single row to the memmapped array in ``iter_diff_values``.
+
+        Parameters
+        ----------
+        i_iter : :obj:`int`
+            The iteration number.
+        n_grp1 : :obj:`int`
+            The number of experiments in the first group (of two, total).
+        ma_arr : :obj:`numpy.ndarray` of shape (E, V)
+            The voxel-wise (V) modeled activation values for all experiments E.
+        iter_diff_values : :obj:`numpy.memmap` of shape (I, V)
+            The null distribution of ALE-difference scores, with one row per iteration (I)
+            and one column per voxel (V).
+        """
+        gen = np.random.default_rng(seed=i_iter)
+        id_idx = np.arange(ma_arr.shape[0])
+        gen.shuffle(id_idx)
+        iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
+        iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
+        iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+
+    def _alediff_to_p_voxel(self, i_voxel, stat_value, voxel_null):
+        """Compute one voxel's p-value from its specific null distribution.
+
+        Notes
+        -----
+        In cases with differently-sized groups, the ALE-difference values will be biased and
+        skewed, but the null distributions will be too, so symmetric should be False.
+        """
+        p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
+        return p_value, i_voxel
+
+    def correct_fwe_montecarlo(self):
+        """Perform Monte Carlo-based FWE correction.
+
+        Warnings
+        --------
+        This method is not implemented for this class.
+        """
+        raise NotImplementedError(
+            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        )
 
 
 @due.dcite(
@@ -366,34 +488,57 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    .. versionchanged:: 0.0.12
+
+        - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
+        - Use memmapped array for null distribution.
+
     .. versionchanged:: 0.0.10
 
         Replace ``ijk`` with ``xyz``. This should be easier for users to collect.
 
     Parameters
     ----------
-    voxel_thresh : float, optional
-        Uncorrected voxel-level threshold. Default: 0.001
+    xyz : (N x 3) :obj:`numpy.ndarray`
+        Numpy array with XYZ coordinates.
+        Voxels are rows and x, y, z (meaning coordinates) values are the three columnns.
+
+        .. versionchanged:: 0.0.12
+
+            This parameter was previously incorrectly labeled as "optional" and indicated that
+            it supports tab-delimited files, which it does not (yet).
+
     n_iters : int, optional
-        Number of iterations for correction. Default: 10000
+        Number of iterations for statistical inference. Default: 10000
     n_cores : int, optional
-        Number of processes to use for meta-analysis. If -1, use all
-        available cores. Default: -1
-    xyz : :obj:`str` or (N x 3) array_like
-        Tab-delimited file of coordinates from database or numpy array with XYZ
-        coordinates. Voxels are rows and x, y, z (meaning coordinates) values
-        are the three columnns.
+        Number of processes to use for meta-analysis. If -1, use all available cores.
+        Default: 1
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
     **kwargs
-        Keyword arguments. Arguments for the kernel_transformer can be assigned
-        here, with the prefix '\kernel__' in the variable name.
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix '\kernel__' in the variable name.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distribution information.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        .. important::
+            The voxel-wise null distributions used by this Estimator are very large, so they are
+            not retained as Estimator attributes.
+
+        If :meth:`fit` is applied:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
 
     References
     ----------
@@ -404,12 +549,10 @@ class SCALE(CBMAEstimator):
 
     def __init__(
         self,
-        voxel_thresh=0.001,
+        xyz,
         n_iters=10000,
-        n_cores=-1,
-        xyz=None,
+        n_cores=1,
         kernel_transformer=ALEKernel,
-        memory_limit=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -422,11 +565,19 @@ class SCALE(CBMAEstimator):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
-        self.voxel_thresh = voxel_thresh
+        if not isinstance(xyz, np.ndarray):
+            raise TypeError(f"Parameter 'xyz' must be a numpy.ndarray, not a {type(xyz)}")
+        elif xyz.ndim != 2:
+            raise ValueError(f"Parameter 'xyz' must be a 2D array, but has {xyz.ndim} dimensions")
+        elif xyz.shape[1] != 3:
+            raise ValueError(f"Parameter 'xyz' must have 3 columns, but has shape {xyz.shape}")
+
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
-        self.memory_limit = memory_limit
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
@@ -449,47 +600,41 @@ class SCALE(CBMAEstimator):
 
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
-        max_poss_ale = self._compute_summarystat(max_ma_values)
+        max_poss_ale = self._compute_summarystat_est(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
         )
 
-        stat_values = self._compute_summarystat(ma_values)
+        stat_values = self._compute_summarystat_est(ma_values)
+
+        if isinstance(ma_values, np.memmap):
+            LGR.debug(f"Closing memmap at {ma_values.filename}")
+            ma_values._mmap.close()
 
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
         rand_xyz = self.xyz[rand_idx, :]
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
 
-        # Define parameters
-        iter_dfs = [iter_df] * self.n_iters
-        params = zip(iter_dfs, iter_xyzs)
-
-        if self.n_cores == 1:
-            if self.memory_limit:
-                perm_scale_values = np.memmap(
-                    self.memmap_filenames[1],
-                    dtype=stat_values.dtype,
-                    mode="w+",
-                    shape=(self.n_iters, stat_values.shape[0]),
+        perm_scale_values = np.memmap(
+            self.memmap_filenames[1],
+            dtype=stat_values.dtype,
+            mode="w+",
+            shape=(self.n_iters, stat_values.shape[0]),
+        )
+        with tqdm_joblib(tqdm(total=self.n_iters)):
+            Parallel(n_jobs=self.n_cores)(
+                delayed(self._run_permutation)(
+                    i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
                 )
-            else:
-                perm_scale_values = np.zeros(
-                    (self.n_iters, stat_values.shape[0]), dtype=stat_values.dtype
-                )
-            for i_iter, pp in enumerate(tqdm(params, total=self.n_iters)):
-                perm_scale_values[i_iter, :] = self._run_permutation(pp)
-                if self.memory_limit:
-                    # Write changes to disk
-                    perm_scale_values.flush()
-        else:
-            with mp.Pool(self.n_cores) as p:
-                perm_scale_values = list(
-                    tqdm(p.imap(self._run_permutation, params), total=self.n_iters)
-                )
-            perm_scale_values = np.stack(perm_scale_values)
+                for i_iter in range(self.n_iters)
+            )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
+
+        if isinstance(perm_scale_values, np.memmap):
+            LGR.debug(f"Closing memmap at {perm_scale_values.filename}")
+            perm_scale_values._mmap.close()
 
         del perm_scale_values
 
@@ -500,7 +645,7 @@ class SCALE(CBMAEstimator):
         images = {"stat": stat_values, "logp": logp_values, "z": z_values}
         return images
 
-    def _compute_summarystat(self, data):
+    def _compute_summarystat_est(self, data):
         """Generate ALE-value array and null distribution from list of contrasts.
 
         For ALEs on the original dataset, computes the null distribution.
@@ -522,8 +667,7 @@ class SCALE(CBMAEstimator):
         return stat_values
 
     def _scale_to_p(self, stat_values, scale_values):
-        """
-        Compute p- and z-values.
+        """Compute p- and z-values.
 
         Parameters
         ----------
@@ -541,28 +685,35 @@ class SCALE(CBMAEstimator):
         -----
         This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
-        scale_zeros = scale_values == 0
-        n_zeros = np.sum(scale_zeros, axis=0)
-        scale_values[scale_values == 0] = np.nan
-        scale_hists = np.zeros(
-            ((len(self.null_distributions_["histogram_bins"]),) + n_zeros.shape)
-        )
-        scale_hists[0, :] = n_zeros
-        scale_hists[1:, :] = np.apply_along_axis(self._make_hist, 0, scale_values)
+        n_voxels = stat_values.shape[0]
 
-        p_values = nullhist_to_p(
-            stat_values, scale_hists, self.null_distributions_["histogram_bins"]
-        )
+        # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
+        # the iteration as well and sort the resulting p-value array based on that.
+        with tqdm_joblib(tqdm(total=n_voxels)):
+            p_values, voxel_idx = zip(
+                *Parallel(n_jobs=self.n_cores)(
+                    delayed(self._scale_to_p_voxel)(
+                        i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
+                    )
+                    for i_voxel in range(n_voxels)
+                )
+            )
+        # Convert to an array and sort the p-values array based on the voxel index.
+        p_values = np.array(p_values)[np.array(voxel_idx)]
+
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 
-    def _make_hist(self, oned_arr):
-        """Make a histogram from a 1d array and histogram bins.
+    def _scale_to_p_voxel(self, i_voxel, stat_value, voxel_null):
+        """Compute one voxel's p-value from its specific null distribution."""
+        scale_zeros = voxel_null == 0
+        n_zeros = np.sum(scale_zeros)
+        voxel_null[scale_zeros] = np.nan
+        scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
+        scale_hist[0] = n_zeros
 
-        Meant to be applied along an axis to a 2d array.
-        """
-        hist_ = np.histogram(
-            a=oned_arr,
+        scale_hist[1:] = np.histogram(
+            a=voxel_null,
             bins=self.null_distributions_["histogram_bins"],
             range=(
                 np.min(self.null_distributions_["histogram_bins"]),
@@ -570,12 +721,28 @@ class SCALE(CBMAEstimator):
             ),
             density=False,
         )[0]
-        return hist_
 
-    def _run_permutation(self, params):
+        p_value = nullhist_to_p(
+            stat_value,
+            scale_hist,
+            self.null_distributions_["histogram_bins"],
+        )
+        return p_value, i_voxel
+
+    def _run_permutation(self, i_row, iter_xyz, iter_df, perm_scale_values):
         """Run a single random SCALE permutation of a dataset."""
-        iter_df, iter_xyz = params
         iter_xyz = np.squeeze(iter_xyz)
         iter_df[["x", "y", "z"]] = iter_xyz
-        stat_values = self._compute_summarystat(iter_df)
-        return stat_values
+        stat_values = self._compute_summarystat_est(iter_df)
+        perm_scale_values[i_row, :] = stat_values
+
+    def correct_fwe_montecarlo(self):
+        """Perform Monte Carlo-based FWE correction.
+
+        Warnings
+        --------
+        This method is not implemented for this class.
+        """
+        raise NotImplementedError(
+            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        )

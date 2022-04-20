@@ -20,6 +20,8 @@ from .utils import weight_priors
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     r"""Perform image-to-text decoding for discrete inputs using method from Rubin et al. (2017).
 
+    The method used in this function was originally described in Rubin et al. (2017) [1]_.
+
     Parameters
     ----------
     model : :obj:`~nimare.annotate.gclda.GCLDAModel`
@@ -78,10 +80,10 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 
     References
     ----------
-    * Rubin, Timothy N., et al. "Decoding brain activity using a
-      large-scale probabilistic functional-anatomical atlas of human
-      cognition." PLoS computational biology 13.10 (2017): e1005649.
-      https://doi.org/10.1371/journal.pcbi.1005649
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
+       functional-anatomical atlas of human cognition."
+       PLoS computational biology 13.10 (2017): e1005649.
+       https://doi.org/10.1371/journal.pcbi.1005649
     """
     roi = load_niimg(roi)
 
@@ -118,6 +120,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 class BrainMapDecoder(Decoder):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
+    This method was described in [1]_.
+
     .. versionadded:: 0.0.3
 
     Parameters
@@ -152,9 +156,9 @@ class BrainMapDecoder(Decoder):
 
     References
     ----------
-    * Amft, Maren, et al. "Definition and characterization of an extended
-      social-affective default network." Brain Structure and Function 220.2
-      (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
+    .. [1] Amft, Maren, et al. "Definition and characterization of an extended social-affective
+       default network." Brain Structure and Function 220.2 (2015): 1031-1049.
+       https://doi.org/10.1007/s00429-013-0698-0
     """
 
     _required_inputs = {
@@ -175,7 +179,6 @@ class BrainMapDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.u = u
         self.correction = correction
-        self.results = None
 
     def _fit(self, dataset):
         pass
@@ -211,7 +214,7 @@ class BrainMapDecoder(Decoder):
             u=self.u,
             correction=self.correction,
         )
-        self.results = results
+
         return results
 
 
@@ -227,6 +230,8 @@ def brainmap_decode(
     correction="fdr_bh",
 ):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
+
+    This method was described in [1]_.
 
     Parameters
     ----------
@@ -275,9 +280,9 @@ def brainmap_decode(
 
     References
     ----------
-    * Amft, Maren, et al. "Definition and characterization of an extended
-      social-affective default network." Brain Structure and Function 220.2
-      (2015): 1031-1049. https://doi.org/10.1007/s00429-013-0698-0
+    .. [1] Amft, Maren, et al. "Definition and characterization of an extended social-affective
+       default network." Brain Structure and Function 220.2 (2015): 1031-1049.
+       https://doi.org/10.1007/s00429-013-0698-0
     """
     dataset_ids = sorted(list(set(coordinates["id"].values)))
     if ids2 is None:
@@ -393,6 +398,8 @@ def brainmap_decode(
 class NeurosynthDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
+    Neurosynth was described in [1]_.
+
     .. versionadded:: 0.0.3
 
     This does not employ correlations between unthresholded maps, which are the
@@ -437,9 +444,8 @@ class NeurosynthDecoder(Decoder):
 
     References
     ----------
-    * Yarkoni, Tal, et al. "Large-scale automated synthesis of human
-      functional neuroimaging data." Nature methods 8.8 (2011): 665.
-      https://doi.org/10.1038/nmeth.1635
+    .. [1] Yarkoni, Tal, et al. "Large-scale automated synthesis of human functional neuroimaging
+       data." Nature methods 8.8 (2011): 665. https://doi.org/10.1038/nmeth.1635
     """
 
     _required_inputs = {
@@ -462,7 +468,6 @@ class NeurosynthDecoder(Decoder):
         self.prior = prior
         self.u = u
         self.correction = correction
-        self.results = None
 
     def _fit(self, dataset):
         pass
@@ -499,7 +504,6 @@ class NeurosynthDecoder(Decoder):
             u=self.u,
             correction=self.correction,
         )
-        self.results = results
         return results
 
 
@@ -523,6 +527,8 @@ def neurosynth_decode(
     Metadata (i.e., feature labels) for studies within the selected sample
     (`ids`) are compared to the unselected studies remaining in the database
     (`dataset`).
+
+    Neurosynth was described in [1]_.
 
     Parameters
     ----------
@@ -577,9 +583,8 @@ def neurosynth_decode(
 
     References
     ----------
-    * Yarkoni, Tal, et al. "Large-scale automated synthesis of human
-      functional neuroimaging data." Nature methods 8.8 (2011): 665.
-      https://doi.org/10.1038/nmeth.1635
+    .. [1] Yarkoni, Tal, et al. "Large-scale automated synthesis of human functional neuroimaging
+       data." Nature methods 8.8 (2011): 665. https://doi.org/10.1038/nmeth.1635
     """
     dataset_ids = sorted(list(set(coordinates["id"].values)))
     if ids2 is None:
@@ -678,9 +683,11 @@ def neurosynth_decode(
 class ROIAssociationDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's ROI association method.
 
+    Neurosynth was described in [1]_.
+
     Parameters
     ----------
-    masker : :class:`nilearn.input_data.NiftiMasker`, img_like, or similar
+    masker : :class:`~nilearn.input_data.NiftiMasker`, img_like, or similar
         Masker for region of interest.
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to create modeled activation maps. Default is MKDAKernel.
@@ -699,6 +706,7 @@ class ROIAssociationDecoder(Decoder):
     Notes
     -----
     The general approach in this method is:
+
     1. Define ROI.
     2. Generate MA maps for all studies in Dataset.
     3. Average MA values within ROI to get study-wise MA regressor.
@@ -706,9 +714,8 @@ class ROIAssociationDecoder(Decoder):
 
     References
     ----------
-    * Yarkoni, Tal, et al. "Large-scale automated synthesis of human
-      functional neuroimaging data." Nature methods 8.8 (2011): 665.
-      https://doi.org/10.1038/nmeth.1635
+    .. [1] Yarkoni, Tal, et al. "Large-scale automated synthesis of human functional neuroimaging
+       data." Nature methods 8.8 (2011): 665. https://doi.org/10.1038/nmeth.1635
     """
 
     _required_inputs = {
@@ -736,7 +743,6 @@ class ROIAssociationDecoder(Decoder):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = 0
-        self.results = None
 
     def _fit(self, dataset):
         roi_values = self.kernel_transformer.transform(
@@ -759,5 +765,4 @@ class ROIAssociationDecoder(Decoder):
         corrs = pearson(self.roi_values_, feature_values.T)
         out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
         out_df.index.name = "feature"
-        self.results = out_df
         return out_df

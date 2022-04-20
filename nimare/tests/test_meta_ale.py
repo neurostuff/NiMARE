@@ -45,6 +45,14 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
         meta.fit(dset)
     assert "Loading pre-generated MA maps" in caplog.text
 
+    # If there is a memory limit along with pre-generated images, then we should still see the
+    # logger message.
+    meta = ale.ALE(kernel__sample_size=20, memory_limit="100mb")
+    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
+        meta.fit(dset)
+    assert "Loading pre-generated MA maps" in caplog.text
+    assert "Closing memmap at" in caplog.text
+
 
 def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     """Test that MA maps are re-used when appropriate."""
@@ -107,7 +115,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     # Test MCC methods
     # Monte Carlo FWE
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
@@ -145,7 +153,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
 
     # FDR
     corr = FDRCorrector(method="indep", alpha=0.05)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
         cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
@@ -191,7 +199,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     # Test MCC methods
     # Monte Carlo FWE
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
@@ -216,6 +224,22 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
         np.ndarray,
     )
 
+    # Check that the updated null distribution is in the corrected MetaResult's Estimator.
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        in cres.estimator.null_distributions_.keys()
+    )
+    # The updated null distribution should *not* be in the original Estimator, nor in the
+    # uncorrected MetaResult's Estimator.
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in meta.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in res.estimator.null_distributions_.keys()
+    )
+
     # Bonferroni FWE
     corr = FWECorrector(method="bonferroni")
     cres = corr.transform(res)
@@ -229,7 +253,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
 
     # FDR
     corr = FDRCorrector(method="indep", alpha=0.05)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
         cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
@@ -242,68 +266,45 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    sub_meta = ale.ALESubtraction(n_iters=10, memory_limit=None)
-    sub_meta.fit(testdata_cbma, testdata_cbma)
-    assert isinstance(sub_meta.results, nimare.results.MetaResult)
-    assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
+    sub_meta = ale.ALESubtraction(n_iters=10, n_cores=2)
+    results = sub_meta.fit(testdata_cbma, testdata_cbma)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert "z_desc-group1MinusGroup2" in results.maps.keys()
     assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
+        results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
-    assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
-    )
+    assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
 
 
-def test_ALESubtraction_smoke_lowmem(testdata_cbma, tmp_path_factory):
-    """Smoke test for ALESubtraction with low memory settings."""
-    tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke_lowmem")
-    out_file = os.path.join(tmpdir, "file.pkl.gz")
-
-    sub_meta = ale.ALESubtraction(n_iters=10, memory_limit="1gb")
-    sub_meta.fit(testdata_cbma, testdata_cbma)
-    assert isinstance(sub_meta.results, nimare.results.MetaResult)
-    assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
-    assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
-    )
-    assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
-    )
-
-    sub_meta.save(out_file)
-    assert os.path.isfile(out_file)
-
-
-def test_SCALE_smoke(testdata_cbma):
+def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
     """Smoke test for SCALE."""
+    tmpdir = tmp_path_factory.mktemp("test_SCALE_smoke")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
     dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+
+    with pytest.raises(TypeError):
+        ale.SCALE(xyz="dog", n_iters=5, n_cores=1)
+
+    with pytest.raises(ValueError):
+        ale.SCALE(xyz=np.random.random((5, 3, 1)), n_iters=5, n_cores=1)
+
+    with pytest.raises(ValueError):
+        ale.SCALE(xyz=np.random.random((3, 10)), n_iters=5, n_cores=1)
+
     xyz = vox2mm(
         np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
         testdata_cbma.masker.mask_img.affine,
     )
-    xyz = xyz[:, :20]
-    meta = ale.SCALE(n_iters=5, n_cores=1, xyz=xyz)
+    xyz = xyz[:20, :]
+    meta = ale.SCALE(xyz, n_iters=5, n_cores=1)
     res = meta.fit(dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert "z" in res.maps.keys()
     assert isinstance(res.get_map("z", return_type="image"), nib.Nifti1Image)
     assert isinstance(res.get_map("z", return_type="array"), np.ndarray)
 
-
-def test_SCALE_smoke_lowmem(testdata_cbma):
-    """Smoke test for SCALE with low memory settings."""
-    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
-    xyz = vox2mm(
-        np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
-        testdata_cbma.masker.mask_img.affine,
-    )
-    xyz = xyz[:, :20]
-    meta = ale.SCALE(n_iters=5, n_cores=1, xyz=xyz, memory_limit="1gb")
-    res = meta.fit(dset)
-    assert isinstance(res, nimare.results.MetaResult)
-    assert "z" in res.maps.keys()
-    assert isinstance(res.get_map("z", return_type="image"), nib.Nifti1Image)
-    assert isinstance(res.get_map("z", return_type="array"), np.ndarray)
+    meta.save(out_file)
+    assert os.path.isfile(out_file)

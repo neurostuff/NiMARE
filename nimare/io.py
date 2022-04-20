@@ -71,8 +71,8 @@ def convert_neurosynth_to_dict(
     dset_dict : :obj:`dict`
         NiMARE-organized dictionary containing experiment information from text files.
 
-    Warning
-    -------
+    Warnings
+    --------
     Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
     format. Old code using this function **will not work** with the new version.
     """
@@ -204,8 +204,8 @@ def convert_neurosynth_to_json(
         the automatically-extracted annotation set names.
         Default is None.
 
-    Warning
-    -------
+    Warnings
+    --------
     Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
     format. Old code using this function **will not work** with the new version.
     """
@@ -264,8 +264,8 @@ def convert_neurosynth_to_dataset(
     :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
 
-    Warning
-    -------
+    Warnings
+    --------
     Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
     format. Old code using this function **will not work** with the new version.
     """

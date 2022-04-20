@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _annotations_cogat:
@@ -8,7 +6,7 @@
 The Cognitive Atlas
 ===================
 
-We can download the Cognitive Atlas and extract CogAt terms from text.
+Download the Cognitive Atlas and extract CogAt terms from text.
 """
 import os
 
@@ -22,12 +20,12 @@ from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
-# ---------------------------
+# -----------------------------------------------------------------------------
 dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 
 ###############################################################################
 # Download Cognitive Atlas
-# ------------------------
+# -----------------------------------------------------------------------------
 cogatlas = extract.download_cognitive_atlas(data_dir=get_resource_path(), overwrite=False)
 id_df = pd.read_csv(cogatlas["ids"])
 rel_df = pd.read_csv(cogatlas["relationships"])
@@ -42,7 +40,7 @@ rel_df.head()
 
 ###############################################################################
 # Extract Cognitive Atlas terms from text
-# ---------------------------------------
+# -----------------------------------------------------------------------------
 counts_df, rep_text_df = annotate.cogat.extract_cogat(dset.texts, id_df, text_column="abstract")
 
 ###############################################################################
@@ -58,7 +56,7 @@ columns = series.index.tolist()
 
 ###############################################################################
 # Make some plots
-# ---------------
+# -----------------------------------------------------------------------------
 # We will reduce the dataframes to only columns with at least one count to make
 # visualization easier.
 

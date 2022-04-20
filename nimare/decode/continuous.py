@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
+from tqdm.auto import tqdm
 
 from .. import references
 from ..base import Decoder
@@ -22,6 +23,8 @@ LGR = logging.getLogger(__name__)
 @due.dcite(references.GCLDA_DECODING, description="Describes decoding methods using GC-LDA.")
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
+
+    The method used in this function was originally described in Rubin et al. (2017) [1]_.
 
     Parameters
     ----------
@@ -85,10 +88,10 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     References
     ----------
-    * Rubin, Timothy N., et al. "Decoding brain activity using a
-      large-scale probabilistic functional-anatomical atlas of human
-      cognition." PLoS computational biology 13.10 (2017): e1005649.
-      https://doi.org/10.1371/journal.pcbi.1005649
+    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
+       functional-anatomical atlas of human cognition."
+       PLoS computational biology 13.10 (2017): e1005649.
+       https://doi.org/10.1371/journal.pcbi.1005649
     """
     image = load_niimg(image)
 
@@ -131,8 +134,8 @@ class CorrelationDecoder(Decoder):
     target_image : :obj:`str`
         Name of meta-analysis results image to use for decoding.
 
-    Warning
-    -------
+    Warnings
+    --------
     Coefficients from correlating two maps have very large degrees of freedom,
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.
@@ -163,7 +166,6 @@ class CorrelationDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.meta_estimator = meta_estimator
         self.target_image = target_image
-        self.results = None
 
     def _fit(self, dataset):
         """Generate feature-specific meta-analytic maps for dataset.
@@ -175,7 +177,7 @@ class CorrelationDecoder(Decoder):
 
         Attributes
         ----------
-        masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        masker : :class:`~nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
         features_ : :obj:`list`
             Reduced list of features
@@ -184,36 +186,36 @@ class CorrelationDecoder(Decoder):
         """
         self.masker = dataset.masker
 
-        # Pre-generate MA maps to speed things up
-        kernel_transformer = self.meta_estimator.kernel_transformer
-        dataset = kernel_transformer.transform(dataset, return_type="dataset")
-
-        for i, feature in enumerate(self.features_):
+        n_features = len(self.features_)
+        for i_feature, feature in enumerate(tqdm(self.features_, total=n_features)):
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
             )
+            # Limit selected studies to studies with valid data
             feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
 
-            LGR.info(
-                f"Decoding {feature} ({i}/{len(self.features_)}): {len(feature_ids)}/"
-                f"{len(dataset.ids)} studies"
-            )
+            # Create the reduced Dataset
             feature_dset = dataset.slice(feature_ids)
-            # This seems like a somewhat inelegant solution
+
             # Check if the meta method is a pairwise estimator
+            # This seems like a somewhat inelegant solution
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
-                self.meta_estimator.fit(feature_dset, nonfeature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset, nonfeature_dset)
             else:
-                self.meta_estimator.fit(feature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset)
 
-            feature_data = self.meta_estimator.results.get_map(
-                self.target_image, return_type="array"
+            feature_data = meta_results.get_map(
+                self.target_image,
+                return_type="array",
             )
-            if i == 0:
-                images_ = np.zeros((len(self.features_), len(feature_data)))
-            images_[i, :] = feature_data
+            if i_feature == 0:
+                images_ = np.zeros((len(self.features_), len(feature_data)), feature_data.dtype)
+
+            images_[i_feature, :] = feature_data
+
         self.images_ = images_
 
     def transform(self, img):
@@ -221,7 +223,7 @@ class CorrelationDecoder(Decoder):
 
         Parameters
         ----------
-        img : :obj:`nibabel.nifti1.Nifti1Image`
+        img : :obj:`~nibabel.nifti1.Nifti1Image`
             Image to decode. Must be in same space as ``dataset``.
 
         Returns
@@ -233,7 +235,6 @@ class CorrelationDecoder(Decoder):
         corrs = pearson(img_vec, self.images_)
         out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
         out_df.index.name = "feature"
-        self.results = out_df
         return out_df
 
 
@@ -251,8 +252,8 @@ class CorrelationDistributionDecoder(Decoder):
     target_image : {'z', 'con'}, optional
         Name of meta-analysis results image to use for decoding. Default is 'z'.
 
-    Warning
-    -------
+    Warnings
+    --------
     Coefficients from correlating two maps have very large degrees of freedom,
     so almost all results will be statistically significant. Do not attempt to
     evaluate results based on significance.
@@ -274,7 +275,6 @@ class CorrelationDistributionDecoder(Decoder):
         self.features = features
         self.frequency_threshold = frequency_threshold
         self.memory_limit = memory_limit
-        self.results = None
         self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
@@ -287,7 +287,7 @@ class CorrelationDistributionDecoder(Decoder):
 
         Attributes
         ----------
-        masker : :class:`nilearn.input_data.NiftiMasker` or similar
+        masker : :class:`~nilearn.input_data.NiftiMasker` or similar
             Masker from dataset
         features_ : :obj:`list`
             Reduced list of features
@@ -346,5 +346,5 @@ class CorrelationDistributionDecoder(Decoder):
             corrs_z = np.arctanh(corrs)
             out_df.loc[feature, "mean"] = np.mean(corrs_z)
             out_df.loc[feature, "std"] = np.std(corrs_z)
-        self.results = out_df
+
         return out_df
