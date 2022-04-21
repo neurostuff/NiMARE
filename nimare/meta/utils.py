@@ -31,7 +31,10 @@ def calculate_tfce(z_map, E=0.5, H=2, dh="auto", two_sided=True):
         Height weight. Default is 2.
     dh : :obj:`float` or "auto", optional
         Step size for TFCE calculation.
-        Default is "auto", which employs 100 steps from 0 to the max observed value in z_map.
+        Default is "auto", which employs 100 steps from 0 to the max observed value in ``z_map``.
+    two_sided : :obj:`bool`, optional
+        Whether to perform two-sided thresholding or not.
+        Default is True.
 
     Returns
     -------
@@ -43,6 +46,16 @@ def calculate_tfce(z_map, E=0.5, H=2, dh="auto", two_sided=True):
     This should be equivalent to ``fslmaths {z_map} -tfce {H} {E} 18 {tfce_map}``,
     for 6.0.3 at least.
 
+    In [1]_, each threshold's partial TFCE score is multiplied by dh,
+    which makes directly comparing TFCE values across different thresholds
+    possible.
+    However, in fslmaths, this is not done.
+    In the interest of maximizing similarity between nilearn and established
+    tools, we chose to follow fslmaths' approach.
+
+    Additionally, we have modified the method to support two-sided testing.
+    In fslmaths, only positive clusters are considered.
+
     References
     ----------
     .. [1] Smith, S. M., & Nichols, T. E. (2009). Threshold-free cluster enhancement: addressing
@@ -50,8 +63,12 @@ def calculate_tfce(z_map, E=0.5, H=2, dh="auto", two_sided=True):
         Neuroimage, 44(1), 83-98.
     """
     z_map = z_map.copy()
-    if not two_sided:
+
+    if two_sided:
+        signs = [-1, 1]
+    else:
         z_map[z_map < 0] = 0
+        signs = [1]
 
     max_z = np.max(np.abs(z_map))
     if dh == "auto":
@@ -63,22 +80,25 @@ def calculate_tfce(z_map, E=0.5, H=2, dh="auto", two_sided=True):
 
     tfce_map = np.zeros_like(z_map)
     for z_threshold in np.arange(dh, max_z + dh, dh):
-        for sign in np.unique(np.sign(z_map)):
+        for sign in signs:
             temp_z_map = z_map * sign
 
-            # Threshold map
+            # Threshold map at *h*
             temp_z_map[temp_z_map < z_threshold] = 0
 
             # Derive clusters
             labeled_arr3d, n_clusters = ndimage.measurements.label(temp_z_map, conn)
 
             # Label each cluster with its extent
+            # Each voxel's cluster extent at threshold *h* is thus *e(h)*
             cluster_map = np.zeros(temp_z_map.shape, int)
             for cluster_val in range(1, n_clusters + 1):
                 bool_map = labeled_arr3d == cluster_val
                 cluster_map[bool_map] = np.sum(bool_map)
 
             # Calculate each voxel's tfce value based on its cluster extent and z-value
+            # NOTE: We do not multiply by dh, based on fslmaths' implementation.
+            # This differs from the original paper.
             tfce_step_values = (cluster_map**E) * (z_threshold**H)
             tfce_map += sign * tfce_step_values
 
