@@ -860,5 +860,5 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             masker = self.masker
         else:
             masker = dataset1.masker
-        self.results = MetaResult(self, masker, maps)
-        return self.results
+
+        return MetaResult(self, masker, maps)
