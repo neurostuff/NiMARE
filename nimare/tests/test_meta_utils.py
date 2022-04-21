@@ -24,7 +24,7 @@ def test_calculate_tfce():
         test_arr4d,
         E=1,
         H=1,
-        dh='auto',
+        dh="auto",
         two_sided=False,
     )
     assert test_tfce_arr2d.shape == (10, 10, 10)
@@ -36,7 +36,7 @@ def test_calculate_tfce():
         test_arr4d,
         E=1,
         H=1,
-        dh='auto',
+        dh="auto",
         two_sided=True,
     )
     assert test_tfce_arr2d.shape == (10, 10, 10)

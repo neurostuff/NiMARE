@@ -116,7 +116,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
 def test_ALE_approximate_null_corr_unit(testdata_cbma):
     """Unit test for ALE with FWE correction and approximate null_method."""
     meta = ale.ALE(null_method="approximate")
-    meta.fit(testdata_cbma)
+    res = meta.fit(testdata_cbma)
 
     # Test MCC methods
     # Monte Carlo FWE
