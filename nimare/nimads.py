@@ -1,4 +1,5 @@
 """NIMADS-related classes for NiMARE."""
+import json
 
 
 class Studyset:
@@ -13,16 +14,18 @@ class Studyset:
     """
 
     def __init__(self, source, target_space=None, mask=None):
-        self.id = source['id']
-        self.name = source['name'] or ''
-        self.studies = [Study(s) for s in source['studies']]
+        self.id = source["id"]
+        self.name = source["name"] or ""
+        self.studies = [Study(s) for s in source["studies"]]
         self._annotations = []
 
     def __repr__(self):
+        """My Simple representation."""
         return repr("Studyset: " + self.id)
 
     def __str__(self):
-        return str(' '.join(["Studyset:", self.name, "::", f"studies: {len(self.studies)}"]))
+        """Give useful information about the Studyset."""
+        return str(" ".join(["Studyset:", self.name, "::", f"studies: {len(self.studies)}"]))
 
     @property
     def annotations(self):
@@ -31,20 +34,26 @@ class Studyset:
     @annotations.setter
     def annotations(self, annotation):
         # some logic to compare ids
-        ss_analysis_ids = set([a.id for s in self.studies for a in s.analyses])
-        annot_analysis_ids = set([n['analysis'] for n in annotation.notes])
+        # ss_analysis_ids = set([a.id for s in self.studies for a in s.analyses])
+        # annot_analysis_ids = set([n['analysis'] for n in annotation.notes])
         self._annotations.append(annotation)
 
     @annotations.deleter
-    def annotations(self, name=None):
-        if name:
-            del self._annotations[name]
+    def annotations(self, annotation_id=None):
+        if annotation_id:
+            self._annotations = [
+                a for a in self._annotations if a.id != annotation_id
+            ]
         else:
             self._annotations = []
 
-    def from_nimads(self, filename):
+    @classmethod
+    def from_nimads(cls, filename):
         """Create a Studyset from a NIMADS JSON file."""
-        ...
+        with open(filename, "r+") as fn:
+            nimads = json.load(fn)
+
+        return cls(nimads)
 
     def to_nimads(self, filename):
         """Write the Studyset to a NIMADS JSON file."""
@@ -131,15 +140,19 @@ class Study:
     """
 
     def __init__(self, source):
-        self.id = source['id']
-        self.name = source['name'] or ''
-        self.analyses = [Analysis(a) for a in source['analyses']]
+        self.id = source["id"]
+        self.name = source["name"] or ""
+        self.authors = source["authors"] or ""
+        self.publication = source["publication"] or ""
+        self.analyses = [Analysis(a) for a in source["analyses"]]
 
     def __repr__(self):
+        """My Simple representation."""
         return repr(self.id)
 
     def __str__(self):
-        return str(' '.join([self.name, f"analyses: {len(self.analyses)}"]))
+        """My Simple representation."""
+        return str(" ".join([self.name, f"analyses: {len(self.analyses)}"]))
 
     def get_analyses(self):
         """Collect Analyses from the Study.
@@ -178,21 +191,23 @@ class Analysis:
     """
 
     def __init__(self, source):
-        self.id = source['id']
-        self.name = source['name']
+        self.id = source["id"]
+        self.name = source["name"]
         self.conditions = [
-            Condition(c, w) for c, w in zip(source['conditions'], source['weights'])
+            Condition(c, w) for c, w in zip(source["conditions"], source["weights"])
         ]
-        self.images = [Image(i) for i in source['images']]
-        self.points = [Point(p) for p in source['points']]
+        self.images = [Image(i) for i in source["images"]]
+        self.points = [Point(p) for p in source["points"]]
 
     def __repr__(self):
+        """My Simple representation."""
         return repr(self.id)
 
     def __str__(self):
-        return str(' '.join([
-            self.name, f"images: {len(self.images)}", f"points: {len(self.points)}"
-        ]))
+        """My Simple representation."""
+        return str(
+            " ".join([self.name, f"images: {len(self.images)}", f"points: {len(self.points)}"])
+        )
 
 
 class Condition:
@@ -212,8 +227,8 @@ class Condition:
     """
 
     def __init__(self, condition, weight):
-        self.name = condition['name']
-        self.description = condition['description']
+        self.name = condition["name"]
+        self.description = condition["description"]
         self.weight = weight
 
 
@@ -241,9 +256,9 @@ class Annotation:
     """
 
     def __init__(self, source):
-        self.name = source['name']
-        self.id = source['id']
-        self.notes = source['notes']
+        self.name = source["name"]
+        self.id = source["id"]
+        self.notes = source["notes"]
 
 
 class Image:
@@ -260,10 +275,10 @@ class Image:
     """
 
     def __init__(self, source):
-        self.url = source['url']
-        self.filename = source['filename']
-        self.space = source['space']
-        self.value_type = source['value_type']
+        self.url = source["url"]
+        self.filename = source["filename"]
+        self.space = source["space"]
+        self.value_type = source["value_type"]
 
 
 class Point:
@@ -281,6 +296,7 @@ class Point:
     """
 
     def __init__(self, source):
-        self.x = source['coordinates'][0]
-        self.y = source['coordinates'][1]
-        self.z = source['coordinates'][2]
+        self.space = source['space']
+        self.x = source["coordinates"][0]
+        self.y = source["coordinates"][1]
+        self.z = source["coordinates"][2]

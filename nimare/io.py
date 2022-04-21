@@ -14,6 +14,7 @@ from scipy import sparse
 
 from .dataset import Dataset
 from .extract.utils import _get_dataset_dir
+from .nimads import Studyset, Annotation
 
 LGR = logging.getLogger(__name__)
 
@@ -24,6 +25,39 @@ DEFAULT_MAP_TYPE_CONVERSION = {
     "Z map": "z",
     "p map": "p",
 }
+
+
+def convert_nimads_to_dataset(studyset, annotation=None):
+    def _analysis_to_dict(study, analysis):
+        return {
+            'metadata': {
+                'authors': study.name,
+                'journal': study.publication,
+                'title': study.name,
+            },
+            'coords': {
+                'space': analysis.points[0].space,
+                'x': [p.x for p in analysis.points],
+                'y': [p.y for p in analysis.points],
+                'z': [p.z for p in analysis.points],
+            }
+        }
+
+    def _study_to_dict(study):
+        return {
+            'metadata': {
+                'authors': study.authors,
+                'journal': study.publication,
+                'title': study.name,
+            },
+            'contrasts': {a.id: _analysis_to_dict(study, a) for a in study.analyses}
+        }
+
+    # TODO process annotation
+    if annotation:
+        return Dataset({s.id: _study_to_dict(s) for s in studyset.studies})
+    else:
+        return Dataset({s.id: _study_to_dict(s) for s in studyset.studies})
 
 
 def convert_neurosynth_to_dict(

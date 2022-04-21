@@ -1,12 +1,28 @@
 """Test nimare.io (Dataset IO/transformations)."""
 import os
 
+import requests
 import pytest
 
 import nimare
 from nimare import io
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_template
+
+
+def test_convert_nimads_to_dataset():
+    nimads_data = requests.get(
+        "https://neurostore.xyz/api/studysets/78rWEjjjuC65?nested=true"
+    ).json()
+    studyset = nimare.nimads.Studyset(nimads_data)
+
+    annotation_data = requests.get("https://neurostore.xyz/api/annotations/4aLPSznu6jJa").json()
+
+    annotation = nimare.nimads.Annotation(annotation_data)
+
+    dset = io.convert_nimads_to_dataset(studyset)
+
+    assert isinstance(dset, nimare.dataset.Dataset)
 
 
 def test_convert_sleuth_to_dataset_smoke():
