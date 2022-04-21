@@ -4,6 +4,7 @@ import logging
 import nibabel as nib
 import numpy as np
 from joblib import Parallel, delayed
+from nilearn.image import new_img_like
 from scipy import ndimage
 from scipy.stats import chi2
 from statsmodels.sandbox.stats.multicomp import multipletests
@@ -15,7 +16,7 @@ from ...stats import null_to_p, one_way, two_way
 from ...transforms import p_to_z
 from ...utils import tqdm_joblib, use_memmap, vox2mm
 from ..kernel import KDAKernel, MKDAKernel
-from ..utils import _calculate_cluster_measures
+from ..utils import _calculate_cluster_measures, calculate_tfce
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
 LGR = logging.getLogger(__name__)
@@ -101,6 +102,8 @@ class MKDADensity(CBMAEstimator):
                 size from each Monte Carlo iteration. An array of shape (n_iters,).
             -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
                 mass from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-tfce_level-level_corr-fwe_method-montecarlo``: The maximum TFCE
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
 
     Notes
     -----
@@ -272,6 +275,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             -   ``values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
                 cluster mass value from the p(A|F) one-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
+            -   ``values_desc-pAgFtfce_level-level_corr-fwe_method-montecarlo``: The maximum TFCE
+                value from the p(A|F) one-way chi-squared test from each Monte Carlo iteration.
+                An array of shape (n_iters,).
             -   ``values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo``: The maximum
                 chi-squared value from the p(F|A) two-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
@@ -281,6 +287,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             -   ``values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo``: The maximum
                 cluster mass value from the p(F|A) two-way chi-squared test from each Monte Carlo
                 iteration. An array of shape (n_iters,).
+            -   ``values_desc-pFgAtfce_level-level_corr-fwe_method-montecarlo``: The maximum TFCE
+                value from the p(F|A) two-way chi-squared test from each Monte Carlo iteration.
+                An array of shape (n_iters,).
 
     Notes
     -----
@@ -426,7 +435,16 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
+    def _run_fwe_permutation(
+        self,
+        iter_xyz1,
+        iter_xyz2,
+        iter_df1,
+        iter_df2,
+        conn,
+        voxel_thresh,
+        tfce,
+    ):
         """Run a single permutation of the Monte Carlo FWE correction procedure.
 
         Parameters
@@ -440,6 +458,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
             Connectivity matrix for defining clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary-statistic thresholded for defining clusters.
+        tfce : :obj:`bool`
+            Include TFCE-based correction as well.
 
         Returns
         -------
@@ -498,6 +518,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgF_chi2_map, voxel_thresh, conn, tail="two"
         )
 
+        # TFCE-based inference
+        if tfce:
+            iter_z_map = chi2.sf(pAgF_chi2_map, 1)
+            pAgF_max_tfce = np.max(calculate_tfce(iter_z_map, two_sided=True))
+        else:
+            pAgF_max_tfce = None
+
         # Two-way chi-square for specificity of activation
         cells = np.squeeze(
             np.array(
@@ -521,16 +548,33 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pFgA_chi2_map, voxel_thresh, conn, tail="two"
         )
 
+        # TFCE-based inference
+        if tfce:
+            iter_z_map = chi2.sf(pFgA_chi2_map, 1)
+            pFgA_max_tfce = np.max(calculate_tfce(iter_z_map, two_sided=True))
+        else:
+            pFgA_max_tfce = None
+
         return (
             pAgF_max_chi2_value,
             pAgF_max_size,
             pAgF_max_mass,
+            pAgF_max_tfce,
             pFgA_max_chi2_value,
             pFgA_max_size,
             pFgA_max_mass,
+            pFgA_max_tfce,
         )
 
-    def _apply_correction(self, stat_values, voxel_thresh, vfwe_null, csfwe_null, cmfwe_null):
+    def _apply_correction(
+        self,
+        stat_values,
+        voxel_thresh,
+        fwe_voxel_max,
+        fwe_cluster_size_max,
+        fwe_cluster_mass_max,
+        fwe_tfce_max,
+    ):
         """Apply different kinds of FWE correction to statistical value matrix.
 
         Parameters
@@ -539,12 +583,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
             1D array of summary-statistic values.
         voxel_thresh : :obj:`float`
             Summary statistic threshold for defining clusters.
-        vfwe_null, csfwe_null, cmfwe_null : :obj:`numpy.ndarray`
+        fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max, fwe_tfce_max : \
+                :obj:`numpy.ndarray`
             Null distributions for FWE correction.
 
         Returns
         -------
-        p_vfwe_values, p_csfwe_values, p_cmfwe_values : :obj:`numpy.ndarray`
+        p_vfwe_values, p_csfwe_values, p_cmfwe_values, p_tfwe_values : :obj:`numpy.ndarray`
             1D arrays of FWE-corrected p-values.
         """
         eps = np.spacing(1)
@@ -553,7 +598,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         conn = ndimage.generate_binary_structure(3, 2)
 
         # Voxel-level FWE
-        p_vfwe_values = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
+        # The null distribution is all absolute values, so we use upper-tailed inference.
+        p_vfwe_values = null_to_p(np.abs(stat_values), fwe_voxel_max, tail="upper")
 
         # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
         # Prevents inf z-values.
@@ -591,7 +637,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             cluster_mass = np.sum(np.abs(stat_map_thresh[labeled_matrix == i_val]) - voxel_thresh)
             cluster_masses[i_val] = cluster_mass
 
-        p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail="upper")
+        p_cmfwe_vals = null_to_p(cluster_masses, fwe_cluster_mass_max, tail="upper")
         p_cmfwe_map = p_cmfwe_vals[np.reshape(idx, labeled_matrix.shape)]
 
         p_cmfwe_values = np.squeeze(
@@ -600,15 +646,35 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Cluster size-based inference
         cluster_sizes[0] = 0  # replace background's "cluster size" with zeros
-        p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail="upper")
+        p_csfwe_vals = null_to_p(cluster_sizes, fwe_cluster_size_max, tail="upper")
         p_csfwe_map = p_csfwe_vals[np.reshape(idx, labeled_matrix.shape)]
         p_csfwe_values = np.squeeze(
             self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
         )
 
-        return p_vfwe_values, p_csfwe_values, p_cmfwe_values
+        if fwe_tfce_max[0] is not None:  # All elements should be None if TFCE wasn't calculated
+            z_values = chi2.sf(stat_values, 1)
+            # 1D --> 3D array
+            z_values = self.masker.inverse_transform(z_values).get_fdata().copy()
+            tfce_values = calculate_tfce(z_values, two_sided=True)
+            # 3D --> 1D array
+            tfce_values = np.squeeze(
+                self.masker.transform(new_img_like(self.masker.mask_img, tfce_values))
+            )
+            p_tfwe_values = null_to_p(tfce_values, fwe_tfce_max, tail="upper")
+        else:
+            p_tfwe_values = np.empty_like(p_cmfwe_values)
 
-    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
+        return p_vfwe_values, p_csfwe_values, p_cmfwe_values, p_tfwe_values
+
+    def correct_fwe_montecarlo(
+        self,
+        result,
+        voxel_thresh=0.001,
+        n_iters=5000,
+        n_cores=1,
+        tfce=False,
+    ):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -621,19 +687,24 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
+        voxel_thresh : :obj:`float`, optional
+            Cluster-defining p-value threshold. Default is 0.001.
         n_iters : :obj:`int`, optional
             Number of iterations to build the vFWE null distribution.
             Default is 5000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is 1.
+        tfce : :obj:`bool`, optional
+            Include TFCE-based correction as well. Calculating TFCE for each iteration can slow
+            down the Monte Carlo procedure, so this is disabled by default.
 
         Returns
         -------
         images : :obj:`dict`
-            Dictionary of 1D arrays corresponding to masked images generated by
-            the correction procedure. The following arrays are generated by
-            this method:
+            Dictionary of 1D arrays corresponding to masked images generated by the correction
+            procedure.
+            The following arrays are generated by this method:
 
             -   ``p_desc-consistency_level-voxel``: Voxel-level FWE-corrected p-values from the
                 consistency/forward inference analysis.
@@ -744,6 +815,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
                     iter_df2=iter_df2,
                     conn=conn,
                     voxel_thresh=ss_thresh,
+                    tfce=tfce,
                 )
                 for i_iter in range(n_iters)
             )
@@ -755,20 +827,28 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgF_vfwe_null,
             pAgF_csfwe_null,
             pAgF_cmfwe_null,
+            pAgF_tfce_null,
             pFgA_vfwe_null,
             pFgA_csfwe_null,
             pFgA_cmfwe_null,
+            pFgA_tfce_null,
         ) = zip(*perm_results)
 
         del perm_results
 
         # pAgF_FWE
-        pAgF_p_vfwe_vals, pAgF_p_csfwe_vals, pAgF_p_cmfwe_vals = self._apply_correction(
+        (
+            pAgF_p_vfwe_vals,
+            pAgF_p_csfwe_vals,
+            pAgF_p_cmfwe_vals,
+            pAgF_p_tfce_vals,
+        ) = self._apply_correction(
             pAgF_chi2_vals,
             ss_thresh,
-            vfwe_null=pAgF_vfwe_null,
-            csfwe_null=pAgF_csfwe_null,
-            cmfwe_null=pAgF_cmfwe_null,
+            fwe_voxel_max=pAgF_vfwe_null,
+            fwe_cluster_size_max=pAgF_csfwe_null,
+            fwe_cluster_mass_max=pAgF_cmfwe_null,
+            fwe_tfce_max=pAgF_tfce_null,
         )
 
         self.null_distributions_[
@@ -781,15 +861,26 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo"
         ] = pAgF_cmfwe_null
 
-        del pAgF_vfwe_null, pAgF_csfwe_null, pAgF_cmfwe_null
+        if tfce:
+            self.null_distributions_[
+                "values_desc-pAgFtfce_level-voxel_corr-fwe_method-montecarlo"
+            ] = pAgF_tfce_null
+
+        del pAgF_vfwe_null, pAgF_csfwe_null, pAgF_cmfwe_null, pAgF_tfce_null
 
         # pFgA_FWE
-        pFgA_p_vfwe_vals, pFgA_p_csfwe_vals, pFgA_p_cmfwe_vals = self._apply_correction(
+        (
+            pFgA_p_vfwe_vals,
+            pFgA_p_csfwe_vals,
+            pFgA_p_cmfwe_vals,
+            pFgA_p_tfce_vals,
+        ) = self._apply_correction(
             pFgA_chi2_vals,
             ss_thresh,
-            vfwe_null=pFgA_vfwe_null,
-            csfwe_null=pFgA_csfwe_null,
-            cmfwe_null=pFgA_cmfwe_null,
+            fwe_voxel_max=pFgA_vfwe_null,
+            fwe_cluster_size_max=pFgA_csfwe_null,
+            fwe_cluster_mass_max=pFgA_cmfwe_null,
+            fwe_tfce_max=pFgA_tfce_null,
         )
 
         self.null_distributions_[
@@ -802,7 +893,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "values_desc-pFgAmass_level-cluster_corr-fwe_method-montecarlo"
         ] = pFgA_cmfwe_null
 
-        del pFgA_vfwe_null, pFgA_csfwe_null, pFgA_cmfwe_null
+        if tfce:
+            self.null_distributions_[
+                "values_desc-pFgAtfce_level-voxel_corr-fwe_method-montecarlo"
+            ] = pFgA_tfce_null
+
+        del pFgA_vfwe_null, pFgA_csfwe_null, pFgA_cmfwe_null, pFgA_tfce_null
 
         # Convert p-values
         # pAgF
@@ -849,6 +945,25 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "z_desc-specificitySize_level-cluster": pFgA_z_csfwe_vals,
             "logp_desc-specificitySize_level-cluster": pFgA_logp_csfwe_vals,
         }
+
+        if tfce:
+            # Consistency analysis
+            pAgF_z_tfce_vals = p_to_z(pAgF_p_tfce_vals, tail="two") * pAgF_sign
+            pAgF_logp_tfce_vals = -np.log10(pAgF_p_tfce_vals)
+            pAgF_logp_tfce_vals[np.isinf(pAgF_logp_tfce_vals)] = -np.log10(eps)
+
+            images["p_desc-consistencyTFCE_level-voxel"] = pAgF_p_tfce_vals
+            images["z_desc-consistencyTFCE_level-voxel"] = pAgF_z_tfce_vals
+            images["logp_desc-consistencyTFCE_level-voxel"] = pAgF_logp_tfce_vals
+            # Specificity analysis
+            pFgA_z_tfce_vals = p_to_z(pFgA_p_tfce_vals, tail="two") * pFgA_sign
+            pFgA_logp_tfce_vals = -np.log10(pFgA_p_tfce_vals)
+            pFgA_logp_tfce_vals[np.isinf(pFgA_logp_tfce_vals)] = -np.log10(eps)
+
+            images["p_desc-specificityTFCE_level-voxel"] = pFgA_p_tfce_vals
+            images["z_desc-specificityTFCE_level-voxel"] = pFgA_z_tfce_vals
+            images["logp_desc-specificityTFCE_level-voxel"] = pFgA_logp_tfce_vals
+
         return images
 
     def correct_fdr_bh(self, result, alpha=0.05):

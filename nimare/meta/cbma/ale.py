@@ -110,6 +110,8 @@ class ALE(CBMAEstimator):
                 size from each Monte Carlo iteration. An array of shape (n_iters,).
             -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
                 mass from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-tfce_level-level_corr-fwe_method-montecarlo``: The maximum TFCE
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
 
     Notes
     -----

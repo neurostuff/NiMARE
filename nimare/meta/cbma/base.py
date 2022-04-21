@@ -575,16 +575,21 @@ class CBMAEstimator(MetaEstimator):
             this method:
 
             -   ``logp_desc-size_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
-                based on cluster size. This was previously simply called "logp_level-cluster".
+                based on cluster size.
+                This was previously simply called "logp_level-cluster".
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_desc-mass_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
-                based on cluster mass. According to [4]_ and [5]_, cluster mass-based inference is
-                more powerful than cluster size.
+                based on cluster mass.
+                According to [4]_ and [5]_, cluster mass-based inference is more powerful than
+                cluster size.
                 This array is **not** generated if ``vfwe_only`` is ``True``.
-            -   ``logp_level-voxel``: Voxel-level FWE-corrected ``-log10(p)`` map.
+            -   ``logp_level-voxel``: Voxel-level FWE-corrected ``-log10(p)`` map based on maximum
+                summary statistic.
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
                 (i.e., hundreds of studies), per [6]_.
+            -   ``logp_desc-tfce_level-voxel``: FWE-corrected ``-log10(p)`` map based on TFCE.
+                This array is **only** generated if ``tfce`` is ``True``.
 
         Notes
         -----

@@ -104,16 +104,24 @@ def test_MKDAChi2_fwe_1core(testdata_cbma):
     valid_methods = FWECorrector.inspect(res)
     assert "montecarlo" in valid_methods
 
-    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1, tfce=True)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
+    assert (
+        "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
+        in cres.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-pAgFtfce_level-voxel_corr-fwe_method-montecarlo"
+        in cres.estimator.null_distributions_.keys()
+    )
     assert (
         "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
         in cres.estimator.null_distributions_.keys()
     )
     assert (
-        "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
+        "values_desc-pFgAtfce_level-voxel_corr-fwe_method-montecarlo"
         in cres.estimator.null_distributions_.keys()
     )
 
@@ -123,9 +131,13 @@ def test_MKDAChi2_fwe_2core(testdata_cbma):
     meta = MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(res, nimare.results.MetaResult)
-    corr_2core = FWECorrector(method="montecarlo", n_iters=5, n_cores=2)
-    cres_2core = corr_2core.transform(res)
-    assert isinstance(cres_2core, nimare.results.MetaResult)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=2)
+    cres = corr.transform(res)
+    assert isinstance(cres, nimare.results.MetaResult)
+    assert (
+        "values_desc-pAgFtfce_level-voxel_corr-fwe_method-montecarlo"
+        not in cres.estimator.null_distributions_.keys()
+    )
 
 
 def test_MKDAChi2_memory_limit(testdata_cbma):
