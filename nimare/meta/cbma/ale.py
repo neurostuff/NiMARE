@@ -113,7 +113,9 @@ class ALE(CBMAEstimator):
 
     Notes
     -----
-    The ALE algorithm was originally developed in [1]_, then updated in [2]_ and [3]_.
+    The ALE algorithm was originally developed in :footcite:t:`turkeltaub2002meta`_,
+    then updated in :footcite:t:`turkeltaub2012minimizing` and
+    :footcite:t:`eickhoff2012activation`.
 
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
@@ -122,14 +124,7 @@ class ALE(CBMAEstimator):
 
     References
     ----------
-    .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
-        neuroanatomy of single-word reading: method and validation."
-        Neuroimage 16.3 (2002): 765-780.
-    .. [2] Turkeltaub, Peter E., et al. "Minimizing within-experiment and
-        within-group effects in activation likelihood estimation
-        meta-analyses." Human brain mapping 33.1 (2012): 1-13.
-    .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
-        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+    .. footbibliography::
     """
 
     def __init__(
@@ -298,7 +293,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     Notes
     -----
-    This method was originally developed in [1]_ and refined in [2]_.
+    This method was originally developed in :footcite:t:`laird2005ale` and refined in
+    :footcite:t:`eickhoff2012activation`.
 
     The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
     BrainMap organization (https://www.brainmap.org/ale/).
@@ -319,11 +315,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the false discovery rate and
-       performing statistical contrasts." Human brain mapping 25.1 (2005): 155-164.
-       https://doi.org/10.1002/hbm.20136
-    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation meta-analysis revisited."
-       Neuroimage 59.3 (2012): 2349-2361. https://doi.org/10.1016/j.neuroimage.2011.09.017
+    .. footbibliography::
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
@@ -488,6 +480,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    This method was originally introduced in :footcite:t:`langner2014meta`.
+
     .. versionchanged:: 0.0.12
 
         - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
@@ -542,9 +536,7 @@ class SCALE(CBMAEstimator):
 
     References
     ----------
-    * Langner, Robert, et al. "Meta-analytic connectivity modeling
-      revisited: controlling for activation base rates." NeuroImage 99
-      (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
+    .. footbibliography::
     """
 
     def __init__(

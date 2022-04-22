@@ -562,13 +562,14 @@ class CBMAEstimator(MetaEstimator):
                 based on cluster size. This was previously simply called "logp_level-cluster".
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_desc-mass_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
-                based on cluster mass. According to [4]_ and [5]_, cluster mass-based inference is
-                more powerful than cluster size.
+                based on cluster mass. According to :footcite:t:`bullmore1999global` and
+                :footcite:t:`zhang2009cluster`, cluster mass-based inference is more powerful than
+                cluster size.
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_level-voxel``: Voxel-level FWE-corrected ``-log10(p)`` map.
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
-                (i.e., hundreds of studies), per [6]_.
+                (i.e., hundreds of studies), per :footcite:t:`eickhoff2016behavior`.
 
         Notes
         -----
@@ -588,18 +589,7 @@ class CBMAEstimator(MetaEstimator):
 
         References
         ----------
-        .. [4] Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., Taylor, E., &
-               Brammer, M. J. (1999). Global, voxel, and cluster tests, by theory and permutation,
-               for a difference between two groups of structural MR images of the brain.
-               IEEE transactions on medical imaging, 18(1), 32-42. doi: 10.1109/42.750253
-        .. [5] Zhang, H., Nichols, T. E., & Johnson, T. D. (2009).
-               Cluster mass inference via random field theory. Neuroimage, 44(1), 51-61.
-               doi: 10.1016/j.neuroimage.2008.08.017
-        .. [6] Eickhoff, S. B., Nichols, T. E., Laird, A. R., Hoffstaedter, F., Amunts, K.,
-               Fox, P. T., ... & Eickhoff, C. R. (2016).
-               Behavior, sensitivity, and power of activation likelihood estimation characterized
-               by massive empirical simulation. Neuroimage, 137, 70-85.
-               doi: 10.1016/j.neuroimage.2016.04.072
+        .. footbibliography::
 
         Examples
         --------
