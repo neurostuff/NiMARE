@@ -20,6 +20,8 @@ class Fishers(MetaEstimator):
 
     Requires z-statistic images, but will be extended to work with t-statistic images as well.
 
+    This method is described in :footcite:t:`fisher1946statistical`.
+
     Notes
     -----
     Requires ``z`` images.
@@ -35,9 +37,7 @@ class Fishers(MetaEstimator):
 
     References
     ----------
-    * Fisher, R. A. (1934). Statistical methods for research workers.
-      Statistical methods for research workers., (5th Ed).
-      https://www.cabdirect.org/cabdirect/abstract/19351601205
+    .. footbibliography::
 
     See Also
     --------
@@ -77,10 +77,13 @@ class Stouffers(MetaEstimator):
 
     Requires z-statistic images.
 
+    This method is described in :footcite:t:`stouffer1949american`.
+
     Parameters
     ----------
     use_sample_size : :obj:`bool`, optional
-        Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not.
+        Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
+        as described in :footcite:t:`zaykin2011optimally`.
         Default is False.
 
     Notes
@@ -98,14 +101,7 @@ class Stouffers(MetaEstimator):
 
     References
     ----------
-    * Stouffer, S. A., Suchman, E. A., DeVinney, L. C., Star, S. A., &
-      Williams Jr, R. M. (1949). The American Soldier: Adjustment during
-      army life. Studies in social psychology in World War II, vol. 1.
-      https://psycnet.apa.org/record/1950-00790-000
-    * Zaykin, D. V. (2011). Optimally weighted Z-test is a powerful method for
-      combining probabilities in meta-analysis. Journal of evolutionary
-      biology, 24(8), 1836-1841.
-      https://doi.org/10.1111/j.1420-9101.2011.02297.x
+    .. footbibliography::
 
     See Also
     --------
@@ -166,6 +162,8 @@ class WeightedLeastSquares(MetaEstimator):
     When tau^2 = 0 (default), the model is the standard inverse-weighted
     fixed-effects meta-regression.
 
+    This method was described in :footcite:t:`brockwell2001comparison`.
+
     Parameters
     ----------
     tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
@@ -187,9 +185,7 @@ class WeightedLeastSquares(MetaEstimator):
 
     References
     ----------
-    * Brockwell, S. E., & Gordon, I. R. (2001). A comparison of statistical
-      methods for meta-analysis. Statistics in Medicine, 20(6), 825–840.
-      https://doi.org/10.1002/sim.650
+    .. footbibliography::
 
     See Also
     --------
@@ -241,8 +237,8 @@ class DerSimonianLaird(MetaEstimator):
 
     .. versionadded:: 0.0.4
 
-    Estimates the between-subject variance tau^2 using the DerSimonian-Laird
-    (1986) method-of-moments approach.
+    Estimates the between-subject variance tau^2 using the :footcite:t:`dersimonian1986meta`
+    method-of-moments approach :footcite:p:`dersimonian1986meta,kosmidis2017improving`.
 
     Notes
     -----
@@ -260,11 +256,7 @@ class DerSimonianLaird(MetaEstimator):
 
     References
     ----------
-    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
-      Controlled clinical trials, 7(3), 177-188.
-    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
-      likelihood-based inference in meta-analysis and meta-regression.
-      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
+    .. footbibliography::
 
     See Also
     --------
@@ -315,7 +307,7 @@ class Hedges(MetaEstimator):
 
     .. versionadded:: 0.0.4
 
-    Estimates the between-subject variance tau^2 using the Hedges & Olkin (1985)
+    Estimates the between-subject variance tau^2 using the :footcite:t:`hedges2014statistical`
     approach.
 
     Notes
@@ -334,7 +326,7 @@ class Hedges(MetaEstimator):
 
     References
     ----------
-    * Hedges LV, Olkin I. 1985. Statistical Methods for Meta-Analysis.
+    .. footbibliography::
 
     See Also
     --------
@@ -467,7 +459,8 @@ class VarianceBasedLikelihood(MetaEstimator):
     .. versionadded:: 0.0.4
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
-    coefficients using the specified likelihood-based estimator (ML or REML).
+    coefficients using the specified likelihood-based estimator (ML or REML)
+    :footcite:p:`dersimonian1986meta,kosmidis2017improving`.
 
     Parameters
     ----------
@@ -503,11 +496,7 @@ class VarianceBasedLikelihood(MetaEstimator):
 
     References
     ----------
-    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
-      Controlled clinical trials, 7(3), 177-188.
-    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
-      likelihood-based inference in meta-analysis and meta-regression.
-      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
+    .. footbibliography::
 
     See Also
     --------
@@ -561,6 +550,8 @@ class PermutedOLS(MetaEstimator):
 
     .. versionadded:: 0.0.4
 
+    This approach is described in :footcite:t:`freedman1983nonstochastic`.
+
     Parameters
     ----------
     two_sided : :obj:`bool`, optional
@@ -583,8 +574,7 @@ class PermutedOLS(MetaEstimator):
 
     References
     ----------
-    * Freedman, D., & Lane, D. (1983). A nonstochastic interpretation of reported significance
-      levels. Journal of Business & Economic Statistics, 1(4), 292-298.
+    .. footbibliography::
 
     See Also
     --------

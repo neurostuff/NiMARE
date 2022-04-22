@@ -31,7 +31,7 @@ LGR = logging.getLogger(__name__)
     "distribution for significance testing.",
 )
 class ALE(CBMAEstimator):
-    r"""Activation likelihood estimation.
+    """Activation likelihood estimation.
 
     Parameters
     ----------
@@ -56,7 +56,7 @@ class ALE(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : :obj:`int`, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
@@ -67,7 +67,7 @@ class ALE(CBMAEstimator):
         Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
-        with the prefix '\kernel__' in the variable name.
+        with the prefix ``kernel__`` in the variable name.
         Another optional argument is ``mask``.
 
     Attributes
@@ -113,7 +113,7 @@ class ALE(CBMAEstimator):
 
     Notes
     -----
-    The ALE algorithm was originally developed in :footcite:t:`turkeltaub2002meta`_,
+    The ALE algorithm was originally developed in :footcite:t:`turkeltaub2002meta`,
     then updated in :footcite:t:`turkeltaub2012minimizing` and
     :footcite:t:`eickhoff2012activation`.
 
