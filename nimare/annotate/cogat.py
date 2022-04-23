@@ -34,14 +34,12 @@ class CogAtLemmatizer(object):
 
     Notes
     -----
-    The Cognitive Atlas [1]_ is an ontology for describing cognitive neuroscience concepts and
-    tasks.
+    The Cognitive Atlas :footcite:p:`poldrack2011cognitive` is an ontology for describing
+    cognitive neuroscience concepts and tasks.
 
     References
     ----------
-    .. [1] Poldrack, Russell A., et al. "The cognitive atlas: toward a knowledge foundation for
-       cognitive neuroscience." Frontiers in neuroinformatics 5 (2011): 17.
-       https://doi.org/10.3389/fninf.2011.00017
+    .. footbibliography::
 
     See Also
     --------
@@ -128,14 +126,12 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
 
     Notes
     -----
-    The Cognitive Atlas [1]_ is an ontology for describing cognitive neuroscience concepts and
-    tasks.
+    The Cognitive Atlas :footcite:p:`poldrack2011cognitive` is an ontology for describing
+    cognitive neuroscience concepts and tasks.
 
     References
     ----------
-    .. [1]  Poldrack, Russell A., et al. "The cognitive atlas: toward a
-            knowledge foundation for cognitive neuroscience." Frontiers in
-            neuroinformatics 5 (2011): 17. https://doi.org/10.3389/fninf.2011.00017
+    .. footbibliography::
 
     See Also
     --------

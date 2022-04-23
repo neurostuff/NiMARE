@@ -300,7 +300,7 @@ class ALEKernel(KernelTransformer):
 
     By default (if neither ``fwhm`` nor ``sample_size`` is provided), the FWHM of the kernel
     will be determined on a study-wise basis based on the sample sizes available in the input,
-    via the method described in [1]_.
+    via the method described in :footcite:t:`eickhoff2012activation`.
 
     .. versionchanged:: 0.0.8
 
@@ -325,8 +325,7 @@ class ALEKernel(KernelTransformer):
 
     References
     ----------
-    .. [1] Eickhoff, Simon B., et al. "Activation likelihood estimation
-           meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+    .. footbibliography::
     """
 
     def __init__(self, fwhm=None, sample_size=None, memory_limit=None):
