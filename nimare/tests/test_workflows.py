@@ -2,6 +2,7 @@
 import os.path as op
 
 from nimare import cli, workflows
+from nimare.dataset import DatasetSearcher
 from nimare.tests.utils import get_test_data_path
 
 
@@ -127,7 +128,8 @@ def test_conperm_workflow_function_smoke(testdata_ibma, tmp_path_factory):
     """Run smoke test of the contrast permutation workflow as a function."""
     tmpdir = tmp_path_factory.mktemp("test_conperm_workflow_function_smoke")
     dset = testdata_ibma
-    files = dset.get_images(imtype="beta")
+    searcher = DatasetSearcher()
+    files = searcher.get_images(dset, imtype="beta")
     mask_image = op.join(get_test_data_path(), "test_pain_dataset", "mask.nii.gz")
     prefix = "test"
 
@@ -142,7 +144,8 @@ def test_conperm_workflow_cli_smoke(testdata_ibma, tmp_path_factory):
     """Run smoke test of the contrast permutation workflow as a CLI."""
     tmpdir = tmp_path_factory.mktemp("test_conperm_workflow_cli_smoke")
     dset = testdata_ibma
-    files = dset.get_images(imtype="beta")
+    searcher = DatasetSearcher()
+    files = searcher.get_images(dset, imtype="beta")
     mask_image = op.join(get_test_data_path(), "test_pain_dataset", "mask.nii.gz")
     prefix = "test"
 

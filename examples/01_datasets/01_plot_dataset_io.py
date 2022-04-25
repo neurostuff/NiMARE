@@ -14,7 +14,7 @@ This is a brief walkthrough of the :class:`~nimare.dataset.Dataset` class and it
 # -----------------------------------------------------------------------------
 import os
 
-from nimare.dataset import Dataset
+from nimare.dataset import Dataset, DatasetSearcher
 from nimare.extract import download_nidm_pain
 from nimare.transforms import ImageTransformer
 from nimare.utils import get_resource_path
@@ -127,8 +127,11 @@ dset = varcope_transformer.transform(dset)
 dset.images[["id", "varcope"]].head()
 
 ###############################################################################
-# Datasets support many search methods
+# The DatasetSearcher class can search Datasets
 # -----------------------------------------------------------------------------
+searcher = DatasetSearcher()
+
+###############################################################################
 # There are ``get_[X]`` and ``get_studies_by_[X]`` methods for a range of
 # possible search criteria.
 # The ``get_[X]`` methods allow you to search for specific metadata, while the
@@ -139,7 +142,7 @@ dset.images[["id", "varcope"]].head()
 # by default, and for every requested study if the ``ids`` argument is provided.
 # If a study does not have the data requested, the returned list will have
 # ``None`` for that study.
-z_images = dset.get_images(imtype="z")
+z_images = searcher.get_images(dset, imtype="z")
 z_images = [str(z) for z in z_images]
 print("\n".join(z_images))
 
@@ -148,16 +151,16 @@ print("\n".join(z_images))
 # `````````````````````````````````````````````````````````````````````````````
 z_transformer = ImageTransformer(target="z")
 dset = z_transformer.transform(dset)
-z_images = dset.get_images(imtype="z")
+z_images = searcher.get_images(dset, imtype="z")
 z_images = [str(z) for z in z_images]
 print("\n".join(z_images))
 
 ###############################################################################
-# Datasets can also search for studies matching criteria
+# DatasetSearchers can also search for studies matching criteria
 # -----------------------------------------------------------------------------
 # ``get_studies_by_[X]`` methods return a list of study identifiers matching
 # the criteria, such as reporting a peak coordinate near a search coordinate.
-sel_studies = dset.get_studies_by_coordinate(xyz=[[0, 0, 0]], r=20)
+sel_studies = searcher.get_studies_by_coordinate(dset, xyz=[[0, 0, 0]], r=20)
 print("\n".join(sel_studies))
 
 ###############################################################################

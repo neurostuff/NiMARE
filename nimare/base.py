@@ -361,6 +361,7 @@ class MetaEstimator(Estimator):
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
         masker = self.masker or dataset.masker
+        searcher = DatasetSearcher()
 
         mask_img = masker.mask_img or masker.labels_img
         if isinstance(mask_img, str):
@@ -420,7 +421,8 @@ class MetaEstimator(Estimator):
                 if hasattr(self, "kernel_transformer"):
                     self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
                     if self.kernel_transformer.image_type in dataset.images.columns:
-                        files = dataset.get_images(
+                        files = searcher.get_images(
+                            dataset,
                             ids=self.inputs_["id"],
                             imtype=self.kernel_transformer.image_type,
                         )
