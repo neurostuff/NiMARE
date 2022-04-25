@@ -5,7 +5,7 @@ import pathlib
 from shutil import copyfile
 
 from ..correct import FWECorrector
-from ..dataset import Dataset
+from ..dataset import Dataset, DatasetSearcher
 from ..meta import ALE
 
 LGR = logging.getLogger(__name__)
@@ -17,7 +17,8 @@ def macm_workflow(
     """Perform MACM with ALE algorithm."""
     LGR.info("Loading coordinates...")
     dset = Dataset(dataset_file)
-    sel_ids = dset.get_studies_by_mask(mask_file)
+    searcher = DatasetSearcher()
+    sel_ids = searcher.get_studies_by_mask(dset, mask_file)
     sel_dset = dset.slice(sel_ids)
 
     # override sample size

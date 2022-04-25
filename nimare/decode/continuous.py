@@ -8,14 +8,15 @@ from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
-from .. import references
-from ..base import Decoder
-from ..due import due
-from ..meta.cbma.base import CBMAEstimator
-from ..meta.cbma.mkda import MKDAChi2
-from ..stats import pearson
-from ..utils import _check_type, _safe_transform
-from .utils import weight_priors
+from nimare import references
+from nimare.base import Decoder
+from nimare.dataset import DatasetSearcher
+from nimare.decode.utils import weight_priors
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator
+from nimare.meta.cbma.mkda import MKDAChi2
+from nimare.stats import pearson
+from nimare.utils import _check_type, _safe_transform
 
 LGR = logging.getLogger(__name__)
 
@@ -182,10 +183,12 @@ class CorrelationDecoder(Decoder):
             Masked meta-analytic maps
         """
         self.masker = dataset.masker
+        searcher = DatasetSearcher()
 
         n_features = len(self.features_)
         for i_feature, feature in enumerate(tqdm(self.features_, total=n_features)):
-            feature_ids = dataset.get_studies_by_label(
+            feature_ids = searcher.get_studies_by_label(
+                dataset,
                 labels=[feature],
                 label_threshold=self.frequency_threshold,
             )
@@ -292,11 +295,12 @@ class CorrelationDistributionDecoder(Decoder):
             Masked meta-analytic maps
         """
         self.masker = dataset.masker
+        searcher = DatasetSearcher()
 
         images_ = {}
         for feature in self.features_:
-            feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold
+            feature_ids = searcher.get_studies_by_label(
+                dataset, labels=[feature], label_threshold=self.frequency_threshold
             )
             selected_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
             selected_id_idx = [
