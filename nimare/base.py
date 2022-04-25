@@ -13,7 +13,6 @@ import numpy as np
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
-from nimare.dataset import DatasetSearcher
 from nimare.results import MetaResult
 from nimare.utils import get_masker, mm2vox
 
@@ -254,6 +253,8 @@ class Estimator(NiMAREBase):
 
     def _validate_input(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary."""
+        from nimare.dataset import DatasetSearcher
+
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
@@ -360,6 +361,8 @@ class MetaEstimator(Estimator):
 
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
+        from nimare.dataset import DatasetSearcher
+
         masker = self.masker or dataset.masker
         searcher = DatasetSearcher()
 
@@ -482,6 +485,8 @@ class Decoder(NiMAREBase):
 
     def _validate_input(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary."""
+        from nimare.dataset import DatasetSearcher
+
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
