@@ -62,9 +62,9 @@ class DatasetSeacher(NiMAREBase):
         keep_idx = np.arange(len(dataset.ids), dtype=int)
         for k, vals in dict_.items():
             if vals[0] == "image":
-                temp = dataset.get_images(imtype=vals[1])
+                temp = self.get_images(dataset, imtype=vals[1])
             elif vals[0] == "metadata":
-                temp = dataset.get_metadata(field=vals[1])
+                temp = self.get_metadata(dataset, field=vals[1])
             elif vals[0] == "coordinates":
                 # Break DataFrame down into a list of study-specific DataFrames
                 temp = [

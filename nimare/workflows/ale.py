@@ -7,6 +7,7 @@ from shutil import copyfile
 import numpy as np
 
 from nimare.correct import FWECorrector
+from nimare.dataset import DatasetSearcher
 from nimare.diagnostics import FocusCounter
 from nimare.io import convert_sleuth_to_dataset
 from nimare.meta import ALE, ALESubtraction
@@ -26,6 +27,7 @@ def ale_sleuth_workflow(
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
     LGR.info("Loading coordinates...")
+    searcher = DatasetSearcher()
 
     if fwhm:
         fwhm_str = f"of {fwhm} mm"
@@ -34,7 +36,7 @@ def ale_sleuth_workflow(
 
     if not sleuth_file2:
         dset = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
-        n_subs = dset.get_metadata(field="sample_sizes")
+        n_subs = searcher.get_metadata(dset, field="sample_sizes")
         n_subs = np.sum(n_subs)
 
         boilerplate = """
@@ -115,9 +117,9 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
     else:
         dset1 = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
         dset2 = convert_sleuth_to_dataset(sleuth_file2, target="ale_2mm")
-        n_subs1 = dset1.get_metadata(field="sample_sizes")
+        n_subs1 = searcher.get_metadata(dset1, field="sample_sizes")
         n_subs1 = np.sum(n_subs1)
-        n_subs2 = dset2.get_metadata(field="sample_sizes")
+        n_subs2 = searcher.get_metadata(dset2, field="sample_sizes")
         n_subs2 = np.sum(n_subs2)
 
         boilerplate = """

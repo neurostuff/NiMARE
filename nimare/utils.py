@@ -15,8 +15,9 @@ import numpy as np
 import pandas as pd
 from nilearn.input_data import NiftiMasker
 
-from . import references
-from .due import due
+from nimare import references
+from nimare.dataset import DatasetSearcher
+from nimare.due import due
 
 LGR = logging.getLogger(__name__)
 
@@ -841,10 +842,11 @@ def _add_metadata_to_dataframe(
         Updated DataFrame with ``target_column`` added.
     """
     dataframe = dataframe.copy()
+    searcher = DatasetSearcher()
 
-    if metadata_field in dataset.get_metadata():
+    if metadata_field in searcher.get_metadata(dataset):
         # Collect metadata from Dataset
-        metadata = dataset.get_metadata(field=metadata_field, ids=dataset.ids)
+        metadata = searcher.get_metadata(dataset, field=metadata_field, ids=dataset.ids)
         metadata = [[m] for m in metadata]
         # Create a DataFrame with the metadata
         metadata = pd.DataFrame(
