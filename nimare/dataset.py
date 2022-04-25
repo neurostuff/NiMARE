@@ -26,6 +26,331 @@ from .utils import (
 LGR = logging.getLogger(__name__)
 
 
+class DatasetSeacher(NiMAREBase):
+    """A tool for searching Datasets."""
+
+    def get(self, dataset, dict_, drop_invalid=True):
+        """Retrieve files and/or metadata from the current Dataset.
+
+        Parameters
+        ----------
+        dict_ : :obj:`dict`
+            Dictionary specifying images or metadata to collect.
+            Keys should be variables to be used as keys for results dictionary.
+            Values should be tuples with two values:
+            type (e.g., 'image' or 'metadata') and specific field corresponding
+            to column of type-specific DataFrame (e.g., 'z' or 'sample_sizes').
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is False.
+
+        Returns
+        -------
+        results : :obj:`dict`
+            A dictionary of lists of requested data. Keys correspond to the keys in ``dict_``.
+
+        Examples
+        --------
+        >>> dset.get({'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')})
+        >>> dset.get({'coordinates': ('coordinates', None)})
+        """
+        results = {}
+        results["id"] = dataset.ids
+        keep_idx = np.arange(len(dataset.ids), dtype=int)
+        for k, vals in dict_.items():
+            if vals[0] == "image":
+                temp = dataset.get_images(imtype=vals[1])
+            elif vals[0] == "metadata":
+                temp = dataset.get_metadata(field=vals[1])
+            elif vals[0] == "coordinates":
+                # Break DataFrame down into a list of study-specific DataFrames
+                temp = [
+                    dataset.coordinates.loc[dataset.coordinates["id"] == id_]
+                    for id_ in dataset.ids
+                ]
+                # Replace empty DataFrames with Nones
+                temp = [t if t.size else None for t in temp]
+            elif vals[0] == "annotations":
+                # Break DataFrame down into a list of study-specific DataFrames
+                temp = [
+                    dataset.annotations.loc[dataset.annotations["id"] == id_]
+                    for id_ in dataset.ids
+                ]
+                # Replace empty DataFrames with Nones
+                temp = [t if t.size else None for t in temp]
+            else:
+                raise ValueError(f"Input '{vals[0]}' not understood.")
+
+            results[k] = temp
+            temp_keep_idx = np.where([t is not None for t in temp])[0]
+            keep_idx = np.intersect1d(keep_idx, temp_keep_idx)
+
+        # reduce
+        if drop_invalid and (len(keep_idx) != len(self.ids)):
+            LGR.info(f"Retaining {len(keep_idx)}/{len(self.ids)} studies")
+        elif len(keep_idx) != len(self.ids):
+            raise Exception(
+                f"Only {len(keep_idx)}/{len(self.ids)} in Dataset contain the necessary data. "
+                "If you want to analyze the subset of studies with required data, "
+                "set `drop_invalid` to True."
+            )
+
+        for k in results:
+            results[k] = [results[k][i] for i in keep_idx]
+            if dict_.get(k, [None])[0] in ("coordinates", "annotations"):
+                results[k] = pd.concat(results[k])
+
+        return results
+
+    def _generic_column_getter(self, dataset, attr, ids=None, column=None, ignore_columns=None):
+        """Extract information from DataFrame-based attributes.
+
+        Parameters
+        ----------
+        attr : :obj:`str`
+            The name of the DataFrame-format Dataset attribute to search.
+        ids : :obj:`list` or None, optional
+            A list of study IDs within which to extract values.
+            If None, extract values for all studies in the Dataset.
+            Default is None.
+        column : :obj:`str` or None, optional
+            The column from which to extract values.
+            If None, a list of all columns with valid values will be returned.
+            Must be a column within Dataset.[attr].
+        ignore_columns : :obj:`list` or None, optional
+            A list of columns to ignore. Only used if ``column`` is None.
+
+        Returns
+        -------
+        result : :obj:`list` or :obj:`str`
+            A list of values or a string, depending on if ids is a list (or None) or a string.
+        """
+        if ignore_columns is None:
+            ignore_columns = dataset._id_cols
+        else:
+            ignore_columns += dataset._id_cols
+
+        df = getattr(dataset, attr)
+        return_first = False
+
+        if isinstance(ids, str) and column is not None:
+            return_first = True
+        ids = _listify(ids)
+
+        available_types = [c for c in df.columns if c not in dataset._id_cols]
+        if (column is not None) and (column not in available_types):
+            raise ValueError(
+                f"{column} not found in {attr}.\nAvailable types: {', '.join(available_types)}"
+            )
+
+        if column is not None:
+            if ids is not None:
+                result = df[column].loc[df["id"].isin(ids)].tolist()
+            else:
+                result = df[column].tolist()
+        else:
+            if ids is not None:
+                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
+                result = {k: v for k, v in result.items() if any(v)}
+            else:
+                result = {v: df[v].tolist() for v in available_types}
+            result = list(result.keys())
+
+        if return_first:
+            return result[0]
+        else:
+            return result
+
+    def get_labels(self, dataset, ids=None):
+        """Extract list of labels for which studies in Dataset have annotations.
+
+        Parameters
+        ----------
+        ids : :obj:`list`, optional
+            A list of IDs in the Dataset for which to find labels. Default is
+            None, in which case all labels are returned.
+
+        Returns
+        -------
+        labels : :obj:`list`
+            List of labels for which there are annotations in the Dataset.
+        """
+        if not isinstance(ids, list) and ids is not None:
+            ids = _listify(ids)
+
+        result = [c for c in dataset.annotations.columns if c not in dataset._id_cols]
+        if ids is not None:
+            temp_annotations = dataset.annotations.loc[dataset.annotations["id"].isin(ids)]
+            res = temp_annotations[result].any(axis=0)
+            result = res.loc[res].index.tolist()
+
+        return result
+
+    def get_texts(self, dataset, ids=None, text_type=None):
+        """Extract list of texts of a given type for selected IDs.
+
+        Parameters
+        ----------
+        ids : :obj:`list`, optional
+            A list of IDs in the Dataset for which to find texts. Default is
+            None, in which case all texts of requested type are returned.
+        text_type : :obj:`str`, optional
+            Type of text to extract. Corresponds to column name in
+            Dataset.texts DataFrame. Default is None.
+
+        Returns
+        -------
+        texts : :obj:`list`
+            List of texts of requested type for selected IDs.
+        """
+        result = self._generic_column_getter(dataset, "texts", ids=ids, column=text_type)
+        return result
+
+    def get_metadata(self, dataset, ids=None, field=None):
+        """Get metadata from Dataset.
+
+        Parameters
+        ----------
+        ids : :obj:`list`, optional
+            A list of IDs in the Dataset for which to find metadata. Default is
+            None, in which case all metadata of requested type are returned.
+        field : :obj:`str`, optional
+            Metadata field to extract. Corresponds to column name in
+            Dataset.metadata DataFrame. Default is None.
+
+        Returns
+        -------
+        metadata : :obj:`list`
+            List of values of requested type for selected IDs.
+        """
+        result = dataset._generic_column_getter(dataset, "metadata", ids=ids, column=field)
+        return result
+
+    def get_images(self, dataset, ids=None, imtype=None):
+        """Get images of a certain type for a subset of studies in the dataset.
+
+        Parameters
+        ----------
+        ids : :obj:`list`, optional
+            A list of IDs in the Dataset for which to find images. Default is
+            None, in which case all images of requested type are returned.
+        imtype : :obj:`str`, optional
+            Type of image to extract. Corresponds to column name in
+            Dataset.images DataFrame. Default is None.
+
+        Returns
+        -------
+        images : :obj:`list`
+            List of images of requested type for selected IDs.
+        """
+        ignore_columns = ["space"]
+        ignore_columns += [c for c in dataset.images.columns if c.endswith("__relative")]
+        result = self._generic_column_getter(
+            dataset,
+            "images",
+            ids=ids,
+            column=imtype,
+            ignore_columns=ignore_columns,
+        )
+        return result
+
+    def get_studies_by_label(self, dataset, labels=None, label_threshold=0.001):
+        """Extract list of studies with a given label.
+
+        .. versionchanged:: 0.0.10
+
+            Fix bug in which all IDs were returned when a label wasn't present in the Dataset.
+
+        .. versionchanged:: 0.0.9
+
+            Default value for label_threshold changed to 0.001.
+
+        Parameters
+        ----------
+        labels : :obj:`list`, optional
+            List of labels to use to search Dataset. If a contrast has all of
+            the labels above the threshold, it will be returned.
+            Default is None.
+        label_threshold : :obj:`float`, optional
+            Default is 0.5.
+
+        Returns
+        -------
+        found_ids : :obj:`list`
+            A list of IDs from the Dataset found by the search criteria.
+        """
+        if isinstance(labels, str):
+            labels = [labels]
+        elif not isinstance(labels, list):
+            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
+
+        missing_labels = [label for label in labels if label not in dataset.annotations.columns]
+        if missing_labels:
+            raise ValueError(f"Missing label(s): {', '.join(missing_labels)}")
+
+        temp_annotations = dataset.annotations[dataset._id_cols + labels]
+        found_rows = (temp_annotations[labels] >= label_threshold).all(axis=1)
+        if any(found_rows):
+            found_ids = temp_annotations.loc[found_rows, "id"].tolist()
+        else:
+            found_ids = []
+
+        return found_ids
+
+    def get_studies_by_mask(self, dataset, mask):
+        """Extract list of studies with at least one coordinate in mask.
+
+        Parameters
+        ----------
+        mask : img_like
+            Mask across which to search for coordinates.
+
+        Returns
+        -------
+        found_ids : :obj:`list`
+            A list of IDs from the Dataset with at least one focus in the mask.
+        """
+        from scipy.spatial.distance import cdist
+
+        mask = load_niimg(mask)
+
+        dset_mask = dataset.masker.mask_img
+        if not np.array_equal(dset_mask.affine, mask.affine):
+            LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
+
+        dset_ijk = mm2vox(dataset.coordinates[["x", "y", "z"]].values, mask.affine)
+        mask_ijk = np.vstack(np.where(mask.get_fdata())).T
+        distances = cdist(mask_ijk, dset_ijk)
+        distances = np.any(distances == 0, axis=0)
+        found_ids = list(dataset.coordinates.loc[distances, "id"].unique())
+        return found_ids
+
+    def get_studies_by_coordinate(self, dataset, xyz, r=20):
+        """Extract list of studies with at least one focus within radius of requested coordinates.
+
+        Parameters
+        ----------
+        xyz : (X x 3) array_like
+            List of coordinates against which to find studies.
+        r : :obj:`float`, optional
+            Radius (in mm) within which to find studies. Default is 20mm.
+
+        Returns
+        -------
+        found_ids : :obj:`list`
+            A list of IDs from the Dataset with at least one focus within
+            radius r of requested coordinates.
+        """
+        from scipy.spatial.distance import cdist
+
+        xyz = np.array(xyz)
+        assert xyz.shape[1] == 3 and xyz.ndim == 2
+        distances = cdist(xyz, dataset.coordinates[["x", "y", "z"]].values)
+        distances = np.any(distances <= r, axis=0)
+        found_ids = list(dataset.coordinates.loc[distances, "id"].unique())
+        return found_ids
+
+
 class Dataset(NiMAREBase):
     """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
 
@@ -348,317 +673,3 @@ class Dataset(NiMAREBase):
     def copy(self):
         """Create a copy of the Dataset."""
         return copy.deepcopy(self)
-
-    def get(self, dict_, drop_invalid=True):
-        """Retrieve files and/or metadata from the current Dataset.
-
-        Parameters
-        ----------
-        dict_ : :obj:`dict`
-            Dictionary specifying images or metadata to collect.
-            Keys should be variables to be used as keys for results dictionary.
-            Values should be tuples with two values:
-            type (e.g., 'image' or 'metadata') and specific field corresponding
-            to column of type-specific DataFrame (e.g., 'z' or 'sample_sizes').
-        drop_invalid : :obj:`bool`, optional
-            Whether to automatically ignore any studies without the required data or not.
-            Default is False.
-
-        Returns
-        -------
-        results : :obj:`dict`
-            A dictionary of lists of requested data. Keys correspond to the keys in ``dict_``.
-
-        Examples
-        --------
-        >>> dset.get({'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')})
-        >>> dset.get({'coordinates': ('coordinates', None)})
-        """
-        results = {}
-        results["id"] = self.ids
-        keep_idx = np.arange(len(self.ids), dtype=int)
-        for k, vals in dict_.items():
-            if vals[0] == "image":
-                temp = self.get_images(imtype=vals[1])
-            elif vals[0] == "metadata":
-                temp = self.get_metadata(field=vals[1])
-            elif vals[0] == "coordinates":
-                # Break DataFrame down into a list of study-specific DataFrames
-                temp = [self.coordinates.loc[self.coordinates["id"] == id_] for id_ in self.ids]
-                # Replace empty DataFrames with Nones
-                temp = [t if t.size else None for t in temp]
-            elif vals[0] == "annotations":
-                # Break DataFrame down into a list of study-specific DataFrames
-                temp = [self.annotations.loc[self.annotations["id"] == id_] for id_ in self.ids]
-                # Replace empty DataFrames with Nones
-                temp = [t if t.size else None for t in temp]
-            else:
-                raise ValueError(f"Input '{vals[0]}' not understood.")
-
-            results[k] = temp
-            temp_keep_idx = np.where([t is not None for t in temp])[0]
-            keep_idx = np.intersect1d(keep_idx, temp_keep_idx)
-
-        # reduce
-        if drop_invalid and (len(keep_idx) != len(self.ids)):
-            LGR.info(f"Retaining {len(keep_idx)}/{len(self.ids)} studies")
-        elif len(keep_idx) != len(self.ids):
-            raise Exception(
-                f"Only {len(keep_idx)}/{len(self.ids)} in Dataset contain the necessary data. "
-                "If you want to analyze the subset of studies with required data, "
-                "set `drop_invalid` to True."
-            )
-
-        for k in results:
-            results[k] = [results[k][i] for i in keep_idx]
-            if dict_.get(k, [None])[0] in ("coordinates", "annotations"):
-                results[k] = pd.concat(results[k])
-
-        return results
-
-    def _generic_column_getter(self, attr, ids=None, column=None, ignore_columns=None):
-        """Extract information from DataFrame-based attributes.
-
-        Parameters
-        ----------
-        attr : :obj:`str`
-            The name of the DataFrame-format Dataset attribute to search.
-        ids : :obj:`list` or None, optional
-            A list of study IDs within which to extract values.
-            If None, extract values for all studies in the Dataset.
-            Default is None.
-        column : :obj:`str` or None, optional
-            The column from which to extract values.
-            If None, a list of all columns with valid values will be returned.
-            Must be a column within Dataset.[attr].
-        ignore_columns : :obj:`list` or None, optional
-            A list of columns to ignore. Only used if ``column`` is None.
-
-        Returns
-        -------
-        result : :obj:`list` or :obj:`str`
-            A list of values or a string, depending on if ids is a list (or None) or a string.
-        """
-        if ignore_columns is None:
-            ignore_columns = self._id_cols
-        else:
-            ignore_columns += self._id_cols
-
-        df = getattr(self, attr)
-        return_first = False
-
-        if isinstance(ids, str) and column is not None:
-            return_first = True
-        ids = _listify(ids)
-
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        if (column is not None) and (column not in available_types):
-            raise ValueError(
-                f"{column} not found in {attr}.\nAvailable types: {', '.join(available_types)}"
-            )
-
-        if column is not None:
-            if ids is not None:
-                result = df[column].loc[df["id"].isin(ids)].tolist()
-            else:
-                result = df[column].tolist()
-        else:
-            if ids is not None:
-                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
-
-        if return_first:
-            return result[0]
-        else:
-            return result
-
-    def get_labels(self, ids=None):
-        """Extract list of labels for which studies in Dataset have annotations.
-
-        Parameters
-        ----------
-        ids : :obj:`list`, optional
-            A list of IDs in the Dataset for which to find labels. Default is
-            None, in which case all labels are returned.
-
-        Returns
-        -------
-        labels : :obj:`list`
-            List of labels for which there are annotations in the Dataset.
-        """
-        if not isinstance(ids, list) and ids is not None:
-            ids = _listify(ids)
-
-        result = [c for c in self.annotations.columns if c not in self._id_cols]
-        if ids is not None:
-            temp_annotations = self.annotations.loc[self.annotations["id"].isin(ids)]
-            res = temp_annotations[result].any(axis=0)
-            result = res.loc[res].index.tolist()
-
-        return result
-
-    def get_texts(self, ids=None, text_type=None):
-        """Extract list of texts of a given type for selected IDs.
-
-        Parameters
-        ----------
-        ids : :obj:`list`, optional
-            A list of IDs in the Dataset for which to find texts. Default is
-            None, in which case all texts of requested type are returned.
-        text_type : :obj:`str`, optional
-            Type of text to extract. Corresponds to column name in
-            Dataset.texts DataFrame. Default is None.
-
-        Returns
-        -------
-        texts : :obj:`list`
-            List of texts of requested type for selected IDs.
-        """
-        result = self._generic_column_getter("texts", ids=ids, column=text_type)
-        return result
-
-    def get_metadata(self, ids=None, field=None):
-        """Get metadata from Dataset.
-
-        Parameters
-        ----------
-        ids : :obj:`list`, optional
-            A list of IDs in the Dataset for which to find metadata. Default is
-            None, in which case all metadata of requested type are returned.
-        field : :obj:`str`, optional
-            Metadata field to extract. Corresponds to column name in
-            Dataset.metadata DataFrame. Default is None.
-
-        Returns
-        -------
-        metadata : :obj:`list`
-            List of values of requested type for selected IDs.
-        """
-        result = self._generic_column_getter("metadata", ids=ids, column=field)
-        return result
-
-    def get_images(self, ids=None, imtype=None):
-        """Get images of a certain type for a subset of studies in the dataset.
-
-        Parameters
-        ----------
-        ids : :obj:`list`, optional
-            A list of IDs in the Dataset for which to find images. Default is
-            None, in which case all images of requested type are returned.
-        imtype : :obj:`str`, optional
-            Type of image to extract. Corresponds to column name in
-            Dataset.images DataFrame. Default is None.
-
-        Returns
-        -------
-        images : :obj:`list`
-            List of images of requested type for selected IDs.
-        """
-        ignore_columns = ["space"]
-        ignore_columns += [c for c in self.images.columns if c.endswith("__relative")]
-        result = self._generic_column_getter(
-            "images",
-            ids=ids,
-            column=imtype,
-            ignore_columns=ignore_columns,
-        )
-        return result
-
-    def get_studies_by_label(self, labels=None, label_threshold=0.001):
-        """Extract list of studies with a given label.
-
-        .. versionchanged:: 0.0.10
-
-            Fix bug in which all IDs were returned when a label wasn't present in the Dataset.
-
-        .. versionchanged:: 0.0.9
-
-            Default value for label_threshold changed to 0.001.
-
-        Parameters
-        ----------
-        labels : :obj:`list`, optional
-            List of labels to use to search Dataset. If a contrast has all of
-            the labels above the threshold, it will be returned.
-            Default is None.
-        label_threshold : :obj:`float`, optional
-            Default is 0.5.
-
-        Returns
-        -------
-        found_ids : :obj:`list`
-            A list of IDs from the Dataset found by the search criteria.
-        """
-        if isinstance(labels, str):
-            labels = [labels]
-        elif not isinstance(labels, list):
-            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
-
-        missing_labels = [label for label in labels if label not in self.annotations.columns]
-        if missing_labels:
-            raise ValueError(f"Missing label(s): {', '.join(missing_labels)}")
-
-        temp_annotations = self.annotations[self._id_cols + labels]
-        found_rows = (temp_annotations[labels] >= label_threshold).all(axis=1)
-        if any(found_rows):
-            found_ids = temp_annotations.loc[found_rows, "id"].tolist()
-        else:
-            found_ids = []
-
-        return found_ids
-
-    def get_studies_by_mask(self, mask):
-        """Extract list of studies with at least one coordinate in mask.
-
-        Parameters
-        ----------
-        mask : img_like
-            Mask across which to search for coordinates.
-
-        Returns
-        -------
-        found_ids : :obj:`list`
-            A list of IDs from the Dataset with at least one focus in the mask.
-        """
-        from scipy.spatial.distance import cdist
-
-        mask = load_niimg(mask)
-
-        dset_mask = self.masker.mask_img
-        if not np.array_equal(dset_mask.affine, mask.affine):
-            LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
-
-        dset_ijk = mm2vox(self.coordinates[["x", "y", "z"]].values, mask.affine)
-        mask_ijk = np.vstack(np.where(mask.get_fdata())).T
-        distances = cdist(mask_ijk, dset_ijk)
-        distances = np.any(distances == 0, axis=0)
-        found_ids = list(self.coordinates.loc[distances, "id"].unique())
-        return found_ids
-
-    def get_studies_by_coordinate(self, xyz, r=20):
-        """Extract list of studies with at least one focus within radius of requested coordinates.
-
-        Parameters
-        ----------
-        xyz : (X x 3) array_like
-            List of coordinates against which to find studies.
-        r : :obj:`float`, optional
-            Radius (in mm) within which to find studies. Default is 20mm.
-
-        Returns
-        -------
-        found_ids : :obj:`list`
-            A list of IDs from the Dataset with at least one focus within
-            radius r of requested coordinates.
-        """
-        from scipy.spatial.distance import cdist
-
-        xyz = np.array(xyz)
-        assert xyz.shape[1] == 3 and xyz.ndim == 2
-        distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
-        distances = np.any(distances <= r, axis=0)
-        found_ids = list(self.coordinates.loc[distances, "id"].unique())
-        return found_ids
