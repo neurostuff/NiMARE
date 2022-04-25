@@ -51,8 +51,11 @@ class DatasetSeacher(NiMAREBase):
 
         Examples
         --------
-        >>> dset.get({'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')})
-        >>> dset.get({'coordinates': ('coordinates', None)})
+        >>> searcher = DatasetSearcher()
+        >>> searcher.get(
+        >>>    dset, {'z_maps': ('image', 'z'), 'sample_sizes': ('metadata', 'sample_sizes')}
+        >>> )
+        >>> searcher.get(dset, {'coordinates': ('coordinates', None)})
         """
         results = {}
         results["id"] = dataset.ids
