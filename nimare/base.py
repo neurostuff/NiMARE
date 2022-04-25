@@ -13,8 +13,9 @@ import numpy as np
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
-from .results import MetaResult
-from .utils import get_masker, mm2vox
+from nimare.dataset import DatasetSearcher
+from nimare.results import MetaResult
+from nimare.utils import get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -259,7 +260,8 @@ class Estimator(NiMAREBase):
             )
 
         if self._required_inputs:
-            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
+            searcher = DatasetSearcher()
+            data = searcher.get(dataset, self._required_inputs, drop_invalid=drop_invalid)
             # Do not overwrite existing inputs_ attribute.
             # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
             # in the same object.
@@ -484,7 +486,8 @@ class Decoder(NiMAREBase):
             )
 
         if self._required_inputs:
-            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
+            searcher = DatasetSearcher()
+            data = searcher.get(dataset, self._required_inputs, drop_invalid=drop_invalid)
             # Do not overwrite existing inputs_ attribute.
             # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
             # in the same object.
