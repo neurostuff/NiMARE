@@ -20,7 +20,7 @@ def test_convert_nimads_to_dataset():
 
     annotation = nimare.nimads.Annotation(annotation_data)
 
-    dset = io.convert_nimads_to_dataset(studyset)
+    dset = io.convert_nimads_to_dataset(studyset, annotation)
 
     assert isinstance(dset, nimare.dataset.Dataset)
 
