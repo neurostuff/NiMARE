@@ -156,9 +156,6 @@ class Fishers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -220,8 +217,8 @@ class Stouffers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, use_sample_size=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, use_sample_size=False, **kwargs):
+        super().__init__(**kwargs)
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
@@ -304,8 +301,8 @@ class WeightedLeastSquares(IBMAEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
-    def __init__(self, tau2=0, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, tau2=0, **kwargs):
+        super().__init__(**kwargs)
         self.tau2 = tau2
 
     def _fit(self, dataset):
@@ -375,9 +372,6 @@ class DerSimonianLaird(IBMAEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -444,9 +438,6 @@ class Hedges(IBMAEstimator):
     """
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -529,8 +520,8 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         "sample_sizes": ("metadata", "sample_sizes"),
     }
 
-    def __init__(self, method="ml", *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, method="ml", **kwargs):
+        super().__init__(**kwargs)
         self.method = method
 
     def _fit(self, dataset):
@@ -615,8 +606,8 @@ class VarianceBasedLikelihood(IBMAEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
-    def __init__(self, method="ml", *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, method="ml", **kwargs):
+        super().__init__(**kwargs)
         self.method = method
 
     def _fit(self, dataset):
@@ -692,8 +683,8 @@ class PermutedOLS(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, two_sided=True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, two_sided=True, **kwargs):
+        super().__init__(**kwargs)
         self.two_sided = two_sided
         self.parameters_ = {}
 
