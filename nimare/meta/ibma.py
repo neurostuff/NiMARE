@@ -38,13 +38,18 @@ class IBMAEstimator(Estimator):
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {"clip": True, "interpolation": "linear"}
-        resample_kwargs = {
-            k.split("resample__")[1]: v for k, v in kwargs.items() if k.startswith("resample__")
-        }
-        self._resample_kwargs.update(resample_kwargs)
-        other_kwargs = dict(set(kwargs) - set(resample_kwargs))
+
+        # Identify any kwargs
+        resample_kwargs = {k: v for k, v in kwargs.items() if k.startswith("resample__")}
+
+        # Flag any extraneous kwargs
+        other_kwargs = dict(set(kwargs.items()) - set(resample_kwargs.items()))
         if other_kwargs:
-            LGR.warn(f"Unused keyword arguments found: {', '.join(other_kwargs.keys())}")
+            LGR.warn(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
+
+        # Update the default resampling parameters
+        resample_kwargs = {k.split("resample__")[1]: v for k, v in resample_kwargs.items()}
+        self._resample_kwargs.update(resample_kwargs)
 
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""

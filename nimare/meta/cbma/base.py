@@ -63,15 +63,18 @@ class CBMAEstimator(Estimator):
         self.masker = mask
         self.memory_limit = memory_limit
 
+        # Identify any kwargs
+        kernel_args = {k: v for k, v in kwargs.items() if k.startswith("kernel__")}
+
+        # Flag any extraneous kwargs
+        other_kwargs = dict(set(kwargs.items()) - set(kernel_args.items()))
+        if other_kwargs:
+            LGR.warn(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
+
         # Get kernel transformer
-        kernel_args = {
-            k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
-        }
+        kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
-        other_kwargs = dict(set(kwargs) - set(kernel_args))
-        if other_kwargs:
-            LGR.warn(f"Unused keyword arguments found: {', '.join(other_kwargs.keys())}")
 
     @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
