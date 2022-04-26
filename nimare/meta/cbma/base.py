@@ -809,7 +809,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         call `fit`.
         """
         # grab and override
-        self._validate_input(dataset1, drop_invalid=drop_invalid)
+        self._collect_inputs(dataset1, drop_invalid=drop_invalid)
         self._preprocess_input(dataset1)
         if "ma_maps" in self.inputs_.keys():
             # Grab pre-generated MA maps
@@ -818,7 +818,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
 
         # grab and override
-        self._validate_input(dataset2, drop_invalid=drop_invalid)
+        self._collect_inputs(dataset2, drop_invalid=drop_invalid)
         self._preprocess_input(dataset2)
         if "ma_maps" in self.inputs_.keys():
             # Grab pre-generated MA maps

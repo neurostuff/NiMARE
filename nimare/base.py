@@ -222,7 +222,7 @@ class Estimator(NiMAREBase):
     All Estimators must have a ``_fit`` method implemented, which applies algorithm-specific
     methods to a dataset and returns a dictionary of arrays to be converted into a MetaResult.
     Users will interact with the ``_fit`` method by calling the user-facing ``fit`` method.
-    ``fit`` takes in a ``Dataset``, calls ``_validate_input``, then ``_preprocess_input``,
+    ``fit`` takes in a ``Dataset``, calls ``_collect_inputs``, then ``_preprocess_input``,
     then ``_fit``, and finally converts the dictionary returned by ``_fit`` into a ``MetaResult``.
     """
 
@@ -230,7 +230,7 @@ class Estimator(NiMAREBase):
     # attributes to set; values are strings indicating location in Dataset.
     _required_inputs = {}
 
-    def _validate_input(self, dataset, drop_invalid=True):
+    def _collect_inputs(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
@@ -288,7 +288,7 @@ class Estimator(NiMAREBase):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
-        self._validate_input(dataset, drop_invalid=drop_invalid)
+        self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps = self._fit(dataset)
 

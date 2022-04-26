@@ -16,7 +16,7 @@ class Decoder(NiMAREBase):
 
     __id_cols = ["id", "study_id", "contrast_id"]
 
-    def _validate_input(self, dataset, drop_invalid=True):
+    def _collect_inputs(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
@@ -104,7 +104,7 @@ class Decoder(NiMAREBase):
         Selection of features based on requested features and feature group is performed in
         `Decoder._preprocess_input`.
         """
-        self._validate_input(dataset, drop_invalid=drop_invalid)
+        self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         self._fit(dataset)
 
