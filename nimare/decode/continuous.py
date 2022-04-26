@@ -9,12 +9,12 @@ from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
 from .. import references
-from ..base import Decoder
 from ..due import due
 from ..meta.cbma.base import CBMAEstimator
 from ..meta.cbma.mkda import MKDAChi2
 from ..stats import pearson
 from ..utils import _check_type, _safe_transform
+from .base import Decoder
 from .utils import weight_priors
 
 LGR = logging.getLogger(__name__)

@@ -7,12 +7,12 @@ from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .. import references
-from ..base import Decoder
 from ..due import due
 from ..meta.kernel import KernelTransformer, MKDAKernel
 from ..stats import one_way, pearson, two_way
 from ..transforms import p_to_z
 from ..utils import _check_type, get_masker
+from .base import Decoder
 from .utils import weight_priors
 
 
