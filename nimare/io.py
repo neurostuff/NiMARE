@@ -15,7 +15,6 @@ from scipy import sparse
 from .dataset import Dataset
 from .extract.utils import _get_dataset_dir
 
-
 LGR = logging.getLogger(__name__)
 
 DEFAULT_MAP_TYPE_CONVERSION = {
@@ -28,36 +27,37 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 
 
 def convert_nimads_to_dataset(studyset, annotation=None):
+    """Convert nimads studyset object to a dataset."""
 
     def _analysis_to_dict(study, analysis, annotation=None):
         result = {
-            'metadata': {
-                'authors': study.name,
-                'journal': study.publication,
-                'title': study.name,
+            "metadata": {
+                "authors": study.name,
+                "journal": study.publication,
+                "title": study.name,
             },
-            'coords': {
-                'space': analysis.points[0].space,
-                'x': [p.x for p in analysis.points],
-                'y': [p.y for p in analysis.points],
-                'z': [p.z for p in analysis.points],
-            }
+            "coords": {
+                "space": analysis.points[0].space,
+                "x": [p.x for p in analysis.points],
+                "y": [p.y for p in analysis.points],
+                "z": [p.z for p in analysis.points],
+            },
         }
 
         if annotation:
-            notes = next(n for n in annotation.notes if n['analysis'] == analysis.id)
-            result['labels'] = notes['note']
+            notes = next(n for n in annotation.notes if n["analysis"] == analysis.id)
+            result["labels"] = notes["note"]
 
         return result
 
     def _study_to_dict(study, annotation=None):
         return {
-            'metadata': {
-                'authors': study.authors,
-                'journal': study.publication,
-                'title': study.name,
+            "metadata": {
+                "authors": study.authors,
+                "journal": study.publication,
+                "title": study.name,
             },
-            'contrasts': {a.id: _analysis_to_dict(study, a, annotation) for a in study.analyses}
+            "contrasts": {a.id: _analysis_to_dict(study, a, annotation) for a in study.analyses},
         }
 
     return Dataset({s.id: _study_to_dict(s, annotation=annotation) for s in studyset.studies})

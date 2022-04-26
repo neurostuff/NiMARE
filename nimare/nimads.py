@@ -29,6 +29,7 @@ class Studyset:
 
     @property
     def annotations(self):
+        """Return existing Annotations."""
         return self._annotations
 
     @annotations.setter
@@ -41,9 +42,7 @@ class Studyset:
     @annotations.deleter
     def annotations(self, annotation_id=None):
         if annotation_id:
-            self._annotations = [
-                a for a in self._annotations if a.id != annotation_id
-            ]
+            self._annotations = [a for a in self._annotations if a.id != annotation_id]
         else:
             self._annotations = []
 
@@ -296,7 +295,7 @@ class Point:
     """
 
     def __init__(self, source):
-        self.space = source['space']
+        self.space = source["space"]
         self.x = source["coordinates"][0]
         self.y = source["coordinates"][1]
         self.z = source["coordinates"][2]

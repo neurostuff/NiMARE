@@ -1,8 +1,8 @@
 """Test nimare.io (Dataset IO/transformations)."""
 import os
 
-import requests
 import pytest
+import requests
 
 import nimare
 from nimare import io
@@ -11,6 +11,7 @@ from nimare.utils import get_template
 
 
 def test_convert_nimads_to_dataset():
+    """Conversion of nimads JSON to nimare dataset"""
     nimads_data = requests.get(
         "https://neurostore.xyz/api/studysets/78rWEjjjuC65?nested=true"
     ).json()
