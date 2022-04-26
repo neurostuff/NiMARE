@@ -29,20 +29,22 @@ class IBMAEstimator(Estimator):
 
     """
 
-    def __init__(self, *args, **kwargs):
-        mask = kwargs.get("mask")
+    def __init__(self, *, mask=None, resample=False, memory_limit=None, **kwargs):
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
-
-        self.resample = kwargs.get("resample", False)
-        self.memory_limit = kwargs.get("memory_limit", None)
+        self.resample = resample
+        self.memory_limit = memory_limit
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {"clip": True, "interpolation": "linear"}
-        self._resample_kwargs.update(
-            {k.split("resample__")[1]: v for k, v in kwargs.items() if k.startswith("resample__")}
-        )
+        resample_kwargs = {
+            k.split("resample__")[1]: v for k, v in kwargs.items() if k.startswith("resample__")
+        }
+        self._resample_kwargs.update(resample_kwargs)
+        other_kwargs = dict(set(kwargs) - set(resample_kwargs))
+        if other_kwargs:
+            LGR.warn(f"Unused keyword arguments found: {', '.join(other_kwargs.keys())}")
 
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""

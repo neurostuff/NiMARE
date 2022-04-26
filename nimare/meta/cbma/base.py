@@ -55,13 +55,11 @@ class CBMAEstimator(Estimator):
     # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, kernel_transformer, *args, **kwargs):
-        mask = kwargs.get("mask")
+    def __init__(self, kernel_transformer, *, mask=None, memory_limit=None, **kwargs):
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
-
-        self.memory_limit = kwargs.get("memory_limit", None)
+        self.memory_limit = memory_limit
 
         # Get kernel transformer
         kernel_args = {
@@ -69,6 +67,9 @@ class CBMAEstimator(Estimator):
         }
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
+        other_kwargs = dict(set(kwargs) - set(kernel_args))
+        if other_kwargs:
+            LGR.warn(f"Unused keyword arguments found: {', '.join(other_kwargs.keys())}")
 
     @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
