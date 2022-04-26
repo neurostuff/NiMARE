@@ -14,6 +14,7 @@ from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
 from ...utils import (
     _add_metadata_to_dataframe,
+    _check_ncores,
     _check_type,
     _safe_transform,
     tqdm_joblib,
@@ -431,7 +432,7 @@ class CBMAEstimator(MetaEstimator):
         """
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        n_cores = self._check_ncores(n_cores)
+        n_cores = _check_ncores(n_cores)
 
         rand_idx = np.random.choice(
             null_ijk.shape[0],
@@ -623,7 +624,7 @@ class CBMAEstimator(MetaEstimator):
                 self.masker.mask_img.affine,
             )
 
-            n_cores = self._check_ncores(n_cores)
+            n_cores = _check_ncores(n_cores)
 
             # Identify summary statistic corresponding to intensity threshold
             ss_thresh = self._p_to_summarystat(voxel_thresh)

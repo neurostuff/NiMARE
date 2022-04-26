@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import inspect
 import logging
+import multiprocessing as mp
 import os
 import os.path as op
 import re
@@ -19,6 +20,19 @@ from . import references
 from .due import due
 
 LGR = logging.getLogger(__name__)
+
+
+def _check_ncores(n_cores):
+    """Check number of cores used for method."""
+    if n_cores <= 0:
+        n_cores = mp.cpu_count()
+    elif n_cores > mp.cpu_count():
+        LGR.warning(
+            f"Desired number of cores ({n_cores}) greater than number "
+            f"available ({mp.cpu_count()}). Setting to {mp.cpu_count()}."
+        )
+        n_cores = mp.cpu_count()
+    return n_cores
 
 
 def get_resource_path():

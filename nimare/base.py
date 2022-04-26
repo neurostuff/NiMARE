@@ -2,7 +2,6 @@
 import gzip
 import inspect
 import logging
-import multiprocessing as mp
 import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
@@ -25,7 +24,6 @@ class NiMAREBase(metaclass=ABCMeta):
     This class contains a few features that are useful throughout the library:
 
     - Custom __repr__ method for printing the object.
-    - A private _check_ncores method to check if the common n_cores argument is valid.
     - get_params from scikit-learn, with which parameters provided at __init__ can be viewed.
     - set_params from scikit-learn, with which parameters provided at __init__ can be overwritten.
       I'm not sure that this is actually used or useable in NiMARE.
@@ -73,18 +71,6 @@ class NiMAREBase(metaclass=ABCMeta):
 
         rep = f"{self.__class__.__name__}({', '.join(param_strs)})"
         return rep
-
-    def _check_ncores(self, n_cores):
-        """Check number of cores used for method."""
-        if n_cores <= 0:
-            n_cores = mp.cpu_count()
-        elif n_cores > mp.cpu_count():
-            LGR.warning(
-                f"Desired number of cores ({n_cores}) greater than number "
-                f"available ({mp.cpu_count()}). Setting to {mp.cpu_count()}."
-            )
-            n_cores = mp.cpu_count()
-        return n_cores
 
     @classmethod
     def _get_param_names(cls):

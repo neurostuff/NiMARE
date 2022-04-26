@@ -10,7 +10,7 @@ from nilearn.mass_univariate import permuted_ols
 
 from ..base import MetaEstimator
 from ..transforms import p_to_z, t_to_z
-from ..utils import _boolean_unmask
+from ..utils import _boolean_unmask, _check_ncores
 
 LGR = logging.getLogger(__name__)
 
@@ -658,7 +658,7 @@ class PermutedOLS(MetaEstimator):
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        n_cores = self._check_ncores(n_cores)
+        n_cores = _check_ncores(n_cores)
 
         log_p_map, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],

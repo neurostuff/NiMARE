@@ -10,7 +10,7 @@ from ... import references
 from ...due import due
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
-from ...utils import tqdm_joblib, use_memmap
+from ...utils import _check_ncores, tqdm_joblib, use_memmap
 from ..kernel import ALEKernel
 from .base import CBMAEstimator, PairwiseCBMAEstimator
 
@@ -146,7 +146,7 @@ class ALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
     def _compute_summarystat_est(self, ma_values):
@@ -332,7 +332,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset1 = None
         self.dataset2 = None
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
@@ -566,7 +566,7 @@ class SCALE(CBMAEstimator):
 
         self.xyz = xyz
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
