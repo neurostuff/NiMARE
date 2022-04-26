@@ -1,5 +1,6 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
+from hashlib import md5
 
 import nibabel as nib
 import numpy as np
@@ -8,7 +9,7 @@ from joblib import Parallel, delayed
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from ...base import MetaEstimator
+from ...base import Estimator
 from ...results import MetaResult
 from ...stats import null_to_p, nullhist_to_p
 from ...transforms import p_to_z
@@ -22,12 +23,12 @@ from ...utils import (
     vox2mm,
 )
 from ..kernel import KernelTransformer
-from ..utils import _calculate_cluster_measures, _get_last_bin
+from ..utils import _calculate_cluster_measures, _get_last_bin, get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
 
-class CBMAEstimator(MetaEstimator):
+class CBMAEstimator(Estimator):
     """Base class for coordinate-based meta-analysis methods.
 
     .. versionchanged:: 0.0.8
@@ -50,10 +51,17 @@ class CBMAEstimator(MetaEstimator):
         __init__ (called automatically).
     """
 
+    # The standard required inputs are just coordinates.
+    # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
     def __init__(self, kernel_transformer, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        mask = kwargs.get("mask")
+        if mask is not None:
+            mask = get_masker(mask)
+        self.masker = mask
+
+        self.memory_limit = kwargs.get("memory_limit", None)
 
         # Get kernel transformer
         kernel_args = {
@@ -123,7 +131,31 @@ class CBMAEstimator(MetaEstimator):
 
         Also, insert required metadata into coordinates DataFrame.
         """
-        super()._preprocess_input(dataset)
+        masker = self.masker or dataset.masker
+
+        mask_img = masker.mask_img or masker.labels_img
+        if isinstance(mask_img, str):
+            mask_img = nib.load(mask_img)
+
+        for name, (type_, _) in self._required_inputs.items():
+            if type_ == "coordinates":
+                # Try to load existing MA maps
+                if hasattr(self, "kernel_transformer"):
+                    self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
+                    if self.kernel_transformer.image_type in dataset.images.columns:
+                        files = dataset.get_images(
+                            ids=self.inputs_["id"],
+                            imtype=self.kernel_transformer.image_type,
+                        )
+                        if all(f is not None for f in files):
+                            self.inputs_["ma_maps"] = files
+
+                # Calculate IJK matrix indices for target mask
+                # Mask space is assumed to be the same as the Dataset's space
+                # These indices are used directly by any KernelTransformer
+                xyz = self.inputs_["coordinates"][["x", "y", "z"]].values
+                ijk = mm2vox(xyz, mask_img.affine)
+                self.inputs_["coordinates"][["i", "j", "k"]] = ijk
 
         # All extra (non-ijk) parameters for a kernel should be overrideable as
         # parameters to __init__, so we can access them with get_params()
