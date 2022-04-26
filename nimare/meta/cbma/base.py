@@ -18,12 +18,14 @@ from ...utils import (
     _check_ncores,
     _check_type,
     _safe_transform,
+    get_masker,
+    mm2vox,
     tqdm_joblib,
     use_memmap,
     vox2mm,
 )
 from ..kernel import KernelTransformer
-from ..utils import _calculate_cluster_measures, _get_last_bin, get_masker, mm2vox
+from ..utils import _calculate_cluster_measures, _get_last_bin
 
 LGR = logging.getLogger(__name__)
 
