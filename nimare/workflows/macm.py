@@ -4,9 +4,9 @@ import os
 import pathlib
 from shutil import copyfile
 
-from ..correct import FWECorrector
-from ..dataset import Dataset
-from ..meta import ALE
+from nimare.correct import FWECorrector
+from nimare.dataset import Dataset
+from nimare.meta import ALE
 
 LGR = logging.getLogger(__name__)
 
