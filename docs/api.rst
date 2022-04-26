@@ -330,5 +330,4 @@ For more information about fetching data from the internet, see :ref:`fetching t
    base.NiMAREBase
    base.Estimator
    base.MetaEstimator
-   base.Transformer
    base.Decoder

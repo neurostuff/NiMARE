@@ -434,25 +434,6 @@ class MetaEstimator(Estimator):
                 self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
 
 
-class Transformer(NiMAREBase):
-    """Transformers take in Datasets and return Datasets.
-
-    Initialize with hyperparameters.
-    """
-
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def transform(self, dataset):
-        """Add stuff to transformer."""
-        # Using attribute check instead of type check to allow fake Datasets for testing.
-        if not hasattr(dataset, "slice"):
-            raise ValueError(
-                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}"
-            )
-
-
 class Decoder(NiMAREBase):
     """Base class for decoders in :mod:`~nimare.decode`.
 
