@@ -488,7 +488,8 @@ class CBMAEstimator(MetaEstimator):
             The 3D structuring array for labeling clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary statistic threshold for defining clusters.
-        vfwe_only
+        vfwe_only : :obj:`bool`
+            If True, only calculate the voxel-level FWE-corrected maps.
 
         Returns
         -------
