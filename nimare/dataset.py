@@ -89,11 +89,11 @@ class DatasetSearcher(NiMAREBase):
             keep_idx = np.intersect1d(keep_idx, temp_keep_idx)
 
         # reduce
-        if drop_invalid and (len(keep_idx) != len(self.ids)):
-            LGR.info(f"Retaining {len(keep_idx)}/{len(self.ids)} studies")
-        elif len(keep_idx) != len(self.ids):
+        if drop_invalid and (len(keep_idx) != len(dataset.ids)):
+            LGR.info(f"Retaining {len(keep_idx)}/{len(dataset.ids)} studies")
+        elif len(keep_idx) != len(dataset.ids):
             raise Exception(
-                f"Only {len(keep_idx)}/{len(self.ids)} in Dataset contain the necessary data. "
+                f"Only {len(keep_idx)}/{len(dataset.ids)} in Dataset contain the necessary data. "
                 "If you want to analyze the subset of studies with required data, "
                 "set `drop_invalid` to True."
             )
@@ -226,7 +226,7 @@ class DatasetSearcher(NiMAREBase):
         metadata : :obj:`list`
             List of values of requested type for selected IDs.
         """
-        result = dataset._generic_column_getter(dataset, "metadata", ids=ids, column=field)
+        result = self._generic_column_getter(dataset, "metadata", ids=ids, column=field)
         return result
 
     def get_images(self, dataset, ids=None, imtype=None):
@@ -356,6 +356,10 @@ class DatasetSearcher(NiMAREBase):
 
 class Dataset(NiMAREBase):
     """Storage container for a coordinate- and/or image-based meta-analytic dataset/database.
+
+    .. versionchanged:: 0.0.12
+
+        All search methods have been moved out of Dataset and into DatasetSearcher.
 
     .. versionchanged:: 0.0.9
 
