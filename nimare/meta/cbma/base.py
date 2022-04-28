@@ -161,6 +161,7 @@ class CBMAEstimator(Estimator):
             fname_idx=0,
         )
 
+        # Infer a weight vector, when applicable. Primarily used only for MKDADensity.
         self.weight_vec_ = self._compute_weights(ma_values)
 
         stat_values = self._compute_summarystat(ma_values)
