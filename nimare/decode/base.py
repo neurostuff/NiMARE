@@ -10,6 +10,10 @@ LGR = logging.getLogger(__name__)
 class Decoder(NiMAREBase):
     """Base class for decoders in :mod:`~nimare.decode`.
 
+    .. versionchanged:: 0.0.12
+
+        Moved from ``nimare.base`` to ``nimare.decode.base``.
+
     .. versionadded:: 0.0.3
 
     """

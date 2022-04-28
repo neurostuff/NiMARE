@@ -23,7 +23,11 @@ LGR = logging.getLogger(__name__)
 
 
 def _check_ncores(n_cores):
-    """Check number of cores used for method."""
+    """Check number of cores used for method.
+
+    .. versionadded:: 0.0.12
+        Moved from Estimator._check_ncores into its own function.
+    """
     if n_cores <= 0:
         n_cores = mp.cpu_count()
     elif n_cores > mp.cpu_count():
@@ -48,6 +52,7 @@ def get_template(space="mni152_2mm", mask=None):
     """Load template file.
 
     .. versionchanged:: 0.0.11
+
         - Remove the ``mask="gm"`` option.
         - Replace the nilearn templates with ones downloaded directly from TemplateFlow.
 

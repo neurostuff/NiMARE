@@ -220,7 +220,8 @@ class Estimator(NiMAREBase):
     """Estimators take in Datasets and return MetaResults.
 
     All Estimators must have a ``_fit`` method implemented, which applies algorithm-specific
-    methods to a dataset and returns a dictionary of arrays to be converted into a MetaResult.
+    methods to a Dataset and returns a dictionary of arrays to be converted into a MetaResult.
+
     Users will interact with the ``_fit`` method by calling the user-facing ``fit`` method.
     ``fit`` takes in a ``Dataset``, calls ``_collect_inputs``, then ``_preprocess_input``,
     then ``_fit``, and finally converts the dictionary returned by ``_fit`` into a ``MetaResult``.
@@ -231,7 +232,28 @@ class Estimator(NiMAREBase):
     _required_inputs = {}
 
     def _collect_inputs(self, dataset, drop_invalid=True):
-        """Search for, and validate, required inputs as necessary."""
+        """Search for, and validate, required inputs as necessary.
+
+        This method populates the ``inputs_`` attribute.
+
+        .. versionchanged:: 0.0.12
+
+            Renamed from ``_validate_input``.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically drop any studies in the Dataset without valid data or not.
+            Default is True.
+
+        Attributes
+        ----------
+        inputs_ : :obj:`dict`
+            A dictionary of required inputs for the Estimator, extracted from the Dataset.
+            The actual inputs collected in this attribute are determined by the
+            ``_required_inputs`` variable that should be specified in each child class.
+        """
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
@@ -257,7 +279,13 @@ class Estimator(NiMAREBase):
                 self.inputs_[k] = v
 
     def _preprocess_input(self, dataset):
-        """Perform any additional preprocessing steps on data in self.inputs_."""
+        """Perform any additional preprocessing steps on data in self.inputs_.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            The Dataset
+        """
         pass
 
     def fit(self, dataset, drop_invalid=True):

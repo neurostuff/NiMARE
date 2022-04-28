@@ -21,11 +21,11 @@ LGR = logging.getLogger(__name__)
 class IBMAEstimator(Estimator):
     """Base class for meta-analysis methods in :mod:`~nimare.meta`.
 
-    .. versionchanged:: 0.0.8
+    .. versionadded:: 0.0.12
 
-        * [REF] Use saved MA maps, when available.
-
-    .. versionadded:: 0.0.3
+        * IBMA-specific elements of ``MetaEstimator`` excised and used to create ``IBMAEstimator``.
+        * Generic kwargs and args converted to named kwargs.
+          All remaining kwargs are for resampling.
 
     """
 
