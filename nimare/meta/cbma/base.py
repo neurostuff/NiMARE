@@ -496,6 +496,7 @@ class CBMAEstimator(MetaEstimator):
         (iter_max value, iter_max_cluster, iter_max_mass)
             A 3-tuple of floats giving the maximum voxel-wise value, maximum cluster size,
             and maximum cluster mass for the permuted dataset.
+            If ``vfwe_only`` is True, the latter two values will be None.
         """
         iter_df = iter_df.copy()
 
@@ -612,12 +613,6 @@ class CBMAEstimator(MetaEstimator):
         stat_values = result.get_map("stat", return_type="array")
 
         if vfwe_only and (self.null_method == "montecarlo"):
-            if self.null_method != "montecarlo":
-                raise ValueError(
-                    "In order to run this method with the 'vfwe_only' option, "
-                    "the Estimator must use the 'montecarlo' null_method."
-                )
-
             LGR.info("Using precalculated histogram for voxel-level FWE correction.")
 
             # Determine p- and z-values from stat values and null distribution.
