@@ -24,6 +24,11 @@ def test_DatasetSearcher(testdata_laird):
     assert isinstance(searcher.get_studies_by_label(dset, "cogat_cognitive_control"), list)
     assert isinstance(searcher.get_studies_by_coordinate(dset, np.array([[20, 20, 20]])), list)
 
+    mask_data = np.zeros(dset.masker.mask_img.shape, int)
+    mask_data[40, 40, 40] = 1
+    mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
+    assert isinstance(dset.get_studies_by_mask(mask_img), list)
+
     # If label is not available, raise ValueError
     with pytest.raises(ValueError):
         searcher.get_studies_by_label(dset, "dog")
@@ -37,11 +42,6 @@ def test_dataset_smoke():
     assert isinstance(dset, nimare.dataset.Dataset)
     # Test that Dataset.masker is portable
     assert not nib.is_proxy(dset.masker.mask_img_.dataobj)
-
-    mask_data = np.zeros(dset.masker.mask_img.shape, int)
-    mask_data[40, 40, 40] = 1
-    mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
-    assert isinstance(dset.get_studies_by_mask(mask_img), list)
 
     dset1 = dset.slice(dset.ids[:5])
     dset2 = dset.slice(dset.ids[5:])
