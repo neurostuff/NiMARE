@@ -8,10 +8,10 @@ import pandas as pd
 from nilearn._utils import load_niimg
 from scipy.stats import multivariate_normal
 
-from .. import references
-from ..base import NiMAREBase
-from ..due import due
-from ..utils import get_template
+from nimare import references
+from nimare.base import NiMAREBase
+from nimare.due import due
+from nimare.utils import get_template
 
 LGR = logging.getLogger(__name__)
 

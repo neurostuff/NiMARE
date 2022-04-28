@@ -8,9 +8,9 @@ import pymare
 from nilearn.input_data import NiftiMasker
 from nilearn.mass_univariate import permuted_ols
 
-from ..base import MetaEstimator
-from ..transforms import p_to_z, t_to_z
-from ..utils import _boolean_unmask
+from nimare.base import MetaEstimator
+from nimare.transforms import p_to_z, t_to_z
+from nimare.utils import _boolean_unmask
 
 LGR = logging.getLogger(__name__)
 

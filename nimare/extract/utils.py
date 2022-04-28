@@ -10,7 +10,7 @@ import pandas as pd
 import requests
 from fuzzywuzzy import fuzz
 
-from ..utils import _uk_to_us
+from nimare.utils import _uk_to_us
 
 LGR = logging.getLogger(__name__)
 

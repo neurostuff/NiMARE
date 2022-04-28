@@ -3,9 +3,9 @@ import numpy as np
 from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
 
-from .. import references
-from ..due import due
-from .utils import weight_priors
+from nimare import references
+from nimare.decode.utils import weight_priors
+from nimare.due import due
 
 
 @due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA encoding.")

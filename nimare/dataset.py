@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg
 
-from .base import NiMAREBase
-from .utils import (
+from nimare.base import NiMAREBase
+from nimare.utils import (
     _dict_to_coordinates,
     _dict_to_df,
     _listify,

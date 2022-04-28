@@ -5,11 +5,11 @@ import re
 import numpy as np
 import pandas as pd
 
-from .. import references
-from ..due import due
-from ..extract import download_cognitive_atlas
-from ..utils import _uk_to_us
-from . import utils
+from nimare import references
+from nimare.annotate import utils
+from nimare.due import due
+from nimare.extract import download_cognitive_atlas
+from nimare.utils import _uk_to_us
 
 LGR = logging.getLogger(__name__)
 

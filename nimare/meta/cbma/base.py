@@ -8,11 +8,13 @@ from joblib import Parallel, delayed
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from ...base import MetaEstimator
-from ...results import MetaResult
-from ...stats import null_to_p, nullhist_to_p
-from ...transforms import p_to_z
-from ...utils import (
+from nimare.base import MetaEstimator
+from nimare.meta.kernel import KernelTransformer
+from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
+from nimare.results import MetaResult
+from nimare.stats import null_to_p, nullhist_to_p
+from nimare.transforms import p_to_z
+from nimare.utils import (
     _add_metadata_to_dataframe,
     _check_type,
     _safe_transform,
@@ -20,8 +22,6 @@ from ...utils import (
     use_memmap,
     vox2mm,
 )
-from ..kernel import KernelTransformer
-from ..utils import _calculate_cluster_measures, _get_last_bin
 
 LGR = logging.getLogger(__name__)
 

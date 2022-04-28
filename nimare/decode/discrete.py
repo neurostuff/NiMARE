@@ -6,14 +6,14 @@ from scipy import special
 from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .. import references
-from ..base import Decoder
-from ..due import due
-from ..meta.kernel import KernelTransformer, MKDAKernel
-from ..stats import one_way, pearson, two_way
-from ..transforms import p_to_z
-from ..utils import _check_type, get_masker
-from .utils import weight_priors
+from nimare import references
+from nimare.base import Decoder
+from nimare.decode.utils import weight_priors
+from nimare.due import due
+from nimare.meta.kernel import KernelTransformer, MKDAKernel
+from nimare.stats import one_way, pearson, two_way
+from nimare.transforms import p_to_z
+from nimare.utils import _check_type, get_masker
 
 
 @due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA decoding.")

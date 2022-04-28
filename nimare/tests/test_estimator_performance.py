@@ -5,12 +5,12 @@ from contextlib import ExitStack as does_not_raise
 import numpy as np
 import pytest
 
-from ..correct import FDRCorrector, FWECorrector
-from ..generate import create_coordinate_dataset
-from ..meta import ale, kernel, mkda
-from ..results import MetaResult
-from ..utils import mm2vox
-from .utils import _check_p_values, _create_signal_mask, _transform_res
+from nimare.correct import FDRCorrector, FWECorrector
+from nimare.generate import create_coordinate_dataset
+from nimare.meta import ale, kernel, mkda
+from nimare.results import MetaResult
+from nimare.tests.utils import _check_p_values, _create_signal_mask, _transform_res
+from nimare.utils import mm2vox
 
 # set significance levels used for testing.
 ALPHA = 0.05

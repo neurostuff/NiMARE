@@ -12,8 +12,8 @@ import pandas as pd
 import requests
 from scipy import sparse
 
-from .dataset import Dataset
-from .extract.utils import _get_dataset_dir
+from nimare.dataset import Dataset
+from nimare.extract.utils import _get_dataset_dir
 
 LGR = logging.getLogger(__name__)
 
