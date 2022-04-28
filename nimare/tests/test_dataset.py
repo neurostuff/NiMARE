@@ -13,22 +13,25 @@ from nimare.tests.utils import get_test_data_path
 def test_DatasetSearcher(testdata_laird):
     """Test the DatasetSearcher class."""
     dset = testdata_laird.copy()
-    searcher = dataset.DatasetSearcher
+    searcher = dataset.DatasetSearcher()
     METHODS = [searcher.get_images, searcher.get_labels, searcher.get_metadata, searcher.get_texts]
     for method in METHODS:
         assert isinstance(method(dset), list)
         assert isinstance(method(dset, ids=dset.ids[:5]), list)
         assert isinstance(method(dset, ids=dset.ids[0]), list)
 
-    assert isinstance(searcher.get_images(dset, imtype="beta"), list)
-    assert isinstance(searcher.get_metadata(dset, field="sample_sizes"), list)
-    assert isinstance(searcher.get_studies_by_label(dset, "cogat_cognitive_control"), list)
+    # This test dataset has no images
+    with pytest.raises(ValueError):
+        searcher.get_images(dset, imtype="beta")
+
+    assert isinstance(searcher.get_metadata(dset, field="journal"), list)
+    assert isinstance(searcher.get_studies_by_label(dset, "Neurosynth_TFIDF__analyze"), list)
     assert isinstance(searcher.get_studies_by_coordinate(dset, np.array([[20, 20, 20]])), list)
 
     mask_data = np.zeros(dset.masker.mask_img.shape, int)
     mask_data[40, 40, 40] = 1
     mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
-    assert isinstance(dset.get_studies_by_mask(mask_img), list)
+    assert isinstance(searcher.get_studies_by_mask(dset, mask=mask_img), list)
 
     # If label is not available, raise ValueError
     with pytest.raises(ValueError):
