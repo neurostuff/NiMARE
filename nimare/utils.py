@@ -16,7 +16,6 @@ import pandas as pd
 from nilearn.input_data import NiftiMasker
 
 from nimare import references
-from nimare.dataset import DatasetSearcher
 from nimare.due import due
 
 LGR = logging.getLogger(__name__)
@@ -625,33 +624,6 @@ def _find_stem(arr):
     return res
 
 
-def _uk_to_us(text):
-    """Convert UK spellings to US based on a converter.
-
-    .. versionadded:: 0.0.2
-
-    Parameters
-    ----------
-    text : :obj:`str`
-
-    Returns
-    -------
-    text : :obj:`str`
-
-    Notes
-    -----
-    The english_spellings.csv file is from http://www.tysto.com/uk-us-spelling-list.html.
-    """
-    SPELL_DF = pd.read_csv(op.join(get_resource_path(), "english_spellings.csv"), index_col="UK")
-    SPELL_DICT = SPELL_DF["US"].to_dict()
-
-    if isinstance(text, str):
-        # Convert British to American English
-        pattern = re.compile(r"\b(" + "|".join(SPELL_DICT.keys()) + r")\b")
-        text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
-    return text
-
-
 def use_memmap(logger, n_files=1):
     """Memory-map array to a file, and perform cleanup after.
 
@@ -804,75 +776,6 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
         idx = end_idx
 
     return masked_data
-
-
-def _add_metadata_to_dataframe(
-    dataset,
-    dataframe,
-    metadata_field,
-    target_column,
-    filter_func=np.mean,
-):
-    """Add metadata from a Dataset to a DataFrame.
-
-    .. versionadded:: 0.0.8
-
-    This is particularly useful for kernel transformers or estimators where a given metadata field
-    is necessary (e.g., ALEKernel with "sample_size"), but we want to just use the coordinates
-    DataFrame instead of passing the full Dataset.
-
-    Parameters
-    ----------
-    dataset : :obj:`~nimare.dataset.Dataset`
-        Dataset containing study IDs and metadata to feed into dataframe.
-    dataframe : :obj:`pandas.DataFrame`
-        DataFrame containing study IDs, into which Dataset metadata will be merged.
-    metadata_field : :obj:`str`
-        Metadata field in ``dataset``.
-    target_column : :obj:`str`
-        Name of the column that will be added to ``dataframe``, containing information from the
-        Dataset.
-    filter_func : :obj:`function`, optional
-        Function to apply to the metadata so that it fits as a column in a DataFrame.
-        Default is ``numpy.mean``.
-
-    Returns
-    -------
-    dataframe : :obj:`pandas.DataFrame`
-        Updated DataFrame with ``target_column`` added.
-    """
-    dataframe = dataframe.copy()
-    searcher = DatasetSearcher()
-
-    if metadata_field in searcher.get_metadata(dataset):
-        # Collect metadata from Dataset
-        metadata = searcher.get_metadata(dataset, field=metadata_field, ids=dataset.ids)
-        metadata = [[m] for m in metadata]
-        # Create a DataFrame with the metadata
-        metadata = pd.DataFrame(
-            index=dataset.ids,
-            data=metadata,
-            columns=[metadata_field],
-        )
-        # Reduce the metadata (if in list/array format) to single values
-        metadata[target_column] = metadata[metadata_field].apply(filter_func)
-        # Merge metadata df into coordinates df
-        dataframe = dataframe.merge(
-            right=metadata,
-            left_on="id",
-            right_index=True,
-            sort=False,
-            validate="many_to_one",
-            suffixes=(False, False),
-            how="left",
-        )
-    else:
-        LGR.warning(
-            f"Metadata field '{metadata_field}' not found. "
-            "Set a constant value for this field as an argument, if possible."
-        )
-
-    return dataframe
 
 
 def _check_type(obj, clss, **kwargs):

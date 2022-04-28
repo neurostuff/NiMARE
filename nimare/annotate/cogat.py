@@ -9,7 +9,7 @@ from nimare import references
 from nimare.annotate import utils
 from nimare.due import due
 from nimare.extract import download_cognitive_atlas
-from nimare.utils import _uk_to_us
+from nimare.extract.utils import _uk_to_us
 
 LGR = logging.getLogger(__name__)
 

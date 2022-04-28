@@ -4,13 +4,14 @@ from __future__ import division
 import logging
 import os
 import os.path as op
+import re
 
 import numpy as np
 import pandas as pd
 import requests
 from fuzzywuzzy import fuzz
 
-from nimare.utils import _uk_to_us
+from nimare.utils import get_resource_path
 
 LGR = logging.getLogger(__name__)
 
@@ -292,3 +293,30 @@ def _expand_df(df):
     df["ratio"] = df[["alias", "name"]].apply(_get_ratio, axis=1)
     df = df.sort_values(by=["length", "ratio"], ascending=[False, False])
     return df
+
+
+def _uk_to_us(text):
+    """Convert UK spellings to US based on a converter.
+
+    .. versionadded:: 0.0.2
+
+    Parameters
+    ----------
+    text : :obj:`str`
+
+    Returns
+    -------
+    text : :obj:`str`
+
+    Notes
+    -----
+    The english_spellings.csv file is from http://www.tysto.com/uk-us-spelling-list.html.
+    """
+    SPELL_DF = pd.read_csv(op.join(get_resource_path(), "english_spellings.csv"), index_col="UK")
+    SPELL_DICT = SPELL_DF["US"].to_dict()
+
+    if isinstance(text, str):
+        # Convert British to American English
+        pattern = re.compile(r"\b(" + "|".join(SPELL_DICT.keys()) + r")\b")
+        text = pattern.sub(lambda x: SPELL_DICT[x.group()], text)
+    return text

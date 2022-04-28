@@ -10,18 +10,15 @@ from tqdm.auto import tqdm
 
 from nimare.base import MetaEstimator
 from nimare.meta.kernel import KernelTransformer
-from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
+from nimare.meta.utils import (
+    _add_metadata_to_dataframe,
+    _calculate_cluster_measures,
+    _get_last_bin,
+)
 from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
-from nimare.utils import (
-    _add_metadata_to_dataframe,
-    _check_type,
-    _safe_transform,
-    tqdm_joblib,
-    use_memmap,
-    vox2mm,
-)
+from nimare.utils import _check_type, _safe_transform, tqdm_joblib, use_memmap, vox2mm
 
 LGR = logging.getLogger(__name__)
 

@@ -21,18 +21,13 @@ from nimare.base import Transformer
 from nimare.dataset import DatasetSearcher
 from nimare.due import due
 from nimare.meta.utils import (
+    _add_metadata_to_dataframe,
     compute_ale_ma,
     compute_kda_ma,
     compute_p2m_ma,
     get_ale_kernel,
 )
-from nimare.utils import (
-    _add_metadata_to_dataframe,
-    _safe_transform,
-    mm2vox,
-    use_memmap,
-    vox2mm,
-)
+from nimare.utils import _safe_transform, mm2vox, use_memmap, vox2mm
 
 LGR = logging.getLogger(__name__)
 

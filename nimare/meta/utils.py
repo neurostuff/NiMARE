@@ -5,15 +5,86 @@ import os
 import nibabel as nib
 import numpy as np
 import numpy.linalg as npl
+import pandas as pd
 from scipy import ndimage
 
 from nimare import references
+from nimare.dataset import DatasetSearcher
 from nimare.due import due
 from nimare.extract import download_peaks2maps_model
 from nimare.utils import _determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
+
+
+def _add_metadata_to_dataframe(
+    dataset,
+    dataframe,
+    metadata_field,
+    target_column,
+    filter_func=np.mean,
+):
+    """Add metadata from a Dataset to a DataFrame.
+
+    .. versionadded:: 0.0.8
+
+    This is particularly useful for kernel transformers or estimators where a given metadata field
+    is necessary (e.g., ALEKernel with "sample_size"), but we want to just use the coordinates
+    DataFrame instead of passing the full Dataset.
+
+    Parameters
+    ----------
+    dataset : :obj:`~nimare.dataset.Dataset`
+        Dataset containing study IDs and metadata to feed into dataframe.
+    dataframe : :obj:`pandas.DataFrame`
+        DataFrame containing study IDs, into which Dataset metadata will be merged.
+    metadata_field : :obj:`str`
+        Metadata field in ``dataset``.
+    target_column : :obj:`str`
+        Name of the column that will be added to ``dataframe``, containing information from the
+        Dataset.
+    filter_func : :obj:`function`, optional
+        Function to apply to the metadata so that it fits as a column in a DataFrame.
+        Default is ``numpy.mean``.
+
+    Returns
+    -------
+    dataframe : :obj:`pandas.DataFrame`
+        Updated DataFrame with ``target_column`` added.
+    """
+    dataframe = dataframe.copy()
+    searcher = DatasetSearcher()
+
+    if metadata_field in searcher.get_metadata(dataset):
+        # Collect metadata from Dataset
+        metadata = searcher.get_metadata(dataset, field=metadata_field, ids=dataset.ids)
+        metadata = [[m] for m in metadata]
+        # Create a DataFrame with the metadata
+        metadata = pd.DataFrame(
+            index=dataset.ids,
+            data=metadata,
+            columns=[metadata_field],
+        )
+        # Reduce the metadata (if in list/array format) to single values
+        metadata[target_column] = metadata[metadata_field].apply(filter_func)
+        # Merge metadata df into coordinates df
+        dataframe = dataframe.merge(
+            right=metadata,
+            left_on="id",
+            right_index=True,
+            sort=False,
+            validate="many_to_one",
+            suffixes=(False, False),
+            how="left",
+        )
+    else:
+        LGR.warning(
+            f"Metadata field '{metadata_field}' not found. "
+            "Set a constant value for this field as an argument, if possible."
+        )
+
+    return dataframe
 
 
 def model_fn(features, labels, mode, params):
