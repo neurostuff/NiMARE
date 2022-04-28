@@ -54,6 +54,7 @@ extensions = [
     "sphinx_copybutton",  # for copying code snippets
     "sphinx_gallery.gen_gallery",  # example gallery
     "sphinxarg.ext",  # argparse
+    "sphinxcontrib.bibtex",  # for foot-citations
     "recommonmark",  # markdown parser
 ]
 
@@ -202,6 +203,14 @@ sphinx_gallery_conf = {
 
 # Generate the plots for the gallery
 plot_gallery = True
+
+# -----------------------------------------------------------------------------
+# sphinxcontrib-bibtex
+# -----------------------------------------------------------------------------
+bibtex_bibfiles = ["./references.bib"]
+bibtex_style = "unsrt"
+bibtex_reference_style = "author_year"
+bibtex_footbibliography_header = ""
 
 
 def setup(app):

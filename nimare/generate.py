@@ -3,11 +3,11 @@ from itertools import zip_longest
 
 import numpy as np
 
-from .dataset import Dataset
-from .io import convert_neurovault_to_dataset
-from .meta.utils import compute_ale_ma, get_ale_kernel
-from .transforms import ImageTransformer
-from .utils import get_template, mm2vox, vox2mm
+from nimare.dataset import Dataset
+from nimare.io import convert_neurovault_to_dataset
+from nimare.meta.utils import compute_ale_ma, get_ale_kernel
+from nimare.transforms import ImageTransformer
+from nimare.utils import get_template, mm2vox, vox2mm
 
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)

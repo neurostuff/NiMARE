@@ -7,8 +7,8 @@ import numpy as np
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
 
-from ..results import MetaResult
-from ..utils import get_template
+from nimare.results import MetaResult
+from nimare.utils import get_template
 
 LGR = logging.getLogger(__name__)
 

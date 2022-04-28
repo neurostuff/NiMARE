@@ -8,9 +8,9 @@ from nilearn.image import resample_to_img
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
 
-from ..base import MetaResult
-from ..io import convert_sleuth_to_dataset
-from ..meta.kernel import Peaks2MapsKernel
+from nimare.base import MetaResult
+from nimare.io import convert_sleuth_to_dataset
+from nimare.meta.kernel import Peaks2MapsKernel
 
 LGR = logging.getLogger(__name__)
 

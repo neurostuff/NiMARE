@@ -27,11 +27,12 @@ class LDAModel(NiMAREBase):
         Maximum number of iterations to use during model fitting. Default = 1000.
     alpha : :obj:`float` or None, optional
         The ``alpha`` value for the model. This corresponds to the model's ``doc_topic_prior``
-        parameter. Default is None, which evaluates to ``1 / n_topics``, as was used in [2]_.
+        parameter. Default is None, which evaluates to ``1 / n_topics``,
+        as was used in :footcite:t:`poldrack2012discovering`.
     beta : :obj:`float` or None, optional
         The ``beta`` value for the model. This corresponds to the model's ``topic_word_prior``
         parameter. If None, it evaluates to ``1 / n_topics``.
-        Default is 0.001, which was used in [2]_.
+        Default is 0.001, which was used in :footcite:t:`poldrack2012discovering`.
     text_column : :obj:`str`, optional
         The source of text to use for the model. This should correspond to an existing column
         in the :py:attr:`~nimare.dataset.Dataset.texts` attribute. Default is "abstract".
@@ -42,16 +43,12 @@ class LDAModel(NiMAREBase):
 
     Notes
     -----
-    Latent Dirichlet allocation was first developed in [1]_, and was first applied to neuroimaging
-    articles in [2]_.
+    Latent Dirichlet allocation was first developed in :footcite:t:`blei2003latent`,
+    and was first applied to neuroimaging articles in :footcite:t:`poldrack2012discovering`.
 
     References
     ----------
-    .. [1] Blei, David M., Andrew Y. Ng, and Michael I. Jordan. "Latent dirichlet allocation."
-       Journal of machine Learning research 3.Jan (2003): 993-1022.
-    .. [2] Poldrack, Russell A., et al. "Discovering relations between mind, brain, and mental
-       disorders using topic mapping." PLoS computational biology 8.10 (2012): e1002707.
-       https://doi.org/10.1371/journal.pcbi.1002707
+    .. footbibliography::
 
     See Also
     --------

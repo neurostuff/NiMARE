@@ -13,8 +13,8 @@ import numpy as np
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 
-from .results import MetaResult
-from .utils import get_masker, mm2vox
+from nimare.results import MetaResult
+from nimare.utils import get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
