@@ -11,6 +11,7 @@ from nimare.tests.utils import get_test_data_path
 
 
 def test_DatasetSearcher(testdata_laird):
+    """Test the DatasetSearcher class."""
     dset = testdata_laird.copy()
     searcher = dataset.DatasetSearcher
     METHODS = [searcher.get_images, searcher.get_labels, searcher.get_metadata, searcher.get_texts]
