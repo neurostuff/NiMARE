@@ -6,6 +6,7 @@ import nibabel as nib
 import numpy as np
 import numpy.linalg as npl
 from scipy import ndimage
+import sparse
 
 from .. import references
 from ..due import due
@@ -332,7 +333,6 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
-    squeeze = exp_idx is None
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
@@ -344,7 +344,8 @@ def compute_kda_ma(
         # Use a memmapped 4D array
         kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
     else:
-        kernel_data = np.zeros(kernel_shape, dtype=type(value))
+        # Use a list of 3D sparse arrays
+        kernel_data_lst = [None] * n_studies
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
@@ -359,19 +360,33 @@ def compute_kda_ma(
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
         sphere = sphere[idx, :].astype(int)
         exp = exp_idx[i]
-        if sum_overlap:
-            kernel_data[exp][tuple(sphere.T)] += value
+        if memmap_filename:
+            if sum_overlap:
+                kernel_data[exp][tuple(sphere.T)] += value
+            else:
+                kernel_data[exp][tuple(sphere.T)] = value
+            if i % chunk_size == 0:
+                kernel_data.flush()
         else:
-            kernel_data[exp][tuple(sphere.T)] = value
+            if kernel_data_lst[exp] is None:
+                kernel_data = np.zeros(shape, dtype=type(value))
+            else:
+                kernel_data = kernel_data_lst[exp].todense()
+            if sum_overlap:
+                kernel_data[tuple(sphere.T)] += value
+            else:
+                kernel_data[tuple(sphere.T)] = value
 
-        if memmap_filename and i % chunk_size == 0:
-            # Write changes to disk
-            kernel_data.flush()
+            kernel_data_lst[exp] = sparse._compressed.GCXS.from_numpy(
+                kernel_data,
+                compressed_axes=[0],
+                idx_dtype=np.int32,
+            )
 
-    if squeeze:
-        kernel_data = np.squeeze(kernel_data, axis=0)
-
-    return kernel_data
+    if memmap_filename:
+        return kernel_data
+    else:
+        return kernel_data_lst
 
 
 def compute_ale_ma(shape, ijk, kernel):
@@ -450,7 +465,7 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
         uncertain_subjects = (11.6 / (2 * np.sqrt(2 / np.pi)) * np.sqrt(8 * np.log(2))) / np.sqrt(
             sample_size
         )  # pylint: disable=no-member
-        fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
+        fwhm = np.sqrt(uncertain_subjects ** 2 + uncertain_templates ** 2)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = (

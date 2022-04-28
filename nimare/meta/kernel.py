@@ -212,12 +212,17 @@ class KernelTransformer(Transformer):
                 # Transform into an length-N list of length-2 tuples,
                 # composed of a 3D array/memmap and a string with the ID.
                 transformed_maps = list(zip(*transformed_maps))
+        else:
+            transformed_maps = list(zip(*transformed_maps))
 
         imgs = []
         for (kernel_data, id_) in transformed_maps:
             if isinstance(kernel_data, np.memmap):
                 # Convert data to a numpy array if it's a memmap
                 kernel_data = np.array(kernel_data)
+            else:
+                # Convert sparse to dense array
+                kernel_data = kernel_data.todense()
 
             if return_type == "array":
                 # NOTE: This will never be a memmap because memory_limit[!None]+return_type[array]
