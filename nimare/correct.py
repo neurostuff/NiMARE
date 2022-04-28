@@ -6,8 +6,8 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 import numpy as np
 import statsmodels.stats.multitest as mc
 
-from .results import MetaResult
-from .transforms import p_to_z
+from nimare.results import MetaResult
+from nimare.transforms import p_to_z
 
 LGR = logging.getLogger(__name__)
 

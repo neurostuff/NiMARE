@@ -6,7 +6,7 @@ import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
-from .results import MetaResult
+from nimare.results import MetaResult
 
 LGR = logging.getLogger(__name__)
 

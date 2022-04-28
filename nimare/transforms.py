@@ -10,10 +10,10 @@ import pandas as pd
 from nilearn.reporting import get_clusters_table
 from scipy import stats
 
-from . import references
-from .base import NiMAREBase
-from .due import due
-from .utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
+from nimare import references
+from nimare.base import NiMAREBase
+from nimare.due import due
+from nimare.utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
 
 LGR = logging.getLogger(__name__)
 

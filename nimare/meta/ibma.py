@@ -11,9 +11,9 @@ from nilearn.image import concat_imgs, resample_to_img
 from nilearn.input_data import NiftiMasker
 from nilearn.mass_univariate import permuted_ols
 
-from ..base import Estimator
-from ..transforms import p_to_z, t_to_z
-from ..utils import _boolean_unmask, _check_ncores, get_masker
+from nimare.base import Estimator
+from nimare.transforms import p_to_z, t_to_z
+from nimare.utils import _boolean_unmask, _check_ncores, get_masker
 
 LGR = logging.getLogger(__name__)
 

@@ -8,14 +8,14 @@ from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
-from .. import references
-from ..due import due
-from ..meta.cbma.base import CBMAEstimator
-from ..meta.cbma.mkda import MKDAChi2
-from ..stats import pearson
-from ..utils import _check_type, _safe_transform
-from .base import Decoder
-from .utils import weight_priors
+from nimare import references
+from nimare.decode.base import Decoder
+from nimare.decode.utils import weight_priors
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator
+from nimare.meta.cbma.mkda import MKDAChi2
+from nimare.stats import pearson
+from nimare.utils import _check_type, _safe_transform
 
 LGR = logging.getLogger(__name__)
 
