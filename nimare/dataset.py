@@ -26,7 +26,7 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 
 
-class DatasetSeacher(NiMAREBase):
+class DatasetSearcher(NiMAREBase):
     """A tool for searching Datasets."""
 
     def get(self, dataset, dict_, drop_invalid=True):
