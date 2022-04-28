@@ -6,13 +6,13 @@ import pandas as pd
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
-from ... import references
-from ...due import due
-from ...stats import null_to_p, nullhist_to_p
-from ...transforms import p_to_z
-from ...utils import tqdm_joblib, use_memmap
-from ..kernel import ALEKernel
-from .base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare import references
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.kernel import ALEKernel
+from nimare.stats import null_to_p, nullhist_to_p
+from nimare.transforms import p_to_z
+from nimare.utils import tqdm_joblib, use_memmap
 
 LGR = logging.getLogger(__name__)
 

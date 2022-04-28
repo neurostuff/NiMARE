@@ -10,8 +10,7 @@ from nilearn.input_data import NiftiLabelsMasker
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ibma
-
-from .utils import get_test_data_path
+from nimare.tests.utils import get_test_data_path
 
 
 @pytest.mark.parametrize(

@@ -6,10 +6,10 @@ from shutil import copyfile
 
 import numpy as np
 
-from ..dataset import Dataset
-from ..io import convert_sleuth_to_dataset
-from ..meta import SCALE
-from ..utils import vox2mm
+from nimare.dataset import Dataset
+from nimare.io import convert_sleuth_to_dataset
+from nimare.meta import SCALE
+from nimare.utils import vox2mm
 
 LGR = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from ..meta.utils import compute_kda_ma
+from nimare.meta.utils import compute_kda_ma
 
 # set significance levels used for testing.
 # duplicated in test_estimator_performance
