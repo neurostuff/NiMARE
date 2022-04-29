@@ -9,14 +9,14 @@ from scipy.stats import chi2
 from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
-from ... import references
-from ...due import due
-from ...stats import null_to_p, one_way, two_way
-from ...transforms import p_to_z
-from ...utils import tqdm_joblib, use_memmap, vox2mm
-from ..kernel import KDAKernel, MKDAKernel
-from ..utils import _calculate_cluster_measures
-from .base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare import references
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.kernel import KDAKernel, MKDAKernel
+from nimare.meta.utils import _calculate_cluster_measures
+from nimare.stats import null_to_p, one_way, two_way
+from nimare.transforms import p_to_z
+from nimare.utils import tqdm_joblib, use_memmap, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ LGR = logging.getLogger(__name__)
 @due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDADensity(CBMAEstimator):
     r"""Multilevel kernel density analysis- Density analysis.
+
+    The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
 
     Parameters
     ----------
@@ -111,10 +113,7 @@ class MKDADensity(CBMAEstimator):
 
     References
     ----------
-    * Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
-      of functional neuroimaging data: current and future directions." Social
-      cognitive and affective neuroscience 2.2 (2007): 150-158.
-      https://doi.org/10.1093/scan/nsm015
+    .. footbibliography::
     """
 
     def __init__(
@@ -138,7 +137,6 @@ class MKDADensity(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_weights(self, ma_values):
         """Determine experiment-wise weights per the conventional MKDA approach."""
@@ -229,6 +227,8 @@ class MKDADensity(CBMAEstimator):
 class MKDAChi2(PairwiseCBMAEstimator):
     r"""Multilevel kernel density analysis- Chi-square analysis.
 
+    The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
+
     .. versionchanged:: 0.0.8
 
         * [REF] Use saved MA maps, when available.
@@ -293,10 +293,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     References
     ----------
-    * Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
-      of functional neuroimaging data: current and future directions." Social
-      cognitive and affective neuroscience 2.2 (2007): 150-158.
-      https://doi.org/10.1093/scan/nsm015
+    .. footbibliography::
     """
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
@@ -989,7 +986,8 @@ class KDA(CBMAEstimator):
 
     Notes
     -----
-    Kernel density analysis was first introduced in [1]_ and [2]_.
+    Kernel density analysis was first introduced in :footcite:t:`wager2003valence` and
+    :footcite:t:`wager2004neuroimaging`.
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
@@ -1001,13 +999,7 @@ class KDA(CBMAEstimator):
 
     References
     ----------
-    .. [1] Wager, Tor D., et al. "Valence, gender, and lateralization of
-        functional brain anatomy in emotion: a meta-analysis of findings from
-        neuroimaging." Neuroimage 19.3 (2003): 513-531.
-        https://doi.org/10.1016/S1053-8119(03)00078-8
-    .. [2] Wager, Tor D., John Jonides, and Susan Reading. "Neuroimaging
-        studies of shifting attention: a meta-analysis." Neuroimage 22.4
-        (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
+    .. footbibliography::
     """
 
     def __init__(
@@ -1037,7 +1029,6 @@ class KDA(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_summarystat_est(self, ma_values):
         """Compute OF scores from data.

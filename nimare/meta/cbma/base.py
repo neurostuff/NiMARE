@@ -8,11 +8,13 @@ from joblib import Parallel, delayed
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from ...base import MetaEstimator
-from ...results import MetaResult
-from ...stats import null_to_p, nullhist_to_p
-from ...transforms import p_to_z
-from ...utils import (
+from nimare.base import MetaEstimator
+from nimare.meta.kernel import KernelTransformer
+from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
+from nimare.results import MetaResult
+from nimare.stats import null_to_p, nullhist_to_p
+from nimare.transforms import p_to_z
+from nimare.utils import (
     _add_metadata_to_dataframe,
     _check_type,
     _safe_transform,
@@ -20,8 +22,6 @@ from ...utils import (
     use_memmap,
     vox2mm,
 )
-from ..kernel import KernelTransformer
-from ..utils import _calculate_cluster_measures, _get_last_bin
 
 LGR = logging.getLogger(__name__)
 
@@ -488,12 +488,15 @@ class CBMAEstimator(MetaEstimator):
             The 3D structuring array for labeling clusters.
         voxel_thresh : :obj:`float`
             Uncorrected summary statistic threshold for defining clusters.
+        vfwe_only : :obj:`bool`
+            If True, only calculate the voxel-level FWE-corrected maps.
 
         Returns
         -------
         (iter_max value, iter_max_cluster, iter_max_mass)
             A 3-tuple of floats giving the maximum voxel-wise value, maximum cluster size,
             and maximum cluster mass for the permuted dataset.
+            If ``vfwe_only`` is True, the latter two values will be None.
         """
         rng = np.random.default_rng(seed)
         rand_idx = rng.choice(
@@ -561,8 +564,6 @@ class CBMAEstimator(MetaEstimator):
         vfwe_only : :obj:`bool`, optional
             If True, only calculate the voxel-level FWE-corrected maps. Voxel-level correction
             can be performed very quickly if the Estimator's ``null_method`` was "montecarlo".
-            If this is set to True and the original null method was not montecarlo, an exception
-            will be raised.
             Default is False.
 
         Returns
@@ -576,13 +577,14 @@ class CBMAEstimator(MetaEstimator):
                 based on cluster size. This was previously simply called "logp_level-cluster".
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_desc-mass_level-cluster``: Cluster-level FWE-corrected ``-log10(p)`` map
-                based on cluster mass. According to [4]_ and [5]_, cluster mass-based inference is
-                more powerful than cluster size.
+                based on cluster mass. According to :footcite:t:`bullmore1999global` and
+                :footcite:t:`zhang2009cluster`, cluster mass-based inference is more powerful than
+                cluster size.
                 This array is **not** generated if ``vfwe_only`` is ``True``.
             -   ``logp_level-voxel``: Voxel-level FWE-corrected ``-log10(p)`` map.
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
-                (i.e., hundreds of studies), per [6]_.
+                (i.e., hundreds of studies), per :footcite:t:`eickhoff2016behavior`.
 
         Notes
         -----
@@ -602,18 +604,7 @@ class CBMAEstimator(MetaEstimator):
 
         References
         ----------
-        .. [4] Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., Taylor, E., &
-               Brammer, M. J. (1999). Global, voxel, and cluster tests, by theory and permutation,
-               for a difference between two groups of structural MR images of the brain.
-               IEEE transactions on medical imaging, 18(1), 32-42. doi: 10.1109/42.750253
-        .. [5] Zhang, H., Nichols, T. E., & Johnson, T. D. (2009).
-               Cluster mass inference via random field theory. Neuroimage, 44(1), 51-61.
-               doi: 10.1016/j.neuroimage.2008.08.017
-        .. [6] Eickhoff, S. B., Nichols, T. E., Laird, A. R., Hoffstaedter, F., Amunts, K.,
-               Fox, P. T., ... & Eickhoff, C. R. (2016).
-               Behavior, sensitivity, and power of activation likelihood estimation characterized
-               by massive empirical simulation. Neuroimage, 137, 70-85.
-               doi: 10.1016/j.neuroimage.2016.04.072
+        .. footbibliography::
 
         Examples
         --------
@@ -826,5 +817,5 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             masker = self.masker
         else:
             masker = dataset1.masker
-        self.results = MetaResult(self, masker, maps)
-        return self.results
+
+        return MetaResult(self, masker, maps)

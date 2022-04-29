@@ -6,13 +6,13 @@ import pandas as pd
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
-from ... import references
-from ...due import due
-from ...stats import null_to_p, nullhist_to_p
-from ...transforms import p_to_z
-from ...utils import tqdm_joblib, use_memmap
-from ..kernel import ALEKernel
-from .base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare import references
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.kernel import ALEKernel
+from nimare.stats import null_to_p, nullhist_to_p
+from nimare.transforms import p_to_z
+from nimare.utils import tqdm_joblib, use_memmap
 
 LGR = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ LGR = logging.getLogger(__name__)
     "distribution for significance testing.",
 )
 class ALE(CBMAEstimator):
-    r"""Activation likelihood estimation.
+    """Activation likelihood estimation.
 
     Parameters
     ----------
@@ -56,7 +56,7 @@ class ALE(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : :obj:`int`, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
@@ -67,7 +67,7 @@ class ALE(CBMAEstimator):
         Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
-        with the prefix '\kernel__' in the variable name.
+        with the prefix ``kernel__`` in the variable name.
         Another optional argument is ``mask``.
 
     Attributes
@@ -113,7 +113,9 @@ class ALE(CBMAEstimator):
 
     Notes
     -----
-    The ALE algorithm was originally developed in [1]_, then updated in [2]_ and [3]_.
+    The ALE algorithm was originally developed in :footcite:t:`turkeltaub2002meta`,
+    then updated in :footcite:t:`turkeltaub2012minimizing` and
+    :footcite:t:`eickhoff2012activation`.
 
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
@@ -122,14 +124,7 @@ class ALE(CBMAEstimator):
 
     References
     ----------
-    .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
-        neuroanatomy of single-word reading: method and validation."
-        Neuroimage 16.3 (2002): 765-780.
-    .. [2] Turkeltaub, Peter E., et al. "Minimizing within-experiment and
-        within-group effects in activation likelihood estimation
-        meta-analyses." Human brain mapping 33.1 (2012): 1-13.
-    .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
-        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+    .. footbibliography::
     """
 
     def __init__(
@@ -153,7 +148,6 @@ class ALE(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -299,7 +293,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     Notes
     -----
-    This method was originally developed in [1]_ and refined in [2]_.
+    This method was originally developed in :footcite:t:`laird2005ale` and refined in
+    :footcite:t:`eickhoff2012activation`.
 
     The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
     BrainMap organization (https://www.brainmap.org/ale/).
@@ -320,11 +315,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the false discovery rate and
-       performing statistical contrasts." Human brain mapping 25.1 (2005): 155-164.
-       https://doi.org/10.1002/hbm.20136
-    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation meta-analysis revisited."
-       Neuroimage 59.3 (2012): 2349-2361. https://doi.org/10.1016/j.neuroimage.2011.09.017
+    .. footbibliography::
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
@@ -340,7 +331,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         self.dataset1 = None
         self.dataset2 = None
-        self.results = None
         self.n_iters = n_iters
         self.n_cores = self._check_ncores(n_cores)
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
@@ -490,6 +480,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    This method was originally introduced in :footcite:t:`langner2014meta`.
+
     .. versionchanged:: 0.0.12
 
         - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
@@ -544,9 +536,7 @@ class SCALE(CBMAEstimator):
 
     References
     ----------
-    * Langner, Robert, et al. "Meta-analytic connectivity modeling
-      revisited: controlling for activation base rates." NeuroImage 99
-      (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
+    .. footbibliography::
     """
 
     def __init__(
