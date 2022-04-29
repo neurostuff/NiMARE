@@ -1,5 +1,6 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
+from abc import abstractmethod
 from hashlib import md5
 
 import nibabel as nib
@@ -283,6 +284,7 @@ class CBMAEstimator(Estimator):
         # Apply weights before returning
         return self._compute_summarystat_est(ma_values)
 
+    @abstractmethod
     def _compute_summarystat_est(self, ma_values):
         """Compute summary statistic according to estimator-specific method.
 

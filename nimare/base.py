@@ -278,6 +278,7 @@ class Estimator(NiMAREBase):
                     )
                 self.inputs_[k] = v
 
+    @abstractmethod
     def _preprocess_input(self, dataset):
         """Perform any additional preprocessing steps on data in self.inputs_.
 
@@ -285,6 +286,15 @@ class Estimator(NiMAREBase):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             The Dataset
+        """
+        pass
+
+    @abstractmethod
+    def _fit(self, dataset):
+        """Apply estimation to dataset and output results.
+
+        Must return a dictionary of results, where keys are names of images
+        and values are ndarrays.
         """
         pass
 
@@ -326,12 +336,3 @@ class Estimator(NiMAREBase):
             masker = dataset.masker
 
         return MetaResult(self, masker, maps)
-
-    @abstractmethod
-    def _fit(self, dataset):
-        """Apply estimation to dataset and output results.
-
-        Must return a dictionary of results, where keys are names of images
-        and values are ndarrays.
-        """
-        pass
