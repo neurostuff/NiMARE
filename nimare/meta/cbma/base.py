@@ -819,6 +819,15 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         __init__ (called automatically).
     """
 
+    def _compute_summarystat_est(self, ma_values):
+        """Calculate the Estimator's summary statistic.
+
+        This method is only included because CBMAEstimator has it as an abstract method.
+        PairwiseCBMAEstimators are not constructed uniformly enough for this structure to work
+        consistently.
+        """
+        raise NotImplementedError
+
     def fit(self, dataset1, dataset2, drop_invalid=True):
         """Fit Estimator to two Datasets.
 
