@@ -357,8 +357,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
         n_grp1, n_voxels = ma_maps1.shape
 
         # Get ALE values for the two groups and difference scores
-        grp1_ale_values = 1.0 - np.prod(1.0 - ma_maps1, axis=0)
-        grp2_ale_values = 1.0 - np.prod(1.0 - ma_maps2, axis=0)
+        grp1_ale_values = self._compute_summarystat_est(ma_maps1)
+        grp2_ale_values = self._compute_summarystat_est(ma_maps2)
         diff_ale_values = grp1_ale_values - grp2_ale_values
         del grp1_ale_values, grp2_ale_values
 
@@ -425,6 +425,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "logp_desc-group1MinusGroup2": logp_arr,
         }
         return images
+
+    def _compute_summarystat_est(self, ma_values):
+        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+        return stat_values
 
     def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
         """Run a single permutations of the ALESubtraction null distribution procedure.
