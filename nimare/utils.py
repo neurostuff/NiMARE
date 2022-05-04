@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import inspect
 import logging
+import multiprocessing as mp
 import os
 import os.path as op
 import re
@@ -21,6 +22,23 @@ from nimare.due import due
 LGR = logging.getLogger(__name__)
 
 
+def _check_ncores(n_cores):
+    """Check number of cores used for method.
+
+    .. versionadded:: 0.0.12
+        Moved from Estimator._check_ncores into its own function.
+    """
+    if n_cores <= 0:
+        n_cores = mp.cpu_count()
+    elif n_cores > mp.cpu_count():
+        LGR.warning(
+            f"Desired number of cores ({n_cores}) greater than number "
+            f"available ({mp.cpu_count()}). Setting to {mp.cpu_count()}."
+        )
+        n_cores = mp.cpu_count()
+    return n_cores
+
+
 def get_resource_path():
     """Return the path to general resources, terminated with separator.
 
@@ -34,6 +52,7 @@ def get_template(space="mni152_2mm", mask=None):
     """Load template file.
 
     .. versionchanged:: 0.0.11
+
         - Remove the ``mask="gm"`` option.
         - Replace the nilearn templates with ones downloaded directly from TemplateFlow.
 

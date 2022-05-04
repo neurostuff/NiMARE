@@ -17,7 +17,7 @@ import pandas as pd
 from nilearn import image
 
 from nimare import references
-from nimare.base import Transformer
+from nimare.base import NiMAREBase
 from nimare.due import due
 from nimare.meta.utils import (
     compute_ale_ma,
@@ -36,7 +36,7 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 
 
-class KernelTransformer(Transformer):
+class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in

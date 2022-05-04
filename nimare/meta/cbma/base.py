@@ -1,5 +1,7 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
+from abc import abstractmethod
+from hashlib import md5
 
 import nibabel as nib
 import numpy as np
@@ -8,7 +10,7 @@ from joblib import Parallel, delayed
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from nimare.base import MetaEstimator
+from nimare.base import Estimator
 from nimare.meta.kernel import KernelTransformer
 from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
 from nimare.results import MetaResult
@@ -16,8 +18,11 @@ from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
 from nimare.utils import (
     _add_metadata_to_dataframe,
+    _check_ncores,
     _check_type,
     _safe_transform,
+    get_masker,
+    mm2vox,
     tqdm_joblib,
     use_memmap,
     vox2mm,
@@ -26,8 +31,13 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 
 
-class CBMAEstimator(MetaEstimator):
+class CBMAEstimator(Estimator):
     """Base class for coordinate-based meta-analysis methods.
+
+    .. versionchanged:: 0.0.12
+
+        * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
+        * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
 
     .. versionchanged:: 0.0.8
 
@@ -49,22 +59,93 @@ class CBMAEstimator(MetaEstimator):
         __init__ (called automatically).
     """
 
+    # The standard required inputs are just coordinates.
+    # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, kernel_transformer, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, kernel_transformer, *, mask=None, memory_limit=None, **kwargs):
+        if mask is not None:
+            mask = get_masker(mask)
+        self.masker = mask
+        self.memory_limit = memory_limit
+
+        # Identify any kwargs
+        kernel_args = {k: v for k, v in kwargs.items() if k.startswith("kernel__")}
+
+        # Flag any extraneous kwargs
+        other_kwargs = dict(set(kwargs.items()) - set(kernel_args.items()))
+        if other_kwargs:
+            LGR.warn(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
 
         # Get kernel transformer
-        kernel_args = {
-            k.split("kernel__")[1]: v for k, v in kwargs.items() if k.startswith("kernel__")
-        }
+        kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
+    def _preprocess_input(self, dataset):
+        """Mask required input images using either the Dataset's mask or the Estimator's.
+
+        Also, insert required metadata into coordinates DataFrame.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            In this method, the Dataset is used to (1) select the appropriate mask image,
+            (2) identify any pre-generated MA maps stored in its images attribute,
+            and (3) extract sample size metadata and place it into the coordinates input.
+
+        Attributes
+        ----------
+        inputs_ : :obj:`dict`
+            This attribute (created by ``_collect_inputs()``) is updated in this method.
+            Specifically, (1) an "ma_maps" key may be added if pre-generated MA maps are available,
+            (2) IJK coordinates will be added based on the mask image's affine,
+            and (3) sample sizes may be added to the "coordinates" key, as needed.
+        """
+        masker = self.masker or dataset.masker
+
+        mask_img = masker.mask_img or masker.labels_img
+        if isinstance(mask_img, str):
+            mask_img = nib.load(mask_img)
+
+        for name, (type_, _) in self._required_inputs.items():
+            if type_ == "coordinates":
+                # Try to load existing MA maps
+                if hasattr(self, "kernel_transformer"):
+                    self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
+                    if self.kernel_transformer.image_type in dataset.images.columns:
+                        files = dataset.get_images(
+                            ids=self.inputs_["id"],
+                            imtype=self.kernel_transformer.image_type,
+                        )
+                        if all(f is not None for f in files):
+                            self.inputs_["ma_maps"] = files
+
+                # Calculate IJK matrix indices for target mask
+                # Mask space is assumed to be the same as the Dataset's space
+                # These indices are used directly by any KernelTransformer
+                xyz = self.inputs_["coordinates"][["x", "y", "z"]].values
+                ijk = mm2vox(xyz, mask_img.affine)
+                self.inputs_["coordinates"][["i", "j", "k"]] = ijk
+
+        # All extra (non-ijk) parameters for a kernel should be overrideable as
+        # parameters to __init__, so we can access them with get_params()
+        kt_args = list(self.kernel_transformer.get_params().keys())
+
+        # Integrate "sample_size" from metadata into DataFrame so that
+        # kernel_transformer can access it.
+        if "sample_size" in kt_args:
+            self.inputs_["coordinates"] = _add_metadata_to_dataframe(
+                dataset,
+                self.inputs_["coordinates"],
+                metadata_field="sample_sizes",
+                target_column="sample_size",
+                filter_func=np.mean,
+            )
+
     @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
-        """
-        Perform coordinate-based meta-analysis on dataset.
+        """Perform coordinate-based meta-analysis on dataset.
 
         Parameters
         ----------
@@ -81,6 +162,7 @@ class CBMAEstimator(MetaEstimator):
             fname_idx=0,
         )
 
+        # Infer a weight vector, when applicable. Primarily used only for MKDADensity.
         self.weight_vec_ = self._compute_weights(ma_values)
 
         stat_values = self._compute_summarystat(ma_values)
@@ -117,40 +199,20 @@ class CBMAEstimator(MetaEstimator):
         """
         return None
 
-    def _preprocess_input(self, dataset):
-        """Mask required input images using either the dataset's mask or the estimator's.
-
-        Also, insert required metadata into coordinates DataFrame.
-        """
-        super()._preprocess_input(dataset)
-
-        # All extra (non-ijk) parameters for a kernel should be overrideable as
-        # parameters to __init__, so we can access them with get_params()
-        kt_args = list(self.kernel_transformer.get_params().keys())
-
-        # Integrate "sample_size" from metadata into DataFrame so that
-        # kernel_transformer can access it.
-        if "sample_size" in kt_args:
-            self.inputs_["coordinates"] = _add_metadata_to_dataframe(
-                dataset,
-                self.inputs_["coordinates"],
-                metadata_field="sample_sizes",
-                target_column="sample_size",
-                filter_func=np.mean,
-            )
-
     def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", fname_idx=0):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
         ----------
         coords_key : :obj:`str`, optional
-            Key to Estimator.inputs_ dictionary containing coordinates DataFrame.
+            Key to ``Estimator.inputs_`` dictionary containing coordinates DataFrame.
             This key should **always** be present.
+            Default is "coordinates".
         maps_key : :obj:`str`, optional
-            Key to Estimator.inputs_ dictionary containing list of MA map files.
+            Key to ``Estimator.inputs_`` dictionary containing list of MA map files.
             This key should only be present if the kernel transformer was already fitted to the
             input Dataset.
+            Default is "ma_maps".
         fname_idx : :obj:`int`, optional
             When the Estimator is set with ``memory_limit`` as a string,
             there is a ``memmap_filenames`` attribute that is a list of filenames or Nones.
@@ -175,6 +237,7 @@ class CBMAEstimator(MetaEstimator):
                 )
             else:
                 ma_maps = self.masker.transform(self.inputs_[maps_key])
+
         else:
             LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
             ma_maps = self.kernel_transformer.transform(
@@ -182,12 +245,14 @@ class CBMAEstimator(MetaEstimator):
                 masker=self.masker,
                 return_type="array",
             )
+
         return ma_maps
 
     def _compute_summarystat(self, data):
         """Compute summary statistics from data.
 
-        The actual summary statistic varies across Estimators.
+        The actual summary statistic varies across Estimators, and is implemented in
+        ``_compute_summarystat_est``.
         For ALE and SCALE, the values are known as ALE values.
         For (M)KDA, they are "OF" scores.
 
@@ -219,6 +284,7 @@ class CBMAEstimator(MetaEstimator):
         # Apply weights before returning
         return self._compute_summarystat_est(ma_values)
 
+    @abstractmethod
     def _compute_summarystat_est(self, ma_values):
         """Compute summary statistic according to estimator-specific method.
 
@@ -232,7 +298,7 @@ class CBMAEstimator(MetaEstimator):
     def _summarystat_to_p(self, stat_values, null_method="approximate"):
         """Compute p- and z-values from summary statistics (e.g., ALE scores).
 
-        Uses either histograms from approximate null or null distribution from montecarlo null.
+        Uses either histograms from "approximate" null or null distribution from "montecarlo" null.
 
         Parameters
         ----------
@@ -431,7 +497,7 @@ class CBMAEstimator(MetaEstimator):
         """
         null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
 
-        n_cores = self._check_ncores(n_cores)
+        n_cores = _check_ncores(n_cores)
 
         rand_idx = np.random.choice(
             null_ijk.shape[0],
@@ -635,7 +701,7 @@ class CBMAEstimator(MetaEstimator):
                 self.masker.mask_img.affine,
             )
 
-            n_cores = self._check_ncores(n_cores)
+            n_cores = _check_ncores(n_cores)
 
             # Identify summary statistic corresponding to intensity threshold
             ss_thresh = self._p_to_summarystat(voxel_thresh)
@@ -776,9 +842,17 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         __init__ (called automatically).
     """
 
-    def fit(self, dataset1, dataset2, drop_invalid=True):
+    def _compute_summarystat_est(self, ma_values):
+        """Calculate the Estimator's summary statistic.
+
+        This method is only included because CBMAEstimator has it as an abstract method.
+        PairwiseCBMAEstimators are not constructed uniformly enough for this structure to work
+        consistently.
         """
-        Fit Estimator to two Datasets.
+        raise NotImplementedError
+
+    def fit(self, dataset1, dataset2, drop_invalid=True):
+        """Fit Estimator to two Datasets.
 
         Parameters
         ----------
@@ -797,8 +871,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
-        # grab and override
-        self._validate_input(dataset1, drop_invalid=drop_invalid)
+        # Reproduce fit() for dataset1 to collect and process inputs.
+        self._collect_inputs(dataset1, drop_invalid=drop_invalid)
         self._preprocess_input(dataset1)
         if "ma_maps" in self.inputs_.keys():
             # Grab pre-generated MA maps
@@ -806,8 +880,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
 
-        # grab and override
-        self._validate_input(dataset2, drop_invalid=drop_invalid)
+        # Reproduce fit() for dataset2 to collect and process inputs.
+        self._collect_inputs(dataset2, drop_invalid=drop_invalid)
         self._preprocess_input(dataset2)
         if "ma_maps" in self.inputs_.keys():
             # Grab pre-generated MA maps
@@ -815,6 +889,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
+        # Now run the Estimator-specific _fit() method.
         maps = self._fit(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:

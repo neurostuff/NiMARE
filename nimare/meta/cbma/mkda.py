@@ -16,7 +16,7 @@ from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import tqdm_joblib, use_memmap, vox2mm
+from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class MKDADensity(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
     def _compute_weights(self, ma_values):
@@ -715,7 +715,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
-        n_cores = self._check_ncores(n_cores)
+        n_cores = _check_ncores(n_cores)
 
         iter_df1 = self.inputs_["coordinates1"].copy()
         iter_df2 = self.inputs_["coordinates2"].copy()
@@ -1027,7 +1027,7 @@ class KDA(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
     def _compute_summarystat_est(self, ma_values):
