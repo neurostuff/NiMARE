@@ -6,7 +6,6 @@ import numpy as np
 from joblib import Parallel, delayed
 from scipy import ndimage
 from scipy.stats import chi2
-from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
 from nimare import references
@@ -14,7 +13,7 @@ from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
-from nimare.stats import null_to_p, one_way, two_way
+from nimare.stats import fdr, null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
 
@@ -885,14 +884,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
-        _, pAgF_p_FDR, _, _ = multipletests(
-            pAgF_p_vals, alpha=alpha, method="fdr_bh", is_sorted=False, returnsorted=False
-        )
+        pAgF_p_FDR = fdr(pAgF_p_vals, alpha=alpha, method="bh")
         pAgF_z_FDR = p_to_z(pAgF_p_FDR, tail="two") * pAgF_sign
 
-        _, pFgA_p_FDR, _, _ = multipletests(
-            pFgA_p_vals, alpha=alpha, method="fdr_bh", is_sorted=False, returnsorted=False
-        )
+        pFgA_p_FDR = fdr(pFgA_p_vals, alpha=alpha, method="bh")
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
         images = {

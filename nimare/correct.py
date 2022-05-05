@@ -4,9 +4,9 @@ import logging
 from abc import ABCMeta, abstractmethod, abstractproperty
 
 import numpy as np
-import statsmodels.stats.multitest as mc
 
 from nimare.results import MetaResult
+from nimare.stats import bonferroni, fdr
 from nimare.transforms import p_to_z
 
 LGR = logging.getLogger(__name__)
@@ -185,12 +185,16 @@ class FWECorrector(Corrector):
     def _name_suffix(self):
         return f"_corr-FWE_method-{self.method}"
 
+    def _correct_bonferroni(self, p):
+        """Perform Bonferroni FWE correction."""
+        return bonferroni(p)
+
     def _transform(self, result):
         p = result.maps["p"]
         nonnan_mask = ~np.isnan(p)
         p_corr = np.empty_like(p)
         p_no_nans = p[nonnan_mask]
-        _, p_corr_no_nans, _, _ = mc.multipletests(p_no_nans, method=self.method, is_sorted=False)
+        p_corr_no_nans = self._correct_bonferroni(p_no_nans)
         p_corr[nonnan_mask] = p_corr_no_nans
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
@@ -231,14 +235,18 @@ class FDRCorrector(Corrector):
     def _name_suffix(self):
         return f"_corr-FDR_method-{self.method}"
 
+    def _correct_bh(self, p):
+        return fdr(p, alpha=self.alpha, method="bh")
+
+    def _correct_by(self, p):
+        return fdr(p, alpha=self.alpha, method="by")
+
     def _transform(self, result):
         p = result.maps["p"]
         nonnan_mask = ~np.isnan(p)
         p_corr = np.empty_like(p)
         p_no_nans = p[nonnan_mask]
-        _, p_corr_no_nans = mc.fdrcorrection(
-            p_no_nans, alpha=self.alpha, method=self.method, is_sorted=False
-        )
+        p_corr_no_nans = self._correct_bh(p_no_nans)
         p_corr[nonnan_mask] = p_corr_no_nans
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
