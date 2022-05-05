@@ -275,27 +275,72 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     return p_values
 
 
-def fdr(p, q=0.05):
-    """Determine FDR threshold given a p value array and desired false discovery rate q.
+def fdr(p_values, q=0.05, method="bh"):
+    """Perform FDR correction on p values.
 
     Parameters
     ----------
-    p : 1D :class:`numpy.ndarray`
-        Array of p-values.
+    p_values : :obj:`numpy.ndarray`
+        Array of p values.
     q : :obj:`float`, optional
-        False discovery rate in fraction form. Default is 0.05 (5%).
+        Alpha value. Default is 0.05.
+    method : {"bh", "by"}, optional
+        Method to use for correction.
+        Either "bh" (Benjamini-Hochberg) or "by" (Benjamini-Yekutieli).
+        Default is "bh".
 
     Returns
     -------
-    :obj:`float`
-        P-value threshold for desired false discovery rate.
+    p_adjusted : :obj:`numpy.ndarray`
+        Array of adjusted p values.
 
     Notes
     -----
-    Taken from Neurosynth.
+    This function is adapted from ``statsmodels``, which is licensed under a BSD-3 license.
+
+    See Also
+    --------
+    statsmodels.stats.multitest.fdrcorrection
     """
-    s = np.sort(p)
-    nvox = p.shape[0]
-    null = np.array(range(1, nvox + 1), dtype="float") * q / nvox
-    below = np.where(s <= null)[0]
-    return s[max(below)] if any(below) else -1
+    sort_idx = np.argsort(p_values)
+    revert_idx = np.argsort(sort_idx)
+    p_sorted = p_values[sort_idx]
+
+    n_tests = p_values.size
+
+    # empirical cumulative density function
+    ecdf = np.linspace(0, 1, n_tests + 1)[1:]
+    if method == "by":
+        # NOTE: I don't know what cm stands for
+        cm = np.sum(1 / np.arange(1, n_tests + 1))
+        ecdffactor = ecdf / cm
+    else:
+        ecdffactor = ecdf
+
+    p_adjusted = p_sorted / ecdffactor
+    p_adjusted = np.minimum.accumulate(p_adjusted[::-1])[::-1]
+    # NOTE: Why not this?
+    # p_adjusted = np.maximum.accumulate(p_adjusted)
+
+    p_adjusted[p_adjusted > 1] = 1
+    p_adjusted = p_adjusted[revert_idx]
+
+    return p_adjusted
+
+
+def bonferroni(p_values):
+    """Perform Bonferroni correction on p values.
+
+    Parameters
+    ----------
+    p_values : :obj:`numpy.ndarray`
+        Uncorrected p values.
+
+    Returns
+    -------
+    p_corr : :obj:`numpy.ndarray`
+        Corrected p values.
+    """
+    p_corr = p_values * p_values.size
+    p_corr[p_corr > 1] = 1
+    return p_corr
