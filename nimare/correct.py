@@ -36,7 +36,7 @@ class Corrector(metaclass=ABCMeta):
     def _name_suffix(self):
         pass
 
-    def _validate_input(self, result):
+    def _collect_inputs(self, result):
         if not isinstance(result, MetaResult):
             raise ValueError(
                 "First argument to transform() must be an "
@@ -132,7 +132,7 @@ class Corrector(metaclass=ABCMeta):
             )
             corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
-            self._validate_input(result)
+            self._collect_inputs(result)
             corr_maps = self._transform(result)
 
         # Update corrected map names and add them to maps dict

@@ -11,14 +11,14 @@ from nilearn.reporting import get_clusters_table
 from scipy import stats
 
 from nimare import references
-from nimare.base import Transformer
+from nimare.base import NiMAREBase
 from nimare.due import due
 from nimare.utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
 
 LGR = logging.getLogger(__name__)
 
 
-class ImageTransformer(Transformer):
+class ImageTransformer(NiMAREBase):
     """A class to create new images from existing ones within a Dataset.
 
     This class is a light wrapper around :func:`~nimare.transforms.transform_images`.
@@ -280,7 +280,7 @@ def resolve_transforms(target, available_data, masker):
         return None
 
 
-class ImagesToCoordinates(Transformer):
+class ImagesToCoordinates(NiMAREBase):
     """Transformer from images to coordinates.
 
     .. versionadded:: 0.0.8

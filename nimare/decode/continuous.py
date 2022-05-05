@@ -9,8 +9,8 @@ from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
 from nimare import references
-from nimare.base import Decoder
 from nimare.dataset import DatasetSearcher
+from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator

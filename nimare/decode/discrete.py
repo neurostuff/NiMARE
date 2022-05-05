@@ -7,7 +7,7 @@ from scipy.stats import binom
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from nimare import references
-from nimare.base import Decoder
+from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.due import due
 from nimare.meta.kernel import KernelTransformer, MKDAKernel

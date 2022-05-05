@@ -17,7 +17,7 @@ import pandas as pd
 from nilearn import image
 
 from nimare import references
-from nimare.base import Transformer
+from nimare.base import NiMAREBase
 from nimare.dataset import DatasetSearcher
 from nimare.due import due
 from nimare.meta.utils import (
@@ -32,7 +32,7 @@ from nimare.utils import _safe_transform, mm2vox, use_memmap, vox2mm
 LGR = logging.getLogger(__name__)
 
 
-class KernelTransformer(Transformer):
+class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
