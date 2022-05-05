@@ -21,7 +21,6 @@ from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
 from nimare.utils import (
-    _add_metadata_to_dataframe,
     _check_ncores,
     _check_type,
     _safe_transform,
