@@ -884,10 +884,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
-        pAgF_p_FDR = fdr(pAgF_p_vals, alpha=alpha, method="bh")
+        pAgF_p_FDR = fdr(pAgF_p_vals, q=alpha, method="bh")
         pAgF_z_FDR = p_to_z(pAgF_p_FDR, tail="two") * pAgF_sign
 
-        pFgA_p_FDR = fdr(pFgA_p_vals, alpha=alpha, method="bh")
+        pFgA_p_FDR = fdr(pFgA_p_vals, q=alpha, method="bh")
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
         images = {
