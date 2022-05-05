@@ -23,9 +23,6 @@ class Corrector(metaclass=ABCMeta):
     # in order to override the default correction method.
     _correction_method = None
 
-    # A list of valid method values for the Corrector that *aren't* Estimator-specific
-    _native_methods = []
-
     # Maps that must be available in the MetaResult instance
     _required_maps = ("p",)
 
@@ -36,6 +33,21 @@ class Corrector(metaclass=ABCMeta):
     def _name_suffix(self):
         pass
 
+    def _get_corrector_methods(self):
+        method_name_str = "_correct_"
+        corr_methods = inspect.getmembers(self, predicate=inspect.ismethod)
+        corr_methods = [meth[0] for meth in corr_methods if meth[0].startswith(method_name_str)]
+        corr_methods = [vm.split(method_name_str)[1] for vm in corr_methods]
+        return corr_methods
+
+    def _get_estimator_methods(self, estimator):
+        method_name_str = f"correct_{self._correction_method}_"
+        est_methods = inspect.getmembers(estimator, predicate=inspect.ismethod)
+        est_methods = [meth[0] for meth in est_methods]
+        est_methods = [meth for meth in est_methods if meth.startswith(method_name_str)]
+        est_methods = [meth.replace(method_name_str, "") for meth in est_methods]
+        return est_methods
+
     def _collect_inputs(self, result):
         if not isinstance(result, MetaResult):
             raise ValueError(
@@ -43,18 +55,17 @@ class Corrector(metaclass=ABCMeta):
                 f"instance of class MetaResult, not {type(result)}."
             )
 
+        # Get generic Corrector methods
+        corr_methods = self._get_corrector_methods()
+
         # Get Estimator correction methods
-        pattern = f"correct_{self._correction_method}_"
-        est_methods = inspect.getmembers(result.estimator, predicate=inspect.ismethod)
-        est_methods = [meth[0] for meth in est_methods]
-        est_methods = [meth for meth in est_methods if meth.startswith(pattern)]
-        est_methods = [meth.replace(pattern, "") for meth in est_methods]
+        est_methods = self._get_estimator_methods(result.estimator)
 
         # Check requested method against available methods
-        if self.method not in self._native_methods + est_methods:
+        if self.method not in corr_methods + est_methods:
             raise ValueError(
                 f"Unsupported {self._correction_method} correction method '{self.method}'\n"
-                f"\tAvailable native methods: {', '.join(self._native_methods)}\n"
+                f"\tAvailable native methods: {', '.join(corr_methods)}\n"
                 f"\tAvailable estimator methods: {', '.join(est_methods)}"
             )
 
@@ -69,10 +80,13 @@ class Corrector(metaclass=ABCMeta):
     def _generate_secondary_maps(self, result, corr_maps):
         # Generates corrected version of z and log-p maps if they exist
         p = corr_maps["p"]
+
         if "z" in result.maps:
             corr_maps["z"] = p_to_z(p) * np.sign(result.maps["z"])
+
         if "logp" in result.maps:
             corr_maps["logp"] = -np.log10(p)
+
         return corr_maps
 
     @classmethod
@@ -90,16 +104,17 @@ class Corrector(metaclass=ABCMeta):
             List of valid 'method' values for the Corrector+Estimator combination, including
             both non-specific methods and Estimator-specific ones.
         """
-        est = result.estimator
-        correction_str = f"correct_{cls._correction_method}_"
-        est_methods = inspect.getmembers(est, predicate=inspect.ismethod)
-        valid_methods = [em[0] for em in est_methods if em[0].startswith(correction_str)]
-        method_names = [vm.split(correction_str)[1] for vm in valid_methods]
+        # Get generic Corrector methods
+        corr_methods = cls._get_corrector_methods()
+
+        # Get Estimator correction methods
+        est_methods = cls._get_estimator_methods(result.estimator)
+
         LGR.info(
-            f"Available non-specific methods: {', '.join(cls._native_methods)}\n"
-            f"Available Estimator-specific methods: {', '.join(method_names)}"
+            f"Available non-specific methods: {', '.join(corr_methods)}\n"
+            f"Available Estimator-specific methods: {', '.join(est_methods)}"
         )
-        return cls._native_methods + method_names
+        return corr_methods + est_methods
 
     def transform(self, result):
         """Apply the multiple comparisons correction method to a MetaResult object.
@@ -175,7 +190,6 @@ class FWECorrector(Corrector):
     """
 
     _correction_method = "fwe"
-    _native_methods = ["bonferroni"]
 
     def __init__(self, method="bonferroni", **kwargs):
         self.method = method
@@ -224,7 +238,6 @@ class FDRCorrector(Corrector):
     """
 
     _correction_method = "fdr"
-    _native_methods = ["indep", "negcorr"]
 
     def __init__(self, alpha=0.05, method="indep", **kwargs):
         self.alpha = alpha
@@ -235,18 +248,18 @@ class FDRCorrector(Corrector):
     def _name_suffix(self):
         return f"_corr-FDR_method-{self.method}"
 
-    def _correct_bh(self, p):
-        return fdr(p, alpha=self.alpha, method="bh")
+    def _correct_indep(self, p):
+        return fdr(p, q=self.alpha, method="bh")
 
-    def _correct_by(self, p):
-        return fdr(p, alpha=self.alpha, method="by")
+    def _correct_negcorr(self, p):
+        return fdr(p, q=self.alpha, method="by")
 
     def _transform(self, result):
         p = result.maps["p"]
         nonnan_mask = ~np.isnan(p)
         p_corr = np.empty_like(p)
         p_no_nans = p[nonnan_mask]
-        p_corr_no_nans = self._correct_bh(p_no_nans)
+        p_corr_no_nans = self._correct_indep(p_no_nans)
         p_corr[nonnan_mask] = p_corr_no_nans
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
