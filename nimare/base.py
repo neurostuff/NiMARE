@@ -260,6 +260,8 @@ class Estimator(NiMAREBase):
             )
 
         if self._required_inputs:
+            from nimare.dataset import DatasetSearcher
+
             searcher = DatasetSearcher()
             data = searcher.get(dataset, self._required_inputs, drop_invalid=drop_invalid)
             # Do not overwrite existing inputs_ attribute.
