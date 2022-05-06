@@ -347,7 +347,7 @@ class FDRCorrector(Corrector):
     def correct_fdr_negcorr(self, p):
         """Perform Benjamini-Yekutieli FDR correction.
 
-        This correction is based on the one described in :footcite:p:`benjamini2001control`.
+        This correction is based on the one described in :footcite:t:`benjamini2001control`.
 
         .. warning::
             Do not call this method directly. Call :meth:`transform` with ``method='negcorr'``
