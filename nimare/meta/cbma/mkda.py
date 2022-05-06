@@ -288,7 +288,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     library (https://github.com/neurosynth/neurosynth).
 
     Available correction methods: :meth:`MKDAChi2.correct_fwe_montecarlo`,
-    :meth:`MKDAChi2.correct_fdr_bh`.
+    :meth:`MKDAChi2.correct_fdr_indep`.
 
     References
     ----------
@@ -848,10 +848,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def correct_fdr_bh(self, result, alpha=0.05):
+    def correct_fdr_indep(self, result, alpha=0.05):
         """Perform FDR correction using the Benjamini-Hochberg method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.12
+
+            Renamed from ``correct_fdr_bh`` to ``correct_fdr_indep``.
 
         Parameters
         ----------
@@ -875,7 +879,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         --------
         >>> meta = MKDAChi2()
         >>> result = meta.fit(dset)
-        >>> corrector = FDRCorrector(method='bh', alpha=0.05)
+        >>> corrector = FDRCorrector(method='indep', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
         pAgF_p_vals = result.get_map("p_desc-consistency", return_type="array")

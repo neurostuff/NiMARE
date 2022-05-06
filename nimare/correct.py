@@ -125,11 +125,22 @@ class Corrector(metaclass=ABCMeta):
         # Get Estimator correction methods
         est_methods = cls._get_estimator_methods(result.estimator)
 
+        all_methods = sorted(list(set(corr_methods + est_methods)))
+
+        # Flag any methods implemented in both.
+        # The Estimator method takes priority and the Corrector method is overridden.
+        duplicate_methods = list(set(corr_methods) & set(est_methods))
+        for duplicate_method in duplicate_methods:
+            if duplicate_method in corr_methods:
+                corr_methods[
+                    corr_methods.index(duplicate_method)
+                ] = f"{duplicate_method} (overridden)"
+
         LGR.info(
             f"Available non-specific methods: {', '.join(corr_methods)}\n"
             f"Available Estimator-specific methods: {', '.join(est_methods)}"
         )
-        return corr_methods + est_methods
+        return all_methods
 
     def transform(self, result):
         """Apply the multiple comparisons correction method to a MetaResult object.
@@ -153,7 +164,9 @@ class Corrector(metaclass=ABCMeta):
         est = result.estimator
 
         # If a correction method with the same name exists in the current MetaEstimator, use it.
-        # Otherwise fall back on _transform.
+        # Otherwise fall back on _transform, and the Corrector methods.
+        # In case a method is present in both the Estimator and the Corrector, the Estimator's
+        # implementation takes precedence.
         if hasattr(est, correction_method):
             LGR.info(
                 "Using correction method implemented in Estimator: "
@@ -193,7 +206,7 @@ class Corrector(metaclass=ABCMeta):
             A dictionary of new maps that will be added to the MetaResult's ``maps`` attribute,
             where keys are map names and values are the arrays.
 
-            The map names must _not_ include the _name_suffix:, as that will be added in
+            The map names must _not_ include the ``_name_suffix``:, as that will be added in
             ``transform()`` (i.e., return "p" not "p_corr-FDR_q-0.05_method-indep").
         """
         p = result.maps["p"]
@@ -299,7 +312,7 @@ class FDRCorrector(Corrector):
     To determine what methods are available for the Estimator you're using, use :meth:`inspect`.
     Estimators have special methods following the naming convention
     ``correct_[correction-type]_[method]``
-    (e.g., :class:`~nimare.meta.mkda.MKDAChi2.correct_fdr_bh`).
+    (e.g., :class:`~nimare.meta.mkda.MKDAChi2.correct_fdr_indep`).
     """
 
     _correction_method = "fdr"
