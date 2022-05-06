@@ -1,7 +1,7 @@
 """Multiple comparisons correction methods."""
 import inspect
 import logging
-from abc import ABCMeta, abstractmethod, abstractproperty
+from abc import ABCMeta, abstractproperty
 
 import numpy as np
 
@@ -31,10 +31,12 @@ class Corrector(metaclass=ABCMeta):
 
     @abstractproperty
     def _name_suffix(self):
+        """Identify parameters in a string, to be added to generated filenames."""
         pass
 
     @classmethod
     def _get_corrector_methods(cls):
+        """List correction methods implemented within the Corrector."""
         method_name_str = "_correct_"
         corr_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
         corr_methods = [meth[0] for meth in corr_methods if meth[0].startswith(method_name_str)]
@@ -43,6 +45,7 @@ class Corrector(metaclass=ABCMeta):
 
     @classmethod
     def _get_estimator_methods(cls, estimator):
+        """List correction methods implemented in an Estimator."""
         method_name_str = f"correct_{cls._correction_method}_"
         est_methods = inspect.getmembers(estimator, predicate=inspect.ismethod)
         est_methods = [meth[0] for meth in est_methods]
@@ -51,10 +54,17 @@ class Corrector(metaclass=ABCMeta):
         return est_methods
 
     def _collect_inputs(self, result):
+        """Check that inputs and options are valid.
+
+        Parameters
+        ----------
+        result : :obj:`~nimare.results.MetaResult`
+            The MetaResult to validate.
+        """
         if not isinstance(result, MetaResult):
             raise ValueError(
-                "First argument to transform() must be an "
-                f"instance of class MetaResult, not {type(result)}."
+                "First argument to transform() must be an instance of class MetaResult, not "
+                f"{type(result)}."
             )
 
         # Get generic Corrector methods
@@ -80,7 +90,7 @@ class Corrector(metaclass=ABCMeta):
                 )
 
     def _generate_secondary_maps(self, result, corr_maps):
-        # Generates corrected version of z and log-p maps if they exist
+        """Generate corrected version of z and log-p maps if they exist."""
         p = corr_maps["p"]
 
         if "z" in result.maps:
@@ -94,6 +104,9 @@ class Corrector(metaclass=ABCMeta):
     @classmethod
     def inspect(cls, result):
         """Identify valid 'method' values for a MetaResult object.
+
+        In addition to returning a list of valid values, this method will also print out those
+        values, divided by the value type (Estimator or generic).
 
         Parameters
         ----------
@@ -131,7 +144,8 @@ class Corrector(metaclass=ABCMeta):
         result : :obj:`~nimare.results.MetaResult`
             MetaResult with new corrected maps added.
         """
-        correction_method = f"correct_{self._correction_method}_{self.method}"
+        est_correction_method = f"correct_{self._correction_method}_{self.method}"
+        corr_correction_method = f"_correct_{self.method}"
 
         # Make sure we return a copy of the MetaResult
         result = result.copy()
@@ -139,17 +153,17 @@ class Corrector(metaclass=ABCMeta):
         # Also operate on a copy of the estimator
         est = result.estimator
 
-        # If a correction method with the same name exists in the current
-        # MetaEstimator, use it. Otherwise fall back on _transform.
-        if correction_method is not None and hasattr(est, correction_method):
+        # If a correction method with the same name exists in the current MetaEstimator, use it.
+        # Otherwise fall back on _transform.
+        if hasattr(est, est_correction_method):
             LGR.info(
                 "Using correction method implemented in Estimator: "
-                f"{est.__class__.__module__}.{est.__class__.__name__}.{correction_method}."
+                f"{est.__class__.__module__}.{est.__class__.__name__}.{est_correction_method}."
             )
-            corr_maps = getattr(est, correction_method)(result, **self.parameters)
+            corr_maps = getattr(est, est_correction_method)(result, **self.parameters)
         else:
             self._collect_inputs(result)
-            corr_maps = self._transform(result)
+            corr_maps = self._transform(result, method=corr_correction_method)
 
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
@@ -160,13 +174,34 @@ class Corrector(metaclass=ABCMeta):
 
         return result
 
-    @abstractmethod
-    def _transform(self, result, **kwargs):
-        # Must return a dictionary of new maps to add to .maps, where keys are
-        # map names and values are the maps. Names must _not_ include
-        # the _name_suffix:, as that will be added in transform() (i.e.,
-        # return "p" not "p_corr-FDR_q-0.05_method-indep").
-        pass
+    def _transform(self, result, method):
+        """Implement the correction procedure and return a dictionary of arrays.
+
+        This was originally an abstract method, with FWECorrector and FDRCorrector having their
+        own implementations, but those implementations were exactly the same.
+
+        Must return a dictionary of new maps to add to .maps, where keys are map names and values
+        are the maps.
+        Names must _not_ include the _name_suffix:, as that will be added in transform()
+        (i.e., return "p" not "p_corr-FDR_q-0.05_method-indep").
+        """
+        p = result.maps["p"]
+
+        # Find NaNs in the p value map, and mask them out
+        nonnan_mask = ~np.isnan(p)
+        p_corr = np.empty_like(p)
+        p_no_nans = p[nonnan_mask]
+
+        # Call the correction method
+        p_corr_no_nans = getattr(self, method)(p_no_nans)
+
+        # Unmask the corrected p values based on the NaN mask
+        p_corr[nonnan_mask] = p_corr_no_nans
+
+        # Create a dictionary of the corrected results
+        corr_maps = {"p": p_corr}
+        self._generate_secondary_maps(result, corr_maps)
+        return corr_maps
 
 
 class FWECorrector(Corrector):
@@ -185,16 +220,16 @@ class FWECorrector(Corrector):
     This corrector supports a small number of internal FWE correction methods,
     but can also use special methods implemented within individual Estimators.
     To determine what methods are available for the Estimator you're using,
-    check the Estimator's documentation. Estimators have special methods
-    following the naming convention correct_[correction-type]_[method]
+    check the Estimator's documentation.
+    Estimators have special methods following the naming convention
+    correct_[correction-type]_[method]
     (e.g., :func:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`).
     """
 
     _correction_method = "fwe"
 
-    def __init__(self, method="bonferroni", **kwargs):
+    def __init__(self, method="bonferroni"):
         self.method = method
-        self.parameters = kwargs
 
     @property
     def _name_suffix(self):
@@ -204,29 +239,19 @@ class FWECorrector(Corrector):
         """Perform Bonferroni FWE correction."""
         return bonferroni(p)
 
-    def _transform(self, result):
-        p = result.maps["p"]
-        nonnan_mask = ~np.isnan(p)
-        p_corr = np.empty_like(p)
-        p_no_nans = p[nonnan_mask]
-        p_corr_no_nans = self._correct_bonferroni(p_no_nans)
-        p_corr[nonnan_mask] = p_corr_no_nans
-        corr_maps = {"p": p_corr}
-        self._generate_secondary_maps(result, corr_maps)
-        return corr_maps
-
 
 class FDRCorrector(Corrector):
     """Perform false discovery rate correction on a meta-analysis.
 
     Parameters
     ----------
-    alpha : :obj:`float`
-        The FDR correction rate to use.
-    method : :obj:`str`
-        The FDR correction to use. Either 'indep' (for independent or
-        positively correlated values) or 'negcorr' (for general or negatively
-        correlated tests).
+    method : :obj:`str`, optional
+        The FDR correction to use.
+        Either 'indep' (for independent or positively correlated values) or 'negcorr'
+        (for general or negatively correlated tests).
+        Default is 'indep'.
+    alpha : :obj:`float`, optional
+        The FDR correction rate to use. Default is 0.05.
 
     Notes
     -----
@@ -240,10 +265,9 @@ class FDRCorrector(Corrector):
 
     _correction_method = "fdr"
 
-    def __init__(self, alpha=0.05, method="indep", **kwargs):
+    def __init__(self, method="indep", alpha=0.05):
         self.alpha = alpha
         self.method = method
-        self.parameters = kwargs
 
     @property
     def _name_suffix(self):
@@ -254,14 +278,3 @@ class FDRCorrector(Corrector):
 
     def _correct_negcorr(self, p):
         return fdr(p, q=self.alpha, method="by")
-
-    def _transform(self, result):
-        p = result.maps["p"]
-        nonnan_mask = ~np.isnan(p)
-        p_corr = np.empty_like(p)
-        p_no_nans = p[nonnan_mask]
-        p_corr_no_nans = self._correct_indep(p_no_nans)
-        p_corr[nonnan_mask] = p_corr_no_nans
-        corr_maps = {"p": p_corr}
-        self._generate_secondary_maps(result, corr_maps)
-        return corr_maps
