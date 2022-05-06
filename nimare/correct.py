@@ -228,8 +228,9 @@ class FWECorrector(Corrector):
 
     _correction_method = "fwe"
 
-    def __init__(self, method="bonferroni"):
+    def __init__(self, method="bonferroni", **kwargs):
         self.method = method
+        self.parameters = kwargs
 
     @property
     def _name_suffix(self):
@@ -265,9 +266,10 @@ class FDRCorrector(Corrector):
 
     _correction_method = "fdr"
 
-    def __init__(self, method="indep", alpha=0.05):
+    def __init__(self, method="indep", alpha=0.05, **kwargs):
         self.alpha = alpha
         self.method = method
+        self.parameters = kwargs
 
     @property
     def _name_suffix(self):
