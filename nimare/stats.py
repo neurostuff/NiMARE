@@ -278,6 +278,8 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 def fdr(p_values, q=0.05, method="bh"):
     """Perform FDR correction on p values.
 
+    .. versionadded:: 0.0.12
+
     Parameters
     ----------
     p_values : :obj:`numpy.ndarray`
@@ -286,7 +288,8 @@ def fdr(p_values, q=0.05, method="bh"):
         Alpha value. Default is 0.05.
     method : {"bh", "by"}, optional
         Method to use for correction.
-        Either "bh" (Benjamini-Hochberg) or "by" (Benjamini-Yekutieli).
+        Either "bh" (Benjamini-Hochberg :footcite:p:`benjamini1995controlling`) or
+        "by" (Benjamini-Yekutieli :footcite:p:`benjamini2001control`).
         Default is "bh".
 
     Returns
@@ -297,6 +300,10 @@ def fdr(p_values, q=0.05, method="bh"):
     Notes
     -----
     This function is adapted from ``statsmodels``, which is licensed under a BSD-3 license.
+
+    References
+    ----------
+    .. footbibliography::
 
     See Also
     --------
@@ -331,6 +338,11 @@ def fdr(p_values, q=0.05, method="bh"):
 def bonferroni(p_values):
     """Perform Bonferroni correction on p values.
 
+    This correction is based on the one described in :footcite:t:`bonferroni1936teoria` and
+    :footcite:t:`shaffer1995multiple`.
+
+    .. versionadded:: 0.0.12
+
     Parameters
     ----------
     p_values : :obj:`numpy.ndarray`
@@ -340,6 +352,10 @@ def bonferroni(p_values):
     -------
     p_corr : :obj:`numpy.ndarray`
         Corrected p values.
+
+    References
+    ----------
+    .. footbibliography::
     """
     p_corr = p_values * p_values.size
     p_corr[p_corr > 1] = 1

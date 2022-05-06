@@ -37,10 +37,10 @@ class Corrector(metaclass=ABCMeta):
     @classmethod
     def _get_corrector_methods(cls):
         """List correction methods implemented within the Corrector."""
-        method_name_str = "_correct_"
+        method_name_str = f"correct_{cls._correction_method}_"
         corr_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
         corr_methods = [meth[0] for meth in corr_methods if meth[0].startswith(method_name_str)]
-        corr_methods = [vm.split(method_name_str)[1] for vm in corr_methods]
+        corr_methods = [meth.replace(method_name_str, "") for meth in corr_methods]
         return corr_methods
 
     @classmethod
@@ -144,8 +144,7 @@ class Corrector(metaclass=ABCMeta):
         result : :obj:`~nimare.results.MetaResult`
             MetaResult with new corrected maps added.
         """
-        est_correction_method = f"correct_{self._correction_method}_{self.method}"
-        corr_correction_method = f"_correct_{self.method}"
+        correction_method = f"correct_{self._correction_method}_{self.method}"
 
         # Make sure we return a copy of the MetaResult
         result = result.copy()
@@ -155,15 +154,15 @@ class Corrector(metaclass=ABCMeta):
 
         # If a correction method with the same name exists in the current MetaEstimator, use it.
         # Otherwise fall back on _transform.
-        if hasattr(est, est_correction_method):
+        if hasattr(est, correction_method):
             LGR.info(
                 "Using correction method implemented in Estimator: "
-                f"{est.__class__.__module__}.{est.__class__.__name__}.{est_correction_method}."
+                f"{est.__class__.__module__}.{est.__class__.__name__}.{correction_method}."
             )
-            corr_maps = getattr(est, est_correction_method)(result, **self.parameters)
+            corr_maps = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._collect_inputs(result)
-            corr_maps = self._transform(result, method=corr_correction_method)
+            corr_maps = self._transform(result, method=correction_method)
 
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
@@ -180,10 +179,22 @@ class Corrector(metaclass=ABCMeta):
         This was originally an abstract method, with FWECorrector and FDRCorrector having their
         own implementations, but those implementations were exactly the same.
 
-        Must return a dictionary of new maps to add to .maps, where keys are map names and values
-        are the maps.
-        Names must _not_ include the _name_suffix:, as that will be added in transform()
-        (i.e., return "p" not "p_corr-FDR_q-0.05_method-indep").
+        Parameters
+        ----------
+        result : :obj:`~nimare.results.MetaResult`
+            MetaResult object from which to extract the p value map and Estimator.
+        method : :obj:`str`
+            The correction method to use. This name must match a method in the Corrector,
+            according to the pattern "correct_[FWE|FDR]_[method]".
+
+        Returns
+        -------
+        corr_maps : :obj:`dict`
+            A dictionary of new maps that will be added to the MetaResult's ``maps`` attribute,
+            where keys are map names and values are the arrays.
+
+            The map names must _not_ include the _name_suffix:, as that will be added in
+            ``transform()`` (i.e., return "p" not "p_corr-FDR_q-0.05_method-indep").
         """
         p = result.maps["p"]
 
@@ -217,12 +228,11 @@ class FWECorrector(Corrector):
 
     Notes
     -----
-    This corrector supports a small number of internal FWE correction methods,
-    but can also use special methods implemented within individual Estimators.
-    To determine what methods are available for the Estimator you're using,
-    check the Estimator's documentation.
+    This corrector supports a small number of internal FWE correction methods, but can also use
+    special methods implemented within individual Estimators.
+    To determine what methods are available for the Estimator you're using, use :meth:`inspect`.
     Estimators have special methods following the naming convention
-    correct_[correction-type]_[method]
+    ``correct_[correction-type]_[method]``
     (e.g., :func:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`).
     """
 
@@ -236,8 +246,36 @@ class FWECorrector(Corrector):
     def _name_suffix(self):
         return f"_corr-FWE_method-{self.method}"
 
-    def _correct_bonferroni(self, p):
-        """Perform Bonferroni FWE correction."""
+    def correct_fwe_bonferroni(self, p):
+        """Perform Bonferroni FWE correction.
+
+        This correction is based on the one described in :footcite:t:`bonferroni1936teoria` and
+        :footcite:t:`shaffer1995multiple`.
+
+        .. warning::
+            Do not call this method directly. Call :meth:`transform` with ``method='bonferroni'``
+            instead.
+
+        .. versionadded:: 0.0.12
+
+        Parameters
+        ----------
+        p : :obj:`numpy.ndarray`
+            A 1D array of p values.
+
+        Returns
+        -------
+        :obj:`numpy.ndarray`
+            A 1D array of adjusted p values.
+
+        References
+        ----------
+        .. footbibliography::
+
+        See Also
+        --------
+        nimare.stats.bonferroni
+        """
         return bonferroni(p)
 
 
@@ -256,11 +294,11 @@ class FDRCorrector(Corrector):
 
     Notes
     -----
-    This corrector supports a small number of internal FDR correction methods,
-    but can also use special methods implemented within individual Estimators.
-    To determine what methods are available for the Estimator you're using,
-    check the Estimator's documentation. Estimators have special methods
-    following the naming convention correct_[correction-type]_[method]
+    This corrector supports a small number of internal FDR correction methods, but can also use
+    special methods implemented within individual Estimators.
+    To determine what methods are available for the Estimator you're using, use :meth:`inspect`.
+    Estimators have special methods following the naming convention
+    ``correct_[correction-type]_[method]``
     (e.g., :class:`~nimare.meta.mkda.MKDAChi2.correct_fdr_bh`).
     """
 
@@ -275,8 +313,64 @@ class FDRCorrector(Corrector):
     def _name_suffix(self):
         return f"_corr-FDR_method-{self.method}"
 
-    def _correct_indep(self, p):
+    def correct_fdr_indep(self, p):
+        """Perform Benjamini-Hochberg FDR correction.
+
+        This correction is based on the one described in :footcite:t:`benjamini1995controlling`.
+
+        .. warning::
+            Do not call this method directly. Call :meth:`transform` with ``method='indep'``
+            instead.
+
+        .. versionadded:: 0.0.12
+
+        Parameters
+        ----------
+        p : :obj:`numpy.ndarray`
+            A 1D array of p values.
+
+        Returns
+        -------
+        :obj:`numpy.ndarray`
+            A 1D array of adjusted p values.
+
+        References
+        ----------
+        .. footbibliography::
+
+        See Also
+        --------
+        nimare.stats.fdr
+        """
         return fdr(p, q=self.alpha, method="bh")
 
-    def _correct_negcorr(self, p):
+    def correct_fdr_negcorr(self, p):
+        """Perform Benjamini-Yekutieli FDR correction.
+
+        This correction is based on the one described in :footcite:p:`benjamini2001control`.
+
+        .. warning::
+            Do not call this method directly. Call :meth:`transform` with ``method='negcorr'``
+            instead.
+
+        .. versionadded:: 0.0.12
+
+        Parameters
+        ----------
+        p : :obj:`numpy.ndarray`
+            A 1D array of p values.
+
+        Returns
+        -------
+        :obj:`numpy.ndarray`
+            A 1D array of adjusted p values.
+
+        References
+        ----------
+        .. footbibliography::
+
+        See Also
+        --------
+        nimare.stats.fdr
+        """
         return fdr(p, q=self.alpha, method="by")

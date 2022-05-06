@@ -175,6 +175,7 @@ intersphinx_mapping = {
     "nibabel": ("https://nipy.org/nibabel/", None),
     "nilearn": ("http://nilearn.github.io/", None),
     "pymare": ("https://pymare.readthedocs.io/en/latest/", None),
+    "statsmodels": ("http://www.statsmodels.org/stable/", None),
 }
 
 # -----------------------------------------------------------------------------
