@@ -36,7 +36,7 @@ class Corrector(metaclass=ABCMeta):
     @classmethod
     def _get_corrector_methods(cls):
         method_name_str = "_correct_"
-        corr_methods = inspect.getmembers(cls, predicate=inspect.ismethod)
+        corr_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
         corr_methods = [meth[0] for meth in corr_methods if meth[0].startswith(method_name_str)]
         corr_methods = [vm.split(method_name_str)[1] for vm in corr_methods]
         return corr_methods
