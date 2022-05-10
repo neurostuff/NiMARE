@@ -14,6 +14,7 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from nilearn import image
 
 from .. import references
@@ -212,7 +213,7 @@ class KernelTransformer(Transformer):
                 # Transform into an length-N list of length-2 tuples,
                 # composed of a 3D array/memmap and a string with the ID.
                 transformed_maps = list(zip(*transformed_maps))
-        else:
+        elif isinstance(transformed_maps[0][0], sparse._compressed.compressed.GCXS):
             transformed_maps = list(zip(*transformed_maps))
 
         imgs = []
@@ -220,7 +221,7 @@ class KernelTransformer(Transformer):
             if isinstance(kernel_data, np.memmap):
                 # Convert data to a numpy array if it's a memmap
                 kernel_data = np.array(kernel_data)
-            else:
+            elif isinstance(kernel_data, sparse._compressed.compressed.GCXS):
                 # Convert sparse to dense array
                 kernel_data = kernel_data.todense()
 
