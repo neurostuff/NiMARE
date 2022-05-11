@@ -540,12 +540,16 @@ def _combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_st
 
 
 def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
-    """Run the SDM algorithm.
+    """Run the SDM-PSI algorithm.
+
+    The algorithm is implemented as described in :footcite:t:`albajes2019meta,albajes2019voxel`.
 
     Parameters
     ----------
     coords
         Coordinates.
+    masker
+    correlation_maps
     n_imputations : int
         Number of imputations. Default is 50, based on the SDM software.
     n_iters : int
@@ -627,6 +631,10 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
             statistic to threshold the combined meta-analysis image obtained from unpermuted data."
         -   This approach is used for the main analysis (i.e., the mean), but for meta-regressions
             we need to use the Freedman-Lane permutation method on the study-level maps.
+
+    References
+    ----------
+    .. footbibliography::
     """
     # Extract sample size information from the coordinates DataFrame.
     n_subjects = coords.groupby("id")["sample_sizes"].values
@@ -1055,7 +1063,8 @@ def compute_sdm_ma(
 
     Parameters
     ----------
-    ijk
+    ijk : :obj:`numpy.ndarray` of shape (X, 3)
+        IJK matrix indices of peaks.
     effect_sizes
     sample_sizes
     significance_level
@@ -1073,13 +1082,12 @@ def compute_sdm_ma(
     Notes
     -----
     Use anisotropic Gaussian kernels, plus effect size estimates and metadata,
-    to produce lower-bound and upper-bound effect size maps from the coordinates.
+    to produce lower-bound and upper-bound effect size maps from the coordinates,
+    as described in :footcite:p:`radua2014anisotropic`.
 
     References
     ----------
-    *   Radua, J., Rubia, K., Canales, E. J., Pomarol-Clotet, E., Fusar-Poli, P., &
-        Mataix-Cols, D. (2014). Anisotropic kernels for coordinate-based meta-analyses of
-        neuroimaging studies. Frontiers in psychiatry, 5, 13.
+    .. footbibliography::
     """
     df = np.sum(sample_sizes) - 2
     effect_size_threshold = stats.t.isf(significance_level, df)
