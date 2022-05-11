@@ -8,10 +8,10 @@ import numpy.linalg as npl
 import sparse
 from scipy import ndimage
 
-from .. import references
-from ..due import due
-from ..extract import download_peaks2maps_model
-from ..utils import _determine_chunk_size
+from nimare import references
+from nimare.due import due
+from nimare.extract import download_peaks2maps_model
+from nimare.utils import _determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)

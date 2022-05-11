@@ -17,22 +17,27 @@ import pandas as pd
 import sparse
 from nilearn import image
 
-from .. import references
-from ..base import Transformer
-from ..due import due
-from ..utils import (
+from nimare import references
+from nimare.base import NiMAREBase
+from nimare.due import due
+from nimare.meta.utils import (
+    compute_ale_ma,
+    compute_kda_ma,
+    compute_p2m_ma,
+    get_ale_kernel,
+)
+from nimare.utils import (
     _add_metadata_to_dataframe,
     _safe_transform,
     mm2vox,
     use_memmap,
     vox2mm,
 )
-from .utils import compute_ale_ma, compute_kda_ma, compute_p2m_ma, get_ale_kernel
 
 LGR = logging.getLogger(__name__)
 
 
-class KernelTransformer(Transformer):
+class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
     Coordinate-based meta-analyses leverage coordinates reported in
@@ -306,7 +311,7 @@ class ALEKernel(KernelTransformer):
 
     By default (if neither ``fwhm`` nor ``sample_size`` is provided), the FWHM of the kernel
     will be determined on a study-wise basis based on the sample sizes available in the input,
-    via the method described in [1]_.
+    via the method described in :footcite:t:`eickhoff2012activation`.
 
     .. versionchanged:: 0.0.8
 
@@ -331,8 +336,7 @@ class ALEKernel(KernelTransformer):
 
     References
     ----------
-    .. [1] Eickhoff, Simon B., et al. "Activation likelihood estimation
-           meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+    .. footbibliography::
     """
 
     def __init__(self, fwhm=None, sample_size=None, memory_limit=None):

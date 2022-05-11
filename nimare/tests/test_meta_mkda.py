@@ -1,6 +1,7 @@
 """Test nimare.meta.mkda (KDA-based meta-analytic algorithms)."""
+import logging
+
 import numpy as np
-import pytest
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -34,7 +35,7 @@ def test_MKDADensity_kernel_instance(testdata_cbma):
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_MKDADensity_approximate_null(testdata_cbma_full):
+def test_MKDADensity_approximate_null(testdata_cbma_full, caplog):
     """Smoke test for MKDADensity with the "approximate" null_method."""
     meta = MKDADensity(null="approximate")
     res = meta.fit(testdata_cbma_full)
@@ -51,8 +52,14 @@ def test_MKDADensity_approximate_null(testdata_cbma_full):
         n_cores=1,
         vfwe_only=True,
     )
-    with pytest.raises(ValueError):
-        corr2.transform(res)
+    with caplog.at_level(logging.WARNING):
+        cres2 = corr2.transform(res)
+
+    assert "Running permutations from scratch." in caplog.text
+
+    assert isinstance(cres2, nimare.results.MetaResult)
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in cres2.maps
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" not in cres2.maps
 
 
 def test_MKDADensity_montecarlo_null(testdata_cbma):
