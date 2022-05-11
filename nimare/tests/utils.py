@@ -5,6 +5,7 @@ from contextlib import ExitStack as does_not_raise
 import nibabel as nib
 import numpy as np
 import pytest
+import sparse
 
 from ..meta.utils import compute_kda_ma
 
@@ -48,11 +49,16 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
     sig_prob_map = compute_kda_ma(
         dims, vox_dims, ground_truth_foci_ijks, r=2, value=1, sum_overlap=False
     )
+    if isinstance(sig_prob_map, sparse._compressed.compressed.GCXS):
+        sig_prob_map = sig_prob_map.todense()
 
     # area where I'm reasonably certain there are not significant results
     nonsig_prob_map = compute_kda_ma(
         dims, vox_dims, ground_truth_foci_ijks, r=14, value=1, sum_overlap=False
     )
+    if isinstance(nonsig_prob_map, sparse._compressed.compressed.GCXS):
+        nonsig_prob_map = nonsig_prob_map.todense()
+
     sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(int), affine=mask.affine)
     nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(int), affine=mask.affine)
     return sig_map, nonsig_map
