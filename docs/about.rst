@@ -51,7 +51,7 @@ Outside of the shared ecosystem detailed above, there are a number of tools.
 Coordinate-based meta-analysis tools
 ````````````````````````````````````
 
-`BrainMap`_: The `BrainMap`_ suite includes applications for the `ALE`_ CBMA algorithm (via the `GingerALE`_ app) and
+`BrainMap`_: The `BrainMap`_ suite includes applications for the ALE CBMA algorithm (via the `GingerALE`_ app) and
 interacting with the BrainMap database (via the `Sleuth`_ and `Scribe`_ apps).
 
 The `MKDA Toolbox`_: This toolbox implements the MKDA algorithm, as well as a range derivative analyses.

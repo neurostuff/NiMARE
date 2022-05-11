@@ -13,7 +13,7 @@ from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
-from nimare.utils import mm2vox, tqdm_joblib, vox2mm
+from nimare.utils import _check_ncores, mm2vox, tqdm_joblib, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class Jackknife(NiMAREBase):
     ):
         self.target_image = target_image
         self.voxel_thresh = voxel_thresh
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
 
     def transform(self, result):
         """Apply the analysis to a MetaResult.
@@ -134,10 +134,7 @@ class Jackknife(NiMAREBase):
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
+        conn = ndimage.generate_binary_structure(3, 2)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,
@@ -281,7 +278,7 @@ class FocusCounter(NiMAREBase):
     ):
         self.target_image = target_image
         self.voxel_thresh = voxel_thresh
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
 
     def transform(self, result):
         """Apply the analysis to a MetaResult.
@@ -343,10 +340,7 @@ class FocusCounter(NiMAREBase):
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = np.zeros((3, 3, 3), int)
-        conn[:, :, 1] = 1
-        conn[:, 1, :] = 1
-        conn[1, :, :] = 1
+        conn = ndimage.generate_binary_structure(3, 2)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,

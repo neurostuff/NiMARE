@@ -5,7 +5,7 @@ import os.path as op
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
-from ..utils import get_resource_path
+from nimare.utils import get_resource_path
 
 LGR = logging.getLogger(__name__)
 

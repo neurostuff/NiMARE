@@ -8,14 +8,14 @@ from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
-from .. import references
-from ..base import Decoder
-from ..due import due
-from ..meta.cbma.base import CBMAEstimator
-from ..meta.cbma.mkda import MKDAChi2
-from ..stats import pearson
-from ..utils import _check_type, _safe_transform
-from .utils import weight_priors
+from nimare import references
+from nimare.decode.base import Decoder
+from nimare.decode.utils import weight_priors
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator
+from nimare.meta.cbma.mkda import MKDAChi2
+from nimare.stats import pearson
+from nimare.utils import _check_type, _safe_transform
 
 LGR = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ LGR = logging.getLogger(__name__)
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
-    The method used in this function was originally described in Rubin et al. (2017) [1]_.
+    The method used in this function was originally described in :footcite:t:`rubin2017decoding`.
 
     Parameters
     ----------
@@ -88,10 +88,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     References
     ----------
-    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
-       functional-anatomical atlas of human cognition."
-       PLoS computational biology 13.10 (2017): e1005649.
-       https://doi.org/10.1371/journal.pcbi.1005649
+    .. footbibliography::
     """
     image = load_niimg(image)
 
@@ -166,7 +163,6 @@ class CorrelationDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.meta_estimator = meta_estimator
         self.target_image = target_image
-        self.results = None
 
     def _fit(self, dataset):
         """Generate feature-specific meta-analytic maps for dataset.
@@ -204,11 +200,11 @@ class CorrelationDecoder(Decoder):
             if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
                 nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
                 nonfeature_dset = dataset.slice(nonfeature_ids)
-                self.meta_estimator.fit(feature_dset, nonfeature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset, nonfeature_dset)
             else:
-                self.meta_estimator.fit(feature_dset)
+                meta_results = self.meta_estimator.fit(feature_dset)
 
-            feature_data = self.meta_estimator.results.get_map(
+            feature_data = meta_results.get_map(
                 self.target_image,
                 return_type="array",
             )
@@ -236,7 +232,6 @@ class CorrelationDecoder(Decoder):
         corrs = pearson(img_vec, self.images_)
         out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
         out_df.index.name = "feature"
-        self.results = out_df
         return out_df
 
 
@@ -277,7 +272,6 @@ class CorrelationDistributionDecoder(Decoder):
         self.features = features
         self.frequency_threshold = frequency_threshold
         self.memory_limit = memory_limit
-        self.results = None
         self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
@@ -349,5 +343,5 @@ class CorrelationDistributionDecoder(Decoder):
             corrs_z = np.arctanh(corrs)
             out_df.loc[feature, "mean"] = np.mean(corrs_z)
             out_df.loc[feature, "std"] = np.std(corrs_z)
-        self.results = out_df
+
         return out_df
