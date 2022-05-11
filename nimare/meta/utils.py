@@ -327,11 +327,14 @@ def compute_kda_ma(
 
     Returns
     -------
-    kernel_data : :obj:`numpy.array`
-        3d or 4d array. If `exp_idx` is none, a 3d array in the same shape as
-        the `shape` argument is returned. If `exp_idx` is passed, a 4d array
+    kernel_data_lst : :obj:`list` of :class:`sparse._compressed.compressed.GCXS` \
+            or kernel_data: :obj:`numpy.array`
+        If memmap_filename is passed, 3d or 4d array. If `exp_idx` is none, a 3d array in the same 
+        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
+        If memmap_filename is None, a list of MA sparse arrays. The list dimension 
+        has size equal to the number of unique experiments
     """
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
