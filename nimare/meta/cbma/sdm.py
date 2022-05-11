@@ -502,8 +502,8 @@ def _calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
             study_effect_size_arr = subject_effect_size_imgs[j_study][:, i_voxel]
             study_var_arr = subject_var_imgs[j_study][:, i_voxel]
 
-            effect_size_arr[j_study, :sample_sizes[j_study]] = study_effect_size_arr
-            var_arr[j_study, :sample_sizes[j_study]] = study_var_arr
+            effect_size_arr[j_study, : sample_sizes[j_study]] = study_effect_size_arr
+            var_arr[j_study, : sample_sizes[j_study]] = study_var_arr
 
         g_arr = hedges_g(y=effect_size_arr, n_subjects1=sample_sizes)
         g_var_arr = hedges_g_var(g=g_arr, n_subjects1=sample_sizes)
