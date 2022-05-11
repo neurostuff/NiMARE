@@ -4,7 +4,7 @@ from datetime import datetime
 import numpy as np
 from pymare import Dataset, estimators
 
-from nimare.meta.sdm import hedges_g, hedges_g_var
+from nimare.meta.cbma.sdm import hedges_g, hedges_g_var
 
 
 def permute_study_effects(g, n_studies):

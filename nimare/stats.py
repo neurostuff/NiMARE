@@ -299,3 +299,132 @@ def fdr(p, q=0.05):
     null = np.array(range(1, nvox + 1), dtype="float") * q / nvox
     below = np.where(s <= null)[0]
     return s[max(below)] if any(below) else -1
+
+
+def hedges_g(y, n_subjects1, n_subjects2=None):
+    """Calculate Hedges' G.
+
+    .. todo::
+
+        Support calculation across voxels as well.
+
+    Parameters
+    ----------
+    y : 2D array of shape (n_studies, max_study_size)
+        Subject-level values for which to calculate Hedges G.
+        Multiple studies may be provided.
+        The array contains as many rows as there are studies, and as many columns as the maximum
+        sample size in the studyset. Extra columns in each row should be filled with NaNs.
+    n_subjects1 : :obj:`numpy.ndarray` of shape (n_studies,)
+        Number of subjects in the first group of each study.
+    n_subjects2 : None or int
+        Number of subjects in the second group of each study.
+        If None, the dataset is assumed to be have one sample.
+        Technically, this parameter is probably unnecessary, since the second group's sample size
+        can be inferred from ``n_subjects1`` and ``y``.
+
+    Returns
+    -------
+    g_arr : 1D array of shape (n_studies,)
+
+    Notes
+    -----
+    Clues for Python version from https://en.wikipedia.org/wiki/Effect_size#Hedges'_g.
+
+    I also updated the original code to support varying sample sizes across studies.
+
+    Notes
+    -----
+    R Code:
+
+    .. highlight:: r
+    .. code-block:: r
+
+        g <- function (y) { # Calculate Hedges' g
+            J * apply(y, 2, function (y_i) {
+                (mean(y_i[1:n.subj]) - mean(y_i[-(1:n.subj)])) /
+                sqrt((var(y_i[1:n.subj]) + var(y_i[-(1:n.subj)])) / 2)
+            })
+        }
+    """
+    from scipy.special import gamma
+
+    if n_subjects2 is not None:
+        # Must be an array
+        assert n_subjects2.shape == n_subjects1.shape
+
+        # Constants
+        df = (n_subjects1 + n_subjects2) - 2  # degrees of freedom
+        J_arr = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+
+        g_arr = np.zeros(y.shape[0])
+        for i_study in range(y.shape[0]):
+            n1, n2 = n_subjects1[i_study], n_subjects2[i_study]
+            study_data = y[i_study, : n1 + n2]
+            var1 = np.var(study_data[:n1], axis=0)
+            var2 = np.var(study_data[n1:], axis=0)
+
+            mean_diff = np.mean(study_data[:n1]) - np.mean(study_data[n1:])
+            pooled_std = np.sqrt((((n1 - 1) * var1) + ((n2 - 1) * var2)) / ((n1 + n2) - 2))
+            g = mean_diff / pooled_std
+            g_arr[i_study] = g
+
+        g_arr = g_arr * J_arr * df
+
+    else:
+        df = n_subjects1 - 1
+        J_arr = gamma(df / 2) / (gamma((df - 1) / 2) * np.sqrt(df / 2))  # Hedges' correction
+        g_arr = J_arr * df * np.nanmean(y, axis=1) / np.nanstd(y, axis=1)
+
+    return g_arr
+
+
+def hedges_g_var(g, n_subjects1, n_subjects2=None):
+    """Calculate variance of Hedges' G.
+
+    .. todo::
+
+        Support one-sample tests.
+
+    Parameters
+    ----------
+    g : :obj:`numpy.ndarray` of shape (n_studies,)
+        Hedges' G values.
+    n_subjects1 : :obj:`numpy.ndarray` of shape (n_studies,)
+    n_subjects2 : None or :obj:`numpy.ndarray` of shape (n_studies,)
+        Can be None if the G values come from one-sample tests.
+
+    Returns
+    -------
+    g_var : :obj:`numpy.ndarray` of shape (n_studies,)
+        Hedges' G variance values.
+
+    Notes
+    -----
+    Clues for Python version from https://constantinyvesplessen.com/post/g/#hedges-g,
+    except using proper J instead of approximation.
+
+    I also updated the original code to support varying sample sizes across studies.
+
+    Notes
+    -----
+    R Code:
+
+    .. highlight:: r
+    .. code-block:: r
+
+        df <- 2 * n.subj - 2 # Degrees of freedom
+        J <- gamma(df / 2) / gamma((df - 1) / 2) * sqrt(2 / df) # Hedges' correction
+        g_var <- function (g) { # Variance of Hedges' g
+            1 / n.subj + (1 - (df - 2) / (df * J^2)) * g^2
+        }
+    """
+    if n_subjects2 is not None:
+        assert g.shape == n_subjects1.shape == n_subjects2.shape
+        g_var = ((n_subjects1 + n_subjects2) / (n_subjects1 * n_subjects2)) + (
+            (g**2) / (2 * (n_subjects1 + n_subjects2))
+        )
+    else:
+        raise ValueError("One-sample tests are not yet supported.")
+
+    return g_var
