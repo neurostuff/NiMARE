@@ -333,7 +333,7 @@ def compute_kda_ma(
         shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
-        If memmap_filename is None, a list of MA sparse arrays. The list dimension 
+        If memmap_filename is None, a list of MA sparse arrays. The list dimension
         has size equal to the number of unique experiments
     """
     if exp_idx is None:
