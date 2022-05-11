@@ -51,6 +51,7 @@ extensions = [
     "sphinx.ext.intersphinx",  # links code to other packages
     "sphinx.ext.linkcode",  # links to code from api
     "sphinx.ext.napoleon",  # alternative to numpydoc
+    "sphinx.ext.todo",  # todo directives, only for in-progress SDM implementation
     "sphinx_copybutton",  # for copying code snippets
     "sphinx_gallery.gen_gallery",  # example gallery
     "sphinxarg.ext",  # argparse
@@ -238,3 +239,7 @@ def generate_example_rst(app, what, name, obj, options, lines):
     if not os.path.exists(examples_path):
         # touch file
         open(examples_path, "w").close()
+
+
+todo_include_todos = True
+todo_emit_warnings = False

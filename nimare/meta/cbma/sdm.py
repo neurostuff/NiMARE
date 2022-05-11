@@ -1,22 +1,41 @@
 """Seed-based d-mapping-related methods."""
 from datetime import datetime
 
-import dijkstra3d
 import nibabel as nib
 import numpy as np
-from nilearn import masking
 from pymare import Dataset, estimators
-from scipy import spatial, stats
+from scipy import stats
 
 # from tqdm import tqdm, trange
 from tqdm.autonotebook import tqdm, trange
 
-
-def _mle_estimation():
-    ...
+from nimare.meta.utils import compute_sdm_ma
 
 
-def _impute_studywise_imgs(
+def mle_estimation(lower_bound_imgs, upper_bound_imgs):
+    """Estimate the most likely effect size and variance maps across studies.
+
+    Parameters
+    ----------
+    lower_bound_imgs : :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+        Lower-bound effect size maps estimated from coordinates.
+        One map for each study.
+    upper_bound_imgs : :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+        Upper-bound effect size maps estimated from coordinates.
+        One map for each study.
+
+    Returns
+    -------
+    meta_effect_size_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Meta-analytic effect-size map.
+    meta_tau_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Meta-analytic tau (variance) map.
+    """
+    meta_effect_size_img, meta_tau_img = lower_bound_imgs, upper_bound_imgs
+    return meta_effect_size_img, meta_tau_img
+
+
+def impute_studywise_imgs(
     meta_effect_size_img,
     meta_tau_img,
     lower_bound_imgs,
@@ -27,16 +46,17 @@ def _impute_studywise_imgs(
 
     Parameters
     ----------
-    meta_effect_size_img : nibabel.Nifti1Image
-    meta_tau_img : nibabel.Nifti1Image
-    lower_bound_imgs : S-length list of nibabel.Nifti1Image
-    upper_bound_imgs : S-length list of nibabel.Nifti1Image
-    seed : int
+    meta_effect_size_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Meta-analytic effect-size map.
+    meta_tau_img : :obj:`~nibabel.nifti1.Nifti1Image`
+    lower_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+    upper_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+    seed : :obj:`int`
 
     Returns
     -------
-    study_effect_size_imgs : S-length list of nibabel.Nifti1Image
-    study_var_imgs : S-length list of nibabel.Nifti1Image
+    study_effect_size_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+    study_var_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
     """
     # Nonsense for now
     study_effect_size_imgs = lower_bound_imgs[:]
@@ -44,17 +64,18 @@ def _impute_studywise_imgs(
     return study_effect_size_imgs, study_var_imgs
 
 
-def _run_permutations(all_subject_effect_size_imgs, all_subject_var_imgs, seed=0):
+def run_permutations(all_subject_effect_size_imgs, all_subject_var_imgs, seed=0):
     """Run permutations.
 
     Parameters
     ----------
-    all_subject_effect_size_imgs : I-length list of S-length lists of numpy.ndarray of shape (N, V)
+    all_subject_effect_size_imgs : \
+            I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
         I = imputations
         S = studies
         N = study sample sizes
         V = voxels
-    all_subject_var_imgs : I-length list of S-length lists of numpy.ndarray of shape (N, V)
+    all_subject_var_imgs : I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
         I = imputations
         S = studies
         N = study sample sizes
@@ -63,8 +84,9 @@ def _run_permutations(all_subject_effect_size_imgs, all_subject_var_imgs, seed=0
     Returns
     -------
     permuted_subject_effect_size_imgs : \
-            I-length list of S-length lists of numpy.ndarray of shape (N, V)
-    permuted_subject_var_imgs : I-length list of S-length lists of numpy.ndarray of shape (N, V)
+            I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
+    permuted_subject_var_imgs : \
+            I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
 
     Notes
     -----
@@ -78,12 +100,12 @@ def _run_permutations(all_subject_effect_size_imgs, all_subject_var_imgs, seed=0
     return permuted_subject_effect_size_imgs, permuted_subject_var_imgs
 
 
-def _extract_max_statistics():
+def extract_max_statistics(effect_size_img):
     """Extract maximum statistics from permuted data for Monte Carlo FWE correction."""
     ...
 
 
-def _simulate_voxel_with_no_neighbors(n_subjects):
+def simulate_voxel_with_no_neighbors(n_subjects):
     """Simulate the data for a voxel with no neighbors.
 
     Parameters
@@ -108,32 +130,33 @@ def _simulate_voxel_with_no_neighbors(n_subjects):
     return y
 
 
-def _simulate_voxel_with_one_neighbor(A, r_ay):
+def simulate_voxel_with_one_neighbor(A, r_ay):
     """Simulate the data for a voxel with one neighbor that has already been simulated.
 
     Parameters
     ----------
-    A : numpy.ndarray of shape (n_subjects,)
+    A : :obj:`~numpy.ndarray` of shape (n_subjects,)
         Subject values for the neighboring voxel.
-    r_ay : float
+    r_ay : :obj:`float`
         Desired correlation between A and Y.
 
     Returns
     -------
-    y : numpy.ndarray of shape (n_subjects,)
+    y : :obj:`~numpy.ndarray` of shape (n_subjects,)
         Data for the voxel across subjects.
 
     Notes
     -----
     For imputing subject values in a voxel that has one neighboring voxel already imputed,
     SDM-PSI conducts a weighted average of the subject values of the neighboring voxel (A) and
-    new standardized random normal values.
+    new standardized random normal values:
+
     -   Y = (w_a * A) + (w_r * R), where w are the weights that ensure that the resulting
         subject values have unit variance and the desired correlation.
     -   w_a = r_ay - (w_r * r_ar * w_r) = np.sqrt((1 - (r_ay ** 2)) / (1 - (r_ar ** 2)))
     """
     # Random normal values with null mean and unit variance.
-    R = _simulate_voxel_with_no_neighbors(A.size)
+    R = simulate_voxel_with_no_neighbors(A.size)
     # Correlation between A and R.
     r_ar = np.corrcoef((A, R))[1, 0]
 
@@ -145,26 +168,27 @@ def _simulate_voxel_with_one_neighbor(A, r_ay):
     return y
 
 
-def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
+def simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
     """Simulate the data for a voxel with two neighbors that have already been simulated.
 
     Parameters
     ----------
-    A, B : numpy.ndarray of shape (n_subjects,)
+    A, B : :obj:`~numpy.ndarray` of shape (n_subjects,)
         Subject values for the neighboring voxels.
-    r_ay, r_by : float
+    r_ay, r_by : :obj:`float`
         Desired correlation between A and Y, and between B and Y.
 
     Returns
     -------
-    y : numpy.ndarray of shape (n_subjects,)
+    y : :obj:`~numpy.ndarray` of shape (n_subjects,)
         Data for the voxel across subjects.
 
     Notes
     -----
     For imputing subject values in a voxel that has two neighboring voxels already imputed,
     SDM-PSI conducts again a weighted average of the subject values of the neighboring voxels
-    (A and B) and new standardized random normal values.
+    (A and B) and new standardized random normal values:
+
     -   Y = (w_a * A) + (w_b * B) + (w_r * R), where again w are the weights that ensure that
         the resulting subject values have unit variance and the desired correlations.
     -   w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
@@ -172,7 +196,7 @@ def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
     -   w_r = np.sqrt((1 - (r_ab ** 2) - (r_ay ** 2) - (r_by ** 2) + (2 * r_ab * r_ay * r_by))
         / (1 - (r_ab ** 2) - (r_ar ** 2) - (r_br ** 2) + (2 * r_ab * r_ar * r_br))
     """
-    R = _simulate_voxel_with_no_neighbors(A.size)
+    R = simulate_voxel_with_no_neighbors(A.size)
     r_ab = np.corrcoef((A, B))[1, 0]
     r_ar = np.corrcoef((A, R))[1, 0]
     r_br = np.corrcoef((B, R))[1, 0]
@@ -189,22 +213,22 @@ def _simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
     return y
 
 
-def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
+def simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
     """Simulate the data for a voxel with three neighbors that have already been simulated.
 
     Parameters
     ----------
-    A, B, C : numpy.ndarray of shape (n_subjects,)
+    A, B, C : :obj:`~numpy.ndarray` of shape (n_subjects,)
         Subject values for the neighboring voxels.
-    r_ay, r_by, r_cy : float
+    r_ay, r_by, r_cy : :obj:`float`
         Desired correlation between A and Y, B and Y, and C and Y.
 
     Returns
     -------
-    y : numpy.ndarray of shape (n_subjects,)
+    y : :obj:`~numpy.ndarray` of shape (n_subjects,)
         Data for the voxel across subjects.
     """
-    R = _simulate_voxel_with_no_neighbors(A.size)
+    R = simulate_voxel_with_no_neighbors(A.size)
     r_ab = np.corrcoef((A, B))[1, 0]
     r_ac = np.corrcoef((A, C))[1, 0]
     r_bc = np.corrcoef((B, C))[1, 0]
@@ -271,7 +295,7 @@ def _simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
     return y
 
 
-def _simulate_subject_maps(n_subjects, masker, correlation_maps):
+def simulate_subject_maps(n_subjects, masker, correlation_maps):
     """Simulate the preliminary set of subject maps.
 
     Parameters
@@ -286,7 +310,7 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
 
     Returns
     -------
-    subject_maps : :obj:`numpy.ndarray` of shape (sum(n_subjects), n_voxels)
+    subject_maps : :obj:`~numpy.ndarray` of shape (sum(n_subjects), n_voxels)
         The base subject-wise statistical maps.
 
     Notes
@@ -350,7 +374,7 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
 
             n_directions = sum((use_right, use_posterior, use_inferior))
             if n_directions == 0:
-                voxel_values = _simulate_voxel_with_no_neighbors(n_study_subjects)
+                voxel_values = simulate_voxel_with_no_neighbors(n_study_subjects)
 
             elif n_directions == 1:
                 if use_right:
@@ -365,7 +389,7 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
                     A_data = study_subject_maps[x, y, z - 1, :]
                     r_ay = correlation_maps["inferior"][x, y, z]
 
-                voxel_values = _simulate_voxel_with_one_neighbor(A_data, r_ay)
+                voxel_values = simulate_voxel_with_one_neighbor(A_data, r_ay)
 
             elif n_directions == 2:
                 if use_right:
@@ -387,7 +411,7 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
                     B_data = study_subject_maps[x, y, z - 1, :]
                     r_by = correlation_maps["inferior"][x, y, z]
 
-                voxel_values = _simulate_voxel_with_two_neighbors(A_data, B_data, r_ay, r_by)
+                voxel_values = simulate_voxel_with_two_neighbors(A_data, B_data, r_ay, r_by)
 
             else:
                 A_data = study_subject_maps[x - 1, y, z, :]
@@ -396,7 +420,7 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
                 r_ay = correlation_maps["right"][x, y, z]
                 r_by = correlation_maps["posterior"][x, y, z]
                 r_cy = correlation_maps["inferior"][x, y, z]
-                voxel_values = _simulate_voxel_with_three_neighbors(
+                voxel_values = simulate_voxel_with_three_neighbors(
                     A_data,
                     B_data,
                     C_data,
@@ -417,7 +441,7 @@ def _simulate_subject_maps(n_subjects, masker, correlation_maps):
     return subject_maps
 
 
-def _scale_subject_maps(
+def scale_subject_maps(
     studylevel_effect_size_maps,
     studylevel_variance_maps,
     prelim_subjectlevel_maps,
@@ -426,16 +450,16 @@ def _scale_subject_maps(
 
     Parameters
     ----------
-    studylevel_effect_size_maps : numpy.ndarray of shape (S, V)
+    studylevel_effect_size_maps : :obj:`~numpy.ndarray` of shape (S, V)
         S is study, V is voxel.
-    studylevel_variance_maps : numpy.ndarray of shape (S, V)
-    prelim_subjectlevel_maps : S-length list of numpy.ndarray of shape (N, V)
+    studylevel_variance_maps : :obj:`~numpy.ndarray` of shape (S, V)
+    prelim_subjectlevel_maps : S-length :obj:`list` of :obj:`~numpy.ndarray` of shape (N, V)
         List with one entry per study (S), where each entry is an array that is subjects (N) by
         voxels (V).
 
     Returns
     -------
-    scaled_subjectlevel_maps : S-length list of numpy.ndarray of shape (N, V)
+    scaled_subjectlevel_maps : S-length :obj:`list` of :obj:`~numpy.ndarray` of shape (N, V)
         List with one entry per study (S), where each entry is an array that is subjects (N) by
         voxels (V).
 
@@ -465,21 +489,24 @@ def _scale_subject_maps(
     return scaled_subjectlevel_maps
 
 
-def _calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
+def calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
     """Calculate study-level Hedges' g maps.
 
     Parameters
     ----------
-    subject_effect_size_imgs : S-length list of numpy.ndarray of shape (N, V)
-        S = studies
-        N = study sample sizes
-        V = voxels
-    subject_var_imgs : S-length list of numpy.ndarray of shape (N, V)
+    subject_effect_size_imgs : S-length :obj:`list` of :obj:`~numpy.ndarray` of shape (N, V)
+        Subject-level effect size data.
+
+        -   S = studies
+        -   N = study sample sizes
+        -   V = voxels
+    subject_var_imgs : S-length :obj:`list` of :obj:`~numpy.ndarray` of shape (N, V)
+        Subject-level effect variance data.
 
     Returns
     -------
-    out_g_arr : numpy.ndarray of shape (S, V)
-    out_g_var_arr : numpy.ndarray of shape (S, V)
+    out_g_arr : :obj:`~numpy.ndarray` of shape (S, V)
+    out_g_var_arr : :obj:`~numpy.ndarray` of shape (S, V)
 
     Notes
     -----
@@ -513,12 +540,46 @@ def _calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
     return out_g_arr, out_g_var_arr
 
 
-def _run_variance_meta():
-    ...
+def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs):
+    """Meta-analyze imputed effect size maps.
+
+    .. todo::
+
+        Implement.
+
+    Parameters
+    ----------
+    study_hedges_imgs : :obj:`~numpy.ndarray` of shape (S, V)
+        Study-wise Hedges g maps.
+
+        -   I = imputations
+        -   S = studies
+        -   V = voxels
+    study_hedges_var_imgs : :obj:`~numpy.ndarray` of shape (S, V)
+        Study-wise Hedges g variance maps.
+
+    Returns
+    -------
+    meta_effect_size_img : :obj:`~numpy.ndarray` of shape (V,)
+        Meta-analytic effect size map.
+    """
+    meta_effect_size_img = study_hedges_imgs * study_hedges_var_imgs
+    return meta_effect_size_img
 
 
-def _combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_stats):
+def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_stats):
     """Use Rubin's rules to combine meta-analysis results across imputations.
+
+    Parameters
+    ----------
+    coefficient_maps
+    covariance_maps
+    i_stats
+    q_stats
+
+    Returns
+    -------
+    perm_meta_effect_size_img
 
     Notes
     -----
@@ -644,15 +705,15 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
 
     # Step 2: Estimate the most likely effect size and variance maps across studies.
     # This should be the meta-analysis map we care about.
-    meta_effect_size_img, meta_tau_img = _mle_estimation(lower_bound_imgs, upper_bound_imgs)
+    meta_effect_size_img, meta_tau_img = mle_estimation(lower_bound_imgs, upper_bound_imgs)
 
     # Step 4a: Create base set of simulated subject maps.
-    raw_subject_effect_size_imgs = _simulate_subject_maps(n_subjects, masker, correlation_maps)
+    raw_subject_effect_size_imgs = simulate_subject_maps(n_subjects, masker, correlation_maps)
 
     all_subject_effect_size_imgs, all_subject_var_imgs = [], []
     for i_imp in range(n_imputations):
         # Step 3: Impute study-wise effect size and variance maps.
-        study_effect_size_imgs, study_var_imgs = _impute_studywise_imgs(
+        study_effect_size_imgs, study_var_imgs = impute_studywise_imgs(
             meta_effect_size_img,
             meta_tau_img,
             lower_bound_imgs,
@@ -661,7 +722,7 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
         )
 
         # Step 4: Simulate subject-wise effect size and variance maps.
-        imp_subject_effect_size_imgs, imp_subject_var_imgs = _scale_subject_maps(
+        imp_subject_effect_size_imgs, imp_subject_var_imgs = scale_subject_maps(
             study_effect_size_imgs,
             study_var_imgs,
             raw_subject_effect_size_imgs,
@@ -673,33 +734,29 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
     # Step 5: Permutations...
     max_stats = {}
     for j_iter in range(n_iters):
-        permuted_subject_effect_size_imgs, permuted_subject_var_imgs = _run_permutations(
+        permuted_subject_effect_size_imgs, permuted_subject_var_imgs = run_permutations(
             all_subject_effect_size_imgs,
             all_subject_var_imgs,
             seed=j_iter,
         )
 
         # Step 6: Calculate study-level Hedges-corrected effect size maps.
-        perm_study_hedges_imgs, perm_study_hedges_var_imgs = [], []
+        perm_meta_effect_size_imgs = []
         for k_imp in range(n_imputations):
-            imp_hedges_imgs, imp_hedges_var_imgs = _calculate_hedges_maps(
+            imp_hedges_imgs, imp_hedges_var_imgs = calculate_hedges_maps(
                 permuted_subject_effect_size_imgs[k_imp],
                 permuted_subject_var_imgs[k_imp],
             )
-            perm_study_hedges_imgs.append(imp_hedges_imgs)
-            perm_study_hedges_var_imgs.append(imp_hedges_var_imgs)
 
-        # Step 7: Meta-analyze imputed effect size maps.
-        perm_meta_effect_size_imgs = _run_variance_meta(
-            perm_study_hedges_imgs,
-            perm_study_hedges_var_imgs,
-        )
+            # Step 7: Meta-analyze imputed effect size maps.
+            perm_meta_effect_size_img = run_variance_meta(imp_hedges_imgs, imp_hedges_var_imgs)
+            perm_meta_effect_size_imgs.append(perm_meta_effect_size_img)
 
         # Step 8: Heterogeneity statistics and combine with Rubin's rules.
-        perm_meta_effect_size_img = _combine_imputation_results(perm_meta_effect_size_imgs)
+        perm_meta_effect_size_img = combine_imputation_results(perm_meta_effect_size_imgs)
 
         # Max statistic
-        perm_max_stats = _extract_max_statistics(perm_meta_effect_size_img)
+        perm_max_stats = extract_max_statistics(perm_meta_effect_size_img)
         max_stats.update(perm_max_stats)
 
     return meta_effect_size_img, meta_tau_img, max_stats
@@ -735,14 +792,19 @@ def hedges_g(y, n_subjects1, n_subjects2=None):
 
     I also updated the original code to support varying sample sizes across studies.
 
-    R Code
-    ------
-    g <- function (y) { # Calculate Hedges' g
-        J * apply(y, 2, function (y_i) {
-            (mean(y_i[1:n.subj]) - mean(y_i[-(1:n.subj)])) /
-            sqrt((var(y_i[1:n.subj]) + var(y_i[-(1:n.subj)])) / 2)
-        })
-    }
+    Notes
+    -----
+    R Code:
+
+    .. highlight:: r
+    .. code-block:: r
+
+        g <- function (y) { # Calculate Hedges' g
+            J * apply(y, 2, function (y_i) {
+                (mean(y_i[1:n.subj]) - mean(y_i[-(1:n.subj)])) /
+                sqrt((var(y_i[1:n.subj]) + var(y_i[-(1:n.subj)])) / 2)
+            })
+        }
     """
     from scipy.special import gamma
 
@@ -800,13 +862,18 @@ def hedges_g_var(g, n_subjects1, n_subjects2=None):
     I also updated the original code to support varying sample sizes across studies.
     I still need to support one-sample tests though.
 
-    R Code
-    ------
-    df <- 2 * n.subj - 2 # Degrees of freedom
-    J <- gamma(df / 2) / gamma((df - 1) / 2) * sqrt(2 / df) # Hedges' correction
-    g_var <- function (g) { # Variance of Hedges' g
-        1 / n.subj + (1 - (df - 2) / (df * J^2)) * g^2
-    }
+    Notes
+    -----
+    R Code:
+
+    .. highlight:: r
+    .. code-block:: r
+
+        df <- 2 * n.subj - 2 # Degrees of freedom
+        J <- gamma(df / 2) / gamma((df - 1) / 2) * sqrt(2 / df) # Hedges' correction
+        g_var <- function (g) { # Variance of Hedges' g
+            1 / n.subj + (1 - (df - 2) / (df * J^2)) * g^2
+        }
     """
     if n_subjects2 is not None:
         assert g.shape == n_subjects1.shape == n_subjects2.shape
@@ -828,13 +895,18 @@ def permute_study_effects(g, n_studies):
     -----
     This is included for the simulations, but I don't think it would be used for SDM-PSI.
 
-    R Code
-    ------
-    perm1 <- function (g) { # Permute study effects
-        code <- which(runif(n.stud) > 0.5)
-        g[code] <- -1 * g[code]
-        g
-    }
+    Notes
+    -----
+    R Code:
+
+    .. highlight:: r
+    .. code-block:: r
+
+        perm1 <- function (g) { # Permute study effects
+            code <- which(runif(n.stud) > 0.5)
+            g[code] <- -1 * g[code]
+            g
+        }
     """
     code = np.random.randint(0, 2, size=n_studies).astype(bool)
     out_g = g.copy()
@@ -865,11 +937,16 @@ def permute_subject_values(y, n_subjects):
 
     I also think this might not be usable on one-sample studies.
 
-    R Code
-    ------
-    perm2 <- function (y) { # Permute subject values
-        apply(y, 2, sample)
-    }
+    Notes
+    -----
+    R Code:
+
+    .. highlight:: r
+    .. code-block:: r
+
+        perm2 <- function (y) { # Permute subject values
+            apply(y, 2, sample)
+        }
     """
     permuted = np.full(y.shape, np.nan)
     for i_study in range(y.shape[0]):
@@ -897,13 +974,18 @@ def simulate_subject_values(n_subjects1, n_subjects2):
         The array contains as many rows as there are studies, and as many columns as the maximum
         sample size in the studyset. Extra columns in each row should be filled with NaNs.
 
-    R Code
-    ------
-    sim.y <- function () { # Simulate (true) subject values
-        y <- matrix(rnorm(n.stud * n.subj * 2), ncol = n.stud)
-        y[1:n.subj,] <- y[1:n.subj,] + 0.2 # Add a small effect size
-        y
-    }
+    Notes
+    -----
+    R Code:
+
+    .. highlight:: r
+    .. code-block:: r
+
+        sim.y <- function () { # Simulate (true) subject values
+            y <- matrix(rnorm(n.stud * n.subj * 2), ncol = n.stud)
+            y[1:n.subj,] <- y[1:n.subj,] + 0.2 # Add a small effect size
+            y
+        }
     """
     n_studies = len(n_subjects1)
     max_total_sample = np.max(n_subjects1 + n_subjects2)
@@ -921,6 +1003,14 @@ def simulate_subject_values(n_subjects1, n_subjects2):
 def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
     """Run the second simulation.
 
+    .. todo::
+
+        Support one-sample studies.
+
+    .. todo::
+
+        Support voxel-wise data, instead of single points per subject.
+
     Parameters
     ----------
     n_perms : int
@@ -935,8 +1025,6 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
 
     Notes
     -----
-    TODO: Support one-sample studies.
-    TODO: Support voxel-wise data, instead of single points per subject.
     See nimare/meta/cbma/sdmpsi_supplement_analysis2.r.
     """
     from pprint import pprint
@@ -1047,89 +1135,3 @@ def run_simulations2(n_perms=1000, n_sims=10, n_subjects=20, n_studies=10):
     )
 
     pprint(out_dict)
-
-
-def compute_sdm_ma(
-    ijk,
-    effect_sizes,
-    sample_sizes,
-    significance_level,
-    mask_img,
-    corr_map,
-    alpha=0.5,
-    kernel_sigma=5,
-):
-    """Apply anisotropic kernel to coordinates.
-
-    Parameters
-    ----------
-    ijk : :obj:`numpy.ndarray` of shape (X, 3)
-        IJK matrix indices of peaks.
-    effect_sizes
-    sample_sizes
-    significance_level
-    mask_img
-    corr_map
-    alpha : float
-        User-selected degree of anisotropy. Default is 0.5.
-    kernel_sigma : float
-        User-specified sigma of kernel, in mm. Default is 5.
-
-    Returns
-    -------
-    y_lower_img, y_upper_img
-
-    Notes
-    -----
-    Use anisotropic Gaussian kernels, plus effect size estimates and metadata,
-    to produce lower-bound and upper-bound effect size maps from the coordinates,
-    as described in :footcite:p:`radua2014anisotropic`.
-
-    References
-    ----------
-    .. footbibliography::
-    """
-    df = np.sum(sample_sizes) - 2
-    effect_size_threshold = stats.t.isf(significance_level, df)
-    min_effect_size = -effect_size_threshold  # smallest possible effect size
-    max_effect_size = effect_size_threshold  # largest possible effect size
-    mask_data = mask_img.get_fdata()
-    mask_ijk = np.vstack(np.where(mask_data)).T  # X x 3
-    masked_distances = masking.unmask(masking.apply_mask(corr_map, mask_img), mask_img).get_fdata()
-    masked_distances = 1 - masked_distances
-
-    peak_corrs = []
-    kept_peaks = []
-    for i_peak in range(ijk.shape[0]):
-        peak_ijk = ijk[i_peak, :]
-        peak_t = effect_sizes[i_peak]
-        if mask_data[tuple(peak_ijk)] == 0:
-            # Skip peaks outside the mask
-            continue
-
-        # peak_corr is correlation between target voxel and peak.
-        #   For non-adjacent voxels, peak_corr must be estimated with Dijkstra's algorithm.
-        peak_corr = dijkstra3d.distance_field(masked_distances, source=peak_ijk)
-        peak_corrs.append(peak_corr)
-        kept_peaks.append(i_peak)
-
-    kept_ijk = ijk[kept_peaks, :]
-    peak_corrs = np.vstack(peak_corrs)
-    # kept_effect_sizes = effect_sizes[kept_peaks]
-
-    # real_distance is physical distance between voxel and peak
-    # we need some way to select the appropriate peak for each voxel
-    real_distances = spatial.distance.cdist(kept_ijk, mask_ijk)
-    # closest_peak = np.argmin(real_distances, axis=0)
-    virtual_distances = np.sqrt(
-        (1 - alpha) * (real_distances**2) + alpha * 2 * kernel_sigma * np.log(peak_corr**-1)
-    )
-    y_lower = min_effect_size + np.exp((-(virtual_distances**2)) / (2 * kernel_sigma)) * (
-        peak_t - min_effect_size
-    )
-    y_upper = max_effect_size + np.exp((-(virtual_distances**2)) / (2 * kernel_sigma)) * (
-        peak_t - max_effect_size
-    )
-    y_lower_img = masking.unmask(y_lower, mask_img)
-    y_upper_img = masking.unmask(y_upper, mask_img)
-    return y_lower_img, y_upper_img
