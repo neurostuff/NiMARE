@@ -465,8 +465,52 @@ def _scale_subject_maps(
     return scaled_subjectlevel_maps
 
 
-def _calculate_hedges_maps():
-    ...
+def _calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
+    """Calculate study-level Hedges' g maps.
+
+    Parameters
+    ----------
+    subject_effect_size_imgs : S-length list of numpy.ndarray of shape (N, V)
+        S = studies
+        N = study sample sizes
+        V = voxels
+    subject_var_imgs : S-length list of numpy.ndarray of shape (N, V)
+
+    Returns
+    -------
+    out_g_arr : numpy.ndarray of shape (S, V)
+    out_g_var_arr : numpy.ndarray of shape (S, V)
+
+    Notes
+    -----
+    This ignores multiple sample sizes.
+    """
+    n_studies = len(subject_effect_size_imgs)
+    n_voxels = subject_effect_size_imgs[0].shape[1]
+    sample_sizes = [arr.shape[0] for arr in subject_effect_size_imgs]
+    max_sample_size = np.max(sample_sizes)
+
+    out_g_arr = np.empty((n_studies, n_voxels))
+    out_g_var_arr = np.empty((n_studies, n_voxels))
+
+    for i_voxel in range(n_voxels):
+        effect_size_arr = np.full((n_studies, max_sample_size), np.nan)
+        var_arr = np.full((n_studies, max_sample_size), np.nan)
+
+        # Reorganize data into numpy.ndarray of shape (S, max(N))
+        for j_study in range(n_studies):
+            study_effect_size_arr = subject_effect_size_imgs[j_study][:, i_voxel]
+            study_var_arr = subject_var_imgs[j_study][:, i_voxel]
+
+            effect_size_arr[j_study, :sample_sizes[j_study]] = study_effect_size_arr
+            var_arr[j_study, :sample_sizes[j_study]] = study_var_arr
+
+        g_arr = hedges_g(y=effect_size_arr, n_subjects1=sample_sizes)
+        g_var_arr = hedges_g_var(g=g_arr, n_subjects1=sample_sizes)
+        out_g_arr[:, i_voxel] = g_arr
+        out_g_var_arr[:, i_voxel] = g_var_arr
+
+    return out_g_arr, out_g_var_arr
 
 
 def _run_variance_meta():
@@ -628,12 +672,20 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
         )
 
         # Step 6: Calculate study-level Hedges-corrected effect size maps.
-        perm_study_hedge_imgs = _calculate_hedges_maps(
-            permuted_subject_effect_size_imgs, permuted_subject_var_imgs
-        )
+        perm_study_hedges_imgs, perm_study_hedges_var_imgs = [], []
+        for k_imp in range(n_imputations):
+            imp_hedges_imgs, imp_hedges_var_imgs = _calculate_hedges_maps(
+                permuted_subject_effect_size_imgs[k_imp],
+                permuted_subject_var_imgs[k_imp],
+            )
+            perm_study_hedges_imgs.append(imp_hedges_imgs)
+            perm_study_hedges_var_imgs.append(imp_hedges_var_imgs)
 
         # Step 7: Meta-analyze imputed effect size maps.
-        perm_meta_effect_size_imgs = _run_variance_meta(perm_study_hedge_imgs)
+        perm_meta_effect_size_imgs = _run_variance_meta(
+            perm_study_hedges_imgs,
+            perm_study_hedges_var_imgs,
+        )
 
         # Step 8: Heterogeneity statistics and combine with Rubin's rules.
         perm_meta_effect_size_img = _combine_imputation_results(perm_meta_effect_size_imgs)
@@ -648,6 +700,8 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
 def hedges_g(y, n_subjects1, n_subjects2=None):
     """Calculate Hedges' G.
 
+    I still need to support calculation across voxels as well.
+
     Parameters
     ----------
     y : 2D array of shape (n_studies, max_study_size)
@@ -655,13 +709,17 @@ def hedges_g(y, n_subjects1, n_subjects2=None):
         Multiple studies may be provided.
         The array contains as many rows as there are studies, and as many columns as the maximum
         sample size in the studyset. Extra columns in each row should be filled with NaNs.
-    n_subjects1 : :obj:`numpy.ndarray` of shape (n_studies)
+    n_subjects1 : :obj:`numpy.ndarray` of shape (n_studies,)
         Number of subjects in the first group of each study.
     n_subjects2 : None or int
         Number of subjects in the second group of each study.
         If None, the dataset is assumed to be have one sample.
         Technically, this parameter is probably unnecessary, since the second group's sample size
         can be inferred from ``n_subjects1`` and ``y``.
+
+    Returns
+    -------
+    g_arr : 1D array of shape (n_studies,)
 
     Notes
     -----
