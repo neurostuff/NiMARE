@@ -151,3 +151,7 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
     As such, we have chosen not to implement TFCE-based correction within NiMARE,
     although there is a closed pull request with an implementation that worked at the time it was closed
     (see `#655 <https://github.com/neurostuff/NiMARE/pull/655>`_).
+
+References
+----------
+.. footbibliography::
