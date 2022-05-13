@@ -1,12 +1,13 @@
 """Seed-based d-mapping-related methods."""
 import nibabel as nib
 import numpy as np
-from scipy import stats
+import pymare
+from scipy import ndimage, stats
 
 # from tqdm import tqdm, trange
 from tqdm.autonotebook import tqdm, trange
 
-from nimare.meta.utils import compute_sdm_ma
+from nimare.meta.utils import _calculate_cluster_measures, compute_sdm_ma
 from nimare.stats import hedges_g, hedges_g_var
 
 
@@ -28,97 +29,13 @@ def mle_estimation(lower_bound_imgs, upper_bound_imgs):
 
     Returns
     -------
-    meta_effect_size_img : :obj:`~nibabel.nifti1.Nifti1Image`
-        Meta-analytic effect-size map.
-    meta_tau_img : :obj:`~nibabel.nifti1.Nifti1Image`
-        Meta-analytic tau (variance) map.
+    mle_coeff_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Meta-analytic coefficients map.
+    mle_tau2_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Meta-analytic tau2 (variance) map.
     """
-    meta_effect_size_img, meta_tau_img = lower_bound_imgs, upper_bound_imgs
-    return meta_effect_size_img, meta_tau_img
-
-
-def impute_studywise_imgs(
-    meta_effect_size_img,
-    meta_tau_img,
-    lower_bound_imgs,
-    upper_bound_imgs,
-    seed=0,
-):
-    """Impute study-wise images.
-
-    .. todo::
-
-        Implement.
-
-    Parameters
-    ----------
-    meta_effect_size_img : :obj:`~nibabel.nifti1.Nifti1Image`
-        Meta-analytic effect size map.
-    meta_tau_img : :obj:`~nibabel.nifti1.Nifti1Image`
-        Meta-analytic variance map.
-    lower_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise lower-bound effect size maps.
-    upper_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise upper-bound effect size maps.
-    seed : :obj:`int`, optional
-        Random seed. Default is 0.
-
-    Returns
-    -------
-    study_effect_size_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise effect size maps.
-    study_var_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise effect variance maps.
-    """
-    # Nonsense for now
-    study_effect_size_imgs = lower_bound_imgs[:]
-    study_var_imgs = lower_bound_imgs[:]
-    return study_effect_size_imgs, study_var_imgs
-
-
-def run_permutations(all_subject_effect_size_imgs, all_subject_var_imgs, seed=0):
-    """Run permutations.
-
-    .. todo::
-
-        Implement.
-
-    Parameters
-    ----------
-    all_subject_effect_size_imgs : \
-            I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
-        I = imputations
-        S = studies
-        N = study sample sizes
-        V = voxels
-    all_subject_var_imgs : I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
-        I = imputations
-        S = studies
-        N = study sample sizes
-        V = voxels
-
-    Returns
-    -------
-    permuted_subject_effect_size_imgs : \
-            I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
-    permuted_subject_var_imgs : \
-            I-length :obj:`list` of S-length lists of numpy.ndarray of shape (N, V)
-
-    Notes
-    -----
-    "PSI methods must randomly assign "1" or "-1" to each subject of a one-sample study,
-    or randomly reassign each of the subjects of a two-sample study to one of the two groups...
-    PSI methods must also swap subjects in a correlation meta-analysis."
-    The assignments must be the same across imputations.
-    """
-    permuted_subject_effect_size_imgs = all_subject_effect_size_imgs[:]
-    permuted_subject_var_imgs = all_subject_var_imgs[:]
-    return permuted_subject_effect_size_imgs, permuted_subject_var_imgs
-
-
-def extract_max_statistics(effect_size_img):
-    """Extract maximum statistics from permuted data for Monte Carlo FWE correction."""
-    ...
+    mle_coeff_img, mle_tau2_img = lower_bound_imgs, upper_bound_imgs
+    return mle_coeff_img, mle_tau2_img
 
 
 def simulate_voxel_with_no_neighbors(n_subjects):
@@ -457,6 +374,45 @@ def simulate_subject_maps(n_subjects, masker, correlation_maps):
     return subject_maps
 
 
+def impute_studywise_imgs(
+    mle_coeff_img,
+    mle_tau2_img,
+    lower_bound_imgs,
+    upper_bound_imgs,
+    seed=0,
+):
+    """Impute study-wise images.
+
+    .. todo::
+
+        Implement.
+
+    Parameters
+    ----------
+    mle_coeff_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Meta-analytic coefficients map.
+    mle_tau2_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Meta-analytic variance map.
+    lower_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+        Study-wise lower-bound effect size maps.
+    upper_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+        Study-wise upper-bound effect size maps.
+    seed : :obj:`int`, optional
+        Random seed. Default is 0.
+
+    Returns
+    -------
+    study_effect_size_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+        Study-wise effect size maps.
+    study_var_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
+        Study-wise effect variance maps.
+    """
+    # Nonsense for now
+    study_effect_size_imgs = lower_bound_imgs[:]
+    study_var_imgs = lower_bound_imgs[:]
+    return study_effect_size_imgs, study_var_imgs
+
+
 def scale_subject_maps(
     studylevel_effect_size_maps,
     studylevel_variance_maps,
@@ -505,8 +461,8 @@ def scale_subject_maps(
     return scaled_subjectlevel_maps
 
 
-def calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
-    """Calculate study-level Hedges' g maps.
+def calculate_hedges_maps(subject_effect_size_imgs):
+    """Run group-level analyses and calculate study-level Hedges' g maps.
 
     .. todo::
 
@@ -520,8 +476,6 @@ def calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
         -   S = studies
         -   N = study sample sizes
         -   V = voxels
-    subject_var_imgs : S-length :obj:`list` of :obj:`~numpy.ndarray` of shape (N, V)
-        Subject-level effect variance data.
 
     Returns
     -------
@@ -538,15 +492,12 @@ def calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
 
     for i_voxel in range(n_voxels):
         effect_size_arr = np.full((n_studies, max_sample_size), np.nan)
-        var_arr = np.full((n_studies, max_sample_size), np.nan)
 
         # Reorganize data into numpy.ndarray of shape (S, max(N))
         for j_study in range(n_studies):
             study_effect_size_arr = subject_effect_size_imgs[j_study][:, i_voxel]
-            study_var_arr = subject_var_imgs[j_study][:, i_voxel]
 
             effect_size_arr[j_study, : sample_sizes[j_study]] = study_effect_size_arr
-            var_arr[j_study, : sample_sizes[j_study]] = study_var_arr
 
         g_arr = hedges_g(y=effect_size_arr, n_subjects1=sample_sizes)
         g_var_arr = hedges_g_var(g=g_arr, n_subjects1=sample_sizes)
@@ -557,18 +508,17 @@ def calculate_hedges_maps(subject_effect_size_imgs, subject_var_imgs):
 
 
 def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs):
-    """Meta-analyze imputed effect size maps.
+    """Meta-analyze imputed effect size and variance maps.
 
     .. todo::
 
-        Implement.
+        Determine if DerSimonianLaird is appropriate estimator and that it can handle g maps.
 
     Parameters
     ----------
     study_hedges_imgs : :obj:`~numpy.ndarray` of shape (S, V)
         Study-wise Hedges g maps.
 
-        -   I = imputations
         -   S = studies
         -   V = voxels
     study_hedges_var_imgs : :obj:`~numpy.ndarray` of shape (S, V)
@@ -578,9 +528,18 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs):
     -------
     meta_effect_size_img : :obj:`~numpy.ndarray` of shape (V,)
         Meta-analytic effect size map.
+    meta_tau2_img : :obj:`~numpy.ndarray` of shape (V,)
+        Meta-analytic variance map.
     """
-    meta_effect_size_img = study_hedges_imgs * study_hedges_var_imgs
-    return meta_effect_size_img
+    # NOTE: Will DerSimonianLaird (or any estimator) work with Hedges' g maps?
+    est = pymare.estimators.DerSimonianLaird()
+    pymare_dset = pymare.Dataset(y=study_hedges_imgs, v=study_hedges_var_imgs)
+    est.fit_dataset(pymare_dset)
+    est_summary = est.summary()
+    meta_effect_size_img = est_summary.est.squeeze()
+    meta_tau2_img = est_summary.tau2.squeeze()
+
+    return meta_effect_size_img, meta_tau2_img
 
 
 def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_stats):
@@ -592,14 +551,21 @@ def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_sta
 
     Parameters
     ----------
-    coefficient_maps
-    covariance_maps
+    coefficient_maps : :obj:`~numpy.ndarray` of shape (I, V)
+        Imputation-wise coefficient maps.
+
+        -   I = imputations
+        -   S = studies
+    covariance_maps : :obj:`~numpy.ndarray` of shape (I, V)
+        Imputation-wise covariance maps.
     i_stats
     q_stats
 
     Returns
     -------
-    perm_meta_effect_size_img
+    meta_d_img : :obj:`~numpy.ndarray` of shape (V,)
+    meta_var_img : :obj:`~numpy.ndarray` of shape (V,)
+    meta_z_img : :obj:`~numpy.ndarray` of shape (V,)
 
     Notes
     -----
@@ -620,7 +586,78 @@ def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_sta
     del point_estimates, mean_within_imputation_var, b
 
 
-def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
+def permute_assignments(subject_imgs, design="one", seed=0):
+    """Permute subject-level maps.
+
+    .. todo::
+
+        Add "design" parameter and implement design-specific permutation procedures.
+        The "two-sample" design will also require the sample sizes of the groups.
+
+    Parameters
+    ----------
+    subject_imgs : numpy.ndarray of shape (N, V)
+        N = study's sample size
+        V = voxels
+    design : {"one", "two"}, optional
+        "one" refers to a one-sample test. Correlation meta-analyses also count as one-sample
+        tests.
+        "two" refers to a two-sample test.
+        Default is "one".
+    seed : :obj:`int`, optional
+        Random seed. Default is 0.
+
+    Returns
+    -------
+    permuted_subject_imgs : numpy.ndarray of shape (N, V)
+
+    Notes
+    -----
+    "PSI methods must randomly assign "1" or "-1" to each subject of a one-sample study,
+    or randomly reassign each of the subjects of a two-sample study to one of the two groups...
+    PSI methods must also swap subjects in a correlation meta-analysis."
+    The assignments must be the same across imputations.
+    """
+    # Make a copy
+    permuted_subject_imgs = subject_imgs.copy()
+    gen = np.random.default_rng(seed=seed)
+
+    n_subjects = subject_imgs.shape[0]
+    if design == "one":
+        # Randomly sign-flip ~50% of the subjects.
+        code = gen.randint(0, 2, size=n_subjects).astype(bool)
+        permuted_subject_imgs[code] *= -1
+    elif design == "two":
+        # Shuffle rows randomly.
+        # Assumes that group assignment is based on row index and occurs outside this function.
+        id_idx = np.arange(n_subjects)
+        gen.shuffle(id_idx)
+        permuted_subject_imgs = permuted_subject_imgs[id_idx, :]
+
+    return permuted_subject_imgs
+
+
+def extract_max_statistics(d_img, var_img, z_img, tfce_img):
+    """Extract maximum statistics from permuted data for Monte Carlo FWE correction.
+
+    Parameters
+    ----------
+    d_img
+    var_img
+    z_img
+    tfce_img
+
+    Returns
+    -------
+    max_z
+    max_tfce
+    max_cluster_size
+    max_cluster_mass
+    """
+    ...
+
+
+def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50, n_iters=1000):
     """Run the SDM-PSI algorithm.
 
     The algorithm is implemented as described in :footcite:t:`albajes2019meta,albajes2019voxel`.
@@ -631,6 +668,8 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
         Coordinates.
     masker
     correlation_maps
+    threshold : :obj:`float`, optional
+            Cluster-defining p-value threshold. Default is 0.001.
     n_imputations : int
         Number of imputations. Default is 50, based on the SDM software.
     n_iters : int
@@ -639,10 +678,12 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
 
     Returns
     -------
-    meta_effect_size_img
-        Meta-analytic effect size map.
-    meta_tau_img
+    meta_d_img
+        Meta-analytic effect-size map.
+    meta_var_img
         Meta-analytic variance map.
+    meta_z_img
+        Meta-analytic z-statistic map.
     max_stats : :obj:`dict`
         Dictionary of maximum statistics from Monte Carlo permutations.
 
@@ -728,66 +769,113 @@ def run_sdm(coords, masker, correlation_maps, n_imputations=50, n_iters=1000):
     """
     # Extract sample size information from the coordinates DataFrame.
     n_subjects = coords.groupby("id")["sample_sizes"].values
+    n_studies = len(n_subjects)
 
     # Step 1: Estimate lower- and upper-bound effect size maps from coordinates.
     lower_bound_imgs, upper_bound_imgs = compute_sdm_ma(coords)
 
     # Step 2: Estimate the most likely effect size and variance maps across studies.
-    # This should be the meta-analysis map we care about.
-    meta_effect_size_img, meta_tau_img = mle_estimation(lower_bound_imgs, upper_bound_imgs)
+    mle_coeff_img, mle_tau2_img = mle_estimation(lower_bound_imgs, upper_bound_imgs)
 
     # Step 4a: Create base set of simulated subject maps.
     raw_subject_effect_size_imgs = simulate_subject_maps(n_subjects, masker, correlation_maps)
 
-    all_subject_effect_size_imgs, all_subject_var_imgs = [], []
+    all_subject_effect_size_imgs = []
+    imp_meta_effect_size_imgs, imp_meta_tau2_imgs = [], []
     for i_imp in range(n_imputations):
         # Step 3: Impute study-wise effect size and variance maps.
         study_effect_size_imgs, study_var_imgs = impute_studywise_imgs(
-            meta_effect_size_img,
-            meta_tau_img,
+            mle_coeff_img,
+            mle_tau2_img,
             lower_bound_imgs,
             upper_bound_imgs,
             seed=i_imp,
         )
 
-        # Step 4: Simulate subject-wise effect size and variance maps.
-        # NOTE: The function below only returns scaled subject-level maps,
-        # without associated variance maps.
-        imp_subject_effect_size_imgs, imp_subject_var_imgs = scale_subject_maps(
+        # Step 4: Simulate subject-wise effect size(?) maps.
+        imp_subject_effect_size_imgs = scale_subject_maps(
             study_effect_size_imgs,
             study_var_imgs,
             raw_subject_effect_size_imgs,
         )
-        # This is just a stand-in.
         all_subject_effect_size_imgs.append(imp_subject_effect_size_imgs)
-        all_subject_var_imgs.append(imp_subject_var_imgs)
+
+        # Step ???: Generate study-wise effect size and variance maps from subject maps
+        imp_hedges_imgs, imp_hedges_var_imgs = calculate_hedges_maps(all_subject_effect_size_imgs)
+
+        # Step ???: Estimate imputation-wise meta-analytic maps
+        imp_meta_effect_size_img, imp_meta_tau2_img = run_variance_meta(
+            imp_hedges_imgs,
+            imp_hedges_var_imgs,
+        )
+        imp_meta_effect_size_imgs.append(imp_meta_effect_size_img)
+        imp_meta_tau2_imgs.append(imp_meta_tau2_img)
+
+    # Step ???: Combine meta-analytic maps across imputations with Rubin's rules
+    # These should be the meta-analysis maps we care about.
+    meta_d_img, meta_var_img, meta_z_img = combine_imputation_results(
+        imp_meta_effect_size_imgs,
+        imp_meta_tau2_imgs,
+    )
 
     # Step 5: Permutations...
-    max_stats = {}
-    for i_iter in range(n_iters):
-        permuted_subject_effect_size_imgs, permuted_subject_var_imgs = run_permutations(
-            all_subject_effect_size_imgs,
-            all_subject_var_imgs,
-            seed=i_iter,
-        )
+    max_stats = {
+        "z": [],
+        "mass": [],
+        "size": [],
+    }
+    # Define connectivity matrix for cluster labeling
+    conn = ndimage.generate_binary_structure(3, 2)
 
+    seed_counter = 0  # Each permutation/study's random seed must be the same for all imputations
+    for i_iter in range(n_iters):
         # Step 6: Calculate study-level Hedges-corrected effect size maps.
-        perm_meta_effect_size_imgs = []
+        perm_meta_effect_size_imgs, perm_meta_tau2_imgs = [], []
         for j_imp in range(n_imputations):
-            imp_hedges_imgs, imp_hedges_var_imgs = calculate_hedges_maps(
-                permuted_subject_effect_size_imgs[j_imp],
-                permuted_subject_var_imgs[j_imp],
+            # Permute subject maps
+            imp_subject_imgs = all_subject_effect_size_imgs[j_imp]
+
+            perm_imp_subject_imgs = []
+            seed_counter_2 = seed_counter
+            for k_study in range(n_studies):
+                study_imp_subject_imgs = imp_subject_imgs[k_study]
+                perm_study_imp_subject_imgs = permute_assignments(
+                    study_imp_subject_imgs,
+                    seed=seed_counter_2,
+                )
+                perm_imp_subject_imgs.append(perm_study_imp_subject_imgs)
+                seed_counter_2 += 1
+
+            perm_imp_hedges_imgs, perm_imp_hedges_var_imgs = calculate_hedges_maps(
+                perm_imp_subject_imgs,
             )
 
             # Step 7: Meta-analyze imputed effect size maps.
-            perm_meta_effect_size_img = run_variance_meta(imp_hedges_imgs, imp_hedges_var_imgs)
+            perm_meta_effect_size_img, perm_meta_tau2_img = run_variance_meta(
+                perm_imp_hedges_imgs,
+                perm_imp_hedges_var_imgs,
+            )
             perm_meta_effect_size_imgs.append(perm_meta_effect_size_img)
+            perm_meta_tau2_imgs.append(perm_meta_tau2_img)
 
         # Step 8: Heterogeneity statistics and combine with Rubin's rules.
-        perm_meta_effect_size_img = combine_imputation_results(perm_meta_effect_size_imgs)
+        perm_meta_d_img, perm_meta_var_img, perm_meta_z_img = combine_imputation_results(
+            perm_meta_effect_size_imgs,
+            perm_meta_tau2_imgs,
+        )
 
-        # Max statistic
-        perm_max_stats = extract_max_statistics(perm_meta_effect_size_img)
-        max_stats.update(perm_max_stats)
+        # Log maximum statistics for multiple comparisons correction later
+        # NOTE: Probably should use two-sided test.
+        perm_max_size, perm_max_mass = _calculate_cluster_measures(
+            perm_meta_z_img,
+            threshold,
+            conn,
+            tail="upper",
+        )
+        max_stats["z"].append(np.maximum(perm_meta_z_img))
+        max_stats["size"].append(perm_max_size)
+        max_stats["mass"].append(perm_max_mass)
 
-    return meta_effect_size_img, meta_tau_img, max_stats
+        seed_counter += n_studies
+
+    return meta_d_img, meta_var_img, meta_z_img, max_stats
