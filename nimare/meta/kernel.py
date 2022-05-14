@@ -203,9 +203,9 @@ class KernelTransformer(NiMAREBase):
 
         transformed_maps = self._transform(mask, coordinates)
 
-        # This will be a numpy.ndarray or numpy.memmap if the kernel is an (M)KDAKernel or
+        # This will be a 4D sparse array or numpy.memmap if the kernel is an (M)KDAKernel or
         # memory_limit is set, respectively.
-        if not isinstance(transformed_maps[0], (list, tuple)):
+        if not isinstance(transformed_maps[0], (list, tuple, sparse._coo.core.COO)):
             if return_type == "array":
                 ma_arr = transformed_maps[0][:, mask_data]
                 # If this array is a memmap, then the file needs to be closed
@@ -218,32 +218,45 @@ class KernelTransformer(NiMAREBase):
                 # Transform into an length-N list of length-2 tuples,
                 # composed of a 3D array/memmap and a string with the ID.
                 transformed_maps = list(zip(*transformed_maps))
-        elif isinstance(transformed_maps[0][0], sparse._compressed.compressed.GCXS):
-            transformed_maps = list(zip(*transformed_maps))
 
+        # idx = 0
         imgs = []
-        for (kernel_data, id_) in transformed_maps:
-            if isinstance(kernel_data, np.memmap):
-                # Convert data to a numpy array if it's a memmap
-                kernel_data = np.array(kernel_data)
-            elif isinstance(kernel_data, sparse._compressed.compressed.GCXS):
-                # Convert sparse to dense array
-                kernel_data = kernel_data.todense()
+        if isinstance(transformed_maps[0], sparse._coo.core.COO):
+            for idx, id_ in enumerate(transformed_maps[1]):
+                kernel_data = transformed_maps[0][idx].todense()
 
-            if return_type == "array":
-                # NOTE: This will never be a memmap because memory_limit[!None]+return_type[array]
-                # is dealt with above.
-                img = kernel_data[mask_data]
-                imgs.append(img)
-            elif return_type == "image":
-                kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, mask.affine)
-                imgs.append(img)
-            elif return_type == "dataset":
-                img = nib.Nifti1Image(kernel_data, mask.affine)
-                out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
-                img.to_filename(out_file)
-                dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
+                if return_type == "array":
+                    img = kernel_data[mask_data]
+                    imgs.append(img)
+                elif return_type == "image":
+                    kernel_data *= mask_data
+                    img = nib.Nifti1Image(kernel_data, mask.affine)
+                    imgs.append(img)
+                elif return_type == "dataset":
+                    img = nib.Nifti1Image(kernel_data, mask.affine)
+                    out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
+                    img.to_filename(out_file)
+                    dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
+        else:
+            for (kernel_data, id_) in transformed_maps:
+                if isinstance(kernel_data, np.memmap):
+                    # Convert data to a numpy array if it's a memmap
+                    kernel_data = np.array(kernel_data)
+
+                if return_type == "array":
+                    # NOTE: This will never be a memmap because
+                    # memory_limit[!None]+return_type[array] is dealt with above.
+                    img = kernel_data[mask_data]
+                    imgs.append(img)
+                elif return_type == "image":
+                    kernel_data *= mask_data
+                    img = nib.Nifti1Image(kernel_data, mask.affine)
+                    imgs.append(img)
+                elif return_type == "dataset":
+                    img = nib.Nifti1Image(kernel_data, mask.affine)
+                    out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
+                    img.to_filename(out_file)
+                    dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
         # If this array is a memmap, then the file needs to be closed
         if isinstance(transformed_maps[0][0], np.memmap):

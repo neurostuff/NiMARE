@@ -327,14 +327,12 @@ def compute_kda_ma(
 
     Returns
     -------
-    kernel_data_lst : :obj:`list` of :class:`sparse._compressed.compressed.GCXS` \
-            or kernel_data: :obj:`numpy.array`
+    kernel_data : :obj:`sparse._coo.core.COO` or kernel_data: :obj:`numpy.array`
         If memmap_filename is passed, 3d or 4d array. If `exp_idx` is none, a 3d array in the same
         shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
-        If memmap_filename is None, a list of MA sparse arrays. The list dimension
-        has size equal to the number of unique experiments
+        If memmap_filename is None, 4D sparse array.
     """
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
@@ -346,9 +344,6 @@ def compute_kda_ma(
     if memmap_filename:
         # Use a memmapped 4D array
         kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
-    else:
-        # Use a list of 3D sparse arrays
-        kernel_data_lst = [None] * n_studies
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
@@ -358,6 +353,13 @@ def compute_kda_ma(
     if memory_limit:
         chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
 
+    n_peaks = ijks.shape[0]
+    n_voxels = kernel.shape[1]
+    n_coords = n_peaks * n_voxels
+    # Preallocate coords and data array, np.concatenate is too slow
+    coords = np.zeros((4, n_coords), dtype=int)
+    data = np.zeros((1, n_coords), dtype=type(value))
+    temp_idx = 0
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
@@ -371,25 +373,22 @@ def compute_kda_ma(
             if i % chunk_size == 0:
                 kernel_data.flush()
         else:
-            if kernel_data_lst[exp] is None:
-                kernel_data = np.zeros(shape, dtype=type(value))
-            else:
-                kernel_data = kernel_data_lst[exp].todense()
-            if sum_overlap:
-                kernel_data[tuple(sphere.T)] += value
-            else:
-                kernel_data[tuple(sphere.T)] = value
+            n_brain_voxels = sphere.shape[0]
+            zero_dimension = np.full((1, n_brain_voxels), exp)
+            chunk_idx = list(range(temp_idx, temp_idx + n_brain_voxels))
 
-            kernel_data_lst[exp] = sparse._compressed.GCXS.from_numpy(
-                kernel_data,
-                compressed_axes=[0],
-                idx_dtype=np.int32,
-            )
+            coords[0, chunk_idx] = zero_dimension
+            coords[1:, chunk_idx] = sphere.T
+            data[0, chunk_idx] = np.full((1, n_brain_voxels), value)
 
-    if memmap_filename:
-        return kernel_data
-    else:
-        return kernel_data_lst
+            temp_idx += n_brain_voxels
+
+    if not memmap_filename:
+        kernel_data = sparse.COO(
+            coords, data.flatten(), shape=kernel_shape, has_duplicates=sum_overlap
+        )
+
+    return kernel_data
 
 
 def compute_ale_ma(shape, ijk, kernel):
