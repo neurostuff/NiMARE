@@ -800,10 +800,10 @@ def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50,
         )
         all_subject_effect_size_imgs.append(imp_subject_effect_size_imgs)
 
-        # Step ???: Generate study-wise effect size and variance maps from subject maps
+        # Step ???: Generate imputed study-wise effect size and variance maps from subject maps.
         imp_hedges_imgs, imp_hedges_var_imgs = calculate_hedges_maps(all_subject_effect_size_imgs)
 
-        # Step ???: Estimate imputation-wise meta-analytic maps
+        # Step ???: Estimate imputation-wise meta-analytic maps.
         imp_meta_effect_size_img, imp_meta_tau2_img = run_variance_meta(
             imp_hedges_imgs,
             imp_hedges_var_imgs,
@@ -811,7 +811,7 @@ def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50,
         imp_meta_effect_size_imgs.append(imp_meta_effect_size_img)
         imp_meta_tau2_imgs.append(imp_meta_tau2_img)
 
-    # Step ???: Combine meta-analytic maps across imputations with Rubin's rules
+    # Step ???: Combine meta-analytic maps across imputations with Rubin's rules.
     # These should be the meta-analysis maps we care about.
     meta_d_img, meta_var_img, meta_z_img = combine_imputation_results(
         imp_meta_effect_size_imgs,
