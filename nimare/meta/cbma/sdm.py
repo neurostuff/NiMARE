@@ -507,12 +507,12 @@ def calculate_hedges_maps(subject_effect_size_imgs):
     return out_g_arr, out_g_var_arr
 
 
-def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs):
+def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
     """Meta-analyze imputed effect size and variance maps.
 
     .. todo::
 
-        Determine if DerSimonianLaird is appropriate estimator and that it can handle g maps.
+        Determine if Hedges is appropriate estimator and that it can handle g maps.
 
     Parameters
     ----------
@@ -523,6 +523,8 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs):
         -   V = voxels
     study_hedges_var_imgs : :obj:`~numpy.ndarray` of shape (S, V)
         Study-wise Hedges g variance maps.
+    design : :obj:`~numpy.ndarray` of shape (S, X)
+        Study-level predictors.
 
     Returns
     -------
@@ -531,9 +533,14 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs):
     meta_tau2_img : :obj:`~numpy.ndarray` of shape (V,)
         Meta-analytic variance map.
     """
-    # NOTE: Will DerSimonianLaird (or any estimator) work with Hedges' g maps?
-    est = pymare.estimators.DerSimonianLaird()
-    pymare_dset = pymare.Dataset(y=study_hedges_imgs, v=study_hedges_var_imgs)
+    if design is None:
+        X = np.ones(study_hedges_imgs.shape[0])
+    else:
+        X = design.copy()
+
+    # NOTE: Will Hedges (or any estimator) work with Hedges' g maps?
+    est = pymare.estimators.Hedges()
+    pymare_dset = pymare.Dataset(y=study_hedges_imgs, v=study_hedges_var_imgs, X=X)
     est.fit_dataset(pymare_dset)
     est_summary = est.summary()
     meta_effect_size_img = est_summary.est.squeeze()
@@ -586,7 +593,7 @@ def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_sta
     del point_estimates, mean_within_imputation_var, b
 
 
-def permute_assignments(subject_imgs, design="one", seed=0):
+def permute_assignments(subject_imgs, design_type="one", seed=0):
     """Permute subject-level maps.
 
     .. todo::
@@ -599,7 +606,7 @@ def permute_assignments(subject_imgs, design="one", seed=0):
     subject_imgs : numpy.ndarray of shape (N, V)
         N = study's sample size
         V = voxels
-    design : {"one", "two"}, optional
+    design_type : {"one", "two"}, optional
         "one" refers to a one-sample test. Correlation meta-analyses also count as one-sample
         tests.
         "two" refers to a two-sample test.
@@ -618,16 +625,16 @@ def permute_assignments(subject_imgs, design="one", seed=0):
     PSI methods must also swap subjects in a correlation meta-analysis."
     The assignments must be the same across imputations.
     """
-    # Make a copy
     permuted_subject_imgs = subject_imgs.copy()
     gen = np.random.default_rng(seed=seed)
+    n_subjects = permuted_subject_imgs.shape[0]
 
-    n_subjects = subject_imgs.shape[0]
-    if design == "one":
+    if design_type == "one":
         # Randomly sign-flip ~50% of the subjects.
         code = gen.randint(0, 2, size=n_subjects).astype(bool)
         permuted_subject_imgs[code] *= -1
-    elif design == "two":
+
+    elif design_type == "two":
         # Shuffle rows randomly.
         # Assumes that group assignment is based on row index and occurs outside this function.
         id_idx = np.arange(n_subjects)
@@ -637,27 +644,15 @@ def permute_assignments(subject_imgs, design="one", seed=0):
     return permuted_subject_imgs
 
 
-def extract_max_statistics(d_img, var_img, z_img, tfce_img):
-    """Extract maximum statistics from permuted data for Monte Carlo FWE correction.
-
-    Parameters
-    ----------
-    d_img
-    var_img
-    z_img
-    tfce_img
-
-    Returns
-    -------
-    max_z
-    max_tfce
-    max_cluster_size
-    max_cluster_mass
-    """
-    ...
-
-
-def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50, n_iters=1000):
+def run_sdm(
+    coords,
+    masker,
+    correlation_maps,
+    design=None,
+    threshold=0.001,
+    n_imputations=50,
+    n_iters=1000,
+):
     """Run the SDM-PSI algorithm.
 
     The algorithm is implemented as described in :footcite:t:`albajes2019meta,albajes2019voxel`.
@@ -668,6 +663,9 @@ def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50,
         Coordinates.
     masker
     correlation_maps
+    design : None or :obj:`~numpy.ndarray` of shape (S, X)
+        Study-level predictors.
+        Default is None.
     threshold : :obj:`float`, optional
             Cluster-defining p-value threshold. Default is 0.001.
     n_imputations : int
@@ -771,6 +769,14 @@ def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50,
     n_subjects = coords.groupby("id")["sample_sizes"].values
     n_studies = len(n_subjects)
 
+    if design is None:
+        design = np.ones((n_studies, 1))
+        design_type = "one"
+    elif np.std(design[:, 0]) == 0:
+        design_type = "one"
+    else:
+        design_type = "two"
+
     # Step 1: Estimate lower- and upper-bound effect size maps from coordinates.
     lower_bound_imgs, upper_bound_imgs = compute_sdm_ma(coords)
 
@@ -807,6 +813,7 @@ def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50,
         imp_meta_effect_size_img, imp_meta_tau2_img = run_variance_meta(
             imp_hedges_imgs,
             imp_hedges_var_imgs,
+            design=design,
         )
         imp_meta_effect_size_imgs.append(imp_meta_effect_size_img)
         imp_meta_tau2_imgs.append(imp_meta_tau2_img)
@@ -842,6 +849,7 @@ def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50,
                 perm_study_imp_subject_imgs = permute_assignments(
                     study_imp_subject_imgs,
                     seed=seed_counter_2,
+                    design_type=design_type,
                 )
                 perm_imp_subject_imgs.append(perm_study_imp_subject_imgs)
                 seed_counter_2 += 1
@@ -854,6 +862,7 @@ def run_sdm(coords, masker, correlation_maps, threshold=0.001, n_imputations=50,
             perm_meta_effect_size_img, perm_meta_tau2_img = run_variance_meta(
                 perm_imp_hedges_imgs,
                 perm_imp_hedges_var_imgs,
+                design=design,
             )
             perm_meta_effect_size_imgs.append(perm_meta_effect_size_img)
             perm_meta_tau2_imgs.append(perm_meta_tau2_img)
