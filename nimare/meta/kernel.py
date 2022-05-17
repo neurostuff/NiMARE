@@ -6,6 +6,7 @@ size and test statistic values).
 """
 from __future__ import division
 
+import gc
 import logging
 import os
 import warnings
@@ -219,7 +220,6 @@ class KernelTransformer(NiMAREBase):
                 # composed of a 3D array/memmap and a string with the ID.
                 transformed_maps = list(zip(*transformed_maps))
 
-        # idx = 0
         imgs = []
         if isinstance(transformed_maps[0], sparse._coo.core.COO):
             for idx, id_ in enumerate(transformed_maps[1]):
@@ -264,6 +264,7 @@ class KernelTransformer(NiMAREBase):
             transformed_maps[0][0]._mmap.close()
 
         del kernel_data, transformed_maps
+        gc.collect()
 
         if return_type == "array":
             return np.vstack(imgs)

@@ -1,4 +1,5 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
+import gc
 import logging
 
 import nibabel as nib
@@ -332,6 +333,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             ma_maps1._mmap.close()
 
         del ma_maps1
+        gc.collect()
 
         # Generate MA maps and calculate count variables for second dataset
         ma_maps2 = self._collect_ma_maps(
@@ -349,6 +351,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             ma_maps2._mmap.close()
 
         del ma_maps2
+        gc.collect()
 
         n_mappables = n_selected + n_unselected
 
