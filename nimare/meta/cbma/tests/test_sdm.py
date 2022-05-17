@@ -6,23 +6,20 @@ from nimare.meta.cbma import sdm
 
 def test_scale_subject_maps():
     """Run a smoke test for scale_subject_maps."""
-    n_studies = 3
     n_voxels = 1000
-    sample_sizes = [10, 15, 10]
+    sample_size = 10
 
-    studylevel_effect_size_maps = np.random.random((n_studies, n_voxels))
-    studylevel_variance_maps = np.random.random((n_studies, n_voxels))
-    prelim_subjectlevel_maps = [np.random.random((ss, n_voxels)) for ss in sample_sizes]
+    study_effect_size_map = np.random.random(n_voxels)
+    study_variance_map = np.random.random(n_voxels)
+    prelim_subject_maps = np.random.random((sample_size, n_voxels))
 
-    scaled_subjectlevel_maps = sdm.scale_subject_maps(
-        studylevel_effect_size_maps,
-        studylevel_variance_maps,
-        prelim_subjectlevel_maps,
+    scaled_subject_maps = sdm.scale_subject_maps(
+        study_effect_size_map,
+        study_variance_map,
+        prelim_subject_maps,
     )
-    assert np.all([np.all(~np.isnan(ssm)) for ssm in scaled_subjectlevel_maps])
-    assert all(
-        ssm.shape == (sample_sizes[i], n_voxels) for i, ssm in enumerate(scaled_subjectlevel_maps)
-    )
+    assert np.all(~np.isnan(scaled_subject_maps))
+    assert scaled_subject_maps.shape == (sample_size, n_voxels)
 
 
 def test_simulate_voxel_with_no_neighbors():
