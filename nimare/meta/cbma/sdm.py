@@ -376,13 +376,7 @@ def simulate_subject_maps(n_subjects, masker, correlation_maps):
     return subject_maps
 
 
-def impute_studywise_imgs(
-    mle_coeff_img,
-    mle_tau2_img,
-    lower_bound_img,
-    upper_bound_img,
-    seed=0,
-):
+def impute_study_img(mle_coeff_img, mle_tau2_img, lower_bound_img, upper_bound_img, seed=0):
     """Impute study's image.
 
     .. todo::
@@ -444,28 +438,24 @@ def impute_studywise_imgs(
     return effect_size_img, var_img
 
 
-def scale_subject_maps(
-    studylevel_effect_size_map,
-    studylevel_variance_map,
-    prelim_subjectlevel_maps,
-):
+def scale_subject_maps(study_effect_size_map, study_variance_map, prelim_subject_maps):
     """Scale the "preliminary" set of subject-level maps for each dataset for a given imputation.
 
     This is redundant for studies for which the original statistical image is available.
 
     Parameters
     ----------
-    studylevel_effect_size_map : :obj:`~numpy.ndarray` of shape (V,)
+    study_effect_size_map : :obj:`~numpy.ndarray` of shape (V,)
         Imputed study-level effect size map.
         V is voxel.
-    studylevel_variance_map : :obj:`~numpy.ndarray` of shape (V,)
-    prelim_subjectlevel_maps : :obj:`~numpy.ndarray` of shape (N, V)
+    study_variance_map : :obj:`~numpy.ndarray` of shape (V,)
+    prelim_subject_maps : :obj:`~numpy.ndarray` of shape (N, V)
         Preliminary (unscaled) subject-level maps.
         An array that is subjects (N) by voxels (V).
 
     Returns
     -------
-    scaled_subjectlevel_maps : :obj:`~numpy.ndarray` of shape (N, V)
+    scaled_subject_maps : :obj:`~numpy.ndarray` of shape (N, V)
         An array that is subjects (N) by voxels (V).
 
     Notes
@@ -480,11 +470,10 @@ def scale_subject_maps(
         subject-level maps for each dataset (across imputations), and scaling it across
         imputations.
     """
-    scaled_subjectlevel_maps = (
-        prelim_subjectlevel_maps * studylevel_variance_map
-    ) + studylevel_effect_size_map
+    scaled_subject_maps = prelim_subject_maps * study_variance_map[None, :]
+    scaled_subject_maps += study_effect_size_map[None, :]
 
-    return scaled_subjectlevel_maps
+    return scaled_subject_maps
 
 
 def calculate_hedges_maps(subject_effect_size_imgs):
@@ -559,14 +548,9 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
     meta_tau2_img : :obj:`~numpy.ndarray` of shape (V,)
         Meta-analytic variance map.
     """
-    if design is None:
-        X = np.ones(study_hedges_imgs.shape[0])
-    else:
-        X = design.copy()
-
     # NOTE: Will Hedges (or any estimator) work with Hedges' g maps?
     est = pymare.estimators.Hedges()
-    pymare_dset = pymare.Dataset(y=study_hedges_imgs, v=study_hedges_var_imgs, X=X)
+    pymare_dset = pymare.Dataset(y=study_hedges_imgs, v=study_hedges_var_imgs, X=design)
     est.fit_dataset(pymare_dset)
     est_summary = est.summary()
     meta_effect_size_img = est_summary.est.squeeze()
@@ -622,10 +606,8 @@ def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_sta
 def permute_assignments(subject_imgs, design_type="one", seed=0):
     """Permute subject-level maps.
 
-    .. todo::
-
-        Add "design" parameter and implement design-specific permutation procedures.
-        The "two-sample" design will also require the sample sizes of the groups.
+    I decided to permute the maps directly, rather than the design matrix.
+    I'm not sure if that's the best approach though.
 
     Parameters
     ----------
@@ -819,7 +801,7 @@ def run_sdm(
         imp_subject_effect_size_imgs = []
         for j_study in range(n_studies):
             # Step 3: Impute study-wise effect size and variance maps.
-            imp_study_effect_size_img, imp_study_var_img = impute_studywise_imgs(
+            imp_study_effect_size_img, imp_study_var_img = impute_study_img(
                 mle_coeff_img,
                 mle_tau2_img,
                 lower_bound_imgs[j_study],
