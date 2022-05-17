@@ -60,6 +60,8 @@ def simulate_voxel_with_no_neighbors(n_subjects):
         -   Y = R
     """
     y = np.random.normal(loc=0, scale=1, size=n_subjects)
+    # Enforce null mean and unit variance
+    y = stats.zscore(y)
     return y
 
 
@@ -377,15 +379,18 @@ def simulate_subject_maps(n_subjects, masker, correlation_maps):
 def impute_studywise_imgs(
     mle_coeff_img,
     mle_tau2_img,
-    lower_bound_imgs,
-    upper_bound_imgs,
+    lower_bound_img,
+    upper_bound_img,
     seed=0,
 ):
-    """Impute study-wise images.
+    """Impute study's image.
 
     .. todo::
 
         Implement.
+
+    Use the MLE map and each study's upper- and lower-bound effect size maps to impute
+    study-wise effect size and variance images that meet specific requirements.
 
     Parameters
     ----------
@@ -393,47 +398,75 @@ def impute_studywise_imgs(
         Meta-analytic coefficients map.
     mle_tau2_img : :obj:`~nibabel.nifti1.Nifti1Image`
         Meta-analytic variance map.
-    lower_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise lower-bound effect size maps.
-    upper_bound_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise upper-bound effect size maps.
+    lower_bound_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Study's lower-bound effect size map.
+    upper_bound_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Study's upper-bound effect size map.
     seed : :obj:`int`, optional
         Random seed. Default is 0.
 
     Returns
     -------
-    study_effect_size_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise effect size maps.
-    study_var_imgs : S-length :obj:`list` of :obj:`~nibabel.nifti1.Nifti1Image`
-        Study-wise effect variance maps.
+    effect_size_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Study's effect size map.
+    var_img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Study's effect variance map.
+
+    Notes
+    -----
+    -   This step, separately conducted for each study, consists in imputing many times study
+        images that meet the general PSI conditions adapted to SDM:
+
+            1.  the effect sizes imputed for a voxel must follow a truncated normal distribution
+                with the MLE estimates and the effect-size bounds as parameters; and
+            2.  the effect sizes of adjacent voxels must show positive correlations
+
+    -   First, it assigns each voxel a uniformly distributed value between zero and one.
+    -   Second, and separately for each voxel, it applies a threshold, spatial smoothing and
+        scaling that ensures that the voxel has the expected value and variance of the truncated
+        normal distribution and, simultaneously, has strong correlations with the neighboring
+        voxels.
+    -   To ensure that the voxel has the expected value of the truncated normal distribution,
+        the threshold applied to the voxels laying within the smoothing kernel is the expected
+        value of the truncated normal distribution scaled to 0-1, and the number (between 0 and 1)
+        resulting from the smoothing is rescaled to the bounds of the truncated normal
+        distribution.
+        To ensure that the voxel has the expected variance of the truncated normal distribution,
+        SDM-PSI selects an anisotropic smoothing kernel that follows the spatial covariance of the
+        voxel and makes the variance of the resulting value in the voxel coincide with that
+        variance of the truncated normal distribution.
+        Please note that each voxel must follow a different truncated normal distribution,
+        and thus this thresholding/smoothing/rescaling process is different for each voxel.
     """
     # Nonsense for now
-    study_effect_size_imgs = lower_bound_imgs[:]
-    study_var_imgs = lower_bound_imgs[:]
-    return study_effect_size_imgs, study_var_imgs
+    effect_size_img = lower_bound_img.copy()
+    var_img = lower_bound_img.copy()
+    return effect_size_img, var_img
 
 
 def scale_subject_maps(
-    studylevel_effect_size_maps,
-    studylevel_variance_maps,
+    studylevel_effect_size_map,
+    studylevel_variance_map,
     prelim_subjectlevel_maps,
 ):
     """Scale the "preliminary" set of subject-level maps for each dataset for a given imputation.
 
+    This is redundant for studies for which the original statistical image is available.
+
     Parameters
     ----------
-    studylevel_effect_size_maps : :obj:`~numpy.ndarray` of shape (S, V)
-        S is study, V is voxel.
-    studylevel_variance_maps : :obj:`~numpy.ndarray` of shape (S, V)
-    prelim_subjectlevel_maps : S-length :obj:`list` of :obj:`~numpy.ndarray` of shape (N, V)
-        List with one entry per study (S), where each entry is an array that is subjects (N) by
-        voxels (V).
+    studylevel_effect_size_map : :obj:`~numpy.ndarray` of shape (V,)
+        Imputed study-level effect size map.
+        V is voxel.
+    studylevel_variance_map : :obj:`~numpy.ndarray` of shape (V,)
+    prelim_subjectlevel_maps : :obj:`~numpy.ndarray` of shape (N, V)
+        Preliminary (unscaled) subject-level maps.
+        An array that is subjects (N) by voxels (V).
 
     Returns
     -------
-    scaled_subjectlevel_maps : S-length :obj:`list` of :obj:`~numpy.ndarray` of shape (N, V)
-        List with one entry per study (S), where each entry is an array that is subjects (N) by
-        voxels (V).
+    scaled_subjectlevel_maps : :obj:`~numpy.ndarray` of shape (N, V)
+        An array that is subjects (N) by voxels (V).
 
     Notes
     -----
@@ -447,22 +480,15 @@ def scale_subject_maps(
         subject-level maps for each dataset (across imputations), and scaling it across
         imputations.
     """
-    assert len(prelim_subjectlevel_maps) == studylevel_effect_size_maps.shape[0]
-
-    scaled_subjectlevel_maps = []
-    for i_study in range(studylevel_effect_size_maps.shape[0]):
-        study_mean = studylevel_effect_size_maps[i_study, :]
-        study_var = studylevel_variance_maps[i_study, :]
-
-        study_subject_level_maps = prelim_subjectlevel_maps[i_study]
-        study_subject_level_maps_scaled = (study_subject_level_maps * study_var) + study_mean
-        scaled_subjectlevel_maps.append(study_subject_level_maps_scaled)
+    scaled_subjectlevel_maps = (
+        prelim_subjectlevel_maps * studylevel_variance_map
+    ) + studylevel_effect_size_map
 
     return scaled_subjectlevel_maps
 
 
 def calculate_hedges_maps(subject_effect_size_imgs):
-    """Run group-level analyses and calculate study-level Hedges' g maps.
+    """Run study-wise group-level analyses and calculate study-level Hedges' g maps.
 
     .. todo::
 
@@ -789,25 +815,30 @@ def run_sdm(
     all_subject_effect_size_imgs = []
     imp_meta_effect_size_imgs, imp_meta_tau2_imgs = [], []
     for i_imp in range(n_imputations):
-        # Step 3: Impute study-wise effect size and variance maps.
-        study_effect_size_imgs, study_var_imgs = impute_studywise_imgs(
-            mle_coeff_img,
-            mle_tau2_img,
-            lower_bound_imgs,
-            upper_bound_imgs,
-            seed=i_imp,
-        )
 
-        # Step 4: Simulate subject-wise effect size(?) maps.
-        imp_subject_effect_size_imgs = scale_subject_maps(
-            study_effect_size_imgs,
-            study_var_imgs,
-            raw_subject_effect_size_imgs,
-        )
-        all_subject_effect_size_imgs.append(imp_subject_effect_size_imgs)
+        imp_subject_effect_size_imgs = []
+        for j_study in range(n_studies):
+            # Step 3: Impute study-wise effect size and variance maps.
+            imp_study_effect_size_img, imp_study_var_img = impute_studywise_imgs(
+                mle_coeff_img,
+                mle_tau2_img,
+                lower_bound_imgs[j_study],
+                upper_bound_imgs[j_study],
+                seed=i_imp,
+            )
 
-        # Step ???: Generate imputed study-wise effect size and variance maps from subject maps.
-        imp_hedges_imgs, imp_hedges_var_imgs = calculate_hedges_maps(all_subject_effect_size_imgs)
+            # Step 4: Simulate subject-wise effect size(?) maps.
+            study_imp_subject_effect_size_imgs = scale_subject_maps(
+                imp_study_effect_size_img,
+                imp_study_var_img,
+                raw_subject_effect_size_imgs[j_study],
+            )
+            imp_subject_effect_size_imgs.append(study_imp_subject_effect_size_imgs)
+
+        # Step ???: Create imputed study-wise effect size and variance maps from subject maps.
+        imp_hedges_imgs, imp_hedges_var_imgs = calculate_hedges_maps(
+            imp_subject_effect_size_imgs,
+        )
 
         # Step ???: Estimate imputation-wise meta-analytic maps.
         imp_meta_effect_size_img, imp_meta_tau2_img = run_variance_meta(
