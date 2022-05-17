@@ -353,12 +353,10 @@ def compute_kda_ma(
     if memory_limit:
         chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
 
-    n_peaks = ijks.shape[0]
-    n_voxels = kernel.shape[1]
-    n_coords = n_peaks * n_voxels
     # Preallocate coords and data array, np.concatenate is too slow
+    n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
     coords = np.zeros((4, n_coords), dtype=int)
-    data = np.zeros((1, n_coords), dtype=type(value))
+    data = np.zeros(n_coords, dtype=type(value))
     temp_idx = 0
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
@@ -374,19 +372,16 @@ def compute_kda_ma(
                 kernel_data.flush()
         else:
             n_brain_voxels = sphere.shape[0]
-            zero_dimension = np.full((1, n_brain_voxels), exp)
-            chunk_idx = list(range(temp_idx, temp_idx + n_brain_voxels))
+            chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
 
-            coords[0, chunk_idx] = zero_dimension
+            coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
             coords[1:, chunk_idx] = sphere.T
-            data[0, chunk_idx] = np.full((1, n_brain_voxels), value)
+            data[chunk_idx] = np.full(n_brain_voxels, value)
 
             temp_idx += n_brain_voxels
 
     if not memmap_filename:
-        kernel_data = sparse.COO(
-            coords, data.flatten(), shape=kernel_shape, has_duplicates=sum_overlap
-        )
+        kernel_data = sparse.COO(coords, data, shape=kernel_shape, has_duplicates=sum_overlap)
 
     return kernel_data
 
