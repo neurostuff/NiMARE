@@ -559,7 +559,7 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
     return meta_effect_size_img, meta_tau2_img
 
 
-def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_stats):
+def combine_imputation_results(coefficient_maps, variance_maps, i_stats, q_stats):
     """Use Rubin's rules to combine meta-analysis results across imputations.
 
     .. todo::
@@ -573,8 +573,8 @@ def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_sta
 
         -   I = imputations
         -   S = studies
-    covariance_maps : :obj:`~numpy.ndarray` of shape (I, V)
-        Imputation-wise covariance maps.
+    variance_maps : :obj:`~numpy.ndarray` of shape (I, V)
+        Imputation-wise variance maps.
     i_stats
     q_stats
 
@@ -586,21 +586,32 @@ def combine_imputation_results(coefficient_maps, covariance_maps, i_stats, q_sta
 
     Notes
     -----
+    This function uses Cochran's Q :footcite:p:`cochran1954combination`,
+    I^2 :footcite:p:`higgins2002quantifying`, and H^2 :footcite:p:`higgins2002quantifying`.
+
     "Finally, SDM-PSI uses Rubin's rules to combine the coefficients of the model,
-    their covariance and the heterogeneity statistics I and Q of the different imputed datasets.
+    their covariance and the heterogeneity statistics I and [Cochran's] Q of the different imputed
+    datasets.
     Note that Q follows a χ2 distribution, but its combined statistic follows an F distribution.
     For convenience, SDM-PSI converts FQ back into a Q (i.e. converts an F statistic to a χ2
     statistic with the same p-value). It also derives H-combined from I-combined."
 
-    Clues from https://stats.stackexchange.com/a/476849.
+    Clues from https://stats.stackexchange.com/a/476849 and :footcite:t:`marshall2009combining`.
+
+    References
+    ----------
+    .. footbibliography::
     """
-    point_estimates = np.mean(coefficient_maps, axis=0)
-    mean_within_imputation_var = np.mean(covariance_maps, axis=0)
-    # The B term is the sum of squared differences
-    b = (1 / (coefficient_maps.shape[0] - 1)) * 5
+    n_imputations = coefficient_maps.shape[0]  # m
+    point_estimates = np.mean(coefficient_maps, axis=0)  # Q
+    within_imputation_var = np.mean(variance_maps, axis=0)  # U
+    sum_of_squared_diffs = (coefficient_maps - point_estimates[None, :]) ** 2
+    between_imputation_var = sum_of_squared_diffs / (n_imputations - 1)  # B
+
+    total_variance = within_imputation_var + ((1 + (1 / n_imputations)) * between_imputation_var)
 
     # Delete the variables for linting purposes
-    del point_estimates, mean_within_imputation_var, b
+    del total_variance
 
 
 def permute_assignments(subject_imgs, design_type="one", seed=0):
