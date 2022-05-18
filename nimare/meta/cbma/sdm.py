@@ -481,6 +481,10 @@ def calculate_hedges_maps(subject_effect_size_imgs):
 
     .. todo::
 
+        Simplify calculation based on paper's description.
+
+    .. todo::
+
         Support multiple sample sizes.
 
     Parameters
@@ -496,6 +500,15 @@ def calculate_hedges_maps(subject_effect_size_imgs):
     -------
     out_g_arr : :obj:`~numpy.ndarray` of shape (S, V)
     out_g_var_arr : :obj:`~numpy.ndarray` of shape (S, V)
+
+    Notes
+    -----
+    From :footcite:t:`albajes2019voxel`:
+
+    -   In SDM-PSI, the group analysis is the estimation of Hedge-corrected effect sizes.
+        In practice, this estimation simply consists of calculating the mean
+        (or the difference of means in two-sample studies) and multiplying by J,
+        given that imputed subject values have unit variance.
     """
     n_studies = len(subject_effect_size_imgs)
     n_voxels = subject_effect_size_imgs[0].shape[1]
@@ -527,7 +540,11 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
 
     .. todo::
 
-        Determine if Hedges is appropriate estimator and that it can handle g maps.
+        Determine if DerSimonian-Laird is appropriate estimator and that it can handle g maps.
+
+    .. todo::
+
+        Implement heterogeneity statistics and linear contrast calculation.
 
     Parameters
     ----------
@@ -547,24 +564,100 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
         Meta-analytic effect size map.
     meta_tau2_img : :obj:`~numpy.ndarray` of shape (V,)
         Meta-analytic variance map.
+    cochrans_q_img : :obj:`~numpy.ndarray` of shape (V,)
+        Cochran's Q map.
+    h2_img : :obj:`~numpy.ndarray` of shape (V,)
+        H^2 map.
+    i2_img : :obj:`~numpy.ndarray` of shape (V,)
+        I^2 map.
+
+    Notes
+    -----
+    From :footcite:t:`albajes2019voxel`:
+
+    -   The meta-analysis consists of the fitting of a standard random-effects model.
+        The design matrix includes any covariate used in the MLE step, and the weight of a study is
+        the inverse of the sum of its variance and the between-study heterogeneity τ2,
+        which in SDM-PSI may be estimated using either the DerSimonian-Laird or the slightly more
+        accurate restricted-maximum likelihood (REML) method.
+    -   After fitting the model, SDM conducts a standard linear hypothesis contrast and derives
+        standard heterogeneity statistics H2, I2 and [Cochran's] Q.
     """
-    # NOTE: Will Hedges (or any estimator) work with Hedges' g maps?
-    est = pymare.estimators.Hedges()
+    n_studies, n_voxels = study_hedges_imgs.shape
+
+    est = pymare.estimators.DerSimonianLaird()
     pymare_dset = pymare.Dataset(y=study_hedges_imgs, v=study_hedges_var_imgs, X=design)
     est.fit_dataset(pymare_dset)
     est_summary = est.summary()
     meta_effect_size_img = est_summary.est.squeeze()
     meta_tau2_img = est_summary.tau2.squeeze()
 
-    return meta_effect_size_img, meta_tau2_img
+    # NOTE: Should the linear hypothesis contrast per conducted here?
+
+    # Just a guess at degrees of freedom for now
+    df = design.shape[0] - design.shape[1]
+
+    for i_voxel in range(n_voxels):
+        # voxel_effect_size = meta_effect_size_img[i_voxel]
+        voxel_tau2 = meta_tau2_img[i_voxel]
+        voxel_hedges_values = study_hedges_imgs[:, i_voxel]
+        voxel_hedges_var_values = study_hedges_var_imgs[:, i_voxel]
+
+        # NOTE: Figure out W and W_FE
+        # "They then commonly combine the effect sizes using a weighted linear model, in which each
+        # element of the diagonal of the weighting matrix W is the inverse of the variance of the
+        # corresponding study plus the heterogeneity."
+        W = np.diag((1 / (voxel_hedges_var_values**2)) + voxel_tau2)
+
+        # "Some meta-analysts assume that tau2 is zero, conducting a so-called "fixed-effects"
+        # meta-analysis, but this assumption is generally discouraged."
+        # I'm guessing this means that W_FE comes from a WLS estimate with tau2 == 0,
+        # which might mean that diag(W_FE) = diag(W) - tau2.
+        W_FE = np.diag(1 / voxel_hedges_var_values)
+
+        # P_FE = W_FE - W_FE * X * (X.T * W_FE * X)^-1 * X.T * W_FE
+        # P_FE = W_FE - (W_FE * X * np.inv(X.T * W_FE * X) * X.T * W_FE)
+        P_FE = W_FE - W_FE.dot(design).dot(np.inv(design.T.dot(W_FE).dot(design))).dot(
+            design.T
+        ).dot(W_FE)
+
+        # "trace" is the sum of the main diagonal elements
+        trace_P_FE = np.sum(np.diag(P_FE))
+
+        # Calculate Cochran's Q
+        # Q = Y.T * P_FE * Y, Q >= 0, per (2) in :footcite:t:`albajes2019meta2`
+        cochrans_q_img = np.dot(np.dot(voxel_hedges_values.T, P_FE), voxel_hedges_values)
+        cochrans_q_img[cochrans_q_img < 0] = 0
+
+        # Calculate H^2 (ratio of total variability to sampling variability)
+        # H2 = 1 + (tau2 / df) * trace(P_FE), per (2) in :footcite:t:`albajes2019meta2`
+        h2_img = 1 + (meta_tau2_img / df) * trace_P_FE
+
+        # Calculate I^2 (percentage of total variability due to heterogeneity)
+        # I2 = 1 - (1 / H2), I2 >= 0, per (2) in :footcite:t:`albajes2019meta2`
+        i2_img = 1 - (1 / h2_img)
+        i2_img[i2_img < 0] = 0
+
+        lambda_ = np.inv(design.T.dot(W).dot(design))
+        beta = lambda_.dot(design.T).dot(W).dot(voxel_hedges_values)
+
+        # I don't know what to do with beta. Is it going to be equivalent to the DerSimonian-Laird
+        # effect size?
+        meta_effect_size_img[i_voxel] = beta
+
+    return meta_effect_size_img, meta_tau2_img, cochrans_q_img, h2_img, i2_img
 
 
-def combine_imputation_results(coefficient_maps, variance_maps, i_stats, q_stats):
+def combine_imputation_results(coefficient_maps, variance_maps, cochrans_q_maps, i2_maps):
     """Use Rubin's rules to combine meta-analysis results across imputations.
 
     .. todo::
 
         Implement.
+
+    .. todo::
+
+        Extend to support multiple regressors. This will complicate Rubin's rules.
 
     Parameters
     ----------
@@ -572,11 +665,13 @@ def combine_imputation_results(coefficient_maps, variance_maps, i_stats, q_stats
         Imputation-wise coefficient maps.
 
         -   I = imputations
-        -   S = studies
+        -   V = Voxels
     variance_maps : :obj:`~numpy.ndarray` of shape (I, V)
         Imputation-wise variance maps.
-    i_stats
-    q_stats
+    cochrans_q_maps : :obj:`~numpy.ndarray` of shape (I, V)
+        Imputation-wise Cochran's Q maps.
+    i2_maps : :obj:`~numpy.ndarray` of shape (I, V)
+        Imputation-wise I^2 maps.
 
     Returns
     -------
@@ -589,14 +684,17 @@ def combine_imputation_results(coefficient_maps, variance_maps, i_stats, q_stats
     This function uses Cochran's Q :footcite:p:`cochran1954combination`,
     I^2 :footcite:p:`higgins2002quantifying`, and H^2 :footcite:p:`higgins2002quantifying`.
 
-    "Finally, SDM-PSI uses Rubin's rules to combine the coefficients of the model,
-    their covariance and the heterogeneity statistics I and [Cochran's] Q of the different imputed
-    datasets.
-    Note that Q follows a χ2 distribution, but its combined statistic follows an F distribution.
-    For convenience, SDM-PSI converts FQ back into a Q (i.e. converts an F statistic to a χ2
-    statistic with the same p-value). It also derives H-combined from I-combined."
-
     Clues from https://stats.stackexchange.com/a/476849 and :footcite:t:`marshall2009combining`.
+
+    From :footcite:t:`albajes2019voxel`:
+
+    -   Finally, SDM-PSI uses Rubin's rules to combine the coefficients of the model,
+        their covariance and the heterogeneity statistics I and [Cochran's] Q of the different
+        imputed datasets.
+    -   Note that Q follows a χ2 distribution, but its combined statistic follows an F
+        distribution.
+        For convenience, SDM-PSI converts FQ back into a Q (i.e. converts an F statistic to a χ2
+        statistic with the same p-value). It also derives H-combined from I-combined.
 
     References
     ----------
@@ -610,8 +708,25 @@ def combine_imputation_results(coefficient_maps, variance_maps, i_stats, q_stats
 
     total_variance = within_imputation_var + ((1 + (1 / n_imputations)) * between_imputation_var)
 
+    # Calculate covariance (only for multiple regressors?)
+
+    # Combine Cochran's Q
+
+    # Convert FQ back into Q (X2 statistic)
+
+    # Combine I^2 into I-combined
+
+    # Derive H-combined from I-combined
+
     # Delete the variables for linting purposes
     del total_variance
+
+    # NOTE: Currently nonsense
+    meta_d_img = point_estimates.copy()
+    meta_var_img = point_estimates.copy()
+    meta_z_img = point_estimates.copy()
+
+    return meta_d_img, meta_var_img, meta_z_img
 
 
 def permute_assignments(subject_imgs, design_type="one", seed=0):
@@ -625,10 +740,11 @@ def permute_assignments(subject_imgs, design_type="one", seed=0):
     subject_imgs : numpy.ndarray of shape (N, V)
         N = study's sample size
         V = voxels
-    design_type : {"one", "two"}, optional
-        "one" refers to a one-sample test. Correlation meta-analyses also count as one-sample
-        tests.
-        "two" refers to a two-sample test.
+    design_type : {"one", "two", "correlation"}, optional
+        "one" refers to a one-sample test, in which the data's signs are randomly flipped.
+        "two" refers to a two-sample test, in which subjects' data are randomly shuffled.
+        "correlation" refers to a correlation meta-analysis, in which subjects' data are randomly
+        shuffled.
         Default is "one".
     seed : :obj:`int`, optional
         Random seed. Default is 0.
@@ -639,10 +755,12 @@ def permute_assignments(subject_imgs, design_type="one", seed=0):
 
     Notes
     -----
-    "PSI methods must randomly assign "1" or "-1" to each subject of a one-sample study,
-    or randomly reassign each of the subjects of a two-sample study to one of the two groups...
-    PSI methods must also swap subjects in a correlation meta-analysis."
-    The assignments must be the same across imputations.
+    From :footcite:t:`albajes2019voxel`:
+
+    -   PSI methods must randomly assign "1" or "-1" to each subject of a one-sample study,
+        or randomly reassign each of the subjects of a two-sample study to one of the two groups...
+    -   PSI methods must also swap subjects in a correlation meta-analysis.
+    -   The assignments must be the same across imputations.
     """
     permuted_subject_imgs = subject_imgs.copy()
     gen = np.random.default_rng(seed=seed)
@@ -653,7 +771,7 @@ def permute_assignments(subject_imgs, design_type="one", seed=0):
         code = gen.randint(0, 2, size=n_subjects).astype(bool)
         permuted_subject_imgs[code] *= -1
 
-    elif design_type == "two":
+    elif design_type in ("two", "correlation"):
         # Shuffle rows randomly.
         # Assumes that group assignment is based on row index and occurs outside this function.
         id_idx = np.arange(n_subjects)
@@ -807,6 +925,7 @@ def run_sdm(
 
     all_subject_effect_size_imgs = []
     imp_meta_effect_size_imgs, imp_meta_tau2_imgs = [], []
+    imp_cochrans_q_imgs, imp_i2_imgs = [], []
     for i_imp in range(n_imputations):
 
         imp_subject_effect_size_imgs = []
@@ -834,19 +953,28 @@ def run_sdm(
         )
 
         # Step ???: Estimate imputation-wise meta-analytic maps.
-        imp_meta_effect_size_img, imp_meta_tau2_img = run_variance_meta(
+        (
+            imp_meta_effect_size_img,
+            imp_meta_tau2_img,
+            imp_cochrans_q_img,
+            imp_i2_img,
+        ) = run_variance_meta(
             imp_hedges_imgs,
             imp_hedges_var_imgs,
             design=design,
         )
         imp_meta_effect_size_imgs.append(imp_meta_effect_size_img)
         imp_meta_tau2_imgs.append(imp_meta_tau2_img)
+        imp_cochrans_q_imgs.append(imp_cochrans_q_img)
+        imp_i2_imgs.append(imp_i2_img)
 
     # Step ???: Combine meta-analytic maps across imputations with Rubin's rules.
     # These should be the meta-analysis maps we care about.
     meta_d_img, meta_var_img, meta_z_img = combine_imputation_results(
         imp_meta_effect_size_imgs,
         imp_meta_tau2_imgs,
+        imp_cochrans_q_imgs,
+        imp_i2_imgs,
     )
 
     # Step 5: Permutations...
@@ -862,6 +990,7 @@ def run_sdm(
     for i_iter in range(n_iters):
         # Step 6: Calculate study-level Hedges-corrected effect size maps.
         perm_meta_effect_size_imgs, perm_meta_tau2_imgs = [], []
+        perm_cochrans_q_imgs, perm_i2_imgs = [], []
         for j_imp in range(n_imputations):
             # Permute subject maps
             imp_subject_imgs = all_subject_effect_size_imgs[j_imp]
@@ -883,18 +1012,27 @@ def run_sdm(
             )
 
             # Step 7: Meta-analyze imputed effect size maps.
-            perm_meta_effect_size_img, perm_meta_tau2_img = run_variance_meta(
+            (
+                perm_meta_effect_size_img,
+                perm_meta_tau2_img,
+                perm_cochrans_q_img,
+                perm_i2_img,
+            ) = run_variance_meta(
                 perm_imp_hedges_imgs,
                 perm_imp_hedges_var_imgs,
                 design=design,
             )
             perm_meta_effect_size_imgs.append(perm_meta_effect_size_img)
             perm_meta_tau2_imgs.append(perm_meta_tau2_img)
+            perm_cochrans_q_imgs.append(perm_cochrans_q_img)
+            perm_i2_imgs.append(perm_i2_img)
 
         # Step 8: Heterogeneity statistics and combine with Rubin's rules.
         perm_meta_d_img, perm_meta_var_img, perm_meta_z_img = combine_imputation_results(
             perm_meta_effect_size_imgs,
             perm_meta_tau2_imgs,
+            perm_cochrans_q_imgs,
+            perm_i2_imgs,
         )
 
         # Log maximum statistics for multiple comparisons correction later
