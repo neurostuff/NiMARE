@@ -826,6 +826,7 @@ def run_sdm(
     -----
     1.  Use anisotropic Gaussian kernels, plus effect size estimates and metadata,
         to produce lower-bound and upper-bound effect size maps from the coordinates.
+        See :func:`~nimare.meta.utils.compute_sdm_ma`.
 
         -   We need generic inter-voxel correlation maps for this.
             NOTE: Correlation maps are unidirectional. There are 26 directions for each voxel,
@@ -836,13 +837,13 @@ def run_sdm(
             between each voxel and its neighbors. I think ``dijkstra3d`` might be useful here.
 
     2.  Use maximum likelihood estimation to estimate the most likely effect size and variance
-        maps across studies (i.e., a meta-analytic map).
-
-        -   Can we use NiMARE IBMAs for this?
+        maps across studies, from the lower- and upper-bound maps. See: :func:`mle_estimation`.
 
     3.  Use the MLE map and each study's upper- and lower-bound effect size maps to impute
         study-wise effect size and variance images that meet specific requirements.
+        See :func:`impute_study_img`.
     4.  For each imputed pair of effect size and variance images, simulate subject-level images.
+        See :func:`simulate_subject_maps` and :func:`scale_subject_maps`.
 
         -   The mean across subject-level images, for each voxel, must equal the value from the
             study-level effect size map.
@@ -851,10 +852,11 @@ def run_sdm(
         -   Values of adjacent voxels must show "realistic" correlations as well.
             SDM uses tissue-type masks for this.
         -   SDM simplifies the simulation process by creating a single "preliminary" set of
-            subject-level maps for each dataset (across imputations), and scaling it across
-            imputations.
+            subject-level maps for each dataset (:func:`simulate_subject_maps`),
+            and scaling it to each imputation (:func:`scale_subject_maps`).
 
     5.  Subject-based permutation test on all of the pre-generated imputations.
+        See :func:`permute_assignments`.
 
         -   Create one random permutation of the subjects and apply it to the subject images of
             the different imputed datasets.
@@ -865,6 +867,7 @@ def run_sdm(
     6.  Separately for each imputed dataset, conduct a group analysis of the permuted subject
         images to obtain one study image per study, and then conduct a meta-analysis of the
         study images to obtain one meta-analysis image.
+        See :func:`calculate_hedges_maps`.
 
         -   "In SDM-PSI, the group analysis is the estimation of Hedge-corrected effect sizes.
             In practice, this estimation simply consists of calculating the mean
@@ -873,6 +876,7 @@ def run_sdm(
 
     7.  Perform meta-analysis across study-level effect size maps using random effects model.
         Performed separately for each imputation.
+        See :func:`run_variance_meta`.
 
         -   "The meta-analysis consists of the fitting of a standard random-effects model.
             The design matrix includes any covariate used in the MLE step,
@@ -885,11 +889,13 @@ def run_sdm(
             Either DerSimonianLaird or VarianceBasedLikelihood.
             We'll need to add heterogeneity statistic calculation either to PyMARE or NiMARE.
 
-    8.  Compute imputation-wise heterogeneity statistics.
+    8.  Compute imputation-wise heterogeneity statistics. See :func:`run_variance_meta`.
     9.  Use "Rubin's rules" to combine heterogeneity statistics, coefficients, and variance for
         each imputed dataset. This should result in a combined meta-analysis image.
+        See :func:`combine_imputation_results`.
     10. Save a maximum statistic from the combined meta-analysis image (e.g., the largest z-value).
         This is the last step within the iteration loop.
+        See ``_calculate_cluster_measures()``.
     11. Perform Monte Carlo-like maximum statistic procedure to get null distributions for vFWE or
         cFWE. Or do TFCE.
 

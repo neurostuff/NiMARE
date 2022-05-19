@@ -43,6 +43,7 @@ For more information about the components of coordinate-based meta-analysis in N
    meta.cbma.sdm_simulations
    meta.cbma.base
    meta.kernel
+   meta.utils
 
 .. _api_results_ref:
 
