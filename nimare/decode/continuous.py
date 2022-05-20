@@ -154,7 +154,7 @@ class CorrelationDecoder(Decoder):
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
+            meta_estimator = MKDAChi2()
         else:
             meta_estimator = _check_type(meta_estimator, CBMAEstimator)
 

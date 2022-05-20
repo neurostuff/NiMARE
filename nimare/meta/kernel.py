@@ -98,7 +98,7 @@ class KernelTransformer(NiMAREBase):
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
             If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
             Default is None.
-        return_type : {'array', 'image', 'dataset'}, optional
+        return_type : {'sparse', 'array', 'image', 'dataset'}, optional
             Whether to return a numpy array ('array'), a list of niimgs ('image'),
             or a Dataset with MA images saved as files ('dataset').
             Default is 'image'.
@@ -122,7 +122,7 @@ class KernelTransformer(NiMAREBase):
         image_type : str
             Name of the corresponding column in the Dataset.images DataFrame.
         """
-        if return_type not in ("array", "image", "dataset"):
+        if return_type not in ("sparse", "array", "image", "dataset"):
             raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
 
         if isinstance(dataset, pd.DataFrame):
@@ -222,6 +222,9 @@ class KernelTransformer(NiMAREBase):
 
         imgs = []
         if isinstance(transformed_maps[0], sparse._coo.core.COO):
+            if return_type == "sparse":
+                return transformed_maps[0]
+
             for idx, id_ in enumerate(transformed_maps[1]):
                 kernel_data = transformed_maps[0][idx].todense()
 

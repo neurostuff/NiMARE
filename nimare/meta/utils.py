@@ -356,7 +356,6 @@ def compute_kda_ma(
     # Preallocate coords and data array, np.concatenate is too slow
     n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
     coords = np.zeros((4, n_coords), dtype=int)
-    data = np.zeros(n_coords, dtype=type(value))
     temp_idx = 0
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
@@ -376,12 +375,15 @@ def compute_kda_ma(
 
             coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
             coords[1:, chunk_idx] = sphere.T
-            data[chunk_idx] = np.full(n_brain_voxels, value)
 
             temp_idx += n_brain_voxels
+    coords = coords[:, :temp_idx]
 
     if not memmap_filename:
-        kernel_data = sparse.COO(coords, data, shape=kernel_shape, has_duplicates=sum_overlap)
+        if not sum_overlap:
+            coords = np.unique(coords, axis=1)
+        data = np.full(coords.shape[1], value)
+        kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
 

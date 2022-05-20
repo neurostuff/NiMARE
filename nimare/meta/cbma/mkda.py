@@ -4,6 +4,7 @@ import logging
 
 import nibabel as nib
 import numpy as np
+import sparse
 from joblib import Parallel, delayed
 from scipy import ndimage
 from scipy.stats import chi2
@@ -322,9 +323,19 @@ class MKDAChi2(PairwiseCBMAEstimator):
             maps_key="ma_maps1",
             coords_key="coordinates1",
             fname_idx=0,
+            return_type="sparse",
         )
         n_selected = ma_maps1.shape[0]
-        n_selected_active_voxels = np.sum(ma_maps1.astype(bool), axis=0)
+        n_selected_active_voxels = ma_maps1.sum(axis=0)
+
+        if isinstance(n_selected_active_voxels, sparse._coo.core.COO):
+            masker = dataset1.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            # Indexing the sparse array is slow, perfor masking in the dense array
+            n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
+            n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
 
         # Close the memmap.
         # Deleting the variable should be enough, but I'd prefer to be explicit.
@@ -340,9 +351,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
             maps_key="ma_maps2",
             coords_key="coordinates2",
             fname_idx=1,
+            return_type="sparse",
         )
         n_unselected = ma_maps2.shape[0]
-        n_unselected_active_voxels = np.sum(ma_maps2.astype(bool), axis=0)
+        n_unselected_active_voxels = ma_maps2.sum(axis=0)
+        if isinstance(n_unselected_active_voxels, sparse._coo.core.COO):
+            n_unselected_active_voxels = n_unselected_active_voxels.todense().reshape(-1)
+            n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
 
         # Close the memmap.
         # Deleting the variable should be enough, but I'd prefer to be explicit.
@@ -399,6 +414,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         )
 
         del n_selected, n_unselected
+
+        # print(cells)
 
         pFgA_chi2_vals = two_way(cells)
 
