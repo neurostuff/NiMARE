@@ -10,7 +10,6 @@ from scipy import ndimage
 from nimare import references
 from nimare.due import due
 from nimare.extract import download_peaks2maps_model
-from nimare.utils import _determine_chunk_size
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
@@ -283,14 +282,12 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
-    memory_limit=None,
-    memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add *memmap_filename* parameter for memory mapping arrays.
+        * Remove low-memory option in favor of sparse arrays.
 
     .. versionadded:: 0.0.4
 
@@ -316,13 +313,6 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
-    memmap_filename : :obj:`str`, optional
-        If passed, use this file for memory mapping arrays
 
     Returns
     -------
@@ -340,19 +330,12 @@ def compute_kda_ma(
     n_studies = len(uniq)
 
     kernel_shape = (n_studies,) + shape
-    if memmap_filename:
-        # Use a memmapped 4D array
-        kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
-    else:
-        kernel_data = np.zeros(kernel_shape, dtype=type(value))
+    kernel_data = np.zeros(kernel_shape, dtype=type(value))
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
-
-    if memory_limit:
-        chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
 
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
@@ -363,10 +346,6 @@ def compute_kda_ma(
             kernel_data[exp][tuple(sphere.T)] += value
         else:
             kernel_data[exp][tuple(sphere.T)] = value
-
-        if memmap_filename and i % chunk_size == 0:
-            # Write changes to disk
-            kernel_data.flush()
 
     if squeeze:
         kernel_data = np.squeeze(kernel_data, axis=0)
