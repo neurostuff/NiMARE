@@ -544,7 +544,7 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
 
     .. todo::
 
-        Implement heterogeneity statistics and linear contrast calculation.
+        Implement linear contrast calculation.
 
     Parameters
     ----------
@@ -589,63 +589,16 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
     pymare_dset = pymare.Dataset(y=study_hedges_imgs, v=study_hedges_var_imgs, X=design)
     est.fit_dataset(pymare_dset)
     est_summary = est.summary()
-    meta_effect_size_img = est_summary.est.squeeze()
+    fe_stats = est_summary.get_fe_stats()
+    hg_stats = est_summary.get_heterogeneity_stats()
     meta_tau2_img = est_summary.tau2.squeeze()
+    meta_effect_size_img = fe_stats["est"].squeeze()
+    cochrans_q_img = hg_stats["Q"].squeeze()
+    i2_img = hg_stats["I^2"].squeeze()
 
     # NOTE: Should the linear hypothesis contrast per conducted here?
 
-    # Just a guess at degrees of freedom for now
-    df = design.shape[0] - design.shape[1]
-
-    for i_voxel in range(n_voxels):
-        # voxel_effect_size = meta_effect_size_img[i_voxel]
-        voxel_tau2 = meta_tau2_img[i_voxel]
-        voxel_hedges_values = study_hedges_imgs[:, i_voxel]
-        voxel_hedges_var_values = study_hedges_var_imgs[:, i_voxel]
-
-        # NOTE: Figure out W and W_FE
-        # "They then commonly combine the effect sizes using a weighted linear model, in which each
-        # element of the diagonal of the weighting matrix W is the inverse of the variance of the
-        # corresponding study plus the heterogeneity."
-        W = np.diag((1 / (voxel_hedges_var_values**2)) + voxel_tau2)
-
-        # "Some meta-analysts assume that tau2 is zero, conducting a so-called "fixed-effects"
-        # meta-analysis, but this assumption is generally discouraged."
-        # I'm guessing this means that W_FE comes from a WLS estimate with tau2 == 0,
-        # which might mean that diag(W_FE) = diag(W) - tau2.
-        W_FE = np.diag(1 / voxel_hedges_var_values)
-
-        # P_FE = W_FE - W_FE * X * (X.T * W_FE * X)^-1 * X.T * W_FE
-        # P_FE = W_FE - (W_FE * X * np.inv(X.T * W_FE * X) * X.T * W_FE)
-        P_FE = W_FE - W_FE.dot(design).dot(np.inv(design.T.dot(W_FE).dot(design))).dot(
-            design.T
-        ).dot(W_FE)
-
-        # "trace" is the sum of the main diagonal elements
-        trace_P_FE = np.sum(np.diag(P_FE))
-
-        # Calculate Cochran's Q
-        # Q = Y.T * P_FE * Y, Q >= 0, per (2) in :footcite:t:`albajes2019meta2`
-        cochrans_q_img = np.dot(np.dot(voxel_hedges_values.T, P_FE), voxel_hedges_values)
-        cochrans_q_img[cochrans_q_img < 0] = 0
-
-        # Calculate H^2 (ratio of total variability to sampling variability)
-        # H2 = 1 + (tau2 / df) * trace(P_FE), per (2) in :footcite:t:`albajes2019meta2`
-        h2_img = 1 + (meta_tau2_img / df) * trace_P_FE
-
-        # Calculate I^2 (percentage of total variability due to heterogeneity)
-        # I2 = 1 - (1 / H2), I2 >= 0, per (2) in :footcite:t:`albajes2019meta2`
-        i2_img = 1 - (1 / h2_img)
-        i2_img[i2_img < 0] = 0
-
-        lambda_ = np.inv(design.T.dot(W).dot(design))
-        beta = lambda_.dot(design.T).dot(W).dot(voxel_hedges_values)
-
-        # I don't know what to do with beta. Is it going to be equivalent to the DerSimonian-Laird
-        # effect size?
-        meta_effect_size_img[i_voxel] = beta
-
-    return meta_effect_size_img, meta_tau2_img, cochrans_q_img, h2_img, i2_img
+    return meta_effect_size_img, meta_tau2_img, cochrans_q_img, i2_img
 
 
 def combine_imputation_results(coefficient_maps, variance_maps, cochrans_q_maps, i2_maps):
