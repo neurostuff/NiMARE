@@ -20,11 +20,9 @@ from nimare.utils import (
     _add_metadata_to_dataframe,
     _check_ncores,
     _check_type,
-    _safe_transform,
     get_masker,
     mm2vox,
     tqdm_joblib,
-    use_memmap,
     vox2mm,
 )
 
@@ -36,6 +34,7 @@ class CBMAEstimator(Estimator):
 
     .. versionchanged:: 0.0.12
 
+        * Remove *low_memory* option
         * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
         * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
 
@@ -63,11 +62,10 @@ class CBMAEstimator(Estimator):
     # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, kernel_transformer, *, mask=None, memory_limit=None, **kwargs):
+    def __init__(self, kernel_transformer, *, mask=None, **kwargs):
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
-        self.memory_limit = memory_limit
 
         # Identify any kwargs
         kernel_args = {k: v for k, v in kwargs.items() if k.startswith("kernel__")}
@@ -143,7 +141,6 @@ class CBMAEstimator(Estimator):
                 filter_func=np.mean,
             )
 
-    @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
         """Perform coordinate-based meta-analysis on dataset.
 
@@ -159,7 +156,6 @@ class CBMAEstimator(Estimator):
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
-            fname_idx=0,
         )
 
         # Infer a weight vector, when applicable. Primarily used only for MKDADensity.
@@ -179,12 +175,6 @@ class CBMAEstimator(Estimator):
             # A hidden option only used for internal validation/testing
             self._compute_null_reduced_montecarlo(ma_values, n_iters=self.n_iters)
 
-        # Only should occur when MA maps have been pre-generated in the Dataset and a memory_limit
-        # is set. The memmap must be closed.
-        if isinstance(ma_values, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_values.filename}")
-            ma_values._mmap.close()
-
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
@@ -199,9 +189,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(
-        self, coords_key="coordinates", maps_key="ma_maps", fname_idx=0, return_type="array"
-    ):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
@@ -215,30 +203,15 @@ class CBMAEstimator(Estimator):
             This key should only be present if the kernel transformer was already fitted to the
             input Dataset.
             Default is "ma_maps".
-        fname_idx : :obj:`int`, optional
-            When the Estimator is set with ``memory_limit`` as a string,
-            there is a ``memmap_filenames`` attribute that is a list of filenames or Nones.
-            This parameter specifies which item in that list should be used for a memory-mapped
-            array. Default is 0.
 
         Returns
         -------
-        ma_maps : :obj:`numpy.ndarray` or :obj:`numpy.memmap`
+        ma_maps : :obj:`numpy.ndarray`
             2D numpy array of shape (n_studies, n_voxels) with MA values.
-            This will be a memmap if MA maps have been pre-generated.
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
-            if self.memory_limit:
-                # perform transform on chunks of the input maps
-                ma_maps = _safe_transform(
-                    self.inputs_[maps_key],
-                    masker=self.masker,
-                    memory_limit=self.memory_limit,
-                    memfile=self.memmap_filenames[fname_idx],
-                )
-            else:
-                ma_maps = self.masker.transform(self.inputs_[maps_key])
+            ma_maps = self.masker.transform(self.inputs_[maps_key])
 
         else:
             LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")

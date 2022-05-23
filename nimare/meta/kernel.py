@@ -27,13 +27,7 @@ from nimare.meta.utils import (
     compute_p2m_ma,
     get_ale_kernel,
 )
-from nimare.utils import (
-    _add_metadata_to_dataframe,
-    _safe_transform,
-    mm2vox,
-    use_memmap,
-    vox2mm,
-)
+from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -86,7 +80,6 @@ class KernelTransformer(NiMAREBase):
         )
         self.image_type = f"{param_str}_{self.__class__.__name__}"
 
-    @use_memmap(LGR)
     def transform(self, dataset, masker=None, return_type="image"):
         """Generate modeled activation images for each Contrast in dataset.
 
@@ -204,20 +197,17 @@ class KernelTransformer(NiMAREBase):
 
         transformed_maps = self._transform(mask, coordinates)
 
+
         # This will be a 4D sparse array or numpy.memmap if the kernel is an (M)KDAKernel or
         # memory_limit is set, respectively.
         if not isinstance(transformed_maps[0], (list, tuple, sparse._coo.core.COO)):
             if return_type == "array":
                 ma_arr = transformed_maps[0][:, mask_data]
-                # If this array is a memmap, then the file needs to be closed
-                if isinstance(transformed_maps[0], np.memmap):
-                    LGR.debug(f"Closing memmap at {transformed_maps[0].filename}")
-                    transformed_maps[0]._mmap.close()
 
                 return ma_arr
             else:
                 # Transform into an length-N list of length-2 tuples,
-                # composed of a 3D array/memmap and a string with the ID.
+                # composed of a 3D array and a string with the ID.
                 transformed_maps = list(zip(*transformed_maps))
 
         imgs = []
@@ -261,11 +251,6 @@ class KernelTransformer(NiMAREBase):
                     img.to_filename(out_file)
                     dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
-        # If this array is a memmap, then the file needs to be closed
-        if isinstance(transformed_maps[0][0], np.memmap):
-            LGR.debug(f"Closing memmap at {transformed_maps[0][0].filename}")
-            transformed_maps[0][0]._mmap.close()
-
         del kernel_data, transformed_maps
         gc.collect()
 
@@ -297,8 +282,7 @@ class KernelTransformer(NiMAREBase):
 
         Returns
         -------
-        transformed_maps : N-length list of (3D array, str) tuples or (4D array, 1D array) tuple \
-                or (4D memmap, 1D array) tuple
+        transformed_maps : N-length list of (3D array, str) tuples or (4D array, 1D array) tuple
             Transformed data, containing one element for each study.
 
             -   Case 1: A kernel that is not an (M)KDAKernel, with no memory limit.
@@ -306,10 +290,6 @@ class KernelTransformer(NiMAREBase):
 
             -   Case 2: (M)KDAKernel, with no memory limit.
                 There is a length-2 tuple with a 4D numpy array of the shape (N, X, Y, Z),
-                containing all of the MA maps, and a numpy array of shape (N,) with the study IDs.
-
-            -   Case 3: Any kernel, with memory_limit set, so memmaps will be used.
-                There is a length-2 tuple with a 4D memmap array of the shape (N, X, Y, Z),
                 containing all of the MA maps, and a numpy array of shape (N,) with the study IDs.
         """
         pass
@@ -330,9 +310,9 @@ class ALEKernel(KernelTransformer):
     will be determined on a study-wise basis based on the sample sizes available in the input,
     via the method described in :footcite:t:`eickhoff2012activation`.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add low-memory option for kernel transformers.
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
 
     Parameters
     ----------
@@ -345,41 +325,24 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
 
     References
     ----------
     .. footbibliography::
     """
 
-    def __init__(self, fwhm=None, sample_size=None, memory_limit=None):
+    def __init__(self, fwhm=None, sample_size=None):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
-        self.memory_limit = memory_limit
 
     def _transform(self, mask, coordinates):
         kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
 
-        if self.memory_limit:
-            # Use a memmapped 4D array
-            transformed_shape = (len(exp_ids),) + mask.shape
-            transformed = np.memmap(
-                self.memmap_filenames[0],
-                dtype=float,
-                mode="w+",
-                shape=transformed_shape,
-            )
-        else:
-            # Use a list of tuples
-            transformed = []
-
+        # Use a list of tuples
+        transformed = []
         for i_exp, id_ in enumerate(exp_ids):
             data = coordinates.loc[coordinates["id"] == id_]
 
@@ -408,26 +371,17 @@ class ALEKernel(KernelTransformer):
 
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
-            if self.memory_limit:
-                transformed[i_exp, :, :, :] = kernel_data
+            transformed.append((kernel_data, id_))
 
-                # Write changes to disk
-                transformed.flush()
-            else:
-                transformed.append((kernel_data, id_))
-
-        if self.memory_limit:
-            return transformed, exp_ids
-        else:
-            return transformed
+        return transformed
 
 
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add low-memory option for kernel transformers.
+        * Remove low-memory option for kernel transformers.
 
     Parameters
     ----------
@@ -435,19 +389,13 @@ class KDAKernel(KernelTransformer):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
     """
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1, memory_limit=None):
+    def __init__(self, r=10, value=1):
         self.r = float(r)
         self.value = value
-        self.memory_limit = memory_limit
 
     def _transform(self, mask, coordinates):
         dims = mask.shape
@@ -463,8 +411,6 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            memory_limit=self.memory_limit,
-            memmap_filename=self.memmap_filenames[0],
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
@@ -473,9 +419,9 @@ class KDAKernel(KernelTransformer):
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add low-memory option for kernel transformers.
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
 
     Parameters
     ----------
@@ -483,11 +429,6 @@ class MKDAKernel(KDAKernel):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
     """
 
     _sum_overlap = False
