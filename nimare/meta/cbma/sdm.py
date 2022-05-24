@@ -560,15 +560,14 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
 
     Returns
     -------
-    meta_effect_size_img : :obj:`~numpy.ndarray` of shape (V,)
+    meta_effect_size_img : :obj:`~numpy.ndarray` of shape (V, X)
         Meta-analytic effect size map.
-    meta_tau2_img : :obj:`~numpy.ndarray` of shape (V,)
+    meta_tau2_img : :obj:`~numpy.ndarray` of shape (V, X)
         Meta-analytic variance map.
-    cochrans_q_img : :obj:`~numpy.ndarray` of shape (V,)
+    meta_covariance_img  : :obj:`~numpy.ndarray` of shape (V, X)
+    cochrans_q_img : :obj:`~numpy.ndarray` of shape (V, X)
         Cochran's Q map.
-    h2_img : :obj:`~numpy.ndarray` of shape (V,)
-        H^2 map.
-    i2_img : :obj:`~numpy.ndarray` of shape (V,)
+    i2_img : :obj:`~numpy.ndarray` of shape (V, X)
         I^2 map.
 
     Notes
@@ -593,15 +592,17 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
     hg_stats = est_summary.get_heterogeneity_stats()
     meta_tau2_img = est_summary.tau2.squeeze()
     meta_effect_size_img = fe_stats["est"].squeeze()
+    meta_covariance_img = fe_stats["inv_cov"].squeeze()
     cochrans_q_img = hg_stats["Q"].squeeze()
     i2_img = hg_stats["I^2"].squeeze()
 
-    return meta_effect_size_img, meta_tau2_img, cochrans_q_img, i2_img
+    return meta_effect_size_img, meta_tau2_img, meta_covariance_img, cochrans_q_img, i2_img
 
 
 def combine_imputation_results(
     coefficient_maps,
-    variance_maps,
+    tau2_maps,
+    covariance_maps,
     cochrans_q_maps,
     i2_maps,
     df,
@@ -619,17 +620,24 @@ def combine_imputation_results(
 
     Parameters
     ----------
-    coefficient_maps : :obj:`~numpy.ndarray` of shape (I, V)
+    coefficient_maps : :obj:`~numpy.ndarray` of shape (I, V, R)
         Imputation-wise coefficient maps.
 
         -   I = imputations
-        -   V = Voxels
-    variance_maps : :obj:`~numpy.ndarray` of shape (I, V)
-        Imputation-wise variance maps.
-    cochrans_q_maps : :obj:`~numpy.ndarray` of shape (I, V)
+        -   V = voxels
+        -   R = regressors
+    tau2_maps : :obj:`~numpy.ndarray` of shape (I, V, R)
+        Imputation-wise tau2 maps.
+    covariance_maps : :obj:`~numpy.ndarray` of shape (I, V)
+        Imputation-wise covariance maps.
+    cochrans_q_maps : :obj:`~numpy.ndarray` of shape (I, V, R)
         Imputation-wise Cochran's Q maps.
-    i2_maps : :obj:`~numpy.ndarray` of shape (I, V)
+    i2_maps : :obj:`~numpy.ndarray` of shape (I, V, R)
         Imputation-wise I^2 maps.
+    df : int
+        Degrees of freedom.
+    contrast_vector : None or :obj:`~numpy.ndarray` of shape (R, 1)
+        Contrast weighting vector.
 
     Returns
     -------
@@ -660,10 +668,11 @@ def combine_imputation_results(
     """
     n_imputations = coefficient_maps.shape[0]  # m
     point_estimates = np.mean(coefficient_maps, axis=0)  # Q
-    within_imputation_var = np.mean(variance_maps, axis=0)  # U
+    within_imputation_var = np.mean(tau2_maps, axis=0)  # U
     sum_of_squared_diffs = (coefficient_maps - point_estimates[None, :]) ** 2
     between_imputation_var = sum_of_squared_diffs / (n_imputations - 1)  # B
 
+    # NOTE: In the METANSUE paper they just have var(B^2) instead of between_imputation_var
     total_variance = within_imputation_var + ((1 + (1 / n_imputations)) * between_imputation_var)
 
     # Calculate covariance (only for multiple regressors?)
@@ -694,14 +703,21 @@ def combine_imputation_results(
     # Delete the variables for linting purposes
     del total_variance, H_combined, chi2_q_combined
 
+    # NOTE: I have no clue how lambda_pooled and var_pooled are related to one another.
+    # The METANSUE paper defines var_pooled and then... doesn't use it again.
+    # And then, quite nearby, lambda_pooled is used, but not defined.
+    lambda_combined = point_estimates.copy()
+
+    beta_C_combined = contrast_vector.dot(point_estimates)
+    var_c_combined = contrast_vector.dot(lambda_combined).dot(contrast_vector.T)
+    z_c_combined = beta_C_combined / var_c_combined
+
+    del z_c_combined
+
     # NOTE: Currently nonsense
     meta_d_img = point_estimates.copy()
     meta_var_img = point_estimates.copy()
     meta_z_img = point_estimates.copy()
-
-    # Beta_C_combined = contrast_vector.dot(Beta_combined)
-    # sigsq_c_combined = contrast_vector.dot(lambda_combined).dot(contrast_vector.T)
-    # Z_c_combined = Beta_C_combined / sigsq_c_combined
 
     return meta_d_img, meta_var_img, meta_z_img
 
@@ -907,7 +923,7 @@ def run_sdm(
     raw_subject_effect_size_imgs = simulate_subject_maps(n_subjects, masker, correlation_maps)
 
     all_subject_effect_size_imgs = []
-    imp_meta_effect_size_imgs, imp_meta_tau2_imgs = [], []
+    imp_meta_effect_size_imgs, imp_meta_tau2_imgs, imp_meta_cov_imgs = [], [], []
     imp_cochrans_q_imgs, imp_i2_imgs = [], []
     for i_imp in range(n_imputations):
 
@@ -939,6 +955,7 @@ def run_sdm(
         (
             imp_meta_effect_size_img,
             imp_meta_tau2_img,
+            imp_cov_img,
             imp_cochrans_q_img,
             imp_i2_img,
         ) = run_variance_meta(
@@ -948,6 +965,7 @@ def run_sdm(
         )
         imp_meta_effect_size_imgs.append(imp_meta_effect_size_img)
         imp_meta_tau2_imgs.append(imp_meta_tau2_img)
+        imp_meta_cov_imgs.append(imp_cov_img)
         imp_cochrans_q_imgs.append(imp_cochrans_q_img)
         imp_i2_imgs.append(imp_i2_img)
 
@@ -956,6 +974,7 @@ def run_sdm(
     meta_d_img, meta_var_img, meta_z_img = combine_imputation_results(
         imp_meta_effect_size_imgs,
         imp_meta_tau2_imgs,
+        imp_meta_cov_imgs,
         imp_cochrans_q_imgs,
         imp_i2_imgs,
     )
@@ -972,7 +991,7 @@ def run_sdm(
     seed_counter = 0  # Each permutation/study's random seed must be the same for all imputations
     for i_iter in range(n_iters):
         # Step 6: Calculate study-level Hedges-corrected effect size maps.
-        perm_meta_effect_size_imgs, perm_meta_tau2_imgs = [], []
+        perm_meta_effect_size_imgs, perm_meta_tau2_imgs, perm_meta_cov_imgs = [], [], []
         perm_cochrans_q_imgs, perm_i2_imgs = [], []
         for j_imp in range(n_imputations):
             # Permute subject maps
@@ -998,6 +1017,7 @@ def run_sdm(
             (
                 perm_meta_effect_size_img,
                 perm_meta_tau2_img,
+                perm_meta_cov_img,
                 perm_cochrans_q_img,
                 perm_i2_img,
             ) = run_variance_meta(
@@ -1007,6 +1027,7 @@ def run_sdm(
             )
             perm_meta_effect_size_imgs.append(perm_meta_effect_size_img)
             perm_meta_tau2_imgs.append(perm_meta_tau2_img)
+            perm_meta_cov_imgs.append(perm_meta_cov_img)
             perm_cochrans_q_imgs.append(perm_cochrans_q_img)
             perm_i2_imgs.append(perm_i2_img)
 
@@ -1014,6 +1035,7 @@ def run_sdm(
         perm_meta_d_img, perm_meta_var_img, perm_meta_z_img = combine_imputation_results(
             perm_meta_effect_size_imgs,
             perm_meta_tau2_imgs,
+            perm_meta_cov_imgs,
             perm_cochrans_q_imgs,
             perm_i2_imgs,
         )
