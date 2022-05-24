@@ -318,11 +318,10 @@ def compute_kda_ma(
     Returns
     -------
     kernel_data : :obj:`sparse._coo.core.COO` or kernel_data: :obj:`numpy.array`
-        If memmap_filename is passed, 3d or 4d array. If `exp_idx` is none, a 3d array in the same
+        4D sparse array. If `exp_idx` is none, a 3d array in the same
         shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
-        If memmap_filename is None, 4D sparse array.
     """
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
@@ -331,8 +330,6 @@ def compute_kda_ma(
     n_studies = len(uniq)
 
     kernel_shape = (n_studies,) + shape
-
-    kernel_data = np.zeros(kernel_shape, dtype=type(value))
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
@@ -348,31 +345,22 @@ def compute_kda_ma(
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
         sphere = sphere[idx, :].astype(int)
         exp = exp_idx[i]
-        if memmap_filename:
-            if sum_overlap:
-                kernel_data[exp][tuple(sphere.T)] += value
-            else:
-                kernel_data[exp][tuple(sphere.T)] = value
-            if i % chunk_size == 0:
-                kernel_data.flush()
-        else:
-            n_brain_voxels = sphere.shape[0]
-            chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
 
-            coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
-            coords[1:, chunk_idx] = sphere.T
+        n_brain_voxels = sphere.shape[0]
+        chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
 
-            temp_idx += n_brain_voxels
-            
+        coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
+        coords[1:, chunk_idx] = sphere.T
+
+        temp_idx += n_brain_voxels
+
+    # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
     coords = coords[:, :temp_idx]
 
     if not sum_overlap:
         coords = np.unique(coords, axis=1)
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
-
-    if squeeze:
-        kernel_data = np.squeeze(kernel_data, axis=0)
 
     return kernel_data
 

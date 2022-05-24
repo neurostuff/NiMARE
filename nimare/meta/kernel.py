@@ -6,7 +6,6 @@ size and test statistic values).
 """
 from __future__ import division
 
-import gc
 import logging
 import os
 import warnings
@@ -100,6 +99,9 @@ class KernelTransformer(NiMAREBase):
         -------
         imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
                or :class:`~nimare.dataset.Dataset`
+            If return_type is 'sparse', a 4D sparse array (E x S), where E is
+            the number of unique experiments, and the remaining 3 dimensions are
+            equal to `shape` of the images.
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images
@@ -197,62 +199,31 @@ class KernelTransformer(NiMAREBase):
 
         transformed_maps = self._transform(mask, coordinates)
 
-
-        # This will be a 4D sparse array or numpy.memmap if the kernel is an (M)KDAKernel or
-        # memory_limit is set, respectively.
-        if not isinstance(transformed_maps[0], (list, tuple, sparse._coo.core.COO)):
-            if return_type == "array":
-                ma_arr = transformed_maps[0][:, mask_data]
-
-                return ma_arr
-            else:
-                # Transform into an length-N list of length-2 tuples,
-                # composed of a 3D array and a string with the ID.
-                transformed_maps = list(zip(*transformed_maps))
+        if return_type == "sparse":
+            return transformed_maps[0]
 
         imgs = []
-        if isinstance(transformed_maps[0], sparse._coo.core.COO):
-            if return_type == "sparse":
-                return transformed_maps[0]
+        # Loop over exp ids since sparse._coo.core.COO is not iterable
+        for i_exp, id_ in enumerate(transformed_maps[1]):
+            if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
+                kernel_data = transformed_maps[0][i_exp].todense()
+            else:
+                kernel_data = transformed_maps[0][i_exp]
 
-            for idx, id_ in enumerate(transformed_maps[1]):
-                kernel_data = transformed_maps[0][idx].todense()
-
-                if return_type == "array":
-                    img = kernel_data[mask_data]
-                    imgs.append(img)
-                elif return_type == "image":
-                    kernel_data *= mask_data
-                    img = nib.Nifti1Image(kernel_data, mask.affine)
-                    imgs.append(img)
-                elif return_type == "dataset":
-                    img = nib.Nifti1Image(kernel_data, mask.affine)
-                    out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
-                    img.to_filename(out_file)
-                    dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
-        else:
-            for (kernel_data, id_) in transformed_maps:
-                if isinstance(kernel_data, np.memmap):
-                    # Convert data to a numpy array if it's a memmap
-                    kernel_data = np.array(kernel_data)
-
-                if return_type == "array":
-                    # NOTE: This will never be a memmap because
-                    # memory_limit[!None]+return_type[array] is dealt with above.
-                    img = kernel_data[mask_data]
-                    imgs.append(img)
-                elif return_type == "image":
-                    kernel_data *= mask_data
-                    img = nib.Nifti1Image(kernel_data, mask.affine)
-                    imgs.append(img)
-                elif return_type == "dataset":
-                    img = nib.Nifti1Image(kernel_data, mask.affine)
-                    out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
-                    img.to_filename(out_file)
-                    dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
+            if return_type == "array":
+                img = kernel_data[mask_data]
+                imgs.append(img)
+            elif return_type == "image":
+                kernel_data *= mask_data
+                img = nib.Nifti1Image(kernel_data, mask.affine)
+                imgs.append(img)
+            elif return_type == "dataset":
+                img = nib.Nifti1Image(kernel_data, mask.affine)
+                out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
+                img.to_filename(out_file)
+                dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
         del kernel_data, transformed_maps
-        gc.collect()
 
         if return_type == "array":
             return np.vstack(imgs)
@@ -341,7 +312,6 @@ class ALEKernel(KernelTransformer):
         kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
 
-        # Use a list of tuples
         transformed = []
         for i_exp, id_ in enumerate(exp_ids):
             data = coordinates.loc[coordinates["id"] == id_]
@@ -371,9 +341,9 @@ class ALEKernel(KernelTransformer):
 
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
-            transformed.append((kernel_data, id_))
+            transformed.append(kernel_data)
 
-        return transformed
+        return transformed, exp_ids
 
 
 class KDAKernel(KernelTransformer):
