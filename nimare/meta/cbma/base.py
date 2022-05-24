@@ -189,7 +189,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps"):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="array"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters

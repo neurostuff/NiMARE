@@ -322,6 +322,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
+            return_type="sparse",
         )
         n_selected = ma_maps1.shape[0]
         n_selected_active_voxels = ma_maps1.sum(axis=0)
@@ -331,7 +332,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             mask = masker.mask_img
             mask_data = mask.get_fdata().astype(bool)
 
-            # Indexing the sparse array is slow, perfor masking in the dense array
+            # Indexing the sparse array is slow, perform masking in the dense array
             n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
             n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
 
@@ -342,6 +343,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
+            return_type="sparse",
         )
         n_unselected = ma_maps2.shape[0]
         n_unselected_active_voxels = ma_maps2.sum(axis=0)
