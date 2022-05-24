@@ -596,12 +596,17 @@ def run_variance_meta(study_hedges_imgs, study_hedges_var_imgs, design):
     cochrans_q_img = hg_stats["Q"].squeeze()
     i2_img = hg_stats["I^2"].squeeze()
 
-    # NOTE: Should the linear hypothesis contrast per conducted here?
-
     return meta_effect_size_img, meta_tau2_img, cochrans_q_img, i2_img
 
 
-def combine_imputation_results(coefficient_maps, variance_maps, cochrans_q_maps, i2_maps):
+def combine_imputation_results(
+    coefficient_maps,
+    variance_maps,
+    cochrans_q_maps,
+    i2_maps,
+    df,
+    contrast_vector=None,
+):
     """Use Rubin's rules to combine meta-analysis results across imputations.
 
     .. todo::
@@ -664,20 +669,39 @@ def combine_imputation_results(coefficient_maps, variance_maps, cochrans_q_maps,
     # Calculate covariance (only for multiple regressors?)
 
     # Combine Cochran's Q
+    r = (1 + (1 / n_imputations)) * np.var(np.sqrt(cochrans_q_maps), axis=0)
+    f_q_combined = (np.mean(cochrans_q_maps, axis=0) / df) - (
+        ((n_imputations + 1) / (n_imputations - 1)) * r
+    )
+    df1 = df
+    df2 = ((n_imputations - 1) / (df ** (3 / n_imputations))) * ((1 + (1 / r)) ** 2)
 
     # Convert FQ back into Q (X2 statistic)
+    p_q_combined = stats.f.cdf(f_q_combined, df1, df2)
+    chi2_q_combined = stats.chi2.ppf(p_q_combined, df)
 
     # Combine I^2 into I-combined
+    # "Finally, the software combines the heterogeneity tau and I statistics using the mean,
+    # estimates the combined H2 from the combined I2"
+    I_maps = np.sqrt(i2_maps)
+    I_combined = np.mean(I_maps, axis=0)
+    I2_combined = I_combined**2
 
     # Derive H-combined from I-combined
+    H2_combined = 1 / (1 - (I2_combined / 100))
+    H_combined = np.sqrt(H2_combined)
 
     # Delete the variables for linting purposes
-    del total_variance
+    del total_variance, H_combined, chi2_q_combined
 
     # NOTE: Currently nonsense
     meta_d_img = point_estimates.copy()
     meta_var_img = point_estimates.copy()
     meta_z_img = point_estimates.copy()
+
+    # Beta_C_combined = contrast_vector.dot(Beta_combined)
+    # sigsq_c_combined = contrast_vector.dot(lambda_combined).dot(contrast_vector.T)
+    # Z_c_combined = Beta_C_combined / sigsq_c_combined
 
     return meta_d_img, meta_var_img, meta_z_img
 
