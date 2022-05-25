@@ -330,6 +330,8 @@ class FDRCorrector(Corrector):
         """Perform Benjamini-Hochberg FDR correction.
 
         This correction is based on the one described in :footcite:t:`benjamini1995controlling`.
+        This method is not universally appropriate. It works well for tests that are independent,
+        or which are positively correlated.
 
         .. warning::
             Do not call this method directly. Call :meth:`transform` with ``method='indep'``
@@ -361,6 +363,7 @@ class FDRCorrector(Corrector):
         """Perform Benjamini-Yekutieli FDR correction.
 
         This correction is based on the one described in :footcite:t:`benjamini2001control`.
+        It is most appropriate for tests that are negatively correlated.
 
         .. warning::
             Do not call this method directly. Call :meth:`transform` with ``method='negcorr'``
@@ -377,6 +380,14 @@ class FDRCorrector(Corrector):
         -------
         :obj:`numpy.ndarray`
             A 1D array of adjusted p values.
+
+        Notes
+        -----
+        The difference between the Benjamini-Yekutieli and Benjamini-Hochberg methods is that
+        Benjamini-Yekutieli includes an additional term, ``c(m)``.
+        When the tests are independent or positively correlated, ``c(m)`` is 1 (and thus has no
+        effect).
+        In cases of other forms of dependence, ``c(m)`` has an effect.
 
         References
         ----------
