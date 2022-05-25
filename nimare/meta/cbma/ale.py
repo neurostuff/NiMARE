@@ -346,12 +346,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
-            fname_idx=0,
         )
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
-            fname_idx=1,
         )
 
         n_grp1, n_voxels = ma_maps1.shape
@@ -364,14 +362,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         # Combine the MA maps into a single array to draw from for null distribution
         ma_arr = np.vstack((ma_maps1, ma_maps2))
-
-        if isinstance(ma_maps1, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
-            ma_maps1._mmap.close()
-
-        if isinstance(ma_maps2, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
-            ma_maps2._mmap.close()
 
         del ma_maps1, ma_maps2
 
@@ -591,7 +581,6 @@ class SCALE(CBMAEstimator):
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
-            fname_idx=0,
         )
 
         # Determine bins for null distribution histogram
@@ -602,10 +591,6 @@ class SCALE(CBMAEstimator):
         )
 
         stat_values = self._compute_summarystat_est(ma_values)
-
-        if isinstance(ma_values, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_values.filename}")
-            ma_values._mmap.close()
 
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))

@@ -47,11 +47,10 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
 
     # If there is a memory limit along with pre-generated images, then we should still see the
     # logger message.
-    meta = ale.ALE(kernel__sample_size=20, memory_limit="100mb")
+    meta = ale.ALE(kernel__sample_size=20)
     with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         meta.fit(dset)
     assert "Loading pre-generated MA maps" in caplog.text
-    assert "Closing memmap at" in caplog.text
 
 
 def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
@@ -169,7 +168,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALE_montecarlo_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null_method="montecarlo", n_iters=10, kernel__memory_limit="1gb")
+    meta = ale.ALE(null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()

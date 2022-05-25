@@ -114,9 +114,9 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 class CorrelationDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with meta-analytic maps.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add *low-memory* option to :class:`meta_estimator`
+        * Remove low-memory option in favor of sparse arrays.
 
     Parameters
     ----------
@@ -150,11 +150,10 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
-        memory_limit="1gb",
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
+            meta_estimator = MKDAChi2()
         else:
             meta_estimator = _check_type(meta_estimator, CBMAEstimator)
 
@@ -266,12 +265,10 @@ class CorrelationDistributionDecoder(Decoder):
         features=None,
         frequency_threshold=0.001,
         target_image="z",
-        memory_limit="1gb",
     ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
-        self.memory_limit = memory_limit
         self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
@@ -309,7 +306,6 @@ class CorrelationDistributionDecoder(Decoder):
                 feature_arr = _safe_transform(
                     test_imgs,
                     self.masker,
-                    memory_limit=self.memory_limit,
                     memfile=None,
                 )
                 images_[feature] = feature_arr
