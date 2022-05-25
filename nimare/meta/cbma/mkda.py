@@ -401,8 +401,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del n_selected, n_unselected
 
-        # print(cells)
-
         pFgA_chi2_vals = two_way(cells)
 
         del n_selected_active_voxels, n_unselected_active_voxels

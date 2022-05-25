@@ -289,6 +289,7 @@ def compute_kda_ma(
     .. versionchanged:: 0.0.12
 
         * Remove low-memory option in favor of sparse arrays.
+        * Return 4D sparse array.
 
     .. versionadded:: 0.0.4
 
@@ -317,7 +318,7 @@ def compute_kda_ma(
 
     Returns
     -------
-    kernel_data : :obj:`sparse._coo.core.COO` or kernel_data: :obj:`numpy.array`
+    kernel_data : :obj:`sparse._coo.core.COO`
         4D sparse array. If `exp_idx` is none, a 3d array in the same
         shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
@@ -336,7 +337,7 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    # Preallocate coords and data array, np.concatenate is too slow
+    # Preallocate coords array, np.concatenate is too slow
     n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
     coords = np.zeros((4, n_coords), dtype=int)
     temp_idx = 0
@@ -359,6 +360,7 @@ def compute_kda_ma(
 
     if not sum_overlap:
         coords = np.unique(coords, axis=1)
+
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
