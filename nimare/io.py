@@ -130,14 +130,14 @@ def convert_neurosynth_to_dict(
         label_df = None
 
     # Compile (pseudo-)NIMADS-format dictionary
-    x = coords_df['x'].values
-    y = coords_df['y'].values
-    z = coords_df['z'].values
+    x = coords_df["x"].values
+    y = coords_df["y"].values
+    z = coords_df["z"].values
 
     dset_dict = {}
 
     for sid, study_metadata in metadata_df.iterrows():
-        coord_inds = np.where(coords_df['id'].values == sid)[0]
+        coord_inds = np.where(coords_df["id"].values == sid)[0]
         study_dict = {}
         study_dict["metadata"] = {}
         study_dict["metadata"]["authors"] = study_metadata.get("authors", "n/a")
