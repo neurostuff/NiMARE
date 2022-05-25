@@ -247,8 +247,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    stats.pearson
    stats.null_to_p
    stats.nullhist_to_p
-   stats.bonferroni
-   stats.fdr
 
 
 .. _api_generate_ref:

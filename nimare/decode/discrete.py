@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg
+from pymare.stats import bonferroni, fdr
 from scipy import special
 from scipy.stats import binom
 
@@ -10,7 +11,7 @@ from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.due import due
 from nimare.meta.kernel import KernelTransformer, MKDAKernel
-from nimare.stats import bonferroni, fdr, one_way, pearson, two_way
+from nimare.stats import one_way, pearson, two_way
 from nimare.transforms import p_to_z
 from nimare.utils import _check_type, get_masker
 

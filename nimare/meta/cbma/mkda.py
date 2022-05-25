@@ -4,6 +4,7 @@ import logging
 import nibabel as nib
 import numpy as np
 from joblib import Parallel, delayed
+from pymare.stats import fdr
 from scipy import ndimage
 from scipy.stats import chi2
 from tqdm.auto import tqdm
@@ -13,7 +14,7 @@ from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
-from nimare.stats import fdr, null_to_p, one_way, two_way
+from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
 

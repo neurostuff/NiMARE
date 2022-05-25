@@ -4,9 +4,9 @@ import logging
 from abc import ABCMeta, abstractproperty
 
 import numpy as np
+from pymare.stats import bonferroni, fdr
 
 from nimare.results import MetaResult
-from nimare.stats import bonferroni, fdr
 from nimare.transforms import p_to_z
 
 LGR = logging.getLogger(__name__)
@@ -355,7 +355,7 @@ class FDRCorrector(Corrector):
 
         See Also
         --------
-        nimare.stats.fdr
+        pymare.stats.fdr
         """
         return fdr(p, q=self.alpha, method="bh")
 
@@ -395,6 +395,6 @@ class FDRCorrector(Corrector):
 
         See Also
         --------
-        nimare.stats.fdr
+        pymare.stats.fdr
         """
         return fdr(p, q=self.alpha, method="by")
