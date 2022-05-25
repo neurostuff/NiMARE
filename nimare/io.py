@@ -130,9 +130,14 @@ def convert_neurosynth_to_dict(
         label_df = None
 
     # Compile (pseudo-)NIMADS-format dictionary
+    x = coords_df['x'].values
+    y = coords_df['y'].values
+    z = coords_df['z'].values
+
     dset_dict = {}
+
     for sid, study_metadata in metadata_df.iterrows():
-        study_coords_df = coords_df.loc[coords_df["id"] == sid]
+        coord_inds = np.where(coords_df['id'].values == sid)[0]
         study_dict = {}
         study_dict["metadata"] = {}
         study_dict["metadata"]["authors"] = study_metadata.get("authors", "n/a")
@@ -149,9 +154,9 @@ def convert_neurosynth_to_dict(
         study_dict["contrasts"]["1"]["metadata"]["title"] = study_metadata.get("title", "n/a")
         study_dict["contrasts"]["1"]["coords"] = {}
         study_dict["contrasts"]["1"]["coords"]["space"] = study_metadata["space"]
-        study_dict["contrasts"]["1"]["coords"]["x"] = study_coords_df["x"].tolist()
-        study_dict["contrasts"]["1"]["coords"]["y"] = study_coords_df["y"].tolist()
-        study_dict["contrasts"]["1"]["coords"]["z"] = study_coords_df["z"].tolist()
+        study_dict["contrasts"]["1"]["coords"]["x"] = list(x[coord_inds])
+        study_dict["contrasts"]["1"]["coords"]["y"] = list(y[coord_inds])
+        study_dict["contrasts"]["1"]["coords"]["z"] = list(z[coord_inds])
 
         if label_df is not None:
             study_dict["contrasts"]["1"]["labels"] = label_df.loc[sid].to_dict()
