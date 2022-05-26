@@ -324,6 +324,8 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+
+    assert 0 
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
@@ -341,6 +343,8 @@ def compute_kda_ma(
     n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
     coords = np.zeros((4, n_coords), dtype=int)
     temp_idx = 0
+
+    # The contents of this loop also
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
@@ -359,7 +363,7 @@ def compute_kda_ma(
     coords = coords[:, :temp_idx]
 
     if not sum_overlap:
-        coords = np.unique(coords, axis=1)
+        coords = np.unique(coords, axis=1) # This line takes a very long time
 
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
