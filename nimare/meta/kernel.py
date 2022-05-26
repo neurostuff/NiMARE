@@ -14,6 +14,7 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from nilearn import image
 
 from nimare import references
@@ -89,7 +90,7 @@ class KernelTransformer(NiMAREBase):
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
             If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
             Default is None.
-        return_type : {'array', 'image', 'dataset'}, optional
+        return_type : {'sparse', 'array', 'image', 'dataset'}, optional
             Whether to return a numpy array ('array'), a list of niimgs ('image'),
             or a Dataset with MA images saved as files ('dataset').
             Default is 'image'.
@@ -98,6 +99,9 @@ class KernelTransformer(NiMAREBase):
         -------
         imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
                or :class:`~nimare.dataset.Dataset`
+            If return_type is 'sparse', a 4D sparse array (E x S), where E is
+            the number of unique experiments, and the remaining 3 dimensions are
+            equal to `shape` of the images.
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images
@@ -113,7 +117,7 @@ class KernelTransformer(NiMAREBase):
         image_type : str
             Name of the corresponding column in the Dataset.images DataFrame.
         """
-        if return_type not in ("array", "image", "dataset"):
+        if return_type not in ("sparse", "array", "image", "dataset"):
             raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
 
         if isinstance(dataset, pd.DataFrame):
@@ -195,19 +199,16 @@ class KernelTransformer(NiMAREBase):
 
         transformed_maps = self._transform(mask, coordinates)
 
-        # This will be a numpy.ndarray if the kernel is an (M)KDAKernel.
-        if not isinstance(transformed_maps[0], (list, tuple)):
-            if return_type == "array":
-                ma_arr = transformed_maps[0][:, mask_data]
-
-                return ma_arr
-            else:
-                # Transform into an length-N list of length-2 tuples,
-                # composed of a 3D array and a string with the ID.
-                transformed_maps = list(zip(*transformed_maps))
+        if return_type == "sparse":
+            return transformed_maps[0]
 
         imgs = []
-        for (kernel_data, id_) in transformed_maps:
+        # Loop over exp ids since sparse._coo.core.COO is not iterable
+        for i_exp, id_ in enumerate(transformed_maps[1]):
+            if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
+                kernel_data = transformed_maps[0][i_exp].todense()
+            else:
+                kernel_data = transformed_maps[0][i_exp]
 
             if return_type == "array":
                 img = kernel_data[mask_data]
@@ -311,7 +312,6 @@ class ALEKernel(KernelTransformer):
         kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
 
-        # Use a list of tuples
         transformed = []
         for i_exp, id_ in enumerate(exp_ids):
             data = coordinates.loc[coordinates["id"] == id_]
@@ -341,9 +341,9 @@ class ALEKernel(KernelTransformer):
 
             kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
-            transformed.append((kernel_data, id_))
+            transformed.append(kernel_data)
 
-        return transformed
+        return transformed, exp_ids
 
 
 class KDAKernel(KernelTransformer):

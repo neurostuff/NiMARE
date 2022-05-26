@@ -189,7 +189,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps"):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="array"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
@@ -215,10 +215,11 @@ class CBMAEstimator(Estimator):
 
         else:
             LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
+
             ma_maps = self.kernel_transformer.transform(
                 self.inputs_[coords_key],
                 masker=self.masker,
-                return_type="array",
+                return_type=return_type,
             )
 
         return ma_maps
