@@ -139,6 +139,7 @@ For more information about functional characterization analysis, see :doc:`decod
    decode.discrete
    decode.continuous
    decode.encode
+   decode.base
 
 
 .. _api_io_ref:
@@ -329,6 +330,3 @@ For more information about fetching data from the internet, see :ref:`fetching t
 
    base.NiMAREBase
    base.Estimator
-   base.MetaEstimator
-   base.Transformer
-   base.Decoder

@@ -4,8 +4,8 @@ from contextlib import ExitStack as does_not_raise
 import pytest
 from numpy.random import RandomState
 
-from ..dataset import Dataset
-from ..generate import (
+from nimare.dataset import Dataset
+from nimare.generate import (
     _array_like,
     _create_foci,
     _create_source,

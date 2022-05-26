@@ -3,22 +3,133 @@ from __future__ import division
 
 import logging
 
+import nibabel as nib
 import numpy as np
 import pymare
+from nilearn._utils.niimg_conversions import _check_same_fov
+from nilearn.image import concat_imgs, resample_to_img
 from nilearn.input_data import NiftiMasker
 from nilearn.mass_univariate import permuted_ols
 
-from ..base import MetaEstimator
-from ..transforms import p_to_z, t_to_z
-from ..utils import _boolean_unmask
+from nimare.base import Estimator
+from nimare.transforms import p_to_z, t_to_z
+from nimare.utils import _boolean_unmask, _check_ncores, get_masker
 
 LGR = logging.getLogger(__name__)
 
 
-class Fishers(MetaEstimator):
+class IBMAEstimator(Estimator):
+    """Base class for meta-analysis methods in :mod:`~nimare.meta`.
+
+    .. versionadded:: 0.0.12
+
+        * IBMA-specific elements of ``MetaEstimator`` excised and used to create ``IBMAEstimator``.
+        * Generic kwargs and args converted to named kwargs.
+          All remaining kwargs are for resampling.
+
+    """
+
+    def __init__(self, *, mask=None, resample=False, memory_limit=None, **kwargs):
+        if mask is not None:
+            mask = get_masker(mask)
+        self.masker = mask
+        self.resample = resample
+        self.memory_limit = memory_limit
+
+        # defaults for resampling images (nilearn's defaults do not work well)
+        self._resample_kwargs = {"clip": True, "interpolation": "linear"}
+
+        # Identify any kwargs
+        resample_kwargs = {k: v for k, v in kwargs.items() if k.startswith("resample__")}
+
+        # Flag any extraneous kwargs
+        other_kwargs = dict(set(kwargs.items()) - set(resample_kwargs.items()))
+        if other_kwargs:
+            LGR.warn(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
+
+        # Update the default resampling parameters
+        resample_kwargs = {k.split("resample__")[1]: v for k, v in resample_kwargs.items()}
+        self._resample_kwargs.update(resample_kwargs)
+
+    def _preprocess_input(self, dataset):
+        """Preprocess inputs to the Estimator from the Dataset as needed."""
+        masker = self.masker or dataset.masker
+
+        mask_img = masker.mask_img or masker.labels_img
+        if isinstance(mask_img, str):
+            mask_img = nib.load(mask_img)
+
+        # Ensure that protected values are not included among _required_inputs
+        assert "aggressive_mask" not in self._required_inputs.keys(), "This is a protected name."
+
+        if "aggressive_mask" in self.inputs_.keys():
+            LGR.warning("Removing existing 'aggressive_mask' from Estimator.")
+            self.inputs_.pop("aggressive_mask")
+
+        # A dictionary to collect masked image data, to be further reduced by the aggressive mask.
+        temp_image_inputs = {}
+
+        for name, (type_, _) in self._required_inputs.items():
+            if type_ == "image":
+                # If no resampling is requested, check if resampling is required
+                if not self.resample:
+                    check_imgs = {img: nib.load(img) for img in self.inputs_[name]}
+                    _check_same_fov(**check_imgs, reference_masker=mask_img, raise_error=True)
+                    imgs = list(check_imgs.values())
+                else:
+                    # resampling will only occur if shape/affines are different
+                    # making this harmless if all img shapes/affines are the same as the reference
+                    imgs = [
+                        resample_to_img(nib.load(img), mask_img, **self._resample_kwargs)
+                        for img in self.inputs_[name]
+                    ]
+
+                # input to NiFtiLabelsMasker must be 4d
+                img4d = concat_imgs(imgs, ensure_ndim=4)
+
+                # Mask required input images using either the dataset's mask or the estimator's.
+                temp_arr = masker.transform(img4d)
+
+                # An intermediate step to mask out bad voxels.
+                # Can be dropped once PyMARE is able to handle masked arrays or missing data.
+                nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
+                nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
+                good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
+
+                data = masker.transform(img4d)
+
+                temp_image_inputs[name] = data
+                if "aggressive_mask" not in self.inputs_.keys():
+                    self.inputs_["aggressive_mask"] = good_voxels_bool
+                else:
+                    # Remove any voxels that are bad in any image-based inputs
+                    self.inputs_["aggressive_mask"] = np.logical_or(
+                        self.inputs_["aggressive_mask"],
+                        good_voxels_bool,
+                    )
+
+        # Further reduce image-based inputs to remove "bad" voxels
+        # (voxels with zeros or NaNs in any studies)
+        if "aggressive_mask" in self.inputs_.keys():
+            n_bad_voxels = (
+                self.inputs_["aggressive_mask"].size - self.inputs_["aggressive_mask"].sum()
+            )
+            if n_bad_voxels:
+                LGR.warning(
+                    f"Masking out {n_bad_voxels} additional voxels. "
+                    "The updated masker is available in the Estimator.masker attribute."
+                )
+
+            for name, raw_masked_data in temp_image_inputs.items():
+                self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
+
+
+class Fishers(IBMAEstimator):
     """An image-based meta-analytic test using t- or z-statistic images.
 
     Requires z-statistic images, but will be extended to work with t-statistic images as well.
+
+    This method is described in :footcite:t:`fisher1946statistical`.
 
     Notes
     -----
@@ -35,9 +146,7 @@ class Fishers(MetaEstimator):
 
     References
     ----------
-    * Fisher, R. A. (1934). Statistical methods for research workers.
-      Statistical methods for research workers., (5th Ed).
-      https://www.cabdirect.org/cabdirect/abstract/19351601205
+    .. footbibliography::
 
     See Also
     --------
@@ -46,9 +155,6 @@ class Fishers(MetaEstimator):
     """
 
     _required_inputs = {"z_maps": ("image", "z")}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -72,15 +178,18 @@ class Fishers(MetaEstimator):
         return results
 
 
-class Stouffers(MetaEstimator):
+class Stouffers(IBMAEstimator):
     """A t-test on z-statistic images.
 
     Requires z-statistic images.
 
+    This method is described in :footcite:t:`stouffer1949american`.
+
     Parameters
     ----------
     use_sample_size : :obj:`bool`, optional
-        Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not.
+        Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
+        as described in :footcite:t:`zaykin2011optimally`.
         Default is False.
 
     Notes
@@ -98,14 +207,7 @@ class Stouffers(MetaEstimator):
 
     References
     ----------
-    * Stouffer, S. A., Suchman, E. A., DeVinney, L. C., Star, S. A., &
-      Williams Jr, R. M. (1949). The American Soldier: Adjustment during
-      army life. Studies in social psychology in World War II, vol. 1.
-      https://psycnet.apa.org/record/1950-00790-000
-    * Zaykin, D. V. (2011). Optimally weighted Z-test is a powerful method for
-      combining probabilities in meta-analysis. Journal of evolutionary
-      biology, 24(8), 1836-1841.
-      https://doi.org/10.1111/j.1420-9101.2011.02297.x
+    .. footbibliography::
 
     See Also
     --------
@@ -115,8 +217,8 @@ class Stouffers(MetaEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, use_sample_size=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, use_sample_size=False, **kwargs):
+        super().__init__(**kwargs)
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
@@ -152,7 +254,7 @@ class Stouffers(MetaEstimator):
         return results
 
 
-class WeightedLeastSquares(MetaEstimator):
+class WeightedLeastSquares(IBMAEstimator):
     """Weighted least-squares meta-regression.
 
     .. versionchanged:: 0.0.8
@@ -165,6 +267,8 @@ class WeightedLeastSquares(MetaEstimator):
     known/assumed between-study variance tau^2.
     When tau^2 = 0 (default), the model is the standard inverse-weighted
     fixed-effects meta-regression.
+
+    This method was described in :footcite:t:`brockwell2001comparison`.
 
     Parameters
     ----------
@@ -187,9 +291,7 @@ class WeightedLeastSquares(MetaEstimator):
 
     References
     ----------
-    * Brockwell, S. E., & Gordon, I. R. (2001). A comparison of statistical
-      methods for meta-analysis. Statistics in Medicine, 20(6), 825–840.
-      https://doi.org/10.1002/sim.650
+    .. footbibliography::
 
     See Also
     --------
@@ -199,8 +301,8 @@ class WeightedLeastSquares(MetaEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
-    def __init__(self, tau2=0, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, tau2=0, **kwargs):
+        super().__init__(**kwargs)
         self.tau2 = tau2
 
     def _fit(self, dataset):
@@ -232,7 +334,7 @@ class WeightedLeastSquares(MetaEstimator):
         return results
 
 
-class DerSimonianLaird(MetaEstimator):
+class DerSimonianLaird(IBMAEstimator):
     """DerSimonian-Laird meta-regression estimator.
 
     .. versionchanged:: 0.0.8
@@ -241,8 +343,8 @@ class DerSimonianLaird(MetaEstimator):
 
     .. versionadded:: 0.0.4
 
-    Estimates the between-subject variance tau^2 using the DerSimonian-Laird
-    (1986) method-of-moments approach.
+    Estimates the between-subject variance tau^2 using the :footcite:t:`dersimonian1986meta`
+    method-of-moments approach :footcite:p:`dersimonian1986meta,kosmidis2017improving`.
 
     Notes
     -----
@@ -260,11 +362,7 @@ class DerSimonianLaird(MetaEstimator):
 
     References
     ----------
-    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
-      Controlled clinical trials, 7(3), 177-188.
-    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
-      likelihood-based inference in meta-analysis and meta-regression.
-      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
+    .. footbibliography::
 
     See Also
     --------
@@ -273,9 +371,6 @@ class DerSimonianLaird(MetaEstimator):
     """
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -306,7 +401,7 @@ class DerSimonianLaird(MetaEstimator):
         return results
 
 
-class Hedges(MetaEstimator):
+class Hedges(IBMAEstimator):
     """Hedges meta-regression estimator.
 
     .. versionchanged:: 0.0.8
@@ -315,7 +410,7 @@ class Hedges(MetaEstimator):
 
     .. versionadded:: 0.0.4
 
-    Estimates the between-subject variance tau^2 using the Hedges & Olkin (1985)
+    Estimates the between-subject variance tau^2 using the :footcite:t:`hedges2014statistical`
     approach.
 
     Notes
@@ -334,7 +429,7 @@ class Hedges(MetaEstimator):
 
     References
     ----------
-    * Hedges LV, Olkin I. 1985. Statistical Methods for Meta-Analysis.
+    .. footbibliography::
 
     See Also
     --------
@@ -343,9 +438,6 @@ class Hedges(MetaEstimator):
     """
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -376,7 +468,7 @@ class Hedges(MetaEstimator):
         return results
 
 
-class SampleSizeBasedLikelihood(MetaEstimator):
+class SampleSizeBasedLikelihood(IBMAEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
 
     .. versionchanged:: 0.0.8
@@ -428,8 +520,8 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         "sample_sizes": ("metadata", "sample_sizes"),
     }
 
-    def __init__(self, method="ml", *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, method="ml", **kwargs):
+        super().__init__(**kwargs)
         self.method = method
 
     def _fit(self, dataset):
@@ -457,7 +549,7 @@ class SampleSizeBasedLikelihood(MetaEstimator):
         return results
 
 
-class VarianceBasedLikelihood(MetaEstimator):
+class VarianceBasedLikelihood(IBMAEstimator):
     """A likelihood-based meta-analysis method for estimates with known variances.
 
     .. versionchanged:: 0.0.8
@@ -467,7 +559,8 @@ class VarianceBasedLikelihood(MetaEstimator):
     .. versionadded:: 0.0.4
 
     Iteratively estimates the between-subject variance tau^2 and fixed effect
-    coefficients using the specified likelihood-based estimator (ML or REML).
+    coefficients using the specified likelihood-based estimator (ML or REML)
+    :footcite:p:`dersimonian1986meta,kosmidis2017improving`.
 
     Parameters
     ----------
@@ -503,11 +596,7 @@ class VarianceBasedLikelihood(MetaEstimator):
 
     References
     ----------
-    * DerSimonian, R., & Laird, N. (1986). Meta-analysis in clinical trials.
-      Controlled clinical trials, 7(3), 177-188.
-    * Kosmidis, I., Guolo, A., & Varin, C. (2017). Improving the accuracy of
-      likelihood-based inference in meta-analysis and meta-regression.
-      Biometrika, 104(2), 489–496. https://doi.org/10.1093/biomet/asx001
+    .. footbibliography::
 
     See Also
     --------
@@ -517,8 +606,8 @@ class VarianceBasedLikelihood(MetaEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
-    def __init__(self, method="ml", *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, method="ml", **kwargs):
+        super().__init__(**kwargs)
         self.method = method
 
     def _fit(self, dataset):
@@ -552,7 +641,7 @@ class VarianceBasedLikelihood(MetaEstimator):
         return results
 
 
-class PermutedOLS(MetaEstimator):
+class PermutedOLS(IBMAEstimator):
     r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
 
     .. versionchanged:: 0.0.8
@@ -560,6 +649,8 @@ class PermutedOLS(MetaEstimator):
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
 
     .. versionadded:: 0.0.4
+
+    This approach is described in :footcite:t:`freedman1983nonstochastic`.
 
     Parameters
     ----------
@@ -583,8 +674,7 @@ class PermutedOLS(MetaEstimator):
 
     References
     ----------
-    * Freedman, D., & Lane, D. (1983). A nonstochastic interpretation of reported significance
-      levels. Journal of Business & Economic Statistics, 1(4), 292-298.
+    .. footbibliography::
 
     See Also
     --------
@@ -593,8 +683,8 @@ class PermutedOLS(MetaEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, two_sided=True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, two_sided=True, **kwargs):
+        super().__init__(**kwargs)
         self.two_sided = two_sided
         self.parameters_ = {}
 
@@ -668,7 +758,7 @@ class PermutedOLS(MetaEstimator):
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        n_cores = self._check_ncores(n_cores)
+        n_cores = _check_ncores(n_cores)
 
         log_p_map, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
