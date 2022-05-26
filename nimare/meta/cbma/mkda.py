@@ -299,7 +299,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
     """
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
-        if not (isinstance(kernel_transformer, MKDAKernel) or kernelcorrect_fwemer}) is not optimized "
+        if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
                 "Expect suboptimal performance and beware bugs."
             )
