@@ -299,9 +299,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     """
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
-        if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
-            LGR.warning(
-                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+        if not (isinstance(kernel_transformer, MKDAKernel) or kernelcorrect_fwemer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
                 "Expect suboptimal performance and beware bugs."
             )
@@ -318,7 +316,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
-        # Generate MA maps and calculate count variables for first dataset
+        # Generate MA maps and calculate count variables for first datasetcorrect_fwe_montecarlo
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
@@ -390,7 +388,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         cells = np.squeeze(
             np.array(
                 [
-                    [n_selected_active_voxels, n_unselected_active_voxels],
+                    [n_selected_active_voxels, n_unselected_active_voxels],correct_fwe_montecarlo
                     [
                         n_selected - n_selected_active_voxels,
                         n_unselected - n_unselected_active_voxels,
@@ -403,7 +401,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         pFgA_chi2_vals = two_way(cells)
 
-        del n_selected_active_voxels, n_unselected_active_voxels
+        del n_selected_active_voxels, n_unselected_active_voxelscorrect_fwe_montecarlo
 
         eps = np.spacing(1)
         pFgA_p_vals = chi2.sf(pFgA_chi2_vals, 1)
