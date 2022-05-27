@@ -339,24 +339,22 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    # Preallocate coords array, np.concatenate is too slow
-    # n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
-    # coords = np.zeros((4, n_coords), dtype=int)
     temp_idx = 0
     ijks_idx = 0
     exp_idx_u, exp_idx_counts = np.unique(exp_idx, return_counts=True)
 
     all_coords = []
+    # Loop over experiments
     for i, exp in enumerate(exp_idx_u):
+        # Index peaks by experiment
         n = exp_idx_counts[i]
-
         peaks = ijks[ijks_idx:ijks_idx+n]
         ijks_idx += n
 
+        # Convolve spheres
         all_spheres = []
         for peak in peaks:
             all_spheres.append(kernel.T + peak)
-
         all_spheres = np.vstack(all_spheres)
     
         # Mask coordinates beyond space
