@@ -340,17 +340,18 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     # Preallocate coords array, np.concatenate is too slow
-    n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
-    coords = np.zeros((4, n_coords), dtype=int)
+    # n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
+    # coords = np.zeros((4, n_coords), dtype=int)
     temp_idx = 0
     ijks_idx = 0
     exp_idx_u, exp_idx_counts = np.unique(exp_idx, return_counts=True)
 
+    all_coords = []
     for i, exp in enumerate(exp_idx_u):
         n = exp_idx_counts[i]
 
-        peaks = ijks[ijks_idx:n]
-        ijks += n
+        peaks = ijks[ijks_idx:ijks_idx+n]
+        ijks_idx += n
 
         all_spheres = []
         for peak in peaks:
@@ -358,25 +359,25 @@ def compute_kda_ma(
 
         all_spheres = np.vstack(all_spheres)
     
-        if not sum_overlap:
-            all_spheres = np.unique(all_spheres, axis=1)
-
         # Mask coordinates beyond space
         idx = np.all(np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1)
         all_spheres = all_spheres[idx, :].astype(int)
+
+        if not sum_overlap:
+            unique_spheres = np.zeros(shape, dtype='bool')
+            unique_spheres[tuple(all_spheres.T)] = True
+            all_spheres = np.vstack(np.where(unique_spheres == True)).T
     
         n_brain_voxels = all_spheres.shape[0]
-        chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
-
-        sphere_t = all_spheres.T
-        coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
-        coords[1:, chunk_idx] = sphere_t
-
+        # chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
+        all_coords.append(
+            np.concatenate([np.full((1, n_brain_voxels), exp), all_spheres.T])
+        )
         temp_idx += n_brain_voxels
 
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
+    coords = np.hstack(all_coords)
     coords = coords[:, :temp_idx]
-    
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
