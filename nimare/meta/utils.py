@@ -353,11 +353,16 @@ def compute_kda_ma(
         all_spheres = []
         for peak in peaks:
             all_spheres.append(kernel.T + peak)
-        all_spheres = np.vstack(all_spheres)
+        all_spheres = np.vstack(all_spheres).astype(int)
     
+        if not sum_overlap:
+            unique_spheres = np.zeros(shape, dtype='bool')
+            unique_spheres[tuple(all_spheres.T)] = True
+            all_spheres = np.vstack(np.where(unique_spheres == True)).T
+
         # Mask coordinates beyond space
         idx = np.all(np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1)
-        all_spheres = all_spheres[idx, :].astype(int)
+        all_spheres = all_spheres[idx, :]
 
         n_brain_voxels = all_spheres.shape[0]
         all_coords.append(np.vstack([np.full((1, n_brain_voxels), exp), all_spheres.T]))
@@ -367,8 +372,8 @@ def compute_kda_ma(
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
     coords = np.hstack(all_coords)
 
-    if not sum_overlap:
-        coords = np.unique(coords, axis=1)
+    # if not sum_overlap:
+    #     coords = np.unique(coords, axis=1)
 
     coords = coords[:, :temp_idx]
     data = np.full(coords.shape[1], value)
