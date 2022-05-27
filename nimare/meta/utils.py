@@ -324,8 +324,8 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+    # import pdb
 
-    assert 0 
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
@@ -343,28 +343,40 @@ def compute_kda_ma(
     n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
     coords = np.zeros((4, n_coords), dtype=int)
     temp_idx = 0
+    ijks_idx = 0
+    exp_idx_u, exp_idx_counts = np.unique(exp_idx, return_counts=True)
 
-    # The contents of this loop also
-    for i, peak in enumerate(ijks):
-        sphere = np.round(kernel.T + peak)
-        idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
-        sphere = sphere[idx, :].astype(int)
-        exp = exp_idx[i]
+    for i, exp in enumerate(exp_idx_u):
+        n = exp_idx_counts[i]
 
-        n_brain_voxels = sphere.shape[0]
+        peaks = ijks[ijks_idx:n]
+        ijks += n
+
+        all_spheres = []
+        for peak in peaks:
+            all_spheres.append(kernel.T + peak)
+
+        all_spheres = np.vstack(all_spheres)
+    
+        if not sum_overlap:
+            all_spheres = np.unique(all_spheres, axis=1)
+
+        # Mask coordinates beyond space
+        idx = np.all(np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1)
+        all_spheres = all_spheres[idx, :].astype(int)
+    
+        n_brain_voxels = all_spheres.shape[0]
         chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
 
+        sphere_t = all_spheres.T
         coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
-        coords[1:, chunk_idx] = sphere.T
+        coords[1:, chunk_idx] = sphere_t
 
         temp_idx += n_brain_voxels
 
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
     coords = coords[:, :temp_idx]
-
-    if not sum_overlap:
-        coords = np.unique(coords, axis=1) # This line takes a very long time
-
+    
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
