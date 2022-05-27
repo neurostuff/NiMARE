@@ -369,10 +369,7 @@ def compute_kda_ma(
             all_spheres = np.vstack(np.where(unique_spheres == True)).T
     
         n_brain_voxels = all_spheres.shape[0]
-        # chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
-        all_coords.append(
-            np.concatenate([np.full((1, n_brain_voxels), exp), all_spheres.T])
-        )
+        all_coords.append(np.vstack([np.full((1, n_brain_voxels), exp), all_spheres.T]))
         temp_idx += n_brain_voxels
 
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
