@@ -390,7 +390,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         cells = np.squeeze(
             np.array(
                 [
-                    [n_selected_active_voxels, n_unselected_active_voxels],correct_fwe_montecarlo
+                    [n_selected_active_voxels, n_unselected_active_voxels],
                     [
                         n_selected - n_selected_active_voxels,
                         n_unselected - n_unselected_active_voxels,
@@ -403,7 +403,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         pFgA_chi2_vals = two_way(cells)
 
-        del n_selected_active_voxels, n_unselected_active_voxelscorrect_fwe_montecarlo
+        del n_selected_active_voxels, n_unselected_active_voxels
 
         eps = np.spacing(1)
         pFgA_p_vals = chi2.sf(pFgA_chi2_vals, 1)
