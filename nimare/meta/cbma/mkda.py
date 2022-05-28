@@ -318,7 +318,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
-        # Generate MA maps and calculate count variables for first datasetcorrect_fwe_montecarlo
+        # Generate MA maps and calculate count variables for first dataset
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
