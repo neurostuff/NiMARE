@@ -274,6 +274,19 @@ def compute_p2m_ma(
     niis = [nib.Nifti1Image(np.squeeze(result), affine) for result in results]
     return niis
 
+import pandas as pd
+def unique_rows(a):
+    # np.unique() is slow, in part because it sorts;
+    # pd.unique() is much faster, but only 1D
+    # This is inspired by https://github.com/numpy/numpy/issues/11136#issue-325345618
+    # It creates a 1D view where each element is a byte-encoding of a row, then uses
+    # pd.unique(), and then reconstruct the original type.
+    if a.ndim != 2:
+        raise ValueError(f'bad array dimension {a.ndim}; should be 2')
+    b = np.ascontiguousarray(a).view(
+        np.dtype((np.void, a.dtype.itemsize * a.shape[1]))
+    )[:, 0]
+    return pd.unique(b).view(a.dtype).reshape(-1, a.shape[1])
 
 def compute_kda_ma(
     shape,
@@ -356,9 +369,7 @@ def compute_kda_ma(
         all_spheres = np.vstack(all_spheres).astype(int)
     
         if not sum_overlap:
-            unique_spheres = np.zeros(shape, dtype='bool')
-            unique_spheres[tuple(all_spheres.T)] = True
-            all_spheres = np.vstack(np.where(unique_spheres == True)).T
+            all_spheres = unique_rows(all_spheres.T).T
 
         # Mask coordinates beyond space
         idx = np.all(np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1)
@@ -371,11 +382,8 @@ def compute_kda_ma(
 
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
     coords = np.hstack(all_coords)
-
-    # if not sum_overlap:
-    #     coords = np.unique(coords, axis=1)
-
     coords = coords[:, :temp_idx]
+
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
