@@ -125,14 +125,14 @@ class KernelTransformer(NiMAREBase):
                 masker is not None
             ), "Argument 'masker' must be provided if dataset is a DataFrame."
             mask = masker.mask_img
-            coordinates = dataset
+            coordinates = dataset.copy()
             assert (
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
 
             # Calculate IJK. Must assume that the masker is in same space,
             # but has different affine, from original IJK.
-            coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine) # Possibily optimize this
+            coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
@@ -181,7 +181,7 @@ class KernelTransformer(NiMAREBase):
 
         # Generate the MA maps if they weren't already available as images
         if return_type == "array":
-            mask_data = mask.get_fdata().astype(bool) # Possibilty allow this to be passed in to not recompute
+            mask_data = mask.get_fdata().astype(bool)
         elif return_type == "image":
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
@@ -202,8 +202,6 @@ class KernelTransformer(NiMAREBase):
         if return_type == "sparse":
             return transformed_maps[0]
 
-
-        # Optimize this, possily make own function
         imgs = []
         # Loop over exp ids since sparse._coo.core.COO is not iterable
         for i_exp, id_ in enumerate(transformed_maps[1]):
