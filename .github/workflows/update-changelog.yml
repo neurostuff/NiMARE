@@ -1,8 +1,6 @@
 name: "Update Changelog"
 
 on:
-  pull_request:
-    types: [closed]
   release:
     types: [released]
 
