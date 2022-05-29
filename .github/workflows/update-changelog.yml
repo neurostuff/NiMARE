@@ -1,8 +1,8 @@
 name: "Update Changelog"
 
 on:
-  push:
   pull_request:
+    types: [closed]
   release:
     types: [released]
 
@@ -19,7 +19,7 @@ jobs:
       - name: Update Changelog
         uses: stefanzweifel/changelog-updater-action@v1
         with:
-          latest-version: 0.0.12rc2
+          latest-version: ${{ github.event.release.tag_name }}
           release-notes: ${{ github.event.release.body }}
 
       - name: Commit updated CHANGELOG
