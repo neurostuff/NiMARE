@@ -363,8 +363,8 @@ def compute_kda_ma(
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
-    uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
-    n_studies = len(uniq)
+    exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
+    n_studies = len(exp_idx_uniq)
 
     kernel_shape = (n_studies,) + shape
 
@@ -374,16 +374,12 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     temp_idx = 0
-    ijks_idx = 0
-    exp_idx_u, exp_idx_counts = np.unique(exp_idx, return_counts=True)
-
     all_coords = []
     # Loop over experiments
-    for i, exp in enumerate(exp_idx_u):
+    for i, exp in enumerate(exp_idx_uniq):
         # Index peaks by experiment
-        n = exp_idx_counts[i]
-        peaks = ijks[ijks_idx : ijks_idx + n]
-        ijks_idx += n
+        curr_exp_idx = (exp_idx == i)
+        peaks = ijks[curr_exp_idx]
 
         # Convolve spheres
         all_spheres = []
@@ -401,7 +397,7 @@ def compute_kda_ma(
         all_spheres = all_spheres[idx, :]
 
         n_brain_voxels = all_spheres.shape[0]
-        all_coords.append(np.vstack([np.full((1, n_brain_voxels), exp), all_spheres.T]))
+        all_coords.append(np.vstack([np.full((1, n_brain_voxels), i), all_spheres.T]))
         temp_idx += n_brain_voxels
 
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
