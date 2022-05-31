@@ -85,8 +85,8 @@ Additionally, each Corrector type accepts a "method" parameter,
 which determines the specific approach used to correct the error rate of choice.
 These methods can be broadly separated into two groups: generic methods and Estimator-specific methods.
 
-Generic methods rely on tools like ``statsmodels`` to correct the results as an array,
-without accounting for any of the idiosyncrasies of neuroimaging data (e.g., autocorrelation).
+Generic methods rely on internal implementations of common correction approaches to correct the results as an array,
+without accounting for any of the idiosyncrasies of neuroimaging data, such as the smoothness of the data.
 One example of a generic method is the "bonferroni" method for the FWECorrector.
 
 .. tip::

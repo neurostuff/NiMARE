@@ -6,9 +6,9 @@ import nibabel as nib
 import numpy as np
 import sparse
 from joblib import Parallel, delayed
+from pymare.stats import fdr
 from scipy import ndimage
 from scipy.stats import chi2
-from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
 from nimare import references
@@ -286,7 +286,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     library (https://github.com/neurosynth/neurosynth).
 
     Available correction methods: :meth:`MKDAChi2.correct_fwe_montecarlo`,
-    :meth:`MKDAChi2.correct_fdr_bh`.
+    :meth:`MKDAChi2.correct_fdr_indep`.
 
     References
     ----------
@@ -841,10 +841,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def correct_fdr_bh(self, result, alpha=0.05):
+    def correct_fdr_indep(self, result, alpha=0.05):
         """Perform FDR correction using the Benjamini-Hochberg method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.12
+
+            Renamed from ``correct_fdr_bh`` to ``correct_fdr_indep``.
 
         Parameters
         ----------
@@ -868,7 +872,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         --------
         >>> meta = MKDAChi2()
         >>> result = meta.fit(dset)
-        >>> corrector = FDRCorrector(method='bh', alpha=0.05)
+        >>> corrector = FDRCorrector(method='indep', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
         pAgF_p_vals = result.get_map("p_desc-consistency", return_type="array")
@@ -877,14 +881,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
-        _, pAgF_p_FDR, _, _ = multipletests(
-            pAgF_p_vals, alpha=alpha, method="fdr_bh", is_sorted=False, returnsorted=False
-        )
+        pAgF_p_FDR = fdr(pAgF_p_vals, q=alpha, method="bh")
         pAgF_z_FDR = p_to_z(pAgF_p_FDR, tail="two") * pAgF_sign
 
-        _, pFgA_p_FDR, _, _ = multipletests(
-            pFgA_p_vals, alpha=alpha, method="fdr_bh", is_sorted=False, returnsorted=False
-        )
+        pFgA_p_FDR = fdr(pFgA_p_vals, q=alpha, method="bh")
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
         images = {

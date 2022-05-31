@@ -81,10 +81,13 @@ def test_MKDAChi2_fdr(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()
     res = meta.fit(testdata_cbma, testdata_cbma)
-    corr = FDRCorrector(method="bh", alpha=0.001)
+    corr = FDRCorrector(method="indep", alpha=0.001)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
+
+    methods = FDRCorrector.inspect(res)
+    assert methods == ["indep", "negcorr"]
 
 
 def test_MKDAChi2_fwe_1core(testdata_cbma):

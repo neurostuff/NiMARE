@@ -2,9 +2,9 @@
 import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg
+from pymare.stats import bonferroni, fdr
 from scipy import special
 from scipy.stats import binom
-from statsmodels.sandbox.stats.multicomp import multipletests
 
 from nimare import references
 from nimare.decode.base import Decoder
@@ -142,10 +142,9 @@ class BrainMapDecoder(Decoder):
         the threshold are considered label-. Default is 0.001.
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     See Also
     --------
@@ -257,10 +256,9 @@ def brainmap_decode(
         the threshold are considered label-. Default is 0.001.
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     Returns
     -------
@@ -348,9 +346,12 @@ def brainmap_decode(
     p_ri[n_selected_term < 5] = 1.0
 
     # Multiple comparisons correction across features. Separately done for FI and RI.
-    if correction is not None:
-        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction, returnsorted=False)
-        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction, returnsorted=False)
+    if correction in ("bh", "by"):
+        p_corr_fi = fdr(p_fi, alpha=u, method=correction)
+        p_corr_ri = fdr(p_ri, alpha=u, method=correction)
+    elif correction == "bonferroni":
+        p_corr_fi = bonferroni(p_fi)
+        p_corr_ri = bonferroni(p_ri)
     else:
         p_corr_fi = p_fi
         p_corr_ri = p_ri
@@ -426,10 +427,9 @@ class NeurosynthDecoder(Decoder):
         Default is 0.5 (50%).
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     See Also
     --------
@@ -555,10 +555,9 @@ def neurosynth_decode(
         Default is 0.5 (50%).
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     Returns
     -------
@@ -632,9 +631,12 @@ def neurosynth_decode(
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.
-    if correction is not None:
-        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction, returnsorted=False)
-        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction, returnsorted=False)
+    if correction in ("bh", "by"):
+        p_corr_fi = fdr(p_fi, alpha=u, method=correction)
+        p_corr_ri = fdr(p_ri, alpha=u, method=correction)
+    elif correction == "bonferroni":
+        p_corr_fi = bonferroni(p_fi)
+        p_corr_ri = bonferroni(p_ri)
     else:
         p_corr_fi = p_fi
         p_corr_ri = p_ri
