@@ -1,4 +1,4 @@
-# CHANGELOG
+# What's New
 
 All notable changes to NiMARE releases are documented in this page.
 
