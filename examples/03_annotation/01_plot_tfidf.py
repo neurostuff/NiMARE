@@ -26,7 +26,11 @@ dset.texts.head(2)
 # Let's start by extracting terms and their associated counts from article
 # abstracts.
 counts_df = annotate.text.generate_counts(
-    dset.texts, text_column="abstract", tfidf=False, max_df=0.99, min_df=0.01,
+    dset.texts,
+    text_column="abstract",
+    tfidf=False,
+    max_df=0.99,
+    min_df=0.01,
 )
 counts_df.head(5)
 
@@ -39,6 +43,10 @@ counts_df.head(5)
 # settings used, this is the same general approach used to generate Neurosynth's
 # standard features.
 tfidf_df = annotate.text.generate_counts(
-    dset.texts, text_column="abstract", tfidf=True, max_df=0.99, min_df=0.01,
+    dset.texts,
+    text_column="abstract",
+    tfidf=True,
+    max_df=0.99,
+    min_df=0.01,
 )
 tfidf_df.head(5)

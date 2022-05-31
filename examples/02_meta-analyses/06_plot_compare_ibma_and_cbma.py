@@ -49,7 +49,10 @@ dset = coord_gen.transform(dset)
 meta_cbma = ALE()
 cbma_results = meta_cbma.fit(dset)
 plot_stat_map(
-    cbma_results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
+    cbma_results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -59,7 +62,10 @@ plot_stat_map(
 meta_ibma = DerSimonianLaird(resample=True)
 ibma_results = meta_ibma.fit(dset)
 plot_stat_map(
-    ibma_results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
+    ibma_results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################

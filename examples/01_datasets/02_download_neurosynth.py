@@ -47,7 +47,11 @@ out_dir = os.path.abspath("../example_data/")
 os.makedirs(out_dir, exist_ok=True)
 
 files = fetch_neurosynth(
-    data_dir=out_dir, version="7", overwrite=False, source="abstract", vocab="terms",
+    data_dir=out_dir,
+    version="7",
+    overwrite=False,
+    source="abstract",
+    vocab="terms",
 )
 # Note that the files are saved to a new folder within "out_dir" named "neurosynth".
 pprint(files)

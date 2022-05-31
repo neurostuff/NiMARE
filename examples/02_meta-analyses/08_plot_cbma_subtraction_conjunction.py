@@ -101,7 +101,8 @@ fig.show()
 from nimare.diagnostics import FocusCounter
 
 counter = FocusCounter(
-    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo", voxel_thresh=None,
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
 )
 knowledge_count_table, _ = counter.transform(knowledge_corrected_results)
 knowledge_count_table.head(10)
@@ -110,7 +111,8 @@ knowledge_count_table.head(10)
 from nimare.diagnostics import Jackknife
 
 jackknife = Jackknife(
-    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo", voxel_thresh=None,
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
 )
 related_jackknife_table, _ = jackknife.transform(related_corrected_results)
 related_jackknife_table.head(10)
@@ -127,7 +129,12 @@ res_sub = sub.fit(knowledge_dset, related_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
 plot_stat_map(
-    img_sub, cut_coords=4, display_mode="z", title="Subtraction", cmap="RdBu_r", vmax=4,
+    img_sub,
+    cut_coords=4,
+    display_mode="z",
+    title="Subtraction",
+    cmap="RdBu_r",
+    vmax=4,
 )
 
 ###############################################################################

@@ -110,7 +110,11 @@ kernel = MKDAKernel(r=10)
 ma_maps = kernel.transform(dset, return_type="image")
 
 plot_stat_map(
-    ma_maps[0], cut_coords=[-2, -10, -4], title="MKDA", draw_cross=False, cmap="RdBu_r",
+    ma_maps[0],
+    cut_coords=[-2, -10, -4],
+    title="MKDA",
+    draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -122,7 +126,11 @@ kernel = KDAKernel(r=10)
 ma_maps = kernel.transform(dset, return_type="image")
 
 plot_stat_map(
-    ma_maps[0], cut_coords=[-2, -10, -4], title="KDA", draw_cross=False, cmap="RdBu_r",
+    ma_maps[0],
+    cut_coords=[-2, -10, -4],
+    title="KDA",
+    draw_cross=False,
+    cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -137,5 +145,9 @@ kernel = ALEKernel(sample_size=20)
 ma_maps = kernel.transform(dset, return_type="image")
 
 plot_stat_map(
-    ma_maps[0], cut_coords=[-2, -10, -4], title="ALE", draw_cross=False, cmap="RdBu_r",
+    ma_maps[0],
+    cut_coords=[-2, -10, -4],
+    title="ALE",
+    draw_cross=False,
+    cmap="RdBu_r",
 )
