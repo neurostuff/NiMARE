@@ -6,7 +6,7 @@ All notable changes to NiMARE releases are documented in this page.
 
 <!-- New Release notes will be placed here automatically -->
 
-## 0.0.12rc3 (2022-03-21)
+## 0.0.12rc3 - 2022-03-21
 
 Just a quick release for debugging.
 
@@ -21,7 +21,7 @@ Just a quick release for debugging.
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc2...0.0.12rc3
 
-## 0.0.12rc2 (2022-03-04)
+## 0.0.12rc2 - 2022-03-04
 
 This release candidate includes a number of changes. We have added a new `FocusCounter` diagnostic tool for characterizing results of coordinate-based meta-analyses, and have added cluster-level correction to the MKDAChi2 Estimator's Monte Carlo FWE correction method. We have also made some changes to the documentation formatting that should hopefully make the NiMARE documentation more informative and easier to read.
 
@@ -48,7 +48,7 @@ This release candidate includes a number of changes. We have added a new `FocusC
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc2
 
-## 0.0.12rc1 (2022-02-15)
+## 0.0.12rc1 - 2022-02-15
 
 This release candidate continues to optimize certain elements of NiMARE processing for its NeuroLibre preprint.
 
@@ -66,7 +66,7 @@ This release candidate continues to optimize certain elements of NiMARE processi
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc1
 
-## 0.0.11 (2022-01-06)
+## 0.0.11 - 2022-01-06
 
 This release continues fixes and improvements we've made for the NiMARE manuscript.
 Additionally, we are starting to dramatically refactor how NiMARE stores meta-analytic data,
@@ -107,7 +107,7 @@ and (3) implementing a meta-analysis model specification that can be employed wi
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.11
 
-## 0.0.11rc1 (2021-10-27)
+## 0.0.11rc1 - 2021-10-27
 
 This release candidate includes certain enhancements and fixes necessary for the NiMARE software paper
 (https://github.com/NBCLab/nimare-paper).
@@ -119,7 +119,7 @@ This release candidate includes certain enhancements and fixes necessary for the
 * [FIX] only download group maps when creating dataset and raise error if no images are found for a contrast (#580) @jdkent
 * [ENH] Add test steps and explicit support for Python 3.9 (#578) @JulioAPeraza
 
-## 0.0.10 (2021-10-06)
+## 0.0.10 - 2021-10-06
 
 The 0.0.10 release includes a number of bug fixes and improvements.
 The two biggest changes are (1) support for fetching and using NeuroQuery's database, and
@@ -181,7 +181,7 @@ The fetching and conversion functions also now support accessing multiple vocabu
 - [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 - [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
-## 0.0.10rc2 (2021-08-10)
+## 0.0.10rc2 - 2021-08-10
 
 This second release candidate for 0.0.10 includes a major overhaul of the Neurosynth fetching and conversion functions.
 The Neurosynth database now follows a very different file format, in order to match NeuroQuery's convention.
@@ -202,7 +202,7 @@ We also have a new function to fetch NeuroQuery, and the Neurosynth conversion f
 - [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 - [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
-## 0.0.10rc1 (2021-07-15)
+## 0.0.10rc1 - 2021-07-15
 
 This release prepares for NeuroHackademy.
 The most relevant changes are the new ROIAssociationDecoder and the custom `__repr__` methods.
@@ -216,7 +216,7 @@ The most relevant changes are the new ROIAssociationDecoder and the custom `__re
 * [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
 
-## 0.0.9 (2021-07-04)
+## 0.0.9 - 2021-07-04
 
 This release primarily improves testing and documentation, but there are a few new features as well.
 The new features include (1) a new "merge" method for Datasets, to combine two Datasets into a new one,
@@ -241,7 +241,7 @@ enhancing NiMARE's docstrings with "versionadded" and "versionchanged" directive
 * [ENH] Add ImageTransformer class (#513) @tsalo
 * [ENH] Add overwrite option to transform_images (#509) @tsalo
 
-## 0.0.9rc2 (2021-06-02)
+## 0.0.9rc2 - 2021-06-02
 
 This release candidate adds the ImageTransformer class for the OHBM tutorial.
 
@@ -249,7 +249,7 @@ This release candidate adds the ImageTransformer class for the OHBM tutorial.
 
 * [ENH] Add ImageTransformer class (#513) @tsalo
 
-## 0.0.9rc1 (2021-05-27)
+## 0.0.9rc1 - 2021-05-27
 
 This release candidate adds an overwrite option in preparation for the OHBM 2021 NiMARE tutorial.
 
@@ -257,7 +257,7 @@ This release candidate adds an overwrite option in preparation for the OHBM 2021
 
 * [ENH] Add overwrite option to transform_images (#509) @tsalo
 
-## 0.0.8 (2021-05-17)
+## 0.0.8 - 2021-05-17
 
 This release includes a number of bug-fixes, along with enhancements to how many tools within NiMARE implement low-memory options.
 In addition, we have renamed the CBMA estimators' null methods.
@@ -298,7 +298,7 @@ The "analytic" method is now "approximate" and the "empirical" method is now "mo
 * [FIX] Ensure IBMA results have the expected number of dimensions (#450) @jdkent
 * [STY, TST] Add flake8-docstrings to requirements (#435) @tsalo
 
-## 0.0.7 (2021-02-25)
+## 0.0.7 - 2021-02-25
 
 This release involves two changes worth mentioning.
 First, we have fixed a bug in how permutation-based p-values are calculated (thanks to @alexenge for identifying and reporting).
@@ -320,7 +320,7 @@ This release successfully deployed to PyPi, unlike 0.0.6.
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
 
-## 0.0.7rc1 (2021-02-25)
+## 0.0.7rc1 - 2021-02-25
 
 This release involves two changes worth mentioning.
 First, we have fixed a bug in how permutation-based p-values are calculated (thanks to @alexenge for identifying and reporting).
@@ -339,7 +339,7 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 * [DOC] Add specialized issue templates (#433) @tsalo
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
-## 0.0.6 (2021-02-25)
+## 0.0.6 - 2021-02-25
 
 .. important::
 
@@ -363,7 +363,7 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
 
-## 0.0.5 (2020-12-31)
+## 0.0.5 - 2020-12-31
 
 This release is focused on fixing two bugs in v0.0.4.
 One bug affected which files were packaged with the library, such that some templates were missing.
@@ -376,7 +376,7 @@ The other bug was introduced in v0.0.4 and invalidates cluster-level Monte Carlo
 * [FIX] Include resources in library data files (#427) @tsalo
 
 
-## 0.0.4 (2020-12-28)
+## 0.0.4 - 2020-12-28
 
 This release includes a number of substantial changes to `NiMARE`.
 
@@ -481,7 +481,7 @@ This release includes a number of substantial changes to `NiMARE`.
 * [REF] Drop unimplemented parcellate module and meta-ICA workflow (#264) @tsalo
 * [ENH] Use nearest-neighbor interpolation for masks (#258) @tsalo
 
-## 0.0.3 (2020-07-12)
+## 0.0.3 - 2020-07-12
 
 This release consolidates changes prior to PyMARE integration.
 In addition to a number of bug fixes, this release also includes substantial changes to
@@ -513,7 +513,7 @@ ALESubtraction, annotation storage, and Dataset size.
 * [REF] Rename kernel_estimator attribute to kernel_transformer (#197) @tsalo
 * [ENH] Make convert_sleuth_to_dataset more flexible (#166) @62442katieb
 
-## 0.0.2 (2020-05-11)
+## 0.0.2 - 2020-05-11
 
 ### What's Changed
 
@@ -534,7 +534,7 @@ ALESubtraction, annotation storage, and Dataset size.
 - [MAINT] Add PyPi badges
 - [MAINT] Add Zenodo DOI badge
 
-## 0.0.1 (2019-11-20)
+## 0.0.1 - 2019-11-20
 
 This is NiMARE's initial release.
 NiMARE is still alpha software, so the package may change dramatically from release to release and there may be bugs in the code.
