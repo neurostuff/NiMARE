@@ -393,7 +393,10 @@ class ImagesToCoordinates(NiMAREBase):
                 nimg = nib.funcs.squeeze_image(nib.load(row.get("p")))
                 inv_nimg = nib.Nifti1Image(1 - nimg.get_fdata(), nimg.affine, nimg.header)
                 clusters = get_clusters_table(
-                    inv_nimg, p_threshold, self.cluster_threshold, self.min_distance,
+                    inv_nimg,
+                    p_threshold,
+                    self.cluster_threshold,
+                    self.min_distance,
                 )
                 # Peak stat p-values are reported as 1 - p in get_clusters_table
                 clusters["Peak Stat"] = p_to_z(1 - clusters["Peak Stat"])
@@ -432,7 +435,11 @@ class ImagesToCoordinates(NiMAREBase):
 
         # only the generated coordinates ('demolish')
         coordinates_df = _dict_to_coordinates(coordinates_dict, masker, space)
-        meta_df = _dict_to_df(pd.DataFrame(dataset._ids), coordinates_dict, "metadata",)
+        meta_df = _dict_to_df(
+            pd.DataFrame(dataset._ids),
+            coordinates_dict,
+            "metadata",
+        )
 
         if "coordinate_source" in meta_df.columns:
             metadata["coordinate_source"] = meta_df["coordinate_source"]
@@ -540,7 +547,7 @@ def se_to_varcope(se):
     -----
     Sampling variance is standard error squared.
     """
-    varcope = se ** 2
+    varcope = se**2
     return varcope
 
 

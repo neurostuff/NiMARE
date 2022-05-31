@@ -27,7 +27,10 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 
 
 def convert_neurosynth_to_dict(
-    coordinates_file, metadata_file, annotations_files=None, feature_groups=None,
+    coordinates_file,
+    metadata_file,
+    annotations_files=None,
+    feature_groups=None,
 ):
     """Convert Neurosynth/NeuroQuery database files to a dictionary.
 
@@ -164,7 +167,11 @@ def convert_neurosynth_to_dict(
 
 
 def convert_neurosynth_to_json(
-    coordinates_file, metadata_file, out_file, annotations_files=None, feature_groups=None,
+    coordinates_file,
+    metadata_file,
+    out_file,
+    annotations_files=None,
+    feature_groups=None,
 ):
     """Convert Neurosynth/NeuroQuery dataset text file to a NiMARE json file.
 
@@ -268,7 +275,10 @@ def convert_neurosynth_to_dataset(
     format. Old code using this function **will not work** with the new version.
     """
     dset_dict = convert_neurosynth_to_dict(
-        coordinates_file, metadata_file, annotations_files, feature_groups,
+        coordinates_file,
+        metadata_file,
+        annotations_files,
+        feature_groups,
     )
     return Dataset(dset_dict, target=target)
 
@@ -421,7 +431,11 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
 
 
 def convert_neurovault_to_dataset(
-    collection_ids, contrasts, img_dir=None, map_type_conversion=None, **dset_kwargs,
+    collection_ids,
+    contrasts,
+    img_dir=None,
+    map_type_conversion=None,
+    **dset_kwargs,
 ):
     """Convert a group of NeuroVault collections into a NiMARE Dataset.
 
@@ -487,7 +501,11 @@ def convert_neurovault_to_dataset(
         dataset_dict[f"study-{coll_name}"] = {"contrasts": {}}
         for contrast_name, contrast_regex in contrasts.items():
             dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name] = {
-                "images": {"beta": None, "t": None, "varcope": None,},
+                "images": {
+                    "beta": None,
+                    "t": None,
+                    "varcope": None,
+                },
                 "metadata": {"sample_sizes": None},
             }
 

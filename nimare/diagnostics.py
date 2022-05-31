@@ -137,7 +137,9 @@ class Jackknife(NiMAREBase):
         conn = ndimage.generate_binary_structure(3, 2)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
-            labeled_cluster_arr, affine=target_img.affine, header=target_img.header,
+            labeled_cluster_arr,
+            affine=target_img.affine,
+            header=target_img.header,
         )
 
         if n_clusters == 0:
@@ -149,7 +151,9 @@ class Jackknife(NiMAREBase):
         # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
         cluster_ids = list(range(1, n_clusters + 1))
         cluster_coms = ndimage.center_of_mass(
-            labeled_cluster_arr, labeled_cluster_arr, cluster_ids,
+            labeled_cluster_arr,
+            labeled_cluster_arr,
+            cluster_ids,
         )
         cluster_coms = np.array(cluster_coms)
         cluster_coms = vox2mm(cluster_coms, target_img.affine)
@@ -339,7 +343,9 @@ class FocusCounter(NiMAREBase):
         conn = ndimage.generate_binary_structure(3, 2)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
-            labeled_cluster_arr, affine=target_img.affine, header=target_img.header,
+            labeled_cluster_arr,
+            affine=target_img.affine,
+            header=target_img.header,
         )
 
         if n_clusters == 0:

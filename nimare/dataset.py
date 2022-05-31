@@ -318,7 +318,9 @@ class Dataset(NiMAREBase):
             setattr(new_dset, attribute, new_df)
 
         new_dset.coordinates = _transform_coordinates_to_space(
-            new_dset.coordinates, self.masker, self.space,
+            new_dset.coordinates,
+            self.masker,
+            self.space,
         )
 
         return new_dset
@@ -558,7 +560,10 @@ class Dataset(NiMAREBase):
         ignore_columns = ["space"]
         ignore_columns += [c for c in self.images.columns if c.endswith("__relative")]
         result = self._generic_column_getter(
-            "images", ids=ids, column=imtype, ignore_columns=ignore_columns,
+            "images",
+            ids=ids,
+            column=imtype,
+            ignore_columns=ignore_columns,
         )
         return result
 
