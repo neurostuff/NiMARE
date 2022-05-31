@@ -388,9 +388,9 @@ def compute_kda_ma(
     # Loop over experiments
     for i, exp in enumerate(exp_idx_uniq):
         # Index peaks by experiment
-        curr_exp_idx = (exp_idx == i)
+        curr_exp_idx = exp_idx == i
         peaks = ijks[curr_exp_idx]
-        
+
         all_spheres = _convolve_sphere(kernel, peaks)
 
         if not sum_overlap:

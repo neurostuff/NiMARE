@@ -72,10 +72,10 @@ class KernelTransformer(NiMAREBase):
         # Determine names for kernel-specific files
         keys = sorted(params.keys())
         param_str = "_".join(f"{k}-{str(params[k])}" for k in keys)
-        self.filename_pattern = (
-            f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
-                "[[", "{"
-            ).replace("]]", "}")
+        self.filename_pattern = f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
+            "[[", "{"
+        ).replace(
+            "]]", "}"
         )
         self.image_type = f"{param_str}_{self.__class__.__name__}"
 
@@ -132,7 +132,9 @@ class KernelTransformer(NiMAREBase):
 
             # Calculate IJK. Must assume that the masker is in same space,
             # but has different affine, from original IJK.
-            coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine) # Possibily optimize this
+            coordinates[["i", "j", "k"]] = mm2vox(
+                dataset[["x", "y", "z"]], mask.affine
+            )  # Possibily optimize this
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
@@ -181,7 +183,9 @@ class KernelTransformer(NiMAREBase):
 
         # Generate the MA maps if they weren't already available as images
         if return_type == "array":
-            mask_data = mask.get_fdata().astype(bool) # Possibilty allow this to be passed in to not recompute
+            mask_data = mask.get_fdata().astype(
+                bool
+            )  # Possibilty allow this to be passed in to not recompute
         elif return_type == "image":
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
@@ -201,7 +205,6 @@ class KernelTransformer(NiMAREBase):
 
         if return_type == "sparse":
             return transformed_maps[0]
-
 
         # Optimize this, possily make own function
         imgs = []
@@ -373,13 +376,7 @@ class KDAKernel(KernelTransformer):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims,
-            vox_dims,
-            ijks,
-            self.r,
-            self.value,
-            exp_idx,
-            sum_overlap=self._sum_overlap,
+            dims, vox_dims, ijks, self.r, self.value, exp_idx, sum_overlap=self._sum_overlap,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
