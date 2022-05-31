@@ -5,6 +5,7 @@ import os
 import nibabel as nib
 import numpy as np
 import numpy.linalg as npl
+import sparse
 from scipy import ndimage
 
 from nimare import references
@@ -288,6 +289,7 @@ def compute_kda_ma(
     .. versionchanged:: 0.0.12
 
         * Remove low-memory option in favor of sparse arrays.
+        * Return 4D sparse array.
 
     .. versionadded:: 0.0.4
 
@@ -316,13 +318,12 @@ def compute_kda_ma(
 
     Returns
     -------
-    kernel_data : :obj:`numpy.array`
-        3d or 4d array. If `exp_idx` is none, a 3d array in the same shape as
-        the `shape` argument is returned. If `exp_idx` is passed, a 4d array
+    kernel_data : :obj:`sparse._coo.core.COO`
+        4D sparse array. If `exp_idx` is none, a 3d array in the same
+        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
-    squeeze = exp_idx is None
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
@@ -330,25 +331,38 @@ def compute_kda_ma(
     n_studies = len(uniq)
 
     kernel_shape = (n_studies,) + shape
-    kernel_data = np.zeros(kernel_shape, dtype=type(value))
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
+    # Preallocate coords array, np.concatenate is too slow
+    n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
+    coords = np.zeros((4, n_coords), dtype=int)
+    temp_idx = 0
     for i, peak in enumerate(ijks):
         sphere = np.round(kernel.T + peak)
         idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
         sphere = sphere[idx, :].astype(int)
         exp = exp_idx[i]
-        if sum_overlap:
-            kernel_data[exp][tuple(sphere.T)] += value
-        else:
-            kernel_data[exp][tuple(sphere.T)] = value
 
-    if squeeze:
-        kernel_data = np.squeeze(kernel_data, axis=0)
+        n_brain_voxels = sphere.shape[0]
+        chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
+
+        coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
+        coords[1:, chunk_idx] = sphere.T
+
+        temp_idx += n_brain_voxels
+
+    # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
+    coords = coords[:, :temp_idx]
+
+    if not sum_overlap:
+        coords = np.unique(coords, axis=1)
+
+    data = np.full(coords.shape[1], value)
+    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
 
