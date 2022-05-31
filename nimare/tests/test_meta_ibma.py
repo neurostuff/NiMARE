@@ -10,8 +10,7 @@ from nilearn.input_data import NiftiLabelsMasker
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ibma
-
-from .utils import get_test_data_path
+from nimare.tests.utils import get_test_data_path
 
 
 @pytest.mark.parametrize(
@@ -101,7 +100,6 @@ def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwarg
     meta = meta(**meta_kwargs)
     res = meta.fit(testdata_ibma)
     z_img = res.get_map("z")
-    assert isinstance(meta.results, nimare.results.MetaResult)
     assert isinstance(res, nimare.results.MetaResult)
     assert res.get_map("z", return_type="array").ndim == 1
     assert z_img.ndim == 3
@@ -145,23 +143,23 @@ def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation, 
             meta.fit(dset)
     elif expectation == "warning":
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            meta.fit(dset)
+            res = meta.fit(dset)
             assert "will likely produce biased results" in caplog.text
         caplog.clear()
     else:
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            meta.fit(dset)
+            res = meta.fit(dset)
             assert "will likely produce biased results" not in caplog.text
         caplog.clear()
 
     # Only fit the estimator if it doesn't raise a ValueError
     if expectation != "error":
-        assert isinstance(meta.results, nimare.results.MetaResult)
+        assert isinstance(res, nimare.results.MetaResult)
         # There are five "labels", but one of them has no good data,
         # so the outputs should be 4 long.
-        assert meta.results.maps["z"].shape == (5,)
-        assert np.isnan(meta.results.maps["z"][0])
-        assert meta.results.get_map("z").shape == (10, 10, 10)
+        assert res.maps["z"].shape == (5,)
+        assert np.isnan(res.maps["z"][0])
+        assert res.get_map("z").shape == (10, 10, 10)
 
 
 @pytest.mark.parametrize(
@@ -181,6 +179,7 @@ def test_ibma_resampling(testdata_ibma_resample, resample, resample_kwargs, expe
     """Test image-based resampling performance."""
     meta = ibma.Fishers(resample=resample, **resample_kwargs)
     with expectation:
-        meta.fit(testdata_ibma_resample)
+        res = meta.fit(testdata_ibma_resample)
+
     if isinstance(expectation, does_not_raise):
-        assert isinstance(meta.results, nimare.results.MetaResult)
+        assert isinstance(res, nimare.results.MetaResult)

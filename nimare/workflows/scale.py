@@ -6,10 +6,10 @@ from shutil import copyfile
 
 import numpy as np
 
-from ..dataset import Dataset
-from ..io import convert_sleuth_to_dataset
-from ..meta import SCALE
-from ..utils import vox2mm
+from nimare.dataset import Dataset
+from nimare.io import convert_sleuth_to_dataset
+from nimare.meta import SCALE
+from nimare.utils import vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ rates. NeuroImage, 99, 559-570.
         xyz = np.loadtxt(baseline)
 
     estimator = SCALE(xyz=xyz, n_iters=n_iters, n_cores=n_cores)
-    estimator.fit(dset)
+    results = estimator.fit(dset)
 
     if output_dir is None:
         output_dir = os.path.dirname(dataset_file)
@@ -83,7 +83,7 @@ rates. NeuroImage, 99, 559-570.
     elif not prefix.endswith("_"):
         prefix = prefix + "_"
 
-    estimator.results.save_maps(output_dir=output_dir, prefix=prefix)
+    results.save_maps(output_dir=output_dir, prefix=prefix)
     copyfile(dataset_file, os.path.join(output_dir, prefix + "input_coordinates.txt"))
 
     LGR.info("Workflow completed.")

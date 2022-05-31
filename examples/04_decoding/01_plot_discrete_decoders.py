@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _decode_discrete:
@@ -7,6 +5,8 @@
 ============================
 Discrete functional decoding
 ============================
+
+Perform meta-analytic functional decoding on regions of interest.
 
 We can use the methods in ``nimare.decode.discrete`` to apply functional
 characterization analysis to regions of interest or subsets of the Dataset.
@@ -23,7 +23,7 @@ from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
-# ---------------------------
+# -----------------------------------------------------------------------------
 # We'll load a small dataset composed only of studies in Neurosynth with
 # Angela Laird as a coauthor, for the sake of speed.
 dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
@@ -31,7 +31,7 @@ dset.annotations.head(5)
 
 ###############################################################################
 # Create a region of interest
-# ---------------------------
+# -----------------------------------------------------------------------------
 
 # First we'll make an ROI
 arr = np.zeros(dset.masker.mask_img.shape, int)
@@ -47,7 +47,7 @@ ids = dset.get_studies_by_mask(mask_img)
 # .. _brain-map-decoder-example:
 #
 # Decode an ROI image using the BrainMap method
-# ---------------------------------------------
+# -----------------------------------------------------------------------------
 
 # Run the decoder
 decoder = discrete.BrainMapDecoder(correction=None)
@@ -60,7 +60,7 @@ decoded_df.sort_values(by="probReverse", ascending=False).head()
 # .. _neurosynth-chi2-decoder-example:
 #
 # Decode an ROI image using the Neurosynth chi-square method
-# ----------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 # Run the decoder
 decoder = discrete.NeurosynthDecoder(correction=None)
@@ -73,7 +73,7 @@ decoded_df.sort_values(by="probReverse", ascending=False).head()
 # .. _neurosynth-roi-decoder-example:
 #
 # Decode an ROI image using the Neurosynth ROI association method
-# ---------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 # This method decodes the ROI image directly, rather than comparing subsets of the Dataset like the
 # other two.

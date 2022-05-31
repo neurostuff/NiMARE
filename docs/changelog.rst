@@ -1,4 +1,5 @@
 .. include:: links.rst
+.. mdinclude:: ../CHANGELOG.md
 
 #########
 Changelog

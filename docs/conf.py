@@ -54,6 +54,7 @@ extensions = [
     "sphinx_copybutton",  # for copying code snippets
     "sphinx_gallery.gen_gallery",  # example gallery
     "sphinxarg.ext",  # argparse
+    "sphinxcontrib.bibtex",  # for foot-citations
     "recommonmark",  # markdown parser
 ]
 
@@ -101,7 +102,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "utils/*"]
 default_role = "autolink"
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "sphinx"
+pygments_style = "default"
 
 # -----------------------------------------------------------------------------
 # Napoleon settings
@@ -197,10 +198,19 @@ sphinx_gallery_conf = {
     },
     "within_subsection_order": FileNameSortKey,
     "default_thumb_file": "_static/nimare_favicon.png",
+    "remove_config_comments": True,
 }
 
 # Generate the plots for the gallery
 plot_gallery = True
+
+# -----------------------------------------------------------------------------
+# sphinxcontrib-bibtex
+# -----------------------------------------------------------------------------
+bibtex_bibfiles = ["./references.bib"]
+bibtex_style = "unsrt"
+bibtex_reference_style = "author_year"
+bibtex_footbibliography_header = ""
 
 
 def setup(app):

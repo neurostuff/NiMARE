@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 
-from . import utils
+from nimare import utils
 
 LGR = logging.getLogger(__name__)
 

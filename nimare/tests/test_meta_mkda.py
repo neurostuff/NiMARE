@@ -1,4 +1,6 @@
 """Test nimare.meta.mkda (KDA-based meta-analytic algorithms)."""
+import logging
+
 import numpy as np
 
 import nimare
@@ -33,18 +35,35 @@ def test_MKDADensity_kernel_instance(testdata_cbma):
     assert isinstance(res, nimare.results.MetaResult)
 
 
-def test_MKDADensity_approximate_null(testdata_cbma_full):
-    """Smoke test for MKDADensity."""
+def test_MKDADensity_approximate_null(testdata_cbma_full, caplog):
+    """Smoke test for MKDADensity with the "approximate" null_method."""
     meta = MKDADensity(null="approximate")
     res = meta.fit(testdata_cbma_full)
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=1, n_cores=1)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     cres = corr.transform(res)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
 
+    # Check that the vfwe_only option does not work
+    corr2 = FWECorrector(
+        method="montecarlo",
+        voxel_thresh=0.001,
+        n_iters=5,
+        n_cores=1,
+        vfwe_only=True,
+    )
+    with caplog.at_level(logging.WARNING):
+        cres2 = corr2.transform(res)
 
-def test_MKDADensity(testdata_cbma):
-    """Smoke test for MKDADensity."""
+    assert "Running permutations from scratch." in caplog.text
+
+    assert isinstance(cres2, nimare.results.MetaResult)
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in cres2.maps
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" not in cres2.maps
+
+
+def test_MKDADensity_montecarlo_null(testdata_cbma):
+    """Smoke test for MKDADensity with the "montecarlo" null_method."""
     meta = MKDADensity(null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
@@ -52,14 +71,18 @@ def test_MKDADensity(testdata_cbma):
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(cres, nimare.results.MetaResult)
 
-
-def test_MKDADensity_memory_limit(testdata_cbma):
-    """Smoke test for MKDADensity with memory_limit option."""
-    meta = MKDADensity(null_method="montecarlo", n_iters=10, memory_limit="1gb")
-    res = meta.fit(testdata_cbma)
-    assert meta.memory_limit
-    assert not meta.kernel_transformer.memory_limit
-    assert isinstance(res, nimare.results.MetaResult)
+    # Check that the vfwe_only option works
+    corr2 = FWECorrector(
+        method="montecarlo",
+        voxel_thresh=0.001,
+        n_iters=5,
+        n_cores=1,
+        vfwe_only=True,
+    )
+    cres2 = corr2.transform(res)
+    assert isinstance(cres2, nimare.results.MetaResult)
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in cres2.maps
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" not in cres2.maps
 
 
 def test_MKDAChi2_fdr(testdata_cbma):
@@ -101,32 +124,6 @@ def test_MKDAChi2_fwe_2core(testdata_cbma):
     corr_2core = FWECorrector(method="montecarlo", n_iters=5, n_cores=2)
     cres_2core = corr_2core.transform(res)
     assert isinstance(cres_2core, nimare.results.MetaResult)
-
-
-def test_MKDAChi2_memory_limit(testdata_cbma):
-    """Smoke test for MKDAChi2 with memory_limit option."""
-    meta = MKDAChi2(memory_limit="1gb")
-    res = meta.fit(testdata_cbma, testdata_cbma)
-    assert meta.memory_limit
-    assert not meta.kernel_transformer.memory_limit
-    assert isinstance(res, nimare.results.MetaResult)
-
-
-def test_MKDAChi2_memory_limit_reuse(testdata_cbma, tmp_path_factory):
-    """Smoke test for MKDAChi2 with memory_limit option, in which a memory-mapped array is used."""
-    tmpdir = tmp_path_factory.mktemp("test_MKDAChi2_memory_limit_reuse")
-
-    # Generate MKDAKernel MA maps as files in the Dataset
-    testdata_cbma.update_path(tmpdir)
-    kern = MKDAKernel()
-    dset = kern.transform(testdata_cbma, return_type="dataset")
-
-    # Reuse the MA files, loading them as a memory-mapped array
-    meta = MKDAChi2(memory_limit="1gb")
-    res = meta.fit(dset, dset)
-    assert meta.memory_limit
-    assert not meta.kernel_transformer.memory_limit
-    assert isinstance(res, nimare.results.MetaResult)
 
 
 def test_KDA_approximate_null(testdata_cbma):

@@ -28,6 +28,8 @@ and the :class:`~nimare.meta.kernel.MKDAKernel`, which creates a binary sphere a
     that doesn't mean that modeled activation maps can actually be used as statistical maps.
     We still need meta-analytic algorithms that are designed for coordinates, rather than images.
 
+Example: :ref:`metas_kernels`
+
 Estimators
 ----------
 
@@ -37,6 +39,8 @@ The Estimator classes take a kernel object as a parameter, and use that kernel t
 (2) combine those modeled activation maps into a summary statistic map,
 (3) derive a transformation from summary statistic to z-score, and
 (4) estimate `uncorrected` significance of the summary statistics.
+
+.. _null methods:
 
 Null methods
 ````````````
@@ -57,7 +61,12 @@ and then comparing the summary statistics from the real Dataset to these "null" 
 This method may take a long time, and is only slightly more accurate than the approximate method,
 as long as there are enough iterations.
 
-**In general, we recommend using the approximate method.**
+.. tip::
+    In general, we recommend using the ``approximate`` method.
+
+Example: :ref:`null-method-example`
+
+.. _multiple comparisons correction:
 
 Multiple comparisons correction
 -------------------------------
@@ -79,13 +88,17 @@ These methods can be broadly separated into two groups: generic methods and Esti
 Generic methods rely on tools like ``statsmodels`` to correct the results as an array,
 without accounting for any of the idiosyncrasies of neuroimaging data (e.g., autocorrelation).
 One example of a generic method is the "bonferroni" method for the FWECorrector.
-**We do not recommend using the generic methods.**
+
+.. tip::
+    We do not recommend using the generic methods.
 
 Estimator-specific methods are approaches that are implemented within the Estimator as class methods
 that are then called by the Corrector.
 These methods are generally designed specifically for neruoimaging, or event coordinate-based, data,
 and are thus generally preferable to generic methods.
 One such method is the Monte Carlo method (``method="montecarlo"``).
+
+Example: :ref:`corrector-cbma-example`
 
 The Monte Carlo multiple comparisons correction method
 ``````````````````````````````````````````````````````
@@ -125,3 +138,20 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
     the voxel's summary statistic value lands on this null distribution.
     **Voxel-level correction is generally more conservative than cluster-level correction,
     so it is only recommended for very large meta-analyses (i.e., hundreds of studies).**
+
+.. admonition:: What about threshold-free cluster enhancement?
+
+    TFCE :footcite:p:`smith2009threshold` is a voxel-level metric that combines signal magnitude and
+    cluster extent to enhance the importance of clusters that are large, have high magnitude, or both.
+
+    It can be applied to coordinate-based meta-analyses as an alternate metric to the
+    maximum summary statistic (``level-voxel``), cluster mass (``desc-mass``), or cluster size (``desc-size``).
+    However, recent work by Frahm et al. :footcite:p:`frahm2022evaluation` has indicated that the costs of performing
+    TFCE-based inference (e.g., massively increased computation time) outweigh any observable benefits.
+    As such, we have chosen not to implement TFCE-based correction within NiMARE,
+    although there is a closed pull request with an implementation that worked at the time it was closed
+    (see `#655 <https://github.com/neurostuff/NiMARE/pull/655>`_).
+
+References
+----------
+.. footbibliography::

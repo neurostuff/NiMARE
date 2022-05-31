@@ -1,5 +1,3 @@
-# emacs: -*- mode: python-mode; py-indent-offset: 4; tab-width: 4; indent-tabs-mode: nil -*-
-# ex: set sts=4 ts=4 sw=4 et:
 """
 
 .. _annotations_lda:
@@ -8,8 +6,7 @@
 LDA topic modeling
 ==================
 
-This example trains a latent Dirichlet allocation model with scikit-learn
-using abstracts from Neurosynth.
+Trains a latent Dirichlet allocation model with scikit-learn using abstracts from Neurosynth.
 """
 import os
 
@@ -21,22 +18,22 @@ from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load dataset with abstracts
-# ---------------------------
+# -----------------------------------------------------------------------------
 dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
 
 ###############################################################################
 # Initialize LDA model
-# --------------------
+# -----------------------------------------------------------------------------
 model = annotate.lda.LDAModel(n_topics=5, max_iter=1000, text_column="abstract")
 
 ###############################################################################
 # Run model
-# ---------
+# -----------------------------------------------------------------------------
 new_dset = model.fit(dset)
 
 ###############################################################################
 # View results
-# ------------
+# -----------------------------------------------------------------------------
 # This DataFrame is very large, so we will only show a slice of it.
 new_dset.annotations[new_dset.annotations.columns[:10]].head(10)
 
