@@ -373,6 +373,16 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
+    def _convolve_sphere(kernel, peaks):
+        # Convolve spheres
+        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
+        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
+        for i, peak in enumerate(peaks):
+            sphere_coords[chunk_idx, :] = kernel.T + peak
+            chunk_idx = chunk_idx + kernel.shape[1]
+
+        return sphere_coords
+
     temp_idx = 0
     all_coords = []
     # Loop over experiments
@@ -380,13 +390,8 @@ def compute_kda_ma(
         # Index peaks by experiment
         curr_exp_idx = (exp_idx == i)
         peaks = ijks[curr_exp_idx]
-
-        # Convolve spheres
-        all_spheres = []
-        for peak in peaks:
-            all_spheres.append(kernel.T + peak)
-
-        all_spheres = np.vstack(all_spheres).astype(int)
+        
+        all_spheres = _convolve_sphere(kernel, peaks)
 
         if not sum_overlap:
             all_spheres = unique_rows(all_spheres)
