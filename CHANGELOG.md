@@ -6,6 +6,66 @@ All notable changes to NiMARE releases are documented in this page.
 
 <!-- New Release notes will be placed here automatically -->
 
+## 0.0.12rc3 (2022-03-21)
+
+Just a quick release for debugging.
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### Other Changes
+* Document other meta-analysis tools outside our ecosystem by @tsalo in https://github.com/neurostuff/NiMARE/pull/654
+* Reorganize and streamline examples by @tsalo in https://github.com/neurostuff/NiMARE/pull/656
+* Convert CBMAEstimator method to function by @tsalo in https://github.com/neurostuff/NiMARE/pull/658
+
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc2...0.0.12rc3
+
+## 0.0.12rc2 (2022-03-04)
+
+This release candidate includes a number of changes. We have added a new `FocusCounter` diagnostic tool for characterizing results of coordinate-based meta-analyses, and have added cluster-level correction to the MKDAChi2 Estimator's Monte Carlo FWE correction method. We have also made some changes to the documentation formatting that should hopefully make the NiMARE documentation more informative and easier to read.
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🛠 Breaking Changes
+* Replace multiprocessing with joblib for parallelization and change n_cores default to 1 by @tsalo in https://github.com/neurostuff/NiMARE/pull/597
+* Incorporate joblib into ALESubtraction and fix SCALE docstring by @tsalo in https://github.com/neurostuff/NiMARE/pull/641
+### 🎉 Exciting New Features
+* Add FocusCounter diagnostic tool by @tsalo in https://github.com/neurostuff/NiMARE/pull/649
+* Support cluster-level Monte Carlo FWE correction in the MKDAChi2 Estimator by @tsalo in https://github.com/neurostuff/NiMARE/pull/650
+### 🐛 Bug Fixes
+* Retain updated Estimator in Corrector-generated MetaResults by @tsalo in https://github.com/neurostuff/NiMARE/pull/633
+* Do not inherit IBMAEstimator's aggressive_mask from previous Datasets by @tsalo in https://github.com/neurostuff/NiMARE/pull/652
+### Other Changes
+* Reduce SCALE memory usage by @tsalo in https://github.com/neurostuff/NiMARE/pull/632
+* Improve memory management in MKDAChi2 Estimator by @tsalo in https://github.com/neurostuff/NiMARE/pull/638
+* Remove Peaks2Maps-related tests by @tsalo in https://github.com/neurostuff/NiMARE/pull/643
+* Disable MA map pre-generation in CorrelationDecoder by @tsalo in https://github.com/neurostuff/NiMARE/pull/637
+* Switch testing from CircleCI to GitHub Actions by @tsalo in https://github.com/neurostuff/NiMARE/pull/642
+* Override unusable methods and improve documentation by @tsalo in https://github.com/neurostuff/NiMARE/pull/645
+
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc2
+
+## 0.0.12rc1 (2022-02-15)
+
+This release candidate continues to optimize certain elements of NiMARE processing for its NeuroLibre preprint.
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🛠 Breaking Changes
+* Replace multiprocessing with joblib for parallelization and change n_cores default to 1 by @tsalo in https://github.com/neurostuff/NiMARE/pull/597
+### 🐛 Bug Fixes
+* Retain updated Estimator in Corrector-generated MetaResults by @tsalo in https://github.com/neurostuff/NiMARE/pull/633
+### Other Changes
+* Reduce SCALE memory usage by @tsalo in https://github.com/neurostuff/NiMARE/pull/632
+* Improve memory management in MKDAChi2 Estimator by @tsalo in https://github.com/neurostuff/NiMARE/pull/638
+
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc1
+
 ## 0.0.11 (2022-01-06)
 
 This release continues fixes and improvements we've made for the NiMARE manuscript.
