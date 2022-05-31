@@ -12,12 +12,12 @@ Just a quick release for debugging.
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
-## What's Changed
-### Other Changes
+### What's Changed
+
+#### Other Changes
 * Document other meta-analysis tools outside our ecosystem by @tsalo in https://github.com/neurostuff/NiMARE/pull/654
 * Reorganize and streamline examples by @tsalo in https://github.com/neurostuff/NiMARE/pull/656
 * Convert CBMAEstimator method to function by @tsalo in https://github.com/neurostuff/NiMARE/pull/658
-
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc2...0.0.12rc3
 
@@ -27,24 +27,31 @@ This release candidate includes a number of changes. We have added a new `FocusC
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
-## What's Changed
-### 🛠 Breaking Changes
+### What's Changed
+
+#### 🛠 Breaking Changes
+
 * Replace multiprocessing with joblib for parallelization and change n_cores default to 1 by @tsalo in https://github.com/neurostuff/NiMARE/pull/597
 * Incorporate joblib into ALESubtraction and fix SCALE docstring by @tsalo in https://github.com/neurostuff/NiMARE/pull/641
-### 🎉 Exciting New Features
+
+#### 🎉 Exciting New Features
+
 * Add FocusCounter diagnostic tool by @tsalo in https://github.com/neurostuff/NiMARE/pull/649
 * Support cluster-level Monte Carlo FWE correction in the MKDAChi2 Estimator by @tsalo in https://github.com/neurostuff/NiMARE/pull/650
-### 🐛 Bug Fixes
+
+#### 🐛 Bug Fixes
+
 * Retain updated Estimator in Corrector-generated MetaResults by @tsalo in https://github.com/neurostuff/NiMARE/pull/633
 * Do not inherit IBMAEstimator's aggressive_mask from previous Datasets by @tsalo in https://github.com/neurostuff/NiMARE/pull/652
-### Other Changes
+
+#### Other Changes
+
 * Reduce SCALE memory usage by @tsalo in https://github.com/neurostuff/NiMARE/pull/632
 * Improve memory management in MKDAChi2 Estimator by @tsalo in https://github.com/neurostuff/NiMARE/pull/638
 * Remove Peaks2Maps-related tests by @tsalo in https://github.com/neurostuff/NiMARE/pull/643
 * Disable MA map pre-generation in CorrelationDecoder by @tsalo in https://github.com/neurostuff/NiMARE/pull/637
 * Switch testing from CircleCI to GitHub Actions by @tsalo in https://github.com/neurostuff/NiMARE/pull/642
 * Override unusable methods and improve documentation by @tsalo in https://github.com/neurostuff/NiMARE/pull/645
-
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc2
 
@@ -54,15 +61,20 @@ This release candidate continues to optimize certain elements of NiMARE processi
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
-## What's Changed
-### 🛠 Breaking Changes
+### What's Changed
+
+#### 🛠 Breaking Changes
+
 * Replace multiprocessing with joblib for parallelization and change n_cores default to 1 by @tsalo in https://github.com/neurostuff/NiMARE/pull/597
-### 🐛 Bug Fixes
+
+#### 🐛 Bug Fixes
+
 * Retain updated Estimator in Corrector-generated MetaResults by @tsalo in https://github.com/neurostuff/NiMARE/pull/633
-### Other Changes
+
+#### Other Changes
+
 * Reduce SCALE memory usage by @tsalo in https://github.com/neurostuff/NiMARE/pull/632
 * Improve memory management in MKDAChi2 Estimator by @tsalo in https://github.com/neurostuff/NiMARE/pull/638
-
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc1
 
@@ -104,7 +116,6 @@ and (3) implementing a meta-analysis model specification that can be employed wi
 * Improve documentation of CBMA and add methods pages by @tsalo in https://github.com/neurostuff/NiMARE/pull/610
 * Use tmpdir for memmap files instead of the NiMARE data directory by @tsalo in https://github.com/neurostuff/NiMARE/pull/599
 
-
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.11
 
 ## 0.0.11rc1 - 2021-10-27
@@ -118,6 +129,8 @@ This release candidate includes certain enhancements and fixes necessary for the
 * [FIX] Force maskers to be array images instead of proxy images (#588) @tsalo
 * [FIX] only download group maps when creating dataset and raise error if no images are found for a contrast (#580) @jdkent
 * [ENH] Add test steps and explicit support for Python 3.9 (#578) @JulioAPeraza
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11rc1...0.0.10
 
 ## 0.0.10 - 2021-10-06
 
@@ -181,6 +194,8 @@ The fetching and conversion functions also now support accessing multiple vocabu
 - [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 - [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.9
+
 ## 0.0.10rc2 - 2021-08-10
 
 This second release candidate for 0.0.10 includes a major overhaul of the Neurosynth fetching and conversion functions.
@@ -202,6 +217,8 @@ We also have a new function to fetch NeuroQuery, and the Neurosynth conversion f
 - [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 - [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10rc2...0.0.9
+
 ## 0.0.10rc1 - 2021-07-15
 
 This release prepares for NeuroHackademy.
@@ -215,6 +232,7 @@ The most relevant changes are the new ROIAssociationDecoder and the custom `__re
 * [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 * [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10rc1...0.0.9
 
 ## 0.0.9 - 2021-07-04
 
@@ -241,6 +259,8 @@ enhancing NiMARE's docstrings with "versionadded" and "versionchanged" directive
 * [ENH] Add ImageTransformer class (#513) @tsalo
 * [ENH] Add overwrite option to transform_images (#509) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.8
+
 ## 0.0.9rc2 - 2021-06-02
 
 This release candidate adds the ImageTransformer class for the OHBM tutorial.
@@ -249,6 +269,8 @@ This release candidate adds the ImageTransformer class for the OHBM tutorial.
 
 * [ENH] Add ImageTransformer class (#513) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9rc2...0.0.8
+
 ## 0.0.9rc1 - 2021-05-27
 
 This release candidate adds an overwrite option in preparation for the OHBM 2021 NiMARE tutorial.
@@ -256,6 +278,8 @@ This release candidate adds an overwrite option in preparation for the OHBM 2021
 ### What's Changed
 
 * [ENH] Add overwrite option to transform_images (#509) @tsalo
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9rc1...0.0.8
 
 ## 0.0.8 - 2021-05-17
 
@@ -298,6 +322,8 @@ The "analytic" method is now "approximate" and the "empirical" method is now "mo
 * [FIX] Ensure IBMA results have the expected number of dimensions (#450) @jdkent
 * [STY, TST] Add flake8-docstrings to requirements (#435) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.7
+
 ## 0.0.7 - 2021-02-25
 
 This release involves two changes worth mentioning.
@@ -319,6 +345,7 @@ This release successfully deployed to PyPi, unlike 0.0.6.
 * [DOC] Add specialized issue templates (#433) @tsalo
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.7...0.0.6
 
 ## 0.0.7rc1 - 2021-02-25
 
@@ -338,6 +365,8 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 * [DOC] Fix NeuroStars link (#434) @tsalo
 * [DOC] Add specialized issue templates (#433) @tsalo
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.7rc1...0.0.6
 
 ## 0.0.6 - 2021-02-25
 
@@ -362,6 +391,7 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 * [DOC] Add specialized issue templates (#433) @tsalo
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.5
 
 ## 0.0.5 - 2020-12-31
 
@@ -375,6 +405,7 @@ The other bug was introduced in v0.0.4 and invalidates cluster-level Monte Carlo
 * [FIX] Fix packaging of resources (#428) @tsalo
 * [FIX] Include resources in library data files (#427) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.5...0.0.4
 
 ## 0.0.4 - 2020-12-28
 
@@ -481,6 +512,8 @@ This release includes a number of substantial changes to `NiMARE`.
 * [REF] Drop unimplemented parcellate module and meta-ICA workflow (#264) @tsalo
 * [ENH] Use nearest-neighbor interpolation for masks (#258) @tsalo
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.4...0.0.3
+
 ## 0.0.3 - 2020-07-12
 
 This release consolidates changes prior to PyMARE integration.
@@ -513,6 +546,8 @@ ALESubtraction, annotation storage, and Dataset size.
 * [REF] Rename kernel_estimator attribute to kernel_transformer (#197) @tsalo
 * [ENH] Make convert_sleuth_to_dataset more flexible (#166) @62442katieb
 
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.3...0.0.2
+
 ## 0.0.2 - 2020-05-11
 
 ### What's Changed
@@ -533,6 +568,8 @@ ALESubtraction, annotation storage, and Dataset size.
 - [MAINT] Add badges to README and RTD (#187)
 - [MAINT] Add PyPi badges
 - [MAINT] Add Zenodo DOI badge
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.2...0.0.1
 
 ## 0.0.1 - 2019-11-20
 
