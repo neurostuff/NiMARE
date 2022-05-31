@@ -130,7 +130,7 @@ This release candidate includes certain enhancements and fixes necessary for the
 * [FIX] only download group maps when creating dataset and raise error if no images are found for a contrast (#580) @jdkent
 * [ENH] Add test steps and explicit support for Python 3.9 (#578) @JulioAPeraza
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11rc1...0.0.10
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.11rc1
 
 ## 0.0.10 - 2021-10-06
 
@@ -194,7 +194,7 @@ The fetching and conversion functions also now support accessing multiple vocabu
 - [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 - [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.9
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10
 
 ## 0.0.10rc2 - 2021-08-10
 
@@ -217,7 +217,7 @@ We also have a new function to fetch NeuroQuery, and the Neurosynth conversion f
 - [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 - [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10rc2...0.0.9
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10rc2
 
 ## 0.0.10rc1 - 2021-07-15
 
@@ -232,7 +232,7 @@ The most relevant changes are the new ROIAssociationDecoder and the custom `__re
 * [FIX] Update CircleCI config to fix recent bug (#537) @tsalo
 * [ENH] Replace low_memory with memory_limit and reduce memory bottlenecks (#520) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10rc1...0.0.9
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10rc1
 
 ## 0.0.9 - 2021-07-04
 
@@ -259,7 +259,7 @@ enhancing NiMARE's docstrings with "versionadded" and "versionchanged" directive
 * [ENH] Add ImageTransformer class (#513) @tsalo
 * [ENH] Add overwrite option to transform_images (#509) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.8
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9
 
 ## 0.0.9rc2 - 2021-06-02
 
@@ -269,7 +269,7 @@ This release candidate adds the ImageTransformer class for the OHBM tutorial.
 
 * [ENH] Add ImageTransformer class (#513) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9rc2...0.0.8
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9rc2
 
 ## 0.0.9rc1 - 2021-05-27
 
@@ -279,7 +279,7 @@ This release candidate adds an overwrite option in preparation for the OHBM 2021
 
 * [ENH] Add overwrite option to transform_images (#509) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9rc1...0.0.8
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9rc1
 
 ## 0.0.8 - 2021-05-17
 
@@ -322,7 +322,7 @@ The "analytic" method is now "approximate" and the "empirical" method is now "mo
 * [FIX] Ensure IBMA results have the expected number of dimensions (#450) @jdkent
 * [STY, TST] Add flake8-docstrings to requirements (#435) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.7
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.7...0.0.8
 
 ## 0.0.7 - 2021-02-25
 
@@ -345,7 +345,7 @@ This release successfully deployed to PyPi, unlike 0.0.6.
 * [DOC] Add specialized issue templates (#433) @tsalo
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.7...0.0.6
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.7
 
 ## 0.0.7rc1 - 2021-02-25
 
@@ -366,7 +366,7 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 * [DOC] Add specialized issue templates (#433) @tsalo
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.7rc1...0.0.6
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.7rc1
 
 ## 0.0.6 - 2021-02-25
 
@@ -391,7 +391,7 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 * [DOC] Add specialized issue templates (#433) @tsalo
 * [MAINT] Add indexed_gzip as a dependency (#431) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.5
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.5...0.0.6
 
 ## 0.0.5 - 2020-12-31
 
@@ -405,7 +405,7 @@ The other bug was introduced in v0.0.4 and invalidates cluster-level Monte Carlo
 * [FIX] Fix packaging of resources (#428) @tsalo
 * [FIX] Include resources in library data files (#427) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.5...0.0.4
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.4...0.0.5
 
 ## 0.0.4 - 2020-12-28
 
@@ -512,7 +512,7 @@ This release includes a number of substantial changes to `NiMARE`.
 * [REF] Drop unimplemented parcellate module and meta-ICA workflow (#264) @tsalo
 * [ENH] Use nearest-neighbor interpolation for masks (#258) @tsalo
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.4...0.0.3
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.3...0.0.4
 
 ## 0.0.3 - 2020-07-12
 
@@ -546,7 +546,7 @@ ALESubtraction, annotation storage, and Dataset size.
 * [REF] Rename kernel_estimator attribute to kernel_transformer (#197) @tsalo
 * [ENH] Make convert_sleuth_to_dataset more flexible (#166) @62442katieb
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.3...0.0.2
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.2...0.0.3
 
 ## 0.0.2 - 2020-05-11
 
@@ -569,7 +569,7 @@ ALESubtraction, annotation storage, and Dataset size.
 - [MAINT] Add PyPi badges
 - [MAINT] Add Zenodo DOI badge
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.2...0.0.1
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.1...0.0.2
 
 ## 0.0.1 - 2019-11-20
 
