@@ -97,11 +97,7 @@ def test_get_resource_path():
 
 
 @pytest.mark.parametrize(
-    "has_low_memory,memory_limit",
-    [
-        (True, "1gb"),
-        (False, None),
-    ],
+    "has_low_memory,memory_limit", [(True, "1gb"), (False, None),],
 )
 def test_use_memmap(caplog, has_low_memory, memory_limit):
     """Test the memmapping decorator."""

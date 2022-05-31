@@ -79,12 +79,10 @@ def test_convert_sleuth_to_json_smoke():
 def test_convert_neurosynth_to_dataset_smoke():
     """Smoke test for Neurosynth file conversion."""
     coordinates_file = os.path.join(
-        get_test_data_path(),
-        "data-neurosynth_version-7_coordinates.tsv.gz",
+        get_test_data_path(), "data-neurosynth_version-7_coordinates.tsv.gz",
     )
     metadata_file = os.path.join(
-        get_test_data_path(),
-        "data-neurosynth_version-7_metadata.tsv.gz",
+        get_test_data_path(), "data-neurosynth_version-7_metadata.tsv.gz",
     )
     features = {
         "features": os.path.join(
@@ -96,9 +94,7 @@ def test_convert_neurosynth_to_dataset_smoke():
         ),
     }
     dset = io.convert_neurosynth_to_dataset(
-        coordinates_file,
-        metadata_file,
-        annotations_files=features,
+        coordinates_file, metadata_file, annotations_files=features,
     )
     assert isinstance(dset, nimare.dataset.Dataset)
     assert "terms_abstract_tfidf__abilities" in dset.annotations.columns
@@ -108,12 +104,10 @@ def test_convert_neurosynth_to_json_smoke():
     """Smoke test for Neurosynth file conversion."""
     out_file = os.path.abspath("temp.json")
     coordinates_file = os.path.join(
-        get_test_data_path(),
-        "data-neurosynth_version-7_coordinates.tsv.gz",
+        get_test_data_path(), "data-neurosynth_version-7_coordinates.tsv.gz",
     )
     metadata_file = os.path.join(
-        get_test_data_path(),
-        "data-neurosynth_version-7_metadata.tsv.gz",
+        get_test_data_path(), "data-neurosynth_version-7_metadata.tsv.gz",
     )
     features = {
         "features": os.path.join(
@@ -125,10 +119,7 @@ def test_convert_neurosynth_to_json_smoke():
         ),
     }
     io.convert_neurosynth_to_json(
-        coordinates_file,
-        metadata_file,
-        out_file,
-        annotations_files=features,
+        coordinates_file, metadata_file, out_file, annotations_files=features,
     )
     dset = nimare.dataset.Dataset(out_file)
     assert os.path.isfile(out_file)
@@ -139,12 +130,7 @@ def test_convert_neurosynth_to_json_smoke():
 @pytest.mark.parametrize(
     "kwargs",
     [
-        (
-            {
-                "collection_ids": (8836,),
-                "contrasts": {"animal": "as-Animal"},
-            }
-        ),
+        ({"collection_ids": (8836,), "contrasts": {"animal": "as-Animal"},}),
         (
             {
                 "collection_ids": {"informative_name": 8836},
@@ -216,11 +202,7 @@ def test_convert_neurovault_to_dataset(kwargs):
 
 @pytest.mark.parametrize(
     "sample_sizes,expected_sample_size",
-    [
-        ([1, 2, 1], 1),
-        ([None, None, 1], 1),
-        ([1, 1, 2, 2], 1),
-    ],
+    [([1, 2, 1], 1), ([None, None, 1], 1), ([1, 1, 2, 2], 1),],
 )
 def test_resolve_sample_sizes(sample_sizes, expected_sample_size):
     """Test modal sample size heuristic."""

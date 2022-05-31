@@ -112,15 +112,11 @@ class LDAModel(NiMAREBase):
 
         doc_topic_weights = self.model.fit_transform(count_values)
         doc_topic_weights_df = pd.DataFrame(
-            index=study_ids,
-            columns=topic_names,
-            data=doc_topic_weights,
+            index=study_ids, columns=topic_names, data=doc_topic_weights,
         )
         topic_word_weights = self.model.components_
         topic_word_weights_df = pd.DataFrame(
-            index=topic_names,
-            columns=vocabulary,
-            data=topic_word_weights,
+            index=topic_names, columns=vocabulary, data=topic_word_weights,
         )
         self.distributions_ = {
             "p_topic_g_word": topic_word_weights,

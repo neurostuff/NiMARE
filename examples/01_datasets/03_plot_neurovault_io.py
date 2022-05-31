@@ -56,10 +56,7 @@ contrasts = {
 map_type_conversion = {"Z map": "z", "T map": "t"}
 
 dset = convert_neurovault_to_dataset(
-    collection_ids,
-    contrasts,
-    img_dir=None,
-    map_type_conversion=map_type_conversion,
+    collection_ids, contrasts, img_dir=None, map_type_conversion=map_type_conversion,
 )
 
 ###############################################################################

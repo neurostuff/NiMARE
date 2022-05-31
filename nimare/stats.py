@@ -103,7 +103,7 @@ def pearson(x, y):
     data = np.vstack((x, y))
     ms = data.mean(axis=1)[(slice(None, None, None), None)]
     datam = data - ms
-    datass = np.sqrt(np.sum(datam**2, axis=1))
+    datass = np.sqrt(np.sum(datam ** 2, axis=1))
     temp = np.dot(datam[1:], datam[0].T)
     rs = temp / (datass[1:] * datass[0])
     return rs

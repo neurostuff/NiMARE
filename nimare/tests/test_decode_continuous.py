@@ -46,8 +46,7 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
 
     # And now we have images we can use for decoding!
     decoder = continuous.CorrelationDistributionDecoder(
-        features=features,
-        target_image=kern.image_type,
+        features=features, target_image=kern.image_type,
     )
     decoder.fit(dset)
 

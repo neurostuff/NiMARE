@@ -51,10 +51,7 @@ meta = Stouffers(use_sample_size=False, resample=True)
 results = meta.fit(dset)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -64,10 +61,7 @@ meta = Stouffers(use_sample_size=True, resample=True)
 results = meta.fit(dset)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -79,10 +73,7 @@ meta = Fishers(resample=True)
 results = meta.fit(dset)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -95,10 +86,7 @@ meta = PermutedOLS(two_sided=True, resample=True)
 results = meta.fit(dset)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
 )
 
 corrector = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
@@ -120,10 +108,7 @@ meta = WeightedLeastSquares(tau2=0, resample=True)
 results = meta.fit(dset)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -135,10 +120,7 @@ meta = DerSimonianLaird(resample=True)
 results = meta.fit(dset)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
 )
 
 ###############################################################################
@@ -150,8 +132,5 @@ meta = Hedges(resample=True)
 results = meta.fit(dset)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r",
 )

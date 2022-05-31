@@ -113,8 +113,7 @@ class CBMAEstimator(Estimator):
                     self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
                     if self.kernel_transformer.image_type in dataset.images.columns:
                         files = dataset.get_images(
-                            ids=self.inputs_["id"],
-                            imtype=self.kernel_transformer.image_type,
+                            ids=self.inputs_["id"], imtype=self.kernel_transformer.image_type,
                         )
                         if all(f is not None for f in files):
                             self.inputs_["ma_maps"] = files
@@ -153,10 +152,7 @@ class CBMAEstimator(Estimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_values = self._collect_ma_maps(
-            coords_key="coordinates",
-            maps_key="ma_maps",
-        )
+        ma_values = self._collect_ma_maps(coords_key="coordinates", maps_key="ma_maps",)
 
         # Infer a weight vector, when applicable. Primarily used only for MKDADensity.
         self.weight_vec_ = self._compute_weights(ma_values)
@@ -217,9 +213,7 @@ class CBMAEstimator(Estimator):
             LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
 
             ma_maps = self.kernel_transformer.transform(
-                self.inputs_[coords_key],
-                masker=self.masker,
-                return_type=return_type,
+                self.inputs_[coords_key], masker=self.masker, return_type=return_type,
             )
 
         return ma_maps
@@ -476,8 +470,7 @@ class CBMAEstimator(Estimator):
         n_cores = _check_ncores(n_cores)
 
         rand_idx = np.random.choice(
-            null_ijk.shape[0],
-            size=(self.inputs_["coordinates"].shape[0], n_iters),
+            null_ijk.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters),
         )
         rand_ijk = null_ijk[rand_idx, :]
         rand_xyz = vox2mm(rand_ijk, self.masker.mask_img.affine)
@@ -507,12 +500,7 @@ class CBMAEstimator(Estimator):
         ] = histweights
 
     def _correct_fwe_montecarlo_permutation(
-        self,
-        iter_xyz,
-        iter_df,
-        conn,
-        voxel_thresh,
-        vfwe_only,
+        self, iter_xyz, iter_df, conn, voxel_thresh, vfwe_only,
     ):
         """Run a single Monte Carlo permutation of a dataset.
 
@@ -567,12 +555,7 @@ class CBMAEstimator(Estimator):
         return iter_max_value, iter_max_size, iter_max_mass
 
     def correct_fwe_montecarlo(
-        self,
-        result,
-        voxel_thresh=0.001,
-        n_iters=10000,
-        n_cores=1,
-        vfwe_only=False,
+        self, result, voxel_thresh=0.001, n_iters=10000, n_cores=1, vfwe_only=False,
     ):
         """Perform FWE correction using the max-value permutation method.
 
@@ -683,8 +666,7 @@ class CBMAEstimator(Estimator):
             ss_thresh = self._p_to_summarystat(voxel_thresh)
 
             rand_idx = np.random.choice(
-                null_xyz.shape[0],
-                size=(self.inputs_["coordinates"].shape[0], n_iters),
+                null_xyz.shape[0], size=(self.inputs_["coordinates"].shape[0], n_iters),
             )
             rand_xyz = null_xyz[rand_idx, :]
             iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
@@ -716,9 +698,7 @@ class CBMAEstimator(Estimator):
                 labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
 
                 cluster_labels, idx, cluster_sizes = np.unique(
-                    labeled_matrix,
-                    return_inverse=True,
-                    return_counts=True,
+                    labeled_matrix, return_inverse=True, return_counts=True,
                 )
                 assert cluster_labels[0] == 0
 

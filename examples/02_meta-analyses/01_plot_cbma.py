@@ -52,11 +52,7 @@ corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    threshold=0.1,
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r", threshold=0.1,
 )
 plot_stat_map(
     cres.get_map("z_level-voxel_corr-FWE_method-montecarlo"),
@@ -78,10 +74,7 @@ corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
 
 plot_stat_map(
-    results.get_map("z_desc-consistency"),
-    draw_cross=False,
-    cmap="RdBu_r",
-    threshold=0.1,
+    results.get_map("z_desc-consistency"), draw_cross=False, cmap="RdBu_r", threshold=0.1,
 )
 plot_stat_map(
     cres.get_map("z_desc-consistencySize_level-cluster_corr-FWE_method-montecarlo"),
@@ -102,11 +95,7 @@ corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    threshold=0.1,
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r", threshold=0.1,
 )
 plot_stat_map(
     cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
@@ -128,11 +117,7 @@ corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
 
 plot_stat_map(
-    results.get_map("z"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    threshold=0.1,
+    results.get_map("z"), cut_coords=[0, 0, -8], draw_cross=False, cmap="RdBu_r", threshold=0.1,
 )
 plot_stat_map(
     cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),

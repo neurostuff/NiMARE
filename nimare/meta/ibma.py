@@ -104,8 +104,7 @@ class IBMAEstimator(Estimator):
                 else:
                     # Remove any voxels that are bad in any image-based inputs
                     self.inputs_["aggressive_mask"] = np.logical_or(
-                        self.inputs_["aggressive_mask"],
-                        good_voxels_bool,
+                        self.inputs_["aggressive_mask"], good_voxels_bool,
                     )
 
         # Further reduce image-based inputs to remove "bad" voxels

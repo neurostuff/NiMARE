@@ -10,11 +10,7 @@ from nimare import annotate, decode
 def test_gclda_symmetric(testdata_laird):
     """A smoke test for GCLDA with symmetric regions."""
     counts_df = annotate.text.generate_counts(
-        testdata_laird.texts,
-        text_column="abstract",
-        tfidf=False,
-        min_df=1,
-        max_df=1.0,
+        testdata_laird.texts, text_column="abstract", tfidf=False, min_df=1, max_df=1.0,
     )
 
     with pytest.raises(ValueError):
@@ -54,11 +50,7 @@ def test_gclda_symmetric(testdata_laird):
 def test_gclda_asymmetric(testdata_laird):
     """A smoke test for GCLDA with three asymmetric regions."""
     counts_df = annotate.text.generate_counts(
-        testdata_laird.texts,
-        text_column="abstract",
-        tfidf=False,
-        min_df=1,
-        max_df=1.0,
+        testdata_laird.texts, text_column="abstract", tfidf=False, min_df=1, max_df=1.0,
     )
     model = annotate.gclda.GCLDAModel(
         counts_df,

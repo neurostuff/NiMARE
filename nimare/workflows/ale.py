@@ -99,8 +99,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         )
         cres = corr.transform(results)
         fcounter = FocusCounter(
-            target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
-            voxel_thresh=None,
+            target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo", voxel_thresh=None,
         )
         count_df, _ = fcounter.transform(cres)
 
@@ -187,8 +186,7 @@ false discovery rate and performing statistical contrasts. Human brain mapping,
         )
         cres1 = corr.transform(res1)
         fcounter = FocusCounter(
-            target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
-            voxel_thresh=None,
+            target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo", voxel_thresh=None,
         )
         count_df1, _ = fcounter.transform(cres1)
 

@@ -443,15 +443,7 @@ def _dict_to_coordinates(data, masker, space):
 
     if not all_dfs:
         return pd.DataFrame(
-            {
-                "id": [],
-                "study_id": [],
-                "contrast_id": [],
-                "x": [],
-                "y": [],
-                "z": [],
-                "space": [],
-            },
+            {"id": [], "study_id": [], "contrast_id": [], "x": [], "y": [], "z": [], "space": [],},
         )
 
     df = pd.concat(all_dfs, axis=0, join="outer", sort=False)
@@ -731,12 +723,12 @@ def use_memmap(logger, n_files=1):
 
 
 BYTE = 2
-KILOBYTE = BYTE**10
+KILOBYTE = BYTE ** 10
 BYTE_CONVERSION = {
     "kb": KILOBYTE,
-    "mb": KILOBYTE**2,
-    "gb": KILOBYTE**3,
-    "tb": KILOBYTE**4,
+    "mb": KILOBYTE ** 2,
+    "gb": KILOBYTE ** 3,
+    "tb": KILOBYTE ** 4,
 }
 
 
@@ -807,8 +799,7 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
         )
     else:
         masked_data = np.empty(
-            masked_shape,
-            dtype=first_img_data.dtype if dtype == "auto" else dtype,
+            masked_shape, dtype=first_img_data.dtype if dtype == "auto" else dtype,
         )
 
     # perform transform on chunks of the input maps
@@ -825,11 +816,7 @@ def _safe_transform(imgs, masker, memory_limit="1gb", dtype="auto", memfile=None
 
 
 def _add_metadata_to_dataframe(
-    dataset,
-    dataframe,
-    metadata_field,
-    target_column,
-    filter_func=np.mean,
+    dataset, dataframe, metadata_field, target_column, filter_func=np.mean,
 ):
     """Add metadata from a Dataset to a DataFrame.
 
@@ -866,11 +853,7 @@ def _add_metadata_to_dataframe(
         metadata = dataset.get_metadata(field=metadata_field, ids=dataset.ids)
         metadata = [[m] for m in metadata]
         # Create a DataFrame with the metadata
-        metadata = pd.DataFrame(
-            index=dataset.ids,
-            data=metadata,
-            columns=[metadata_field],
-        )
+        metadata = pd.DataFrame(index=dataset.ids, data=metadata, columns=[metadata_field],)
         # Reduce the metadata (if in list/array format) to single values
         metadata[target_column] = metadata[metadata_field].apply(filter_func)
         # Merge metadata df into coordinates df
@@ -950,9 +933,7 @@ def _boolean_unmask(data_array, bool_array):
     assert bool_array.sum() == data_array.shape[-1]
 
     unmasked_data = np.full(
-        shape=bool_array.shape + data_array.T.shape[1:],
-        fill_value=np.nan,
-        dtype=data_array.dtype,
+        shape=bool_array.shape + data_array.T.shape[1:], fill_value=np.nan, dtype=data_array.dtype,
     )
     unmasked_data[bool_array] = data_array
     unmasked_data = unmasked_data.T

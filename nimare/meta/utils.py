@@ -274,6 +274,7 @@ def compute_p2m_ma(
     niis = [nib.Nifti1Image(np.squeeze(result), affine) for result in results]
     return niis
 
+
 def unique_rows(ar):
     """Remove repeated rows from a 2D array.
     In particular, if given an array of coordinates of shape
@@ -304,26 +305,20 @@ def unique_rows(ar):
            [1, 0, 1]], dtype=uint8)
     """
     if ar.ndim != 2:
-        raise ValueError("unique_rows() only makes sense for 2D arrays, "
-                         "got %dd" % ar.ndim)
+        raise ValueError("unique_rows() only makes sense for 2D arrays, " "got %dd" % ar.ndim)
     # the view in the next line only works if the array is C-contiguous
     ar = np.ascontiguousarray(ar)
     # np.unique() finds identical items in a raveled array. To make it
     # see each row as a single item, we create a view of each row as a
     # byte string of length itemsize times number of columns in `ar`
-    ar_row_view = ar.view('|S%d' % (ar.itemsize * ar.shape[1]))
+    ar_row_view = ar.view("|S%d" % (ar.itemsize * ar.shape[1]))
     _, unique_row_indices = np.unique(ar_row_view, return_index=True)
     ar_out = ar[unique_row_indices]
     return ar_out
 
+
 def compute_kda_ma(
-    shape,
-    vox_dims,
-    ijks,
-    r,
-    value=1.0,
-    exp_idx=None,
-    sum_overlap=False,
+    shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
@@ -387,7 +382,7 @@ def compute_kda_ma(
     for i, exp in enumerate(exp_idx_u):
         # Index peaks by experiment
         n = exp_idx_counts[i]
-        peaks = ijks[ijks_idx:ijks_idx+n]
+        peaks = ijks[ijks_idx : ijks_idx + n]
         ijks_idx += n
 
         # Convolve spheres
@@ -395,18 +390,19 @@ def compute_kda_ma(
         for peak in peaks:
             all_spheres.append(kernel.T + peak)
         all_spheres = np.vstack(all_spheres).astype(int)
-    
+
         if not sum_overlap:
             all_spheres = unique_rows(all_spheres.T).T
 
         # Mask coordinates beyond space
-        idx = np.all(np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1)
+        idx = np.all(
+            np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
+        )
         all_spheres = all_spheres[idx, :]
 
         n_brain_voxels = all_spheres.shape[0]
         all_coords.append(np.vstack([np.full((1, n_brain_voxels), exp), all_spheres.T]))
         temp_idx += n_brain_voxels
-
 
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
     coords = np.hstack(all_coords)
@@ -494,7 +490,7 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
         uncertain_subjects = (11.6 / (2 * np.sqrt(2 / np.pi)) * np.sqrt(8 * np.log(2))) / np.sqrt(
             sample_size
         )  # pylint: disable=no-member
-        fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
+        fwhm = np.sqrt(uncertain_subjects ** 2 + uncertain_templates ** 2)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = (

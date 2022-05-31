@@ -46,11 +46,7 @@ def test_MKDADensity_approximate_null(testdata_cbma_full, caplog):
 
     # Check that the vfwe_only option does not work
     corr2 = FWECorrector(
-        method="montecarlo",
-        voxel_thresh=0.001,
-        n_iters=5,
-        n_cores=1,
-        vfwe_only=True,
+        method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1, vfwe_only=True,
     )
     with caplog.at_level(logging.WARNING):
         cres2 = corr2.transform(res)
@@ -73,11 +69,7 @@ def test_MKDADensity_montecarlo_null(testdata_cbma):
 
     # Check that the vfwe_only option works
     corr2 = FWECorrector(
-        method="montecarlo",
-        voxel_thresh=0.001,
-        n_iters=5,
-        n_cores=1,
-        vfwe_only=True,
+        method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1, vfwe_only=True,
     )
     cres2 = corr2.transform(res)
     assert isinstance(cres2, nimare.results.MetaResult)

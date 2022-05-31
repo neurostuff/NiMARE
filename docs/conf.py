@@ -153,8 +153,7 @@ htmlhelp_basename = "nimaredoc"
 
 # The following is used by sphinx.ext.linkcode to provide links to github
 linkcode_resolve = make_linkcode_resolve(
-    "nimare",
-    "https://github.com/neurostuff/nimare/blob/{revision}/{package}/{path}#L{lineno}",
+    "nimare", "https://github.com/neurostuff/nimare/blob/{revision}/{package}/{path}#L{lineno}",
 )
 
 # -----------------------------------------------------------------------------

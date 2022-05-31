@@ -62,8 +62,7 @@ rates. NeuroImage, 99, 559-570.
     # voxel is reflected by the number of times that voxel appears in the array
     if not baseline:
         xyz = vox2mm(
-            np.vstack(np.where(dset.masker.mask_img.get_fdata())).T,
-            dset.masker.mask_img.affine,
+            np.vstack(np.where(dset.masker.mask_img.get_fdata())).T, dset.masker.mask_img.affine,
         )
     else:
         xyz = np.loadtxt(baseline)
