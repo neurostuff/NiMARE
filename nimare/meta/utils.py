@@ -385,10 +385,11 @@ def compute_kda_ma(
         all_spheres = []
         for peak in peaks:
             all_spheres.append(kernel.T + peak)
+
         all_spheres = np.vstack(all_spheres).astype(int)
 
         if not sum_overlap:
-            all_spheres = unique_rows(all_spheres.T).T
+            all_spheres = unique_rows(all_spheres)
 
         # Mask coordinates beyond space
         idx = np.all(
