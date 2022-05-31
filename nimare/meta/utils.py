@@ -558,8 +558,8 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
         del temp_labeled_arr3d
 
-    clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
-    assert clust_vals[0] == 0
+    clust_sizes = np.bincount(labeled_arr3d.flatten())
+    clust_vals = np.arange(0, clust_sizes.shape[0])
 
     # Cluster mass-based inference
     max_mass = 0
