@@ -27,7 +27,12 @@ from nimare.tests.utils import get_test_data_path
     ],
 )
 def test_jackknife_smoke(
-    testdata_ibma, testdata_cbma_full, estimator, meta_type, n_samples, target_image,
+    testdata_ibma,
+    testdata_cbma_full,
+    estimator,
+    meta_type,
+    n_samples,
+    target_image,
 ):
     """Smoke test the Jackknife method."""
     meta = estimator()
@@ -79,7 +84,12 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
     ],
 )
 def test_focuscounter_smoke(
-    testdata_ibma, testdata_cbma_full, estimator, meta_type, n_samples, target_image,
+    testdata_ibma,
+    testdata_cbma_full,
+    estimator,
+    meta_type,
+    n_samples,
+    target_image,
 ):
     """Smoke test the FocusCounter method."""
     meta = estimator()

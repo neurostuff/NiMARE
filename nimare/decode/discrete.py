@@ -716,7 +716,12 @@ class ROIAssociationDecoder(Decoder):
     }
 
     def __init__(
-        self, masker, kernel_transformer=MKDAKernel, feature_group=None, features=None, **kwargs,
+        self,
+        masker,
+        kernel_transformer=MKDAKernel,
+        feature_group=None,
+        features=None,
+        **kwargs,
     ):
         self.masker = get_masker(masker)
 
@@ -733,7 +738,9 @@ class ROIAssociationDecoder(Decoder):
 
     def _fit(self, dataset):
         roi_values = self.kernel_transformer.transform(
-            self.inputs_["coordinates"], self.masker, return_type="array",
+            self.inputs_["coordinates"],
+            self.masker,
+            return_type="array",
         )
         self.roi_values_ = roi_values.mean(axis=1)
 

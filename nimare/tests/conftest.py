@@ -125,7 +125,10 @@ def testdata_ibma_resample(tmp_path_factory):
             affine = np.eye(3)
             np.fill_diagonal(affine, rng.choice([1, 2, 3]))
             img = resample_img(
-                nib.load(f), target_affine=affine, interpolation="linear", clip=True,
+                nib.load(f),
+                target_affine=affine,
+                interpolation="linear",
+                clip=True,
             )
             nib.save(img, new_f)
     dset.update_path(tmpdir)

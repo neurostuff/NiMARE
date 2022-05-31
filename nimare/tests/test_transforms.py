@@ -96,7 +96,15 @@ NO_OUTPUT_PATTERN = re.compile(
         ({"merge_strategy": "replace"}, None, None),
         ({"merge_strategy": "demolish", "remove_subpeaks": True}, None, None),
         ({"merge_strategy": "fill", "two_sided": True}, "z", "p"),
-        ({"merge_strategy": "demolish", "two_sided": True, "z_threshold": 1.9,}, None, None,),
+        (
+            {
+                "merge_strategy": "demolish",
+                "two_sided": True,
+                "z_threshold": 1.9,
+            },
+            None,
+            None,
+        ),
         ({"merge_strategy": "demolish", "z_threshold": 10.0}, None, None),
     ],
 )
@@ -110,7 +118,11 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
 
     if add_data:
         tst_dset.images = transforms.transform_images(
-            tst_dset.images, add_data, tst_dset.masker, tst_dset.metadata, tmp_path,
+            tst_dset.images,
+            add_data,
+            tst_dset.masker,
+            tst_dset.metadata,
+            tmp_path,
         )
 
     if drop_data:

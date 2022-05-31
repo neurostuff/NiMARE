@@ -227,7 +227,8 @@ class GCLDAModel(NiMAREBase):
 
         # Randomly initialize peak->topic assignments (y) ~ unif(1...n_topics)
         self.topics["peak_topic_idx"] = np.random.randint(
-            self.params["n_topics"], size=(len(self.data["ptoken_doc_idx"])),
+            self.params["n_topics"],
+            size=(len(self.data["ptoken_doc_idx"])),
         )
 
         # peak->region assignments
@@ -236,27 +237,32 @@ class GCLDAModel(NiMAREBase):
         # Preallocate count matrices
         # Peaks: D x T: Number of peak-tokens assigned to each topic per document
         self.topics["n_peak_tokens_doc_by_topic"] = np.zeros(
-            (len(self.ids), self.params["n_topics"]), dtype=int,
+            (len(self.ids), self.params["n_topics"]),
+            dtype=int,
         )
 
         # Peaks: R x T: Number of peak-tokens assigned to each subregion per topic
         self.topics["n_peak_tokens_region_by_topic"] = np.zeros(
-            (self.params["n_regions"], self.params["n_topics"]), dtype=int,
+            (self.params["n_regions"], self.params["n_topics"]),
+            dtype=int,
         )
 
         # Words: W x T: Number of word-tokens assigned to each topic per word-type
         self.topics["n_word_tokens_word_by_topic"] = np.zeros(
-            (len(self.vocabulary), self.params["n_topics"]), dtype=int,
+            (len(self.vocabulary), self.params["n_topics"]),
+            dtype=int,
         )
 
         # Words: D x T: Number of word-tokens assigned to each topic per document
         self.topics["n_word_tokens_doc_by_topic"] = np.zeros(
-            (len(self.ids), self.params["n_topics"]), dtype=int,
+            (len(self.ids), self.params["n_topics"]),
+            dtype=int,
         )
 
         # Words: 1 x T: Total number of word-tokens assigned to each topic (across all docs)
         self.topics["total_n_word_tokens_by_topic"] = np.zeros(
-            (1, self.params["n_topics"]), dtype=int,
+            (1, self.params["n_topics"]),
+            dtype=int,
         )
 
         # Preallocate Gaussians for all subregions
@@ -300,14 +306,16 @@ class GCLDAModel(NiMAREBase):
             # Namely, check whether x-coordinate is greater than zero.
             n_pairs = int(self.params["n_regions"] / 2)
             initial_assignments = np.random.randint(
-                n_pairs, size=(len(self.data["ptoken_doc_idx"])),
+                n_pairs,
+                size=(len(self.data["ptoken_doc_idx"])),
             )
             signs = (self.data["ptoken_coords"][:, 0] > 0).astype(int)
             self.topics["peak_region_idx"][:] = (initial_assignments * 2) + signs
         else:
             # if asymmetric model, randomly sample r ~ unif(1...n_regions)
             self.topics["peak_region_idx"][:] = np.random.randint(
-                self.params["n_regions"], size=(len(self.data["ptoken_doc_idx"])),
+                self.params["n_regions"],
+                size=(len(self.data["ptoken_doc_idx"])),
             )
 
         # Update model vectors and count matrices to reflect y and r assignments
@@ -559,7 +567,8 @@ class GCLDAModel(NiMAREBase):
 
             # Reshape 1D back to [R x T] 2D
             assignment_arr = np.reshape(
-                assignment_vec, (self.params["n_regions"], self.params["n_topics"]),
+                assignment_vec,
+                (self.params["n_regions"], self.params["n_topics"]),
             )
             # Transform the linear index of the sampled element into the
             # subregion/topic (r/y) assignment indices

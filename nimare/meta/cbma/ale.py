@@ -343,8 +343,14 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
 
-        ma_maps1 = self._collect_ma_maps(maps_key="ma_maps1", coords_key="coordinates1",)
-        ma_maps2 = self._collect_ma_maps(maps_key="ma_maps2", coords_key="coordinates2",)
+        ma_maps1 = self._collect_ma_maps(
+            maps_key="ma_maps1",
+            coords_key="coordinates1",
+        )
+        ma_maps2 = self._collect_ma_maps(
+            maps_key="ma_maps2",
+            coords_key="coordinates2",
+        )
 
         n_grp1, n_voxels = ma_maps1.shape
 
@@ -381,7 +387,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
             p_values, voxel_idx = zip(
                 *Parallel(n_jobs=self.n_cores)(
                     delayed(self._alediff_to_p_voxel)(
-                        i_voxel, diff_ale_values[i_voxel], iter_diff_values[:, i_voxel],
+                        i_voxel,
+                        diff_ale_values[i_voxel],
+                        iter_diff_values[:, i_voxel],
                     )
                     for i_voxel in range(n_voxels)
                 )
@@ -526,7 +534,12 @@ class SCALE(CBMAEstimator):
     """
 
     def __init__(
-        self, xyz, n_iters=10000, n_cores=1, kernel_transformer=ALEKernel, **kwargs,
+        self,
+        xyz,
+        n_iters=10000,
+        n_cores=1,
+        kernel_transformer=ALEKernel,
+        **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
@@ -565,7 +578,10 @@ class SCALE(CBMAEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_values = self._collect_ma_maps(coords_key="coordinates", maps_key="ma_maps",)
+        ma_values = self._collect_ma_maps(
+            coords_key="coordinates",
+            maps_key="ma_maps",
+        )
 
         # Determine bins for null distribution histogram
         max_ma_values = np.max(ma_values, axis=1)
@@ -688,7 +704,9 @@ class SCALE(CBMAEstimator):
         )[0]
 
         p_value = nullhist_to_p(
-            stat_value, scale_hist, self.null_distributions_["histogram_bins"],
+            stat_value,
+            scale_hist,
+            self.null_distributions_["histogram_bins"],
         )
         return p_value, i_voxel
 

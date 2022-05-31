@@ -185,7 +185,8 @@ class CorrelationDecoder(Decoder):
         n_features = len(self.features_)
         for i_feature, feature in enumerate(tqdm(self.features_, total=n_features)):
             feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold,
+                labels=[feature],
+                label_threshold=self.frequency_threshold,
             )
             # Limit selected studies to studies with valid data
             feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
@@ -202,7 +203,10 @@ class CorrelationDecoder(Decoder):
             else:
                 meta_results = self.meta_estimator.fit(feature_dset)
 
-            feature_data = meta_results.get_map(self.target_image, return_type="array",)
+            feature_data = meta_results.get_map(
+                self.target_image,
+                return_type="array",
+            )
             if i_feature == 0:
                 images_ = np.zeros((len(self.features_), len(feature_data)), feature_data.dtype)
 
@@ -256,7 +260,11 @@ class CorrelationDistributionDecoder(Decoder):
     }
 
     def __init__(
-        self, feature_group=None, features=None, frequency_threshold=0.001, target_image="z",
+        self,
+        feature_group=None,
+        features=None,
+        frequency_threshold=0.001,
+        target_image="z",
     ):
         self.feature_group = feature_group
         self.features = features
@@ -295,7 +303,11 @@ class CorrelationDistributionDecoder(Decoder):
                 img for i_img, img in enumerate(self.inputs_["images"]) if i_img in selected_id_idx
             ]
             if len(test_imgs):
-                feature_arr = _safe_transform(test_imgs, self.masker, memfile=None,)
+                feature_arr = _safe_transform(
+                    test_imgs,
+                    self.masker,
+                    memfile=None,
+                )
                 images_[feature] = feature_arr
             else:
                 LGR.info(f"Skipping feature '{feature}'. No images found.")
