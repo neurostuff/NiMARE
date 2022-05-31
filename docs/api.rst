@@ -17,6 +17,7 @@ API
    :template: class.rst
 
    dataset.Dataset
+   dataset.DatasetSearcher
 
 
 .. _api_meta_ref:
