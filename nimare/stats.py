@@ -273,29 +273,3 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     if return_value:
         p_values = p_values[0]
     return p_values
-
-
-def fdr(p, q=0.05):
-    """Determine FDR threshold given a p value array and desired false discovery rate q.
-
-    Parameters
-    ----------
-    p : 1D :class:`numpy.ndarray`
-        Array of p-values.
-    q : :obj:`float`, optional
-        False discovery rate in fraction form. Default is 0.05 (5%).
-
-    Returns
-    -------
-    :obj:`float`
-        P-value threshold for desired false discovery rate.
-
-    Notes
-    -----
-    Taken from Neurosynth.
-    """
-    s = np.sort(p)
-    nvox = p.shape[0]
-    null = np.array(range(1, nvox + 1), dtype="float") * q / nvox
-    below = np.where(s <= null)[0]
-    return s[max(below)] if any(below) else -1
