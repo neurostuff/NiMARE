@@ -326,6 +326,7 @@ class WeightedLeastSquares(IBMAEstimator):
             "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
             "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -389,6 +390,7 @@ class DerSimonianLaird(IBMAEstimator):
             "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
             "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -451,6 +453,7 @@ class Hedges(IBMAEstimator):
             "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
             "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -527,6 +530,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
             "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
             "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -614,6 +618,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
             "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
             "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
