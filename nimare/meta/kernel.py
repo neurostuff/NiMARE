@@ -14,6 +14,7 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from nilearn import image
 
 from nimare import references
@@ -209,7 +210,10 @@ class KernelTransformer(NiMAREBase):
         imgs = []
         # Loop over exp ids since sparse._coo.core.COO is not iterable
         for i_exp, id_ in enumerate(transformed_maps[1]):
-            kernel_data = transformed_maps[0][i_exp].todense()
+            if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
+                kernel_data = transformed_maps[0][i_exp].todense()
+            else:
+                kernel_data = transformed_maps[0][i_exp]
 
             if return_type == "array":
                 img = kernel_data[mask_data]
