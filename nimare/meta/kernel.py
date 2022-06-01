@@ -14,7 +14,6 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import sparse
 from nilearn import image
 
 from nimare import references
@@ -72,10 +71,10 @@ class KernelTransformer(NiMAREBase):
         # Determine names for kernel-specific files
         keys = sorted(params.keys())
         param_str = "_".join(f"{k}-{str(params[k])}" for k in keys)
-        self.filename_pattern = f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
-            "[[", "{"
-        ).replace(
-            "]]", "}"
+        self.filename_pattern = (
+            f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
+                "[[", "{"
+            ).replace("]]", "}")
         )
         self.image_type = f"{param_str}_{self.__class__.__name__}"
 
@@ -376,7 +375,13 @@ class KDAKernel(KernelTransformer):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims, vox_dims, ijks, self.r, self.value, exp_idx, sum_overlap=self._sum_overlap,
+            dims,
+            vox_dims,
+            ijks,
+            self.r,
+            self.value,
+            exp_idx,
+            sum_overlap=self._sum_overlap,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
