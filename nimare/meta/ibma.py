@@ -485,7 +485,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
     Requires ``beta`` images and sample size from metadata.
 
     Homogeneity of sigma^2 across studies is assumed.
-    The ML and REML solutions are obtained via SciPy’s scalar function
+    The ML and REML solutions are obtained via SciPy's scalar function
     minimizer (:func:`scipy.optimize.minimize`).
     Parameters to ``minimize()`` can be passed in as keyword arguments.
 
