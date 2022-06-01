@@ -315,7 +315,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Generate MA maps and calculate count variables for first dataset
         ma_maps1 = self._collect_ma_maps(
-            maps_key="ma_maps1", coords_key="coordinates1", return_type="sparse",
+            maps_key="ma_maps1",
+            coords_key="coordinates1",
+            return_type="sparse",
         )
         n_selected = ma_maps1.shape[0]
         n_selected_active_voxels = ma_maps1.sum(axis=0)
@@ -334,7 +336,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Generate MA maps and calculate count variables for second dataset
         ma_maps2 = self._collect_ma_maps(
-            maps_key="ma_maps2", coords_key="coordinates2", return_type="sparse",
+            maps_key="ma_maps2",
+            coords_key="coordinates2",
+            return_type="sparse",
         )
         n_unselected = ma_maps2.shape[0]
         n_unselected_active_voxels = ma_maps2.sum(axis=0)
@@ -569,7 +573,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         del temp_labeled_matrix
 
         cluster_labels, idx, cluster_sizes = np.unique(
-            labeled_matrix, return_inverse=True, return_counts=True,
+            labeled_matrix,
+            return_inverse=True,
+            return_counts=True,
         )
         assert cluster_labels[0] == 0
 
@@ -698,7 +704,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> cresult = corrector.transform(result)
         """
         null_xyz = vox2mm(
-            np.vstack(np.where(self.masker.mask_img.get_fdata())).T, self.masker.mask_img.affine,
+            np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
+            self.masker.mask_img.affine,
         )
         pAgF_chi2_vals = result.get_map("chi2_desc-consistency", return_type="array")
         pFgA_chi2_vals = result.get_map("chi2_desc-specificity", return_type="array")

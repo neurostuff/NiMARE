@@ -277,24 +277,30 @@ def compute_p2m_ma(
 
 def unique_rows(ar):
     """Remove repeated rows from a 2D array.
+
     In particular, if given an array of coordinates of shape
     (Npoints, Ndim), it will remove repeated points.
+
     Parameters
     ----------
     ar : 2-D ndarray
         The input array.
+
     Returns
     -------
     ar_out : 2-D ndarray
         A copy of the input array with repeated rows removed.
+
     Raises
     ------
     ValueError : if `ar` is not two-dimensional.
+
     Notes
     -----
     The function will generate a copy of `ar` if it is not
     C-contiguous, which will negatively affect performance for large
     input arrays.
+
     Examples
     --------
     >>> ar = np.array([[1, 0, 1],
@@ -321,7 +327,13 @@ def unique_rows(ar):
 
 
 def compute_kda_ma(
-    shape, vox_dims, ijks, r, value=1.0, exp_idx=None, sum_overlap=False,
+    shape,
+    vox_dims,
+    ijks,
+    r,
+    value=1.0,
+    exp_idx=None,
+    sum_overlap=False,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
@@ -495,7 +507,7 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
         uncertain_subjects = (11.6 / (2 * np.sqrt(2 / np.pi)) * np.sqrt(8 * np.log(2))) / np.sqrt(
             sample_size
         )  # pylint: disable=no-member
-        fwhm = np.sqrt(uncertain_subjects ** 2 + uncertain_templates ** 2)
+        fwhm = np.sqrt(uncertain_subjects**2 + uncertain_templates**2)
 
     fwhm_vox = fwhm / np.sqrt(np.prod(img.header.get_zooms()))
     sigma_vox = (
