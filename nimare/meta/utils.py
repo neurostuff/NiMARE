@@ -303,6 +303,9 @@ def unique_rows(ar):
     >>> unique_rows(ar)
     array([[0, 1, 0],
            [1, 0, 1]], dtype=uint8)
+
+    Copyright (C) 2019, the scikit-image team
+    All rights reserved.
     """
     if ar.ndim != 2:
         raise ValueError("unique_rows() only makes sense for 2D arrays, " "got %dd" % ar.ndim)
