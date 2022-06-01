@@ -319,17 +319,13 @@ class WeightedLeastSquares(IBMAEstimator):
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+
+        fe_stats = est_summary.get_fe_stats()
         # tau2 is an float, not a map, so it can't go in the results dictionary
         results = {
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -386,17 +382,13 @@ class DerSimonianLaird(IBMAEstimator):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+
+        fe_stats = est_summary.get_fe_stats()
         results = {
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -453,17 +445,12 @@ class Hedges(IBMAEstimator):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+        fe_stats = est_summary.get_fe_stats()
         results = {
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -534,17 +521,12 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+        fe_stats = est_summary.get_fe_stats()
         results = {
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
@@ -626,17 +608,12 @@ class VarianceBasedLikelihood(IBMAEstimator):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+        fe_stats = est_summary.get_fe_stats()
         results = {
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
         }
         return results
 
