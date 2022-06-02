@@ -11,13 +11,17 @@ from scipy import ndimage
 from tqdm.auto import tqdm
 
 from nimare.base import Estimator
+from nimare.dataset import DatasetSearcher
 from nimare.meta.kernel import KernelTransformer
-from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
+from nimare.meta.utils import (
+    _add_metadata_to_dataframe,
+    _calculate_cluster_measures,
+    _get_last_bin,
+)
 from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
 from nimare.utils import (
-    _add_metadata_to_dataframe,
     _check_ncores,
     _check_type,
     get_masker,
@@ -100,6 +104,7 @@ class CBMAEstimator(Estimator):
             (2) IJK coordinates will be added based on the mask image's affine,
             and (3) sample sizes may be added to the "coordinates" key, as needed.
         """
+        searcher = DatasetSearcher()
         masker = self.masker or dataset.masker
 
         mask_img = masker.mask_img or masker.labels_img
@@ -112,7 +117,8 @@ class CBMAEstimator(Estimator):
                 if hasattr(self, "kernel_transformer"):
                     self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
                     if self.kernel_transformer.image_type in dataset.images.columns:
-                        files = dataset.get_images(
+                        files = searcher.get_images(
+                            dataset,
                             ids=self.inputs_["id"],
                             imtype=self.kernel_transformer.image_type,
                         )

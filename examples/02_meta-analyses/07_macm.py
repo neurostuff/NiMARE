@@ -17,7 +17,7 @@ import numpy as np
 from nilearn import datasets, image, plotting
 
 from nimare.correct import FWECorrector
-from nimare.dataset import Dataset
+from nimare.dataset import Dataset, DatasetSearcher
 from nimare.meta.cbma.ale import SCALE
 from nimare.meta.cbma.mkda import MKDAChi2
 
@@ -44,7 +44,8 @@ roi_img = image.math_img(f"img1 == {roi_val}", img1=img)
 ###############################################################################
 # Select studies with a reported coordinate in the ROI
 # -----------------------------------------------------------------------------
-roi_ids = dset.get_studies_by_mask(roi_img)
+searcher = DatasetSearcher()
+roi_ids = searcher.get_studies_by_mask(dset, roi_img)
 dset_sel = dset.slice(roi_ids)
 print(f"{len(roi_ids)}/{len(dset.ids)} studies report at least one coordinate in the ROI")
 

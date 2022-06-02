@@ -17,7 +17,7 @@ import nibabel as nib
 import numpy as np
 from nilearn.plotting import plot_roi
 
-from nimare.dataset import Dataset
+from nimare.dataset import Dataset, DatasetSearcher
 from nimare.decode import discrete
 from nimare.utils import get_resource_path
 
@@ -40,7 +40,8 @@ mask_img = nib.Nifti1Image(arr, dset.masker.mask_img.affine)
 plot_roi(mask_img, draw_cross=False)
 
 # Get studies with voxels in the mask
-ids = dset.get_studies_by_mask(mask_img)
+searcher = DatasetSearcher()
+ids = searcher.get_studies_by_mask(dset, mask_img)
 
 ###############################################################################
 #

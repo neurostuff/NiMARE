@@ -5,6 +5,7 @@ Tests for nimare.decode.discrete.gclda_decode_roi are in test_annotate_gclda.
 import pandas as pd
 import pytest
 
+from nimare.dataset import DatasetSearcher
 from nimare.decode import discrete
 
 
@@ -38,8 +39,9 @@ def test_brainmap_decode(testdata_laird):
 
 def test_NeurosynthDecoder(testdata_laird):
     """Smoke test for discrete.NeurosynthDecoder."""
+    searcher = DatasetSearcher()
     ids = testdata_laird.ids[:5]
-    labels = testdata_laird.get_labels(ids=testdata_laird.ids)
+    labels = searcher.get_labels(testdata_laird, ids=testdata_laird.ids)
     decoder = discrete.NeurosynthDecoder(features=labels)
     decoder.fit(testdata_laird)
     decoded_df = decoder.transform(ids=ids)
@@ -65,8 +67,9 @@ def test_NeurosynthDecoder_featuregroup_failure(testdata_laird):
 
 def test_BrainMapDecoder(testdata_laird):
     """Smoke test for discrete.BrainMapDecoder."""
+    searcher = DatasetSearcher()
     ids = testdata_laird.ids[:5]
-    labels = testdata_laird.get_labels(ids=testdata_laird.ids)
+    labels = searcher.get_labels(testdata_laird, ids=testdata_laird.ids)
     decoder = discrete.BrainMapDecoder(features=labels)
     decoder.fit(testdata_laird)
     decoded_df = decoder.transform(ids=ids)
@@ -83,7 +86,8 @@ def test_BrainMapDecoder_failure(testdata_laird):
 
 def test_ROIAssociationDecoder(testdata_laird, roi_img):
     """Smoke test for discrete.ROIAssociationDecoder."""
-    labels = testdata_laird.get_labels(ids=testdata_laird.ids)
+    searcher = DatasetSearcher()
+    labels = searcher.get_labels(testdata_laird, ids=testdata_laird.ids)
     decoder = discrete.ROIAssociationDecoder(masker=roi_img, features=labels)
     decoder.fit(testdata_laird)
     decoded_df = decoder.transform()

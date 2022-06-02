@@ -260,7 +260,10 @@ class Estimator(NiMAREBase):
             )
 
         if self._required_inputs:
-            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
+            from nimare.dataset import DatasetSearcher
+
+            searcher = DatasetSearcher()
+            data = searcher.get(dataset, self._required_inputs, drop_invalid=drop_invalid)
             # Do not overwrite existing inputs_ attribute.
             # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
             # in the same object.

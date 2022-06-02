@@ -9,6 +9,7 @@ from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
 from nimare import references
+from nimare.dataset import DatasetSearcher
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.due import due
@@ -181,10 +182,12 @@ class CorrelationDecoder(Decoder):
             Masked meta-analytic maps
         """
         self.masker = dataset.masker
+        searcher = DatasetSearcher()
 
         n_features = len(self.features_)
         for i_feature, feature in enumerate(tqdm(self.features_, total=n_features)):
-            feature_ids = dataset.get_studies_by_label(
+            feature_ids = searcher.get_studies_by_label(
+                dataset,
                 labels=[feature],
                 label_threshold=self.frequency_threshold,
             )
@@ -289,11 +292,12 @@ class CorrelationDistributionDecoder(Decoder):
             Masked meta-analytic maps
         """
         self.masker = dataset.masker
+        searcher = DatasetSearcher()
 
         images_ = {}
         for feature in self.features_:
-            feature_ids = dataset.get_studies_by_label(
-                labels=[feature], label_threshold=self.frequency_threshold
+            feature_ids = searcher.get_studies_by_label(
+                dataset, labels=[feature], label_threshold=self.frequency_threshold
             )
             selected_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
             selected_id_idx = [

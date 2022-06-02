@@ -10,6 +10,34 @@ from nimare import dataset
 from nimare.tests.utils import get_test_data_path
 
 
+def test_DatasetSearcher(testdata_laird):
+    """Test the DatasetSearcher class."""
+    dset = testdata_laird.copy()
+    searcher = dataset.DatasetSearcher()
+    METHODS = [searcher.get_images, searcher.get_labels, searcher.get_metadata, searcher.get_texts]
+    for method in METHODS:
+        assert isinstance(method(dset), list)
+        assert isinstance(method(dset, ids=dset.ids[:5]), list)
+        assert isinstance(method(dset, ids=dset.ids[0]), list)
+
+    # This test dataset has no images
+    with pytest.raises(ValueError):
+        searcher.get_images(dset, imtype="beta")
+
+    assert isinstance(searcher.get_metadata(dset, field="journal"), list)
+    assert isinstance(searcher.get_studies_by_label(dset, "Neurosynth_TFIDF__analyze"), list)
+    assert isinstance(searcher.get_studies_by_coordinate(dset, np.array([[20, 20, 20]])), list)
+
+    mask_data = np.zeros(dset.masker.mask_img.shape, int)
+    mask_data[40, 40, 40] = 1
+    mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
+    assert isinstance(searcher.get_studies_by_mask(dset, mask=mask_img), list)
+
+    # If label is not available, raise ValueError
+    with pytest.raises(ValueError):
+        searcher.get_studies_by_label(dset, "dog")
+
+
 def test_dataset_smoke():
     """Smoke test for nimare.dataset.Dataset initialization and get methods."""
     db_file = op.join(get_test_data_path(), "neurosynth_dset.json")
@@ -18,26 +46,6 @@ def test_dataset_smoke():
     assert isinstance(dset, nimare.dataset.Dataset)
     # Test that Dataset.masker is portable
     assert not nib.is_proxy(dset.masker.mask_img_.dataobj)
-
-    methods = [dset.get_images, dset.get_labels, dset.get_metadata, dset.get_texts]
-    for method in methods:
-        assert isinstance(method(), list)
-        assert isinstance(method(ids=dset.ids[:5]), list)
-        assert isinstance(method(ids=dset.ids[0]), list)
-
-    assert isinstance(dset.get_images(imtype="beta"), list)
-    assert isinstance(dset.get_metadata(field="sample_sizes"), list)
-    assert isinstance(dset.get_studies_by_label("cogat_cognitive_control"), list)
-    assert isinstance(dset.get_studies_by_coordinate(np.array([[20, 20, 20]])), list)
-
-    # If label is not available, raise ValueError
-    with pytest.raises(ValueError):
-        dset.get_studies_by_label("dog")
-
-    mask_data = np.zeros(dset.masker.mask_img.shape, int)
-    mask_data[40, 40, 40] = 1
-    mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
-    assert isinstance(dset.get_studies_by_mask(mask_img), list)
 
     dset1 = dset.slice(dset.ids[:5])
     dset2 = dset.slice(dset.ids[5:])
