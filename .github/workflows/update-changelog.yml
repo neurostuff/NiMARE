@@ -3,6 +3,12 @@ name: "Update Changelog"
 on:
   release:
     types: [published]
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - '*'
 
 jobs:
   update:
@@ -19,7 +25,7 @@ jobs:
         uses: stefanzweifel/changelog-updater-action@v1
         with:
           release-notes: ${{ github.event.release.body }}
-          latest-version: ${{ github.event.release.name }}
+          latest-version: 0.0.12rc4
 
       - name: Commit updated CHANGELOG
         uses: stefanzweifel/git-auto-commit-action@v4
