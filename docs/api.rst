@@ -290,6 +290,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    utils.mm2vox
    utils.tal2mni
    utils.mni2tal
+   utils.unique_rows
 
 .. _api_workflows_ref:
 

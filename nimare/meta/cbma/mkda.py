@@ -166,12 +166,7 @@ class MKDADensity(CBMAEstimator):
         return weight_vec
 
     def _compute_summarystat_est(self, ma_values):
-        # Note: .dot should be faster, but causes multiprocessing to stall
-        # on some (Mac) architectures. If this is ever resolved, we can
-        # replace with the commented line.
-        # return ma_values.T.dot(self.weight_vec_).ravel()
-        weighted_ma_vals = ma_values * self.weight_vec_
-        return weighted_ma_vals.sum(0)
+        return ma_values.T.dot(self.weight_vec_).ravel()
 
     def _determine_histogram_bins(self, ma_maps):
         """Determine histogram bins for null distribution methods.
