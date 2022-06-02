@@ -134,7 +134,7 @@ class KernelTransformer(NiMAREBase):
             # but has different affine, from original IJK.
             coordinates[["i", "j", "k"]] = mm2vox(
                 dataset[["x", "y", "z"]], mask.affine
-            )  # Possibily optimize this
+            )
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
@@ -185,7 +185,7 @@ class KernelTransformer(NiMAREBase):
         if return_type == "array":
             mask_data = mask.get_fdata().astype(
                 bool
-            )  # Possibilty allow this to be passed in to not recompute
+            )
         elif return_type == "image":
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
@@ -206,7 +206,6 @@ class KernelTransformer(NiMAREBase):
         if return_type == "sparse":
             return transformed_maps[0]
 
-        # Optimize this, possily make own function
         imgs = []
         # Loop over exp ids since sparse._coo.core.COO is not iterable
         for i_exp, id_ in enumerate(transformed_maps[1]):
@@ -417,7 +416,7 @@ class Peaks2MapsKernel(KernelTransformer):
 
     Parameters
     ----------
-    model_dir : :obj:`str`, optionalf
+    model_dir : :obj:`str`, optional
         Path to model directory. Default is "auto".
 
     Warnings

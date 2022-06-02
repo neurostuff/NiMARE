@@ -301,6 +301,8 @@ def unique_rows(ar):
     C-contiguous, which will negatively affect performance for large
     input arrays.
 
+    This is taken from skimage. See :func:`skimage.util.unique_rows`.
+
     Examples
     --------
     >>> ar = np.array([[1, 0, 1],
@@ -389,6 +391,22 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     def _convolve_sphere(kernel, peaks):
+        """Convolve peaks with a spherical kernel.
+
+        Parameters
+        ----------
+        kernel : 2D numpy.ndarray
+            IJK coordinates of a sphere, relative to a central point
+            (not the brain template).
+        peaks : 2D numpy.ndarray
+            The IJK coordinates of peaks to convolve with the kernel.
+
+        Returns
+        -------
+        sphere_coords : 2D numpy.ndarray
+            All coordinates that fall within any sphere.
+            Coordinates from overlapping spheres will appear twice.
+        """
         # Convolve spheres
         sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
         chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
