@@ -3,6 +3,7 @@
 import copy
 import logging
 import os.path as op
+import warnings
 
 import nibabel as nib
 import numpy as np
@@ -456,9 +457,15 @@ class ImagesToCoordinates(NiMAREBase):
             original_ids = set(old_coordinates_df["id"])
             metadata.loc[metadata["id"].isin(original_ids), "coordinate_source"] = "original"
 
-        # ensure z_stat is treated as float
         if "z_stat" in coordinates_df.columns:
+            # ensure z_stat is treated as float
             coordinates_df["z_stat"] = coordinates_df["z_stat"].astype(float)
+
+            # Raise warning if coordinates dataset contains both positive and negative z_stats
+            if ((coordinates_df["z_stat"].values >= 0).any()) and (
+                (coordinates_df["z_stat"].values < 0).any()
+            ):
+                warnings.warn("Coordinates dataset contains both positive and negative z_stats")
 
         new_dataset = copy.deepcopy(dataset)
         new_dataset.coordinates = coordinates_df
