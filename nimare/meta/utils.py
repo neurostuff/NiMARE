@@ -5,12 +5,13 @@ import os
 import nibabel as nib
 import numpy as np
 import numpy.linalg as npl
+import sparse
 from scipy import ndimage
 
-from .. import references
-from ..due import due
-from ..extract import download_peaks2maps_model
-from ..utils import _determine_chunk_size
+from nimare import references
+from nimare.due import due
+from nimare.extract import download_peaks2maps_model
+from nimare.utils import unique_rows
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
@@ -283,14 +284,13 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
-    memory_limit=None,
-    memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add *memmap_filename* parameter for memory mapping arrays.
+        * Remove low-memory option in favor of sparse arrays.
+        * Return 4D sparse array.
 
     .. versionadded:: 0.0.4
 
@@ -316,60 +316,83 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
-    memmap_filename : :obj:`str`, optional
-        If passed, use this file for memory mapping arrays
 
     Returns
     -------
-    kernel_data : :obj:`numpy.array`
-        3d or 4d array. If `exp_idx` is none, a 3d array in the same shape as
-        the `shape` argument is returned. If `exp_idx` is passed, a 4d array
+    kernel_data : :obj:`sparse._coo.core.COO`
+        4D sparse array. If `exp_idx` is none, a 3d array in the same
+        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
-    squeeze = exp_idx is None
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
-    uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
-    n_studies = len(uniq)
+    exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
+    n_studies = len(exp_idx_uniq)
 
     kernel_shape = (n_studies,) + shape
-    if memmap_filename:
-        # Use a memmapped 4D array
-        kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
-    else:
-        kernel_data = np.zeros(kernel_shape, dtype=type(value))
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    if memory_limit:
-        chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
+    def _convolve_sphere(kernel, peaks):
+        """Convolve peaks with a spherical kernel.
 
-    for i, peak in enumerate(ijks):
-        sphere = np.round(kernel.T + peak)
-        idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
-        sphere = sphere[idx, :].astype(int)
-        exp = exp_idx[i]
-        if sum_overlap:
-            kernel_data[exp][tuple(sphere.T)] += value
-        else:
-            kernel_data[exp][tuple(sphere.T)] = value
+        Parameters
+        ----------
+        kernel : 2D numpy.ndarray
+            IJK coordinates of a sphere, relative to a central point
+            (not the brain template).
+        peaks : 2D numpy.ndarray
+            The IJK coordinates of peaks to convolve with the kernel.
 
-        if memmap_filename and i % chunk_size == 0:
-            # Write changes to disk
-            kernel_data.flush()
+        Returns
+        -------
+        sphere_coords : 2D numpy.ndarray
+            All coordinates that fall within any sphere.
+            Coordinates from overlapping spheres will appear twice.
+        """
+        # Convolve spheres
+        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
+        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
+        for i, peak in enumerate(peaks):
+            sphere_coords[chunk_idx, :] = kernel.T + peak
+            chunk_idx = chunk_idx + kernel.shape[1]
 
-    if squeeze:
-        kernel_data = np.squeeze(kernel_data, axis=0)
+        return sphere_coords
+
+    temp_idx = 0
+    all_coords = []
+    # Loop over experiments
+    for i, exp in enumerate(exp_idx_uniq):
+        # Index peaks by experiment
+        curr_exp_idx = exp_idx == i
+        peaks = ijks[curr_exp_idx]
+
+        all_spheres = _convolve_sphere(kernel, peaks)
+
+        if not sum_overlap:
+            all_spheres = unique_rows(all_spheres)
+
+        # Mask coordinates beyond space
+        idx = np.all(
+            np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
+        )
+        all_spheres = all_spheres[idx, :]
+
+        n_brain_voxels = all_spheres.shape[0]
+        all_coords.append(np.vstack([np.full((1, n_brain_voxels), i), all_spheres.T]))
+        temp_idx += n_brain_voxels
+
+    # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
+    coords = np.hstack(all_coords)
+    coords = coords[:, :temp_idx]
+
+    data = np.full(coords.shape[1], value)
+    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
 
@@ -516,8 +539,8 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
         del temp_labeled_arr3d
 
-    clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
-    assert clust_vals[0] == 0
+    clust_sizes = np.bincount(labeled_arr3d.flatten())
+    clust_vals = np.arange(0, clust_sizes.shape[0])
 
     # Cluster mass-based inference
     max_mass = 0

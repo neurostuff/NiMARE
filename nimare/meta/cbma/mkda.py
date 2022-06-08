@@ -1,22 +1,24 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
+import gc
 import logging
 
 import nibabel as nib
 import numpy as np
+import sparse
 from joblib import Parallel, delayed
+from pymare.stats import fdr
 from scipy import ndimage
 from scipy.stats import chi2
-from statsmodels.sandbox.stats.multicomp import multipletests
 from tqdm.auto import tqdm
 
-from ... import references
-from ...due import due
-from ...stats import null_to_p, one_way, two_way
-from ...transforms import p_to_z
-from ...utils import tqdm_joblib, use_memmap, vox2mm
-from ..kernel import KDAKernel, MKDAKernel
-from ..utils import _calculate_cluster_measures
-from .base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare import references
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.kernel import KDAKernel, MKDAKernel
+from nimare.meta.utils import _calculate_cluster_measures
+from nimare.stats import null_to_p, one_way, two_way
+from nimare.transforms import p_to_z
+from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -24,6 +26,8 @@ LGR = logging.getLogger(__name__)
 @due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDADensity(CBMAEstimator):
     r"""Multilevel kernel density analysis- Density analysis.
+
+    The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
 
     Parameters
     ----------
@@ -111,10 +115,7 @@ class MKDADensity(CBMAEstimator):
 
     References
     ----------
-    * Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
-      of functional neuroimaging data: current and future directions." Social
-      cognitive and affective neuroscience 2.2 (2007): 150-158.
-      https://doi.org/10.1093/scan/nsm015
+    .. footbibliography::
     """
 
     def __init__(
@@ -136,9 +137,8 @@ class MKDADensity(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_weights(self, ma_values):
         """Determine experiment-wise weights per the conventional MKDA approach."""
@@ -166,12 +166,7 @@ class MKDADensity(CBMAEstimator):
         return weight_vec
 
     def _compute_summarystat_est(self, ma_values):
-        # Note: .dot should be faster, but causes multiprocessing to stall
-        # on some (Mac) architectures. If this is ever resolved, we can
-        # replace with the commented line.
-        # return ma_values.T.dot(self.weight_vec_).ravel()
-        weighted_ma_vals = ma_values * self.weight_vec_
-        return weighted_ma_vals.sum(0)
+        return ma_values.T.dot(self.weight_vec_).ravel()
 
     def _determine_histogram_bins(self, ma_maps):
         """Determine histogram bins for null distribution methods.
@@ -228,6 +223,8 @@ class MKDADensity(CBMAEstimator):
 @due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDAChi2(PairwiseCBMAEstimator):
     r"""Multilevel kernel density analysis- Chi-square analysis.
+
+    The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
 
     .. versionchanged:: 0.0.8
 
@@ -289,14 +286,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
     library (https://github.com/neurosynth/neurosynth).
 
     Available correction methods: :meth:`MKDAChi2.correct_fwe_montecarlo`,
-    :meth:`MKDAChi2.correct_fdr_bh`.
+    :meth:`MKDAChi2.correct_fdr_indep`.
 
     References
     ----------
-    * Wager, Tor D., Martin Lindquist, and Lauren Kaplan. "Meta-analysis
-      of functional neuroimaging data: current and future directions." Social
-      cognitive and affective neuroscience 2.2 (2007): 150-158.
-      https://doi.org/10.1093/scan/nsm015
+    .. footbibliography::
     """
 
     def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
@@ -323,35 +317,37 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
-            fname_idx=0,
+            return_type="sparse",
         )
         n_selected = ma_maps1.shape[0]
-        n_selected_active_voxels = np.sum(ma_maps1.astype(bool), axis=0)
+        n_selected_active_voxels = ma_maps1.sum(axis=0)
 
-        # Close the memmap.
-        # Deleting the variable should be enough, but I'd prefer to be explicit.
-        if isinstance(ma_maps1, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
-            ma_maps1._mmap.close()
+        if isinstance(n_selected_active_voxels, sparse._coo.core.COO):
+            masker = dataset1.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            # Indexing the sparse array is slow, perform masking in the dense array
+            n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
+            n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
 
         del ma_maps1
+        gc.collect()
 
         # Generate MA maps and calculate count variables for second dataset
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
-            fname_idx=1,
+            return_type="sparse",
         )
         n_unselected = ma_maps2.shape[0]
-        n_unselected_active_voxels = np.sum(ma_maps2.astype(bool), axis=0)
-
-        # Close the memmap.
-        # Deleting the variable should be enough, but I'd prefer to be explicit.
-        if isinstance(ma_maps2, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
-            ma_maps2._mmap.close()
+        n_unselected_active_voxels = ma_maps2.sum(axis=0)
+        if isinstance(n_unselected_active_voxels, sparse._coo.core.COO):
+            n_unselected_active_voxels = n_unselected_active_voxels.todense().reshape(-1)
+            n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
 
         del ma_maps2
+        gc.collect()
 
         n_mappables = n_selected + n_unselected
 
@@ -718,7 +714,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
-        n_cores = self._check_ncores(n_cores)
+        n_cores = _check_ncores(n_cores)
 
         iter_df1 = self.inputs_["coordinates1"].copy()
         iter_df2 = self.inputs_["coordinates2"].copy()
@@ -852,10 +848,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         }
         return images
 
-    def correct_fdr_bh(self, result, alpha=0.05):
+    def correct_fdr_indep(self, result, alpha=0.05):
         """Perform FDR correction using the Benjamini-Hochberg method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.12
+
+            Renamed from ``correct_fdr_bh`` to ``correct_fdr_indep``.
 
         Parameters
         ----------
@@ -879,7 +879,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         --------
         >>> meta = MKDAChi2()
         >>> result = meta.fit(dset)
-        >>> corrector = FDRCorrector(method='bh', alpha=0.05)
+        >>> corrector = FDRCorrector(method='indep', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
         pAgF_p_vals = result.get_map("p_desc-consistency", return_type="array")
@@ -888,14 +888,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
-        _, pAgF_p_FDR, _, _ = multipletests(
-            pAgF_p_vals, alpha=alpha, method="fdr_bh", is_sorted=False, returnsorted=False
-        )
+        pAgF_p_FDR = fdr(pAgF_p_vals, q=alpha, method="bh")
         pAgF_z_FDR = p_to_z(pAgF_p_FDR, tail="two") * pAgF_sign
 
-        _, pFgA_p_FDR, _, _ = multipletests(
-            pFgA_p_vals, alpha=alpha, method="fdr_bh", is_sorted=False, returnsorted=False
-        )
+        pFgA_p_FDR = fdr(pFgA_p_vals, q=alpha, method="bh")
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
         images = {
@@ -989,7 +985,8 @@ class KDA(CBMAEstimator):
 
     Notes
     -----
-    Kernel density analysis was first introduced in [1]_ and [2]_.
+    Kernel density analysis was first introduced in :footcite:t:`wager2003valence` and
+    :footcite:t:`wager2004neuroimaging`.
 
     Available correction methods: :func:`KDA.correct_fwe_montecarlo`
 
@@ -1001,13 +998,7 @@ class KDA(CBMAEstimator):
 
     References
     ----------
-    .. [1] Wager, Tor D., et al. "Valence, gender, and lateralization of
-        functional brain anatomy in emotion: a meta-analysis of findings from
-        neuroimaging." Neuroimage 19.3 (2003): 513-531.
-        https://doi.org/10.1016/S1053-8119(03)00078-8
-    .. [2] Wager, Tor D., John Jonides, and Susan Reading. "Neuroimaging
-        studies of shifting attention: a meta-analysis." Neuroimage 22.4
-        (2004): 1679-1693. https://doi.org/10.1016/j.neuroimage.2004.03.052
+    .. footbibliography::
     """
 
     def __init__(
@@ -1035,9 +1026,8 @@ class KDA(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         self.dataset = None
-        self.results = None
 
     def _compute_summarystat_est(self, ma_values):
         """Compute OF scores from data.

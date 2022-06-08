@@ -125,30 +125,6 @@ def test_kernel_smoke(testdata_cbma, kern, kwargs, set_kwargs):
     assert np.array_equal(ma_maps1, ma_maps2)
 
 
-@pytest.mark.parametrize(
-    "kern, kwargs",
-    [
-        (kernel.ALEKernel, {"sample_size": 20}),
-        (kernel.KDAKernel, {}),
-        (kernel.MKDAKernel, {}),
-    ],
-)
-def test_kernel_low_high_memory(testdata_cbma, tmp_path_factory, kern, kwargs):
-    """Compare kernel results when memory_limit is used vs. not."""
-    kern_low_mem = kern(memory_limit="1gb", **kwargs)
-    kern_spec_mem = kern(memory_limit="2gb", **kwargs)
-    kern_high_mem = kern(memory_limit=None, **kwargs)
-    trans_kwargs = {"dataset": testdata_cbma, "return_type": "array"}
-    assert np.array_equal(
-        kern_low_mem.transform(**trans_kwargs),
-        kern_high_mem.transform(**trans_kwargs),
-    )
-    assert np.array_equal(
-        kern_low_mem.transform(**trans_kwargs),
-        kern_spec_mem.transform(**trans_kwargs),
-    )
-
-
 def test_ALEKernel_fwhm(testdata_cbma):
     """Peaks of ALE kernel maps should match the foci fed in (assuming focus isn't masked out).
 
