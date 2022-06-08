@@ -107,6 +107,9 @@ class Dataset(NiMAREBase):
         if "z_stat" in self.coordinates.columns:
             # "z_stat" column may contain Nones
             if not self.coordinates["z_stat"].isna().any():
+                # Ensure z_stat is treated as float
+                self.coordinates["z_stat"] = self.coordinates["z_stat"].astype(float)
+
                 # Raise warning if coordinates dataset contains both positive and negative z_stats
                 if ((self.coordinates["z_stat"].values >= 0).any()) and (
                     (self.coordinates["z_stat"].values < 0).any()
