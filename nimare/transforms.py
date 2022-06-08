@@ -465,7 +465,11 @@ class ImagesToCoordinates(NiMAREBase):
             if ((coordinates_df["z_stat"].values >= 0).any()) and (
                 (coordinates_df["z_stat"].values < 0).any()
             ):
-                warnings.warn("Coordinates dataset contains both positive and negative z_stats")
+                warnings.warn(
+                    "Coordinates dataset contains both positive and negative z_stats. "
+                    "The algorithms currently implemented in NiMARE are designed for "
+                    "one-sided tests. This might lead to unexpected results."
+                )
 
         new_dataset = copy.deepcopy(dataset)
         new_dataset.coordinates = coordinates_df

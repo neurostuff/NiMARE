@@ -115,7 +115,9 @@ class Dataset(NiMAREBase):
                     (self.coordinates["z_stat"].values < 0).any()
                 ):
                     warnings.warn(
-                        "Coordinates dataset contains both positive and negative z_stats"
+                        "Coordinates dataset contains both positive and negative z_stats. "
+                        "The algorithms currently implemented in NiMARE are designed for "
+                        "one-sided tests. This might lead to unexpected results."
                     )
 
     def __repr__(self):
