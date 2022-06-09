@@ -7,7 +7,7 @@ from nimare.tests.utils import get_test_data_path
 
 def test_neurosynth_compose_workflow():
     """Run test using neurosynth-compose."""
-    workflows.compose_run("5j5jFZ3729Aa")
+    workflows.compose_run("BSU48jbPNPB7")
 
 
 def test_ale_workflow_function_smoke(tmp_path_factory):

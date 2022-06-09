@@ -6,8 +6,8 @@ import requests
 from ..io import convert_nimads_to_dataset
 from ..nimads import Annotation, Studyset
 
-COMPOSE_URL = "https://synth.neurostore.xyz"
-STORE_URL = "https://neurostore.xyz"
+COMPOSE_URL = "https://compose.neurosynth.org"
+STORE_URL = "https://neurostore.org"
 
 
 def run(meta_id):
@@ -54,6 +54,10 @@ def load_specification(spec):
     est_mod = import_module(".".join(["nimare", "meta", spec["type"].lower()]))
     estimator = getattr(est_mod, spec["estimator"]["type"])
     if spec["estimator"].get("args"):
+        if spec["estimator"]["args"].get("**kwargs") is not None:
+            for k, v in spec["estimator"]["args"]["**kwargs"].items():
+                spec["estimator"]["args"][k] = v
+            spec["estimator"]["args"].pop("**kwargs")
         estimator_init = estimator(**spec["estimator"]["args"])
     else:
         estimator_init = estimator()
@@ -63,6 +67,10 @@ def load_specification(spec):
         corrector = getattr(cor_mod, spec["corrector"]["type"])
         corrector_args = spec["corrector"].get("args")
         if corrector_args:
+            if corrector_args.get("**kwargs") is not None:
+                for k, v in corrector_args["**kwargs"].items():
+                    corrector_args[k] = v
+                corrector_args.pop("**kwargs")
             corrector_init = corrector(**corrector_args)
         else:
             corrector_init = None
