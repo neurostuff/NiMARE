@@ -73,3 +73,41 @@ this will add the full list of changes in the new release based on our template.
 Once the release notes have been completed, you can publish the release.
 This will make the release on GitHub and will also trigger GitHub Actions to
 (1) publish the new release to PyPi and (2) update the changelog file.
+
+Updating the Changelog
+``````````````````````
+
+The Changelog is a Markdown file that is updated automatically by a GitHub Action.
+It is a list of all releases, with a copy of the release notes for each release.
+Since the Changelog is updated automatically, you should not have to edit it manually very often;
+however, there are some cases where you may need to do so.
+One common situation is a mistake in the release notes.
+Another possibility is that someone identifies a bug in a past release,
+in which case it may be useful to add an admonition to that release's release notes.
+
+The auto-generated Changelog follows a specific format,
+so it is important to understand its idiosyncrasies before making any manual changes.
+The two main things to know are:
+
+1.  All bullet points in the release notes **must** each be on a single line.
+    You can't split up a list item across multiple lines, even though that is valid in both Markdown and restructedText.
+2.  Admonitions must also be on a single line, which may look odd in restructuredText, but is necessary.
+    Any admonitions that are formatted normally will be overwritten by the Action that updates the Changelog.
+
+    Here is a typical admonition. It will not work with the Changelog Action.
+
+    .. code-block:: text
+
+      .. warning:: Known Bugs
+
+          This version contains some bugs that were identified after it was released.
+
+          - The ALESubtraction class from this release should not be used, as it uses a symmetric null distribution,
+            which does not work properly for comparisons between Datasets with different sizes.
+
+    Here is a valid single-line version of that admonition:
+
+    .. code-block:: text
+
+      .. warning:: Known Bugs This version contains some bugs that were identified after it was released.
+      \   - The ALESubtraction class from this release should not be used, as it uses a symmetric null distribution, which does not work properly for comparisons between Datasets with different sizes.
