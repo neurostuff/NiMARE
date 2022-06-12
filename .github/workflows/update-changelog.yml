@@ -2,7 +2,7 @@ name: "Update Changelog"
 
 on:
   release:
-    types: [released, prereleased]
+    types: [published]
 
 jobs:
   update:
@@ -12,13 +12,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
+          token: ${{ secrets.PAT }}
           ref: main
 
       - name: Update Changelog
         uses: stefanzweifel/changelog-updater-action@v1
         with:
-          latest-version: ${{ github.event.release.tag_name }}
           release-notes: ${{ github.event.release.body }}
+          latest-version: ${{ github.event.release.name }}
 
       - name: Commit updated CHANGELOG
         uses: stefanzweifel/git-auto-commit-action@v4

@@ -11,6 +11,7 @@ from scipy import ndimage
 from nimare import references
 from nimare.due import due
 from nimare.extract import download_peaks2maps_model
+from nimare.utils import unique_rows
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 LGR = logging.getLogger(__name__)
@@ -327,8 +328,8 @@ def compute_kda_ma(
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
-    uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
-    n_studies = len(uniq)
+    exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
+    n_studies = len(exp_idx_uniq)
 
     kernel_shape = (n_studies,) + shape
 
@@ -337,29 +338,58 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    # Preallocate coords array, np.concatenate is too slow
-    n_coords = ijks.shape[0] * kernel.shape[1]  # = n_peaks * n_voxels
-    coords = np.zeros((4, n_coords), dtype=int)
+    def _convolve_sphere(kernel, peaks):
+        """Convolve peaks with a spherical kernel.
+
+        Parameters
+        ----------
+        kernel : 2D numpy.ndarray
+            IJK coordinates of a sphere, relative to a central point
+            (not the brain template).
+        peaks : 2D numpy.ndarray
+            The IJK coordinates of peaks to convolve with the kernel.
+
+        Returns
+        -------
+        sphere_coords : 2D numpy.ndarray
+            All coordinates that fall within any sphere.
+            Coordinates from overlapping spheres will appear twice.
+        """
+        # Convolve spheres
+        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
+        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
+        for i, peak in enumerate(peaks):
+            sphere_coords[chunk_idx, :] = kernel.T + peak
+            chunk_idx = chunk_idx + kernel.shape[1]
+
+        return sphere_coords
+
     temp_idx = 0
-    for i, peak in enumerate(ijks):
-        sphere = np.round(kernel.T + peak)
-        idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
-        sphere = sphere[idx, :].astype(int)
-        exp = exp_idx[i]
+    all_coords = []
+    # Loop over experiments
+    for i, exp in enumerate(exp_idx_uniq):
+        # Index peaks by experiment
+        curr_exp_idx = exp_idx == i
+        peaks = ijks[curr_exp_idx]
 
-        n_brain_voxels = sphere.shape[0]
-        chunk_idx = np.arange(temp_idx, temp_idx + n_brain_voxels, 1, dtype=int)
+        all_spheres = _convolve_sphere(kernel, peaks)
 
-        coords[0, chunk_idx] = np.full((1, n_brain_voxels), exp)
-        coords[1:, chunk_idx] = sphere.T
+        if not sum_overlap:
+            all_spheres = unique_rows(all_spheres)
 
+        # Mask coordinates beyond space
+        idx = np.all(
+            np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
+        )
+        all_spheres = all_spheres[idx, :]
+
+        n_brain_voxels = all_spheres.shape[0]
+        all_coords.append(np.vstack([np.full((1, n_brain_voxels), i), all_spheres.T]))
         temp_idx += n_brain_voxels
 
     # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
+    coords = np.hstack(all_coords)
     coords = coords[:, :temp_idx]
-
-    if not sum_overlap:
-        coords = np.unique(coords, axis=1)
 
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
@@ -509,8 +539,8 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
         del temp_labeled_arr3d
 
-    clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
-    assert clust_vals[0] == 0
+    clust_sizes = np.bincount(labeled_arr3d.flatten())
+    clust_vals = np.arange(0, clust_sizes.shape[0])
 
     # Cluster mass-based inference
     max_mass = 0

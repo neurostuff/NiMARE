@@ -125,14 +125,14 @@ class KernelTransformer(NiMAREBase):
                 masker is not None
             ), "Argument 'masker' must be provided if dataset is a DataFrame."
             mask = masker.mask_img
-            coordinates = dataset.copy()
+            coordinates = dataset
             assert (
                 return_type != "dataset"
             ), "Input dataset must be a Dataset if return_type='dataset'."
 
             # Calculate IJK. Must assume that the masker is in same space,
             # but has different affine, from original IJK.
-            coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
+            coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine)
         else:
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
