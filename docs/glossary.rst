@@ -1,3 +1,8 @@
+.. include:: links.rst
+
+Glossary
+========
+
 .. glossary::
 
     beta
