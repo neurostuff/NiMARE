@@ -67,6 +67,7 @@ To install NiMARE check out our `installation guide`_.
    outputs
    methods
    changelog
+   glossary
 
 Indices and tables
 ------------------
