@@ -271,6 +271,10 @@ class Stouffers(IBMAEstimator):
 class WeightedLeastSquares(IBMAEstimator):
     """Weighted least-squares meta-regression.
 
+    .. versionchanged:: 0.0.12
+
+        * Add "se" to outputs.
+
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
@@ -357,6 +361,10 @@ class WeightedLeastSquares(IBMAEstimator):
 class DerSimonianLaird(IBMAEstimator):
     """DerSimonian-Laird meta-regression estimator.
 
+    .. versionchanged:: 0.0.12
+
+        * Add "se" to outputs.
+
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
@@ -431,6 +439,10 @@ class DerSimonianLaird(IBMAEstimator):
 class Hedges(IBMAEstimator):
     """Hedges meta-regression estimator.
 
+    .. versionchanged:: 0.0.12
+
+        * Add "se" to outputs.
+
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
@@ -503,6 +515,10 @@ class Hedges(IBMAEstimator):
 
 class SampleSizeBasedLikelihood(IBMAEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
+
+    .. versionchanged:: 0.0.12
+
+        * Add "se" and "sigma2" to outputs.
 
     .. versionchanged:: 0.0.8
 
@@ -598,7 +614,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
 
     .. versionchanged:: 0.0.12
 
-        Add "tau2" output.
+        Add "se" output.
 
     .. versionchanged:: 0.0.8
 
