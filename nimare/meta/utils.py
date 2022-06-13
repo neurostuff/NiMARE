@@ -455,7 +455,13 @@ def compute_ale_ma(shape, ijk, kernel):
             ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
                 ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
             )
-    return ma_values
+
+    # Convert dense array to sparse
+    nonzero_idx = np.vstack(np.where(ma_values))
+    nonzero_values = ma_values[nonzero_idx[0, :], nonzero_idx[1, :], nonzero_idx[2, :]]
+    kernel_data = sparse.COO(nonzero_idx, nonzero_values, shape=shape)
+
+    return kernel_data
 
 
 @due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
