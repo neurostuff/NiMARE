@@ -99,12 +99,12 @@ def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwarg
     """Smoke test for IBMA estimators."""
     meta = meta(**meta_kwargs)
     res = meta.fit(testdata_ibma)
-    assert "z" in res.maps_.keys()
-    assert "p" in res.maps_.keys()
-    assert "est" in res.maps_.keys()
-    assert "se" in res.maps_.keys()
+    assert "z" in res.maps.keys()
+    assert "p" in res.maps.keys()
+    assert "est" in res.maps.keys()
+    assert "se" in res.maps.keys()
     if meta.__class__.__name__ != "WeightedLeastSquares":
-        assert "tau2" in res.maps_.keys()
+        assert "tau2" in res.maps.keys()
 
     z_img = res.get_map("z")
     assert isinstance(res, nimare.results.MetaResult)
