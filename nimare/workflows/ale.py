@@ -26,6 +26,7 @@ def ale_sleuth_workflow(
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
     from nimare import __version__
+
     LGR.info("Loading coordinates...")
 
     if fwhm:
