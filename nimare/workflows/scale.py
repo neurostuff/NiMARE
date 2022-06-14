@@ -38,17 +38,27 @@ def scale_workflow(
 
     boilerplate = """
 A specific coactivation likelihood estimation (SCALE; Langner et al., 2014)
-meta-analysis was performed using NiMARE. The input dataset included {n}
-studies/experiments.
+meta-analysis was performed using NiMARE {__version__}
+(RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+The input dataset included {n} studies/experiments.
 
 Voxel-specific null distributions were generated using base rates from {bl}
 with {n_iters} iterations. Results were thresholded at p < {thr}.
 
 References
 ----------
-- Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., & Eickhoff, S. B. (2014).
-Meta-analytic connectivity modeling revisited: controlling for activation base
-rates. NeuroImage, 99, 559-570.
+-   Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., & Eickhoff, S. B. (2014).
+    Meta-analytic connectivity modeling revisited: controlling for activation base
+    rates. NeuroImage, 99, 559-570.
+-   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
+    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
+-   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
+    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
+    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
+    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {__version__}
+    ({__version__}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
     """
     boilerplate = boilerplate.format(
         n=len(dset.ids),

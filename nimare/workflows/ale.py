@@ -6,6 +6,7 @@ from shutil import copyfile
 
 import numpy as np
 
+from nimare import __version__
 from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter
 from nimare.io import convert_sleuth_to_dataset
@@ -40,8 +41,10 @@ def ale_sleuth_workflow(
         boilerplate = """
 An activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
 2002; Eickhoff, Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012)
-meta-analysis was performed using NiMARE. The input dataset included {n_foci}
-foci from {n_subs} participants across {n_exps} studies/experiments.
+meta-analysis was performed using NiMARE {__version__}
+(RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+The input dataset included {n_foci} foci from {n_subs} participants across
+{n_exps} studies/experiments.
 
 Modeled activation maps were generated for each study/experiment by convolving
 each focus with a Gaussian kernel {fwhm_str}.
@@ -71,23 +74,32 @@ ALE value was recorded.
 
 References
 ----------
-- Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
-Activation likelihood estimation meta-analysis revisited. NeuroImage,
-59(3), 2349-2361.
-- Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
-Collins, D. L., & Brain Development Cooperative Group. (2011).
-Unbiased average age-appropriate atlases for pediatric studies.
-Neuroimage, 54(1), 313-327.
-- Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
-(2009). Unbiased nonlinear average age-appropriate brain templates from birth
-to adulthood. NeuroImage, (47), S102.
-- Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
-Meta-analysis of the functional neuroanatomy of single-word reading: method
-and validation. NeuroImage, 16(3 Pt 1), 765-780.
-- Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
-& Fox, P. (2012). Minimizing within-experiment and within-group effects in
-Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-33(1), 1-13.
+-   Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
+    Activation likelihood estimation meta-analysis revisited. NeuroImage,
+    59(3), 2349-2361.
+-   Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
+    Collins, D. L., & Brain Development Cooperative Group. (2011).
+    Unbiased average age-appropriate atlases for pediatric studies.
+    Neuroimage, 54(1), 313-327.
+-   Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
+    (2009). Unbiased nonlinear average age-appropriate brain templates from birth
+    to adulthood. NeuroImage, (47), S102.
+-   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
+    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
+-   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
+    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
+    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
+    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {__version__}
+    ({__version__}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
+-   Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
+    Meta-analysis of the functional neuroanatomy of single-word reading: method
+    and validation. NeuroImage, 16(3 Pt 1), 765-780.
+-   Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
+    & Fox, P. (2012). Minimizing within-experiment and within-group effects in
+    Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
+    33(1), 1-13.
         """
 
         ale = ALE(kernel__fwhm=fwhm)
@@ -123,7 +135,8 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         boilerplate = """
 Activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
 2002; Eickhoff, Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012)
-meta-analyses were performed using NiMARE for each of two datasets.
+meta-analyses were performed using NiMARE {__version__}
+(RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b) for each of two datasets.
 The first input dataset included {n_foci1} foci from {n_subs1} participants
 across {n_exps1} studies/experiments. The second input dataset included
 {n_foci2} foci from {n_subs2} participants across {n_exps2} studies/experiments.
@@ -153,27 +166,36 @@ et al. (2005). {n_iters} iterations were performed.
 
 References
 ----------
-- Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
-Meta-analysis of the functional neuroanatomy of single-word reading: method
-and validation. NeuroImage, 16(3 Pt 1), 765-780.
-- Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
-Activation likelihood estimation meta-analysis revisited. NeuroImage,
-59(3), 2349-2361.
-- Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
-& Fox, P. (2012). Minimizing within-experiment and within-group effects in
-Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-33(1), 1-13.
-- Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
-Collins, D. L., & Brain Development Cooperative Group. (2011).
-Unbiased average age-appropriate atlases for pediatric studies.
-Neuroimage, 54(1), 313-327.
-- Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
-(2009). Unbiased nonlinear average age-appropriate brain templates from birth
-to adulthood. NeuroImage, (47), S102.
-- Laird, A. R., Fox, P. M., Price, C. J., Glahn, D. C., Uecker, A. M.,
-Lancaster, J. L., ... & Fox, P. T. (2005). ALE meta-analysis: Controlling the
-false discovery rate and performing statistical contrasts. Human brain mapping,
-25(1), 155-164.
+-   Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
+    Meta-analysis of the functional neuroanatomy of single-word reading: method
+    and validation. NeuroImage, 16(3 Pt 1), 765-780.
+-   Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
+    Activation likelihood estimation meta-analysis revisited. NeuroImage,
+    59(3), 2349-2361.
+-   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
+    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
+-   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
+    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
+    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
+    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {__version__}
+    ({__version__}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
+-   Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
+    & Fox, P. (2012). Minimizing within-experiment and within-group effects in
+    Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
+    33(1), 1-13.
+-   Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
+    Collins, D. L., & Brain Development Cooperative Group. (2011).
+    Unbiased average age-appropriate atlases for pediatric studies.
+    Neuroimage, 54(1), 313-327.
+-   Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
+    (2009). Unbiased nonlinear average age-appropriate brain templates from birth
+    to adulthood. NeuroImage, (47), S102.
+-   Laird, A. R., Fox, P. M., Price, C. J., Glahn, D. C., Uecker, A. M.,
+    Lancaster, J. L., ... & Fox, P. T. (2005). ALE meta-analysis: Controlling the
+    false discovery rate and performing statistical contrasts. Human brain mapping,
+    25(1), 155-164.
         """
 
         ale1 = ALE(kernel__fwhm=fwhm)
