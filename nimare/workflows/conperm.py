@@ -15,6 +15,8 @@ LGR = logging.getLogger(__name__)
 
 def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="", n_iters=10000):
     """Run a contrast permutation workflow."""
+    from nimare import __version__
+
     if mask_image is None:
         target = "mni152_2mm"
         mask_image = get_template(target, mask="brain")
@@ -25,22 +27,32 @@ def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="
 
     boilerplate = """
 A contrast permutation analysis was performed on a sample of {n_studies}
-images. A brain mask derived from the MNI 152 template (Fonov et al., 2009;
-Fonov et al., 2011) was applied at 2x2x2mm resolution. The sign flipping
+images with NiMARE {version} (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+A brain mask derived from the MNI 152 template (Fonov et al., 2009; Fonov et al., 2011)
+was applied at 2x2x2mm resolution. The sign flipping
 method used was implemented as described in Maumet & Nichols (2016), with
 {n_iters} iterations used to estimate the null distribution.
 
 References
 ----------
-- Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
-Collins, D. L., & Brain Development Cooperative Group. (2011).
-Unbiased average age-appropriate atlases for pediatric studies.
-Neuroimage, 54(1), 313-327.
-- Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
-(2009). Unbiased nonlinear average age-appropriate brain templates from birth
-to adulthood. NeuroImage, (47), S102.
-- Maumet, C., & Nichols, T. E. (2016). Minimal Data Needed for Valid & Accurate
-Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
+-   Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
+    Collins, D. L., & Brain Development Cooperative Group. (2011).
+    Unbiased average age-appropriate atlases for pediatric studies.
+    Neuroimage, 54(1), 313-327.
+-   Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
+    (2009). Unbiased nonlinear average age-appropriate brain templates from birth
+    to adulthood. NeuroImage, (47), S102.
+-   Maumet, C., & Nichols, T. E. (2016). Minimal Data Needed for Valid & Accurate
+    Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
+-   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
+    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
+-   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
+    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
+    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
+    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
+    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
     """
 
     LGR.info("Performing meta-analysis.")
@@ -59,7 +71,11 @@ Image-Based fMRI Meta-Analysis. https://doi.org/10.1101/048249
     # The t_test function will stand in for the Estimator in the results object
     res = MetaResult(permuted_ols, mask_image, maps=res)
 
-    boilerplate = boilerplate.format(n_studies=n_studies, n_iters=n_iters)
+    boilerplate = boilerplate.format(
+        n_studies=n_studies,
+        n_iters=n_iters,
+        version=__version__,
+    )
 
     if output_dir is None:
         output_dir = os.getcwd()
