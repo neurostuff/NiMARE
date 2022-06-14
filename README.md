@@ -29,6 +29,63 @@ pip install nimare
 pip install git+https://github.com/neurostuff/NiMARE.git
 ```
 
+## Citing NiMARE
+
+If you use NiMARE in your research, we recommend citing the Zenodo DOI associated with the NiMARE version you used,
+as well as the NeuroLibre preprint for the NiMARE Jupyter book.
+You can find the Zenodo DOI associated with each NiMARE release at https://zenodo.org/record/6642243#.YqiXNy-B1KM.
+
+```BibTeX
+# This is the NeuroLibre preprint.
+@article{Salo2022,
+  doi = {10.55458/neurolibre.00007},
+  url = {https://doi.org/10.55458/neurolibre.00007},
+  year = {2022},
+  publisher = {The Open Journal},
+  volume = {1},
+  number = {1},
+  pages = {7},
+  author = {Taylor Salo and Tal Yarkoni and Thomas E. Nichols and Jean-Baptiste Poline and Murat Bilgel and Katherine L. Bottenhorn and Dorota Jarecka and James D. Kent and Adam Kimbler and Dylan M. Nielson and Kendra M. Oudyk and Julio A. Peraza and Alexandre Pérez and Puck C. Reeders and Julio A. Yanes and Angela R. Laird},
+  title = {NiMARE: Neuroimaging Meta-Analysis Research Environment},
+  journal = {NeuroLibre}
+}
+
+# This is the Zenodo citation for version 0.0.11.
+@software{salo_taylor_2022_5826281,
+  author       = {Salo, Taylor and
+                  Yarkoni, Tal and
+                  Nichols, Thomas E. and
+                  Poline, Jean-Baptiste and
+                  Kent, James D. and
+                  Gorgolewski, Krzysztof J. and
+                  Glerean, Enrico and
+                  Bottenhorn, Katherine L. and
+                  Bilgel, Murat and
+                  Wright, Jessey and
+                  Reeders, Puck and
+                  Kimbler, Adam and
+                  Nielson, Dylan N. and
+                  Yanes, Julio A. and
+                  Pérez, Alexandre and
+                  Oudyk, Kendra M. and
+                  Jarecka, Dorota and
+                  Enge, Alexander and
+                  Peraza, Julio A. and
+                  Laird, Angela R.},
+  title        = {neurostuff/NiMARE: 0.0.11},
+  month        = jan,
+  year         = 2022,
+  publisher    = {Zenodo},
+  version      = {0.0.11},
+  doi          = {10.5281/zenodo.5826281},
+  url          = {https://doi.org/10.5281/zenodo.5826281}
+}
+```
+
+To cite NiMARE in your manuscript, we recommend something like the following:
+
+> We used NiMARE v0.0.11 (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+
 ## Contributing
 
 Please see our [contributing guidelines](https://github.com/neurostuff/NiMARE/blob/main/CONTRIBUTING.md)
