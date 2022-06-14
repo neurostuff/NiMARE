@@ -295,7 +295,7 @@ class WeightedLeastSquares(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -376,7 +376,7 @@ class DerSimonianLaird(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -454,7 +454,7 @@ class Hedges(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -541,7 +541,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` images and sample size from metadata.
+    Requires :term:`beta` images and sample size from metadata.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -638,7 +638,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 

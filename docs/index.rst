@@ -130,6 +130,7 @@ Then, to cite NiMARE in your manuscript, we recommend something like the followi
    outputs
    methods
    changelog
+   glossary
 
 Indices and tables
 ------------------
