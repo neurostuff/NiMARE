@@ -714,6 +714,10 @@ class VarianceBasedLikelihood(IBMAEstimator):
 class PermutedOLS(IBMAEstimator):
     r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
 
+    .. versionchanged:: 0.0.12
+
+        * Use beta maps instead of z maps.
+
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
