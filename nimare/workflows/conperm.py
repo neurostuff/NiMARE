@@ -7,6 +7,7 @@ import numpy as np
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
 
+from nimare import __version__
 from nimare.results import MetaResult
 from nimare.utils import get_template
 
@@ -25,7 +26,7 @@ def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="
 
     boilerplate = """
 A contrast permutation analysis was performed on a sample of {n_studies}
-images with NiMARE {__version__} (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+images with NiMARE {version} (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
 A brain mask derived from the MNI 152 template (Fonov et al., 2009; Fonov et al., 2011)
 was applied at 2x2x2mm resolution. The sign flipping
 method used was implemented as described in Maumet & Nichols (2016), with
@@ -48,8 +49,8 @@ References
     Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
     Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
     Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
-    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {__version__}
-    ({__version__}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
+    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
     **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
     """
 
@@ -69,7 +70,11 @@ References
     # The t_test function will stand in for the Estimator in the results object
     res = MetaResult(permuted_ols, mask_image, maps=res)
 
-    boilerplate = boilerplate.format(n_studies=n_studies, n_iters=n_iters)
+    boilerplate = boilerplate.format(
+        n_studies=n_studies,
+        n_iters=n_iters,
+        version=__version__,
+    )
 
     if output_dir is None:
         output_dir = os.getcwd()

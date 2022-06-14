@@ -4,6 +4,7 @@ import os
 import pathlib
 from shutil import copyfile
 
+from nimare import __version__
 from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
 from nimare.meta import ALE
@@ -30,7 +31,7 @@ Meta-analytic connectivity modeling (MACM; Laird et al., 2009; Robinson et al.,
 2009; Eickhoff et al., 2010) analysis was performed with the activation
 likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro, 2002; Eickhoff,
 Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012) meta-analysis
-algorithm using NiMARE {__version__} (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+algorithm using NiMARE {version} (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
 The input dataset included {n_foci_db} foci from {n_subs_db} participants across
 {n_exps_db} studies/experiments, from which studies/experiments were selected for analysis
 if they had at least one focus inside the target mask.
@@ -100,8 +101,8 @@ References
     Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
     Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
     Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
-    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {__version__}
-    ({__version__}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
+    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
     **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
     """
 
@@ -120,6 +121,7 @@ References
         n_foci_sel=sel_dset.coordinates.shape[0],
         unc=v_thr,
         n_iters=n_iters,
+        version=__version__,
     )
 
     if output_dir is None:

@@ -41,7 +41,7 @@ def ale_sleuth_workflow(
         boilerplate = """
 An activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
 2002; Eickhoff, Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012)
-meta-analysis was performed using NiMARE {__version__}
+meta-analysis was performed using NiMARE {version}
 (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
 The input dataset included {n_foci} foci from {n_subs} participants across
 {n_exps} studies/experiments.
@@ -90,8 +90,8 @@ References
     Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
     Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
     Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
-    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {__version__}
-    ({__version__}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
+    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
     **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
 -   Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
     Meta-analysis of the functional neuroanatomy of single-word reading: method
@@ -123,6 +123,7 @@ References
             unc=v_thr,
             n_iters=n_iters,
             fwhm_str=fwhm_str,
+            version=__version__,
         )
     else:
         dset1 = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
@@ -135,7 +136,7 @@ References
         boilerplate = """
 Activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
 2002; Eickhoff, Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012)
-meta-analyses were performed using NiMARE {__version__}
+meta-analyses were performed using NiMARE {version}
 (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b) for each of two datasets.
 The first input dataset included {n_foci1} foci from {n_subs1} participants
 across {n_exps1} studies/experiments. The second input dataset included
@@ -178,8 +179,8 @@ References
     Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
     Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
     Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
-    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {__version__}
-    ({__version__}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
+    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
     **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
 -   Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
     & Fox, P. (2012). Minimizing within-experiment and within-group effects in
@@ -230,6 +231,7 @@ References
             unc=v_thr,
             n_iters=n_iters,
             fwhm_str=fwhm_str,
+            version=__version__,
         )
 
     if output_dir is None:
