@@ -6,7 +6,6 @@ from shutil import copyfile
 
 import numpy as np
 
-from nimare import __version__
 from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter
 from nimare.io import convert_sleuth_to_dataset
@@ -26,6 +25,7 @@ def ale_sleuth_workflow(
     n_cores=1,
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
+    from nimare import __version__
     LGR.info("Loading coordinates...")
 
     if fwhm:

@@ -7,7 +7,6 @@ import numpy as np
 from nilearn.masking import apply_mask
 from nilearn.mass_univariate import permuted_ols
 
-from nimare import __version__
 from nimare.results import MetaResult
 from nimare.utils import get_template
 
@@ -16,6 +15,8 @@ LGR = logging.getLogger(__name__)
 
 def conperm_workflow(contrast_images, mask_image=None, output_dir=None, prefix="", n_iters=10000):
     """Run a contrast permutation workflow."""
+    from nimare import __version__
+
     if mask_image is None:
         target = "mni152_2mm"
         mask_image = get_template(target, mask="brain")

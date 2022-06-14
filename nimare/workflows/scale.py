@@ -6,7 +6,6 @@ from shutil import copyfile
 
 import numpy as np
 
-from nimare import __version__
 from nimare.dataset import Dataset
 from nimare.io import convert_sleuth_to_dataset
 from nimare.meta import SCALE
@@ -30,6 +29,8 @@ def scale_workflow(
     --------
     This method is not yet implemented.
     """
+    from nimare import __version__
+
     if dataset_file.endswith(".json"):
         dset = Dataset(dataset_file, target="mni152_2mm")
     elif dataset_file.endswith(".txt"):
