@@ -732,7 +732,7 @@ class PermutedOLS(IBMAEstimator):
 
     Notes
     -----
-    Requires ``z`` images.
+    Requires ``beta`` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
