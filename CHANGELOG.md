@@ -2,9 +2,26 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.12rc6...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.12rc7...HEAD)
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
+## [0.0.12rc7](https://github.com/neurostuff/NiMARE/compare/0.0.12rc6...0.0.12rc7) - 2022-06-14
+
+Another release candidate to test a GitHub Action.
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+- Add warning when coordinates dataset contains both positive and negative z_stats by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/699
+- Add parameter estimate standard error to IBMA results by @tsalo in https://github.com/neurostuff/NiMARE/pull/691
+
+#### Other Changes
+
+- Fix CHANGELOG formatting issues by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/701
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc6...0.0.12rc7
 
 ## [0.0.12rc6](https://github.com/neurostuff/NiMARE/compare/0.0.12rc3...0.0.12rc6) - 2022-06-08
 
