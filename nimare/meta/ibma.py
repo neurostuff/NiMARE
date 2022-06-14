@@ -758,7 +758,7 @@ class PermutedOLS(IBMAEstimator):
     nilearn.mass_univariate.permuted_ols : The function used for this IBMA.
     """
 
-    _required_inputs = {"z_maps": ("image", "z")}
+    _required_inputs = {"beta_maps": ("image", "beta")}
 
     def __init__(self, two_sided=True, **kwargs):
         super().__init__(**kwargs)
@@ -768,12 +768,12 @@ class PermutedOLS(IBMAEstimator):
     def _fit(self, dataset):
         self.dataset = dataset
         # Use intercept as explanatory variable
-        self.parameters_["tested_vars"] = np.ones((self.inputs_["z_maps"].shape[0], 1))
+        self.parameters_["tested_vars"] = np.ones((self.inputs_["beta_maps"].shape[0], 1))
         self.parameters_["confounding_vars"] = None
 
         _, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
-            self.inputs_["z_maps"],
+            self.inputs_["beta_maps"],
             confounding_vars=self.parameters_["confounding_vars"],
             model_intercept=False,  # modeled by tested_vars
             n_perm=0,
@@ -838,7 +838,7 @@ class PermutedOLS(IBMAEstimator):
 
         log_p_map, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
-            self.inputs_["z_maps"],
+            self.inputs_["beta_maps"],
             confounding_vars=self.parameters_["confounding_vars"],
             model_intercept=False,  # modeled by tested_vars
             n_perm=n_iters,
