@@ -417,8 +417,8 @@ def compute_ale_ma(shape, ijk, kernel):
 
     Returns
     -------
-    ma_values : :obj:`sparse._coo.core.COO`
-        3D sparse array containing MA values.
+    ma_values : array-like
+        3d array of modeled activation values.
     """
     ma_values = np.zeros(shape)
     mid = int(np.floor(kernel.shape[0] / 2.0))
@@ -456,12 +456,7 @@ def compute_ale_ma(shape, ijk, kernel):
                 ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
             )
 
-    # Convert dense array to sparse
-    nonzero_idx = np.vstack(np.where(ma_values))
-    nonzero_values = ma_values[nonzero_idx[0, :], nonzero_idx[1, :], nonzero_idx[2, :]]
-    kernel_data = sparse.COO(nonzero_idx, nonzero_values, shape=shape)
-
-    return kernel_data
+    return ma_values
 
 
 @due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
