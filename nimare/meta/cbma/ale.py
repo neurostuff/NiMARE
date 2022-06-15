@@ -167,7 +167,7 @@ class ALE(CBMAEstimator):
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -202,7 +202,7 @@ class ALE(CBMAEstimator):
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -640,7 +640,7 @@ class SCALE(CBMAEstimator):
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
         elif isinstance(data, np.ndarray):
-            ma_values = data.copy()
+            ma_values = data
         else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 

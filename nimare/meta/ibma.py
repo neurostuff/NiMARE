@@ -295,7 +295,7 @@ class WeightedLeastSquares(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -376,7 +376,7 @@ class DerSimonianLaird(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -454,7 +454,7 @@ class Hedges(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -541,7 +541,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` images and sample size from metadata.
+    Requires :term:`beta` images and sample size from metadata.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -638,7 +638,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -714,6 +714,10 @@ class VarianceBasedLikelihood(IBMAEstimator):
 class PermutedOLS(IBMAEstimator):
     r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
 
+    .. versionchanged:: 0.0.12
+
+        * Use beta maps instead of z maps.
+
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove single-dimensional entries of each array of returns (:obj:`dict`).
@@ -732,7 +736,7 @@ class PermutedOLS(IBMAEstimator):
 
     Notes
     -----
-    Requires ``z`` images.
+    Requires ``beta`` images.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -758,7 +762,7 @@ class PermutedOLS(IBMAEstimator):
     nilearn.mass_univariate.permuted_ols : The function used for this IBMA.
     """
 
-    _required_inputs = {"z_maps": ("image", "z")}
+    _required_inputs = {"beta_maps": ("image", "beta")}
 
     def __init__(self, two_sided=True, **kwargs):
         super().__init__(**kwargs)
@@ -768,12 +772,12 @@ class PermutedOLS(IBMAEstimator):
     def _fit(self, dataset):
         self.dataset = dataset
         # Use intercept as explanatory variable
-        self.parameters_["tested_vars"] = np.ones((self.inputs_["z_maps"].shape[0], 1))
+        self.parameters_["tested_vars"] = np.ones((self.inputs_["beta_maps"].shape[0], 1))
         self.parameters_["confounding_vars"] = None
 
         _, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
-            self.inputs_["z_maps"],
+            self.inputs_["beta_maps"],
             confounding_vars=self.parameters_["confounding_vars"],
             model_intercept=False,  # modeled by tested_vars
             n_perm=0,
@@ -838,7 +842,7 @@ class PermutedOLS(IBMAEstimator):
 
         log_p_map, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
-            self.inputs_["z_maps"],
+            self.inputs_["beta_maps"],
             confounding_vars=self.parameters_["confounding_vars"],
             model_intercept=False,  # modeled by tested_vars
             n_perm=n_iters,

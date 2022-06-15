@@ -559,11 +559,10 @@ class CBMAEstimator(Estimator):
             iter_max_size, iter_max_mass = None, None
         else:
             # Cluster-level inference
-            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
+            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata()
             iter_max_size, iter_max_mass = _calculate_cluster_measures(
                 iter_ss_map, voxel_thresh, conn, tail="upper"
             )
-
         return iter_max_value, iter_max_size, iter_max_mass
 
     def correct_fwe_montecarlo(
