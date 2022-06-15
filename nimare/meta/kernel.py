@@ -309,30 +309,31 @@ class ALEKernel(KernelTransformer):
         self.sample_size = sample_size
 
     def _transform(self, mask, coordinates):
-        kernels = {}  # retain kernels in dictionary to speed things up
         exp_ids = coordinates["id"].unique()
+
+        use_dict = True
+
+        if self.sample_size is not None:
+            _, kern = get_ale_kernel(mask, sample_size=self.sample_size)
+            use_dict = False
+
+        if self.fwhm is not None:
+            assert np.isfinite(self.fwhm), "FWHM must be finite number"
+            _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
+            use_dict = False
+
+        if use_dict:
+            kernels = {}  # retain kernels in dictionary to speed things up
 
         transformed = []
         for i_exp, id_ in enumerate(exp_ids):
             data = coordinates.loc[coordinates["id"] == id_]
 
             ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            if self.sample_size is not None:
-                sample_size = self.sample_size
-            elif self.fwhm is None:
+
+            if use_dict:
                 # Extract from input
                 sample_size = data.sample_size.astype(float).values[0]
-
-            if self.fwhm is not None:
-                assert np.isfinite(self.fwhm), "FWHM must be finite number"
-                if self.fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
-                    kernels[self.fwhm] = kern
-                else:
-                    kern = kernels[self.fwhm]
-
-            else:
-                assert np.isfinite(sample_size), "Sample size must be finite number"
                 if sample_size not in kernels.keys():
                     _, kern = get_ale_kernel(mask, sample_size=sample_size)
                     kernels[sample_size] = kern
