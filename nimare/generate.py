@@ -270,7 +270,7 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
         for peak in ground_truth_foci_ijks
         if peak.size
     }
-    foci_prob_maps = {k: v.todense() for k, v in foci_prob_maps.items()}
+    # foci_prob_maps = {k: v.todense() for k, v in foci_prob_maps.items()}
 
     # get study specific instances of each foci
     signal_studies = int(round(foci_percentage * n_studies))
