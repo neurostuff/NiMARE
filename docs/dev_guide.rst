@@ -20,16 +20,40 @@ By this we mean that most of NiMARE user-facing tools are implemented as classes
 These classes generally accept a number of parameters at initialization,
 and then use ``fit`` or ``transform`` methods to apply the algorithm to data (generally a NiMARE ``Dataset`` object).
 
-Installation with Docker
-------------------------
+Installation for Development
+----------------------------
 
-You may wish to use Docker to control your environment when testing or developing on NiMARE.
+Installation with Conda
+```````````````````````
+
+Perhaps the easiest way to install NiMARE for development is with Conda.
+
+In this setup, you simply create a conda environment,
+then install your local version of NiMARE in editable mode (``pip install -e``).
+
+.. code-block:: bash
+
+  cd /path/to/nimare_repo
+
+  conda create -p /path/to/nimare_env pip python=3.9
+  conda activate /path/to/nimare_env
+  pip install -e .[all]
+
+In this setup, any changes you make to your local clone of NiMARE will automatically be reflected in your environment.
+
+Installation with Docker
+````````````````````````
+
+If you want more control over your installation (e.g., if you want non-Python packages installed as well),
+using a Docker container may be the way to go.
+
 Here are some common steps for taking this approach:
 
 To build the Docker image:
 
 .. code-block:: bash
 
+  cd /path/to/nimare_repo
   docker build -t test/nimare .
 
 To run the Docker container:
