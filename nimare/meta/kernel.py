@@ -340,14 +340,14 @@ class ALEKernel(KernelTransformer):
                 else:
                     kern = kernels[sample_size]
 
-            ma_values = compute_ale_ma(mask.shape, ijk, kern)
+            kernel_data = compute_ale_ma(mask.shape, ijk, kern)
 
             # Convert dense array to sparse
-            nonzero_idx = np.vstack(np.where(ma_values))
-            nonzero_values = ma_values[nonzero_idx[0, :], nonzero_idx[1, :], nonzero_idx[2, :]]
-            ma_values = sparse.COO(nonzero_idx, nonzero_values, shape=mask.shape)
+            nonzero_idx = np.vstack(np.where(kernel_data))
+            nonzero_values = kernel_data[nonzero_idx[0, :], nonzero_idx[1, :], nonzero_idx[2, :]]
+            kernel_data = sparse.COO(nonzero_idx, nonzero_values, shape=mask.shape)
 
-            transformed.append(ma_values)
+            transformed.append(kernel_data)
 
         return transformed, exp_ids
 
