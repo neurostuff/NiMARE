@@ -23,6 +23,18 @@ and then use ``fit`` or ``transform`` methods to apply the algorithm to data (ge
 Installation for Development
 ----------------------------
 
+First, you need to clone the NiMARE repository on github.
+
+.. code-block:: bash
+
+  git clone https://github.com/neurostuff/NiMARE.git
+
+
+.. note:: 
+
+  Replace all instances of `/path/to/` with the appropriate path on your
+  filesystem
+
 Installation with Conda
 ```````````````````````
 
@@ -70,6 +82,12 @@ Once inside the container, you can install NiMARE:
 
 Maintaining NiMARE
 ------------------
+
+Making Changes
+``````````````
+
+Please follow the instructions specified in
+Contributing.md `<https://github.com/neurostuff/NiMARE/blob/main/CONTRIBUTING.md/>`_
 
 Labeling PRs
 ````````````
