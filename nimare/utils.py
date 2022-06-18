@@ -19,6 +19,8 @@ from nilearn.input_data import NiftiMasker
 from nimare import references
 from nimare.due import due
 
+import patsy
+
 LGR = logging.getLogger(__name__)
 
 
@@ -1034,3 +1036,55 @@ def unique_rows(ar):
     _, unique_row_indices = np.unique(ar_row_view, return_index=True)
     ar_out = ar[unique_row_indices]
     return ar_out
+
+
+def coef_spline_bases(axis_coords, spacing, margin):
+    ## create B-spline basis for x/y/z coordinate
+    wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
+    knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
+    design_matrix = patsy.dmatrix(
+        "bs(x, knots=knots, degree=3,include_intercept=False)",
+        data={"x": wider_axis_coords},
+        return_type="matrix",
+    )
+    design_array = np.array(design_matrix)[:, 1:]  # remove the first column (every element is 1)
+    coef_spline = design_array[margin : -margin + 1, :]
+    # remove the basis with no/weakly support from the square
+    supported_basis = np.sum(coef_spline, axis=0) != 0
+    coef_spline = coef_spline[:, supported_basis]
+
+    return coef_spline
+
+
+def B_spline_bases(masker_voxels, spacing, margin=10):
+    dim_mask = masker_voxels.shape
+    n_brain_voxel = np.sum(masker_voxels)
+    # remove the blank space around the brain mask
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+
+    x_spline = coef_spline_bases(xx, spacing, margin)
+    y_spline = coef_spline_bases(yy, spacing, margin)
+    z_spline = coef_spline_bases(zz, spacing, margin)
+
+    # create spatial design matrix by tensor product of spline bases in 3 dimesion
+    X = np.kron(np.kron(x_spline, y_spline), z_spline)  # Row sums of X are all 1=> There is no need to re-normalise X
+    # remove the voxels outside brain mask
+    axis_dim = [x_spline.shape[0], y_spline.shape[0], z_spline.shape[0]]
+    brain_voxels_index = [(z - np.min(zz))+ axis_dim[2] * (y - np.min(yy))+ axis_dim[1] * axis_dim[2] * (x - np.min(xx))
+                        for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1]
+    
+    # remove tensor product basis that have no support in the brain
+    x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
+    support_basis = np.empty(shape=(0,), dtype=np.int)
+    for bx in range(x_df):
+        for by in range(y_df):
+            for bz in range(z_df):
+                basis_index = bz + z_df*by + z_df*y_df*bx
+                basis_coef = X[:, basis_index]
+                if np.max(basis_coef) >= 0.1:
+                    support_basis = np.append(support_basis, basis_index)
+    X = X[brain_voxels_index, support_basis]
+
+    return X
