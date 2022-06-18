@@ -58,6 +58,29 @@ def testdata_cbma():
     return dset
 
 @pytest.fixture(scope="session")
+def testdata_cbmr():
+    """Generate coordinate-based dataset for tests."""
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+    dset = nimare.dataset.Dataset(dset_file)
+
+    # Only retain one peak in each study in coordinates
+    # Otherwise centers of mass will be obscured in kernel tests by overlapping
+    # kernels
+    dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
+
+    n_rows = dset.annotations.shape[0]
+    dset.annotations["group_id"] = ["group_1"] * n_rows  # group_id
+    dset.annotations[
+        "sample_sizes"
+    ] = dset.metadata.sample_sizes  # sample sizes as study-level covariates
+    dset.annotations["study_level_covariates"] = np.random.rand(
+        n_rows, 1
+    )  # random study-level covariates
+
+    return dset
+
+
+@pytest.fixture(scope="session")
 def testdata_cbma_full():
     """Generate more complete coordinate-based dataset for tests.
 

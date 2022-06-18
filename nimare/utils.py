@@ -18,7 +18,10 @@ from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 
 import patsy
+<<<<<<< HEAD
 import sparse
+=======
+>>>>>>> f00c309 (create a design matrix function for cbmr)
 
 LGR = logging.getLogger(__name__)
 
@@ -1161,6 +1164,7 @@ def _get_cluster_coms(labeled_cluster_arr):
         )
 
     return cluster_coms
+<<<<<<< HEAD
 
 
 def coef_spline_bases(axis_coords, spacing, margin):
@@ -1178,6 +1182,15 @@ def coef_spline_bases(axis_coords, spacing, margin):
     coef_spline : 2-D ndarray (n_points x n_spline_bases)
     """
     # create B-spline basis for x/y/z coordinate
+=======
+    _, unique_row_indices = np.unique(ar_row_view, return_index=True)
+    ar_out = ar[unique_row_indices]
+    return ar_out
+
+
+def coef_spline_bases(axis_coords, spacing, margin):
+    ## create B-spline basis for x/y/z coordinate
+>>>>>>> f00c309 (create a design matrix function for cbmr)
     wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
     knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
     design_matrix = patsy.dmatrix(
