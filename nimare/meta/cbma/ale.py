@@ -44,9 +44,11 @@ class ALE(CBMAEstimator):
         ======================= =================================================================
         "approximate" (default) Build a histogram of summary-statistic values and their
                                 expected frequencies under the assumption of random spatial
-                                associated between studies, via a weighted convolution.
+                                associated between studies, via a weighted convolution, as
+                                described in :footcite:t:`eickhoff2012activation`.
 
-                                This method is much faster, but slightly less accurate.
+                                This method is much faster, but slightly less accurate, than the
+                                "montecarlo" option.
         "montecarlo"            Perform a large number of permutations, in which the coordinates
                                 in the studies are randomly drawn from the Estimator's brain mask
                                 and the full set of resulting summary-statistic values are
@@ -148,6 +150,31 @@ class ALE(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.iterations} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution \\citep{eickhoff2012activation}"
+
+        description = (
+            "An activation likelihood estimation (ALE) meta-analysis "
+            "\\citep{turkeltaub2002meta,turkeltaub2012minimizing,eickhoff2012activation} was "
+            f"performed, using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"ALE values were converted to p-values using {null_method_str}."
+        )
+        return description
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -336,6 +363,34 @@ class ALESubtraction(PairwiseCBMAEstimator):
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
+
+    def generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        description = (
+            "An activation likelihood estimation (ALE) subtraction analysis "
+            "\\citep{laird2005ale,eickhoff2012activation} was performed, "
+            f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2022} "
+            "approach, which differs from the original version. "
+            "In this version, ALE-difference scores are calculated between the two datasets, "
+            "for all voxels in the mask, rather than for voxels significant in the main effects "
+            "analyses of the two datasets. "
+            "Next, voxel-wise null distributions of ALE-difference scores were generated via a "
+            "randomized group assignment procedure, in which the studies in the two datasets were "
+            "randomly reassigned and ALE-difference scores were calculated for the randomized "
+            "datasets. "
+            f"This randomization procedure was repeated {self.n_iters} times to build the null "
+            "distributions. "
+            "The significance of the original ALE-difference scores was assessed using a "
+            "two-sided statistical test."
+        )
+        return description
 
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
@@ -564,6 +619,21 @@ class SCALE(CBMAEstimator):
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
+
+    def generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        description = (
+            "A specific coactivation likelihood estimation (SCALE) meta-analysis "
+            "\\citep{langner2014meta} was performed, with "
+            f"{self.n_iters} iterations."
+        )
+        return description
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
