@@ -152,7 +152,7 @@ class MKDADensity(CBMAEstimator):
             null_method_str = (
                 "a Monte Carlo-based null distribution, in which dataset coordinates were "
                 "randomly drawn from the analysis mask and the full set of ALE values were "
-                f"retained, using {self.iterations} iterations"
+                f"retained, using {self.n_iters} iterations"
             )
         else:
             null_method_str = "an approximate null distribution"
@@ -446,7 +446,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-specificity": pFgA_p_vals,
         }
 
-        description = ""
+        description = (
+            "A multilevel kernel density chi-squared analysis \\citep{wager2007meta} was "
+            "performed according to the same procedure as implemented in Neurosynth, "
+            f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            "This analysis calculated several measures. "
+            "The first dataset was evaluated for consistency of activation via a one-way "
+            "chi-square test. "
+            "The two datasets were also compared via a two-way chi-square test, in which"
+        )
 
         return images, description
 
@@ -1074,7 +1082,7 @@ class KDA(CBMAEstimator):
             null_method_str = (
                 "a Monte Carlo-based null distribution, in which dataset coordinates were "
                 "randomly drawn from the analysis mask and the full set of ALE values were "
-                f"retained, using {self.iterations} iterations"
+                f"retained, using {self.n_iters} iterations"
             )
         else:
             null_method_str = "an approximate null distribution"

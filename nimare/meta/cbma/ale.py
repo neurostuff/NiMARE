@@ -163,7 +163,7 @@ class ALE(CBMAEstimator):
             null_method_str = (
                 "a Monte Carlo-based null distribution, in which dataset coordinates were "
                 "randomly drawn from the analysis mask and the full set of ALE values were "
-                f"retained, using {self.iterations} iterations"
+                f"retained, using {self.n_iters} iterations"
             )
         else:
             null_method_str = "an approximate null distribution \\citep{eickhoff2012activation}"
@@ -458,7 +458,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
             f"This randomization procedure was repeated {self.n_iters} times to build the null "
             "distributions. "
             "The significance of the original ALE-difference scores was assessed using a "
-            "two-sided statistical test."
+            "two-sided statistical test. "
+            "The null distributions were assumed to be assymmetric, as ALE-difference scores will "
+            "be skewed based on the sample sizes of the two datasets."
         )
 
         return images, description
