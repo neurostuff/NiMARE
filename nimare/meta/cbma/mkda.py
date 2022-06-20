@@ -445,7 +445,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-consistency": pAgF_p_vals,
             "p_desc-specificity": pFgA_p_vals,
         }
-        return images
+
+        description = ""
+
+        return images, description
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
         """Run a single permutation of the Monte Carlo FWE correction procedure.
@@ -925,7 +928,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "z_desc-consistency_level-voxel": pAgF_z_FDR,
             "z_desc-specificity_level-voxel": pFgA_z_FDR,
         }
-        return images
+
+        description = ""
+
+        return images, description
 
 
 @due.dcite(references.KDA1, description="Introduces the KDA algorithm.")
