@@ -182,7 +182,13 @@ class Fishers(IBMAEstimator):
             "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return maps, ""
+
+        description = (
+            "An image-based meta-analysis was performed on z-statistic images using the Fisher "
+            "combined probability method \\citep{fisher1946statistical}."
+        )
+
+        return maps, description
 
 
 class Stouffers(IBMAEstimator):
@@ -265,7 +271,20 @@ class Stouffers(IBMAEstimator):
             "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return maps, ""
+
+        description = (
+            "An image-based meta-analysis was performed on z-statistic images using the Stouffer "
+            "method \\citep{stouffer1949american}"
+        )
+        if self.use_sample_size:
+            description += (
+                ", with studies weighted by the square root of the study sample sizes, per "
+                "\\cite{zaykin2011optimally}."
+            )
+        else:
+            description += "."
+
+        return maps, description
 
 
 class WeightedLeastSquares(IBMAEstimator):
@@ -355,7 +374,14 @@ class WeightedLeastSquares(IBMAEstimator):
             "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return maps, ""
+
+        description = (
+            "An image-based meta-analysis was performed on beta images using the "
+            "Weighted Least Squares approach \\citep{brockwell2001comparison}, "
+            f"with an a priori tau-squared value of {self.tau2} defined across all voxels."
+        )
+
+        return maps, description
 
 
 class DerSimonianLaird(IBMAEstimator):
@@ -433,7 +459,15 @@ class DerSimonianLaird(IBMAEstimator):
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return maps, ""
+
+        description = (
+            "An image-based meta-analysis was performed on beta and variance images using the "
+            "DerSimonian-Laird method \\citep{dersimonian1986meta}, "
+            "in which tau-squared is estimated on a voxel-wise basis using the method-of-moments "
+            "approach \\citep{dersimonian1986meta,kosmidis2017improving}."
+        )
+
+        return maps, description
 
 
 class Hedges(IBMAEstimator):
@@ -510,7 +544,14 @@ class Hedges(IBMAEstimator):
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return maps, ""
+
+        description = (
+            "An image-based meta-analysis was performed on beta and variance images using the "
+            "Hedges method \\citep{hedges2014statistical}, "
+            "in which tau-squared is estimated on a voxel-wise basis."
+        )
+
+        return maps, description
 
 
 class SampleSizeBasedLikelihood(IBMAEstimator):
@@ -606,7 +647,14 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
                 self.inputs_["aggressive_mask"],
             ),
         }
-        return maps, ""
+
+        description = (
+            "An image-based meta-analysis was performed on beta images using sample size-based "
+            "maximum likelihood estimation, in which tau-squared and sigma-squared are estimated "
+            "on a voxel-wise basis."
+        )
+
+        return maps, description
 
 
 class VarianceBasedLikelihood(IBMAEstimator):
@@ -708,7 +756,14 @@ class VarianceBasedLikelihood(IBMAEstimator):
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return maps, ""
+
+        description = (
+            "An image-based meta-analysis was performed on beta and variance images using "
+            "variance-based maximum likelihood estimation, in which tau-squared is estimated "
+            "on a voxel-wise basis."
+        )
+
+        return maps, description
 
 
 class PermutedOLS(IBMAEstimator):
@@ -790,11 +845,17 @@ class PermutedOLS(IBMAEstimator):
         # Convert t to z, preserving signs
         dof = self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
         z_map = t_to_z(t_map, dof)
-        images = {
+        maps = {
             "t": _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"]),
             "z": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return images
+
+        description = (
+            "An image-based meta-analysis was performed on beta images using "
+            "Nilearn's \\citep{10.3389/fninf.2014.00014} permuted ordinary least squares method."
+        )
+
+        return maps, description
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
@@ -859,10 +920,19 @@ class PermutedOLS(IBMAEstimator):
         sign = np.sign(t_map)
         sign[sign == 0] = 1
         z_map = p_to_z(p_map, tail="two") * sign
-        images = {
+        maps = {
             "logp_level-voxel": _boolean_unmask(
                 log_p_map.squeeze(), self.inputs_["aggressive_mask"]
             ),
             "z_level-voxel": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return images
+
+        description = (
+            "Family-wise error rate correction was performed using Nilearn's "
+            "\\citep{10.3389/fninf.2014.00014} permuted OLS method, in which null distributions "
+            "of test statistics were estimated using the "
+            "max-value permutation method detailed in \\cite{freedman1983nonstochastic}. "
+            f"{n_iters} iterations were performed to generate the null distribution."
+        )
+
+        return maps, description

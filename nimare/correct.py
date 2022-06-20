@@ -364,7 +364,7 @@ class FDRCorrector(Corrector):
         """
         description = (
             "False discovery rate correction was performed with the Benjamini-Hochberg procedure "
-            "\\cite{benjamini1995controlling}."
+            "\\citep{benjamini1995controlling}."
         )
         return fdr(p, q=self.alpha, method="bh"), description
 
@@ -408,6 +408,6 @@ class FDRCorrector(Corrector):
         """
         description = (
             "False discovery rate correction was performed with the Benjamini-Yekutieli procedure "
-            "\\cite{benjamini2001control}."
+            "\\citep{benjamini2001control}."
         )
         return fdr(p, q=self.alpha, method="by"), description
