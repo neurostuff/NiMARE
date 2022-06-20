@@ -40,6 +40,9 @@ meta = ALE()
 # Then, the ``fit`` method takes in the Dataset and produces a MetaResult.
 results = meta.fit(dset)
 
+# You can also look at the description of the Estimator.
+print(results.description)
+
 ###############################################################################
 # Coordinate-based Estimators allow you to provide a specific KernelTransformer
 # -----------------------------------------------------------------------------

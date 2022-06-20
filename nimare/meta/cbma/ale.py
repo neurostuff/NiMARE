@@ -151,7 +151,7 @@ class ALE(CBMAEstimator):
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
-    def generate_description(self):
+    def _generate_description(self):
         """Generate a description of the fitted Estimator.
 
         Returns
@@ -364,34 +364,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
 
-    def generate_description(self):
-        """Generate a description of the fitted Estimator.
-
-        Returns
-        -------
-        str
-            Description of the Estimator.
-        """
-        description = (
-            "An activation likelihood estimation (ALE) subtraction analysis "
-            "\\citep{laird2005ale,eickhoff2012activation} was performed, "
-            f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
-            "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2022} "
-            "approach, which differs from the original version. "
-            "In this version, ALE-difference scores are calculated between the two datasets, "
-            "for all voxels in the mask, rather than for voxels significant in the main effects "
-            "analyses of the two datasets. "
-            "Next, voxel-wise null distributions of ALE-difference scores were generated via a "
-            "randomized group assignment procedure, in which the studies in the two datasets were "
-            "randomly reassigned and ALE-difference scores were calculated for the randomized "
-            "datasets. "
-            f"This randomization procedure was repeated {self.n_iters} times to build the null "
-            "distributions. "
-            "The significance of the original ALE-difference scores was assessed using a "
-            "two-sided statistical test."
-        )
-        return description
-
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
@@ -469,7 +441,27 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "z_desc-group1MinusGroup2": z_arr,
             "logp_desc-group1MinusGroup2": logp_arr,
         }
-        return images
+
+        description = (
+            "An activation likelihood estimation (ALE) subtraction analysis "
+            "\\citep{laird2005ale,eickhoff2012activation} was performed, "
+            f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2022} "
+            "approach, which differs from the original version. "
+            "In this version, ALE-difference scores are calculated between the two datasets, "
+            "for all voxels in the mask, rather than for voxels significant in the main effects "
+            "analyses of the two datasets. "
+            "Next, voxel-wise null distributions of ALE-difference scores were generated via a "
+            "randomized group assignment procedure, in which the studies in the two datasets were "
+            "randomly reassigned and ALE-difference scores were calculated for the randomized "
+            "datasets. "
+            f"This randomization procedure was repeated {self.n_iters} times to build the null "
+            "distributions. "
+            "The significance of the original ALE-difference scores was assessed using a "
+            "two-sided statistical test."
+        )
+
+        return images, description
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -620,21 +612,6 @@ class SCALE(CBMAEstimator):
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
 
-    def generate_description(self):
-        """Generate a description of the fitted Estimator.
-
-        Returns
-        -------
-        str
-            Description of the Estimator.
-        """
-        description = (
-            "A specific coactivation likelihood estimation (SCALE) meta-analysis "
-            "\\citep{langner2014meta} was performed, with "
-            f"{self.n_iters} iterations."
-        )
-        return description
-
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
@@ -694,7 +671,14 @@ class SCALE(CBMAEstimator):
 
         # Write out unthresholded value images
         images = {"stat": stat_values, "logp": logp_values, "z": z_values}
-        return images
+
+        description = (
+            "A specific coactivation likelihood estimation (SCALE) meta-analysis "
+            "\\citep{langner2014meta} was performed, with "
+            f"{self.n_iters} iterations."
+        )
+
+        return images, description
 
     def _compute_summarystat_est(self, data):
         """Generate ALE-value array and null distribution from list of contrasts.

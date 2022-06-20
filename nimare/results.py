@@ -13,6 +13,9 @@ LGR = logging.getLogger(__name__)
 class MetaResult(object):
     """Base class for meta-analytic results.
 
+    .. versionchanged:: 0.0.12
+        - Added the description attribute.
+
     Parameters
     ----------
     estimator : :class:`~nimare.base.Estimator`
@@ -21,6 +24,8 @@ class MetaResult(object):
         Mask for converting maps between arrays and images.
     maps : :obj:`dict` or None, optional
         Maps to store in the object. Default is None.
+    description : :obj:`str`, optional
+        Description of the method that generated the result. Default is "".
 
     Attributes
     ----------
@@ -30,12 +35,15 @@ class MetaResult(object):
         Masker object.
     maps : :obj:`dict`
         Keys are map names and values are arrays.
+    description : :obj:`str`
+        A textual description of the method that generated the result.
     """
 
-    def __init__(self, estimator, mask, maps=None):
+    def __init__(self, estimator, mask, maps=None, description=""):
         self.estimator = copy.deepcopy(estimator)
         self.masker = get_masker(mask)
         self.maps = maps or {}
+        self.description = description
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
@@ -96,5 +104,10 @@ class MetaResult(object):
 
     def copy(self):
         """Return copy of result object."""
-        new = MetaResult(self.estimator, self.masker, copy.deepcopy(self.maps))
+        new = MetaResult(
+            self.estimator,
+            mask=self.masker,
+            maps=copy.deepcopy(self.maps),
+            description=self.description,
+        )
         return new

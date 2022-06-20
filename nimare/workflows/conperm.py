@@ -67,15 +67,16 @@ References
         n_jobs=1,
         verbose=0,
     )
-    res = {"logp": log_p_map, "t": t_map}
-    # The t_test function will stand in for the Estimator in the results object
-    res = MetaResult(permuted_ols, mask_image, maps=res)
+    maps = {"logp": log_p_map, "t": t_map}
 
     boilerplate = boilerplate.format(
         n_studies=n_studies,
         n_iters=n_iters,
         version=__version__,
     )
+
+    # The t_test function will stand in for the Estimator in the results object
+    res = MetaResult(permuted_ols, mask=mask_image, maps=maps, description=boilerplate)
 
     if output_dir is None:
         output_dir = os.getcwd()

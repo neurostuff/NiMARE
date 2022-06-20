@@ -88,6 +88,10 @@ for i_ax, dist_name in enumerate(DISTS_TO_PLOT):
 fig.tight_layout()
 
 ###############################################################################
+# You can also look at the description of the Corrector.
+print(cres.description)
+
+###############################################################################
 # Show corrected results
 # =============================================================================
 MAPS_TO_PLOT = [

@@ -172,14 +172,15 @@ class Corrector(metaclass=ABCMeta):
                 "Using correction method implemented in Estimator: "
                 f"{est.__class__.__module__}.{est.__class__.__name__}.{correction_method}."
             )
-            corr_maps = getattr(est, correction_method)(result, **self.parameters)
+            corr_maps, description = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._collect_inputs(result)
-            corr_maps = self._transform(result, method=correction_method)
+            corr_maps, description = self._transform(result, method=correction_method)
 
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
         result.maps.update(corr_maps)
+        result.description += " " + description
 
         # Update the estimator as well, in order to retain updated null distributions
         result.estimator = est
@@ -289,7 +290,11 @@ class FWECorrector(Corrector):
         --------
         nimare.stats.bonferroni
         """
-        return bonferroni(p)
+        description = (
+            "Family-wise error rate correction was performed with the Bonferroni correction "
+            "procedure \\citep{bonferroni1936teoria,shaffer1995multiple}."
+        )
+        return bonferroni(p), description
 
 
 class FDRCorrector(Corrector):
@@ -357,7 +362,11 @@ class FDRCorrector(Corrector):
         --------
         pymare.stats.fdr
         """
-        return fdr(p, q=self.alpha, method="bh")
+        description = (
+            "False discovery rate correction was performed with the Benjamini-Hochberg procedure "
+            "\\cite{benjamini1995controlling}."
+        )
+        return fdr(p, q=self.alpha, method="bh"), description
 
     def correct_fdr_negcorr(self, p):
         """Perform Benjamini-Yekutieli FDR correction.
@@ -397,4 +406,8 @@ class FDRCorrector(Corrector):
         --------
         pymare.stats.fdr
         """
-        return fdr(p, q=self.alpha, method="by")
+        description = (
+            "False discovery rate correction was performed with the Benjamini-Yekutieli procedure "
+            "\\cite{benjamini2001control}."
+        )
+        return fdr(p, q=self.alpha, method="by"), description

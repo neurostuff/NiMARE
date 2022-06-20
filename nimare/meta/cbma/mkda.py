@@ -140,6 +140,30 @@ class MKDADensity(CBMAEstimator):
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.iterations} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution"
+
+        description = (
+            "A multilevel kernel density (MKDA) meta-analysis \\citep{wager2007meta} was "
+            f"performed, using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
+        )
+        return description
+
     def _compute_weights(self, ma_values):
         """Determine experiment-wise weights per the conventional MKDA approach."""
         # TODO: Incorporate sample-size and inference metadata extraction and
@@ -846,7 +870,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "z_desc-specificitySize_level-cluster": pFgA_z_csfwe_vals,
             "logp_desc-specificitySize_level-cluster": pFgA_logp_csfwe_vals,
         }
-        return images
+
+        description = ""
+
+        return images, description
 
     def correct_fdr_indep(self, result, alpha=0.05):
         """Perform FDR correction using the Benjamini-Hochberg method.
@@ -1028,6 +1055,30 @@ class KDA(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.iterations} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution"
+
+        description = (
+            "A kernel density (KDA) meta-analysis \\citep{wager2007meta} was "
+            f"performed, using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
+        )
+        return description
 
     def _compute_summarystat_est(self, ma_values):
         """Compute OF scores from data.

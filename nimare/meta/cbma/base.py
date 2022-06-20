@@ -80,17 +80,6 @@ class CBMAEstimator(Estimator):
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
-    @abstractmethod
-    def generate_description(self):
-        """Generate a description of the fitted Estimator.
-
-        Returns
-        -------
-        str
-            Description of the Estimator.
-        """
-        ...
-
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
 
@@ -189,7 +178,8 @@ class CBMAEstimator(Estimator):
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
+        description = self._generate_description()
+        return images, description
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
@@ -517,41 +507,6 @@ class CBMAEstimator(Estimator):
             "histweights_level-voxel_corr-fwe_method-montecarlo"
         ] = histweights
 
-    def _correct_fwe_montecarlo_description(self):
-        """Generate a description of the Monte Carlo FWE correction procedure.
-
-        Returns
-        -------
-        str
-            Description of the procedure.
-        """
-        if self._correction_parameters["vfwe_only"]:
-            description = (
-                "Family-wise error correction was performed using a voxel-level Monte Carlo "
-                "procedure. "
-                "In this procedure, null datasets are generated in which dataset coordinates are "
-                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
-                "the maximum summary statistic is retained. "
-                f"This procedure was repeated {self._correction_parameters['n_iters']} times to "
-                "build a null distribution of summary statistics."
-            )
-        else:
-            description = (
-                "Family-wise error rate correction was performed using a Monte Carlo procedure. "
-                "In this procedure, null datasets are generated in which dataset coordinates are "
-                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
-                "maximum values are retained. "
-                f"This procedure was repeated {self._correction_parameters['n_iters']} times to "
-                "build null distributions of summary statistics, cluster sizes, and cluster "
-                "masses. "
-                "Clusters for cluster-level correction were defined using edge-wise connectivity "
-                "and a voxel-level threshold of p < "
-                f"{self._correction_parameters['voxel_thresh']} from the uncorrected null "
-                "distribution."
-            )
-
-        return description
-
     def _correct_fwe_montecarlo_permutation(
         self,
         iter_xyz,
@@ -697,13 +652,6 @@ class CBMAEstimator(Estimator):
                                      n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        # Store the relevant parameters for boilerplate generation
-        self._correction_parameters = {
-            "voxel_thresh": voxel_thresh,
-            "n_iters": n_iters,
-            "n_cores": n_cores,
-            "vfwe_only": vfwe_only,
-        }
         stat_values = result.get_map("stat", return_type="array")
 
         if vfwe_only and (self.null_method == "montecarlo"):
@@ -845,7 +793,30 @@ class CBMAEstimator(Estimator):
                 "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
-        return images
+        if vfwe_only:
+            description = (
+                "Family-wise error correction was performed using a voxel-level Monte Carlo "
+                "procedure. "
+                "In this procedure, null datasets are generated in which dataset coordinates are "
+                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
+                "the maximum summary statistic is retained. "
+                f"This procedure was repeated {n_iters} times to build a null distribution of "
+                "summary statistics."
+            )
+        else:
+            description = (
+                "Family-wise error rate correction was performed using a Monte Carlo procedure. "
+                "In this procedure, null datasets are generated in which dataset coordinates are "
+                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
+                "maximum values are retained. "
+                f"This procedure was repeated {n_iters} times to build null distributions of "
+                "summary statistics, cluster sizes, and cluster masses. "
+                "Clusters for cluster-level correction were defined using edge-wise connectivity "
+                f"and a voxel-level threshold of p < {voxel_thresh} from the uncorrected null "
+                "distribution."
+            )
+
+        return images, description
 
 
 class PairwiseCBMAEstimator(CBMAEstimator):
@@ -918,11 +889,11 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps = self._fit(dataset1, dataset2)
+        maps, description = self._fit(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset1.masker
 
-        return MetaResult(self, masker, maps)
+        return MetaResult(self, mask=masker, maps=maps, description=description)
