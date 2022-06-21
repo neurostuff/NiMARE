@@ -218,7 +218,7 @@ class Corrector(metaclass=ABCMeta):
         p_no_nans = p[nonnan_mask]
 
         # Call the correction method
-        p_corr_no_nans = getattr(self, method)(p_no_nans)
+        p_corr_no_nans, description = getattr(self, method)(p_no_nans)
 
         # Unmask the corrected p values based on the NaN mask
         p_corr[nonnan_mask] = p_corr_no_nans
@@ -226,7 +226,7 @@ class Corrector(metaclass=ABCMeta):
         # Create a dictionary of the corrected results
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
-        return corr_maps
+        return corr_maps, description
 
 
 class FWECorrector(Corrector):
