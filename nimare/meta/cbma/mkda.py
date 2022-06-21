@@ -11,7 +11,7 @@ from scipy import ndimage
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 
-from nimare import references
+from nimare import _version, references
 from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import KDAKernel, MKDAKernel
@@ -21,6 +21,7 @@ from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
 
 LGR = logging.getLogger(__name__)
+__version__ = _version.get_versions()["version"]
 
 
 @due.dcite(references.MKDA, description="Introduces MKDA.")
@@ -159,7 +160,10 @@ class MKDADensity(CBMAEstimator):
 
         description = (
             "A multilevel kernel density (MKDA) meta-analysis \\citep{wager2007meta} was "
-            f"performed, using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            "performed was performed with NiMARE "
+            f"{__version__} "
+            "\\citep{Salo2022}, using a(n) "
+            f"{self.kernel_transformer.__class__.__name__} kernel. "
             f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
         )
         return description
@@ -448,7 +452,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         description = (
             "A multilevel kernel density chi-squared analysis \\citep{wager2007meta} was "
-            "performed according to the same procedure as implemented in Neurosynth, "
+            "performed according to the same procedure as implemented in Neurosynth with NiMARE "
+            f"{__version__} "
+            "\\citep{Salo2022}, "
             f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
             "This analysis calculated several measures. "
             "The first dataset was evaluated for consistency of activation via a one-way "
@@ -1089,7 +1095,10 @@ class KDA(CBMAEstimator):
 
         description = (
             "A kernel density (KDA) meta-analysis \\citep{wager2007meta} was "
-            f"performed, using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            "performed was performed with NiMARE "
+            f"{__version__} "
+            "\\citep{Salo2022}, "
+            f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
             f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
         )
         return description

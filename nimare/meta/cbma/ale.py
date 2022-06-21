@@ -6,7 +6,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
-from nimare import references
+from nimare import _version, references
 from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
@@ -15,6 +15,7 @@ from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, tqdm_joblib, use_memmap
 
 LGR = logging.getLogger(__name__)
+__version__ = _version.get_versions()["version"]
 
 
 @due.dcite(references.ALE1, description="Introduces ALE.")
@@ -171,7 +172,9 @@ class ALE(CBMAEstimator):
         description = (
             "An activation likelihood estimation (ALE) meta-analysis "
             "\\citep{turkeltaub2002meta,turkeltaub2012minimizing,eickhoff2012activation} was "
-            f"performed, using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"performed with NiMARE {__version__} "
+            "\\citep{Salo2022}, using a(n) "
+            f"{self.kernel_transformer.__class__.__name__} kernel. "
             f"ALE values were converted to p-values using {null_method_str}."
         )
         return description
@@ -444,7 +447,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         description = (
             "An activation likelihood estimation (ALE) subtraction analysis "
-            "\\citep{laird2005ale,eickhoff2012activation} was performed, "
+            "\\citep{laird2005ale,eickhoff2012activation} was performed with NiMARE "
+            f"{__version__} "
+            "\\citep{Salo2022}, "
             f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
             "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2022} "
             "approach, which differs from the original version. "
@@ -676,7 +681,9 @@ class SCALE(CBMAEstimator):
 
         description = (
             "A specific coactivation likelihood estimation (SCALE) meta-analysis "
-            "\\citep{langner2014meta} was performed, with "
+            "\\citep{langner2014meta} was performed was performed with NiMARE "
+            f"{__version__} "
+            "\\citep{Salo2022}, with "
             f"{self.n_iters} iterations."
         )
 
