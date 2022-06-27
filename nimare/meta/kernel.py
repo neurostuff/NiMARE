@@ -205,6 +205,7 @@ class KernelTransformer(NiMAREBase):
         imgs = []
         # Loop over exp ids since sparse._coo.core.COO is not iterable
         for i_exp, id_ in enumerate(transformed_maps[1]):
+            # print(id_)
             if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
                 kernel_data = transformed_maps[0][i_exp].todense()
             else:
@@ -212,6 +213,7 @@ class KernelTransformer(NiMAREBase):
 
             if return_type == "array":
                 img = kernel_data[mask_data]
+                # print(img)
                 imgs.append(img)
             elif return_type == "image":
                 kernel_data *= mask_data
@@ -309,40 +311,27 @@ class ALEKernel(KernelTransformer):
         self.sample_size = sample_size
 
     def _transform(self, mask, coordinates):
-        kernels = {}  # retain kernels in dictionary to speed things up
-        exp_ids = coordinates["id"].unique()
+        ijks = coordinates[["i", "j", "k"]].values
+        exp_idx = coordinates["id"].values
 
-        transformed = []
-        for i_exp, id_ in enumerate(exp_ids):
-            data = coordinates.loc[coordinates["id"] == id_]
+        use_dict = True
+        if self.sample_size is not None:
+            sample_sizes = self.sample_size
+            use_dict = False
+        else:
+            sample_sizes = coordinates["sample_size"].values
 
-            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            if self.sample_size is not None:
-                sample_size = self.sample_size
-            elif self.fwhm is None:
-                # Extract from input
-                sample_size = data.sample_size.astype(float).values[0]
+        if self.fwhm is not None:
+            assert np.isfinite(self.fwhm), "FWHM must be finite number"
+            _, kernels = get_ale_kernel(mask, fwhm=self.fwhm)
+            use_dict = False
 
-            if self.fwhm is not None:
-                assert np.isfinite(self.fwhm), "FWHM must be finite number"
-                if self.fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
-                    kernels[self.fwhm] = kern
-                else:
-                    kern = kernels[self.fwhm]
+        if use_dict:
+            kernels = {}  # retain kernels in dictionary to speed things up
 
-            else:
-                assert np.isfinite(sample_size), "Sample size must be finite number"
-                if sample_size not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, sample_size=sample_size)
-                    kernels[sample_size] = kern
-                else:
-                    kern = kernels[sample_size]
+        transformed = compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict)
 
-            kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-
-            transformed.append(kernel_data)
-
+        exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 
 

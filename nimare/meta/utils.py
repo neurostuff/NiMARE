@@ -397,7 +397,7 @@ def compute_kda_ma(
     return kernel_data
 
 
-def compute_ale_ma(shape, ijk, kernel):
+def compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict):
     """Generate ALE modeled activation (MA) maps.
 
     Replaces the values around each focus in ijk with the contrast-specific
@@ -418,43 +418,70 @@ def compute_ale_ma(shape, ijk, kernel):
     Returns
     -------
     ma_values : array-like
-        1d array of modeled activation values.
+        4d array of modeled activation values.
     """
-    ma_values = np.zeros(shape)
-    mid = int(np.floor(kernel.shape[0] / 2.0))
-    mid1 = mid + 1
-    for j_peak in range(ijk.shape[0]):
-        i, j, k = ijk[j_peak, :]
-        xl = max(i - mid, 0)
-        xh = min(i + mid1, ma_values.shape[0])
-        yl = max(j - mid, 0)
-        yh = min(j + mid1, ma_values.shape[1])
-        zl = max(k - mid, 0)
-        zh = min(k + mid1, ma_values.shape[2])
-        xlk = mid - (i - xl)
-        xhk = mid - (i - xh)
-        ylk = mid - (j - yl)
-        yhk = mid - (j - yh)
-        zlk = mid - (k - zl)
-        zhk = mid - (k - zh)
+    if exp_idx is None:
+        exp_idx = np.ones(len(ijks))
 
-        if (
-            (xl >= 0)
-            & (xh >= 0)
-            & (yl >= 0)
-            & (yh >= 0)
-            & (zl >= 0)
-            & (zh >= 0)
-            & (xlk >= 0)
-            & (xhk >= 0)
-            & (ylk >= 0)
-            & (yhk >= 0)
-            & (zlk >= 0)
-            & (zhk >= 0)
-        ):
-            ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
-                ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
-            )
+    shape = mask.shape
+
+    exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
+    n_studies = len(exp_idx_uniq)
+
+    kernel_shape = (n_studies,) + shape
+    ma_values = np.zeros(kernel_shape)  # Dimension i_exp x shape
+    for i_exp, _ in enumerate(exp_idx_uniq):
+
+        # Index peaks by experiment
+        curr_exp_idx = exp_idx == i_exp
+        ijk = ijks[curr_exp_idx]
+
+        if use_dict:
+            # Get sample_size from input
+            sample_size = sample_sizes[curr_exp_idx][0]
+            if sample_size not in kernels.keys():
+                _, kernel = get_ale_kernel(mask, sample_size=sample_size)
+                kernels[sample_size] = kernel
+            else:
+                kernel = kernels[sample_size]
+        else:
+            kernel = kernels
+
+        mid = int(np.floor(kernel.shape[0] / 2.0))
+        mid1 = mid + 1
+        for j_peak in range(ijk.shape[0]):
+            i, j, k = ijk[j_peak, :]
+            xl = max(i - mid, 0)
+            xh = min(i + mid1, ma_values.shape[1])
+            yl = max(j - mid, 0)
+            yh = min(j + mid1, ma_values.shape[2])
+            zl = max(k - mid, 0)
+            zh = min(k + mid1, ma_values.shape[3])
+            xlk = mid - (i - xl)
+            xhk = mid - (i - xh)
+            ylk = mid - (j - yl)
+            yhk = mid - (j - yh)
+            zlk = mid - (k - zl)
+            zhk = mid - (k - zh)
+
+            if (
+                (xl >= 0)
+                & (xh >= 0)
+                & (yl >= 0)
+                & (yh >= 0)
+                & (zl >= 0)
+                & (zh >= 0)
+                & (xlk >= 0)
+                & (xhk >= 0)
+                & (ylk >= 0)
+                & (yhk >= 0)
+                & (zlk >= 0)
+                & (zhk >= 0)
+            ):
+                ma_values[i_exp][xl:xh, yl:yh, zl:zh] = np.maximum(
+                    ma_values[i_exp][xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
+                )
+
     return ma_values
 
 
