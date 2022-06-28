@@ -429,7 +429,9 @@ def compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict):
     n_studies = len(exp_idx_uniq)
 
     kernel_shape = (n_studies,) + shape
-    ma_values = np.zeros(kernel_shape)  # Dimension i_exp x shape
+    all_coords = []
+    all_data = []
+    all_exp = []
     for i_exp, _ in enumerate(exp_idx_uniq):
 
         # Index peaks by experiment
@@ -449,14 +451,16 @@ def compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict):
 
         mid = int(np.floor(kernel.shape[0] / 2.0))
         mid1 = mid + 1
+        exp_coords = []
+        ma_values = np.zeros(shape)
         for j_peak in range(ijk.shape[0]):
             i, j, k = ijk[j_peak, :]
             xl = max(i - mid, 0)
-            xh = min(i + mid1, ma_values.shape[1])
+            xh = min(i + mid1, ma_values.shape[0])
             yl = max(j - mid, 0)
-            yh = min(j + mid1, ma_values.shape[2])
+            yh = min(j + mid1, ma_values.shape[1])
             zl = max(k - mid, 0)
-            zh = min(k + mid1, ma_values.shape[3])
+            zh = min(k + mid1, ma_values.shape[2])
             xlk = mid - (i - xl)
             xhk = mid - (i - xh)
             ylk = mid - (j - yl)
@@ -478,11 +482,30 @@ def compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict):
                 & (zlk >= 0)
                 & (zhk >= 0)
             ):
-                ma_values[i_exp][xl:xh, yl:yh, zl:zh] = np.maximum(
-                    ma_values[i_exp][xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
+
+                ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
+                    ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
                 )
 
-    return ma_values
+        nonzero_idx = np.nonzero(ma_values)
+
+        exp_data = ma_values[nonzero_idx]
+        all_data.append(exp_data)
+
+        exp_coords = np.vstack(nonzero_idx)
+        all_coords.append(exp_coords)
+
+        all_exp.append(np.full(exp_coords.shape[1], i_exp))
+
+    xyz_coords = np.hstack(all_coords)
+    exp = np.hstack(all_exp)
+
+    coords = np.vstack((exp.flatten(), xyz_coords))
+
+    data = np.hstack(all_data)
+    kernel_data = sparse.COO(coords, data.flatten(), shape=kernel_shape)
+
+    return kernel_data
 
 
 @due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
