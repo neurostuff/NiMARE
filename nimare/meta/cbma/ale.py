@@ -3,6 +3,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+import sparse
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
@@ -151,6 +152,16 @@ class ALE(CBMAEstimator):
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+        if isinstance(stat_values, sparse._coo.core.COO):
+            masker = self.dataset.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            # Indexing the sparse array is slow, perform masking in the dense array
+            stat_values = stat_values.todense().reshape(-1)
+            stat_values = stat_values[mask_data.reshape(-1)]
+
         return stat_values
 
     def _determine_histogram_bins(self, ma_maps):
@@ -166,6 +177,8 @@ class ALE(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, sparse._coo.core.COO):
+            ma_values = ma_maps
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps
         else:
@@ -176,7 +189,10 @@ class ALE(CBMAEstimator):
         # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
         INV_STEP_SIZE = 100000
         step_size = 1 / INV_STEP_SIZE
-        max_ma_values = np.max(ma_values, axis=1)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+        else:
+            max_ma_values = np.max(ma_values, axis=1)
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
         max_poss_ale = self._compute_summarystat(max_ma_values)
@@ -202,6 +218,8 @@ class ALE(CBMAEstimator):
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
+            ma_values = ma_maps
+        elif isinstance(ma_maps, sparse._coo.core.COO):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")

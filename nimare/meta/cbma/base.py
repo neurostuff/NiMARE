@@ -6,6 +6,7 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from joblib import Parallel, delayed
 from scipy import ndimage
 from tqdm.auto import tqdm
@@ -156,6 +157,7 @@ class CBMAEstimator(Estimator):
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
+            return_type="sparse",
         )
 
         # Infer a weight vector, when applicable. Primarily used only for MKDADensity.
@@ -253,6 +255,8 @@ class CBMAEstimator(Estimator):
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
         elif isinstance(data, np.ndarray):
+            ma_values = data
+        elif isinstance(data, sparse._coo.core.COO):
             ma_values = data
         elif not isinstance(data, np.ndarray):
             raise ValueError(f"Unsupported data type '{type(data)}'")

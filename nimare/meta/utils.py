@@ -429,9 +429,9 @@ def compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict):
     n_studies = len(exp_idx_uniq)
 
     kernel_shape = (n_studies,) + shape
+    all_exp = []
     all_coords = []
     all_data = []
-    all_exp = []
     for i_exp, _ in enumerate(exp_idx_uniq):
 
         # Index peaks by experiment
@@ -451,7 +451,6 @@ def compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict):
 
         mid = int(np.floor(kernel.shape[0] / 2.0))
         mid1 = mid + 1
-        exp_coords = []
         ma_values = np.zeros(shape)
         for j_peak in range(ijk.shape[0]):
             i, j, k = ijk[j_peak, :]
@@ -489,21 +488,15 @@ def compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict):
 
         nonzero_idx = np.nonzero(ma_values)
 
-        exp_data = ma_values[nonzero_idx]
-        all_data.append(exp_data)
+        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+        all_coords.append(np.vstack(nonzero_idx))
+        all_data.append(ma_values[nonzero_idx])
 
-        exp_coords = np.vstack(nonzero_idx)
-        all_coords.append(exp_coords)
-
-        all_exp.append(np.full(exp_coords.shape[1], i_exp))
-
-    xyz_coords = np.hstack(all_coords)
     exp = np.hstack(all_exp)
+    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
+    data = np.hstack(all_data).flatten()
 
-    coords = np.vstack((exp.flatten(), xyz_coords))
-
-    data = np.hstack(all_data)
-    kernel_data = sparse.COO(coords, data.flatten(), shape=kernel_shape)
+    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
 
