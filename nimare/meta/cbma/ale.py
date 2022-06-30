@@ -158,7 +158,6 @@ class ALE(CBMAEstimator):
             mask = masker.mask_img
             mask_data = mask.get_fdata().astype(bool)
 
-            # Indexing the sparse array is slow, perform masking in the dense array
             stat_values = stat_values.todense().reshape(-1)
             stat_values = stat_values[mask_data.reshape(-1)]
 
@@ -237,7 +236,31 @@ class ALE(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=bin_edges, density=False)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            masker = self.dataset.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+            n_mask_voxels = np.count_nonzero(mask_data)
+
+            n_exp = ma_values.shape[0]
+            n_bins = bin_edges.shape[0] - 1
+            ma_hists = np.zeros((n_exp, n_bins))
+            data = ma_values.data
+            coords = ma_values.coords
+            for exp_idx in range(n_exp):
+                study_ma_values = data[coords[0, :] == exp_idx]
+
+                n_nonzero_voxels = study_ma_values.shape[0]
+                n_zero_voxels = n_mask_voxels - n_nonzero_voxels
+
+                ma_hists[exp_idx, :] = np.histogram(
+                    study_ma_values, bins=bin_edges, density=False
+                )[0]
+                ma_hists[exp_idx, 0] += n_zero_voxels
+        else:
+            ma_hists = np.apply_along_axis(
+                just_histogram, 1, ma_values, bins=bin_edges, density=False
+            )
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
