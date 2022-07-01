@@ -243,7 +243,7 @@ class ALE(CBMAEstimator):
             n_mask_voxels = np.count_nonzero(mask_data)
 
             n_exp = ma_values.shape[0]
-            n_bins = bin_edges.shape[0] - 1
+            n_bins = bin_centers.shape[0]
             ma_hists = np.zeros((n_exp, n_bins))
             data = ma_values.data
             coords = ma_values.coords
