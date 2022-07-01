@@ -248,6 +248,7 @@ class ALE(CBMAEstimator):
             data = ma_values.data
             coords = ma_values.coords
             for exp_idx in range(n_exp):
+                # The first column of coords is the fourth dimension of the dense array
                 study_ma_values = data[coords[0, :] == exp_idx]
 
                 n_nonzero_voxels = study_ma_values.shape[0]
