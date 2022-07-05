@@ -414,6 +414,14 @@ class CBMAEstimator(Estimator):
         --------
         This method is only retained for testing and algorithm development.
         """
+        if isinstance(ma_maps, sparse._coo.core.COO):
+            masker = self.dataset.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            ma_maps = ma_maps.todense()
+            ma_maps = ma_maps[:, mask_data]
+
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
