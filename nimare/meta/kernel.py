@@ -319,8 +319,10 @@ class ALEKernel(KernelTransformer):
         if self.sample_size is not None:
             sample_sizes = self.sample_size
             use_dict = False
-        else:
+        elif self.fwhm is None:
             sample_sizes = coordinates["sample_size"].values
+        else:
+            sample_sizes = None
 
         if self.fwhm is not None:
             assert np.isfinite(self.fwhm), "FWHM must be finite number"
