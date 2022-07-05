@@ -238,9 +238,7 @@ class ALE(CBMAEstimator):
 
         if isinstance(ma_values, sparse._coo.core.COO):
             masker = self.dataset.masker if not self.masker else self.masker
-            mask = masker.mask_img
-            mask_data = mask.get_fdata().astype(bool)
-            n_mask_voxels = np.count_nonzero(mask_data)
+            n_mask_voxels = np.count_nonzero(masker.mask_img.get_fdata().astype(bool))
 
             n_exp = ma_values.shape[0]
             n_bins = bin_centers.shape[0]

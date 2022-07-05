@@ -1047,7 +1047,18 @@ class KDA(CBMAEstimator):
             OF values. One value per voxel.
         """
         # OF is just a sum of MA values.
-        stat_values = np.sum(ma_values, axis=0)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            stat_values = ma_values.sum(axis=0)
+
+            masker = self.dataset.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            stat_values = stat_values.todense().reshape(-1)
+            stat_values = stat_values[mask_data.reshape(-1)]
+        else:
+            stat_values = np.sum(ma_values, axis=0)
+
         return stat_values
 
     def _determine_histogram_bins(self, ma_maps):
@@ -1064,6 +1075,8 @@ class KDA(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, sparse._coo.core.COO):
+            ma_values = ma_maps
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps
         else:
@@ -1091,7 +1104,10 @@ class KDA(CBMAEstimator):
             N_BINS = 100000
             # The maximum possible MA value is the max value from each MA map,
             # unlike the case with a summation-based kernel.
-            max_ma_values = np.max(ma_values, axis=1)
+            if isinstance(ma_values, sparse._coo.core.COO):
+                max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+            else:
+                max_ma_values = np.max(ma_values, axis=1)
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
             max_ma_values = np.ceil(max_ma_values * 1000) / 1000
@@ -1123,6 +1139,8 @@ class KDA(CBMAEstimator):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps
+        elif isinstance(ma_maps, sparse._coo.core.COO):
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -1137,7 +1155,30 @@ class KDA(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=bin_edges, density=False)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            masker = self.dataset.masker if not self.masker else self.masker
+            n_mask_voxels = np.count_nonzero(masker.mask_img.get_fdata().astype(bool))
+
+            n_exp = ma_values.shape[0]
+            n_bins = bin_centers.shape[0]
+            ma_hists = np.zeros((n_exp, n_bins))
+            data = ma_values.data
+            coords = ma_values.coords
+            for exp_idx in range(n_exp):
+                # The first column of coords is the fourth dimension of the dense array
+                study_ma_values = data[coords[0, :] == exp_idx]
+
+                n_nonzero_voxels = study_ma_values.shape[0]
+                n_zero_voxels = n_mask_voxels - n_nonzero_voxels
+
+                ma_hists[exp_idx, :] = np.histogram(
+                    study_ma_values, bins=bin_edges, density=False
+                )[0]
+                ma_hists[exp_idx, 0] += n_zero_voxels
+        else:
+            ma_hists = np.apply_along_axis(
+                just_histogram, 1, ma_values, bins=bin_edges, density=False
+            )
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
