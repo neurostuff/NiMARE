@@ -2,6 +2,7 @@
 from itertools import zip_longest
 
 import numpy as np
+import sparse
 
 from nimare.dataset import Dataset
 from nimare.io import convert_neurovault_to_dataset
@@ -266,7 +267,9 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
     # create a probability map for each peak
     kernel = get_ale_kernel(template_img, fwhm)[1]
     foci_prob_maps = {
-        tuple(peak): compute_ale_ma(template_data.shape, np.atleast_2d(peak), kernel)
+        tuple(peak): compute_ale_ma(template_data, np.atleast_2d(peak), kernel).reshape(
+            template_data.shape
+        )
         for peak in ground_truth_foci_ijks
         if peak.size
     }
@@ -274,12 +277,12 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
     # get study specific instances of each foci
     signal_studies = int(round(foci_percentage * n_studies))
     signal_ijks = {
-        peak: np.argwhere(prob_map)[
+        peak: sparse.argwhere(prob_map)[
             rng.choice(
-                np.argwhere(prob_map).shape[0],
+                sparse.argwhere(prob_map).shape[0],
                 size=signal_studies,
                 replace=True,
-                p=prob_map[np.nonzero(prob_map)] / sum(prob_map[np.nonzero(prob_map)]),
+                p=(prob_map[prob_map.nonzero()] / sum(prob_map[prob_map.nonzero()])).todense(),
             )
         ]
         for peak, prob_map in foci_prob_maps.items()

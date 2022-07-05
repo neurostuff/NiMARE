@@ -329,7 +329,9 @@ class ALEKernel(KernelTransformer):
         if use_dict:
             kernels = {}  # retain kernels in dictionary to speed things up
 
-        transformed = compute_ale_ma(mask, ijks, exp_idx, sample_sizes, kernels, use_dict)
+        transformed = compute_ale_ma(
+            mask, ijks, kernels, exp_idx=exp_idx, sample_sizes=sample_sizes, use_dict=use_dict
+        )
 
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
