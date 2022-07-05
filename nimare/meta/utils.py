@@ -397,7 +397,7 @@ def compute_kda_ma(
     return kernel_data
 
 
-def compute_ale_ma(mask, ijks, kernels, exp_idx=None, sample_sizes=None, use_dict=False):
+def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, use_dict=False):
     """Generate ALE modeled activation (MA) maps.
 
     Replaces the values around each focus in ijk with the contrast-specific
@@ -446,6 +446,8 @@ def compute_ale_ma(mask, ijks, kernels, exp_idx=None, sample_sizes=None, use_dic
                 kernels[sample_size] = kernel
             else:
                 kernel = kernels[sample_size]
+        elif sample_sizes is not None:
+            _, kernel = get_ale_kernel(mask, sample_size=sample_sizes)
         else:
             kernel = kernels
 

@@ -315,6 +315,7 @@ class ALEKernel(KernelTransformer):
         exp_idx = coordinates["id"].values
 
         use_dict = True
+        kernels = None
         if self.sample_size is not None:
             sample_sizes = self.sample_size
             use_dict = False
@@ -330,7 +331,12 @@ class ALEKernel(KernelTransformer):
             kernels = {}  # retain kernels in dictionary to speed things up
 
         transformed = compute_ale_ma(
-            mask, ijks, kernels, exp_idx=exp_idx, sample_sizes=sample_sizes, use_dict=use_dict
+            mask,
+            ijks,
+            kernels=kernels,
+            exp_idx=exp_idx,
+            sample_sizes=sample_sizes,
+            use_dict=use_dict,
         )
 
         exp_ids = np.unique(exp_idx)

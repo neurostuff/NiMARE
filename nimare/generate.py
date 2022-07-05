@@ -267,7 +267,7 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
     # create a probability map for each peak
     kernel = get_ale_kernel(template_img, fwhm)[1]
     foci_prob_maps = {
-        tuple(peak): compute_ale_ma(template_data, np.atleast_2d(peak), kernel).reshape(
+        tuple(peak): compute_ale_ma(template_data, np.atleast_2d(peak), kernels=kernel).reshape(
             template_data.shape
         )
         for peak in ground_truth_foci_ijks
