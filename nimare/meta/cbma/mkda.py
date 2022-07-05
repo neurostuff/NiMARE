@@ -166,7 +166,20 @@ class MKDADensity(CBMAEstimator):
         return weight_vec
 
     def _compute_summarystat_est(self, ma_values):
-        return ma_values.T.dot(self.weight_vec_).ravel()
+        if isinstance(ma_values, sparse._coo.core.COO):
+            ma_values = ma_values.reshape((ma_values.shape[0], -1))
+            stat_values = ma_values.T.dot(self.weight_vec_)
+
+            masker = self.dataset.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            # stat_values = stat_values.reshape(-1)
+            stat_values = stat_values[mask_data.reshape(-1)].ravel()
+        else:
+            stat_values = ma_values.T.dot(self.weight_vec_).ravel()
+
+        return stat_values
 
     def _determine_histogram_bins(self, ma_maps):
         """Determine histogram bins for null distribution methods.
@@ -181,12 +194,18 @@ class MKDADensity(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
+        elif isinstance(ma_maps, sparse._coo.core.COO):
+            ma_values = ma_maps
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
-        prop_active = ma_values.mean(1)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            prop_active = ma_values.mean(axis=(1, 2, 3)).todense()
+        else:
+            prop_active = ma_values.mean(1)
+
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
 
     def _compute_null_approximate(self, ma_maps):
@@ -206,13 +225,19 @@ class MKDADensity(CBMAEstimator):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, np.ndarray):
             ma_values = ma_maps
+        elif isinstance(ma_maps, sparse._coo.core.COO):
+            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # MKDA maps are binary, so we only have k + 1 bins in the final
         # histogram, where k is the number of studies. We can analytically
         # compute the null distribution by convolution.
-        prop_active = ma_values.mean(1)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            prop_active = ma_values.mean(axis=(1, 2, 3)).todense()
+        else:
+            prop_active = ma_values.mean(1)
+
         ss_hist = 1.0
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
