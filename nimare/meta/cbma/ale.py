@@ -153,13 +153,16 @@ class ALE(CBMAEstimator):
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
 
+        # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
         if isinstance(stat_values, sparse._coo.core.COO):
             masker = self.dataset.masker if not self.masker else self.masker
-            mask = masker.mask_img
-            mask_data = mask.get_fdata().astype(bool)
+            mask_data = masker.mask_img.get_fdata().astype(bool)
 
-            stat_values = stat_values.todense().reshape(-1)
+            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
             stat_values = stat_values[mask_data.reshape(-1)]
+
+            # This is used by _compute_null_approximate
+            self.n_mask_voxels = stat_values.shape[0]
 
         return stat_values
 
@@ -178,8 +181,6 @@ class ALE(CBMAEstimator):
             ma_values = self.masker.transform(ma_maps)
         elif isinstance(ma_maps, sparse._coo.core.COO):
             ma_values = ma_maps
-        elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -188,10 +189,8 @@ class ALE(CBMAEstimator):
         # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
         INV_STEP_SIZE = 100000
         step_size = 1 / INV_STEP_SIZE
-        if isinstance(ma_values, sparse._coo.core.COO):
-            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
-        else:
-            max_ma_values = np.max(ma_values, axis=1)
+        max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
         max_poss_ale = self._compute_summarystat(max_ma_values)
@@ -216,18 +215,12 @@ class ALE(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps
         elif isinstance(ma_maps, sparse._coo.core.COO):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
-
-        def just_histogram(*args, **kwargs):
-            """Collect the first output (weights) from numpy histogram."""
-            return np.histogram(*args, **kwargs)[0].astype(float)
 
         # Derive bin edges from histogram bin centers for numpy histogram function
         bin_centers = self.null_distributions_["histogram_bins"]
@@ -236,30 +229,22 @@ class ALE(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        if isinstance(ma_values, sparse._coo.core.COO):
-            masker = self.dataset.masker if not self.masker else self.masker
-            n_mask_voxels = np.count_nonzero(masker.mask_img.get_fdata().astype(bool))
+        n_exp = ma_values.shape[0]
+        n_bins = bin_centers.shape[0]
+        ma_hists = np.zeros((n_exp, n_bins))
+        data = ma_values.data
+        coords = ma_values.coords
+        for exp_idx in range(n_exp):
+            # The first column of coords is the fourth dimension of the dense array
+            study_ma_values = data[coords[0, :] == exp_idx]
 
-            n_exp = ma_values.shape[0]
-            n_bins = bin_centers.shape[0]
-            ma_hists = np.zeros((n_exp, n_bins))
-            data = ma_values.data
-            coords = ma_values.coords
-            for exp_idx in range(n_exp):
-                # The first column of coords is the fourth dimension of the dense array
-                study_ma_values = data[coords[0, :] == exp_idx]
+            n_nonzero_voxels = study_ma_values.shape[0]
+            n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
 
-                n_nonzero_voxels = study_ma_values.shape[0]
-                n_zero_voxels = n_mask_voxels - n_nonzero_voxels
-
-                ma_hists[exp_idx, :] = np.histogram(
-                    study_ma_values, bins=bin_edges, density=False
-                )[0]
-                ma_hists[exp_idx, 0] += n_zero_voxels
-        else:
-            ma_hists = np.apply_along_axis(
-                just_histogram, 1, ma_values, bins=bin_edges, density=False
-            )
+            ma_hists[exp_idx, :] = np.histogram(study_ma_values, bins=bin_edges, density=False)[
+                0
+            ].astype(float)
+            ma_hists[exp_idx, 0] += n_zero_voxels
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]

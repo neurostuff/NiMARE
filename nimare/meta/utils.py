@@ -424,6 +424,7 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
         exp_idx = np.ones(len(ijks))
 
     shape = mask.shape
+    mask_data = mask.get_fdata().astype(bool)
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)
@@ -487,8 +488,9 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
                 ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
                     ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
                 )
-
-        nonzero_idx = np.nonzero(ma_values)
+        # Set voxel outside the mask to zero.
+        ma_values[~mask_data] = 0
+        nonzero_idx = np.where(ma_values > 0)
 
         all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
         all_coords.append(np.vstack(nonzero_idx))

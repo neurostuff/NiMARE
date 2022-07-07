@@ -202,14 +202,13 @@ class KernelTransformer(NiMAREBase):
         if return_type == "sparse":
             return transformed_maps[0]
 
-        imgs = []
         # Loop over exp ids since sparse._coo.core.COO is not iterable
+        imgs = []
         for i_exp, id_ in enumerate(transformed_maps[1]):
-            # print(id_)
             if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
+                # This step is slow, but it is here just in case user want a
+                # return_type = "array", "image", or "dataset"
                 kernel_data = transformed_maps[0][i_exp].todense()
-            else:
-                kernel_data = transformed_maps[0][i_exp]
 
             if return_type == "array":
                 img = kernel_data[mask_data]
