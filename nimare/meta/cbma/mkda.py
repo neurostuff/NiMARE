@@ -171,11 +171,11 @@ class MKDADensity(CBMAEstimator):
             stat_values = ma_values.T.dot(self.weight_vec_)
 
             masker = self.dataset.masker if not self.masker else self.masker
-            mask = masker.mask_img
-            mask_data = mask.get_fdata().astype(bool)
+            mask_data = masker.mask_img.get_fdata().astype(bool)
 
-            # stat_values = stat_values.reshape(-1)
             stat_values = stat_values[mask_data.reshape(-1)].ravel()
+            # This is used by _compute_null_approximate
+            self.n_mask_voxels = stat_values.shape[0]
         else:
             stat_values = ma_values.T.dot(self.weight_vec_).ravel()
 
@@ -194,19 +194,31 @@ class MKDADensity(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        elif isinstance(ma_maps, np.ndarray):
+        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         if isinstance(ma_values, sparse._coo.core.COO):
-            prop_active = ma_values.mean(axis=(1, 2, 3)).todense()
+            n_exp = ma_values.shape[0]
+            prop_active = np.zeros(n_exp)
+            data = ma_values.data
+            coords = ma_values.coords
+            for exp_idx in range(n_exp):
+                # The first column of coords is the fourth dimension of the dense array
+                study_ma_values = data[coords[0, :] == exp_idx]
+
+                n_nonzero_voxels = study_ma_values.shape[0]
+                n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
+
+                prop_active[exp_idx] = np.mean(
+                    np.hstack([study_ma_values, np.zeros(n_zero_voxels)])
+                )
         else:
             prop_active = ma_values.mean(1)
 
-        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+        # This will be properly updated in _compute_null_approximate
+        self.null_distributions_["histogram_bins"] = prop_active
 
     def _compute_null_approximate(self, ma_maps):
         """Compute uncorrected null distribution using approximate solution.
@@ -221,22 +233,13 @@ class MKDADensity(CBMAEstimator):
         This method adds two entries to the null_distributions_ dict attribute:
         "histogram_bins" and "histogram_weights".
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps
-        elif isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        else:
-            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
+        assert "histogram_bins" in self.null_distributions_.keys()
 
         # MKDA maps are binary, so we only have k + 1 bins in the final
         # histogram, where k is the number of studies. We can analytically
         # compute the null distribution by convolution.
-        if isinstance(ma_values, sparse._coo.core.COO):
-            prop_active = ma_values.mean(axis=(1, 2, 3)).todense()
-        else:
-            prop_active = ma_values.mean(1)
+        # prop_active contains the mean value per experiment
+        prop_active = self.null_distributions_["histogram_bins"]
 
         ss_hist = 1.0
         for exp_prop in prop_active:
@@ -1073,15 +1076,18 @@ class KDA(CBMAEstimator):
         """
         # OF is just a sum of MA values.
         if isinstance(ma_values, sparse._coo.core.COO):
-            stat_values = ma_values.sum(axis=0)
-
             masker = self.dataset.masker if not self.masker else self.masker
-            mask = masker.mask_img
-            mask_data = mask.get_fdata().astype(bool)
+            mask_data = masker.mask_img.get_fdata().astype(bool)
+
+            stat_values = ma_values.sum(axis=0)
 
             stat_values = stat_values.todense().reshape(-1)
             stat_values = stat_values[mask_data.reshape(-1)]
+
+            # This is used by _compute_null_approximate
+            self.n_mask_voxels = stat_values.shape[0]
         else:
+            # np.array type is used by _determine_histogram_bins to calculate max_poss_value
             stat_values = np.sum(ma_values, axis=0)
 
         return stat_values
@@ -1100,9 +1106,7 @@ class KDA(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        elif isinstance(ma_maps, np.ndarray):
+        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
@@ -1130,9 +1134,11 @@ class KDA(CBMAEstimator):
             # The maximum possible MA value is the max value from each MA map,
             # unlike the case with a summation-based kernel.
             if isinstance(ma_values, sparse._coo.core.COO):
+                # Need to convert to dense because np.ceil is too slow with sparse
                 max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
             else:
                 max_ma_values = np.max(ma_values, axis=1)
+
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
             max_ma_values = np.ceil(max_ma_values * 1000) / 1000
@@ -1162,9 +1168,7 @@ class KDA(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps
-        elif isinstance(ma_maps, sparse._coo.core.COO):
+        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
@@ -1181,9 +1185,6 @@ class KDA(CBMAEstimator):
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
         if isinstance(ma_values, sparse._coo.core.COO):
-            masker = self.dataset.masker if not self.masker else self.masker
-            n_mask_voxels = np.count_nonzero(masker.mask_img.get_fdata().astype(bool))
-
             n_exp = ma_values.shape[0]
             n_bins = bin_centers.shape[0]
             ma_hists = np.zeros((n_exp, n_bins))
@@ -1194,11 +1195,11 @@ class KDA(CBMAEstimator):
                 study_ma_values = data[coords[0, :] == exp_idx]
 
                 n_nonzero_voxels = study_ma_values.shape[0]
-                n_zero_voxels = n_mask_voxels - n_nonzero_voxels
+                n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
 
                 ma_hists[exp_idx, :] = np.histogram(
                     study_ma_values, bins=bin_edges, density=False
-                )[0]
+                )[0].astype(float)
                 ma_hists[exp_idx, 0] += n_zero_voxels
         else:
             ma_hists = np.apply_along_axis(
