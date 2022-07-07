@@ -277,8 +277,7 @@ def compute_p2m_ma(
 
 
 def compute_kda_ma(
-    shape,
-    vox_dims,
+    mask,
     ijks,
     r,
     value=1.0,
@@ -325,6 +324,11 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+    shape = mask.shape
+    vox_dims = mask.header.get_zooms()
+
+    mask_data = mask.get_fdata().astype(bool)
+
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
@@ -358,18 +362,18 @@ def compute_kda_ma(
         # Convolve spheres
         sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
         chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
-        for i, peak in enumerate(peaks):
+        for peak in peaks:
             sphere_coords[chunk_idx, :] = kernel.T + peak
             chunk_idx = chunk_idx + kernel.shape[1]
 
         return sphere_coords
 
-    temp_idx = 0
     all_coords = []
+    all_exp = []
     # Loop over experiments
-    for i, exp in enumerate(exp_idx_uniq):
+    for i_exp, _ in enumerate(exp_idx_uniq):
         # Index peaks by experiment
-        curr_exp_idx = exp_idx == i
+        curr_exp_idx = exp_idx == i_exp
         peaks = ijks[curr_exp_idx]
 
         all_spheres = _convolve_sphere(kernel, peaks)
@@ -383,13 +387,18 @@ def compute_kda_ma(
         )
         all_spheres = all_spheres[idx, :]
 
-        n_brain_voxels = all_spheres.shape[0]
-        all_coords.append(np.vstack([np.full((1, n_brain_voxels), i), all_spheres.T]))
-        temp_idx += n_brain_voxels
+        ma_values = np.zeros(shape)
+        ma_values[tuple(all_spheres.T)] = 1
+        # Set voxel outside the mask to zero.
+        ma_values[~mask_data] = 0
 
-    # Usually coords.shape[1] < n_coords, since n_brain_voxels < n_voxels sometimes
-    coords = np.hstack(all_coords)
-    coords = coords[:, :temp_idx]
+        nonzero_idx = np.where(ma_values > 0)
+
+        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+        all_coords.append(np.vstack(nonzero_idx))
+
+    exp = np.hstack(all_exp)
+    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
 
     data = np.full(coords.shape[1], value)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)

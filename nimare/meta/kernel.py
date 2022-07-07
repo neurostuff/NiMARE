@@ -366,14 +366,11 @@ class KDAKernel(KernelTransformer):
         self.value = value
 
     def _transform(self, mask, coordinates):
-        dims = mask.shape
-        vox_dims = mask.header.get_zooms()
 
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims,
-            vox_dims,
+            mask,
             ijks,
             self.r,
             self.value,
