@@ -179,7 +179,7 @@ class ALE(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
+        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
@@ -189,7 +189,11 @@ class ALE(CBMAEstimator):
         # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
         INV_STEP_SIZE = 100000
         step_size = 1 / INV_STEP_SIZE
-        max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+        if isinstance(ma_values, sparse._coo.core.COO):
+            # Need to convert to dense because np.ceil is too slow with sparse
+            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+        else:
+            max_ma_values = np.max(ma_values, axis=1)
 
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
@@ -215,12 +219,16 @@ class ALE(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
+        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
+
+        def just_histogram(*args, **kwargs):
+            """Collect the first output (weights) from numpy histogram."""
+            return np.histogram(*args, **kwargs)[0].astype(float)
 
         # Derive bin edges from histogram bin centers for numpy histogram function
         bin_centers = self.null_distributions_["histogram_bins"]
@@ -229,22 +237,27 @@ class ALE(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        n_exp = ma_values.shape[0]
-        n_bins = bin_centers.shape[0]
-        ma_hists = np.zeros((n_exp, n_bins))
-        data = ma_values.data
-        coords = ma_values.coords
-        for exp_idx in range(n_exp):
-            # The first column of coords is the fourth dimension of the dense array
-            study_ma_values = data[coords[0, :] == exp_idx]
+        if isinstance(ma_values, sparse._coo.core.COO):
+            n_exp = ma_values.shape[0]
+            n_bins = bin_centers.shape[0]
+            ma_hists = np.zeros((n_exp, n_bins))
+            data = ma_values.data
+            coords = ma_values.coords
+            for exp_idx in range(n_exp):
+                # The first column of coords is the fourth dimension of the dense array
+                study_ma_values = data[coords[0, :] == exp_idx]
 
-            n_nonzero_voxels = study_ma_values.shape[0]
-            n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
+                n_nonzero_voxels = study_ma_values.shape[0]
+                n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
 
-            ma_hists[exp_idx, :] = np.histogram(study_ma_values, bins=bin_edges, density=False)[
-                0
-            ].astype(float)
-            ma_hists[exp_idx, 0] += n_zero_voxels
+                ma_hists[exp_idx, :] = np.histogram(
+                    study_ma_values, bins=bin_edges, density=False
+                )[0].astype(float)
+                ma_hists[exp_idx, 0] += n_zero_voxels
+        else:
+            ma_hists = np.apply_along_axis(
+                just_histogram, 1, ma_values, bins=bin_edges, density=False
+            )
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
