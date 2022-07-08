@@ -681,7 +681,7 @@ class SCALE(CBMAEstimator):
 
         description = (
             "A specific coactivation likelihood estimation (SCALE) meta-analysis "
-            "\\citep{langner2014meta} was performed was performed with NiMARE "
+            "\\citep{langner2014meta} was performed with NiMARE "
             f"{__version__} "
             "\\citep{Salo2022}, with "
             f"{self.n_iters} iterations."
