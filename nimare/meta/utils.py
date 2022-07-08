@@ -381,10 +381,12 @@ def compute_kda_ma(
 
         if sum_overlap:
             # if sum_overlap, counts=list
-            all_spheres, counts = unique_rows(all_spheres, value, return_counts=True)
+            all_spheres, counts = unique_rows(all_spheres, return_counts=True)
+            counts = counts * value
         else:
             # if not sum_overlap, counts=value
-            all_spheres, counts = unique_rows(all_spheres, value)
+            all_spheres = unique_rows(all_spheres)
+            counts = value
 
         # Mask coordinates beyond space
         idx = np.all(

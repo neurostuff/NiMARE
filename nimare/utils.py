@@ -983,7 +983,7 @@ def tqdm_joblib(tqdm_object):
         tqdm_object.close()
 
 
-def unique_rows(ar, value, return_counts=False):
+def unique_rows(ar, return_counts=False):
     """Remove repeated rows from a 2D array.
 
     In particular, if given an array of coordinates of shape
@@ -1035,10 +1035,9 @@ def unique_rows(ar, value, return_counts=False):
         _, unique_row_indices, counts = np.unique(
             ar_row_view, return_index=True, return_counts=True
         )
-        counts = counts * counts
+
+        return ar[unique_row_indices], counts
     else:
         _, unique_row_indices = np.unique(ar_row_view, return_index=True)
-        counts = value
 
-    ar_out = ar[unique_row_indices]
-    return ar_out, counts
+        return ar[unique_row_indices]
