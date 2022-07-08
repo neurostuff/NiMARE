@@ -41,7 +41,6 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
         Binary image representing regions not expected
         to be significant within the brain.
     """
-
     # area where I'm reasonably certain there are significant results
     sig_prob_map = compute_kda_ma(mask, ground_truth_foci_ijks, r=2, value=1, sum_overlap=False)
     sig_prob_map = sig_prob_map[0].todense()
