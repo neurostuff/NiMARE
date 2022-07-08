@@ -279,6 +279,11 @@ class Estimator(NiMAREBase):
                 self.inputs_[k] = v
 
     @abstractmethod
+    def _generate_description(self):
+        """Generate a text description of the Estimator."""
+        pass
+
+    @abstractmethod
     def _preprocess_input(self, dataset):
         """Perform any additional preprocessing steps on data in self.inputs_.
 

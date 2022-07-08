@@ -335,6 +335,22 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         self.prior = prior
 
+    def _generate_description(self):
+        description = (
+            "A multilevel kernel density chi-squared analysis \\citep{wager2007meta} was "
+            "performed according to the same procedure as implemented in Neurosynth with NiMARE "
+            f"{__version__} "
+            "\\citep{Salo2022}, "
+            f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            "This analysis calculated several measures. "
+            "The first dataset was evaluated for consistency of activation via a one-way "
+            "chi-square test. "
+            "The two datasets were also compared via a two-way chi-square test, in which"
+        )
+
+        return description
+
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
@@ -450,19 +466,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-consistency": pAgF_p_vals,
             "p_desc-specificity": pFgA_p_vals,
         }
-
-        description = (
-            "A multilevel kernel density chi-squared analysis \\citep{wager2007meta} was "
-            "performed according to the same procedure as implemented in Neurosynth with NiMARE "
-            f"{__version__} "
-            "\\citep{Salo2022}, "
-            f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
-            f"{self.kernel_transformer._generate_description()} "
-            "This analysis calculated several measures. "
-            "The first dataset was evaluated for consistency of activation via a one-way "
-            "chi-square test. "
-            "The two datasets were also compared via a two-way chi-square test, in which"
-        )
+        description = self._generate_description()
 
         return images, description
 

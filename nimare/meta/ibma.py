@@ -165,6 +165,14 @@ class Fishers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022} on z-statistic images using the Fisher combined probability "
+            "method \\citep{fisher1946statistical}."
+        )
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -184,12 +192,7 @@ class Fishers(IBMAEstimator):
             "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
-
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022} on z-statistic images using the Fisher combined probability "
-            "method \\citep{fisher1946statistical}."
-        )
+        description = self._generate_description()
 
         return maps, description
 
@@ -246,6 +249,23 @@ class Stouffers(IBMAEstimator):
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022} on z-statistic images using the Stouffer method "
+            "\\citep{stouffer1949american}"
+        )
+
+        if self.use_sample_size:
+            description += (
+                ", with studies weighted by the square root of the study sample sizes, per "
+                "\\cite{zaykin2011optimally}."
+            )
+        else:
+            description += "."
+
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -274,19 +294,7 @@ class Stouffers(IBMAEstimator):
             "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
-
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022} on z-statistic images using the Stouffer method "
-            "\\citep{stouffer1949american}"
-        )
-        if self.use_sample_size:
-            description += (
-                ", with studies weighted by the square root of the study sample sizes, per "
-                "\\cite{zaykin2011optimally}."
-            )
-        else:
-            description += "."
+        description = self._generate_description()
 
         return maps, description
 
@@ -355,6 +363,15 @@ class WeightedLeastSquares(IBMAEstimator):
         super().__init__(**kwargs)
         self.tau2 = tau2
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022},on beta images using the Weighted Least Squares approach "
+            "\\citep{brockwell2001comparison}, "
+            f"with an a priori tau-squared value of {self.tau2} defined across all voxels."
+        )
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -379,12 +396,7 @@ class WeightedLeastSquares(IBMAEstimator):
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
 
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022},on beta images using the Weighted Least Squares approach "
-            "\\citep{brockwell2001comparison}, "
-            f"with an a priori tau-squared value of {self.tau2} defined across all voxels."
-        )
+        description = self._generate_description()
 
         return maps, description
 
@@ -441,6 +453,16 @@ class DerSimonianLaird(IBMAEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022}, on beta and variance images using the DerSimonian-Laird method "
+            "\\citep{dersimonian1986meta}, in which tau-squared is estimated on a voxel-wise "
+            "basis using the method-of-moments approach "
+            "\\citep{dersimonian1986meta,kosmidis2017improving}."
+        )
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -465,13 +487,7 @@ class DerSimonianLaird(IBMAEstimator):
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
         }
 
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta and variance images using the DerSimonian-Laird method "
-            "\\citep{dersimonian1986meta}, in which tau-squared is estimated on a voxel-wise "
-            "basis using the method-of-moments approach "
-            "\\citep{dersimonian1986meta,kosmidis2017improving}."
-        )
+        description = self._generate_description()
 
         return maps, description
 
@@ -528,6 +544,15 @@ class Hedges(IBMAEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022}, on beta and variance images using the Hedges method "
+            "\\citep{hedges2014statistical}, in which tau-squared is estimated on a voxel-wise "
+            "basis."
+        )
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -550,13 +575,7 @@ class Hedges(IBMAEstimator):
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
         }
-
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta and variance images using the Hedges method "
-            "\\citep{hedges2014statistical}, in which tau-squared is estimated on a voxel-wise "
-            "basis."
-        )
+        description = self._generate_description()
 
         return maps, description
 
@@ -632,6 +651,15 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         super().__init__(**kwargs)
         self.method = method
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022}, on beta images using sample size-based maximum likelihood "
+            "estimation, in which tau-squared and sigma-squared are estimated on a voxel-wise "
+            "basis."
+        )
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -654,13 +682,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
                 self.inputs_["aggressive_mask"],
             ),
         }
-
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta images using sample size-based maximum likelihood "
-            "estimation, in which tau-squared and sigma-squared are estimated on a voxel-wise "
-            "basis."
-        )
+        description = self._generate_description()
 
         return maps, description
 
@@ -740,6 +762,14 @@ class VarianceBasedLikelihood(IBMAEstimator):
         super().__init__(**kwargs)
         self.method = method
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022}, on beta and variance images using variance-based maximum "
+            "likelihood estimation, in which tau-squared is estimated on a voxel-wise basis."
+        )
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -764,12 +794,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
         }
-
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta and variance images using variance-based maximum "
-            "likelihood estimation, in which tau-squared is estimated on a voxel-wise basis."
-        )
+        description = self._generate_description()
 
         return maps, description
 
@@ -832,6 +857,14 @@ class PermutedOLS(IBMAEstimator):
         self.two_sided = two_sided
         self.parameters_ = {}
 
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "\\citep{Salo2022}, on beta images using Nilearn's "
+            "\\citep{10.3389/fninf.2014.00014} permuted ordinary least squares method."
+        )
+        return description
+
     def _fit(self, dataset):
         self.dataset = dataset
         # Use intercept as explanatory variable
@@ -857,12 +890,7 @@ class PermutedOLS(IBMAEstimator):
             "t": _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"]),
             "z": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-
-        description = (
-            f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta images using Nilearn's "
-            "\\citep{10.3389/fninf.2014.00014} permuted ordinary least squares method."
-        )
+        description = self._generate_description()
 
         return maps, description
 
