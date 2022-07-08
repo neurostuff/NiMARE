@@ -164,6 +164,7 @@ class MKDADensity(CBMAEstimator):
             f"{__version__} "
             "\\citep{Salo2022}, using a(n) "
             f"{self.kernel_transformer.__class__.__name__} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
             f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
         )
         return description
@@ -456,6 +457,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             f"{__version__} "
             "\\citep{Salo2022}, "
             f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
             "This analysis calculated several measures. "
             "The first dataset was evaluated for consistency of activation via a one-way "
             "chi-square test. "
@@ -1099,6 +1101,7 @@ class KDA(CBMAEstimator):
             f"{__version__} "
             "\\citep{Salo2022}, "
             f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
             f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
         )
         return description

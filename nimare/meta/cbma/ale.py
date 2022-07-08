@@ -175,6 +175,7 @@ class ALE(CBMAEstimator):
             f"performed with NiMARE {__version__} "
             "\\citep{Salo2022}, using a(n) "
             f"{self.kernel_transformer.__class__.__name__} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
             f"ALE values were converted to p-values using {null_method_str}."
         )
         return description
@@ -448,9 +449,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         description = (
             "An activation likelihood estimation (ALE) subtraction analysis "
             "\\citep{laird2005ale,eickhoff2012activation} was performed with NiMARE "
-            f"{__version__} "
+            f"v{__version__} "
             "\\citep{Salo2022}, "
             f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
             "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2022} "
             "approach, which differs from the original version. "
             "In this version, ALE-difference scores are calculated between the two datasets, "
@@ -464,7 +466,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "distributions. "
             "The significance of the original ALE-difference scores was assessed using a "
             "two-sided statistical test. "
-            "The null distributions were assumed to be assymmetric, as ALE-difference scores will "
+            "The null distributions were assumed to be asymmetric, as ALE-difference scores will "
             "be skewed based on the sample sizes of the two datasets."
         )
 
