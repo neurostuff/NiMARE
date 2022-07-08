@@ -558,7 +558,7 @@ class CBMAEstimator(Estimator):
         iter_df[["x", "y", "z"]] = iter_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="array"
+            iter_df, masker=self.masker, return_type="sparse"
         )
         iter_ss_map = self._compute_summarystat(iter_ma_maps)
 

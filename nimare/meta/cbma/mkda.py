@@ -494,19 +494,34 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Generate MA maps and calculate count variables for first dataset
         temp_ma_maps1 = self.kernel_transformer.transform(
-            iter_df1, self.masker, return_type="array"
+            iter_df1, self.masker, return_type="sparse"
         )
         n_selected = temp_ma_maps1.shape[0]
-        n_selected_active_voxels = np.sum(temp_ma_maps1, axis=0)
+        n_selected_active_voxels = temp_ma_maps1.sum(axis=0)
+
+        if isinstance(n_selected_active_voxels, sparse._coo.core.COO):
+            masker = self.masker
+            mask_data = masker.mask_img.get_fdata().astype(bool)
+
+            # Indexing the sparse array is slow, perform masking in the dense array
+            n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
+            n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
+
         del temp_ma_maps1
+        gc.collect()
 
         # Generate MA maps and calculate count variables for second dataset
         temp_ma_maps2 = self.kernel_transformer.transform(
-            iter_df2, self.masker, return_type="array"
+            iter_df2, self.masker, return_type="sparse"
         )
         n_unselected = temp_ma_maps2.shape[0]
-        n_unselected_active_voxels = np.sum(temp_ma_maps2, axis=0)
+        n_unselected_active_voxels = temp_ma_maps2.sum(axis=0)
+        if isinstance(n_unselected_active_voxels, sparse._coo.core.COO):
+            n_unselected_active_voxels = n_unselected_active_voxels.todense().reshape(-1)
+            n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
+
         del temp_ma_maps2
+        gc.collect()
 
         # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels / n_selected
