@@ -370,6 +370,7 @@ def compute_kda_ma(
 
     all_coords = []
     all_exp = []
+    all_data = []
     # Loop over experiments
     for i_exp, _ in enumerate(exp_idx_uniq):
         # Index peaks by experiment
@@ -379,16 +380,22 @@ def compute_kda_ma(
         all_spheres = _convolve_sphere(kernel, peaks)
 
         if not sum_overlap:
-            all_spheres = unique_rows(all_spheres)
+            # if not sum_overlap, counts=1
+            all_spheres, counts = unique_rows(all_spheres)
+        else:
+            all_spheres, counts = unique_rows(all_spheres, return_counts=True)
 
         # Mask coordinates beyond space
         idx = np.all(
             np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
         )
+
         all_spheres = all_spheres[idx, :]
+        if sum_overlap:
+            counts = counts[idx]
 
         ma_values = np.zeros(shape)
-        ma_values[tuple(all_spheres.T)] = 1
+        ma_values[tuple(all_spheres.T)] = counts
         # Set voxel outside the mask to zero.
         ma_values[~mask_data] = 0
 
@@ -396,11 +403,12 @@ def compute_kda_ma(
 
         all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
         all_coords.append(np.vstack(nonzero_idx))
+        all_data.append(ma_values[nonzero_idx])
 
     exp = np.hstack(all_exp)
     coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
 
-    data = np.full(coords.shape[1], value)
+    data = np.hstack(all_data).flatten()
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
