@@ -217,8 +217,9 @@ class MKDADensity(CBMAEstimator):
         else:
             prop_active = ma_values.mean(1)
 
-        # This will be properly updated in _compute_null_approximate
-        self.null_distributions_["histogram_bins"] = prop_active
+        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+        # To speed things up in _compute_null_approximate, we save the means too,
+        self.null_distributions_["histogram_means"] = prop_active
 
     def _compute_null_approximate(self, ma_maps):
         """Compute uncorrected null distribution using approximate solution.
@@ -233,18 +234,18 @@ class MKDADensity(CBMAEstimator):
         This method adds two entries to the null_distributions_ dict attribute:
         "histogram_bins" and "histogram_weights".
         """
-        assert "histogram_bins" in self.null_distributions_.keys()
+        assert "histogram_means" in self.null_distributions_.keys()
 
         # MKDA maps are binary, so we only have k + 1 bins in the final
         # histogram, where k is the number of studies. We can analytically
         # compute the null distribution by convolution.
         # prop_active contains the mean value per experiment
-        prop_active = self.null_distributions_["histogram_bins"]
+        prop_active = self.null_distributions_["histogram_means"]
 
         ss_hist = 1.0
         for exp_prop in prop_active:
             ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
-        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+
         self.null_distributions_["histweights_corr-none_method-approximate"] = ss_hist
 
 
