@@ -32,6 +32,8 @@ dset = dset.slice(dset.ids[:10])
 ###############################################################################
 # The Estimator
 # -----------------------------------------------------------------------------
+from pprint import pprint
+
 from nimare.meta.cbma.ale import ALE
 
 # First, the Estimator should be initialized with any parameters.
@@ -41,7 +43,7 @@ meta = ALE()
 results = meta.fit(dset)
 
 # You can also look at the description of the Estimator.
-print(results.description)
+pprint(results.description)
 
 ###############################################################################
 # Coordinate-based Estimators allow you to provide a specific KernelTransformer
@@ -114,8 +116,6 @@ mc_results = mc_meta.fit(dset)
 ###############################################################################
 # The null distributions are stored within the Estimators
 # `````````````````````````````````````````````````````````````````````````````
-from pprint import pprint
-
 pprint(meta.null_distributions_)
 
 ###############################################################################

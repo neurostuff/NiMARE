@@ -1034,3 +1034,53 @@ def unique_rows(ar):
     _, unique_row_indices = np.unique(ar_row_view, return_index=True)
     ar_out = ar[unique_row_indices]
     return ar_out
+
+
+def search_braces(string):
+    """Search a string for braces."""
+    toret = {}
+    pstack = []
+
+    for idx, char in enumerate(string):
+        if char == "{":
+            pstack.append(idx)
+        elif char == "}":
+            if len(pstack) == 0:
+                raise IndexError(f"No matching closing parens at: {idx}")
+
+            toret[pstack.pop()] = idx
+
+    if len(pstack) > 0:
+        raise IndexError(f"No matching opening parens at: {pstack.pop()}")
+
+    toret = list(toret.items())
+    return toret
+
+
+def reduce_idx(idx_list):
+    import numpy as np
+    import pandas as pd
+
+    idx_list2 = [idx_item[0] for idx_item in idx_list]
+    idx = np.argsort(idx_list2)
+    idx_list = [idx_list[i] for i in idx]
+
+    df = pd.DataFrame(data=idx_list, columns=["start", "end"])
+
+    good_idx = []
+    df["within"] = False
+    for i, row in df.iterrows():
+        df["within"] = df["within"] | ((df["start"] > row["start"]) & (df["end"] < row["end"]))
+        if not df.iloc[i]["within"]:
+            good_idx.append(i)
+
+    idx_list = [idx_list[i] for i in good_idx]
+    return idx_list
+
+
+def thing(string, idx_list):
+    at_idx = [(a.start(), a.end() - 1) for a in re.finditer("@[a-zA-Z]+{", string)]
+    df = pd.DataFrame(at_idx, columns=["real_start", "false_start"])
+    df2 = pd.DataFrame(idx_list, columns=["false_start", "end"])
+    df = pd.merge((df, df2), left_on="false_start", right_on="false_start")
+

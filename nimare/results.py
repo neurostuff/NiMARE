@@ -102,6 +102,16 @@ class MetaResult(object):
             outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)
 
+    def _collect_references(self):
+        """Select relevant BibTeX entries for citations in the description text.
+
+        Returns
+        -------
+        bibtex_str : :obj:`str`
+            A string of relevant BibTeX entries.
+        """
+        ...
+
     def copy(self):
         """Return copy of result object."""
         new = MetaResult(
