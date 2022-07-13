@@ -621,6 +621,7 @@ class SCALE(CBMAEstimator):
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
+            return_type="array",
         )
 
         # Determine bins for null distribution histogram
