@@ -190,7 +190,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
@@ -207,8 +207,10 @@ class CBMAEstimator(Estimator):
 
         Returns
         -------
-        ma_maps : :obj:`sparse._coo.core.COO`
-            4D sparse array of shape (n_studies, mask.shape) with MA maps.
+        ma_maps : :obj:`numpy.ndarray`, or :obj:`sparse._coo.core.COO`
+            Return a 2D numpy array of shape (n_studies, n_voxels) with MA values,
+            if pre-generated MA maps exist. Otherwise, a 4D sparse array of shape
+            (n_studies, mask.shape) with MA maps is returned.
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
@@ -220,7 +222,7 @@ class CBMAEstimator(Estimator):
             ma_maps = self.kernel_transformer.transform(
                 self.inputs_[coords_key],
                 masker=self.masker,
-                return_type=return_type,
+                return_type="sparse",
             )
 
         return ma_maps

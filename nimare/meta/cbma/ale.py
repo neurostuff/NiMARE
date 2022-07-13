@@ -384,15 +384,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
-            return_type="array",
         )
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
-            return_type="array",
         )
-
-        n_grp1, n_voxels = ma_maps1.shape
 
         # Get ALE values for the two groups and difference scores
         grp1_ale_values = self._compute_summarystat_est(ma_maps1)
@@ -400,8 +396,17 @@ class ALESubtraction(PairwiseCBMAEstimator):
         diff_ale_values = grp1_ale_values - grp2_ale_values
         del grp1_ale_values, grp2_ale_values
 
+        n_grp1 = ma_maps1.shape[0]
+        n_voxels = diff_ale_values.shape[0]
+
         # Combine the MA maps into a single array to draw from for null distribution
-        ma_arr = np.vstack((ma_maps1, ma_maps2))
+        if isinstance(ma_maps1, sparse._coo.core.COO) and isinstance(
+            ma_maps2, sparse._coo.core.COO
+        ):
+            ma_arr = sparse.concatenate((ma_maps1, ma_maps2))
+        else:
+            # For ma_map_reuse
+            ma_arr = np.vstack((ma_maps1, ma_maps2))
 
         del ma_maps1, ma_maps2
 
@@ -458,6 +463,13 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+        if isinstance(stat_values, sparse._coo.core.COO):
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+
+            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
+            stat_values = stat_values[mask_data.reshape(-1)]
+
         return stat_values
 
     def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
@@ -480,8 +492,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
         gen = np.random.default_rng(seed=i_iter)
         id_idx = np.arange(ma_arr.shape[0])
         gen.shuffle(id_idx)
-        iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
-        iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
+        iter_grp1_ale_values = self._compute_summarystat_est(ma_arr[id_idx[:n_grp1], :])
+        iter_grp2_ale_values = self._compute_summarystat_est(ma_arr[id_idx[n_grp1:], :])
         iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
 
     def _alediff_to_p_voxel(self, i_voxel, stat_value, voxel_null):
@@ -676,15 +688,11 @@ class SCALE(CBMAEstimator):
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
 
-        # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
         if isinstance(stat_values, sparse._coo.core.COO):
             mask_data = self.masker.mask_img.get_fdata().astype(bool)
 
             stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
             stat_values = stat_values[mask_data.reshape(-1)]
-
-            # This is used by _compute_null_approximate
-            self.n_mask_voxels = stat_values.shape[0]
 
         return stat_values
 
