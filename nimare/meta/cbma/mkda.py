@@ -194,28 +194,23 @@ class MKDADensity(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
+        elif isinstance(ma_maps, sparse._coo.core.COO):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
-        if isinstance(ma_values, sparse._coo.core.COO):
-            n_exp = ma_values.shape[0]
-            prop_active = np.zeros(n_exp)
-            data = ma_values.data
-            coords = ma_values.coords
-            for exp_idx in range(n_exp):
-                # The first column of coords is the fourth dimension of the dense array
-                study_ma_values = data[coords[0, :] == exp_idx]
+        n_exp = ma_values.shape[0]
+        prop_active = np.zeros(n_exp)
+        data = ma_values.data
+        coords = ma_values.coords
+        for exp_idx in range(n_exp):
+            # The first column of coords is the fourth dimension of the dense array
+            study_ma_values = data[coords[0, :] == exp_idx]
 
-                n_nonzero_voxels = study_ma_values.shape[0]
-                n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
+            n_nonzero_voxels = study_ma_values.shape[0]
+            n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
 
-                prop_active[exp_idx] = np.mean(
-                    np.hstack([study_ma_values, np.zeros(n_zero_voxels)])
-                )
-        else:
-            prop_active = ma_values.mean(1)
+            prop_active[exp_idx] = np.mean(np.hstack([study_ma_values, np.zeros(n_zero_voxels)]))
 
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
         # To speed things up in _compute_null_approximate, we save the means too,
@@ -1122,7 +1117,7 @@ class KDA(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
+        elif isinstance(ma_maps, sparse._coo.core.COO):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
@@ -1149,11 +1144,8 @@ class KDA(CBMAEstimator):
             N_BINS = 100000
             # The maximum possible MA value is the max value from each MA map,
             # unlike the case with a summation-based kernel.
-            if isinstance(ma_values, sparse._coo.core.COO):
-                # Need to convert to dense because np.ceil is too slow with sparse
-                max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
-            else:
-                max_ma_values = np.max(ma_values, axis=1)
+            # Need to convert to dense because np.ceil is too slow with sparse
+            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
 
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
@@ -1184,7 +1176,7 @@ class KDA(CBMAEstimator):
         """
         if isinstance(ma_maps, list):
             ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
+        elif isinstance(ma_maps, sparse._coo.core.COO):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
@@ -1200,27 +1192,22 @@ class KDA(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        if isinstance(ma_values, sparse._coo.core.COO):
-            n_exp = ma_values.shape[0]
-            n_bins = bin_centers.shape[0]
-            ma_hists = np.zeros((n_exp, n_bins))
-            data = ma_values.data
-            coords = ma_values.coords
-            for exp_idx in range(n_exp):
-                # The first column of coords is the fourth dimension of the dense array
-                study_ma_values = data[coords[0, :] == exp_idx]
+        n_exp = ma_values.shape[0]
+        n_bins = bin_centers.shape[0]
+        ma_hists = np.zeros((n_exp, n_bins))
+        data = ma_values.data
+        coords = ma_values.coords
+        for exp_idx in range(n_exp):
+            # The first column of coords is the fourth dimension of the dense array
+            study_ma_values = data[coords[0, :] == exp_idx]
 
-                n_nonzero_voxels = study_ma_values.shape[0]
-                n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
+            n_nonzero_voxels = study_ma_values.shape[0]
+            n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
 
-                ma_hists[exp_idx, :] = np.histogram(
-                    study_ma_values, bins=bin_edges, density=False
-                )[0].astype(float)
-                ma_hists[exp_idx, 0] += n_zero_voxels
-        else:
-            ma_hists = np.apply_along_axis(
-                just_histogram, 1, ma_values, bins=bin_edges, density=False
-            )
+            ma_hists[exp_idx, :] = np.histogram(study_ma_values, bins=bin_edges, density=False)[
+                0
+            ].astype(float)
+            ma_hists[exp_idx, 0] += n_zero_voxels
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
