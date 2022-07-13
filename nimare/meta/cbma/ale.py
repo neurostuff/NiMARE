@@ -384,10 +384,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
+            return_type="array",
         )
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
+            return_type="array",
         )
 
         n_grp1, n_voxels = ma_maps1.shape

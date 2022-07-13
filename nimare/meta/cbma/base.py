@@ -157,7 +157,6 @@ class CBMAEstimator(Estimator):
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
-            return_type="sparse",
         )
 
         # Infer a weight vector, when applicable. Primarily used only for MKDADensity.
@@ -191,7 +190,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="array"):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
@@ -208,8 +207,8 @@ class CBMAEstimator(Estimator):
 
         Returns
         -------
-        ma_maps : :obj:`numpy.ndarray`
-            2D numpy array of shape (n_studies, n_voxels) with MA values.
+        ma_maps : :obj:`sparse._coo.core.COO`
+            4D sparse array of shape (n_studies, mask.shape) with MA maps.
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
@@ -236,12 +235,13 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        data : array, pandas.DataFrame, or list of img_like
+        data : array, sparse._coo.core.COO, pandas.DataFrame, or list of img_like
             Data from which to estimate summary statistics.
             The data can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            (2) a DataFrame containing coordinates to produce MA values,
-            or (3) a list of imgs containing MA values.
+            (2) a 4d sparse array of MA maps,
+            (3) a DataFrame containing coordinates to produce MA values,
+            or (4) a list of imgs containing MA values.
 
         Returns
         -------
@@ -254,11 +254,9 @@ class CBMAEstimator(Estimator):
             )
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
+        elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
             ma_values = data
-        elif isinstance(data, sparse._coo.core.COO):
-            ma_values = data
-        elif not isinstance(data, np.ndarray):
+        else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning

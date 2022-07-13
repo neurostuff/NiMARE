@@ -459,7 +459,7 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
         if kernels is not None:
             warnings.warn("The kernels provided will be replace by an empty dictionary.")
         kernels = {}  # retain kernels in dictionary to speed things up
-        if not isinstance(sample_sizes, list):
+        if not isinstance(sample_sizes, np.ndarray):
             raise ValueError("To use a kernel dictionary sample_sizes must be a list.")
     elif sample_sizes is not None:
         if not isinstance(sample_sizes, int):
