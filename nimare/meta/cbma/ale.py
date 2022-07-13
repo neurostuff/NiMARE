@@ -601,11 +601,7 @@ class SCALE(CBMAEstimator):
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
-        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
-        # a Dataset with pre-generated MA maps is provided.
-        self.memory_limit = "100mb"
 
-    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
@@ -621,11 +617,11 @@ class SCALE(CBMAEstimator):
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
-            return_type="array",
         )
 
         # Determine bins for null distribution histogram
-        max_ma_values = np.max(ma_values, axis=1)
+        max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+
         max_poss_ale = self._compute_summarystat_est(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
@@ -633,17 +629,14 @@ class SCALE(CBMAEstimator):
 
         stat_values = self._compute_summarystat_est(ma_values)
 
+        del ma_values
+
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
         rand_xyz = self.xyz[rand_idx, :]
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
 
-        perm_scale_values = np.memmap(
-            self.memmap_filenames[1],
-            dtype=stat_values.dtype,
-            mode="w+",
-            shape=(self.n_iters, stat_values.shape[0]),
-        )
+        perm_scale_values = np.zeros((self.n_iters, stat_values.shape[0]), dtype=stat_values.dtype)
         with tqdm_joblib(tqdm(total=self.n_iters)):
             Parallel(n_jobs=self.n_cores)(
                 delayed(self._run_permutation)(
@@ -653,10 +646,6 @@ class SCALE(CBMAEstimator):
             )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
-
-        if isinstance(perm_scale_values, np.memmap):
-            LGR.debug(f"Closing memmap at {perm_scale_values.filename}")
-            perm_scale_values._mmap.close()
 
         del perm_scale_values
 
@@ -676,16 +665,27 @@ class SCALE(CBMAEstimator):
         """
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
-                data, masker=self.masker, return_type="array"
+                data, masker=self.masker, return_type="sparse"
             )
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
+        elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
             ma_values = data
         else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+        # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
+        if isinstance(stat_values, sparse._coo.core.COO):
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+
+            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
+            stat_values = stat_values[mask_data.reshape(-1)]
+
+            # This is used by _compute_null_approximate
+            self.n_mask_voxels = stat_values.shape[0]
+
         return stat_values
 
     def _scale_to_p(self, stat_values, scale_values):
