@@ -993,11 +993,16 @@ def unique_rows(ar, return_counts=False):
     ----------
     ar : 2-D ndarray
         The input array.
+    return_counts : :obj:`bool`, optional
+        If True, also return the number of times each unique item appears in ar.
 
     Returns
     -------
     ar_out : 2-D ndarray
         A copy of the input array with repeated rows removed.
+    unique_counts : :obj:`np.ndarray`, optional
+        The number of times each of the unique values comes up in the original array.
+        Only provided if return_counts is True.
 
     Raises
     ------

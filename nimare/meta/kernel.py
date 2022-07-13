@@ -202,8 +202,8 @@ class KernelTransformer(NiMAREBase):
         if return_type == "sparse":
             return transformed_maps[0]
 
-        # Loop over exp ids since sparse._coo.core.COO is not iterable
         imgs = []
+        # Loop over exp ids since sparse._coo.core.COO is not iterable
         for i_exp, id_ in enumerate(transformed_maps[1]):
             if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
                 # This step is slow, but it is here just in case user want a
@@ -212,7 +212,6 @@ class KernelTransformer(NiMAREBase):
 
             if return_type == "array":
                 img = kernel_data[mask_data]
-                # print(img)
                 imgs.append(img)
             elif return_type == "image":
                 kernel_data *= mask_data
@@ -327,9 +326,6 @@ class ALEKernel(KernelTransformer):
             assert np.isfinite(self.fwhm), "FWHM must be finite number"
             _, kernels = get_ale_kernel(mask, fwhm=self.fwhm)
             use_dict = False
-
-        if use_dict:
-            kernels = {}  # retain kernels in dictionary to speed things up
 
         transformed = compute_ale_ma(
             mask,

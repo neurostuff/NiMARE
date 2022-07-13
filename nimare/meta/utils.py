@@ -1,6 +1,7 @@
 """Utilities for coordinate-based meta-analysis estimators."""
 import logging
 import os
+import warnings
 
 import nibabel as nib
 import numpy as np
@@ -297,10 +298,9 @@ def compute_kda_ma(
 
     Parameters
     ----------
-    shape : :obj:`tuple`
-        Shape of brain image + buffer. Typically (91, 109, 91).
-    vox_dims : array_like
-        Size (in mm) of each dimension of a voxel.
+    mask : img_like
+        Mask to extract the MA maps shape (typically (91, 109, 91)) and voxel dimension.
+        The mask is applied the data coordinated before creating the kernel_data.
     ijks : array-like
         Indices of foci. Each row is a coordinate, with the three columns
         corresponding to index in each of three dimensions.
@@ -427,19 +427,47 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
 
     Parameters
     ----------
-    shape : tuple
-        Shape of brain image + buffer. Typically (91, 109, 91) + (30, 30, 30).
-    ijk : array-like
+    mask : img_like
+        Mask to extract the MA maps shape (typically (91, 109, 91)) and voxel dimension.
+        The mask is applied the data coordinated before creating the kernel_data.
+    ijks : array-like
         Indices of foci. Each row is a coordinate, with the three columns
         corresponding to index in each of three dimensions.
-    kernel : array-like
+    kernels : array-like, or None, optional
         3D array of smoothing kernel. Typically of shape (30, 30, 30).
+    exp_idx : array_like
+        Optional indices of experiments. If passed, must be of same length as
+        ijks. Each unique value identifies all coordinates in ijk that come from
+        the same experiment. If None passed, it is assumed that all coordinates
+        come from the same experiment.
+    sample_sizes : array_like, :obj:`int` or None, optional
+        Array of smaple sizes or sample size, used to derive FWHM for Gaussian kernel.
+    use_dict : :obj:`bool`, optional
+        If True, empty kernels dictionary is used to retain the kernel for each element of
+        sample_sizes. If False and sample_sizes is int, the ale kernel is calculated for
+        sample_sizes. If False and sample_sizes is None, the unique kernels is used.
 
     Returns
     -------
-    ma_values : array-like
-        4d array of modeled activation values.
+    kernel_data : :obj:`sparse._coo.core.COO`
+        4D sparse array. If `exp_idx` is none, a 3d array in the same
+        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
+        is returned, where the first dimension has size equal to the number of
+        unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+    if use_dict:
+        if kernels is not None:
+            warnings.warn("The kernels provided will be replace by an empty dictionary.")
+        kernels = {}  # retain kernels in dictionary to speed things up
+        if not isinstance(sample_sizes, list):
+            raise ValueError("To use a kernel dictionary sample_sizes must be a list.")
+    elif sample_sizes is not None:
+        if not isinstance(sample_sizes, int):
+            raise ValueError("If use_dict is False, sample_sizes provided must be integer.")
+    else:
+        if kernels is None:
+            raise ValueError("3D array of smoothing kernel must be provided.")
+
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
