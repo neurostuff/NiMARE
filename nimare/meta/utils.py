@@ -429,7 +429,7 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
     ----------
     mask : img_like
         Mask to extract the MA maps shape (typically (91, 109, 91)) and voxel dimension.
-        The mask is applied the data coordinated before creating the kernel_data.
+        The mask is applied to the coordinates before creating the kernel_data.
     ijks : array-like
         Indices of foci. Each row is a coordinate, with the three columns
         corresponding to index in each of three dimensions.
