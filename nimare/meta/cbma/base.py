@@ -69,12 +69,6 @@ class CBMAEstimator(Estimator):
             mask = get_masker(mask)
         self.masker = mask
 
-        if not isinstance(self.masker, NiftiMasker):
-            raise ValueError(
-                f"A {type(self.masker)} mask has been detected. "
-                "Only NiftiMaskers are allowed for this Estimator."
-            )
-
         # Identify any kwargs
         kernel_args = {k: v for k, v in kwargs.items() if k.startswith("kernel__")}
 
@@ -109,6 +103,12 @@ class CBMAEstimator(Estimator):
             and (3) sample sizes may be added to the "coordinates" key, as needed.
         """
         masker = self.masker or dataset.masker
+
+        if not isinstance(masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator."
+            )
 
         mask_img = masker.mask_img or masker.labels_img
         if isinstance(mask_img, str):
