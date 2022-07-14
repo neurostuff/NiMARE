@@ -162,7 +162,7 @@ class ALE(CBMAEstimator):
             stat_values = stat_values[mask_data.reshape(-1)]
 
             # This is used by _compute_null_approximate
-            self.n_mask_voxels = stat_values.shape[0]
+            self.__n_mask_voxels = stat_values.shape[0]
 
         return stat_values
 
