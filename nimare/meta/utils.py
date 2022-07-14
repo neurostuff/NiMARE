@@ -417,7 +417,7 @@ def compute_kda_ma(
     return kernel_data
 
 
-def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, use_dict=False):
+def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use_dict=False):
     """Generate ALE modeled activation (MA) maps.
 
     Replaces the values around each focus in ijk with the contrast-specific
@@ -433,7 +433,7 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
     ijks : array-like
         Indices of foci. Each row is a coordinate, with the three columns
         corresponding to index in each of three dimensions.
-    kernels : array-like, or None, optional
+    kernel : array-like, or None, optional
         3D array of smoothing kernel. Typically of shape (30, 30, 30).
     exp_idx : array_like
         Optional indices of experiments. If passed, must be of same length as
@@ -456,8 +456,8 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
     if use_dict:
-        if kernels is not None:
-            warnings.warn("The kernels provided will be replace by an empty dictionary.")
+        if kernel is not None:
+            warnings.warn("The kernel provided will be replace by an empty dictionary.")
         kernels = {}  # retain kernels in dictionary to speed things up
         if not isinstance(sample_sizes, np.ndarray):
             raise ValueError("To use a kernel dictionary sample_sizes must be a list.")
@@ -465,7 +465,7 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
         if not isinstance(sample_sizes, int):
             raise ValueError("If use_dict is False, sample_sizes provided must be integer.")
     else:
-        if kernels is None:
+        if kernel is None:
             raise ValueError("3D array of smoothing kernel must be provided.")
 
     if exp_idx is None:
@@ -497,8 +497,6 @@ def compute_ale_ma(mask, ijks, kernels=None, exp_idx=None, sample_sizes=None, us
                 kernel = kernels[sample_size]
         elif sample_sizes is not None:
             _, kernel = get_ale_kernel(mask, sample_size=sample_sizes)
-        else:
-            kernel = kernels
 
         mid = int(np.floor(kernel.shape[0] / 2.0))
         mid1 = mid + 1

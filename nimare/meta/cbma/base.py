@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import sparse
 from joblib import Parallel, delayed
+from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
 
@@ -67,6 +68,12 @@ class CBMAEstimator(Estimator):
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
+
+        if not isinstance(self.masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(self.masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator."
+            )
 
         # Identify any kwargs
         kernel_args = {k: v for k, v in kwargs.items() if k.startswith("kernel__")}
@@ -215,7 +222,6 @@ class CBMAEstimator(Estimator):
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
             ma_maps = self.masker.transform(self.inputs_[maps_key])
-
         else:
             LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
 

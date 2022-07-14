@@ -155,8 +155,8 @@ class ALE(CBMAEstimator):
 
         # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
         if isinstance(stat_values, sparse._coo.core.COO):
-            masker = self.dataset.masker if not self.masker else self.masker
-            mask_data = masker.mask_img.get_fdata().astype(bool)
+            # NOTE: This may not work correctly with a non-NiftiMasker.
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
 
             stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
             stat_values = stat_values[mask_data.reshape(-1)]
@@ -171,7 +171,12 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps
+        ma_maps : list of imgs, numpy.ndarray or sparse._coo.core.COO
+            MA maps.
+            The ma_maps can be:
+            (1) a list of imgs containing MA values
+            (2) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
+            or (3) a 4d sparse array of MA maps,
 
         Notes
         -----
@@ -207,8 +212,12 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : list of imgs or numpy.ndarray
+        ma_maps : list of imgs, numpy.ndarray or sparse._coo.core.COO
             MA maps.
+            The ma_maps can be:
+            (1) a list of imgs containing MA values
+            (2) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
+            or (3) a 4d sparse array of MA maps,
 
         Notes
         -----
@@ -248,7 +257,7 @@ class ALE(CBMAEstimator):
                 study_ma_values = data[coords[0, :] == exp_idx]
 
                 n_nonzero_voxels = study_ma_values.shape[0]
-                n_zero_voxels = self.n_mask_voxels - n_nonzero_voxels
+                n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
 
                 ma_hists[exp_idx, :] = np.histogram(
                     study_ma_values, bins=bin_edges, density=False
@@ -465,6 +474,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
 
         if isinstance(stat_values, sparse._coo.core.COO):
+            # NOTE: This may not work correctly with a non-NiftiMasker.
             mask_data = self.masker.mask_img.get_fdata().astype(bool)
 
             stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
@@ -689,6 +699,7 @@ class SCALE(CBMAEstimator):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
 
         if isinstance(stat_values, sparse._coo.core.COO):
+            # NOTE: This may not work correctly with a non-NiftiMasker.
             mask_data = self.masker.mask_img.get_fdata().astype(bool)
 
             stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
