@@ -1039,6 +1039,19 @@ def unique_rows(ar):
 
 
 def coef_spline_bases(axis_coords, spacing, margin):
+    """
+    Coefficient of cubic B-spline bases in any x/y/z direction
+
+    Parameters
+    ----------
+    axis_coords : value range in x/y/z direction
+    spacing: (equally spaced) knots spacing in x/y/z direction, 
+    margin: extend the region where B-splines are constructed (min-margin, max_margin)
+            to avoid weakly-supported B-spline on the edge 
+    Returns
+    -------
+    coef_spline : 2-D ndarray (n_points x n_spline_bases)
+    """
     ## create B-spline basis for x/y/z coordinate
     wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
     knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
@@ -1057,6 +1070,22 @@ def coef_spline_bases(axis_coords, spacing, margin):
 
 
 def B_spline_bases(masker_voxels, spacing, margin=10):
+    """ Cubic B-spline bases for spatial intensity
+
+    The whole coefficient matrix is constructed by taking tensor product of
+    all B-spline bases coefficient matrix in three direction. 
+
+    Parameters
+    ----------
+    masker_voxels : matrix with element either 0 or 1, indicating if it's within brain mask,
+    spacing: (equally spaced) knots spacing in x/y/z direction, 
+    margin: extend the region where B-splines are constructed (min-margin, max_margin)
+            to avoid weakly-supported B-spline on the edge 
+    Returns
+    -------
+    X : 2-D ndarray (n_voxel x n_spline_bases)
+        only keeps with within-brain voxels
+    """
     dim_mask = masker_voxels.shape
     n_brain_voxel = np.sum(masker_voxels)
     # remove the blank space around the brain mask
@@ -1078,22 +1107,35 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
     # remove tensor product basis that have no support in the brain
     x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
     support_basis = []
+    # find and remove weakly supported B-spline bases
     for bx in range(x_df):
         for by in range(y_df):
             for bz in range(z_df):
                 basis_index = bz + z_df*by + z_df*y_df*bx
                 basis_coef = X[:, basis_index]
-                if np.max(basis_coef) >= 0.1:
+                if np.max(basis_coef) >= 0.1: 
                     support_basis.append(basis_index)
     X = X[:, support_basis]
 
     return X
 
 def vox2idx(ijk, masker_voxels):
+    """
+    Convert coordinates in voxel space to integer index (between 0 and n-voxel)
+
+    Parameters
+    ----------
+    ijk: (x,y,z) coordinates in voxel space
+    masker_voxels : matrix with element either 0 or 1, indicating if it's within brain mask,
+    spacing: (equally spaced) knots spacing in x/y/z direction
+    Returns
+    -------
+    foci_index : 1-D ndarray (n_voxel, )
+    """
     dim_mask = masker_voxels.shape
     n_brain_voxel = np.sum(masker_voxels).astype(int)
     n_foci = ijk.shape[0]
-    
+
     xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
     yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
     zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]

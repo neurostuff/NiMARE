@@ -76,64 +76,64 @@ class CBMREstimator(Estimator):
         pass
 
 
-    def _optimizer(self, model, y, Z, y_t, penalty, lr, tol, iter):
-        # optimization 
-        optimizer = torch.optim.LBFGS(model.parameters(), lr)
-        prev_loss = torch.tensor(float('inf'))
-        loss_diff = torch.tensor(float('inf'))
-        step = 0
-        count = 0
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.995)
-        while torch.abs(loss_diff) > tol: 
-            if step <= iter:
-                scheduler.step()
-                def closure():
-                    optimizer.zero_grad()
-                    loss = model(self.X, y, Z, y_t)
-                    loss.backward()
-                    return loss
-                loss = optimizer.step(closure)
-                # reset L_BFGS if NAN appears
-                if torch.any(torch.isnan(model.beta_linear.weight)):
-                    print("Reset lbfgs optimiser ......")
-                    count += 1
-                    if count > 10:
-                        break
-                    model.beta_linear.weight = torch.nn.Parameter(last_state['beta_linear.weight'])
-                    if self.covariates == True:
-                        model.gamma_linear.weight = torch.nn.Parameter(last_state['gamma_linear.weight'])
-                    if self.model == 'NB':
-                        model.theta = torch.nn.Parameter(last_state['theta'])
-                    if self.model == 'Clustered_NB':
-                        model.alpha = torch.nn.Parameter(last_state['alpha'])
-                    loss_diff = torch.tensor(float('inf'))
-                    optimizer = torch.optim.LBFGS(model.parameters(), lr)
-                    continue
-                else:
-                    last_state = copy.deepcopy(model.state_dict())
-                print("step {0}: loss {1}".format(step, loss))
-                loss_diff = loss - prev_loss
-                prev_loss = loss
-                step = step + 1
-            else:
-                print('it did not converge \n')
-                print('The difference of loss in the current and previous iteration is', loss_diff)
-                exit()
-        return 
+    # def _optimizer(self, model, y, Z, y_t, penalty, lr, tol, iter):
+    #     # optimization 
+    #     optimizer = torch.optim.LBFGS(model.parameters(), lr)
+    #     prev_loss = torch.tensor(float('inf'))
+    #     loss_diff = torch.tensor(float('inf'))
+    #     step = 0
+    #     count = 0
+    #     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.995)
+    #     while torch.abs(loss_diff) > tol: 
+    #         if step <= iter:
+    #             scheduler.step()
+    #             def closure():
+    #                 optimizer.zero_grad()
+    #                 loss = model(self.X, y, Z, y_t)
+    #                 loss.backward()
+    #                 return loss
+    #             loss = optimizer.step(closure)
+    #             # reset L_BFGS if NAN appears
+    #             if torch.any(torch.isnan(model.beta_linear.weight)):
+    #                 print("Reset lbfgs optimiser ......")
+    #                 count += 1
+    #                 if count > 10:
+    #                     break
+    #                 model.beta_linear.weight = torch.nn.Parameter(last_state['beta_linear.weight'])
+    #                 if self.covariates == True:
+    #                     model.gamma_linear.weight = torch.nn.Parameter(last_state['gamma_linear.weight'])
+    #                 if self.model == 'NB':
+    #                     model.theta = torch.nn.Parameter(last_state['theta'])
+    #                 if self.model == 'Clustered_NB':
+    #                     model.alpha = torch.nn.Parameter(last_state['alpha'])
+    #                 loss_diff = torch.tensor(float('inf'))
+    #                 optimizer = torch.optim.LBFGS(model.parameters(), lr)
+    #                 continue
+    #             else:
+    #                 last_state = copy.deepcopy(model.state_dict())
+    #             print("step {0}: loss {1}".format(step, loss))
+    #             loss_diff = loss - prev_loss
+    #             prev_loss = loss
+    #             step = step + 1
+    #         else:
+    #             print('it did not converge \n')
+    #             print('The difference of loss in the current and previous iteration is', loss_diff)
+    #             exit()
+    #     return 
         
-    def train(self, model, penalty, covariates, iter=1500, lr=0.01, tol=1e-4):
-        self.model = model
-        self.penalty = penalty
-        self.covariates = covariates
-        # model & optimization process
-        for i in range(100):
-            model = self.model_structure(model=self.model, penalty=self.penalty, covariates=self.covariates)
-            optimization = self._optimizer(model=model, y=self.y, Z=self.Z, y_t=self.y_t, penalty=self.penalty, lr=lr, tol=tol, iter=iter)
-            # beta
-            beta = model.beta_linear.weight
-            beta = beta.detach().cpu().numpy().T
-            print(np.all(np.isnan(beta)))
-            if np.all(np.isnan(beta)): 
-                print('restart the optimisation!')
-                continue
-            else:
+    # def train(self, model, penalty, covariates, iter=1500, lr=0.01, tol=1e-4):
+    #     self.model = model
+    #     self.penalty = penalty
+    #     self.covariates = covariates
+    #     # model & optimization process
+    #     for i in range(100):
+    #         model = self.model_structure(model=self.model, penalty=self.penalty, covariates=self.covariates)
+    #         optimization = self._optimizer(model=model, y=self.y, Z=self.Z, y_t=self.y_t, penalty=self.penalty, lr=lr, tol=tol, iter=iter)
+    #         # beta
+    #         beta = model.beta_linear.weight
+    #         beta = beta.detach().cpu().numpy().T
+    #         print(np.all(np.isnan(beta)))
+    #         if np.all(np.isnan(beta)): 
+    #             print('restart the optimisation!')
+    #             continue
+    #         else:
