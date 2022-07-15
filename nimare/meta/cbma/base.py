@@ -104,12 +104,6 @@ class CBMAEstimator(Estimator):
         """
         masker = self.masker or dataset.masker
 
-        if not isinstance(masker, NiftiMasker):
-            raise ValueError(
-                f"A {type(masker)} mask has been detected. "
-                "Only NiftiMaskers are allowed for this Estimator."
-            )
-
         mask_img = masker.mask_img or masker.labels_img
         if isinstance(mask_img, str):
             mask_img = nib.load(mask_img)
@@ -159,6 +153,13 @@ class CBMAEstimator(Estimator):
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
+
+        if not isinstance(self.masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(self.masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator."
+            )
+
         self.null_distributions_ = {}
 
         ma_values = self._collect_ma_maps(
