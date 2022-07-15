@@ -500,7 +500,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
             n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
 
         del temp_ma_maps1
-        gc.collect()
 
         # Generate MA maps and calculate count variables for second dataset
         temp_ma_maps2 = self.kernel_transformer.transform(
@@ -513,7 +512,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
             n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
 
         del temp_ma_maps2
-        gc.collect()
 
         # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels / n_selected
