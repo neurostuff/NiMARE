@@ -354,7 +354,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
             n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
 
         del ma_maps1
-        gc.collect()
 
         # Generate MA maps and calculate count variables for second dataset
         ma_maps2 = self._collect_ma_maps(
@@ -368,7 +367,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
             n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
 
         del ma_maps2
-        gc.collect()
 
         n_mappables = n_selected + n_unselected
 
