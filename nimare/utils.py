@@ -1074,17 +1074,31 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
     axis_dim = [x_spline.shape[0], y_spline.shape[0], z_spline.shape[0]]
     brain_voxels_index = [(z - np.min(zz))+ axis_dim[2] * (y - np.min(yy))+ axis_dim[1] * axis_dim[2] * (x - np.min(xx))
                         for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1]
-    
+    X = X[brain_voxels_index, :]
     # remove tensor product basis that have no support in the brain
     x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
-    support_basis = np.empty(shape=(0,), dtype=np.int)
+    support_basis = []
     for bx in range(x_df):
         for by in range(y_df):
             for bz in range(z_df):
                 basis_index = bz + z_df*by + z_df*y_df*bx
                 basis_coef = X[:, basis_index]
                 if np.max(basis_coef) >= 0.1:
-                    support_basis = np.append(support_basis, basis_index)
-    X = X[brain_voxels_index, support_basis]
+                    support_basis.append(basis_index)
+    X = X[:, support_basis]
 
     return X
+
+def vox2idx(ijk, masker_voxels):
+    dim_mask = masker_voxels.shape
+    n_brain_voxel = np.sum(masker_voxels).astype(int)
+    n_foci = ijk.shape[0]
+    
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+    x_dim, y_dim, z_dim = xx.shape[0], yy.shape[0], zz.shape[0]
+    foci_index = [ijk[i, 2] - np.min(zz)+ z_dim * (ijk[i, 1] - np.min(yy))+ y_dim * z_dim * (ijk[i, 0] - np.min(xx)) for i in range(n_foci)]
+    foci_index = np.array(foci_index)
+
+    return foci_index
