@@ -169,6 +169,19 @@ class ALE(CBMAEstimator):
         else:
             null_method_str = "an approximate null distribution \\citep{eickhoff2012activation}"
 
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {n_subjects} participants."
+        else:
+            sample_size_str = ""
+
         description = (
             "An activation likelihood estimation (ALE) meta-analysis "
             "\\citep{turkeltaub2002meta,turkeltaub2012minimizing,eickhoff2012activation} was "
@@ -176,7 +189,8 @@ class ALE(CBMAEstimator):
             "\\citep{Salo2022}, using a(n) "
             f"{self.kernel_transformer.__class__.__name__} kernel. "
             f"{self.kernel_transformer._generate_description()} "
-            f"ALE values were converted to p-values using {null_method_str}."
+            f"ALE values were converted to p-values using {null_method_str}. "
+            f"The input dataset included {len(self.inputs_['id'])} experiments{sample_size_str}."
         )
         return description
 
@@ -369,6 +383,24 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.memory_limit = "100mb"
 
     def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates1"].groupby("id1")["sample_size"].mean().values.sum()
+            )
+            sample_size_str1 = f", with a total of {n_subjects} participants."
+            n_subjects = (
+                self.inputs_["coordinates2"].groupby("id2")["sample_size"].mean().values.sum()
+            )
+            sample_size_str2 = f", with a total of {n_subjects} participants."
+        else:
+            sample_size_str1 = ""
+            sample_size_str2 = ""
+
         description = (
             "An activation likelihood estimation (ALE) subtraction analysis "
             "\\citep{laird2005ale,eickhoff2012activation} was performed with NiMARE "
@@ -390,7 +422,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "The significance of the original ALE-difference scores was assessed using a "
             "two-sided statistical test. "
             "The null distributions were assumed to be asymmetric, as ALE-difference scores will "
-            "be skewed based on the sample sizes of the two datasets."
+            "be skewed based on the sample sizes of the two datasets. "
+            f"The first input dataset (group1) included {len(self.inputs_['id1'])} "
+            f"experiments{sample_size_str1}. "
+            f"The second input dataset (group2) included {len(self.inputs_['id2'])} "
+            f"experiments{sample_size_str2}. "
         )
         return description
 
@@ -625,12 +661,26 @@ class SCALE(CBMAEstimator):
         self.memory_limit = "100mb"
 
     def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {n_subjects} participants."
+        else:
+            sample_size_str = ""
+
         description = (
             "A specific coactivation likelihood estimation (SCALE) meta-analysis "
             "\\citep{langner2014meta} was performed with NiMARE "
             f"{__version__} "
             "\\citep{Salo2022}, with "
-            f"{self.n_iters} iterations."
+            f"{self.n_iters} iterations. "
+            f"The input dataset included {len(self.inputs_['id'])} experiments{sample_size_str}."
         )
         return description
 
