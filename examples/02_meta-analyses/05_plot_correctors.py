@@ -89,7 +89,10 @@ fig.tight_layout()
 
 ###############################################################################
 # You can also look at the description of the Corrector.
-print(cres.description)
+print("Description:")
+pprint(cres.description)
+print("References:")
+pprint(cres.bibtex)
 
 ###############################################################################
 # Show corrected results

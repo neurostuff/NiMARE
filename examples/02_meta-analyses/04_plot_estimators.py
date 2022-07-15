@@ -43,7 +43,10 @@ meta = ALE()
 results = meta.fit(dset)
 
 # You can also look at the description of the Estimator.
+print("Description:")
 pprint(results.description)
+print("References:")
+pprint(results.bibtex)
 
 ###############################################################################
 # Coordinate-based Estimators allow you to provide a specific KernelTransformer
