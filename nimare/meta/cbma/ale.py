@@ -390,11 +390,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
         ):
             # Get the total number of subjects in the inputs.
             n_subjects = (
-                self.inputs_["coordinates1"].groupby("id1")["sample_size"].mean().values.sum()
+                self.inputs_["coordinates1"].groupby("id")["sample_size"].mean().values.sum()
             )
             sample_size_str1 = f", with a total of {n_subjects} participants."
             n_subjects = (
-                self.inputs_["coordinates2"].groupby("id2")["sample_size"].mean().values.sum()
+                self.inputs_["coordinates2"].groupby("id")["sample_size"].mean().values.sum()
             )
             sample_size_str2 = f", with a total of {n_subjects} participants."
         else:
