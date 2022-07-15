@@ -8,6 +8,7 @@ The Corrector class
 
 Here we take a look at multiple comparisons correction in meta-analyses.
 """
+from pprint import pprint
 
 import matplotlib.pyplot as plt
 import seaborn as sns
