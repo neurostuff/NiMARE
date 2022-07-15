@@ -165,18 +165,15 @@ class MKDADensity(CBMAEstimator):
         return weight_vec
 
     def _compute_summarystat_est(self, ma_values):
-        if isinstance(ma_values, sparse._coo.core.COO):
-            ma_values = ma_values.reshape((ma_values.shape[0], -1))
-            stat_values = ma_values.T.dot(self.weight_vec_)
+        ma_values = ma_values.reshape((ma_values.shape[0], -1))
+        stat_values = ma_values.T.dot(self.weight_vec_)
 
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+        # NOTE: This may not work correctly with a non-NiftiMasker.
+        mask_data = self.masker.mask_img.get_fdata().astype(bool)
 
-            stat_values = stat_values[mask_data.reshape(-1)].ravel()
-            # This is used by _compute_null_approximate
-            self.__n_mask_voxels = stat_values.shape[0]
-        else:
-            stat_values = ma_values.T.dot(self.weight_vec_).ravel()
+        stat_values = stat_values[mask_data.reshape(-1)].ravel()
+        # This is used by _compute_null_approximate
+        self.__n_mask_voxels = stat_values.shape[0]
 
         return stat_values
 
@@ -185,7 +182,11 @@ class MKDADensity(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps
+        ma_maps : list of imgs or sparse._coo.core.COO
+            MA maps.
+            The ma_maps can be:
+            (1) a list of imgs containing MA values
+            or (2) a 4d sparse array of MA maps,
 
         Notes
         -----
@@ -1099,17 +1100,15 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : umpy.ndarray or sparse._coo.core.COO
+        ma_maps : sparse._coo.core.COO
             MA maps.
-            The ma_maps can be:
-            (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            or (2) a 4d sparse array of MA maps,
+            The ma_maps can be a 4d sparse array of MA maps,
 
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if isinstance(ma_maps, (np.ndarray, sparse._coo.core.COO)):
+        if isinstance(ma_maps, sparse._coo.core.COO):
             ma_values = ma_maps
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
@@ -1136,11 +1135,8 @@ class KDA(CBMAEstimator):
             N_BINS = 100000
             # The maximum possible MA value is the max value from each MA map,
             # unlike the case with a summation-based kernel.
-            if isinstance(ma_values, sparse._coo.core.COO):
-                # Need to convert to dense because np.ceil is too slow with sparse
-                max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
-            else:
-                max_ma_values = np.max(ma_values, axis=1)
+            # Need to convert to dense because np.ceil is too slow with sparse
+            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
 
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
@@ -1161,12 +1157,11 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : list of imgs, numpy.ndarray or sparse._coo.core.COO
+        ma_maps : list of imgs or sparse._coo.core.COO
             MA maps.
             The ma_maps can be:
             (1) a list of imgs containing MA values
-            (2) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            or (3) a 4d sparse array of MA maps,
+            or (2) a 4d sparse array of MA maps,
 
         Notes
         -----
