@@ -383,13 +383,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         n_voxels = diff_ale_values.shape[0]
 
         # Combine the MA maps into a single array to draw from for null distribution
-        if isinstance(ma_maps1, sparse._coo.core.COO) and isinstance(
-            ma_maps2, sparse._coo.core.COO
-        ):
-            ma_arr = sparse.concatenate((ma_maps1, ma_maps2))
-        else:
-            # For ma_map_reuse
-            ma_arr = np.vstack((ma_maps1, ma_maps2))
+        ma_arr = sparse.concatenate((ma_maps1, ma_maps2))
 
         del ma_maps1, ma_maps2
 
