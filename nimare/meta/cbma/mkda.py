@@ -168,12 +168,16 @@ class MKDADensity(CBMAEstimator):
         ma_values = ma_values.reshape((ma_values.shape[0], -1))
         stat_values = ma_values.T.dot(self.weight_vec_)
 
-        # NOTE: This may not work correctly with a non-NiftiMasker.
-        mask_data = self.masker.mask_img.get_fdata().astype(bool)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            # NOTE: This may not work correctly with a non-NiftiMasker.
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
 
-        stat_values = stat_values[mask_data.reshape(-1)].ravel()
-        # This is used by _compute_null_approximate
-        self.__n_mask_voxels = stat_values.shape[0]
+            stat_values = stat_values[mask_data.reshape(-1)].ravel()
+            # This is used by _compute_null_approximate
+            self.__n_mask_voxels = stat_values.shape[0]
+        else:
+            # np.array type is used by _compute_null_reduced_montecarlo
+            stat_values = stat_values.ravel()
 
         return stat_values
 
