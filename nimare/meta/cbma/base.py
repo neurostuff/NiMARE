@@ -879,7 +879,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             # Grab pre-generated MA maps
             self.inputs_["ma_maps1"] = self.inputs_.pop("ma_maps")
 
-        self.inputs_["ids1"] = self.inputs_.pop("id")
+        self.inputs_["id1"] = self.inputs_.pop("id")
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
 
         # Reproduce fit() for dataset2 to collect and process inputs.
@@ -889,7 +889,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             # Grab pre-generated MA maps
             self.inputs_["ma_maps2"] = self.inputs_.pop("ma_maps")
 
-        self.inputs_["ids2"] = self.inputs_.pop("id")
+        self.inputs_["id2"] = self.inputs_.pop("id")
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
