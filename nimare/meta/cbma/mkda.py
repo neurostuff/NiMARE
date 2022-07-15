@@ -165,7 +165,9 @@ class MKDADensity(CBMAEstimator):
             "(RRID:SCR_017398; \\citealt{Salo2022}), using a(n) "
             f"{self.kernel_transformer.__class__.__name__} kernel. "
             f"{self.kernel_transformer._generate_description()} "
-            f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments."
         )
         return description
 
@@ -346,7 +348,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "This analysis calculated several measures. "
             "The first dataset was evaluated for consistency of activation via a one-way "
             "chi-square test. "
-            "The two datasets were also compared via a two-way chi-square test, in which"
+            f"The first input dataset included {self.inputs_['coordinates1'].shape[0]} foci from "
+            f"{len(self.inputs_['id1'])} experiments. "
+            f"The second input dataset included {self.inputs_['coordinates2'].shape[0]} foci from "
+            f"{len(self.inputs_['id2'])} experiments."
         )
 
         return description
@@ -1106,7 +1111,9 @@ class KDA(CBMAEstimator):
             "(RRID:SCR_017398; \\citealt{Salo2022}), "
             f"using a(n) {self.kernel_transformer.__class__.__name__} kernel. "
             f"{self.kernel_transformer._generate_description()} "
-            f"Summary statistics (OF values) were converted to p-values using {null_method_str}."
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments."
         )
         return description
 

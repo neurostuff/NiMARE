@@ -190,7 +190,8 @@ class ALE(CBMAEstimator):
             f"{self.kernel_transformer.__class__.__name__} kernel. "
             f"{self.kernel_transformer._generate_description()} "
             f"ALE values were converted to p-values using {null_method_str}. "
-            f"The input dataset included {len(self.inputs_['id'])} experiments{sample_size_str}."
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
         )
         return description
 
@@ -423,10 +424,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "two-sided statistical test. "
             "The null distributions were assumed to be asymmetric, as ALE-difference scores will "
             "be skewed based on the sample sizes of the two datasets. "
-            f"The first input dataset (group1) included {len(self.inputs_['id1'])} "
-            f"experiments{sample_size_str1}. "
-            f"The second input dataset (group2) included {len(self.inputs_['id2'])} "
-            f"experiments{sample_size_str2}. "
+            f"The first input dataset (group1) included {self.inputs_['coordinates1'].shape[0]} "
+            f"foci from {len(self.inputs_['id1'])} experiments{sample_size_str1}. "
+            f"The second input dataset (group2) included {self.inputs_['coordinates2'].shape[0]} "
+            f"foci from {len(self.inputs_['id2'])} experiments{sample_size_str2}. "
         )
         return description
 
@@ -680,7 +681,8 @@ class SCALE(CBMAEstimator):
             f"{__version__} "
             "(RRID:SCR_017398; \\citealt{Salo2022}), with "
             f"{self.n_iters} iterations. "
-            f"The input dataset included {len(self.inputs_['id'])} experiments{sample_size_str}."
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
         )
         return description
 
