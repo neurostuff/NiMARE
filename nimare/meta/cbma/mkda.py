@@ -186,27 +186,21 @@ class MKDADensity(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : list of imgs or sparse._coo.core.COO
+        ma_maps : sparse._coo.core.COO
             MA maps.
-            The ma_maps can be:
-            (1) a list of imgs containing MA values
-            or (2) a 4d sparse array of MA maps,
+            The ma_maps can be a 4d sparse array of MA maps,
 
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        else:
+        if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
-        n_exp = ma_values.shape[0]
+        n_exp = ma_maps.shape[0]
         prop_active = np.zeros(n_exp)
-        data = ma_values.data
-        coords = ma_values.coords
+        data = ma_maps.data
+        coords = ma_maps.coords
         for exp_idx in range(n_exp):
             # The first column of coords is the fourth dimension of the dense array
             study_ma_values = data[coords[0, :] == exp_idx]
@@ -1112,9 +1106,7 @@ class KDA(CBMAEstimator):
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        else:
+        if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # assumes that groupby results in same order as MA maps
@@ -1140,7 +1132,7 @@ class KDA(CBMAEstimator):
             # The maximum possible MA value is the max value from each MA map,
             # unlike the case with a summation-based kernel.
             # Need to convert to dense because np.ceil is too slow with sparse
-            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+            max_ma_values = ma_maps.max(axis=[1, 2, 3]).todense()
 
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
@@ -1161,27 +1153,17 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : list of imgs or sparse._coo.core.COO
+        ma_maps : imgs or sparse._coo.core.COO
             MA maps.
-            The ma_maps can be:
-            (1) a list of imgs containing MA values
-            or (2) a 4d sparse array of MA maps,
+            The ma_maps can be a 4d sparse array of MA maps,
 
         Notes
         -----
         This method adds two entries to the null_distributions_ dict attribute:
         "histogram_bins" and "histogram_weights".
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        else:
+        if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
-
-        def just_histogram(*args, **kwargs):
-            """Collect the first output (weights) from numpy histogram."""
-            return np.histogram(*args, **kwargs)[0].astype(float)
 
         # Derive bin edges from histogram bin centers for numpy histogram function
         bin_centers = self.null_distributions_["histogram_bins"]
@@ -1190,11 +1172,11 @@ class KDA(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        n_exp = ma_values.shape[0]
+        n_exp = ma_maps.shape[0]
         n_bins = bin_centers.shape[0]
         ma_hists = np.zeros((n_exp, n_bins))
-        data = ma_values.data
-        coords = ma_values.coords
+        data = ma_maps.data
+        coords = ma_maps.coords
         for exp_idx in range(n_exp):
             # The first column of coords is the fourth dimension of the dense array
             study_ma_values = data[coords[0, :] == exp_idx]
