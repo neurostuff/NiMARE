@@ -53,7 +53,17 @@ class MetaResult(object):
         self.masker = get_masker(mask)
         self.maps = maps or {}
         self.description = description
-        self.bibtex = get_description_references(description)
+
+    @property
+    def description(self):
+        """:obj:`str`: A textual description of the method that generated the result."""
+        return self.__description
+
+    @description.setter
+    def description(self, desc):
+        """Automatically extract references when the description is set."""
+        self.__description = desc
+        self.bibtex = get_description_references(desc)
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.

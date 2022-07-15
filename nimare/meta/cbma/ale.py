@@ -178,7 +178,7 @@ class ALE(CBMAEstimator):
             n_subjects = (
                 self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
             )
-            sample_size_str = f", with a total of {n_subjects} participants."
+            sample_size_str = f", with a total of {n_subjects} participants"
         else:
             sample_size_str = ""
 
@@ -393,11 +393,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
             n_subjects = (
                 self.inputs_["coordinates1"].groupby("id")["sample_size"].mean().values.sum()
             )
-            sample_size_str1 = f", with a total of {n_subjects} participants."
+            sample_size_str1 = f", with a total of {n_subjects} participants"
             n_subjects = (
                 self.inputs_["coordinates2"].groupby("id")["sample_size"].mean().values.sum()
             )
-            sample_size_str2 = f", with a total of {n_subjects} participants."
+            sample_size_str2 = f", with a total of {n_subjects} participants"
         else:
             sample_size_str1 = ""
             sample_size_str2 = ""
@@ -671,7 +671,7 @@ class SCALE(CBMAEstimator):
             n_subjects = (
                 self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
             )
-            sample_size_str = f", with a total of {n_subjects} participants."
+            sample_size_str = f", with a total of {n_subjects} participants"
         else:
             sample_size_str = ""
 

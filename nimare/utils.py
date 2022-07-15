@@ -1149,7 +1149,8 @@ def find_citations(description):
     """
     paren_citations = re.findall(r"\\citep{([a-zA-Z0-9,/\.]+)}", description)
     intext_citations = re.findall(r"\\cite{([a-zA-Z0-9,/\.]+)}", description)
-    all_citations = ",".join(paren_citations + intext_citations)
+    inparen_citations = re.findall(r"\\citealt{([a-zA-Z0-9,/\.]+)}", description)
+    all_citations = ",".join(paren_citations + intext_citations + inparen_citations)
     all_citations = all_citations.split(",")
     all_citations = sorted(list(set(all_citations)))
     return all_citations
