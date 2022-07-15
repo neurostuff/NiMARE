@@ -171,21 +171,15 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : list of imgs or sparse._coo.core.COO
+        ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
-            The ma_maps can be:
-            (1) a list of imgs containing MA values
-            or (2) a 4d sparse array of MA maps,
+            The ma_maps can be a 4d sparse array of MA maps,
 
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        else:
+        if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # Determine bins for null distribution histogram
@@ -194,7 +188,7 @@ class ALE(CBMAEstimator):
         INV_STEP_SIZE = 100000
         step_size = 1 / INV_STEP_SIZE
         # Need to convert to dense because np.ceil is too slow with sparse
-        max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+        max_ma_values = ma_maps.max(axis=[1, 2, 3]).todense()
 
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
@@ -208,11 +202,9 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : list of imgs or sparse._coo.core.COO
+        ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
-            The ma_maps can be:
-            (1) a list of imgs containing MA values
-            or (2) a 4d sparse array of MA maps,
+            The ma_maps can be 4D sparse array of MA maps,
 
         Notes
         -----
@@ -221,11 +213,7 @@ class ALE(CBMAEstimator):
             - "histogram_bins"
             - "histweights_corr-none_method-approximate"
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, sparse._coo.core.COO):
-            ma_values = ma_maps
-        else:
+        if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
@@ -237,11 +225,11 @@ class ALE(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        n_exp = ma_values.shape[0]
+        n_exp = ma_maps.shape[0]
         n_bins = bin_centers.shape[0]
         ma_hists = np.zeros((n_exp, n_bins))
-        data = ma_values.data
-        coords = ma_values.coords
+        data = ma_maps.data
+        coords = ma_maps.coords
         for exp_idx in range(n_exp):
             # The first column of coords is the fourth dimension of the dense array
             study_ma_values = data[coords[0, :] == exp_idx]
@@ -665,7 +653,7 @@ class SCALE(CBMAEstimator):
         return images
 
     def _compute_summarystat_est(self, data):
-        """Generate ALE-value array and null distribution from list of contrasts.
+        """Generate ALE-value array and null distribution from a list of contrasts.
 
         For ALEs on the original dataset, computes the null distribution.
         For permutation ALEs and all SCALEs, just computes ALE values.
@@ -675,8 +663,6 @@ class SCALE(CBMAEstimator):
             ma_values = self.kernel_transformer.transform(
                 data, masker=self.masker, return_type="sparse"
             )
-        elif isinstance(data, list):
-            ma_values = self.masker.transform(data)
         elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
             ma_values = data
         else:

@@ -186,7 +186,7 @@ class MKDADensity(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : sparse._coo.core.COO
+        ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
             The ma_maps can be a 4d sparse array of MA maps,
 
@@ -1064,7 +1064,7 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : numpy.ndarray or sparse._coo.core.COO
+        ma_maps : :obj:`numpy.ndarray` or :obj:`sparse._coo.core.COO`
             MA maps.
             The ma_maps can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
@@ -1098,7 +1098,7 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : sparse._coo.core.COO
+        ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
             The ma_maps can be a 4d sparse array of MA maps,
 
@@ -1153,7 +1153,7 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : imgs or sparse._coo.core.COO
+        ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
             The ma_maps can be a 4d sparse array of MA maps,
 
