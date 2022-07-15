@@ -168,8 +168,8 @@ class Fishers(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022} on z-statistic images using the Fisher combined probability "
-            "method \\citep{fisher1946statistical}."
+            "(RRID:SCR_017398; \\citealt{Salo2022}) on z-statistic images using the Fisher "
+            "combined probability method \\citep{fisher1946statistical}."
         )
         return description
 
@@ -252,8 +252,8 @@ class Stouffers(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022} on z-statistic images using the Stouffer method "
-            "\\citep{stouffer1949american}"
+            "(RRID:SCR_017398; \\citealt{Salo2022}) on z-statistic images using the Stouffer "
+            "method \\citep{stouffer1949american}"
         )
 
         if self.use_sample_size:
@@ -366,8 +366,8 @@ class WeightedLeastSquares(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022},on beta images using the Weighted Least Squares approach "
-            "\\citep{brockwell2001comparison}, "
+            "(RRID:SCR_017398; \\citealt{Salo2022}),on beta images using the Weighted Least "
+            "Squares approach \\citep{brockwell2001comparison}, "
             f"with an a priori tau-squared value of {self.tau2} defined across all voxels."
         )
         return description
@@ -456,9 +456,9 @@ class DerSimonianLaird(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta and variance images using the DerSimonian-Laird method "
-            "\\citep{dersimonian1986meta}, in which tau-squared is estimated on a voxel-wise "
-            "basis using the method-of-moments approach "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), on beta and variance images using the "
+            "DerSimonian-Laird method \\citep{dersimonian1986meta}, in which tau-squared is "
+            "estimated on a voxel-wise basis using the method-of-moments approach "
             "\\citep{dersimonian1986meta,kosmidis2017improving}."
         )
         return description
@@ -547,9 +547,9 @@ class Hedges(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta and variance images using the Hedges method "
-            "\\citep{hedges2014statistical}, in which tau-squared is estimated on a voxel-wise "
-            "basis."
+            "(RRID:SCR_017398; \\citealt{Salo2022}), on beta and variance images using the Hedges "
+            "method \\citep{hedges2014statistical}, in which tau-squared is estimated on a "
+            "voxel-wise basis."
         )
         return description
 
@@ -654,9 +654,9 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta images using sample size-based maximum likelihood "
-            "estimation, in which tau-squared and sigma-squared are estimated on a voxel-wise "
-            "basis."
+            "(RRID:SCR_017398; \\citealt{Salo2022}), on beta images using sample size-based "
+            "maximum likelihood estimation, in which tau-squared and sigma-squared are estimated "
+            "on a voxel-wise basis."
         )
         return description
 
@@ -765,8 +765,9 @@ class VarianceBasedLikelihood(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta and variance images using variance-based maximum "
-            "likelihood estimation, in which tau-squared is estimated on a voxel-wise basis."
+            "(RRID:SCR_017398; \\citealt{Salo2022}), on beta and variance images using "
+            "variance-based maximum likelihood estimation, in which tau-squared is estimated on a "
+            "voxel-wise basis."
         )
         return description
 
@@ -860,7 +861,7 @@ class PermutedOLS(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "\\citep{Salo2022}, on beta images using Nilearn's "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), on beta images using Nilearn's "
             "\\citep{10.3389/fninf.2014.00014} permuted ordinary least squares method."
         )
         return description
