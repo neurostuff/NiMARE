@@ -5,7 +5,7 @@ import os
 
 from nibabel.funcs import squeeze_image
 
-from nimare.utils import get_masker
+from nimare.utils import get_description_references, get_masker
 
 LGR = logging.getLogger(__name__)
 
@@ -37,6 +37,10 @@ class MetaResult(object):
         Keys are map names and values are arrays.
     description : :obj:`str`
         A textual description of the method that generated the result.
+    bibtex : :obj:`str`
+        The BibTeX entries for any citations in ``description``.
+        These entries are extracted from NiMARE's references.bib file and filtered based on the
+        description automatically.
     """
 
     def __init__(self, estimator, mask, maps=None, description=""):
@@ -44,6 +48,7 @@ class MetaResult(object):
         self.masker = get_masker(mask)
         self.maps = maps or {}
         self.description = description
+        self.bibtex = get_description_references(description)
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
@@ -101,16 +106,6 @@ class MetaResult(object):
             filename = prefix + imgtype + ".nii.gz"
             outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)
-
-    def _collect_references(self):
-        """Select relevant BibTeX entries for citations in the description text.
-
-        Returns
-        -------
-        bibtex_str : :obj:`str`
-            A string of relevant BibTeX entries.
-        """
-        ...
 
     def copy(self):
         """Return copy of result object."""
