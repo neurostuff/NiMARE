@@ -37,10 +37,15 @@ class MetaResult(object):
         Keys are map names and values are arrays.
     description : :obj:`str`
         A textual description of the method that generated the result.
+
+        Citations in this description are formatted according to ``natbib``'s LaTeX format.
     bibtex : :obj:`str`
         The BibTeX entries for any citations in ``description``.
         These entries are extracted from NiMARE's references.bib file and filtered based on the
         description automatically.
+
+        Users should be able to copy the contents of the ``bibtex`` attribute into their own
+        BibTeX file without issue.
     """
 
     def __init__(self, estimator, mask, maps=None, description=""):
