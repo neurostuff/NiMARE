@@ -1,7 +1,7 @@
 Working with Meta-Analytic Data
 ===============================
 
-:ref:`_sphx_glr_auto_examples_01_datasets_01_plot_dataset_io.py`
+
 
 :ref:`sphx_glr_auto_examples_01_datasets_01_plot_dataset_io.py`
 
