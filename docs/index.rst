@@ -122,15 +122,16 @@ Then, to cite NiMARE in your manuscript, we recommend something like the followi
 
    about
    installation
+   user_guide
    api
    auto_examples/index
-   contributing
-   dev_guide
    cli
    outputs
    methods
    changelog
    glossary
+   contributing
+   dev_guide
 
 Indices and tables
 ------------------
