@@ -14,7 +14,25 @@ rather than uploading unthresholded statistical maps to a database, like NeuroVa
     :ref:`sphx_glr_auto_examples_02_meta-analyses_01_plot_cbma.py`, and
     :ref:`sphx_glr_auto_examples_02_meta-analyses_05_plot_correctors.py`.
 
+Selecting studies for a meta-analysis
+-------------------------------------
+
+Organizing the dataset in NiMARE
+--------------------------------
+
+Performing the meta-analysis
+----------------------------
+
 .. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_01_plot_cbma_001.png
     :target: ../auto_examples/02_meta-analyses/01_plot_cbma.ipynb
     :align: center
     :scale: 100
+
+Multiple comparisons correction
+-------------------------------
+
+Saving the results
+------------------
+
+Performing additional followup analyses
+---------------------------------------

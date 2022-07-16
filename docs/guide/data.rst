@@ -1,7 +1,14 @@
 Working with Meta-Analytic Data
 ===============================
 
+Downloading large databases
+---------------------------
 
+Converting datasets from BrainMap
+---------------------------------
+
+The Dataset object
+------------------
 
 :ref:`sphx_glr_auto_examples_01_datasets_01_plot_dataset_io.py`
 
