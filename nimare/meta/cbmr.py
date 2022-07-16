@@ -72,8 +72,7 @@ class CBMREstimator(Estimator):
                 self.inputs_['n_foci_per_study'] = n_foci_per_study
 
     def _model_structure(self, model, penalty, device):
-        # beta_dim = self.inputs_['Coef_spline_bases'].shape[1] # regression coef of spatial effect
-        beta_dim = 2627
+        beta_dim = self.inputs_['Coef_spline_bases'].shape[1] # regression coef of spatial effect
         if hasattr(self, "moderators"):
             gamma_dim = self.inputs_["moderators_array"].shape[1]
             study_level_covariates = True
@@ -88,77 +87,79 @@ class CBMREstimator(Estimator):
         return cbmr_model
 
     def _fit(self, dataset, spline_spacing=5, model='Poisson', penalty=False, n_iter=1000, lr=1e-2, tol=1e-2, device='cpu'):
+        self.model = model
         masker_voxels = self.inputs_['mask_img']._dataobj
-        # Coef_spline_bases = B_spline_bases(masker_voxels=masker_voxels, spacing=spline_spacing)
-        # self.inputs_['Coef_spline_bases'] = Coef_spline_bases
+        Coef_spline_bases = B_spline_bases(masker_voxels=masker_voxels, spacing=spline_spacing)
+        self.inputs_['Coef_spline_bases'] = Coef_spline_bases
 
-        model = self._model_structure(model, penalty, device)
+        cbmr_model = self._model_structure(model, penalty, device)
+        optimisation = self._optimizer(cbmr_model, penalty, lr, tol, n_iter, device)
 
+        return
 
+    def _update(self, model, penalty, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study, gamma=0.99):
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=gamma) # learning rate decay
+        scheduler.step()
+        def closure():
+            optimizer.zero_grad()
+            loss = model(penalty, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study)
+            loss.backward()
+            return loss
+        loss = optimizer.step(closure)
+
+        
+        
         pass
 
+    def _optimizer(self, model, penalty, lr, tol, n_iter, device): 
+        optimizer = torch.optim.LBFGS(model.parameters(), lr)
+        # load dataset info to torch.tensor
+        Coef_spline_bases = torch.tensor(self.inputs_['Coef_spline_bases'], dtype=torch.float64, device=device)
+        if hasattr(self, "moderators"):
+            moderators_array = torch.tensor(self.inputs_['moderators_array'], dtype=torch.float64, device=device)
+        n_foci_per_voxel = torch.tensor(self.inputs_['n_foci_per_voxel'], dtype=torch.float64, device=device)
+        n_foci_per_study = torch.tensor(self.inputs_['n_foci_per_study'], dtype=torch.float64, device=device)
+        for i in range(n_iter):
+            self._update(model, penalty, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study)
 
-    # def _optimizer(self, model, y, Z, y_t, penalty, lr, tol, iter):
-    #     # optimization 
-    #     optimizer = torch.optim.LBFGS(model.parameters(), lr)
-    #     prev_loss = torch.tensor(float('inf'))
-    #     loss_diff = torch.tensor(float('inf'))
-    #     step = 0
-    #     count = 0
-    #     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.995)
-    #     while torch.abs(loss_diff) > tol: 
-    #         if step <= iter:
-    #             scheduler.step()
-    #             def closure():
-    #                 optimizer.zero_grad()
-    #                 loss = model(self.X, y, Z, y_t)
-    #                 loss.backward()
-    #                 return loss
-    #             loss = optimizer.step(closure)
-    #             # reset L_BFGS if NAN appears
-    #             if torch.any(torch.isnan(model.beta_linear.weight)):
-    #                 print("Reset lbfgs optimiser ......")
-    #                 count += 1
-    #                 if count > 10:
-    #                     break
-    #                 model.beta_linear.weight = torch.nn.Parameter(last_state['beta_linear.weight'])
-    #                 if self.covariates == True:
-    #                     model.gamma_linear.weight = torch.nn.Parameter(last_state['gamma_linear.weight'])
-    #                 if self.model == 'NB':
-    #                     model.theta = torch.nn.Parameter(last_state['theta'])
-    #                 if self.model == 'Clustered_NB':
-    #                     model.alpha = torch.nn.Parameter(last_state['alpha'])
-    #                 loss_diff = torch.tensor(float('inf'))
-    #                 optimizer = torch.optim.LBFGS(model.parameters(), lr)
-    #                 continue
-    #             else:
-    #                 last_state = copy.deepcopy(model.state_dict())
-    #             print("step {0}: loss {1}".format(step, loss))
-    #             loss_diff = loss - prev_loss
-    #             prev_loss = loss
-    #             step = step + 1
-    #         else:
-    #             print('it did not converge \n')
-    #             print('The difference of loss in the current and previous iteration is', loss_diff)
-    #             exit()
-    #     return 
-        
-    # def train(self, model, penalty, covariates, iter=1500, lr=0.01, tol=1e-4):
-    #     self.model = model
-    #     self.penalty = penalty
-    #     self.covariates = covariates
-    #     # model & optimization process
-    #     for i in range(100):
-    #         model = self.model_structure(model=self.model, penalty=self.penalty, covariates=self.covariates)
-    #         optimization = self._optimizer(model=model, y=self.y, Z=self.Z, y_t=self.y_t, penalty=self.penalty, lr=lr, tol=tol, iter=iter)
-    #         # beta
-    #         beta = model.beta_linear.weight
-    #         beta = beta.detach().cpu().numpy().T
-    #         print(np.all(np.isnan(beta)))
-    #         if np.all(np.isnan(beta)): 
-    #             print('restart the optimisation!')
-    #             continue
-    #         else:
+
+        # while torch.abs(loss_diff) > tol: 
+        #     if step <= n_iter:
+        #         scheduler.step()
+        #         def closure():
+        #             optimizer.zero_grad()
+        #             loss = model(self.X, y, Z, y_t)
+        #             loss.backward()
+        #             return loss
+        #         loss = optimizer.step(closure)
+        #         # reset L_BFGS if NAN appears
+        #         if torch.any(torch.isnan(model.beta_linear.weight)):
+        #             print("Reset lbfgs optimiser ......")
+        #             count += 1
+        #             if count > 10:
+        #                 print('optimisation failed')
+        #                 break
+        #             model.beta_linear.weight = torch.nn.Parameter(last_state['beta_linear.weight'])
+        #             if self.covariates == True:
+        #                 model.gamma_linear.weight = torch.nn.Parameter(last_state['gamma_linear.weight'])
+        #             if self.model == 'NB':
+        #                 model.theta = torch.nn.Parameter(last_state['theta'])
+        #             if self.model == 'Clustered_NB':
+        #                 model.alpha = torch.nn.Parameter(last_state['alpha'])
+        #             loss_diff = torch.tensor(float('inf'))
+        #             optimizer = torch.optim.LBFGS(model.parameters(), lr)
+        #             continue
+        #         else:
+        #             last_state = copy.deepcopy(model.state_dict())
+        #         print("step {0}: loss {1}".format(step, loss))
+        #         loss_diff = loss - prev_loss
+        #         prev_loss = loss
+        #         step = step + 1
+        #     else:
+        #         print('it did not converge \n')
+        #         print('The difference of loss in the current and previous iteration is', loss_diff)
+        #         exit()
+        # return 
 
 
 class GLMPoisson(torch.nn.Module):
@@ -166,51 +167,28 @@ class GLMPoisson(torch.nn.Module):
         super().__init__()
         self.study_level_covariates = study_level_covariates
         # initialization for beta
-        self.beta_linear = torch.nn.Linear(beta_dim, 1, bias=False)#.double()
+        self.beta_linear = torch.nn.Linear(beta_dim, 1, bias=False).double()
         torch.nn.init.uniform_(self.beta_linear.weight, a=-0.01, b=0.01)
         # gamma 
         if self.study_level_covariates:
             self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
             torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
     
-    def forward(self, X, y, Z=None, y_t=None):
-        # mu^X = exp(X * beta)
-        log_mu_X = self.beta_linear(X) 
+    def forward(self, penalty, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study):
+        # spatial effect: mu^X = exp(X * beta)
+        log_mu_X = self.beta_linear(Coef_spline_bases) 
         mu_X = torch.exp(log_mu_X)
-        # n_study
-        n_study = y_t.shape[0]
-        if self.covariates == True:
-            # mu^Z = exp(Z * gamma)
-            log_mu_Z = self.gamma_linear(Z)
-            mu_Z = torch.exp(log_mu_Z)
-        else:
-            log_mu_Z = torch.zeros(n_study, 1, device='cuda')
-            mu_Z = torch.ones(n_study, 1, device='cuda')
-        # Under the assumption that Y_ij is either 0 or 1
-        # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
-        log_l = torch.sum(torch.mul(y, log_mu_X)) + torch.sum(torch.mul(y_t, log_mu_Z)) - torch.sum(mu_X) * torch.sum(mu_Z) 
-        if self.penalty == 'No':
-            l = log_l
-        elif self.penalty == 'Firth':
-            I = self.Fisher_information(X, mu_X, Z, mu_Z)
-            eig_vals = torch.linalg.eig(I)[0].real
-            log_det_I = torch.sum(torch.log(eig_vals))
-            l = log_l + 1/2 * log_det_I
-            # start_time = time.time()
-            # beta = self.beta_linear.weight.T
-            # gamma = self.gamma_linear.weight.T
-            # params = (beta, gamma)
-            # # l = GLMPoisson._log_likelihood(beta, gamma, X, y, Z, y_t)
-            # nll = lambda beta, gamma: -GLMPoisson._log_likelihood(beta, gamma, X, y, Z, y_t)
-            # h = torch.autograd.functional.hessian(nll, params, create_graph=False)
-            # n_params = len(h)
-            # # approximate hessian matrix by its diagonal matrix
-            # h_beta = h[0][0].view(self.beta_dim, -1)
-            # h_gamma = h[1][1].view(self.gamma_dim, -1)
-            # h_diagonal_beta, h_diagonal_gamma = torch.diagonal(h_beta, 0), torch.diagonal(h_gamma, 0)
-            # # # Firth-type penalty
-            # log_det_I = torch.sum(torch.log(h_diagonal_beta)) + torch.sum(torch.log(h_diagonal_gamma))
-            # l = log_l + 1/2 * log_det_I
-            # print(log_det_I)
+        # if self.covariates == True:
+        #     # mu^Z = exp(Z * gamma)
+        #     log_mu_Z = self.gamma_linear(Z)
+        #     mu_Z = torch.exp(log_mu_Z)
+        # else:
+        #     log_mu_Z = torch.zeros(n_study, 1, device='cuda')
+        #     mu_Z = torch.ones(n_study, 1, device='cuda')
+        # # Under the assumption that Y_ij is either 0 or 1
+        # # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
+        # log_l = torch.sum(torch.mul(y, log_mu_X)) + torch.sum(torch.mul(y_t, log_mu_Z)) - torch.sum(mu_X) * torch.sum(mu_Z) 
+        # if self.penalty == 'No':
+        #     l = log_l
 
         return -l
