@@ -326,6 +326,21 @@ class CBMREstimator(Estimator):
 
         return maps, tables
 
+    def _model_structure(self, model, penalty, device):
+        # beta_dim = self.inputs_['Coef_spline_bases'].shape[1] # regression coef of spatial effect
+        beta_dim = 2627
+        if hasattr(self, "moderators"):
+            gamma_dim = self.inputs_["moderators_array"].shape[1]
+            study_level_covariates = True
+        else:
+            gamma_dim = None
+            study_level_covariates = False
+        if model == 'Poisson':
+            cbmr_model = GLMPoisson(beta_dim=beta_dim, gamma_dim=gamma_dim, study_level_covariates=study_level_covariates, penalty=penalty)
+        if 'cuda' in device:
+            cbmr_model = cbmr_model.cuda()
+        
+        return cbmr_model
 
 class CBMRInference(object):
     """Statistical inference on outcomes (intensity estimation and study-level
