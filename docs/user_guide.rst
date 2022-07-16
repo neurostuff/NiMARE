@@ -1,5 +1,5 @@
-User guide: table of contents
-==============================
+User Guide
+==========
 
 .. toctree::
    :numbered:
