@@ -1020,7 +1020,7 @@ def unique_rows(ar):
     ...                [1, 0, 1]], np.uint8)
     >>> unique_rows(ar)
     array([[0, 1, 0],
-           [1, 0, 1]], dtype=uint8)
+        [1, 0, 1]], dtype=uint8)
 
     Copyright (C) 2019, the scikit-image team
     All rights reserved.
@@ -1140,7 +1140,10 @@ def vox2idx(ijk, masker_voxels):
     yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
     zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
     x_dim, y_dim, z_dim = xx.shape[0], yy.shape[0], zz.shape[0]
+    brain_voxels_index = [(z - np.min(zz))+ z_dim * (y - np.min(yy))+ y_dim * z_dim * (x - np.min(xx))
+                        for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1]
     foci_index = [ijk[i, 2] - np.min(zz)+ z_dim * (ijk[i, 1] - np.min(yy))+ y_dim * z_dim * (ijk[i, 0] - np.min(xx)) for i in range(n_foci)]
-    foci_index = np.array(foci_index)
+    foci_brain_index = [brain_voxels_index.index(j) for j in foci_index]
+    foci_brain_index = np.array(foci_brain_index)
 
-    return foci_index
+    return foci_brain_index
