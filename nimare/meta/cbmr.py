@@ -39,7 +39,10 @@ class CBMREstimator(Estimator):
                     gb = dataset.annotations.groupby('group_id')
                     multiple_groups = [gb.get_group(x)['study_id'] for x in gb.groups]
                 if hasattr(self, "moderators"):
-                    moderators_array = np.stack([dataset.annotations[moderator_name] for moderator_name in self.moderators], axis=1)
+                    study_id_moderators = dataset.annotations.set_index('study_id').index
+                    study_id_coordinates = dataset.coordinates.set_index('study_id').index
+                    moderators_with_coordinates = dataset.annotations[study_id_moderators.isin(study_id_coordinates)] # moderators dataframe where foci exist in selected studies
+                    moderators_array = np.stack([moderators_with_coordinates[moderator_name] for moderator_name in self.moderators], axis=1)
                     moderators_array = moderators_array.astype(np.float64)
                     if isinstance(self.moderators_center, bool):
                         ## to do: if moderators_center & moderators_array is a list of moderators names, only operate on the chosen moderators
@@ -97,7 +100,7 @@ class CBMREstimator(Estimator):
 
         return
 
-    def _update(self, model, penalty, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study, gamma=0.99):
+    def _update(self, model, penalty, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study, prev_loss, gamma=0.99):
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=gamma) # learning rate decay
         scheduler.step()
         def closure():
@@ -106,10 +109,8 @@ class CBMREstimator(Estimator):
             loss.backward()
             return loss
         loss = optimizer.step(closure)
-
-        
-        
-        pass
+                
+        return loss
 
     def _optimizer(self, model, penalty, lr, tol, n_iter, device): 
         optimizer = torch.optim.LBFGS(model.parameters(), lr)
@@ -119,48 +120,15 @@ class CBMREstimator(Estimator):
             moderators_array = torch.tensor(self.inputs_['moderators_array'], dtype=torch.float64, device=device)
         n_foci_per_voxel = torch.tensor(self.inputs_['n_foci_per_voxel'], dtype=torch.float64, device=device)
         n_foci_per_study = torch.tensor(self.inputs_['n_foci_per_study'], dtype=torch.float64, device=device)
+        prev_loss = torch.tensor(float('inf')) # initialization loss difference
         for i in range(n_iter):
-            self._update(model, penalty, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study)
-
-
-        # while torch.abs(loss_diff) > tol: 
-        #     if step <= n_iter:
-        #         scheduler.step()
-        #         def closure():
-        #             optimizer.zero_grad()
-        #             loss = model(self.X, y, Z, y_t)
-        #             loss.backward()
-        #             return loss
-        #         loss = optimizer.step(closure)
-        #         # reset L_BFGS if NAN appears
-        #         if torch.any(torch.isnan(model.beta_linear.weight)):
-        #             print("Reset lbfgs optimiser ......")
-        #             count += 1
-        #             if count > 10:
-        #                 print('optimisation failed')
-        #                 break
-        #             model.beta_linear.weight = torch.nn.Parameter(last_state['beta_linear.weight'])
-        #             if self.covariates == True:
-        #                 model.gamma_linear.weight = torch.nn.Parameter(last_state['gamma_linear.weight'])
-        #             if self.model == 'NB':
-        #                 model.theta = torch.nn.Parameter(last_state['theta'])
-        #             if self.model == 'Clustered_NB':
-        #                 model.alpha = torch.nn.Parameter(last_state['alpha'])
-        #             loss_diff = torch.tensor(float('inf'))
-        #             optimizer = torch.optim.LBFGS(model.parameters(), lr)
-        #             continue
-        #         else:
-        #             last_state = copy.deepcopy(model.state_dict())
-        #         print("step {0}: loss {1}".format(step, loss))
-        #         loss_diff = loss - prev_loss
-        #         prev_loss = loss
-        #         step = step + 1
-        #     else:
-        #         print('it did not converge \n')
-        #         print('The difference of loss in the current and previous iteration is', loss_diff)
-        #         exit()
-        # return 
-
+            loss = self._update(model, penalty, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study, prev_loss)
+            loss_diff = loss - prev_loss
+            if torch.abs(loss_diff) < tol:
+                break
+            prev_loss = loss
+        
+        return
 
 class GLMPoisson(torch.nn.Module):
     def __init__(self, beta_dim=None, gamma_dim=None, study_level_covariates=False, penalty='No'):
@@ -176,19 +144,14 @@ class GLMPoisson(torch.nn.Module):
     
     def forward(self, penalty, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study):
         # spatial effect: mu^X = exp(X * beta)
-        log_mu_X = self.beta_linear(Coef_spline_bases) 
-        mu_X = torch.exp(log_mu_X)
-        # if self.covariates == True:
-        #     # mu^Z = exp(Z * gamma)
-        #     log_mu_Z = self.gamma_linear(Z)
-        #     mu_Z = torch.exp(log_mu_Z)
-        # else:
-        #     log_mu_Z = torch.zeros(n_study, 1, device='cuda')
-        #     mu_Z = torch.ones(n_study, 1, device='cuda')
-        # # Under the assumption that Y_ij is either 0 or 1
-        # # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
-        # log_l = torch.sum(torch.mul(y, log_mu_X)) + torch.sum(torch.mul(y_t, log_mu_Z)) - torch.sum(mu_X) * torch.sum(mu_Z) 
-        # if self.penalty == 'No':
-        #     l = log_l
+        log_mu_spatial = self.beta_linear(Coef_spline_bases) 
+        mu_spatial = torch.exp(log_mu_spatial)
+        if torch.is_tensor(moderators_array):
+            # mu^Z = exp(Z * gamma)
+            log_mu_moderators = self.gamma_linear(moderators_array)
+            mu_moderators = torch.exp(log_mu_moderators)
+        # Under the assumption that Y_ij is either 0 or 1
+        # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
+        log_l = torch.sum(torch.mul(n_foci_per_voxel, log_mu_spatial)) + torch.sum(torch.mul(n_foci_per_study, log_mu_moderators)) - torch.sum(mu_spatial) * torch.sum(mu_moderators) 
 
-        return -l
+        return -log_l
