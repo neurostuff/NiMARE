@@ -142,6 +142,42 @@ related_jackknife_table, _ = jackknife.transform(related_corrected_results)
 related_jackknife_table
 
 ###############################################################################
+# Meta-analysis of semantic object experiments
+# -----------------------------------------------------------------------------
+ale = ALE(null_method="approximate")
+objects_results = ale.fit(objects_dset)
+
+# Perform Monte Carlo-based multiple comparisons correction
+corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
+objects_corrected_results = corr.transform(objects_results)
+
+###############################################################################
+# Plot the resulting statistical map
+# `````````````````````````````````````````````````````````````````````````````
+objects_img = objects_corrected_results.get_map(
+    "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
+)
+plot_stat_map(
+    objects_img,
+    cut_coords=4,
+    display_mode="z",
+    title="Semantic relatedness",
+    threshold=2.326,  # cluster-level p < .01, one-tailed
+    cmap="RdBu_r",
+    vmax=4,
+)
+
+###############################################################################
+# Characterize the relative contributions of experiments in the results
+# `````````````````````````````````````````````````````````````````````````````
+jackknife = Jackknife(
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
+)
+objects_jackknife_table, _ = jackknife.transform(objects_corrected_results)
+objects_jackknife_table
+
+###############################################################################
 # Compare semantic knowledge to the other conditions with subtraction analysis
 # -----------------------------------------------------------------------------
 # The semantic knowledge experiments can be compared to the experiments from
@@ -188,8 +224,12 @@ plot_stat_map(
 # :func:`nilearn.image.math_img`.
 from nilearn.image import math_img
 
-formula = "np.where(img1 * img2 > 0, np.minimum(img1, img2), 0)"
-img_conj = math_img(formula, img1=knowledge_img, img2=related_img)
+img_conj = math_img(
+    "np.where((img1 * img2 * img3) > 0, np.minimum(img1, np.minimum(img2, img3)), 0)",
+    img1=knowledge_img,
+    img2=related_img,
+    img3=objects_img,
+)
 
 plot_stat_map(
     img_conj,
