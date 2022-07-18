@@ -122,7 +122,7 @@ Then, to cite NiMARE in your manuscript, we recommend something like the followi
 
    about
    installation
-   user_guide
+   guide/toc
    api
    auto_examples/index
    cli
