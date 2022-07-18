@@ -15,3 +15,7 @@ The Dataset object
 .. literalinclude:: ../../examples/01_datasets/01_plot_dataset_io.py
     :start-after: # Now we can load and save the Dataset object
     :end-before: os.remove("pain_dset.pkl")  # cleanup
+
+References
+----------
+.. footbibliography::

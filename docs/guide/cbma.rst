@@ -14,6 +14,36 @@ rather than uploading unthresholded statistical maps to a database, like NeuroVa
     :ref:`sphx_glr_auto_examples_02_meta-analyses_01_plot_cbma.py`, and
     :ref:`sphx_glr_auto_examples_02_meta-analyses_05_plot_correctors.py`.
 
+Types of CBMA studies
+---------------------
+1. One large dataset, with multiple subsets.
+
+    1. Create a single, large Dataset with annotations indicating the subsets.
+    2. Perform a meta-analysis on the full Dataset.
+
+        - This omnibus analysis is typically interpreted as evaluating convergent results across the subsets.
+
+    3. Slice the Dataset into different subsets.
+    4. Perform a meta-analysis on each subset.
+    5. Perform a subtraction analysis between each subset and the rest of the subsets (combined in one Dataset).
+    6. Perform functional decoding comparing something and something.
+    7. Plot significant results.
+
+2. A direct comparison between two datasets.
+
+    1. Create two Dataset objects.
+    2. Perform a meta-analysis on each Dataset.
+    3. Perform a subtraction analysis comparing the two Datasets.
+    4. Perform a conjunction analysis assessing convergence between the two meta-analyses.
+    5. Run FociCounter on all meta-analysis results.
+    6. Plot significant results.
+
+3. Large-scale analyses on a database.
+
+    1. Download Neurosynth or NeuroQuery.
+    2. ...
+    3. Plot significant results.
+
 Selecting studies for a meta-analysis
 -------------------------------------
 
@@ -36,3 +66,7 @@ Saving the results
 
 Performing additional followup analyses
 ---------------------------------------
+
+References
+----------
+.. footbibliography::

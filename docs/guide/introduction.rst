@@ -17,3 +17,7 @@ If you have identified a bug in NiMARE, or would like to request a new feature o
 you can `open an issue <https://github.com/neurostuff/NiMARE/issues/new/choose>`_ on GitHub.
 Please look through `open issues <https://github.com/neurostuff/NiMARE/issues>`_ before opening a new one,
 to ensure that you are not duplicating an existing issue.
+
+References
+----------
+.. footbibliography::

@@ -9,3 +9,7 @@ Extracting features from text
 
 Annotating Datasets
 -------------------
+
+References
+----------
+.. footbibliography::
