@@ -30,6 +30,15 @@ Types of CBMA studies
     7. Plot significant results.
 
 2. A direct comparison between two datasets.
+    .. note::
+        One conundrum meta-analysts often face is that papers may report a mixture of
+        within-group analyses and between-group analyses.
+        For example, if you are planning to perform a meta-analysis of the n-back task with the
+        comparison between 3-back and 1-back conditions,
+        you will likely find many papers that report both 3-back > control and 1-back > control results,
+        as well as many papers that only report 3-back > 1-back results.
+
+        In the case of the
 
     1. Create two Dataset objects.
     2. Perform a meta-analysis on each Dataset.
@@ -49,6 +58,7 @@ Selecting studies for a meta-analysis
 
 Organizing the dataset in NiMARE
 --------------------------------
+NiMARE contains several functions for
 
 Performing the meta-analysis
 ----------------------------
