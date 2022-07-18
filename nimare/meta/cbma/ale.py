@@ -34,6 +34,10 @@ LGR = logging.getLogger(__name__)
 class ALE(CBMAEstimator):
     """Activation likelihood estimation.
 
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
+
     Parameters
     ----------
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
@@ -279,6 +283,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
         - Support parallelization and add progress bar.
         - Add ALE-difference (stat) and -log10(p) (logp) maps to results.
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
@@ -510,6 +515,7 @@ class SCALE(CBMAEstimator):
 
         - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
         - Use memmapped array for null distribution.
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.10
 

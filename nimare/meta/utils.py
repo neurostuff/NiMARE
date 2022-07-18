@@ -291,6 +291,8 @@ def compute_kda_ma(
 
         * Remove low-memory option in favor of sparse arrays.
         * Return 4D sparse array.
+        * `shape` and `vox_dims` parameters have been removed. That information is now extracted
+          from the new parameter `mask`.
 
     .. versionadded:: 0.0.4
 
@@ -424,6 +426,14 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     kernel. Takes the element-wise maximum when looping through foci, which
     accounts for foci which are near to one another and may have overlapping
     kernels.
+
+    .. versionchanged:: 0.0.12
+
+        * This function now Return 4D sparse array.
+        * `shape` parameter has been removed. That information is now extracted
+          from the new parameter `mask`.
+        * Remove `ijk` in favor of `ijks`.
+        *  New parameters: `exp_idx`, `sample_sizes`, and `use_dict`.
 
     Parameters
     ----------

@@ -345,7 +345,7 @@ class KDAKernel(KernelTransformer):
 
     .. versionchanged:: 0.0.12
 
-        * Remove low-memory option for kernel transformers.
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
 
     Parameters
     ----------

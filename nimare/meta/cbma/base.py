@@ -39,6 +39,7 @@ class CBMAEstimator(Estimator):
         * Remove *low_memory* option
         * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
         * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
+        * Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
@@ -835,6 +836,10 @@ class CBMAEstimator(Estimator):
 
 class PairwiseCBMAEstimator(CBMAEstimator):
     """Base class for pairwise coordinate-based meta-analysis methods.
+
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 

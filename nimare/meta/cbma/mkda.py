@@ -28,6 +28,10 @@ class MKDADensity(CBMAEstimator):
 
     The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
 
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
+
     Parameters
     ----------
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
@@ -247,6 +251,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
     r"""Multilevel kernel density analysis- Chi-square analysis.
 
     The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
+
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
@@ -935,6 +943,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
 @due.dcite(references.KDA2, description="Also introduces the KDA algorithm.")
 class KDA(CBMAEstimator):
     r"""Kernel density analysis.
+
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
 
     Parameters
     ----------
