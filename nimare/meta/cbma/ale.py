@@ -591,7 +591,11 @@ class SCALE(CBMAEstimator):
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
 
+    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
@@ -626,7 +630,12 @@ class SCALE(CBMAEstimator):
         rand_xyz = self.xyz[rand_idx, :]
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
 
-        perm_scale_values = np.zeros((self.n_iters, stat_values.shape[0]), dtype=stat_values.dtype)
+        perm_scale_values = np.memmap(
+            self.memmap_filenames[1],
+            dtype=stat_values.dtype,
+            mode="w+",
+            shape=(self.n_iters, stat_values.shape[0]),
+        )
         with tqdm_joblib(tqdm(total=self.n_iters)):
             Parallel(n_jobs=self.n_cores)(
                 delayed(self._run_permutation)(
@@ -636,6 +645,10 @@ class SCALE(CBMAEstimator):
             )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
+
+        if isinstance(perm_scale_values, np.memmap):
+            LGR.debug(f"Closing memmap at {perm_scale_values.filename}")
+            perm_scale_values._mmap.close()
 
         del perm_scale_values
 
