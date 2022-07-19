@@ -2,7 +2,7 @@ Coordinate-Based Meta-Analysis
 ==============================
 
 Coordinate-based meta-analysis (CBMA) is a popular tool for measuring consistency across neuroimaging studies.
-While :ref:`ibma.rst` leverage more information than CBMA, and is thus superior,
+While :ref:`ibma` techniques leverage more information than CBMA, and are thus superior,
 CBMA is much more popular because the majority of fMRI papers report peaks from significant clusters in tables,
 rather than uploading unthresholded statistical maps to a database, like NeuroVault.
 
@@ -30,6 +30,7 @@ Types of CBMA studies
     7. Plot significant results.
 
 2. A direct comparison between two datasets.
+
     .. note::
         One conundrum meta-analysts often face is that papers may report a mixture of
         within-group analyses and between-group analyses.
