@@ -429,7 +429,7 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
 
     .. versionchanged:: 0.0.12
 
-        * This function now Return 4D sparse array.
+        * This function now returns a 4D sparse array.
         * `shape` parameter has been removed. That information is now extracted
           from the new parameter `mask`.
         * Replace `ijk` with `ijks`.
