@@ -177,7 +177,6 @@ class ALE(CBMAEstimator):
         ----------
         ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
-            The ma_maps can be a 4d sparse array of MA maps,
 
         Notes
         -----
@@ -208,7 +207,6 @@ class ALE(CBMAEstimator):
         ----------
         ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
-            The ma_maps can be 4D sparse array of MA maps,
 
         Notes
         -----

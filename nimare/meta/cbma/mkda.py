@@ -1112,7 +1112,6 @@ class KDA(CBMAEstimator):
         ----------
         ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
-            The ma_maps can be a 4d sparse array of MA maps,
 
         Notes
         -----
@@ -1167,7 +1166,6 @@ class KDA(CBMAEstimator):
         ----------
         ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
-            The ma_maps can be a 4d sparse array of MA maps,
 
         Notes
         -----
