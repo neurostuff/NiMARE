@@ -82,6 +82,7 @@ class MKDADensity(CBMAEstimator):
 
         If ``null_method == "approximate"``:
 
+            -   ``histogram_means``: Array of mean value per experiment.
             -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
                 ranging from zero to the maximum possible summary statistic value for the Dataset.
             -   ``histweights_corr-none_method-approximate``: Array of weights for the null
@@ -196,7 +197,8 @@ class MKDADensity(CBMAEstimator):
 
         Notes
         -----
-        This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
+        This method adds two entries to the null_distributions_ dict attribute: "histogram_bins",
+        and "histogram_means" only if ``null_method == "approximate"``.
         """
         if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
@@ -215,8 +217,10 @@ class MKDADensity(CBMAEstimator):
             prop_active[exp_idx] = np.mean(np.hstack([study_ma_values, np.zeros(n_zero_voxels)]))
 
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
-        # To speed things up in _compute_null_approximate, we save the means too,
-        self.null_distributions_["histogram_means"] = prop_active
+
+        if self.null_method.startswith("approximate"):
+            # To speed things up in _compute_null_approximate, we save the means too,
+            self.null_distributions_["histogram_means"] = prop_active
 
     def _compute_null_approximate(self, ma_maps):
         """Compute uncorrected null distribution using approximate solution.
@@ -228,8 +232,7 @@ class MKDADensity(CBMAEstimator):
 
         Notes
         -----
-        This method adds two entries to the null_distributions_ dict attribute:
-        "histogram_bins" and "histogram_weights".
+        This method adds one entry to the null_distributions_ dict attribute: "histogram_weights".
         """
         assert "histogram_means" in self.null_distributions_.keys()
 
