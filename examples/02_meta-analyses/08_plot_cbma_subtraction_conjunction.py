@@ -96,7 +96,7 @@ plot_stat_map(
 # Save the results to disk
 # `````````````````````````````````````````````````````````````````````````````
 knowledge_corrected_results.save_maps(
-    out_dir=".",
+    output_dir=".",
     prefix="Enge2021_knowledge",
 )
 
