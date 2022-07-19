@@ -61,13 +61,16 @@ print("\n".join(sleuth_file_contents))
 ###############################################################################
 # Meta-analysis of semantic knowledge experiments
 # -----------------------------------------------------------------------------
-from nimare.correct import FWECorrector
 from nimare.meta.cbma import ALE
 
 ale = ALE(null_method="approximate")
 knowledge_results = ale.fit(knowledge_dset)
 
-# Perform Monte Carlo-based multiple comparisons correction
+###############################################################################
+# Multiple comparisons correction with a Monte Carlo procedure
+# -----------------------------------------------------------------------------
+from nimare.correct import FWECorrector
+
 corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
 knowledge_corrected_results = corr.transform(knowledge_results)
 
@@ -87,6 +90,14 @@ plot_stat_map(
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
     vmax=4,
+)
+
+###############################################################################
+# Save the results to disk
+# `````````````````````````````````````````````````````````````````````````````
+knowledge_corrected_results.save_maps(
+    out_dir=".",
+    prefix="Enge2021_knowledge",
 )
 
 ###############################################################################

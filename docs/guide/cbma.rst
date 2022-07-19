@@ -38,14 +38,17 @@ Types of CBMA studies
         you will likely find many papers that report both 3-back > control and 1-back > control results,
         as well as many papers that only report 3-back > 1-back results.
 
-        In the case of the
+        In the case of the former, the standard approach is to perform a subtraction analysis.
+        In the latter case, you would perform a single univariate meta-analysis.
+        Unfortunately, you cannot combine the two sets of results.
 
     1. Create two Dataset objects.
     2. Perform a meta-analysis on each Dataset.
     3. Perform a subtraction analysis comparing the two Datasets.
     4. Perform a conjunction analysis assessing convergence between the two meta-analyses.
-    5. Run FociCounter on all meta-analysis results.
-    6. Plot significant results.
+    5. Run :class:`~nimare.diagnostics.FociCounter` or :class:`~nimare.diagnostics.Jackknife` on all meta-analysis results.
+    6. Run :func:`~nilearn.reporting.get_clusters_table` on all meta-analysis results.
+    7. Plot significant results.
 
 3. Large-scale analyses on a database.
 
@@ -58,24 +61,45 @@ Selecting studies for a meta-analysis
 
 Organizing the dataset in NiMARE
 --------------------------------
-NiMARE contains several functions for
+NiMARE contains several functions for converting common formats to Dataset objects.
 
 Performing the meta-analysis
 ----------------------------
 
-.. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_01_plot_cbma_001.png
-    :target: ../auto_examples/02_meta-analyses/01_plot_cbma.ipynb
+.. literalinclude:: ../../examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.py
+    :start-at: from nimare.meta.cbma import ALE
+    :end-at: knowledge_results = ale.fit(knowledge_dset)
+
+.. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_06_plot_compare_ibma_and_cbma_001.png
+    :target: ../auto_examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.ipynb
     :align: center
     :scale: 100
 
 Multiple comparisons correction
 -------------------------------
 
+.. literalinclude:: ../../examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.py
+    :start-at: from nimare.correct import FWECorrector
+    :end-at: knowledge_corrected_results = corr.transform(knowledge_results)
+
+.. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_06_plot_compare_ibma_and_cbma_002.png
+    :target: ../auto_examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.ipynb
+    :align: center
+    :scale: 100
+
 Saving the results
 ------------------
 
+.. literalinclude:: ../../examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.py
+    :start-at: knowledge_corrected_results.save_maps(
+    :end-at: )
+
 Performing additional followup analyses
 ---------------------------------------
+
+.. literalinclude:: ../../examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.py
+    :start-at: from nimare.diagnostics import Jackknife
+    :end-at: knowledge_jackknife_table
 
 References
 ----------
