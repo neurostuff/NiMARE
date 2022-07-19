@@ -46,7 +46,7 @@ Types of CBMA studies
     2. Perform a meta-analysis on each Dataset.
     3. Perform a subtraction analysis comparing the two Datasets.
     4. Perform a conjunction analysis assessing convergence between the two meta-analyses.
-    5. Run :class:`~nimare.diagnostics.FociCounter` or :class:`~nimare.diagnostics.Jackknife` on all meta-analysis results.
+    5. Run :class:`~nimare.diagnostics.FocusCounter` or :class:`~nimare.diagnostics.Jackknife` on all meta-analysis results.
     6. Run :func:`~nilearn.reporting.get_clusters_table` on all meta-analysis results.
     7. Plot significant results.
 
@@ -70,8 +70,8 @@ Performing the meta-analysis
     :start-at: from nimare.meta.cbma import ALE
     :end-at: knowledge_results = ale.fit(knowledge_dset)
 
-.. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_06_plot_compare_ibma_and_cbma_001.png
-    :target: ../auto_examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.ipynb
+.. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_08_plot_cbma_subtraction_conjunction_001.png
+    :target: ../auto_examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.html
     :align: center
     :scale: 100
 
@@ -82,8 +82,8 @@ Multiple comparisons correction
     :start-at: from nimare.correct import FWECorrector
     :end-at: knowledge_corrected_results = corr.transform(knowledge_results)
 
-.. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_06_plot_compare_ibma_and_cbma_002.png
-    :target: ../auto_examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.ipynb
+.. figure:: ../auto_examples/02_meta-analyses/images/sphx_glr_08_plot_cbma_subtraction_conjunction_002.png
+    :target: ../auto_examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.html
     :align: center
     :scale: 100
 

@@ -56,7 +56,7 @@ with open(knowledge_file, "r") as fo:
     sleuth_file_contents = fo.readlines()
 
 sleuth_file_contents = sleuth_file_contents[:20]
-print("\n".join(sleuth_file_contents))
+print("".join(sleuth_file_contents))
 
 ###############################################################################
 # Meta-analysis of semantic knowledge experiments
@@ -67,18 +67,40 @@ ale = ALE(null_method="approximate")
 knowledge_results = ale.fit(knowledge_dset)
 
 ###############################################################################
+# Plot the uncorrected statistical map
+# `````````````````````````````````````````````````````````````````````````````
+from nilearn.plotting import plot_stat_map
+
+plot_stat_map(
+    knowledge_results.get_map("z"),
+    cut_coords=4,
+    display_mode="z",
+    title="Semantic knowledge",
+    threshold=2.326,  # cluster-level p < .01, one-tailed
+    cmap="RdBu_r",
+    vmax=4,
+)
+
+###############################################################################
+# This z-statistic map is not corrected for multiple comparisons.
+# In order to account for the many voxel-wise tests that are performed in
+# parallel, we must apply some type of multiple comparisons correction.
+# To that end, we will use an :class:`~nimare.correct.FWECorrector` with the
+# Monte Carlo method.
+#
 # Multiple comparisons correction with a Monte Carlo procedure
 # -----------------------------------------------------------------------------
+# We will use the cluster-level corrected map, using a cluster-defining
+# threshold of p < 0.001 and 100 iterations.
+# In the actual paper, :footcite:`enge2021meta` used 10000 iterations instead.
 from nimare.correct import FWECorrector
 
 corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
 knowledge_corrected_results = corr.transform(knowledge_results)
 
 ###############################################################################
-# Plot the resulting statistical map
+# Plot the corrected statistical map
 # `````````````````````````````````````````````````````````````````````````````
-from nilearn.plotting import plot_stat_map
-
 knowledge_img = knowledge_corrected_results.get_map(
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
 )
@@ -172,7 +194,7 @@ plot_stat_map(
     objects_img,
     cut_coords=4,
     display_mode="z",
-    title="Semantic relatedness",
+    title="Semantic objects",
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
     vmax=4,
