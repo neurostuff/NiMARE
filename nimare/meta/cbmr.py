@@ -4,7 +4,7 @@ from nimare.base import Estimator
 from nimare.utils import get_template, get_masker, B_spline_bases
 import nibabel as nib
 import numpy as np
-from nimare.utils import mm2vox, vox2idx
+from nimare.utils import mm2vox, vox2idx, intensity2voxel
 import torch
 
 class CBMREstimator(Estimator):
@@ -89,17 +89,6 @@ class CBMREstimator(Estimator):
         
         return cbmr_model
 
-    def _fit(self, dataset, spline_spacing=5, model='Poisson', penalty=False, n_iter=1000, lr=1e-2, tol=1e-2, device='cpu'):
-        self.model = model
-        masker_voxels = self.inputs_['mask_img']._dataobj
-        Coef_spline_bases = B_spline_bases(masker_voxels=masker_voxels, spacing=spline_spacing)
-        self.inputs_['Coef_spline_bases'] = Coef_spline_bases
-
-        cbmr_model = self._model_structure(model, penalty, device)
-        optimisation = self._optimizer(cbmr_model, penalty, lr, tol, n_iter, device)
-
-        return
-
     def _update(self, model, penalty, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study, prev_loss, gamma=0.99):
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=gamma) # learning rate decay
         scheduler.step()
@@ -129,6 +118,33 @@ class CBMREstimator(Estimator):
             prev_loss = loss
         
         return
+
+    def _fit(self, dataset, spline_spacing=5, model='Poisson', penalty=False, n_iter=1000, lr=1e-2, tol=1e-2, device='cpu'):
+        self.model = model
+        masker_voxels = self.inputs_['mask_img']._dataobj
+        Coef_spline_bases = B_spline_bases(masker_voxels=masker_voxels, spacing=spline_spacing)
+        self.inputs_['Coef_spline_bases'] = Coef_spline_bases
+
+        cbmr_model = self._model_structure(model, penalty, device)
+        optimisation = self._optimizer(cbmr_model, penalty, lr, tol, n_iter, device)
+
+        # beta: regression coef of spatial effect
+        self._beta = cbmr_model.beta_linear.weight
+        self._beta = self._beta.detach().numpy().T
+        
+        studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, self._beta))
+        studywise_spatial_intensity = intensity2voxel(studywise_spatial_intensity, self.inputs_['mask_img']._dataobj)
+
+        if hasattr(self, "moderators"):
+            self._gamma = cbmr_model.gamma_linear.weight
+            self._gamma = self._gamma.detach().numpy().T
+
+            moderator_results = np.exp(np.matmul(self.inputs_["moderators_array"], self._gamma))
+
+
+        return
+
+    
 
 class GLMPoisson(torch.nn.Module):
     def __init__(self, beta_dim=None, gamma_dim=None, study_level_covariates=False, penalty='No'):
