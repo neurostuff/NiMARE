@@ -206,9 +206,9 @@ class KernelTransformer(NiMAREBase):
         # Loop over exp ids since sparse._coo.core.COO is not iterable
         for i_exp, id_ in enumerate(transformed_maps[1]):
             if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
+                # This step is slow, but it is here just in case user want a
+                # return_type = "array", "image", or "dataset"
                 kernel_data = transformed_maps[0][i_exp].todense()
-            else:
-                kernel_data = transformed_maps[0][i_exp]
 
             if return_type == "array":
                 img = kernel_data[mask_data]
@@ -309,40 +309,34 @@ class ALEKernel(KernelTransformer):
         self.sample_size = sample_size
 
     def _transform(self, mask, coordinates):
-        kernels = {}  # retain kernels in dictionary to speed things up
-        exp_ids = coordinates["id"].unique()
+        ijks = coordinates[["i", "j", "k"]].values
+        exp_idx = coordinates["id"].values
 
-        transformed = []
-        for i_exp, id_ in enumerate(exp_ids):
-            data = coordinates.loc[coordinates["id"] == id_]
+        use_dict = True
+        kernel = None
+        if self.sample_size is not None:
+            sample_sizes = self.sample_size
+            use_dict = False
+        elif self.fwhm is None:
+            sample_sizes = coordinates["sample_size"].values
+        else:
+            sample_sizes = None
 
-            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            if self.sample_size is not None:
-                sample_size = self.sample_size
-            elif self.fwhm is None:
-                # Extract from input
-                sample_size = data.sample_size.astype(float).values[0]
+        if self.fwhm is not None:
+            assert np.isfinite(self.fwhm), "FWHM must be finite number"
+            _, kernel = get_ale_kernel(mask, fwhm=self.fwhm)
+            use_dict = False
 
-            if self.fwhm is not None:
-                assert np.isfinite(self.fwhm), "FWHM must be finite number"
-                if self.fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
-                    kernels[self.fwhm] = kern
-                else:
-                    kern = kernels[self.fwhm]
+        transformed = compute_ale_ma(
+            mask,
+            ijks,
+            kernel=kernel,
+            exp_idx=exp_idx,
+            sample_sizes=sample_sizes,
+            use_dict=use_dict,
+        )
 
-            else:
-                assert np.isfinite(sample_size), "Sample size must be finite number"
-                if sample_size not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, sample_size=sample_size)
-                    kernels[sample_size] = kern
-                else:
-                    kern = kernels[sample_size]
-
-            kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-
-            transformed.append(kernel_data)
-
+        exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 
 
@@ -351,7 +345,7 @@ class KDAKernel(KernelTransformer):
 
     .. versionchanged:: 0.0.12
 
-        * Remove low-memory option for kernel transformers.
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
 
     Parameters
     ----------
@@ -368,14 +362,11 @@ class KDAKernel(KernelTransformer):
         self.value = value
 
     def _transform(self, mask, coordinates):
-        dims = mask.shape
-        vox_dims = mask.header.get_zooms()
 
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims,
-            vox_dims,
+            mask,
             ijks,
             self.r,
             self.value,

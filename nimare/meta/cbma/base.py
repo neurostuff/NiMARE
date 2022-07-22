@@ -6,7 +6,9 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from joblib import Parallel, delayed
+from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
 
@@ -37,6 +39,7 @@ class CBMAEstimator(Estimator):
         * Remove *low_memory* option
         * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
         * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
+        * Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
@@ -151,6 +154,13 @@ class CBMAEstimator(Estimator):
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
+
+        if not isinstance(self.masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(self.masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator."
+            )
+
         self.null_distributions_ = {}
 
         ma_values = self._collect_ma_maps(
@@ -189,7 +199,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="array"):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
@@ -206,12 +216,32 @@ class CBMAEstimator(Estimator):
 
         Returns
         -------
-        ma_maps : :obj:`numpy.ndarray`
-            2D numpy array of shape (n_studies, n_voxels) with MA values.
+        ma_maps : :obj:`sparse._coo.core.COO`
+            Return a 4D sparse array of shape
+            (n_studies, mask.shape) with MA maps.
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
-            ma_maps = self.masker.transform(self.inputs_[maps_key])
+            all_exp = []
+            all_coords = []
+            all_data = []
+            for i_exp, img in enumerate(self.inputs_[maps_key]):
+                img_data = nib.load(img).get_fdata()
+                nonzero_idx = np.where(img_data != 0)
+
+                all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+                all_coords.append(np.vstack(nonzero_idx))
+                all_data.append(img_data[nonzero_idx])
+
+            n_studies = len(self.inputs_[maps_key])
+            shape = img_data.shape
+            kernel_shape = (n_studies,) + shape
+
+            exp = np.hstack(all_exp)
+            coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
+            data = np.hstack(all_data).flatten()
+
+            ma_maps = sparse.COO(coords, data, shape=kernel_shape)
 
         else:
             LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
@@ -219,7 +249,7 @@ class CBMAEstimator(Estimator):
             ma_maps = self.kernel_transformer.transform(
                 self.inputs_[coords_key],
                 masker=self.masker,
-                return_type=return_type,
+                return_type="sparse",
             )
 
         return ma_maps
@@ -234,12 +264,13 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        data : array, pandas.DataFrame, or list of img_like
+        data : array, sparse._coo.core.COO, pandas.DataFrame, or list of img_like
             Data from which to estimate summary statistics.
             The data can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            (2) a DataFrame containing coordinates to produce MA values,
-            or (3) a list of imgs containing MA values.
+            (2) a 4d sparse array of MA maps,
+            (3) a DataFrame containing coordinates to produce MA values,
+            or (4) a list of imgs containing MA values.
 
         Returns
         -------
@@ -248,13 +279,13 @@ class CBMAEstimator(Estimator):
         """
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
-                data, masker=self.masker, return_type="array"
+                data, masker=self.masker, return_type="sparse"
             )
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
+        elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
             ma_values = data
-        elif not isinstance(data, np.ndarray):
+        else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
@@ -410,6 +441,14 @@ class CBMAEstimator(Estimator):
         --------
         This method is only retained for testing and algorithm development.
         """
+        if isinstance(ma_maps, sparse._coo.core.COO):
+            masker = self.dataset.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            ma_maps = ma_maps.todense()
+            ma_maps = ma_maps[:, mask_data]
+
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
@@ -440,7 +479,7 @@ class CBMAEstimator(Estimator):
         iter_df[["x", "y", "z"]] = iter_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="array"
+            iter_df, masker=self.masker, return_type="sparse"
         )
         iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
@@ -546,7 +585,7 @@ class CBMAEstimator(Estimator):
         iter_df[["x", "y", "z"]] = iter_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="array"
+            iter_df, masker=self.masker, return_type="sparse"
         )
         iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
@@ -797,6 +836,10 @@ class CBMAEstimator(Estimator):
 
 class PairwiseCBMAEstimator(CBMAEstimator):
     """Base class for pairwise coordinate-based meta-analysis methods.
+
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
