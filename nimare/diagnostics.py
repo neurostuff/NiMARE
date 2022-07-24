@@ -407,3 +407,55 @@ class FocusCounter(NiMAREBase):
             focus_counts.append(n_included_voxels)
 
         return expid, focus_counts
+
+
+class FocusFilter(NiMAREBase):
+    """Remove coordinates outside of the Dataset's mask from the Dataset.
+
+    .. versionadded:: 0.0.13
+
+    Notes
+    -----
+    This filter removes any coordinates outside of the brain mask.
+    It does not remove studies without coordinates in the brain mask, since a Dataset does not
+    need to have coordinates for all studies (e.g., some may only have images).
+    """
+
+    def transform(self, dataset):
+        """Apply the filter to a Dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            The Dataset to filter.
+
+        Returns
+        -------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            The filtered Dataset.
+        """
+        # Get matrix indices for in-brain voxels in the mask
+        mask_ijk = np.vstack(np.where(dataset.masker.mask_img.get_fdata())).T
+
+        # Get matrix indices for Dataset coordinates
+        dset_xyz = dataset.coordinates[["x", "y", "z"]].values
+
+        # mm2vox automatically rounds the coordinates
+        dset_ijk = mm2vox(dset_xyz, dataset.masker.mask_img.affine)
+
+        keep_idx = []
+        for i, coord in enumerate(dset_ijk):
+            # Check if each coordinate in Dataset is within the mask
+            # If it is, log that coordinate in keep_idx
+            if len(np.where((mask_ijk == coord).all(axis=1))[0]):
+                keep_idx.append(i)
+
+        LGR.info(
+            f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
+            "the mask. Removing them."
+        )
+
+        # Only retain coordinates inside the brain mask
+        dataset.coordinates = dataset.coordinates.iloc[keep_idx]
+
+        return dataset
