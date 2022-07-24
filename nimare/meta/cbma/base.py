@@ -616,6 +616,10 @@ class CBMAEstimator(Estimator):
 
         Only call this method from within a Corrector.
 
+        .. versionchanged:: 0.0.13
+
+            Change cluster neighborhood from faces+edges to faces, to match Nilearn.
+
         .. versionchanged:: 0.0.12
 
             * Fix the ``vfwe_only`` option.
@@ -729,7 +733,7 @@ class CBMAEstimator(Estimator):
             iter_df = self.inputs_["coordinates"].copy()
 
             # Define connectivity matrix for cluster labeling
-            conn = ndimage.generate_binary_structure(3, 2)
+            conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
             with tqdm_joblib(tqdm(total=n_iters)):
                 perm_results = Parallel(n_jobs=n_cores)(

@@ -21,6 +21,10 @@ LGR = logging.getLogger(__name__)
 class Jackknife(NiMAREBase):
     """Run a jackknife analysis on a meta-analysis result.
 
+    .. versionchanged:: 0.0.13
+
+        Change cluster neighborhood from faces+edges to faces, to match Nilearn.
+
     .. versionadded:: 0.0.11
 
     Parameters
@@ -134,7 +138,7 @@ class Jackknife(NiMAREBase):
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = ndimage.generate_binary_structure(3, 2)
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,
@@ -239,6 +243,10 @@ class Jackknife(NiMAREBase):
 class FocusCounter(NiMAREBase):
     """Run a focus-count analysis on a coordinate-based meta-analysis result.
 
+    .. versionchanged:: 0.0.13
+
+        Change cluster neighborhood from faces+edges to faces, to match Nilearn.
+
     .. versionadded:: 0.0.12
 
     Parameters
@@ -340,7 +348,7 @@ class FocusCounter(NiMAREBase):
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = ndimage.generate_binary_structure(3, 2)
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
         labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,

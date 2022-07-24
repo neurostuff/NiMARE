@@ -571,6 +571,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
     def _apply_correction(self, stat_values, voxel_thresh, vfwe_null, csfwe_null, cmfwe_null):
         """Apply different kinds of FWE correction to statistical value matrix.
 
+        .. versionchanged:: 0.0.13
+
+            Change cluster neighborhood from faces+edges to faces, to match Nilearn.
+
         Parameters
         ----------
         stat_values : :obj:`numpy.ndarray`
@@ -588,7 +592,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         eps = np.spacing(1)
 
         # Define connectivity matrix for cluster labeling
-        conn = ndimage.generate_binary_structure(3, 2)
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
         # Voxel-level FWE
         p_vfwe_values = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
@@ -650,6 +654,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.13
+
+            Change cluster neighborhood from faces+edges to faces, to match Nilearn.
 
         .. versionchanged:: 0.0.12
 
@@ -771,7 +779,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ss_thresh = chi2.isf(voxel_thresh, 1)
 
         # Define connectivity matrix for cluster labeling
-        conn = ndimage.generate_binary_structure(3, 2)
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
         with tqdm_joblib(tqdm(total=n_iters)):
             perm_results = Parallel(n_jobs=n_cores)(
