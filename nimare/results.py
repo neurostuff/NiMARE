@@ -21,6 +21,8 @@ class MetaResult(object):
         Mask for converting maps between arrays and images.
     maps : :obj:`dict` or None, optional
         Maps to store in the object. Default is None.
+    tables : :obj:`dict` or None, optional
+        Pandas DataFrames to store in the object. Default is None.
 
     Attributes
     ----------
@@ -30,12 +32,15 @@ class MetaResult(object):
         Masker object.
     maps : :obj:`dict`
         Keys are map names and values are arrays.
+    tables : :obj:`dict`
+        Keys are table levels and values are pandas DataFrames.
     """
 
-    def __init__(self, estimator, mask, maps=None):
+    def __init__(self, estimator, mask, maps=None, tables=None):
         self.estimator = copy.deepcopy(estimator)
         self.masker = get_masker(mask)
         self.maps = maps or {}
+        self.tables = tables or {}
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
@@ -94,7 +99,47 @@ class MetaResult(object):
             outpath = os.path.join(output_dir, filename)
             img.to_filename(outpath)
 
+    def save_tables(self, output_dir=".", prefix="", prefix_sep="_", names=None):
+        """Save result tables to TSV files.
+
+        Parameters
+        ----------
+        output_dir : :obj:`str`, optional
+            Output directory in which to save results. If the directory doesn't
+            exist, it will be created. Default is current directory.
+        prefix : :obj:`str`, optional
+            Prefix to prepend to output file names.
+            Default is None.
+        prefix_sep : :obj:`str`, optional
+            Separator to add between prefix and default file names.
+            Default is _.
+        names : None or :obj:`list` of :obj:`str`, optional
+            Names of specific tables to write out. If None, save all tables.
+            Default is None.
+        """
+        if prefix == "":
+            prefix_sep = ""
+
+        if not prefix.endswith(prefix_sep):
+            prefix = prefix + prefix_sep
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        names = names or list(self.tables.keys())
+        tables = {k: self.tables[k] for k in names}
+
+        for tabletype, table in tables.items():
+            filename = prefix + tables + ".tsv"
+            outpath = os.path.join(output_dir, filename)
+            table.to_csv(outpath, sep="\t", index=False)
+
     def copy(self):
         """Return copy of result object."""
-        new = MetaResult(self.estimator, self.masker, copy.deepcopy(self.maps))
+        new = MetaResult(
+            self.estimator,
+            self.masker,
+            copy.deepcopy(self.maps),
+            copy.deepcopy(self.tables),
+        )
         return new
