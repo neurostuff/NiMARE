@@ -14,17 +14,12 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
-from nilearn import image
 
 from nimare import references
 from nimare.base import NiMAREBase
 from nimare.due import due
-from nimare.meta.utils import (
-    compute_ale_ma,
-    compute_kda_ma,
-    get_ale_kernel,
-)
-from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox, vox2mm
+from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
+from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox
 
 LGR = logging.getLogger(__name__)
 

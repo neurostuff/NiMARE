@@ -1,10 +1,8 @@
 """Utilities for coordinate-based meta-analysis estimators."""
 import logging
-import os
 import warnings
 
 import numpy as np
-import numpy.linalg as npl
 import sparse
 from scipy import ndimage
 
