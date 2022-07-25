@@ -449,7 +449,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-consistency": pAgF_p_vals,
             "p_desc-specificity": pFgA_p_vals,
         }
-        return images
+        return images, {}
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
         """Run a single permutation of the Monte Carlo FWE correction procedure.

@@ -3,6 +3,8 @@ import copy
 import logging
 import os
 
+import numpy as np
+import pandas as pd
 from nibabel.funcs import squeeze_image
 
 from nimare.utils import get_masker
@@ -19,9 +21,9 @@ class MetaResult(object):
         The Estimator used to generate the maps in the MetaResult.
     mask : Niimg-like or `nilearn.input_data.base_masker.BaseMasker`
         Mask for converting maps between arrays and images.
-    maps : :obj:`dict` or None, optional
-        Maps to store in the object. Default is None.
-    tables : :obj:`dict` or None, optional
+    maps : None or :obj:`dict` of :obj:`numpy.ndarray`, optional
+        Maps to store in the object. The maps must be provided as 1D numpy arrays. Default is None.
+    tables : None or :obj:`dict` of :obj:`pandas.DataFrame`, optional
         Pandas DataFrames to store in the object. Default is None.
 
     Attributes
@@ -31,7 +33,7 @@ class MetaResult(object):
     masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object.
     maps : :obj:`dict`
-        Keys are map names and values are arrays.
+        Keys are map names and values are 1D arrays.
     tables : :obj:`dict`
         Keys are table levels and values are pandas DataFrames.
     """
@@ -39,8 +41,24 @@ class MetaResult(object):
     def __init__(self, estimator, mask, maps=None, tables=None):
         self.estimator = copy.deepcopy(estimator)
         self.masker = get_masker(mask)
-        self.maps = maps or {}
-        self.tables = tables or {}
+
+        maps = maps or {}
+        tables = tables or {}
+
+        for map_name, map_ in maps.items():
+            if not isinstance(map_, np.ndarray):
+                raise ValueError(f"Maps must be numpy arrays. '{map_name}' is a {type(map_)}")
+
+            if map_.ndim != 1:
+                LGR.warning(f"Map '{map_name}' should be 1D, not {map_.ndim}D. Squeezing.")
+                map_ = np.squeeze(map_)
+
+        for table_name, table in tables.items():
+            if not isinstance(table, pd.DataFrame):
+                raise ValueError(f"Tables must be DataFrames. '{table_name}' is a {type(table)}")
+
+        self.maps = maps
+        self.tables = tables
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
