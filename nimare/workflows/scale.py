@@ -6,10 +6,10 @@ from shutil import copyfile
 
 import numpy as np
 
-from ..dataset import Dataset
-from ..io import convert_sleuth_to_dataset
-from ..meta import SCALE
-from ..utils import vox2mm
+from nimare.dataset import Dataset
+from nimare.io import convert_sleuth_to_dataset
+from nimare.meta import SCALE
+from nimare.utils import vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -29,6 +29,8 @@ def scale_workflow(
     --------
     This method is not yet implemented.
     """
+    from nimare import __version__
+
     if dataset_file.endswith(".json"):
         dset = Dataset(dataset_file, target="mni152_2mm")
     elif dataset_file.endswith(".txt"):
@@ -38,23 +40,34 @@ def scale_workflow(
 
     boilerplate = """
 A specific coactivation likelihood estimation (SCALE; Langner et al., 2014)
-meta-analysis was performed using NiMARE. The input dataset included {n}
-studies/experiments.
+meta-analysis was performed using NiMARE {version}
+(RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+The input dataset included {n} studies/experiments.
 
 Voxel-specific null distributions were generated using base rates from {bl}
 with {n_iters} iterations. Results were thresholded at p < {thr}.
 
 References
 ----------
-- Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., & Eickhoff, S. B. (2014).
-Meta-analytic connectivity modeling revisited: controlling for activation base
-rates. NeuroImage, 99, 559-570.
+-   Langner, R., Rottschy, C., Laird, A. R., Fox, P. T., & Eickhoff, S. B. (2014).
+    Meta-analytic connectivity modeling revisited: controlling for activation base
+    rates. NeuroImage, 99, 559-570.
+-   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
+    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
+-   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
+    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
+    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
+    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
+    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
     """
     boilerplate = boilerplate.format(
         n=len(dset.ids),
         thr=v_thr,
         bl=baseline if baseline else "a gray matter template",
         n_iters=n_iters,
+        version=__version__,
     )
 
     # At the moment, the baseline file should be an n_coords X 3 list of matrix

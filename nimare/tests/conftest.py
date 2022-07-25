@@ -9,8 +9,7 @@ from nilearn.image import resample_img
 
 import nimare
 from nimare.tests.utils import get_test_data_path
-
-from ..utils import get_resource_path
+from nimare.utils import get_resource_path
 
 # Only enable the following once in a while for a check for SettingWithCopyWarnings
 # pd.options.mode.chained_assignment = "raise"

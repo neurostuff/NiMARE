@@ -6,7 +6,7 @@ To use it, place it into your project codebase to be imported, e.g. copy as
 Note that it might be better to avoid naming it duecredit.py to avoid shadowing
 installed duecredit.
 Then use in your code as
-    from .due import due, Doi, BibTeX
+    from nimare.due import due, Doi, BibTeX
 See  https://github.com/duecredit/duecredit/blob/master/README.md for examples.
 Origin:     Originally a part of the duecredit
 Copyright:  2015-2016  DueCredit developers

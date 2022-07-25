@@ -54,6 +54,7 @@ extensions = [
     "sphinx_copybutton",  # for copying code snippets
     "sphinx_gallery.gen_gallery",  # example gallery
     "sphinxarg.ext",  # argparse
+    "sphinxcontrib.bibtex",  # for foot-citations
     "recommonmark",  # markdown parser
 ]
 
@@ -174,6 +175,7 @@ intersphinx_mapping = {
     "nibabel": ("https://nipy.org/nibabel/", None),
     "nilearn": ("http://nilearn.github.io/", None),
     "pymare": ("https://pymare.readthedocs.io/en/latest/", None),
+    "skimage": ("https://scikit-image.org/docs/stable/", None),
 }
 
 # -----------------------------------------------------------------------------
@@ -202,6 +204,14 @@ sphinx_gallery_conf = {
 
 # Generate the plots for the gallery
 plot_gallery = True
+
+# -----------------------------------------------------------------------------
+# sphinxcontrib-bibtex
+# -----------------------------------------------------------------------------
+bibtex_bibfiles = ["./references.bib"]
+bibtex_style = "unsrt"
+bibtex_reference_style = "author_year"
+bibtex_footbibliography_header = ""
 
 
 def setup(app):

@@ -3,16 +3,17 @@ import logging
 
 import numpy as np
 import pandas as pd
+import sparse
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
-from ... import references
-from ...due import due
-from ...stats import null_to_p, nullhist_to_p
-from ...transforms import p_to_z
-from ...utils import tqdm_joblib, use_memmap
-from ..kernel import ALEKernel
-from .base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare import references
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.kernel import ALEKernel
+from nimare.stats import null_to_p, nullhist_to_p
+from nimare.transforms import p_to_z
+from nimare.utils import _check_ncores, tqdm_joblib, use_memmap
 
 LGR = logging.getLogger(__name__)
 
@@ -31,7 +32,11 @@ LGR = logging.getLogger(__name__)
     "distribution for significance testing.",
 )
 class ALE(CBMAEstimator):
-    r"""Activation likelihood estimation.
+    """Activation likelihood estimation.
+
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
 
     Parameters
     ----------
@@ -56,7 +61,7 @@ class ALE(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : :obj:`int`, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
@@ -67,7 +72,7 @@ class ALE(CBMAEstimator):
         Default is 1.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
-        with the prefix '\kernel__' in the variable name.
+        with the prefix ``kernel__`` in the variable name.
         Another optional argument is ``mask``.
 
     Attributes
@@ -113,7 +118,9 @@ class ALE(CBMAEstimator):
 
     Notes
     -----
-    The ALE algorithm was originally developed in [1]_, then updated in [2]_ and [3]_.
+    The ALE algorithm was originally developed in :footcite:t:`turkeltaub2002meta`,
+    then updated in :footcite:t:`turkeltaub2012minimizing` and
+    :footcite:t:`eickhoff2012activation`.
 
     The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
     organization (https://www.brainmap.org/ale/).
@@ -122,14 +129,7 @@ class ALE(CBMAEstimator):
 
     References
     ----------
-    .. [1] Turkeltaub, Peter E., et al. "Meta-analysis of the functional
-        neuroanatomy of single-word reading: method and validation."
-        Neuroimage 16.3 (2002): 765-780.
-    .. [2] Turkeltaub, Peter E., et al. "Minimizing within-experiment and
-        within-group effects in activation likelihood estimation
-        meta-analyses." Human brain mapping 33.1 (2012): 1-13.
-    .. [3] Eickhoff, Simon B., et al. "Activation likelihood estimation
-        meta-analysis revisited." Neuroimage 59.3 (2012): 2349-2361.
+    .. footbibliography::
     """
 
     def __init__(
@@ -151,11 +151,23 @@ class ALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+        # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
+        if isinstance(stat_values, sparse._coo.core.COO):
+            # NOTE: This may not work correctly with a non-NiftiMasker.
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+
+            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
+            stat_values = stat_values[mask_data.reshape(-1)]
+
+            # This is used by _compute_null_approximate
+            self.__n_mask_voxels = stat_values.shape[0]
+
         return stat_values
 
     def _determine_histogram_bins(self, ma_maps):
@@ -163,17 +175,14 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps
+        ma_maps : :obj:`sparse._coo.core.COO`
+            MA maps.
 
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
-        else:
+        if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # Determine bins for null distribution histogram
@@ -181,7 +190,9 @@ class ALE(CBMAEstimator):
         # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
         INV_STEP_SIZE = 100000
         step_size = 1 / INV_STEP_SIZE
-        max_ma_values = np.max(ma_values, axis=1)
+        # Need to convert to dense because np.ceil is too slow with sparse
+        max_ma_values = ma_maps.max(axis=[1, 2, 3]).todense()
+
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
         max_poss_ale = self._compute_summarystat(max_ma_values)
@@ -194,7 +205,7 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : list of imgs or numpy.ndarray
+        ma_maps : :obj:`sparse._coo.core.COO`
             MA maps.
 
         Notes
@@ -204,18 +215,10 @@ class ALE(CBMAEstimator):
             - "histogram_bins"
             - "histweights_corr-none_method-approximate"
         """
-        if isinstance(ma_maps, list):
-            ma_values = self.masker.transform(ma_maps)
-        elif isinstance(ma_maps, np.ndarray):
-            ma_values = ma_maps.copy()
-        else:
+        if not isinstance(ma_maps, sparse._coo.core.COO):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
-
-        def just_histogram(*args, **kwargs):
-            """Collect the first output (weights) from numpy histogram."""
-            return np.histogram(*args, **kwargs)[0].astype(float)
 
         # Derive bin edges from histogram bin centers for numpy histogram function
         bin_centers = self.null_distributions_["histogram_bins"]
@@ -224,7 +227,22 @@ class ALE(CBMAEstimator):
         bin_edges = bin_centers - (step_size / 2)
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        ma_hists = np.apply_along_axis(just_histogram, 1, ma_values, bins=bin_edges, density=False)
+        n_exp = ma_maps.shape[0]
+        n_bins = bin_centers.shape[0]
+        ma_hists = np.zeros((n_exp, n_bins))
+        data = ma_maps.data
+        coords = ma_maps.coords
+        for exp_idx in range(n_exp):
+            # The first column of coords is the fourth dimension of the dense array
+            study_ma_values = data[coords[0, :] == exp_idx]
+
+            n_nonzero_voxels = study_ma_values.shape[0]
+            n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
+
+            ma_hists[exp_idx, :] = np.histogram(study_ma_values, bins=bin_edges, density=False)[
+                0
+            ].astype(float)
+            ma_hists[exp_idx, 0] += n_zero_voxels
 
         # Normalize MA histograms to get probabilities
         ma_hists /= ma_hists.sum(1)[:, None]
@@ -263,6 +281,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
         - Support parallelization and add progress bar.
         - Add ALE-difference (stat) and -log10(p) (logp) maps to results.
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
@@ -298,7 +317,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     Notes
     -----
-    This method was originally developed in [1]_ and refined in [2]_.
+    This method was originally developed in :footcite:t:`laird2005ale` and refined in
+    :footcite:t:`eickhoff2012activation`.
 
     The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
     BrainMap organization (https://www.brainmap.org/ale/).
@@ -319,11 +339,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     References
     ----------
-    .. [1] Laird, Angela R., et al. "ALE meta-analysis: Controlling the false discovery rate and
-       performing statistical contrasts." Human brain mapping 25.1 (2005): 155-164.
-       https://doi.org/10.1002/hbm.20136
-    .. [2] Eickhoff, Simon B., et al. "Activation likelihood estimation meta-analysis revisited."
-       Neuroimage 59.3 (2012): 2349-2361. https://doi.org/10.1016/j.neuroimage.2011.09.017
+    .. footbibliography::
     """
 
     def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
@@ -340,7 +356,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset1 = None
         self.dataset2 = None
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
@@ -354,32 +370,23 @@ class ALESubtraction(PairwiseCBMAEstimator):
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
-            fname_idx=0,
         )
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
-            fname_idx=1,
         )
 
-        n_grp1, n_voxels = ma_maps1.shape
-
         # Get ALE values for the two groups and difference scores
-        grp1_ale_values = 1.0 - np.prod(1.0 - ma_maps1, axis=0)
-        grp2_ale_values = 1.0 - np.prod(1.0 - ma_maps2, axis=0)
+        grp1_ale_values = self._compute_summarystat_est(ma_maps1)
+        grp2_ale_values = self._compute_summarystat_est(ma_maps2)
         diff_ale_values = grp1_ale_values - grp2_ale_values
         del grp1_ale_values, grp2_ale_values
 
+        n_grp1 = ma_maps1.shape[0]
+        n_voxels = diff_ale_values.shape[0]
+
         # Combine the MA maps into a single array to draw from for null distribution
-        ma_arr = np.vstack((ma_maps1, ma_maps2))
-
-        if isinstance(ma_maps1, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_maps1.filename}")
-            ma_maps1._mmap.close()
-
-        if isinstance(ma_maps2, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_maps2.filename}")
-            ma_maps2._mmap.close()
+        ma_arr = sparse.concatenate((ma_maps1, ma_maps2))
 
         del ma_maps1, ma_maps2
 
@@ -434,6 +441,18 @@ class ALESubtraction(PairwiseCBMAEstimator):
         }
         return images
 
+    def _compute_summarystat_est(self, ma_values):
+        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+        if isinstance(stat_values, sparse._coo.core.COO):
+            # NOTE: This may not work correctly with a non-NiftiMasker.
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+
+            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
+            stat_values = stat_values[mask_data.reshape(-1)]
+
+        return stat_values
+
     def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
         """Run a single permutations of the ALESubtraction null distribution procedure.
 
@@ -454,8 +473,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
         gen = np.random.default_rng(seed=i_iter)
         id_idx = np.arange(ma_arr.shape[0])
         gen.shuffle(id_idx)
-        iter_grp1_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[:n_grp1], :], axis=0)
-        iter_grp2_ale_values = 1.0 - np.prod(1.0 - ma_arr[id_idx[n_grp1:], :], axis=0)
+        iter_grp1_ale_values = self._compute_summarystat_est(ma_arr[id_idx[:n_grp1], :])
+        iter_grp2_ale_values = self._compute_summarystat_est(ma_arr[id_idx[n_grp1:], :])
         iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
 
     def _alediff_to_p_voxel(self, i_voxel, stat_value, voxel_null):
@@ -488,10 +507,13 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
+    This method was originally introduced in :footcite:t:`langner2014meta`.
+
     .. versionchanged:: 0.0.12
 
         - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
         - Use memmapped array for null distribution.
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.10
 
@@ -542,9 +564,7 @@ class SCALE(CBMAEstimator):
 
     References
     ----------
-    * Langner, Robert, et al. "Meta-analytic connectivity modeling
-      revisited: controlling for activation base rates." NeuroImage 99
-      (2014): 559-570. https://doi.org/10.1016/j.neuroimage.2014.06.007
+    .. footbibliography::
     """
 
     def __init__(
@@ -574,7 +594,7 @@ class SCALE(CBMAEstimator):
 
         self.xyz = xyz
         self.n_iters = n_iters
-        self.n_cores = self._check_ncores(n_cores)
+        self.n_cores = _check_ncores(n_cores)
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
@@ -595,11 +615,11 @@ class SCALE(CBMAEstimator):
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
-            fname_idx=0,
         )
 
         # Determine bins for null distribution histogram
-        max_ma_values = np.max(ma_values, axis=1)
+        max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+
         max_poss_ale = self._compute_summarystat_est(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
             np.arange(0, max_poss_ale + 0.001, 0.0001), 4
@@ -607,9 +627,7 @@ class SCALE(CBMAEstimator):
 
         stat_values = self._compute_summarystat_est(ma_values)
 
-        if isinstance(ma_values, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_values.filename}")
-            ma_values._mmap.close()
+        del ma_values
 
         iter_df = self.inputs_["coordinates"].copy()
         rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
@@ -646,7 +664,7 @@ class SCALE(CBMAEstimator):
         return images
 
     def _compute_summarystat_est(self, data):
-        """Generate ALE-value array and null distribution from list of contrasts.
+        """Generate ALE-value array and null distribution from a list of contrasts.
 
         For ALEs on the original dataset, computes the null distribution.
         For permutation ALEs and all SCALEs, just computes ALE values.
@@ -654,16 +672,22 @@ class SCALE(CBMAEstimator):
         """
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
-                data, masker=self.masker, return_type="array"
+                data, masker=self.masker, return_type="sparse"
             )
-        elif isinstance(data, list):
-            ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
-            ma_values = data.copy()
+        elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
+            ma_values = data
         else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+        if isinstance(stat_values, sparse._coo.core.COO):
+            # NOTE: This may not work correctly with a non-NiftiMasker.
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+
+            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
+            stat_values = stat_values[mask_data.reshape(-1)]
+
         return stat_values
 
     def _scale_to_p(self, stat_values, scale_values):

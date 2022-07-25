@@ -8,14 +8,14 @@ from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
-from .. import references
-from ..base import Decoder
-from ..due import due
-from ..meta.cbma.base import CBMAEstimator
-from ..meta.cbma.mkda import MKDAChi2
-from ..stats import pearson
-from ..utils import _check_type, _safe_transform
-from .utils import weight_priors
+from nimare import references
+from nimare.decode.base import Decoder
+from nimare.decode.utils import weight_priors
+from nimare.due import due
+from nimare.meta.cbma.base import CBMAEstimator
+from nimare.meta.cbma.mkda import MKDAChi2
+from nimare.stats import pearson
+from nimare.utils import _check_type, _safe_transform
 
 LGR = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ LGR = logging.getLogger(__name__)
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
-    The method used in this function was originally described in Rubin et al. (2017) [1]_.
+    The method used in this function was originally described in :footcite:t:`rubin2017decoding`.
 
     Parameters
     ----------
@@ -88,10 +88,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 
     References
     ----------
-    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
-       functional-anatomical atlas of human cognition."
-       PLoS computational biology 13.10 (2017): e1005649.
-       https://doi.org/10.1371/journal.pcbi.1005649
+    .. footbibliography::
     """
     image = load_niimg(image)
 
@@ -117,9 +114,9 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
 class CorrelationDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with meta-analytic maps.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add *low-memory* option to :class:`meta_estimator`
+        * Remove low-memory option in favor of sparse arrays.
 
     Parameters
     ----------
@@ -153,11 +150,10 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
-        memory_limit="1gb",
     ):
 
         if meta_estimator is None:
-            meta_estimator = MKDAChi2(memory_limit=memory_limit, kernel__memory_limit=memory_limit)
+            meta_estimator = MKDAChi2()
         else:
             meta_estimator = _check_type(meta_estimator, CBMAEstimator)
 
@@ -269,12 +265,10 @@ class CorrelationDistributionDecoder(Decoder):
         features=None,
         frequency_threshold=0.001,
         target_image="z",
-        memory_limit="1gb",
     ):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
-        self.memory_limit = memory_limit
         self._required_inputs["images"] = ("image", target_image)
 
     def _fit(self, dataset):
@@ -312,7 +306,6 @@ class CorrelationDistributionDecoder(Decoder):
                 feature_arr = _safe_transform(
                     test_imgs,
                     self.masker,
-                    memory_limit=self.memory_limit,
                     memfile=None,
                 )
                 images_[feature] = feature_arr
