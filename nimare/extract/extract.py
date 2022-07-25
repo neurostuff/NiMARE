@@ -13,15 +13,15 @@ from urllib.request import urlopen
 import numpy as np
 import pandas as pd
 
-from ..dataset import Dataset
-from ..utils import get_resource_path
-from .utils import (
+from nimare.dataset import Dataset
+from nimare.extract.utils import (
     _download_zipped_file,
     _expand_df,
     _get_concept_reltype,
     _get_dataset_dir,
     _longify,
 )
+from nimare.utils import get_resource_path
 
 LGR = logging.getLogger(__name__)
 

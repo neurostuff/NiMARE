@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import inspect
 import logging
+import multiprocessing as mp
 import os
 import os.path as op
 import re
@@ -15,10 +16,27 @@ import numpy as np
 import pandas as pd
 from nilearn.input_data import NiftiMasker
 
-from . import references
-from .due import due
+from nimare import references
+from nimare.due import due
 
 LGR = logging.getLogger(__name__)
+
+
+def _check_ncores(n_cores):
+    """Check number of cores used for method.
+
+    .. versionadded:: 0.0.12
+        Moved from Estimator._check_ncores into its own function.
+    """
+    if n_cores <= 0:
+        n_cores = mp.cpu_count()
+    elif n_cores > mp.cpu_count():
+        LGR.warning(
+            f"Desired number of cores ({n_cores}) greater than number "
+            f"available ({mp.cpu_count()}). Setting to {mp.cpu_count()}."
+        )
+        n_cores = mp.cpu_count()
+    return n_cores
 
 
 def get_resource_path():
@@ -34,6 +52,7 @@ def get_template(space="mni152_2mm", mask=None):
     """Load template file.
 
     .. versionchanged:: 0.0.11
+
         - Remove the ``mask="gm"`` option.
         - Replace the nilearn templates with ones downloaded directly from TemplateFlow.
 
@@ -962,3 +981,68 @@ def tqdm_joblib(tqdm_object):
     finally:
         joblib.parallel.BatchCompletionCallBack = old_batch_callback
         tqdm_object.close()
+
+
+def unique_rows(ar, return_counts=False):
+    """Remove repeated rows from a 2D array.
+
+    In particular, if given an array of coordinates of shape
+    (Npoints, Ndim), it will remove repeated points.
+
+    Parameters
+    ----------
+    ar : 2-D ndarray
+        The input array.
+    return_counts : :obj:`bool`, optional
+        If True, also return the number of times each unique item appears in ar.
+
+    Returns
+    -------
+    ar_out : 2-D ndarray
+        A copy of the input array with repeated rows removed.
+    unique_counts : :obj:`np.ndarray`, optional
+        The number of times each of the unique values comes up in the original array.
+        Only provided if return_counts is True.
+
+    Raises
+    ------
+    ValueError : if `ar` is not two-dimensional.
+
+    Notes
+    -----
+    The function will generate a copy of `ar` if it is not
+    C-contiguous, which will negatively affect performance for large
+    input arrays.
+
+    This is taken from skimage. See :func:`skimage.util.unique_rows`.
+
+    Examples
+    --------
+    >>> ar = np.array([[1, 0, 1],
+    ...                [0, 1, 0],
+    ...                [1, 0, 1]], np.uint8)
+    >>> unique_rows(ar)
+    array([[0, 1, 0],
+           [1, 0, 1]], dtype=uint8)
+
+    Copyright (C) 2019, the scikit-image team
+    All rights reserved.
+    """
+    if ar.ndim != 2:
+        raise ValueError("unique_rows() only makes sense for 2D arrays, " "got %dd" % ar.ndim)
+    # the view in the next line only works if the array is C-contiguous
+    ar = np.ascontiguousarray(ar)
+    # np.unique() finds identical items in a raveled array. To make it
+    # see each row as a single item, we create a view of each row as a
+    # byte string of length itemsize times number of columns in `ar`
+    ar_row_view = ar.view("|S%d" % (ar.itemsize * ar.shape[1]))
+    if return_counts:
+        _, unique_row_indices, counts = np.unique(
+            ar_row_view, return_index=True, return_counts=True
+        )
+
+        return ar[unique_row_indices], counts
+    else:
+        _, unique_row_indices = np.unique(ar_row_view, return_index=True)
+
+        return ar[unique_row_indices]

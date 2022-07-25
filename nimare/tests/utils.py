@@ -6,7 +6,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from ..meta.utils import compute_kda_ma
+from nimare.meta.utils import compute_kda_ma
 
 # set significance levels used for testing.
 # duplicated in test_estimator_performance
@@ -41,18 +41,16 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
         Binary image representing regions not expected
         to be significant within the brain.
     """
-    dims = mask.shape
-    vox_dims = mask.header.get_zooms()
-
     # area where I'm reasonably certain there are significant results
-    sig_prob_map = compute_kda_ma(
-        dims, vox_dims, ground_truth_foci_ijks, r=2, value=1, sum_overlap=False
-    )
+    sig_prob_map = compute_kda_ma(mask, ground_truth_foci_ijks, r=2, value=1, sum_overlap=False)
+    sig_prob_map = sig_prob_map[0].todense()
 
     # area where I'm reasonably certain there are not significant results
     nonsig_prob_map = compute_kda_ma(
-        dims, vox_dims, ground_truth_foci_ijks, r=14, value=1, sum_overlap=False
+        mask, ground_truth_foci_ijks, r=14, value=1, sum_overlap=False
     )
+    nonsig_prob_map = nonsig_prob_map[0].todense()
+
     sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(int), affine=mask.affine)
     nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(int), affine=mask.affine)
     return sig_map, nonsig_map

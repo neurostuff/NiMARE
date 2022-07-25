@@ -2,25 +2,25 @@
 import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg
+from pymare.stats import bonferroni, fdr
 from scipy import special
 from scipy.stats import binom
-from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .. import references
-from ..base import Decoder
-from ..due import due
-from ..meta.kernel import KernelTransformer, MKDAKernel
-from ..stats import one_way, pearson, two_way
-from ..transforms import p_to_z
-from ..utils import _check_type, get_masker
-from .utils import weight_priors
+from nimare import references
+from nimare.decode.base import Decoder
+from nimare.decode.utils import weight_priors
+from nimare.due import due
+from nimare.meta.kernel import KernelTransformer, MKDAKernel
+from nimare.stats import one_way, pearson, two_way
+from nimare.transforms import p_to_z
+from nimare.utils import _check_type, get_masker
 
 
 @due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA decoding.")
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     r"""Perform image-to-text decoding for discrete inputs using method from Rubin et al. (2017).
 
-    The method used in this function was originally described in Rubin et al. (2017) [1]_.
+    The method used in this function was originally described in :footcite:t:`rubin2017decoding`.
 
     Parameters
     ----------
@@ -80,10 +80,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 
     References
     ----------
-    .. [1] Rubin, Timothy N., et al. "Decoding brain activity using a large-scale probabilistic
-       functional-anatomical atlas of human cognition."
-       PLoS computational biology 13.10 (2017): e1005649.
-       https://doi.org/10.1371/journal.pcbi.1005649
+    .. footbibliography::
     """
     roi = load_niimg(roi)
 
@@ -120,7 +117,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
 class BrainMapDecoder(Decoder):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
-    This method was described in [1]_.
+    This method was described in :footcite:t:`amft2015definition`.
 
     .. versionadded:: 0.0.3
 
@@ -145,10 +142,9 @@ class BrainMapDecoder(Decoder):
         the threshold are considered label-. Default is 0.001.
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     See Also
     --------
@@ -156,9 +152,7 @@ class BrainMapDecoder(Decoder):
 
     References
     ----------
-    .. [1] Amft, Maren, et al. "Definition and characterization of an extended social-affective
-       default network." Brain Structure and Function 220.2 (2015): 1031-1049.
-       https://doi.org/10.1007/s00429-013-0698-0
+    .. footbibliography::
     """
 
     _required_inputs = {
@@ -179,7 +173,6 @@ class BrainMapDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.u = u
         self.correction = correction
-        self.results = None
 
     def _fit(self, dataset):
         pass
@@ -215,7 +208,7 @@ class BrainMapDecoder(Decoder):
             u=self.u,
             correction=self.correction,
         )
-        self.results = results
+
         return results
 
 
@@ -232,7 +225,7 @@ def brainmap_decode(
 ):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
-    This method was described in [1]_.
+    This method was described in :footcite:t:`amft2015definition`.
 
     Parameters
     ----------
@@ -263,10 +256,9 @@ def brainmap_decode(
         the threshold are considered label-. Default is 0.001.
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     Returns
     -------
@@ -281,9 +273,7 @@ def brainmap_decode(
 
     References
     ----------
-    .. [1] Amft, Maren, et al. "Definition and characterization of an extended social-affective
-       default network." Brain Structure and Function 220.2 (2015): 1031-1049.
-       https://doi.org/10.1007/s00429-013-0698-0
+    .. footbibliography::
     """
     dataset_ids = sorted(list(set(coordinates["id"].values)))
     if ids2 is None:
@@ -356,9 +346,12 @@ def brainmap_decode(
     p_ri[n_selected_term < 5] = 1.0
 
     # Multiple comparisons correction across features. Separately done for FI and RI.
-    if correction is not None:
-        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction, returnsorted=False)
-        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction, returnsorted=False)
+    if correction in ("bh", "by"):
+        p_corr_fi = fdr(p_fi, alpha=u, method=correction)
+        p_corr_ri = fdr(p_ri, alpha=u, method=correction)
+    elif correction == "bonferroni":
+        p_corr_fi = bonferroni(p_fi)
+        p_corr_ri = bonferroni(p_ri)
     else:
         p_corr_fi = p_fi
         p_corr_ri = p_ri
@@ -399,7 +392,7 @@ def brainmap_decode(
 class NeurosynthDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
-    Neurosynth was described in [1]_.
+    Neurosynth was described in :footcite:t:`yarkoni2011large`.
 
     .. versionadded:: 0.0.3
 
@@ -434,10 +427,9 @@ class NeurosynthDecoder(Decoder):
         Default is 0.5 (50%).
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     See Also
     --------
@@ -445,8 +437,7 @@ class NeurosynthDecoder(Decoder):
 
     References
     ----------
-    .. [1] Yarkoni, Tal, et al. "Large-scale automated synthesis of human functional neuroimaging
-       data." Nature methods 8.8 (2011): 665. https://doi.org/10.1038/nmeth.1635
+    .. footbibliography::
     """
 
     _required_inputs = {
@@ -469,7 +460,6 @@ class NeurosynthDecoder(Decoder):
         self.prior = prior
         self.u = u
         self.correction = correction
-        self.results = None
 
     def _fit(self, dataset):
         pass
@@ -506,7 +496,6 @@ class NeurosynthDecoder(Decoder):
             u=self.u,
             correction=self.correction,
         )
-        self.results = results
         return results
 
 
@@ -531,7 +520,7 @@ def neurosynth_decode(
     (`ids`) are compared to the unselected studies remaining in the database
     (`dataset`).
 
-    Neurosynth was described in [1]_.
+    Neurosynth was described in :footcite:t:`yarkoni2011large`.
 
     Parameters
     ----------
@@ -566,10 +555,9 @@ def neurosynth_decode(
         Default is 0.5 (50%).
     u : :obj:`float`, optional
         Alpha level for multiple comparisons correction. Default is 0.05.
-    correction : :obj:`str` or None, optional
-        Multiple comparisons correction method to apply. Corresponds to
-        available options for :func:`statsmodels.stats.multitest.multipletests`.
-        Default is 'fdr_bh' (Benjamini-Hochberg FDR correction).
+    correction : {None, "bh", "by", "bonferroni"}, optional
+        Multiple comparisons correction method to apply.
+        Default is 'bh' (Benjamini-Hochberg FDR correction).
 
     Returns
     -------
@@ -586,8 +574,7 @@ def neurosynth_decode(
 
     References
     ----------
-    .. [1] Yarkoni, Tal, et al. "Large-scale automated synthesis of human functional neuroimaging
-       data." Nature methods 8.8 (2011): 665. https://doi.org/10.1038/nmeth.1635
+    .. footbibliography::
     """
     dataset_ids = sorted(list(set(coordinates["id"].values)))
     if ids2 is None:
@@ -644,9 +631,12 @@ def neurosynth_decode(
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.
-    if correction is not None:
-        _, p_corr_fi, _, _ = multipletests(p_fi, alpha=u, method=correction, returnsorted=False)
-        _, p_corr_ri, _, _ = multipletests(p_ri, alpha=u, method=correction, returnsorted=False)
+    if correction in ("bh", "by"):
+        p_corr_fi = fdr(p_fi, alpha=u, method=correction)
+        p_corr_ri = fdr(p_ri, alpha=u, method=correction)
+    elif correction == "bonferroni":
+        p_corr_fi = bonferroni(p_fi)
+        p_corr_ri = bonferroni(p_ri)
     else:
         p_corr_fi = p_fi
         p_corr_ri = p_ri
@@ -686,7 +676,7 @@ def neurosynth_decode(
 class ROIAssociationDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's ROI association method.
 
-    Neurosynth was described in [1]_.
+    Neurosynth was described in :footcite:t:`yarkoni2011large`.
 
     Parameters
     ----------
@@ -717,8 +707,7 @@ class ROIAssociationDecoder(Decoder):
 
     References
     ----------
-    .. [1] Yarkoni, Tal, et al. "Large-scale automated synthesis of human functional neuroimaging
-       data." Nature methods 8.8 (2011): 665. https://doi.org/10.1038/nmeth.1635
+    .. footbibliography::
     """
 
     _required_inputs = {
@@ -746,7 +735,6 @@ class ROIAssociationDecoder(Decoder):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = 0
-        self.results = None
 
     def _fit(self, dataset):
         roi_values = self.kernel_transformer.transform(
@@ -769,5 +757,4 @@ class ROIAssociationDecoder(Decoder):
         corrs = pearson(self.roi_values_, feature_values.T)
         out_df = pd.DataFrame(index=self.features_, columns=["r"], data=corrs)
         out_df.index.name = "feature"
-        self.results = out_df
         return out_df

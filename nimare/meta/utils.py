@@ -1,32 +1,36 @@
 """Utilities for coordinate-based meta-analysis estimators."""
 import logging
+import os
+import warnings
 
 import numpy as np
+import numpy.linalg as npl
+import sparse
 from scipy import ndimage
 
-from .. import references
-from ..due import due
-from ..utils import _determine_chunk_size
+from nimare import references
+from nimare.due import due
+from nimare.utils import unique_rows
 
 LGR = logging.getLogger(__name__)
 
 
 def compute_kda_ma(
-    shape,
-    vox_dims,
+    mask,
     ijks,
     r,
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
-    memory_limit=None,
-    memmap_filename=None,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
-    .. versionchanged:: 0.0.8
+    .. versionchanged:: 0.0.12
 
-        * [ENH] Add *memmap_filename* parameter for memory mapping arrays.
+        * Remove low-memory option in favor of sparse arrays.
+        * Return 4D sparse array.
+        * `shape` and `vox_dims` parameters have been removed. That information is now extracted
+          from the new parameter `mask`.
 
     .. versionadded:: 0.0.4
 
@@ -34,10 +38,9 @@ def compute_kda_ma(
 
     Parameters
     ----------
-    shape : :obj:`tuple`
-        Shape of brain image + buffer. Typically (91, 109, 91).
-    vox_dims : array_like
-        Size (in mm) of each dimension of a voxel.
+    mask : img_like
+        Mask to extract the MA maps shape (typically (91, 109, 91)) and voxel dimension.
+        The mask is applied the data coordinated before creating the kernel_data.
     ijks : array-like
         Indices of foci. Each row is a coordinate, with the three columns
         corresponding to index in each of three dimensions.
@@ -52,65 +55,109 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
-    memory_limit : :obj:`str` or None, optional
-        Memory limit to apply to data. If None, no memory management will be applied.
-        Otherwise, the memory limit will be used to (1) assign memory-mapped files and
-        (2) restrict memory during array creation to the limit.
-        Default is None.
-    memmap_filename : :obj:`str`, optional
-        If passed, use this file for memory mapping arrays
 
     Returns
     -------
-    kernel_data : :obj:`numpy.array`
-        3d or 4d array. If `exp_idx` is none, a 3d array in the same shape as
-        the `shape` argument is returned. If `exp_idx` is passed, a 4d array
+    kernel_data : :obj:`sparse._coo.core.COO`
+        4D sparse array. If `exp_idx` is none, a 3d array in the same
+        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
-    squeeze = exp_idx is None
+    shape = mask.shape
+    vox_dims = mask.header.get_zooms()
+
+    mask_data = mask.get_fdata().astype(bool)
+
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
-    uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
-    n_studies = len(uniq)
+    exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
+    n_studies = len(exp_idx_uniq)
 
     kernel_shape = (n_studies,) + shape
-    if memmap_filename:
-        # Use a memmapped 4D array
-        kernel_data = np.memmap(memmap_filename, dtype=type(value), mode="w+", shape=kernel_shape)
-    else:
-        kernel_data = np.zeros(kernel_shape, dtype=type(value))
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    if memory_limit:
-        chunk_size = _determine_chunk_size(limit=memory_limit, arr=ijks[0])
+    def _convolve_sphere(kernel, peaks):
+        """Convolve peaks with a spherical kernel.
 
-    for i, peak in enumerate(ijks):
-        sphere = np.round(kernel.T + peak)
-        idx = (np.min(sphere, 1) >= 0) & (np.max(np.subtract(sphere, shape), 1) <= -1)
-        sphere = sphere[idx, :].astype(int)
-        exp = exp_idx[i]
+        Parameters
+        ----------
+        kernel : 2D numpy.ndarray
+            IJK coordinates of a sphere, relative to a central point
+            (not the brain template).
+        peaks : 2D numpy.ndarray
+            The IJK coordinates of peaks to convolve with the kernel.
+
+        Returns
+        -------
+        sphere_coords : 2D numpy.ndarray
+            All coordinates that fall within any sphere.
+            Coordinates from overlapping spheres will appear twice.
+        """
+        # Convolve spheres
+        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
+        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
+        for peak in peaks:
+            sphere_coords[chunk_idx, :] = kernel.T + peak
+            chunk_idx = chunk_idx + kernel.shape[1]
+
+        return sphere_coords
+
+    all_coords = []
+    all_exp = []
+    all_data = []
+    # Loop over experiments
+    for i_exp, _ in enumerate(exp_idx_uniq):
+        # Index peaks by experiment
+        curr_exp_idx = exp_idx == i_exp
+        peaks = ijks[curr_exp_idx]
+
+        all_spheres = _convolve_sphere(kernel, peaks)
+
         if sum_overlap:
-            kernel_data[exp][tuple(sphere.T)] += value
+            # if sum_overlap, counts=list
+            all_spheres, counts = unique_rows(all_spheres, return_counts=True)
+            counts = counts * value
         else:
-            kernel_data[exp][tuple(sphere.T)] = value
+            # if not sum_overlap, counts=value
+            all_spheres = unique_rows(all_spheres)
+            counts = value
 
-        if memmap_filename and i % chunk_size == 0:
-            # Write changes to disk
-            kernel_data.flush()
+        # Mask coordinates beyond space
+        idx = np.all(
+            np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
+        )
 
-    if squeeze:
-        kernel_data = np.squeeze(kernel_data, axis=0)
+        all_spheres = all_spheres[idx, :]
+        if sum_overlap:
+            counts = counts[idx]
+
+        ma_values = np.zeros(shape)
+        ma_values[tuple(all_spheres.T)] = counts
+        # Set voxel outside the mask to zero.
+        ma_values[~mask_data] = 0
+
+        nonzero_idx = np.where(ma_values > 0)
+
+        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+        all_coords.append(np.vstack(nonzero_idx))
+        all_data.append(ma_values[nonzero_idx])
+
+    exp = np.hstack(all_exp)
+    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
+
+    data = np.hstack(all_data).flatten()
+    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
 
 
-def compute_ale_ma(shape, ijk, kernel):
+def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use_dict=False):
     """Generate ALE modeled activation (MA) maps.
 
     Replaces the values around each focus in ijk with the contrast-specific
@@ -118,57 +165,138 @@ def compute_ale_ma(shape, ijk, kernel):
     accounts for foci which are near to one another and may have overlapping
     kernels.
 
+    .. versionchanged:: 0.0.12
+
+        * This function now returns a 4D sparse array.
+        * `shape` parameter has been removed. That information is now extracted
+          from the new parameter `mask`.
+        * Replace `ijk` with `ijks`.
+        * New parameters: `exp_idx`, `sample_sizes`, and `use_dict`.
+
     Parameters
     ----------
-    shape : tuple
-        Shape of brain image + buffer. Typically (91, 109, 91) + (30, 30, 30).
-    ijk : array-like
+    mask : img_like
+        Mask to extract the MA maps shape (typically (91, 109, 91)) and voxel dimension.
+        The mask is applied to the coordinates before creating the kernel_data.
+    ijks : array-like
         Indices of foci. Each row is a coordinate, with the three columns
         corresponding to index in each of three dimensions.
-    kernel : array-like
+    kernel : array-like, or None, optional
         3D array of smoothing kernel. Typically of shape (30, 30, 30).
+    exp_idx : array_like
+        Optional indices of experiments. If passed, must be of same length as
+        ijks. Each unique value identifies all coordinates in ijk that come from
+        the same experiment. If None passed, it is assumed that all coordinates
+        come from the same experiment.
+    sample_sizes : array_like, :obj:`int` or None, optional
+        Array of smaple sizes or sample size, used to derive FWHM for Gaussian kernel.
+    use_dict : :obj:`bool`, optional
+        If True, empty kernels dictionary is used to retain the kernel for each element of
+        sample_sizes. If False and sample_sizes is int, the ale kernel is calculated for
+        sample_sizes. If False and sample_sizes is None, the unique kernels is used.
 
     Returns
     -------
-    ma_values : array-like
-        1d array of modeled activation values.
+    kernel_data : :obj:`sparse._coo.core.COO`
+        4D sparse array. If `exp_idx` is none, a 3d array in the same
+        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
+        is returned, where the first dimension has size equal to the number of
+        unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
-    ma_values = np.zeros(shape)
-    mid = int(np.floor(kernel.shape[0] / 2.0))
-    mid1 = mid + 1
-    for j_peak in range(ijk.shape[0]):
-        i, j, k = ijk[j_peak, :]
-        xl = max(i - mid, 0)
-        xh = min(i + mid1, ma_values.shape[0])
-        yl = max(j - mid, 0)
-        yh = min(j + mid1, ma_values.shape[1])
-        zl = max(k - mid, 0)
-        zh = min(k + mid1, ma_values.shape[2])
-        xlk = mid - (i - xl)
-        xhk = mid - (i - xh)
-        ylk = mid - (j - yl)
-        yhk = mid - (j - yh)
-        zlk = mid - (k - zl)
-        zhk = mid - (k - zh)
+    if use_dict:
+        if kernel is not None:
+            warnings.warn("The kernel provided will be replace by an empty dictionary.")
+        kernels = {}  # retain kernels in dictionary to speed things up
+        if not isinstance(sample_sizes, np.ndarray):
+            raise ValueError("To use a kernel dictionary sample_sizes must be a list.")
+    elif sample_sizes is not None:
+        if not isinstance(sample_sizes, int):
+            raise ValueError("If use_dict is False, sample_sizes provided must be integer.")
+    else:
+        if kernel is None:
+            raise ValueError("3D array of smoothing kernel must be provided.")
 
-        if (
-            (xl >= 0)
-            & (xh >= 0)
-            & (yl >= 0)
-            & (yh >= 0)
-            & (zl >= 0)
-            & (zh >= 0)
-            & (xlk >= 0)
-            & (xhk >= 0)
-            & (ylk >= 0)
-            & (yhk >= 0)
-            & (zlk >= 0)
-            & (zhk >= 0)
-        ):
-            ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
-                ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
-            )
-    return ma_values
+    if exp_idx is None:
+        exp_idx = np.ones(len(ijks))
+
+    shape = mask.shape
+    mask_data = mask.get_fdata().astype(bool)
+
+    exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
+    n_studies = len(exp_idx_uniq)
+
+    kernel_shape = (n_studies,) + shape
+    all_exp = []
+    all_coords = []
+    all_data = []
+    for i_exp, _ in enumerate(exp_idx_uniq):
+
+        # Index peaks by experiment
+        curr_exp_idx = exp_idx == i_exp
+        ijk = ijks[curr_exp_idx]
+
+        if use_dict:
+            # Get sample_size from input
+            sample_size = sample_sizes[curr_exp_idx][0]
+            if sample_size not in kernels.keys():
+                _, kernel = get_ale_kernel(mask, sample_size=sample_size)
+                kernels[sample_size] = kernel
+            else:
+                kernel = kernels[sample_size]
+        elif sample_sizes is not None:
+            _, kernel = get_ale_kernel(mask, sample_size=sample_sizes)
+
+        mid = int(np.floor(kernel.shape[0] / 2.0))
+        mid1 = mid + 1
+        ma_values = np.zeros(shape)
+        for j_peak in range(ijk.shape[0]):
+            i, j, k = ijk[j_peak, :]
+            xl = max(i - mid, 0)
+            xh = min(i + mid1, ma_values.shape[0])
+            yl = max(j - mid, 0)
+            yh = min(j + mid1, ma_values.shape[1])
+            zl = max(k - mid, 0)
+            zh = min(k + mid1, ma_values.shape[2])
+            xlk = mid - (i - xl)
+            xhk = mid - (i - xh)
+            ylk = mid - (j - yl)
+            yhk = mid - (j - yh)
+            zlk = mid - (k - zl)
+            zhk = mid - (k - zh)
+
+            if (
+                (xl >= 0)
+                & (xh >= 0)
+                & (yl >= 0)
+                & (yh >= 0)
+                & (zl >= 0)
+                & (zh >= 0)
+                & (xlk >= 0)
+                & (xhk >= 0)
+                & (ylk >= 0)
+                & (yhk >= 0)
+                & (zlk >= 0)
+                & (zhk >= 0)
+            ):
+
+                ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
+                    ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
+                )
+        # Set voxel outside the mask to zero.
+        ma_values[~mask_data] = 0
+        nonzero_idx = np.where(ma_values > 0)
+
+        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+        all_coords.append(np.vstack(nonzero_idx))
+        all_data.append(ma_values[nonzero_idx])
+
+    exp = np.hstack(all_exp)
+    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
+    data = np.hstack(all_data).flatten()
+
+    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
+
+    return kernel_data
 
 
 @due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
@@ -252,8 +380,8 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
         del temp_labeled_arr3d
 
-    clust_vals, clust_sizes = np.unique(labeled_arr3d, return_counts=True)
-    assert clust_vals[0] == 0
+    clust_sizes = np.bincount(labeled_arr3d.flatten())
+    clust_vals = np.arange(0, clust_sizes.shape[0])
 
     # Cluster mass-based inference
     max_mass = 0

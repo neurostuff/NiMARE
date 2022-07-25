@@ -3,6 +3,7 @@
 import copy
 import logging
 import os.path as op
+import warnings
 
 import nibabel as nib
 import numpy as np
@@ -10,15 +11,15 @@ import pandas as pd
 from nilearn.reporting import get_clusters_table
 from scipy import stats
 
-from . import references
-from .base import Transformer
-from .due import due
-from .utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
+from nimare import references
+from nimare.base import NiMAREBase
+from nimare.due import due
+from nimare.utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
 
 LGR = logging.getLogger(__name__)
 
 
-class ImageTransformer(Transformer):
+class ImageTransformer(NiMAREBase):
     """A class to create new images from existing ones within a Dataset.
 
     This class is a light wrapper around :func:`~nimare.transforms.transform_images`.
@@ -280,7 +281,7 @@ def resolve_transforms(target, available_data, masker):
         return None
 
 
-class ImagesToCoordinates(Transformer):
+class ImagesToCoordinates(NiMAREBase):
     """Transformer from images to coordinates.
 
     .. versionadded:: 0.0.8
@@ -456,9 +457,19 @@ class ImagesToCoordinates(Transformer):
             original_ids = set(old_coordinates_df["id"])
             metadata.loc[metadata["id"].isin(original_ids), "coordinate_source"] = "original"
 
-        # ensure z_stat is treated as float
         if "z_stat" in coordinates_df.columns:
+            # ensure z_stat is treated as float
             coordinates_df["z_stat"] = coordinates_df["z_stat"].astype(float)
+
+            # Raise warning if coordinates dataset contains both positive and negative z_stats
+            if ((coordinates_df["z_stat"].values >= 0).any()) and (
+                (coordinates_df["z_stat"].values < 0).any()
+            ):
+                warnings.warn(
+                    "Coordinates dataset contains both positive and negative z_stats. "
+                    "The algorithms currently implemented in NiMARE are designed for "
+                    "one-sided tests. This might lead to unexpected results."
+                )
 
         new_dataset = copy.deepcopy(dataset)
         new_dataset.coordinates = coordinates_df
@@ -691,7 +702,8 @@ def t_to_z(t_values, dof):
 
     .. versionadded:: 0.0.3
 
-    An implementation of [1]_ from Vanessa Sochat's TtoZ package [2]_.
+    An implementation of :footcite:t:`hughett2008accurate` from Vanessa Sochat's TtoZ package
+    :footcite:p:`sochat2015ttoz`.
 
     Parameters
     ----------
@@ -707,11 +719,7 @@ def t_to_z(t_values, dof):
 
     References
     ----------
-    .. [1] Hughett, P. (2007). Accurate Computation of the F-to-z and t-to-z
-           Transforms for Large Arguments. Journal of Statistical Software,
-           23(1), 1-5.
-    .. [2] Sochat, V. (2015, October 21). TtoZ Original Release. Zenodo.
-           http://doi.org/10.5281/zenodo.32508
+    .. footbibliography::
     """
     # Select just the nonzero voxels
     nonzero = t_values[t_values != 0]
@@ -750,8 +758,8 @@ def z_to_t(z_values, dof):
 
     .. versionadded:: 0.0.3
 
-    An inversion of the t_to_z implementation of [1]_ from Vanessa Sochat's
-    TtoZ package [2]_.
+    An inversion of the t_to_z implementation of :footcite:t:`hughett2008accurate` from
+    Vanessa Sochat's TtoZ package :footcite:p:`sochat2015ttoz`.
 
     Parameters
     ----------
@@ -767,11 +775,7 @@ def z_to_t(z_values, dof):
 
     References
     ----------
-    .. [1] Hughett, P. (2007). Accurate Computation of the F-to-z and t-to-z
-           Transforms for Large Arguments. Journal of Statistical Software,
-           23(1), 1-5.
-    .. [2] Sochat, V. (2015, October 21). TtoZ Original Release. Zenodo.
-           http://doi.org/10.5281/zenodo.32508
+    .. footbibliography::
     """
     # Select just the nonzero voxels
     nonzero = z_values[z_values != 0]

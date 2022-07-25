@@ -6,10 +6,12 @@ import pickle
 import nibabel as nib
 import numpy as np
 import pytest
+from nilearn.input_data import NiftiLabelsMasker
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
+from nimare.tests.utils import get_test_data_path
 from nimare.utils import vox2mm
 
 
@@ -44,14 +46,6 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         meta.fit(dset)
     assert "Loading pre-generated MA maps" in caplog.text
-
-    # If there is a memory limit along with pre-generated images, then we should still see the
-    # logger message.
-    meta = ale.ALE(kernel__sample_size=20, memory_limit="100mb")
-    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
-        meta.fit(dset)
-    assert "Loading pre-generated MA maps" in caplog.text
-    assert "Closing memmap at" in caplog.text
 
 
 def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
@@ -115,7 +109,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     # Test MCC methods
     # Monte Carlo FWE
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
@@ -153,7 +147,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
 
     # FDR
     corr = FDRCorrector(method="indep", alpha=0.05)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
         cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
@@ -169,7 +163,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALE_montecarlo_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null_method="montecarlo", n_iters=10, kernel__memory_limit="1gb")
+    meta = ale.ALE(null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
@@ -199,7 +193,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     # Test MCC methods
     # Monte Carlo FWE
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.maps.keys()
@@ -239,10 +233,6 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
         "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
         not in res.estimator.null_distributions_.keys()
     )
-    assert (
-        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-        not in meta.results.estimator.null_distributions_.keys()
-    )
 
     # Bonferroni FWE
     corr = FWECorrector(method="bonferroni")
@@ -257,7 +247,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
 
     # FDR
     corr = FDRCorrector(method="indep", alpha=0.05)
-    cres = corr.transform(meta.results)
+    cres = corr.transform(res)
     assert isinstance(cres, nimare.results.MetaResult)
     assert isinstance(
         cres.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
@@ -271,15 +261,13 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
     sub_meta = ale.ALESubtraction(n_iters=10, n_cores=2)
-    sub_meta.fit(testdata_cbma, testdata_cbma)
-    assert isinstance(sub_meta.results, nimare.results.MetaResult)
-    assert "z_desc-group1MinusGroup2" in sub_meta.results.maps.keys()
+    results = sub_meta.fit(testdata_cbma, testdata_cbma)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert "z_desc-group1MinusGroup2" in results.maps.keys()
     assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
+        results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
-    assert isinstance(
-        sub_meta.results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray
-    )
+    assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
@@ -314,3 +302,16 @@ def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
 
     meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_ALE_non_nifti_masker(testdata_cbma):
+    """Unit test for ALE with non-NiftiMasker.
+
+    CBMA estimators don't work with non-NiftiMasker (e.g., a NiftiLabelsMasker).
+    """
+    atlas = os.path.join(get_test_data_path(), "test_pain_dataset", "atlas.nii.gz")
+    masker = NiftiLabelsMasker(atlas)
+    meta = ale.ALE(mask=masker, n_iters=10)
+
+    with pytest.raises(ValueError):
+        meta.fit(testdata_cbma)

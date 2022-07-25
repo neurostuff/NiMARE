@@ -10,18 +10,18 @@ from nilearn.input_data import NiftiLabelsMasker
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ibma
-
-from .utils import get_test_data_path
+from nimare.tests.utils import get_test_data_path
 
 
 @pytest.mark.parametrize(
-    "meta,meta_kwargs,corrector,corrector_kwargs",
+    "meta,meta_kwargs,corrector,corrector_kwargs,maps",
     [
         pytest.param(
             ibma.Fishers,
             {},
             FDRCorrector,
             {"method": "indep", "alpha": 0.001},
+            ("z", "p"),
             id="Fishers",
         ),
         pytest.param(
@@ -29,6 +29,7 @@ from .utils import get_test_data_path
             {"use_sample_size": False},
             None,
             {},
+            ("z", "p"),
             id="Stouffers",
         ),
         pytest.param(
@@ -36,6 +37,7 @@ from .utils import get_test_data_path
             {"use_sample_size": True},
             None,
             {},
+            ("z", "p"),
             id="Stouffers_weighted",
         ),
         pytest.param(
@@ -43,6 +45,7 @@ from .utils import get_test_data_path
             {"tau2": 0},
             None,
             {},
+            ("z", "p", "est", "se"),
             id="WeightedLeastSquares",
         ),
         pytest.param(
@@ -50,6 +53,7 @@ from .utils import get_test_data_path
             {},
             None,
             {},
+            ("z", "p", "est", "se", "tau2"),
             id="DerSimonianLaird",
         ),
         pytest.param(
@@ -57,6 +61,7 @@ from .utils import get_test_data_path
             {},
             None,
             {},
+            ("z", "p", "est", "se", "tau2"),
             id="Hedges",
         ),
         pytest.param(
@@ -64,6 +69,7 @@ from .utils import get_test_data_path
             {"method": "ml"},
             None,
             {},
+            ("z", "p", "est", "se", "tau2", "sigma2"),
             id="SampleSizeBasedLikelihood_ml",
         ),
         pytest.param(
@@ -71,6 +77,7 @@ from .utils import get_test_data_path
             {"method": "reml"},
             None,
             {},
+            ("z", "p", "est", "se", "tau2", "sigma2"),
             id="SampleSizeBasedLikelihood_reml",
         ),
         pytest.param(
@@ -78,6 +85,7 @@ from .utils import get_test_data_path
             {"method": "ml"},
             None,
             {},
+            ("z", "p", "est", "se", "tau2"),
             id="VarianceBasedLikelihood_ml",
         ),
         pytest.param(
@@ -85,6 +93,7 @@ from .utils import get_test_data_path
             {"method": "reml"},
             None,
             {},
+            ("z", "p", "est", "se", "tau2"),
             id="VarianceBasedLikelihood_reml",
         ),
         pytest.param(
@@ -92,18 +101,21 @@ from .utils import get_test_data_path
             {"two_sided": True},
             FWECorrector,
             {"method": "montecarlo", "n_iters": 100, "n_cores": 1},
+            ("t", "z"),
             id="PermutedOLS",
         ),
     ],
 )
-def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwargs):
+def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwargs, maps):
     """Smoke test for IBMA estimators."""
     meta = meta(**meta_kwargs)
     res = meta.fit(testdata_ibma)
-    z_img = res.get_map("z")
-    assert isinstance(meta.results, nimare.results.MetaResult)
+    for expected_map in maps:
+        assert expected_map in res.maps.keys()
+
     assert isinstance(res, nimare.results.MetaResult)
     assert res.get_map("z", return_type="array").ndim == 1
+    z_img = res.get_map("z")
     assert z_img.ndim == 3
     assert z_img.shape == (10, 10, 10)
     if corrector:
@@ -145,23 +157,23 @@ def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation, 
             meta.fit(dset)
     elif expectation == "warning":
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            meta.fit(dset)
+            res = meta.fit(dset)
             assert "will likely produce biased results" in caplog.text
         caplog.clear()
     else:
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            meta.fit(dset)
+            res = meta.fit(dset)
             assert "will likely produce biased results" not in caplog.text
         caplog.clear()
 
     # Only fit the estimator if it doesn't raise a ValueError
     if expectation != "error":
-        assert isinstance(meta.results, nimare.results.MetaResult)
+        assert isinstance(res, nimare.results.MetaResult)
         # There are five "labels", but one of them has no good data,
         # so the outputs should be 4 long.
-        assert meta.results.maps["z"].shape == (5,)
-        assert np.isnan(meta.results.maps["z"][0])
-        assert meta.results.get_map("z").shape == (10, 10, 10)
+        assert res.maps["z"].shape == (5,)
+        assert np.isnan(res.maps["z"][0])
+        assert res.get_map("z").shape == (10, 10, 10)
 
 
 @pytest.mark.parametrize(
@@ -181,6 +193,7 @@ def test_ibma_resampling(testdata_ibma_resample, resample, resample_kwargs, expe
     """Test image-based resampling performance."""
     meta = ibma.Fishers(resample=resample, **resample_kwargs)
     with expectation:
-        meta.fit(testdata_ibma_resample)
+        res = meta.fit(testdata_ibma_resample)
+
     if isinstance(expectation, does_not_raise):
-        assert isinstance(meta.results, nimare.results.MetaResult)
+        assert isinstance(res, nimare.results.MetaResult)

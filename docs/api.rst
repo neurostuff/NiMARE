@@ -139,6 +139,7 @@ For more information about functional characterization analysis, see :doc:`decod
    decode.discrete
    decode.continuous
    decode.encode
+   decode.base
 
 
 .. _api_io_ref:
@@ -245,7 +246,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    stats.pearson
    stats.null_to_p
    stats.nullhist_to_p
-   stats.fdr
 
 
 .. _api_generate_ref:
@@ -289,6 +289,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    utils.mm2vox
    utils.tal2mni
    utils.mni2tal
+   utils.unique_rows
 
 .. _api_workflows_ref:
 
@@ -327,6 +328,3 @@ For more information about fetching data from the internet, see :ref:`fetching t
 
    base.NiMAREBase
    base.Estimator
-   base.MetaEstimator
-   base.Transformer
-   base.Decoder

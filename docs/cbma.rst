@@ -85,8 +85,8 @@ Additionally, each Corrector type accepts a "method" parameter,
 which determines the specific approach used to correct the error rate of choice.
 These methods can be broadly separated into two groups: generic methods and Estimator-specific methods.
 
-Generic methods rely on tools like ``statsmodels`` to correct the results as an array,
-without accounting for any of the idiosyncrasies of neuroimaging data (e.g., autocorrelation).
+Generic methods rely on internal implementations of common correction approaches to correct the results as an array,
+without accounting for any of the idiosyncrasies of neuroimaging data, such as the smoothness of the data.
 One example of a generic method is the "bonferroni" method for the FWECorrector.
 
 .. tip::
@@ -138,3 +138,20 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
     the voxel's summary statistic value lands on this null distribution.
     **Voxel-level correction is generally more conservative than cluster-level correction,
     so it is only recommended for very large meta-analyses (i.e., hundreds of studies).**
+
+.. admonition:: What about threshold-free cluster enhancement?
+
+    TFCE :footcite:p:`smith2009threshold` is a voxel-level metric that combines signal magnitude and
+    cluster extent to enhance the importance of clusters that are large, have high magnitude, or both.
+
+    It can be applied to coordinate-based meta-analyses as an alternate metric to the
+    maximum summary statistic (``level-voxel``), cluster mass (``desc-mass``), or cluster size (``desc-size``).
+    However, recent work by Frahm et al. :footcite:p:`frahm2022evaluation` has indicated that the costs of performing
+    TFCE-based inference (e.g., massively increased computation time) outweigh any observable benefits.
+    As such, we have chosen not to implement TFCE-based correction within NiMARE,
+    although there is a closed pull request with an implementation that worked at the time it was closed
+    (see `#655 <https://github.com/neurostuff/NiMARE/pull/655>`_).
+
+References
+----------
+.. footbibliography::
