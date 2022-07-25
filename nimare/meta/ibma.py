@@ -795,11 +795,11 @@ class PermutedOLS(IBMAEstimator):
         # Convert t to z, preserving signs
         dof = self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
         z_map = t_to_z(t_map, dof)
-        images = {
+        maps = {
             "t": _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"]),
             "z": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return images
+        return maps, {}
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
@@ -864,10 +864,10 @@ class PermutedOLS(IBMAEstimator):
         sign = np.sign(t_map)
         sign[sign == 0] = 1
         z_map = p_to_z(p_map, tail="two") * sign
-        images = {
+        maps = {
             "logp_level-voxel": _boolean_unmask(
                 log_p_map.squeeze(), self.inputs_["aggressive_mask"]
             ),
             "z_level-voxel": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return images
+        return maps
