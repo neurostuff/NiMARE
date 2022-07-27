@@ -77,8 +77,6 @@ class Jackknife(NiMAREBase):
             cluster in the thresholded map.
             There is one row for each experiment, as well as one more row at the top of the table
             (below the header), which has the center of mass of each cluster.
-            The centers of mass are not guaranteed to fall within the actual clusters, but can
-            serve as a useful heuristic for identifying them.
             There is one column for each cluster, with column names being integers indicating the
             cluster's associated value in the ``labeled_cluster_img`` output.
         labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
@@ -287,8 +285,6 @@ class FocusCounter(NiMAREBase):
             cluster in the thresholded map.
             There is one row for each experiment, as well as one more row at the top of the table
             (below the header), which has the center of mass of each cluster.
-            The centers of mass are not guaranteed to fall within the actual clusters, but can
-            serve as a useful heuristic for identifying them.
             There is one column for each cluster, with column names being integers indicating the
             cluster's associated value in the ``labeled_cluster_img`` output.
         labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
