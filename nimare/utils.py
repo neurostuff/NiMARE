@@ -1084,7 +1084,7 @@ def _get_cluster_coms(labeled_cluster_arr):
 
     # Identify center of mass for each cluster
     # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
-    cluster_ids = list(range(1, n_clusters + 1))
+    cluster_ids = np.arange(1, n_clusters + 1, dtype=int)
     cluster_coms = ndimage.center_of_mass(labeled_cluster_arr, labeled_cluster_arr, cluster_ids)
     cluster_coms = np.array(cluster_coms).astype(int)
 
@@ -1097,15 +1097,16 @@ def _get_cluster_coms(labeled_cluster_arr):
         != cluster_ids
     )
     if np.any(coms_outside_clusters):
-        LGR.warn(
+        LGR.warning(
             "Attention: At least one of the centers of mass falls outside of the cluster body. "
             "Identifying the nearest in-cluster voxel."
         )
+
         # Replace centers of mass with their nearest neighbor points in the
         # corresponding clusters. Note this is also equivalent to computing the
         # centers of mass constrained to points within the cluster.
         cluster_coms[coms_outside_clusters, :] = _cluster_nearest_neighbor(
-            cluster_coms[coms_outside_clusters],
+            cluster_coms[coms_outside_clusters, :],
             cluster_ids[coms_outside_clusters],
             labeled_cluster_arr,
         )
