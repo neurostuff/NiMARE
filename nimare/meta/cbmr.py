@@ -1,3 +1,4 @@
+import string
 from attr import has
 from numpy import spacing
 from nimare.base import Estimator
@@ -34,23 +35,41 @@ class CBMREstimator(Estimator):
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":
                 if hasattr(self, "groups"):
-                    ## to do: raise an error if group column doesn't exist in dataset.annotations
-                    group_names = dataset.annotations['group_id'].unique()
-                    gb = dataset.annotations.groupby('group_id')
-                    multiple_groups = [gb.get_group(x)['study_id'] for x in gb.groups]
+                    if 'group_id' not in dataset.annotations.columns: 
+                        print('123')
+                        raise ValueError("group_id must exist in the dataset in group-wise CBMR")
+                    else:
+                        group_names = dataset.annotations['group_id'].unique()
+                        gb = dataset.annotations.groupby('group_id')
+                        multiple_groups = [gb.get_group(x)['study_id'] for x in gb.groups]
                 if hasattr(self, "moderators"):
                     study_id_moderators = dataset.annotations.set_index('study_id').index
                     study_id_coordinates = dataset.coordinates.set_index('study_id').index
                     moderators_with_coordinates = dataset.annotations[study_id_moderators.isin(study_id_coordinates)] # moderators dataframe where foci exist in selected studies
                     moderators_array = np.stack([moderators_with_coordinates[moderator_name] for moderator_name in self.moderators], axis=1)
                     moderators_array = moderators_array.astype(np.float64)
+                    # standardize mean
                     if isinstance(self.moderators_center, bool):
-                        ## to do: if moderators_center & moderators_array is a list of moderators names, only operate on the chosen moderators
                         if self.moderators_center: 
                             moderators_array -= np.mean(moderators_array, axis=0)
+                    elif isinstance(self.moderators_center, str):
+                        index_moderators_center = self.moderators.index(self.moderators_center)
+                        moderators_array[:,index_moderators_center] -= np.mean(moderators_array[:, index_moderators_center], axis=0)
+                    elif isinstance(self.moderators_center, list):
+                        index_moderators_center = [self.moderators.index(moderator_name) for moderator_name in self.moderators_center]
+                        for i in index_moderators_center:
+                            moderators_array[:,i] -= np.mean(moderators_array[:, i], axis=0)
+                    # standardize var
                     if isinstance(self.moderators_scale, bool):
                         if self.moderators_scale: 
                             moderators_array /= np.var(moderators_array, axis=0)
+                    elif isinstance(self.moderators_scale, str):
+                        index_moderators_scale = self.moderators.index(self.moderators_scale)
+                        moderators_array[:,index_moderators_scale] /= np.var(moderators_array[:, index_moderators_scale], axis=0)
+                    elif isinstance(self.moderators_scale, list):
+                        index_moderators_scale = [self.moderators.index(moderator_name) for moderator_name in self.moderators_scale]
+                        for i in index_moderators_scale:
+                            moderators_array[:,i] /= np.var(moderators_array[:, i], axis=0)
                     self.inputs_["moderators_array"] = moderators_array
                 # Calculate IJK matrix indices for target mask
                 # Mask space is assumed to be the same as the Dataset's space
@@ -136,6 +155,7 @@ class CBMREstimator(Estimator):
         studywise_spatial_intensity = intensity2voxel(studywise_spatial_intensity, self.inputs_['mask_img']._dataobj)
 
         if hasattr(self, "moderators"):
+
             self._gamma = cbmr_model.gamma_linear.weight
             self._gamma = self._gamma.detach().numpy().T
 
