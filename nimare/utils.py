@@ -1086,7 +1086,7 @@ def _get_cluster_coms(labeled_cluster_arr):
     # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
     cluster_ids = list(range(1, n_clusters + 1))
     cluster_coms = ndimage.center_of_mass(labeled_cluster_arr, labeled_cluster_arr, cluster_ids)
-    cluster_coms = np.array(cluster_coms)
+    cluster_coms = np.array(cluster_coms).astype(int)
 
     # NOTE: The following comes from Nilearn
     # Determine if all subpeaks are within the cluster
