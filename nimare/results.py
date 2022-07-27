@@ -156,8 +156,8 @@ class MetaResult(object):
         """Return copy of result object."""
         new = MetaResult(
             self.estimator,
-            self.masker,
-            copy.deepcopy(self.maps),
-            copy.deepcopy(self.tables),
+            mask=self.masker,
+            maps=copy.deepcopy(self.maps),
+            tables=copy.deepcopy(self.tables),
         )
         return new

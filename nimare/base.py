@@ -335,4 +335,4 @@ class Estimator(NiMAREBase):
         else:
             masker = dataset.masker
 
-        return MetaResult(self, masker=masker, maps=maps, tables=tables)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables)
