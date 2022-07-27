@@ -94,6 +94,7 @@ For more information about the components of coordinate-based meta-analysis in N
    :toctree: generated/
    :template: class.rst
 
+   diagnostics.FocusFilter
    diagnostics.Jackknife
    diagnostics.FocusCounter
 
