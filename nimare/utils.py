@@ -20,6 +20,7 @@ from nimare import references
 from nimare.due import due
 
 import patsy
+import sparse
 
 LGR = logging.getLogger(__name__)
 
@@ -1096,14 +1097,20 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
     x_spline = coef_spline_bases(xx, spacing, margin)
     y_spline = coef_spline_bases(yy, spacing, margin)
     z_spline = coef_spline_bases(zz, spacing, margin)
+    x_spline_coords = x_spline.nonzero()
+    y_spline_coords = y_spline.nonzero()
+    z_spline_coords = z_spline.nonzero()
+    x_spline_sparse = sparse.COO(x_spline_coords, x_spline[x_spline_coords])
+    y_spline_sparse = sparse.COO(y_spline_coords, y_spline[y_spline_coords])
+    z_spline_sparse = sparse.COO(z_spline_coords, z_spline[z_spline_coords])
 
     # create spatial design matrix by tensor product of spline bases in 3 dimesion
-    X = np.kron(np.kron(x_spline, y_spline), z_spline)  # Row sums of X are all 1=> There is no need to re-normalise X
+    X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)  # Row sums of X are all 1=> There is no need to re-normalise X
     # remove the voxels outside brain mask
-    axis_dim = [x_spline.shape[0], y_spline.shape[0], z_spline.shape[0]]
+    axis_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
     brain_voxels_index = [(z - np.min(zz))+ axis_dim[2] * (y - np.min(yy))+ axis_dim[1] * axis_dim[2] * (x - np.min(xx))
                         for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1]
-    X = X[brain_voxels_index, :]
+    X = X[brain_voxels_index, :].todense()
     # remove tensor product basis that have no support in the brain
     x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
     support_basis = []
