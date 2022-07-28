@@ -983,7 +983,7 @@ def tqdm_joblib(tqdm_object):
         tqdm_object.close()
 
 
-def unique_rows(ar):
+def unique_rows(ar, return_counts=False):
     """Remove repeated rows from a 2D array.
 
     In particular, if given an array of coordinates of shape
@@ -993,11 +993,16 @@ def unique_rows(ar):
     ----------
     ar : 2-D ndarray
         The input array.
+    return_counts : :obj:`bool`, optional
+        If True, also return the number of times each unique item appears in ar.
 
     Returns
     -------
     ar_out : 2-D ndarray
         A copy of the input array with repeated rows removed.
+    unique_counts : :obj:`np.ndarray`, optional
+        The number of times each of the unique values comes up in the original array.
+        Only provided if return_counts is True.
 
     Raises
     ------
@@ -1031,6 +1036,13 @@ def unique_rows(ar):
     # see each row as a single item, we create a view of each row as a
     # byte string of length itemsize times number of columns in `ar`
     ar_row_view = ar.view("|S%d" % (ar.itemsize * ar.shape[1]))
-    _, unique_row_indices = np.unique(ar_row_view, return_index=True)
-    ar_out = ar[unique_row_indices]
-    return ar_out
+    if return_counts:
+        _, unique_row_indices, counts = np.unique(
+            ar_row_view, return_index=True, return_counts=True
+        )
+
+        return ar[unique_row_indices], counts
+    else:
+        _, unique_row_indices = np.unique(ar_row_view, return_index=True)
+
+        return ar[unique_row_indices]

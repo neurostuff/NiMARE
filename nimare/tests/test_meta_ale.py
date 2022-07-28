@@ -6,10 +6,12 @@ import pickle
 import nibabel as nib
 import numpy as np
 import pytest
+from nilearn.input_data import NiftiLabelsMasker
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
+from nimare.tests.utils import get_test_data_path
 from nimare.utils import vox2mm
 
 
@@ -41,13 +43,6 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     assert "Loading pre-generated MA maps" not in caplog.text
 
     # The Dataset with the images will re-use them, as evidenced by the logger message.
-    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
-        meta.fit(dset)
-    assert "Loading pre-generated MA maps" in caplog.text
-
-    # If there is a memory limit along with pre-generated images, then we should still see the
-    # logger message.
-    meta = ale.ALE(kernel__sample_size=20)
     with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         meta.fit(dset)
     assert "Loading pre-generated MA maps" in caplog.text
@@ -307,3 +302,16 @@ def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
 
     meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_ALE_non_nifti_masker(testdata_cbma):
+    """Unit test for ALE with non-NiftiMasker.
+
+    CBMA estimators don't work with non-NiftiMasker (e.g., a NiftiLabelsMasker).
+    """
+    atlas = os.path.join(get_test_data_path(), "test_pain_dataset", "atlas.nii.gz")
+    masker = NiftiLabelsMasker(atlas)
+    meta = ale.ALE(mask=masker, n_iters=10)
+
+    with pytest.raises(ValueError):
+        meta.fit(testdata_cbma)
