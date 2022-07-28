@@ -870,4 +870,4 @@ class PermutedOLS(IBMAEstimator):
             ),
             "z_level-voxel": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return maps
+        return maps, {}
