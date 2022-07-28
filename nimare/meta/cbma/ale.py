@@ -7,8 +7,6 @@ import sparse
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
-from nimare import references
-from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
 from nimare.stats import null_to_p, nullhist_to_p
@@ -18,19 +16,6 @@ from nimare.utils import _check_ncores, tqdm_joblib, use_memmap
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.ALE1, description="Introduces ALE.")
-@due.dcite(
-    references.ALE2,
-    description="Modifies ALE algorithm to eliminate within-experiment "
-    "effects and generate MA maps based on subject group "
-    "instead of experiment.",
-)
-@due.dcite(
-    references.ALE3,
-    description="Modifies ALE algorithm to allow FWE correction and to "
-    "more quickly and accurately generate the null "
-    "distribution for significance testing.",
-)
 class ALE(CBMAEstimator):
     """Activation likelihood estimation.
 
@@ -500,10 +485,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
         )
 
 
-@due.dcite(
-    references.SCALE,
-    description=("Introduces the specific co-activation likelihood estimation (SCALE) algorithm."),
-)
 class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
