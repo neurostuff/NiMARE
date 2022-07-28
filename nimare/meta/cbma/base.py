@@ -815,14 +815,14 @@ class CBMAEstimator(Estimator):
 
         if vfwe_only:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
             }
 
         else:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
                 "logp_desc-size_level-cluster": logp_csfwe_values,
@@ -831,7 +831,7 @@ class CBMAEstimator(Estimator):
                 "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
-        return images
+        return maps, {}
 
 
 class PairwiseCBMAEstimator(CBMAEstimator):

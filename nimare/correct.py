@@ -223,7 +223,7 @@ class Corrector(metaclass=ABCMeta):
         p_no_nans = p[nonnan_mask]
 
         # Call the correction method
-        p_corr_no_nans = getattr(self, method)(p_no_nans)
+        p_corr_no_nans, tables = getattr(self, method)(p_no_nans)
 
         # Unmask the corrected p values based on the NaN mask
         p_corr[nonnan_mask] = p_corr_no_nans
@@ -231,7 +231,7 @@ class Corrector(metaclass=ABCMeta):
         # Create a dictionary of the corrected results
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
-        return corr_maps, {}
+        return corr_maps, tables
 
 
 class FWECorrector(Corrector):
@@ -363,7 +363,7 @@ class FDRCorrector(Corrector):
         --------
         pymare.stats.fdr
         """
-        return fdr(p, q=self.alpha, method="bh")
+        return fdr(p, q=self.alpha, method="bh"), {}
 
     def correct_fdr_negcorr(self, p):
         """Perform Benjamini-Yekutieli FDR correction.
@@ -403,4 +403,4 @@ class FDRCorrector(Corrector):
         --------
         pymare.stats.fdr
         """
-        return fdr(p, q=self.alpha, method="by")
+        return fdr(p, q=self.alpha, method="by"), {}
