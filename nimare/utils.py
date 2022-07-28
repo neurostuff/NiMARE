@@ -18,10 +18,7 @@ from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 
 import patsy
-<<<<<<< HEAD
 import sparse
-=======
->>>>>>> f00c309 (create a design matrix function for cbmr)
 
 LGR = logging.getLogger(__name__)
 
@@ -1255,6 +1252,7 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
     z_spline_sparse = sparse.COO(z_spline_coords, z_spline[z_spline_coords])
 
     # create spatial design matrix by tensor product of spline bases in 3 dimesion
+<<<<<<< HEAD
     # Row sums of X are all 1=> There is no need to re-normalise X
     X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)
     # remove the voxels outside brain mask
@@ -1268,6 +1266,13 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
         for z in zz
         if masker_voxels[x, y, z] == 1
     ]
+=======
+    X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)  # Row sums of X are all 1=> There is no need to re-normalise X
+    # remove the voxels outside brain mask
+    axis_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
+    brain_voxels_index = [(z - np.min(zz))+ axis_dim[2] * (y - np.min(yy))+ axis_dim[1] * axis_dim[2] * (x - np.min(xx))
+                        for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1]
+>>>>>>> 06f27f9 (use a sparse array instead of numpy)
     X = X[brain_voxels_index, :].todense()
     # remove tensor product basis that have no support in the brain
     x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
