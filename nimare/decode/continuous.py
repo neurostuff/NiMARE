@@ -8,10 +8,8 @@ from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
-from nimare import references
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
-from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator
 from nimare.meta.cbma.mkda import MKDAChi2
 from nimare.stats import pearson
@@ -20,7 +18,6 @@ from nimare.utils import _check_type, _safe_transform
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.GCLDA_DECODING, description="Describes decoding methods using GC-LDA.")
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
@@ -110,7 +107,6 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     return decoded_df, topic_weights
 
 
-@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class CorrelationDecoder(Decoder):
     """Decode an unthresholded image by correlating the image with meta-analytic maps.
 

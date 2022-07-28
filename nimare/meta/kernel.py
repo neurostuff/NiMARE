@@ -15,9 +15,7 @@ import numpy as np
 import pandas as pd
 import sparse
 
-from nimare import references
 from nimare.base import NiMAREBase
-from nimare.due import due
 from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
 from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox
 
@@ -259,14 +257,6 @@ class KernelTransformer(NiMAREBase):
         pass
 
 
-@due.dcite(
-    references.ALE2,
-    description=(
-        "Modifies ALE algorithm to eliminate within-experiment "
-        "effects and generate MA maps based on subject group "
-        "instead of experiment."
-    ),
-)
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
 

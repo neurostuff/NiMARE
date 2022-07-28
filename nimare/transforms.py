@@ -11,9 +11,7 @@ import pandas as pd
 from nilearn.reporting import get_clusters_table
 from scipy import stats
 
-from nimare import references
 from nimare.base import NiMAREBase
-from nimare.due import due
 from nimare.utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
 
 LGR = logging.getLogger(__name__)
@@ -695,8 +693,6 @@ def p_to_z(p, tail="two"):
     return z
 
 
-@due.dcite(references.T2Z_TRANSFORM, description="Introduces T-to-Z transform.")
-@due.dcite(references.T2Z_IMPLEMENTATION, description="Python implementation of T-to-Z transform.")
 def t_to_z(t_values, dof):
     """Convert t-statistics to z-statistics.
 

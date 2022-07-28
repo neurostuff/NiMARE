@@ -6,8 +6,6 @@ import numpy as np
 import sparse
 from scipy import ndimage
 
-from nimare import references
-from nimare.due import due
 from nimare.utils import unique_rows
 
 LGR = logging.getLogger(__name__)
@@ -297,7 +295,6 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     return kernel_data
 
 
-@due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
 def get_ale_kernel(img, sample_size=None, fwhm=None):
     """Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given sample size or fwhm."""
     if sample_size is not None and fwhm is not None:

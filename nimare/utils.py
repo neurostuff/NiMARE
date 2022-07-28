@@ -16,9 +16,6 @@ import numpy as np
 import pandas as pd
 from nilearn.input_data import NiftiMasker
 
-from nimare import references
-from nimare.due import due
-
 LGR = logging.getLogger(__name__)
 
 
@@ -206,16 +203,6 @@ def mm2vox(xyz, affine):
     return ijk
 
 
-@due.dcite(
-    references.LANCASTER_TRANSFORM,
-    description="Introduces the Lancaster MNI-to-Talairach transform, "
-    "as well as its inverse, the Talairach-to-MNI "
-    "transform.",
-)
-@due.dcite(
-    references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
-)
 def tal2mni(coords):
     """Convert coordinates from Talairach space to MNI space.
 
@@ -284,16 +271,6 @@ def tal2mni(coords):
     return out_coords
 
 
-@due.dcite(
-    references.LANCASTER_TRANSFORM,
-    description="Introduces the Lancaster MNI-to-Talairach transform, "
-    "as well as its inverse, the Talairach-to-MNI "
-    "transform.",
-)
-@due.dcite(
-    references.LANCASTER_TRANSFORM_VALIDATION,
-    description="Validates the Lancaster MNI-to-Talairach and Talairach-to-MNI transforms.",
-)
 def mni2tal(coords):
     """Convert coordinates from MNI space Talairach space.
 

@@ -10,8 +10,6 @@ from scipy import ndimage
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 
-from nimare import references
-from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
@@ -22,7 +20,6 @@ from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDADensity(CBMAEstimator):
     r"""Multilevel kernel density analysis- Density analysis.
 
@@ -249,7 +246,6 @@ class MKDADensity(CBMAEstimator):
         self.null_distributions_["histweights_corr-none_method-approximate"] = ss_hist
 
 
-@due.dcite(references.MKDA, description="Introduces MKDA.")
 class MKDAChi2(PairwiseCBMAEstimator):
     r"""Multilevel kernel density analysis- Chi-square analysis.
 
@@ -942,8 +938,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return images
 
 
-@due.dcite(references.KDA1, description="Introduces the KDA algorithm.")
-@due.dcite(references.KDA2, description="Also introduces the KDA algorithm.")
 class KDA(CBMAEstimator):
     r"""Kernel density analysis.
 
