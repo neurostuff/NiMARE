@@ -223,7 +223,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    extract.download_nidm_pain
    extract.download_cognitive_atlas
    extract.download_abstracts
-   extract.download_peaks2maps_model
 
    extract.utils.get_data_dirs
 
@@ -311,7 +310,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    workflows.ale_sleuth_workflow
    workflows.conperm_workflow
    workflows.macm_workflow
-   workflows.peaks2maps_workflow
    workflows.scale_workflow
 
 

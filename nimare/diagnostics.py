@@ -13,7 +13,7 @@ from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
-from nimare.utils import _check_ncores, get_masker, mm2vox, tqdm_joblib, vox2mm
+from nimare.utils import _check_ncores, _get_cluster_coms, get_masker, mm2vox, tqdm_joblib, vox2mm
 
 LGR = logging.getLogger(__name__)
 
@@ -77,8 +77,6 @@ class Jackknife(NiMAREBase):
             cluster in the thresholded map.
             There is one row for each experiment, as well as one more row at the top of the table
             (below the header), which has the center of mass of each cluster.
-            The centers of mass are not guaranteed to fall within the actual clusters, but can
-            serve as a useful heuristic for identifying them.
             There is one column for each cluster, with column names being integers indicating the
             cluster's associated value in the ``labeled_cluster_img`` output.
         labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
@@ -135,7 +133,7 @@ class Jackknife(NiMAREBase):
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
         conn = ndimage.generate_binary_structure(3, 2)
-        labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
+        labeled_cluster_arr, n_clusters = ndimage.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,
             affine=target_img.affine,
@@ -147,19 +145,11 @@ class Jackknife(NiMAREBase):
             contribution_table = pd.DataFrame(index=rows)
             return contribution_table, labeled_cluster_img
 
-        # Identify center of mass for each cluster
-        # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
-        cluster_ids = list(range(1, n_clusters + 1))
-        cluster_coms = ndimage.center_of_mass(
-            labeled_cluster_arr,
-            labeled_cluster_arr,
-            cluster_ids,
-        )
-        cluster_coms = np.array(cluster_coms)
+        cluster_coms = _get_cluster_coms(labeled_cluster_arr)
         cluster_coms = vox2mm(cluster_coms, target_img.affine)
 
         cluster_com_strs = []
-        for i_peak in range(len(cluster_ids)):
+        for i_peak in range(cluster_coms.shape[0]):
             x, y, z = cluster_coms[i_peak, :].astype(int)
             xyz_str = f"({x}, {y}, {z})"
             cluster_com_strs.append(xyz_str)
@@ -169,7 +159,7 @@ class Jackknife(NiMAREBase):
         cluster_masker.fit(labeled_cluster_img)
 
         # Create empty contribution table
-        contribution_table = pd.DataFrame(index=rows, columns=cluster_ids)
+        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
         contribution_table.index.name = "Cluster ID"
         contribution_table.loc["Center of Mass"] = cluster_com_strs
 
@@ -295,8 +285,6 @@ class FocusCounter(NiMAREBase):
             cluster in the thresholded map.
             There is one row for each experiment, as well as one more row at the top of the table
             (below the header), which has the center of mass of each cluster.
-            The centers of mass are not guaranteed to fall within the actual clusters, but can
-            serve as a useful heuristic for identifying them.
             There is one column for each cluster, with column names being integers indicating the
             cluster's associated value in the ``labeled_cluster_img`` output.
         labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
@@ -341,7 +329,7 @@ class FocusCounter(NiMAREBase):
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
         conn = ndimage.generate_binary_structure(3, 2)
-        labeled_cluster_arr, n_clusters = ndimage.measurements.label(thresh_arr, conn)
+        labeled_cluster_arr, n_clusters = ndimage.label(thresh_arr, conn)
         labeled_cluster_img = nib.Nifti1Image(
             labeled_cluster_arr,
             affine=target_img.affine,
@@ -353,23 +341,17 @@ class FocusCounter(NiMAREBase):
             contribution_table = pd.DataFrame(index=rows)
             return contribution_table, labeled_cluster_img
 
-        # Identify center of mass for each cluster
-        # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
-        cluster_ids = list(range(1, n_clusters + 1))
-        cluster_coms = ndimage.center_of_mass(
-            labeled_cluster_arr, labeled_cluster_arr, cluster_ids
-        )
-        cluster_coms = np.array(cluster_coms)
+        cluster_coms = _get_cluster_coms(labeled_cluster_arr)
         cluster_coms = vox2mm(cluster_coms, target_img.affine)
 
         cluster_com_strs = []
-        for i_peak in range(len(cluster_ids)):
+        for i_peak in range(cluster_coms.shape[0]):
             x, y, z = cluster_coms[i_peak, :].astype(int)
             xyz_str = f"({x}, {y}, {z})"
             cluster_com_strs.append(xyz_str)
 
         # Create empty contribution table
-        contribution_table = pd.DataFrame(index=rows, columns=cluster_ids)
+        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
         contribution_table.index.name = "Cluster ID"
         contribution_table.loc["Center of Mass"] = cluster_com_strs
 

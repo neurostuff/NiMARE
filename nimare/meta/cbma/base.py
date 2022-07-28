@@ -751,7 +751,7 @@ class CBMAEstimator(Estimator):
                 # cluster-label
                 thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
                 thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-                labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
+                labeled_matrix, _ = ndimage.label(thresh_stat_values, conn)
 
                 cluster_labels, idx, cluster_sizes = np.unique(
                     labeled_matrix,
