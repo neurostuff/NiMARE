@@ -610,9 +610,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Label positive and negative clusters separately
         labeled_matrix = np.empty(stat_map_thresh.shape, int)
-        labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh > 0, conn)
+        labeled_matrix, _ = ndimage.label(stat_map_thresh > 0, conn)
         n_positive_clusters = np.max(labeled_matrix)
-        temp_labeled_matrix, _ = ndimage.measurements.label(stat_map_thresh < 0, conn)
+        temp_labeled_matrix, _ = ndimage.label(stat_map_thresh < 0, conn)
         temp_labeled_matrix[temp_labeled_matrix > 0] += n_positive_clusters
         labeled_matrix = labeled_matrix + temp_labeled_matrix
         del temp_labeled_matrix
