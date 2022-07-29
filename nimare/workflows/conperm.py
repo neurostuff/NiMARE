@@ -69,7 +69,7 @@ References
     )
     res = {"logp": log_p_map, "t": t_map}
     # The t_test function will stand in for the Estimator in the results object
-    res = MetaResult(permuted_ols, mask_image, maps=res)
+    res = MetaResult(permuted_ols, mask=mask_image, maps=res, tables={})
 
     boilerplate = boilerplate.format(
         n_studies=n_studies,

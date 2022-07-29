@@ -188,7 +188,7 @@ class CBMAEstimator(Estimator):
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
+        return images, {}
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
@@ -815,14 +815,14 @@ class CBMAEstimator(Estimator):
 
         if vfwe_only:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
             }
 
         else:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
                 "logp_desc-size_level-cluster": logp_csfwe_values,
@@ -831,7 +831,7 @@ class CBMAEstimator(Estimator):
                 "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
-        return images
+        return maps, {}
 
 
 class PairwiseCBMAEstimator(CBMAEstimator):
@@ -908,11 +908,11 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps = self._fit(dataset1, dataset2)
+        maps, tables = self._fit(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset1.masker
 
-        return MetaResult(self, masker, maps)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables)

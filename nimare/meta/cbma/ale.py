@@ -418,13 +418,13 @@ class ALESubtraction(PairwiseCBMAEstimator):
         z_arr = p_to_z(p_values, tail="two") * diff_signs
         logp_arr = -np.log10(p_values)
 
-        images = {
+        maps = {
             "stat_desc-group1MinusGroup2": diff_ale_values,
             "p_desc-group1MinusGroup2": p_values,
             "z_desc-group1MinusGroup2": z_arr,
             "logp_desc-group1MinusGroup2": logp_arr,
         }
-        return images
+        return maps, {}
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -640,9 +640,9 @@ class SCALE(CBMAEstimator):
         logp_values = -np.log10(p_values)
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
-        # Write out unthresholded value images
-        images = {"stat": stat_values, "logp": logp_values, "z": z_values}
-        return images
+        # Write out unthresholded value maps
+        maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
+        return maps, {}
 
     def _compute_summarystat_est(self, data):
         """Generate ALE-value array and null distribution from a list of contrasts.
