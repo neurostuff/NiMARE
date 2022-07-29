@@ -13,7 +13,14 @@ from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
-from nimare.utils import _check_ncores, _get_cluster_coms, get_masker, mm2vox, tqdm_joblib, vox2mm
+from nimare.utils import (
+    _check_ncores,
+    _get_cluster_coms,
+    get_masker,
+    mm2vox,
+    tqdm_joblib,
+    vox2mm,
+)
 
 LGR = logging.getLogger(__name__)
 
