@@ -13,7 +13,14 @@ from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
-from nimare.utils import _check_ncores, _get_cluster_coms, mm2vox, tqdm_joblib, vox2mm
+from nimare.utils import (
+    _check_ncores,
+    _get_cluster_coms,
+    get_masker,
+    mm2vox,
+    tqdm_joblib,
+    vox2mm,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -389,3 +396,69 @@ class FocusCounter(NiMAREBase):
             focus_counts.append(n_included_voxels)
 
         return expid, focus_counts
+
+
+class FocusFilter(NiMAREBase):
+    """Remove coordinates outside of the Dataset's mask from the Dataset.
+
+    .. versionadded:: 0.0.13
+
+    Parameters
+    ----------
+    mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, \
+    :class:`~nilearn.maskers.NiftiMasker` or similar, or None, optional
+        Mask(er) to use. If None, uses the masker of the Dataset provided in ``transform``.
+
+    Notes
+    -----
+    This filter removes any coordinates outside of the brain mask.
+    It does not remove studies without coordinates in the brain mask, since a Dataset does not
+    need to have coordinates for all studies (e.g., some may only have images).
+    """
+
+    def __init__(self, mask=None):
+        if mask is not None:
+            mask = get_masker(mask)
+
+        self.masker = mask
+
+    def transform(self, dataset):
+        """Apply the filter to a Dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            The Dataset to filter.
+
+        Returns
+        -------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            The filtered Dataset.
+        """
+        masker = self.masker or dataset.masker
+
+        # Get matrix indices for in-brain voxels in the mask
+        mask_ijk = np.vstack(np.where(masker.mask_img.get_fdata())).T
+
+        # Get matrix indices for Dataset coordinates
+        dset_xyz = dataset.coordinates[["x", "y", "z"]].values
+
+        # mm2vox automatically rounds the coordinates
+        dset_ijk = mm2vox(dset_xyz, masker.mask_img.affine)
+
+        keep_idx = []
+        for i, coord in enumerate(dset_ijk):
+            # Check if each coordinate in Dataset is within the mask
+            # If it is, log that coordinate in keep_idx
+            if len(np.where((mask_ijk == coord).all(axis=1))[0]):
+                keep_idx.append(i)
+
+        LGR.info(
+            f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
+            "the mask. Removing them."
+        )
+
+        # Only retain coordinates inside the brain mask
+        dataset.coordinates = dataset.coordinates.iloc[keep_idx]
+
+        return dataset
