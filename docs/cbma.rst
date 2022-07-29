@@ -139,7 +139,7 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
     **Voxel-level correction is generally more conservative than cluster-level correction,
     so it is only recommended for very large meta-analyses (i.e., hundreds of studies).**
 
-.. note:: Clusters are defined using faces connectivity
+.. note::
 
     Clusters in the cluster-level corrected images are defined using
     faces connectivity (also known as 1st nearest-neighbor, NN1, or 6 neighbor connectivity),
