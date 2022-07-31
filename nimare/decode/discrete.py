@@ -6,17 +6,14 @@ from pymare.stats import bonferroni, fdr
 from scipy import special
 from scipy.stats import binom
 
-from nimare import references
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
-from nimare.due import due
 from nimare.meta.kernel import KernelTransformer, MKDAKernel
 from nimare.stats import one_way, pearson, two_way
 from nimare.transforms import p_to_z
 from nimare.utils import _check_type, get_masker
 
 
-@due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA decoding.")
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     r"""Perform image-to-text decoding for discrete inputs using method from Rubin et al. (2017).
 
@@ -113,7 +110,6 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     return decoded_df, topic_weights
 
 
-@due.dcite(references.BRAINMAP_DECODING, description="Citation for BrainMap-style decoding.")
 class BrainMapDecoder(Decoder):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
@@ -212,7 +208,6 @@ class BrainMapDecoder(Decoder):
         return results
 
 
-@due.dcite(references.BRAINMAP_DECODING, description="Citation for BrainMap-style decoding.")
 def brainmap_decode(
     coordinates,
     annotations,
@@ -388,7 +383,6 @@ def brainmap_decode(
     return out_df
 
 
-@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class NeurosynthDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
@@ -499,7 +493,6 @@ class NeurosynthDecoder(Decoder):
         return results
 
 
-@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 def neurosynth_decode(
     coordinates,
     annotations,
@@ -672,7 +665,6 @@ def neurosynth_decode(
     return out_df
 
 
-@due.dcite(references.NEUROSYNTH, description="Introduces Neurosynth.")
 class ROIAssociationDecoder(Decoder):
     """Perform discrete functional decoding according to Neurosynth's ROI association method.
 

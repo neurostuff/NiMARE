@@ -5,6 +5,7 @@ from nimare.base import Estimator
 from nimare.utils import get_template, get_masker, B_spline_bases
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from nimare.utils import mm2vox, vox2idx, intensity2voxel
 import torch
 import logging
@@ -161,7 +162,7 @@ class CBMREstimator(Estimator):
         Coef_spline_bases = torch.tensor(self.inputs_['Coef_spline_bases'], dtype=torch.float64, device=device)
         if hasattr(self, "moderators"):
             for group_name in self.inputs_['all_group_study_id'].keys():
-                moderators_array = torch.tensor(self.inputs_['all_group_moderators'][group_name], dtype=torch.float64, device=device)
+                all_moderators_array = torch.tensor(self.inputs_['all_group_moderators'][group_name], dtype=torch.float64, device=device)
         n_foci_per_voxel = torch.tensor(self.inputs_['n_foci_per_voxel'], dtype=torch.float64, device=device)
         n_foci_per_study = torch.tensor(self.inputs_['n_foci_per_study'], dtype=torch.float64, device=device)
         

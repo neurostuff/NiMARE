@@ -8,25 +8,16 @@ from __future__ import division
 
 import logging
 import os
-import warnings
 from hashlib import md5
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
-from nilearn import image
 
-from nimare import references
 from nimare.base import NiMAREBase
-from nimare.due import due
-from nimare.meta.utils import (
-    compute_ale_ma,
-    compute_kda_ma,
-    compute_p2m_ma,
-    get_ale_kernel,
-)
-from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox, vox2mm
+from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
+from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -206,9 +197,9 @@ class KernelTransformer(NiMAREBase):
         # Loop over exp ids since sparse._coo.core.COO is not iterable
         for i_exp, id_ in enumerate(transformed_maps[1]):
             if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
+                # This step is slow, but it is here just in case user want a
+                # return_type = "array", "image", or "dataset"
                 kernel_data = transformed_maps[0][i_exp].todense()
-            else:
-                kernel_data = transformed_maps[0][i_exp]
 
             if return_type == "array":
                 img = kernel_data[mask_data]
@@ -266,14 +257,6 @@ class KernelTransformer(NiMAREBase):
         pass
 
 
-@due.dcite(
-    references.ALE2,
-    description=(
-        "Modifies ALE algorithm to eliminate within-experiment "
-        "effects and generate MA maps based on subject group "
-        "instead of experiment."
-    ),
-)
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
 
@@ -309,40 +292,34 @@ class ALEKernel(KernelTransformer):
         self.sample_size = sample_size
 
     def _transform(self, mask, coordinates):
-        kernels = {}  # retain kernels in dictionary to speed things up
-        exp_ids = coordinates["id"].unique()
+        ijks = coordinates[["i", "j", "k"]].values
+        exp_idx = coordinates["id"].values
 
-        transformed = []
-        for i_exp, id_ in enumerate(exp_ids):
-            data = coordinates.loc[coordinates["id"] == id_]
+        use_dict = True
+        kernel = None
+        if self.sample_size is not None:
+            sample_sizes = self.sample_size
+            use_dict = False
+        elif self.fwhm is None:
+            sample_sizes = coordinates["sample_size"].values
+        else:
+            sample_sizes = None
 
-            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            if self.sample_size is not None:
-                sample_size = self.sample_size
-            elif self.fwhm is None:
-                # Extract from input
-                sample_size = data.sample_size.astype(float).values[0]
+        if self.fwhm is not None:
+            assert np.isfinite(self.fwhm), "FWHM must be finite number"
+            _, kernel = get_ale_kernel(mask, fwhm=self.fwhm)
+            use_dict = False
 
-            if self.fwhm is not None:
-                assert np.isfinite(self.fwhm), "FWHM must be finite number"
-                if self.fwhm not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, fwhm=self.fwhm)
-                    kernels[self.fwhm] = kern
-                else:
-                    kern = kernels[self.fwhm]
+        transformed = compute_ale_ma(
+            mask,
+            ijks,
+            kernel=kernel,
+            exp_idx=exp_idx,
+            sample_sizes=sample_sizes,
+            use_dict=use_dict,
+        )
 
-            else:
-                assert np.isfinite(sample_size), "Sample size must be finite number"
-                if sample_size not in kernels.keys():
-                    _, kern = get_ale_kernel(mask, sample_size=sample_size)
-                    kernels[sample_size] = kern
-                else:
-                    kern = kernels[sample_size]
-
-            kernel_data = compute_ale_ma(mask.shape, ijk, kern)
-
-            transformed.append(kernel_data)
-
+        exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 
 
@@ -351,7 +328,7 @@ class KDAKernel(KernelTransformer):
 
     .. versionchanged:: 0.0.12
 
-        * Remove low-memory option for kernel transformers.
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
 
     Parameters
     ----------
@@ -368,14 +345,11 @@ class KDAKernel(KernelTransformer):
         self.value = value
 
     def _transform(self, mask, coordinates):
-        dims = mask.shape
-        vox_dims = mask.header.get_zooms()
 
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
-            dims,
-            vox_dims,
+            mask,
             ijks,
             self.r,
             self.value,
@@ -402,48 +376,3 @@ class MKDAKernel(KDAKernel):
     """
 
     _sum_overlap = False
-
-
-class Peaks2MapsKernel(KernelTransformer):
-    """Generate peaks2maps modeled activation images from coordinates.
-
-    .. deprecated:: 0.0.11
-        `Peaks2MapsKernel` will be removed in NiMARE 0.0.13.
-
-    Parameters
-    ----------
-    model_dir : :obj:`str`, optional
-        Path to model directory. Default is "auto".
-
-    Warnings
-    --------
-    Peaks2MapsKernel is not intended for serious research.
-    We strongly recommend against using it for any meaningful analyses.
-    """
-
-    def __init__(self, model_dir="auto"):
-        warnings.warn(
-            "Peaks2MapsKernel is deprecated, and will be removed in NiMARE version 0.0.13.",
-            DeprecationWarning,
-        )
-
-        # Use private attribute to hide value from get_params.
-        # get_params will find model_dir=None, which is *very important* when a path is provided.
-        self._model_dir = model_dir
-
-    def _transform(self, mask, coordinates):
-        transformed = []
-        coordinates_list = []
-        ids = []
-        for id_, data in coordinates.groupby("id"):
-            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            xyz = vox2mm(ijk, mask.affine)
-            coordinates_list.append(xyz)
-            ids.append(id_)
-
-        imgs = compute_p2m_ma(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
-        resampled_imgs = []
-        for img in imgs:
-            resampled_imgs.append(image.resample_to_img(img, mask).get_fdata())
-        transformed = list(zip(resampled_imgs, ids))
-        return transformed

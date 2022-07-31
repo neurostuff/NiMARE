@@ -8,15 +8,12 @@ import pandas as pd
 from nilearn._utils import load_niimg
 from scipy.stats import multivariate_normal
 
-from nimare import references
 from nimare.base import NiMAREBase
-from nimare.due import due
 from nimare.utils import get_template
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.GCLDAMODEL)
 class GCLDAModel(NiMAREBase):
     """Generate a generalized correspondence latent Dirichlet allocation (GCLDA) topic model.
 
@@ -717,10 +714,6 @@ class GCLDAModel(NiMAREBase):
                     self.topics["regions_mu"][i_topic, j_region, ...] = mu
                     self.topics["regions_sigma"][i_topic, j_region, ...] = sigma
 
-    @due.dcite(
-        references.LOG_LIKELIHOOD,
-        description="Describes method for computing log-likelihood used in model.",
-    )
     def compute_log_likelihood(self, model=None, update_vectors=True):
         """Compute log-likelihood of a model object given current model.
 
