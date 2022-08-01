@@ -6,6 +6,7 @@ from nimare.utils import get_template, get_masker, B_spline_bases
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import scipy
 from nimare.utils import mm2vox, vox2idx, intensity2voxel
 import torch
 import logging
@@ -14,14 +15,14 @@ LGR = logging.getLogger(__name__)
 class CBMREstimator(Estimator):
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, multiple_groups=False, moderators=None, moderators_center=True, moderators_scale=True, mask=None, 
+    def __init__(self, group_names=None, moderators=None, moderators_center=True, moderators_scale=True, mask=None, 
                 spline_spacing=5, model='Poisson', penalty=False, n_iter=1000, lr=1e-2, tol=1e-2, device='cpu', **kwargs):
         super().__init__(**kwargs)
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
 
-        self.multiple_groups = multiple_groups
+        self.group_names = group_names
         self.moderators = moderators 
         self.moderators_center = moderators_center # either boolean or a list of strings
         self.moderators_scale = moderators_scale
@@ -55,63 +56,49 @@ class CBMREstimator(Estimator):
                 valid_study_bool = study_id_annotations.isin(study_id_coordinates)
                 dataset_annotations = dataset.annotations[valid_study_bool]
                 all_group_study_id = dict()
-                if self.multiple_groups:
-                    if 'group_id' not in dataset_annotations.columns: 
-                        raise ValueError("group_id must exist in the dataset in group-wise CBMR")
+                if isinstance(self.group_names, type(None)):
+                    all_group_study_id[self.group_names] = dataset_annotations['study_id'].unique().tolist()
+                elif isinstance(self.group_names, str):
+                    if self.group_names not in dataset_annotations.columns: 
+                        raise ValueError("group_names: {} does not exist in the dataset".format(self.group_names))
                     else:
-                        group_names = list(dataset_annotations['group_id'].unique())
-                        if len(group_names) == 1:
-                            raise ValueError('Only a single group exists in the dataset')
-                        for group_name in group_names:
-                            group_study_id_bool = dataset_annotations['group_id'] == group_name
+                        uniq_groups = list(dataset_annotations[self.group_names].unique())
+                        for group in uniq_groups:
+                            group_study_id_bool = dataset_annotations[self.group_names] == group
                             group_study_id = dataset_annotations.loc[group_study_id_bool]['study_id']
-                            all_group_study_id[group_name] = group_study_id.unique().tolist()
-                else:
-                    all_group_study_id['single_group'] = dataset_annotations['study_id'].unique().tolist()
+                            all_group_study_id[group] = group_study_id.unique().tolist()
+                elif isinstance(self.group_names, list):
+                    not_exist_group_names = [group for group in self.group_names if group not in dataset_annotations.columns]
+                    if len(not_exist_group_names) > 0:
+                        raise ValueError("group_names: {} does not exist in the dataset".format(not_exist_group_names))
+                    uniq_group_splits = dataset_annotations[self.group_names].drop_duplicates().values.tolist()
+                    for group in uniq_group_splits:
+                        group_study_id_bool = (dataset_annotations[self.group_names] == group).all(axis=1)
+                        group_study_id = dataset_annotations.loc[group_study_id_bool]['study_id']
+                        all_group_study_id['_'.join(group)] = group_study_id.unique().tolist()
                 self.inputs_['all_group_study_id'] = all_group_study_id
                 # collect studywise moderators if specficed
                 if hasattr(self, "moderators"):
                     all_group_moderators = dict()
-                    for group_name in all_group_study_id.keys():
-                        df_group = dataset_annotations.loc[dataset_annotations['study_id'].isin(all_group_study_id[group_name])] 
+                    for group in all_group_study_id.keys():
+                        df_group = dataset_annotations.loc[dataset_annotations['study_id'].isin(all_group_study_id[group])] 
                         group_moderators = np.stack([df_group[moderator_name] for moderator_name in self.moderators], axis=1)
                         group_moderators = group_moderators.astype(np.float64)
-                        # standardize mean
-                        if isinstance(self.moderators_center, bool):
-                            if self.moderators_center: 
-                                group_moderators -= np.mean(group_moderators, axis=0)
-                        elif isinstance(self.moderators_center, str):
-                            index_moderators_center = self.moderators.index(self.moderators_center)
-                            group_moderators[:,index_moderators_center] -= np.mean(group_moderators[:, index_moderators_center], axis=0)
-                        elif isinstance(self.moderators_center, list):
-                            index_moderators_center = [self.moderators.index(moderator_name) for moderator_name in self.moderators_center]
-                            for i in index_moderators_center:
-                                group_moderators[:,i] -= np.mean(group_moderators[:, i], axis=0)
-                        # standardize var
-                        if isinstance(self.moderators_scale, bool):
-                            if self.moderators_scale: 
-                                group_moderators /= np.std(group_moderators, axis=0)
-                        elif isinstance(self.moderators_scale, str):
-                            index_moderators_scale = self.moderators.index(self.moderators_scale)
-                            group_moderators[:,index_moderators_scale] /= np.std(group_moderators[:, index_moderators_scale], axis=0)
-                        elif isinstance(self.moderators_scale, list):
-                            index_moderators_scale = [self.moderators.index(moderator_name) for moderator_name in self.moderators_scale]
-                            for i in index_moderators_scale:
-                                group_moderators[:,i] /= np.std(group_moderators[:, i], axis=0)
-                        all_group_moderators[group_name] = group_moderators
+                        group_moderators = self._standardize_moderators(group_moderators)
+                        all_group_moderators[group] = group_moderators
                     self.inputs_["all_group_moderators"] = all_group_moderators
                 # Calculate IJK matrix indices for target mask
                 # Mask space is assumed to be the same as the Dataset's space
                 # These indices are used directly by any KernelTransformer
                 all_foci_per_voxel, all_foci_per_study = dict(), dict()
-                for group_name in all_group_study_id.keys():
-                    group_study_id = all_group_study_id[group_name]
+                for group in all_group_study_id.keys():
+                    group_study_id = all_group_study_id[group]
                     group_coordinates = dataset.coordinates.loc[dataset.coordinates['study_id'].isin(group_study_id)] 
-
+                    # group-wise foci coordinates
                     group_xyz = group_coordinates[['x', 'y', 'z']].values
                     group_ijk = mm2vox(group_xyz, mask_img.affine)
                     group_foci_idx = vox2idx(group_ijk, mask_img._dataobj)
-                    
+                    # number of foci per voxel/study
                     n_group_study = len(group_study_id)
                     masker_voxels = np.sum(mask_img._dataobj).astype(int)
                     group_foci_per_voxel = np.zeros((masker_voxels, 1))
@@ -119,12 +106,38 @@ class CBMREstimator(Estimator):
                     group_foci_per_study = np.array([(group_coordinates['study_id']==i).sum() for i in group_study_id])
                     group_foci_per_study = group_foci_per_study.reshape((n_group_study, 1))
 
-                    all_foci_per_voxel[group_name] = group_foci_per_voxel
-                    all_foci_per_study[group_name] = group_foci_per_study
+                    all_foci_per_voxel[group] = group_foci_per_voxel
+                    all_foci_per_study[group] = group_foci_per_study
                 
                 self.inputs_['all_foci_per_voxel'] = all_foci_per_voxel
                 self.inputs_['all_foci_per_study'] = all_foci_per_study
 
+    def _standardize_moderators(self, moderators_array):
+        # standardize mean
+        if isinstance(self.moderators_center, bool):
+            if self.moderators_center: 
+                moderators_array -= np.mean(moderators_array, axis=0)
+        elif isinstance(self.moderators_center, str):
+            index_moderators_center = self.moderators.index(self.moderators_center)
+            moderators_array[:,index_moderators_center] -= np.mean(moderators_array[:, index_moderators_center], axis=0)
+        elif isinstance(self.moderators_center, list):
+            index_moderators_center = [self.moderators.index(moderator_name) for moderator_name in self.moderators_center]
+            for i in index_moderators_center:
+                moderators_array[:,i] -= np.mean(moderators_array[:, i], axis=0)
+        
+        # standardize var
+        if isinstance(self.moderators_scale, bool):
+            if self.moderators_scale: 
+                moderators_array /= np.std(moderators_array, axis=0)
+        elif isinstance(self.moderators_scale, str):
+            index_moderators_scale = self.moderators.index(self.moderators_scale)
+            moderators_array[:,index_moderators_scale] /= np.std(moderators_array[:, index_moderators_scale], axis=0)
+        elif isinstance(self.moderators_scale, list):
+            index_moderators_scale = [self.moderators.index(moderator_name) for moderator_name in self.moderators_scale]
+            for i in index_moderators_scale:
+                moderators_array[:,i] /= np.std(moderators_array[:, i], axis=0)
+
+        return moderators_array
 
     def _model_structure(self, model, penalty, device):
         beta_dim = self.inputs_['Coef_spline_bases'].shape[1] # regression coef of spatial effect

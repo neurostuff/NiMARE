@@ -11,6 +11,7 @@ import nimare
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_resource_path
 
+import random
 # Only enable the following once in a while for a check for SettingWithCopyWarnings
 # pd.options.mode.chained_assignment = "raise"
 
@@ -68,8 +69,9 @@ def testdata_cbmr():
     dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
     # set up group_id & moderators
     n_rows = dset.annotations.shape[0]
-    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'dementia' for i in range(n_rows)]
-    dset.annotations['treatment'] = [False if i%2==0 else True for i in range(n_rows)]
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
+    dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
     dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
     dset.annotations["avg_age"] = np.arange(n_rows)
     
