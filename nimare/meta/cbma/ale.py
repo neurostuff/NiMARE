@@ -521,7 +521,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         }
         description = self._generate_description()
 
-        return maps, description, {}
+        return maps, {}, description
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -763,10 +763,10 @@ class SCALE(CBMAEstimator):
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
         # Write out unthresholded value images
-        images = {"stat": stat_values, "logp": logp_values, "z": z_values}
+        maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
         description = self._generate_description()
 
-        return images, description, {}
+        return maps, {}, description
 
     def _compute_summarystat_est(self, data):
         """Generate ALE-value array and null distribution from a list of contrasts.
