@@ -8,7 +8,6 @@ from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
 from nimare import _version
-from nimare.due import due
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
 from nimare.stats import null_to_p, nullhist_to_p
@@ -522,7 +521,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         }
         description = self._generate_description()
 
-        return images, description, {}
+        return maps, description, {}
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)

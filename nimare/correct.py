@@ -172,7 +172,9 @@ class Corrector(metaclass=ABCMeta):
                 "Using correction method implemented in Estimator: "
                 f"{est.__class__.__module__}.{est.__class__.__name__}.{correction_method}."
             )
-            corr_maps, corr_tables, description = getattr(est, correction_method)(result, **self.parameters)
+            corr_maps, corr_tables, description = getattr(est, correction_method)(
+                result, **self.parameters
+            )
         else:
             self._collect_inputs(result)
             corr_maps, corr_tables, description = self._transform(result, method=correction_method)

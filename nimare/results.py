@@ -54,7 +54,7 @@ class MetaResult(object):
         BibTeX file without issue.
     """
 
-    def __init__(self, estimator, mask, maps=None, description=""):
+    def __init__(self, estimator, mask, maps=None, tables=None, description=""):
         self.estimator = copy.deepcopy(estimator)
         self.masker = get_masker(mask)
 
