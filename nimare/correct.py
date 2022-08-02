@@ -153,7 +153,7 @@ class Corrector(metaclass=ABCMeta):
         Returns
         -------
         result : :obj:`~nimare.results.MetaResult`
-            MetaResult with new corrected maps added.
+            MetaResult with new corrected maps and tables added.
         """
         correction_method = f"correct_{self._correction_method}_{self.method}"
 
@@ -172,15 +172,18 @@ class Corrector(metaclass=ABCMeta):
                 "Using correction method implemented in Estimator: "
                 f"{est.__class__.__module__}.{est.__class__.__name__}.{correction_method}."
             )
-            corr_maps, description = getattr(est, correction_method)(result, **self.parameters)
+            corr_maps, corr_tables, description = getattr(est, correction_method)(result, **self.parameters)
         else:
             self._collect_inputs(result)
-            corr_maps, description = self._transform(result, method=correction_method)
+            corr_maps, corr_tables, description = self._transform(result, method=correction_method)
 
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
         result.maps.update(corr_maps)
         result.description += " " + description
+
+        corr_tables = {(k + self._name_suffix): v for k, v in corr_tables.items()}
+        result.tables.update(corr_tables)
 
         # Update the estimator as well, in order to retain updated null distributions
         result.estimator = est
@@ -209,6 +212,9 @@ class Corrector(metaclass=ABCMeta):
 
             The map names must _not_ include the ``_name_suffix``:, as that will be added in
             ``transform()`` (i.e., return "p" not "p_corr-FDR_q-0.05_method-indep").
+        corr_tables : :obj:`dict`
+            An empty dictionary meant to contain any tables (pandas DataFrames) produced by the
+            correction procedure.
         """
         p = result.maps["p"]
 
@@ -218,7 +224,7 @@ class Corrector(metaclass=ABCMeta):
         p_no_nans = p[nonnan_mask]
 
         # Call the correction method
-        p_corr_no_nans, description = getattr(self, method)(p_no_nans)
+        p_corr_no_nans, tables, description = getattr(self, method)(p_no_nans)
 
         # Unmask the corrected p values based on the NaN mask
         p_corr[nonnan_mask] = p_corr_no_nans
@@ -226,7 +232,7 @@ class Corrector(metaclass=ABCMeta):
         # Create a dictionary of the corrected results
         corr_maps = {"p": p_corr}
         self._generate_secondary_maps(result, corr_maps)
-        return corr_maps, description
+        return corr_maps, tables, description
 
 
 class FWECorrector(Corrector):
@@ -294,7 +300,7 @@ class FWECorrector(Corrector):
             "Family-wise error rate correction was performed with the Bonferroni correction "
             "procedure \\citep{bonferroni1936teoria,shaffer1995multiple}."
         )
-        return bonferroni(p), description
+        return bonferroni(p), description, {}
 
 
 class FDRCorrector(Corrector):
@@ -366,7 +372,7 @@ class FDRCorrector(Corrector):
             "False discovery rate correction was performed with the Benjamini-Hochberg procedure "
             "\\citep{benjamini1995controlling}."
         )
-        return fdr(p, q=self.alpha, method="bh"), description
+        return fdr(p, q=self.alpha, method="bh"), description, {}
 
     def correct_fdr_negcorr(self, p):
         """Perform Benjamini-Yekutieli FDR correction.
@@ -410,4 +416,4 @@ class FDRCorrector(Corrector):
             "False discovery rate correction was performed with the Benjamini-Yekutieli procedure "
             "\\citep{benjamini2001control}."
         )
-        return fdr(p, q=self.alpha, method="by"), description
+        return fdr(p, q=self.alpha, method="by"), description, {}

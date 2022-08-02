@@ -4,7 +4,7 @@ import os.path as op
 import pytest
 from nilearn.input_data import NiftiLabelsMasker
 
-from nimare.diagnostics import FocusCounter, Jackknife
+from nimare import diagnostics
 from nimare.meta import cbma, ibma
 from nimare.tests.utils import get_test_data_path
 
@@ -42,7 +42,7 @@ def test_jackknife_smoke(
     else:
         res = meta.fit(testdata)
 
-    jackknife = Jackknife(target_image=target_image, voxel_thresh=1.65)
+    jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=1.65)
 
     if n_samples == "twosample":
         with pytest.raises(AttributeError):
@@ -64,13 +64,13 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
     meta = ibma.SampleSizeBasedLikelihood(mask=masker)
     res = meta.fit(testdata_ibma)
 
-    jackknife = Jackknife(target_image="z", voxel_thresh=0.5)
+    jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=0.5)
     cluster_table, labeled_img = jackknife.transform(res)
     assert cluster_table.shape[0] == len(meta.inputs_["id"]) + 1
 
     # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
     with pytest.raises(ValueError):
-        jackknife = Jackknife(target_image="doggy", voxel_thresh=0.5)
+        jackknife = diagnostics.Jackknife(target_image="doggy", voxel_thresh=0.5)
         jackknife.transform(res)
 
 
@@ -99,7 +99,7 @@ def test_focuscounter_smoke(
     else:
         res = meta.fit(testdata)
 
-    counter = FocusCounter(target_image=target_image, voxel_thresh=1.65)
+    counter = diagnostics.FocusCounter(target_image=target_image, voxel_thresh=1.65)
 
     if n_samples == "twosample":
         with pytest.raises(AttributeError):
@@ -107,3 +107,18 @@ def test_focuscounter_smoke(
     else:
         cluster_table, labeled_img = counter.transform(res)
         assert cluster_table.shape[0] == len(meta.inputs_["id"]) + 1
+
+
+def test_focusfilter(testdata_laird):
+    """Ensure that the FocusFilter removes out-of-mask coordinates.
+
+    The Laird dataset contains 16 foci outside of the MNI brain mask, which the filter should
+    remove.
+    """
+    n_coordinates_all = testdata_laird.coordinates.shape[0]
+    ffilter = diagnostics.FocusFilter()
+    filtered_dset = ffilter.transform(testdata_laird)
+    n_coordinates_filtered = filtered_dset.coordinates.shape[0]
+    assert n_coordinates_all == 1117
+    assert n_coordinates_filtered == 1101
+    assert n_coordinates_filtered <= n_coordinates_all

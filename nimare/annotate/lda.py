@@ -2,17 +2,10 @@
 import pandas as pd
 from sklearn.decomposition import LatentDirichletAllocation
 
-from nimare import references
 from nimare.annotate.text import generate_counts
 from nimare.base import NiMAREBase
-from nimare.due import due
 
 
-@due.dcite(references.LDA, description="Introduces LDA.")
-@due.dcite(
-    references.LDAMODEL,
-    description="First use of LDA for automated annotation of neuroimaging literature.",
-)
 class LDAModel(NiMAREBase):
     """Generate a latent Dirichlet allocation (LDA) topic model.
 

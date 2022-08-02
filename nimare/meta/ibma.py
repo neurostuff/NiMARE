@@ -5,6 +5,7 @@ import logging
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pymare
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
@@ -195,7 +196,7 @@ class Fishers(IBMAEstimator):
         }
         description = self._generate_description()
 
-        return maps, description
+        return maps, {}, description
 
 
 class Stouffers(IBMAEstimator):
@@ -298,7 +299,7 @@ class Stouffers(IBMAEstimator):
         }
         description = self._generate_description()
 
-        return maps, description
+        return maps, {}, description
 
 
 class WeightedLeastSquares(IBMAEstimator):
@@ -398,10 +399,12 @@ class WeightedLeastSquares(IBMAEstimator):
             "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
             "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
-
+        tables = {
+            "level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2]),
+        }
         description = self._generate_description()
 
-        return maps, description
+        return maps, tables, description
 
 
 class DerSimonianLaird(IBMAEstimator):
@@ -493,7 +496,7 @@ class DerSimonianLaird(IBMAEstimator):
 
         description = self._generate_description()
 
-        return maps, description
+        return maps, {}, description
 
 
 class Hedges(IBMAEstimator):
@@ -582,7 +585,7 @@ class Hedges(IBMAEstimator):
         }
         description = self._generate_description()
 
-        return maps, description
+        return maps, {}, description
 
 
 class SampleSizeBasedLikelihood(IBMAEstimator):
@@ -690,7 +693,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         }
         description = self._generate_description()
 
-        return maps, description
+        return maps, {}, description
 
 
 class VarianceBasedLikelihood(IBMAEstimator):
@@ -804,7 +807,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
         }
         description = self._generate_description()
 
-        return maps, description
+        return maps, {}, description
 
 
 class PermutedOLS(IBMAEstimator):
@@ -901,7 +904,7 @@ class PermutedOLS(IBMAEstimator):
         }
         description = self._generate_description()
 
-        return maps, description
+        return maps, {}, description
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
@@ -981,4 +984,4 @@ class PermutedOLS(IBMAEstimator):
             f"{n_iters} iterations were performed to generate the null distribution."
         )
 
-        return maps, description
+        return maps, {}, description
