@@ -187,9 +187,9 @@ class CBMAEstimator(Estimator):
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {"stat": stat_values, "p": p_values, "z": z_values}
+        maps = {"stat": stat_values, "p": p_values, "z": z_values}
         description = self._generate_description()
-        return images, {}, description
+        return maps, {}, description
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
