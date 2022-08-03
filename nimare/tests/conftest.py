@@ -67,7 +67,7 @@ def testdata_cbmr():
     # Otherwise centers of mass will be obscured in kernel tests by overlapping
     # kernels
     dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
-    # set up group_id & moderators
+    # set up group columns & moderators
     n_rows = dset.annotations.shape[0]
     dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
     dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
@@ -87,17 +87,23 @@ def testdata_cbma_full():
     dset = nimare.dataset.Dataset(dset_file)
     return dset
 
-# @pytest.fixture(scope="session")
-# def testdata_cbmr_full():
-#     """Generate coordinate-based dataset for tests."""
-#     dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
-#     dset = nimare.dataset.Dataset(dset_file)
-#     # generate group_id & moderator
-#     n_rows = dset.annotations.shape[0]
-#     dset.annotations["sample_sizes"] = dset.metadata.sample_sizes  # sample sizes as study-level covariates
-#     groups = pd.DataFrame({'study_id':dset.annotations['study_id'], 'group_id': ["group_1" if i%2==0 else 'group_2' for i in range(n_rows)]})
-#     moderators = pd.DataFrame({'study_id': dset.annotations['study_id'], 'moderator': np.random.rand(n_rows)})  # random study-level covariates
-#     return dset, groups, moderators
+@pytest.fixture(scope="session")
+def testdata_cbmr_full():
+    """Generate more complete coordinate-based dataset for tests.
+
+    Same as above, except returns all coords, not just one per study.
+    """
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+    dset = nimare.dataset.Dataset(dset_file)
+    # set up group columns & moderators
+    n_rows = dset.annotations.shape[0]
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
+    # dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    # dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
+    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
+    dset.annotations["avg_age"] = np.arange(n_rows)
+
+    return dset
 
 
 @pytest.fixture(scope="session")

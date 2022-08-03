@@ -147,22 +147,23 @@ class CBMREstimator(Estimator):
         else:
             gamma_dim = None
             study_level_moderators = False
-        self.n_groups = len(self.inputs_["all_group_study_id"])
+        self.groups = list(self.inputs_['all_group_study_id'].keys())
         if model == 'Poisson':
-            cbmr_model = GLMPoisson(beta_dim=beta_dim, gamma_dim=gamma_dim, n_groups=self.n_groups, study_level_moderators=study_level_moderators, penalty=penalty)
+            cbmr_model = GLMPoisson(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
         if 'cuda' in device:
             cbmr_model = cbmr_model.cuda()
         
         return cbmr_model
 
-    def _update(self, model, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study, prev_loss, gamma=0.99):
+    def _update(self, model, optimizer, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study, prev_loss, gamma=0.999):
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=gamma) # learning rate decay
         scheduler.step()
         
         self.iter += 1
+        scheduler.step()
         def closure():
             optimizer.zero_grad()
-            loss = model(Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study)
+            loss = model(Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study)
             loss.backward()
             return loss
         loss = optimizer.step(closure)
@@ -174,16 +175,23 @@ class CBMREstimator(Estimator):
         # load dataset info to torch.tensor
         Coef_spline_bases = torch.tensor(self.inputs_['Coef_spline_bases'], dtype=torch.float64, device=device)
         if hasattr(self, "moderators"):
-            for group_name in self.inputs_['all_group_study_id'].keys():
-                all_moderators_array = torch.tensor(self.inputs_['all_group_moderators'][group_name], dtype=torch.float64, device=device)
-        n_foci_per_voxel = torch.tensor(self.inputs_['n_foci_per_voxel'], dtype=torch.float64, device=device)
-        n_foci_per_study = torch.tensor(self.inputs_['n_foci_per_study'], dtype=torch.float64, device=device)
-        
+            all_group_moderators_tensor = dict()
+            for group in self.inputs_['all_group_study_id'].keys():
+                group_moderators_tensor = torch.tensor(self.inputs_['all_group_moderators'][group], dtype=torch.float64, device=device)
+                all_group_moderators_tensor[group] = group_moderators_tensor
+        else:
+            all_group_moderators_tensor = None
+        all_foci_per_voxel_tensor, all_foci_per_study_tensor = dict(), dict()
+        for group in self.inputs_['all_group_study_id'].keys():
+            group_foci_per_voxel = torch.tensor(self.inputs_['all_foci_per_voxel'][group], dtype=torch.float64, device=device)
+            group_foci_per_study = torch.tensor(self.inputs_['all_foci_per_study'][group], dtype=torch.float64, device=device)
+            all_foci_per_voxel_tensor[group] = group_foci_per_voxel
+            all_foci_per_study_tensor[group] = group_foci_per_study
+
         if self.iter == 0:
             prev_loss = torch.tensor(float('inf')) # initialization loss difference
-
         for i in range(n_iter):
-            loss = self._update(model, optimizer, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study, prev_loss)
+            loss = self._update(model, optimizer, Coef_spline_bases, all_group_moderators_tensor, all_foci_per_voxel_tensor, all_foci_per_study_tensor, prev_loss)
             loss_diff = loss - prev_loss
             LGR.debug(f"Iter {self.iter:04d}: log-likelihood {loss:.4f}")
             if torch.abs(loss_diff) < tol:
@@ -200,18 +208,20 @@ class CBMREstimator(Estimator):
         cbmr_model = self._model_structure(self.model, self.penalty, self.device)
         optimisation = self._optimizer(cbmr_model, self.lr, self.tol, self.n_iter, self.device)
 
-        # beta: regression coef of spatial effec        
-        self._beta = cbmr_model.beta_linear.weight
-        self._beta = self._beta.detach().numpy().T
+        # beta: regression coef of spatial effect
+        for group in self.inputs_['all_group_study_id'].keys():
+            group_beta_linear_weight = cbmr_model.all_beta_linears[group].weight
+            group_beta_linear_weight = group_beta_linear_weight.cpu().detach().numpy().T
         
-        studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, self._beta))
-        studywise_spatial_intensity = intensity2voxel(studywise_spatial_intensity, self.inputs_['mask_img']._dataobj)
+            studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, group_beta_linear_weight))
+            studywise_spatial_intensity = intensity2voxel(studywise_spatial_intensity, self.inputs_['mask_img']._dataobj)
 
         if hasattr(self, "moderators"):
             self._gamma = cbmr_model.gamma_linear.weight
-            self._gamma = self._gamma.detach().numpy().T
-
-            moderator_results = np.exp(np.matmul(self.inputs_["moderators_array"], self._gamma))
+            self._gamma = self._gamma.cpu().detach().numpy().T
+            for group in self.inputs_['all_group_study_id'].keys():
+                group_moderators = self.inputs_["all_group_moderators"][group]
+                moderator_effect = np.exp(np.matmul(group_moderators, self._gamma))
 
 
         return
@@ -219,33 +229,42 @@ class CBMREstimator(Estimator):
     
 
 class GLMPoisson(torch.nn.Module):
-    def __init__(self, beta_dim=None, gamma_dim=None, n_groups=None, study_level_moderators=False, penalty='No'):
+    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty='No'):
         super().__init__()
-        self.n_groups = n_groups
+        self.groups = groups
         self.study_level_moderators = study_level_moderators
         # initialization for beta
-        beta_linear_weights = list()
-        for i in range(self.n_groups):
-            beta_linear_i = torch.nn.Linear(beta_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(beta_linear_i.weight, a=-0.01, b=0.01)
-            beta_linear_weights.append(beta_linear_i.weight)
-        beta_linear_weights = torch.stack(beta_linear_weights)
-        self.beta_linear_weights = torch.nn.Parameter(beta_linear_weights, requires_grad=True)
+        all_beta_linears = dict()
+        for group in groups:
+            beta_linear_group = torch.nn.Linear(beta_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(beta_linear_group.weight, a=-0.01, b=0.01)
+            all_beta_linears[group] = beta_linear_group
+        self.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
         # gamma 
         if self.study_level_moderators:
             self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
             torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
     
-    def forward(self, Coef_spline_bases, moderators_array, n_foci_per_voxel, n_foci_per_study):
+    def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
+        if isinstance(all_moderators, dict):
+            all_log_mu_moderators = dict()
+            for group in all_moderators.keys():
+                group_moderators = all_moderators[group]
+                # mu^Z = exp(Z * gamma)
+                log_mu_moderators = self.gamma_linear(group_moderators)
+                all_log_mu_moderators[group] = log_mu_moderators
+        log_l = 0
         # spatial effect: mu^X = exp(X * beta)
-        log_mu_spatial = self.beta_linear(Coef_spline_bases) 
-        mu_spatial = torch.exp(log_mu_spatial)
-        if torch.is_tensor(moderators_array):
-            # mu^Z = exp(Z * gamma)
-            log_mu_moderators = self.gamma_linear(moderators_array)
+        for group in all_foci_per_voxel.keys(): 
+            log_mu_spatial = self.all_beta_linears[group](Coef_spline_bases)
+            mu_spatial = torch.exp(log_mu_spatial)
+            log_mu_moderators = all_log_mu_moderators[group]
             mu_moderators = torch.exp(log_mu_moderators)
-        # Under the assumption that Y_ij is either 0 or 1
-        # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
-        log_l = torch.sum(torch.mul(n_foci_per_voxel, log_mu_spatial)) + torch.sum(torch.mul(n_foci_per_study, log_mu_moderators)) - torch.sum(mu_spatial) * torch.sum(mu_moderators) 
-
+            group_foci_per_voxel = all_foci_per_voxel[group]
+            group_foci_per_study = all_foci_per_study[group]
+            # Under the assumption that Y_ij is either 0 or 1
+            # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
+            group_log_l = torch.sum(torch.mul(group_foci_per_voxel, log_mu_spatial)) + torch.sum(torch.mul(group_foci_per_study, log_mu_moderators)) - torch.sum(mu_spatial) * torch.sum(mu_moderators)
+            log_l += group_log_l
+        
         return -log_l
