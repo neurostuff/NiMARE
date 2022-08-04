@@ -23,7 +23,8 @@ def get_test_data_path():
 
 
 def _create_signal_mask(ground_truth_foci_ijks, mask):
-    """Create complementary binary images to identify areas of likely significance and nonsignificance.
+    """Create complementary binary images to identify areas of likely significance and
+    nonsignificance.
 
     Parameters
     ----------
