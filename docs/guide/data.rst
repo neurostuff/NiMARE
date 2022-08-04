@@ -1,6 +1,9 @@
 Working with Meta-Analytic Data
 ===============================
 
+The Neuroimaging Meta-Analysis Data Standard (NIMADS)
+-----------------------------------------------------
+
 Downloading large databases
 ---------------------------
 
