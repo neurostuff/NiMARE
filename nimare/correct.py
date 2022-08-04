@@ -153,7 +153,7 @@ class Corrector(metaclass=ABCMeta):
         Returns
         -------
         result : :obj:`~nimare.results.MetaResult`
-            MetaResult with new corrected maps and tables added.
+            MetaResult with new corrected maps, tables, and description added.
         """
         correction_method = f"correct_{self._correction_method}_{self.method}"
 
@@ -217,6 +217,8 @@ class Corrector(metaclass=ABCMeta):
         corr_tables : :obj:`dict`
             An empty dictionary meant to contain any tables (pandas DataFrames) produced by the
             correction procedure.
+        description : :obj:`str`
+            A description of the correction procedure.
         """
         p = result.maps["p"]
 
@@ -287,8 +289,13 @@ class FWECorrector(Corrector):
 
         Returns
         -------
-        :obj:`numpy.ndarray`
+        p_corr : :obj:`numpy.ndarray`
             A 1D array of adjusted p values.
+        tables : :obj:`dict`
+            A dictionary of DataFrames with summary information from the correction.
+            This correction method does not produce any tables, so it will be an empty dict.
+        description : :obj:`str`
+            A description of the correction procedure.
 
         References
         ----------
@@ -302,7 +309,7 @@ class FWECorrector(Corrector):
             "Family-wise error rate correction was performed with the Bonferroni correction "
             "procedure \\citep{bonferroni1936teoria,shaffer1995multiple}."
         )
-        return bonferroni(p), description, {}
+        return bonferroni(p), {}, description
 
 
 class FDRCorrector(Corrector):
@@ -359,8 +366,13 @@ class FDRCorrector(Corrector):
 
         Returns
         -------
-        :obj:`numpy.ndarray`
+        p_corr : :obj:`numpy.ndarray`
             A 1D array of adjusted p values.
+        tables : :obj:`dict`
+            A dictionary of DataFrames with summary information from the correction.
+            This correction method does not produce any tables, so it will be an empty dict.
+        description : :obj:`str`
+            A description of the correction procedure.
 
         References
         ----------
@@ -374,7 +386,7 @@ class FDRCorrector(Corrector):
             "False discovery rate correction was performed with the Benjamini-Hochberg procedure "
             "\\citep{benjamini1995controlling}."
         )
-        return fdr(p, q=self.alpha, method="bh"), description, {}
+        return fdr(p, q=self.alpha, method="bh"), {}, description
 
     def correct_fdr_negcorr(self, p):
         """Perform Benjamini-Yekutieli FDR correction.
@@ -395,8 +407,13 @@ class FDRCorrector(Corrector):
 
         Returns
         -------
-        :obj:`numpy.ndarray`
+        p_corr : :obj:`numpy.ndarray`
             A 1D array of adjusted p values.
+        tables : :obj:`dict`
+            A dictionary of DataFrames with summary information from the correction.
+            This correction method does not produce any tables, so it will be an empty dict.
+        description : :obj:`str`
+            A description of the correction procedure.
 
         Notes
         -----
@@ -418,4 +435,4 @@ class FDRCorrector(Corrector):
             "False discovery rate correction was performed with the Benjamini-Yekutieli procedure "
             "\\citep{benjamini2001control}."
         )
-        return fdr(p, q=self.alpha, method="by"), description, {}
+        return fdr(p, q=self.alpha, method="by"), {}, description
