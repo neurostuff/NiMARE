@@ -127,6 +127,7 @@ class Dataset(NiMAREBase):
         experiments in the Dataset represented as well.
         """
         # Get default parameter values for the object
+
         signature = inspect.signature(self.__init__)
         defaults = {
             k: v.default

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import scipy
 from nimare.utils import mm2vox, vox2idx, intensity2voxel
+from nimare.diagnostics import FocusFilter
 import torch
 import logging
 
@@ -50,9 +51,12 @@ class CBMREstimator(Estimator):
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":
+                # remove dataset coordinates outside of mask
+                focus_filter = FocusFilter(mask=masker)
+                dataset = focus_filter.transform(dataset)
+                # remove study_id without any coordinates
                 study_id_annotations = dataset.annotations.set_index('study_id').index
                 study_id_coordinates = dataset.coordinates.set_index('study_id').index
-                # remove study_id without any coordinates
                 valid_study_bool = study_id_annotations.isin(study_id_coordinates)
                 dataset_annotations = dataset.annotations[valid_study_bool]
                 all_group_study_id = dict()
@@ -203,28 +207,47 @@ class CBMREstimator(Estimator):
     def _fit(self, dataset):
         masker_voxels = self.inputs_['mask_img']._dataobj
         Coef_spline_bases = B_spline_bases(masker_voxels=masker_voxels, spacing=self.spline_spacing)
+        P = Coef_spline_bases.shape[1]
         self.inputs_['Coef_spline_bases'] = Coef_spline_bases
 
         cbmr_model = self._model_structure(self.model, self.penalty, self.device)
         optimisation = self._optimizer(cbmr_model, self.lr, self.tol, self.n_iter, self.device)
 
+        spatial_regression_coef, spatial_intensity_values = dict(), dict()
         # beta: regression coef of spatial effect
         for group in self.inputs_['all_group_study_id'].keys():
             group_beta_linear_weight = cbmr_model.all_beta_linears[group].weight
-            group_beta_linear_weight = group_beta_linear_weight.cpu().detach().numpy().T
-        
-            studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, group_beta_linear_weight))
-            studywise_spatial_intensity = intensity2voxel(studywise_spatial_intensity, self.inputs_['mask_img']._dataobj)
+            group_beta_linear_weight = group_beta_linear_weight.cpu().detach().numpy().reshape((P,))
+            spatial_regression_coef[group] = group_beta_linear_weight
 
+            studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, group_beta_linear_weight))
+            # studywise_spatial_intensity = intensity2voxel(studywise_spatial_intensity, self.inputs_['mask_img']._dataobj)
+            spatial_intensity_values[group] = studywise_spatial_intensity
+        spatial_regression_coef = pd.DataFrame.from_dict(spatial_regression_coef, orient='columns')
+        # study-level moderators
+        moderators_effect_values = dict()
         if hasattr(self, "moderators"):
             self._gamma = cbmr_model.gamma_linear.weight
-            self._gamma = self._gamma.cpu().detach().numpy().T
+            self._gamma = self._gamma.cpu().detach().numpy().flatten()
+            # moderators_regression_coef['all_groups'] = self._gamma
             for group in self.inputs_['all_group_study_id'].keys():
                 group_moderators = self.inputs_["all_group_moderators"][group]
-                moderator_effect = np.exp(np.matmul(group_moderators, self._gamma))
+                moderators_effect = np.exp(np.matmul(group_moderators, self._gamma))
+                moderators_effect_values[group] = moderators_effect
+            moderators_regression_coef = pd.DataFrame(self._gamma)
+        
+        maps = {
+            "group-specific_StudywiseIntensity": spatial_intensity_values,
+            'group-specific_moderators_effect': moderators_effect_values,
+        }
+
+        tables = {
+            'spatial_regression_coef': spatial_regression_coef,
+            'moderators_regression_coef': moderators_regression_coef,
+        }
 
 
-        return
+        return maps, tables
 
     
 

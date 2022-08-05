@@ -1272,8 +1272,7 @@ def vox2idx(ijk, masker_voxels):
     x_dim, y_dim, z_dim = xx.shape[0], yy.shape[0], zz.shape[0]
     brain_voxels_index = [(z - np.min(zz))+ z_dim * (y - np.min(yy))+ y_dim * z_dim * (x - np.min(xx))
                         for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1]
-    foci_index = [ijk[i, 2] - np.min(zz)+ z_dim * (ijk[i, 1] - np.min(yy))+ y_dim * z_dim * (ijk[i, 0] - np.min(xx)) for i in range(n_foci) 
-                if masker_voxels[ijk[i, 0], ijk[i, 1], ijk[i, 2]]==1]
+    foci_index = [ijk[i, 2] - np.min(zz)+ z_dim * (ijk[i, 1] - np.min(yy))+ y_dim * z_dim * (ijk[i, 0] - np.min(xx)) for i in range(n_foci)]
     foci_brain_index = [brain_voxels_index.index(j) for j in foci_index]
     foci_brain_index = np.array(foci_brain_index)
 
