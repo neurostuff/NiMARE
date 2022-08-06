@@ -308,7 +308,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :template: function.rst
 
    workflows.ale_sleuth_workflow
-   workflows.conperm_workflow
    workflows.macm_workflow
 
 
