@@ -7,7 +7,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
-from nimare.utils import mm2vox, vox2idx, intensity2voxel
+from nimare.utils import mm2vox, vox2idx
 from nimare.diagnostics import FocusFilter
 import torch
 import logging
@@ -16,8 +16,8 @@ LGR = logging.getLogger(__name__)
 class CBMREstimator(Estimator):
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, group_names=None, moderators=None, moderators_center=True, moderators_scale=True, mask=None, 
-                spline_spacing=5, model='Poisson', penalty=False, n_iter=1000, lr=1e-2, tol=1e-2, device='cpu', **kwargs):
+    def __init__(self, group_names=None, moderators=None, mask=None, spline_spacing=5, model='Poisson', penalty=False, 
+                n_iter=1000, lr=1e-2, tol=1e-2, device='cpu', **kwargs):
         super().__init__(**kwargs)
         if mask is not None:
             mask = get_masker(mask)
@@ -25,8 +25,6 @@ class CBMREstimator(Estimator):
 
         self.group_names = group_names
         self.moderators = moderators 
-        self.moderators_center = moderators_center # either boolean or a list of strings
-        self.moderators_scale = moderators_scale
 
         self.spline_spacing = spline_spacing
         self.model = model
@@ -45,8 +43,6 @@ class CBMREstimator(Estimator):
         mask_img = masker.mask_img or masker.labels_img
         if isinstance(mask_img, str):
             mask_img = nib.load(mask_img)
-        
-        ma_values = self._collect_inputs(dataset, drop_invalid=True)
         self.inputs_['mask_img'] = mask_img
 
         for name, (type_, _) in self._required_inputs.items():
@@ -54,41 +50,36 @@ class CBMREstimator(Estimator):
                 # remove dataset coordinates outside of mask
                 focus_filter = FocusFilter(mask=masker)
                 dataset = focus_filter.transform(dataset)
-                # remove study_id without any coordinates
-                study_id_annotations = dataset.annotations.set_index('study_id').index
-                study_id_coordinates = dataset.coordinates.set_index('study_id').index
-                valid_study_bool = study_id_annotations.isin(study_id_coordinates)
-                dataset_annotations = dataset.annotations[valid_study_bool]
+                valid_dset_annotations = dataset.annotations[dataset.annotations['id'].isin(self.inputs_['id'])]
                 all_group_study_id = dict()
                 if isinstance(self.group_names, type(None)):
-                    all_group_study_id[self.group_names] = dataset_annotations['study_id'].unique().tolist()
+                    all_group_study_id[self.group_names] = valid_dset_annotations['study_id'].unique().tolist()
                 elif isinstance(self.group_names, str):
-                    if self.group_names not in dataset_annotations.columns: 
+                    if self.group_names not in valid_dset_annotations.columns: 
                         raise ValueError("group_names: {} does not exist in the dataset".format(self.group_names))
                     else:
-                        uniq_groups = list(dataset_annotations[self.group_names].unique())
+                        uniq_groups = list(valid_dset_annotations[self.group_names].unique())
                         for group in uniq_groups:
-                            group_study_id_bool = dataset_annotations[self.group_names] == group
-                            group_study_id = dataset_annotations.loc[group_study_id_bool]['study_id']
+                            group_study_id_bool = valid_dset_annotations[self.group_names] == group
+                            group_study_id = valid_dset_annotations.loc[group_study_id_bool]['study_id']
                             all_group_study_id[group] = group_study_id.unique().tolist()
                 elif isinstance(self.group_names, list):
-                    not_exist_group_names = [group for group in self.group_names if group not in dataset_annotations.columns]
+                    not_exist_group_names = [group for group in self.group_names if group not in dataset.annotations.columns]
                     if len(not_exist_group_names) > 0:
                         raise ValueError("group_names: {} does not exist in the dataset".format(not_exist_group_names))
-                    uniq_group_splits = dataset_annotations[self.group_names].drop_duplicates().values.tolist()
+                    uniq_group_splits = valid_dset_annotations[self.group_names].drop_duplicates().values.tolist()
                     for group in uniq_group_splits:
-                        group_study_id_bool = (dataset_annotations[self.group_names] == group).all(axis=1)
-                        group_study_id = dataset_annotations.loc[group_study_id_bool]['study_id']
+                        group_study_id_bool = (valid_dset_annotations[self.group_names] == group).all(axis=1)
+                        group_study_id = valid_dset_annotations.loc[group_study_id_bool]['study_id']
                         all_group_study_id['_'.join(group)] = group_study_id.unique().tolist()
                 self.inputs_['all_group_study_id'] = all_group_study_id
                 # collect studywise moderators if specficed
                 if hasattr(self, "moderators"):
                     all_group_moderators = dict()
                     for group in all_group_study_id.keys():
-                        df_group = dataset_annotations.loc[dataset_annotations['study_id'].isin(all_group_study_id[group])] 
+                        df_group = valid_dset_annotations.loc[valid_dset_annotations['study_id'].isin(all_group_study_id[group])] 
                         group_moderators = np.stack([df_group[moderator_name] for moderator_name in self.moderators], axis=1)
                         group_moderators = group_moderators.astype(np.float64)
-                        group_moderators = self._standardize_moderators(group_moderators)
                         all_group_moderators[group] = group_moderators
                     self.inputs_["all_group_moderators"] = all_group_moderators
                 # Calculate IJK matrix indices for target mask
@@ -115,33 +106,6 @@ class CBMREstimator(Estimator):
                 
                 self.inputs_['all_foci_per_voxel'] = all_foci_per_voxel
                 self.inputs_['all_foci_per_study'] = all_foci_per_study
-
-    def _standardize_moderators(self, moderators_array):
-        # standardize mean
-        if isinstance(self.moderators_center, bool):
-            if self.moderators_center: 
-                moderators_array -= np.mean(moderators_array, axis=0)
-        elif isinstance(self.moderators_center, str):
-            index_moderators_center = self.moderators.index(self.moderators_center)
-            moderators_array[:,index_moderators_center] -= np.mean(moderators_array[:, index_moderators_center], axis=0)
-        elif isinstance(self.moderators_center, list):
-            index_moderators_center = [self.moderators.index(moderator_name) for moderator_name in self.moderators_center]
-            for i in index_moderators_center:
-                moderators_array[:,i] -= np.mean(moderators_array[:, i], axis=0)
-        
-        # standardize var
-        if isinstance(self.moderators_scale, bool):
-            if self.moderators_scale: 
-                moderators_array /= np.std(moderators_array, axis=0)
-        elif isinstance(self.moderators_scale, str):
-            index_moderators_scale = self.moderators.index(self.moderators_scale)
-            moderators_array[:,index_moderators_scale] /= np.std(moderators_array[:, index_moderators_scale], axis=0)
-        elif isinstance(self.moderators_scale, list):
-            index_moderators_scale = [self.moderators.index(moderator_name) for moderator_name in self.moderators_scale]
-            for i in index_moderators_scale:
-                moderators_array[:,i] /= np.std(moderators_array[:, i], axis=0)
-
-        return moderators_array
 
     def _model_structure(self, model, penalty, device):
         beta_dim = self.inputs_['Coef_spline_bases'].shape[1] # regression coef of spatial effect

@@ -98,8 +98,8 @@ def testdata_cbmr_full():
     # set up group columns & moderators
     n_rows = dset.annotations.shape[0]
     dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
-    # dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
-    # dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
+    dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
     dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
     dset.annotations["avg_age"] = np.arange(n_rows)
 

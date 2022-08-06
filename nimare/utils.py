@@ -1278,20 +1278,17 @@ def vox2idx(ijk, masker_voxels):
 
     return foci_brain_index
 
-def intensity2voxel(intensity, masker_voxels):
-    masker_dim = masker_voxels.shape
-    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
-    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
-    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+def standardize_field(dataset, metadata):
+    # if isinstance(metadata, str):
+    #     moderators = dataset.annotations[metadata]
+    # elif isinstance(metadata, list):
+    moderators = dataset.annotations[metadata]
+    standardize_moderators = moderators - np.mean(moderators, axis=0)
+    standardize_moderators /= np.std(standardize_moderators, axis=0)
+    if isinstance(metadata, str):
+        column_name = 'standardized_' + metadata
+    elif isinstance(metadata, list):
+        column_name = ['standardized_' + moderator for moderator in metadata]
+    dataset.annotations[column_name] = standardize_moderators
 
-    # correspondence between xyz coordinates and spatial intensity
-    brain_voxel_coord = np.array([[x,y,z] for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1])
-    brain_voxel_intensity = np.concatenate((brain_voxel_coord, intensity), axis=1)
-
-    intensity_array = np.zeros(masker_dim)
-    for i in range(brain_voxel_intensity.shape[0]):
-        coord_x, coord_y, coord_z, coord_intensity = brain_voxel_intensity[i, :]
-        coord_x, coord_y, coord_z = coord_x.astype(int), coord_y.astype(int), coord_z.astype(int)
-        intensity_array[coord_x, coord_y, coord_z] = coord_intensity
-    
-    return intensity_array
+    return dataset
