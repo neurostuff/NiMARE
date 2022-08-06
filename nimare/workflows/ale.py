@@ -28,6 +28,7 @@ def ale_sleuth_workflow(
     LGR.info("Loading coordinates...")
 
     if not sleuth_file2:
+        # One ALE
         dset = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
         n_subs = dset.get_metadata(field="sample_sizes")
         n_subs = np.sum(n_subs)
@@ -37,7 +38,10 @@ def ale_sleuth_workflow(
         LGR.info("Performing meta-analysis...")
         results = ale.fit(dset)
         corr = FWECorrector(
-            method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
+            method="montecarlo",
+            n_iters=n_iters,
+            voxel_thresh=v_thr,
+            n_cores=n_cores,
         )
         cres = corr.transform(results)
         fcounter = FocusCounter(
@@ -47,7 +51,9 @@ def ale_sleuth_workflow(
         count_df, _ = fcounter.transform(cres)
         boilerplate = cres.description
         bibtex = cres.bibtex
+
     else:
+        # Two ALEs and an ALESubtraction
         dset1 = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
         dset2 = convert_sleuth_to_dataset(sleuth_file2, target="ale_2mm")
         n_subs1 = dset1.get_metadata(field="sample_sizes")
@@ -62,7 +68,10 @@ def ale_sleuth_workflow(
         res1 = ale1.fit(dset1)
         res2 = ale2.fit(dset2)
         corr = FWECorrector(
-            method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
+            method="montecarlo",
+            n_iters=n_iters,
+            voxel_thresh=v_thr,
+            n_cores=n_cores,
         )
         cres1 = corr.transform(res1)
         boilerplate = cres1.description
@@ -104,11 +113,7 @@ def ale_sleuth_workflow(
         cres.save_maps(output_dir=output_dir, prefix=prefix)
         count_df.to_csv(os.path.join(output_dir, prefix + "_clust.tsv"), index=False, sep="\t")
         copyfile(sleuth_file, os.path.join(output_dir, prefix + "input_coordinates.txt"))
-        with open(os.path.join(output_dir, prefix + "boilerplate.txt"), "w") as fo:
-            fo.write(boilerplate)
 
-        with open(os.path.join(output_dir, prefix + "references.bib"), "w") as fo:
-            fo.write(bibtex)
     else:
         prefix1 = os.path.splitext(os.path.basename(sleuth_file))[0] + "_"
         prefix2 = os.path.splitext(os.path.basename(sleuth_file2))[0] + "_"
@@ -120,10 +125,11 @@ def ale_sleuth_workflow(
         sres.save_maps(output_dir=output_dir, prefix=prefix3)
         copyfile(sleuth_file, os.path.join(output_dir, prefix + "group1_input_coordinates.txt"))
         copyfile(sleuth_file2, os.path.join(output_dir, prefix + "group2_input_coordinates.txt"))
-        with open(os.path.join(output_dir, prefix + "boilerplate.txt"), "w") as fo:
-            fo.write(boilerplate)
 
-        with open(os.path.join(output_dir, prefix + "references.bib"), "w") as fo:
-            fo.write(bibtex)
+    with open(os.path.join(output_dir, prefix + "boilerplate.txt"), "w") as fo:
+        fo.write(boilerplate)
+
+    with open(os.path.join(output_dir, prefix + "references.bib"), "w") as fo:
+        fo.write(bibtex)
 
     LGR.info("Workflow completed.")
