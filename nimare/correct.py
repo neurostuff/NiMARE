@@ -163,7 +163,7 @@ class Corrector(metaclass=ABCMeta):
         # Also operate on a copy of the estimator
         est = result.estimator
 
-        # If a correction method with the same name exists in the current MetaEstimator, use it.
+        # If a correction method with the same name exists in the current Estimator, use it.
         # Otherwise fall back on _transform, and the Corrector methods.
         # In case a method is present in both the Estimator and the Corrector, the Estimator's
         # implementation takes precedence.

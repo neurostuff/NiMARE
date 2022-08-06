@@ -26,7 +26,7 @@ class IBMAEstimator(Estimator):
 
     .. versionadded:: 0.0.12
 
-        * IBMA-specific elements of ``MetaEstimator`` excised and used to create ``IBMAEstimator``.
+        * IBMA-specific elements of ``Estimator`` excised and used to create ``IBMAEstimator``.
         * Generic kwargs and args converted to named kwargs.
           All remaining kwargs are for resampling.
 

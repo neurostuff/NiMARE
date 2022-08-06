@@ -37,7 +37,7 @@ class CBMAEstimator(Estimator):
     .. versionchanged:: 0.0.12
 
         * Remove *low_memory* option
-        * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
+        * CBMA-specific elements of ``Estimator`` excised and moved into ``CBMAEstimator``.
         * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
         * Use a 4D sparse array for modeled activation maps.
 
@@ -54,10 +54,10 @@ class CBMAEstimator(Estimator):
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.Estimator`
         __init__ (called automatically).
     """
 
@@ -879,10 +879,10 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.Estimator`
         __init__ (called automatically).
     """
 

@@ -134,7 +134,7 @@ class Dataset(NiMAREBase):
             if v.default is not inspect.Parameter.empty
         }
 
-        # Eliminate any sub-parameters (e.g., parameters for a MetaEstimator's KernelTransformer),
+        # Eliminate any sub-parameters (e.g., parameters for a Estimator's KernelTransformer),
         # as well as default values
         params = self.get_params()
         params = {k: v for k, v in params.items() if "__" not in k}
