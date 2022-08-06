@@ -139,6 +139,24 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
     **Voxel-level correction is generally more conservative than cluster-level correction,
     so it is only recommended for very large meta-analyses (i.e., hundreds of studies).**
 
+.. important::
+
+    Starting in version 0.0.13, clusters in the cluster-level corrected images are defined using
+    faces connectivity (also known as 1st nearest-neighbor, NN1, or 6 neighbor connectivity),
+    which counts voxels sharing a face as connected.
+    This is more restrictive than other connectivity structures,
+    including faces+edges (aka 2nd nearest-neighbor, NN2, or 18 neighbor connectivity)
+    and faces+edges+corners (aka 3rd nearest-neighbor, NN3, or 26 neighbor connectivity).
+
+    Prior to version 0.0.13, clusters were defined using faces+edges connectivity.
+
+    Different tools use different connectivity structures.
+    Nilearn uses faces connectivity, like NiMARE, while SPM uses faces+edges.
+    FSL allows users to select one of the three connectivity structures, using the ``--connectivity`` parameter.
+    Most AFNI programs also allow users to select a connectivity structure,
+    though the actual parameter differs across programs.
+
+
 .. admonition:: What about threshold-free cluster enhancement?
 
     TFCE :footcite:p:`smith2009threshold` is a voxel-level metric that combines signal magnitude and
