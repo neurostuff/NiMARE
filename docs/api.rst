@@ -310,7 +310,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    workflows.ale_sleuth_workflow
    workflows.conperm_workflow
    workflows.macm_workflow
-   workflows.scale_workflow
 
 
 .. _api_base_ref:

@@ -6,7 +6,6 @@ from nimare.io import convert_neurosynth_to_json, convert_sleuth_to_json
 from nimare.workflows.ale import ale_sleuth_workflow
 from nimare.workflows.conperm import conperm_workflow
 from nimare.workflows.macm import macm_workflow
-from nimare.workflows.scale import scale_workflow
 
 
 def _is_valid_file(parser, arg):
@@ -185,59 +184,6 @@ def _get_parser():
         default=0.001,
     )
     macm_parser.add_argument(
-        "--n_cores",
-        dest="n_cores",
-        type=int,
-        default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
-    )
-
-    # SCALE
-    scale_parser = subparsers.add_parser(
-        "scale",
-        help=(
-            "Method for performing Specific CoActivation Likelihood "
-            "Estimation (SCALE), a modified meta-analytic coactivation "
-            "modeling (MACM) that takes activation frequency bias into "
-            "account, for delineating distinct core networks of "
-            "coactivation, using a permutation-based approach."
-        ),
-    )
-    scale_parser.set_defaults(func=scale_workflow)
-    scale_parser.add_argument(
-        "dataset_file", type=lambda x: _is_valid_file(parser, x), help=("Dataset file to analyze.")
-    )
-    scale_parser.add_argument(
-        "--baseline",
-        type=lambda x: _is_valid_file(parser, x),
-        help=("Voxel-wise baseline activation rates."),
-    )
-    scale_parser.add_argument(
-        "--output_dir",
-        dest="output_dir",
-        metavar="PATH",
-        type=str,
-        help=("Output directory."),
-        default=".",
-    )
-    scale_parser.add_argument(
-        "--prefix", dest="prefix", type=str, help=("Common prefix for output maps."), default=""
-    )
-    scale_parser.add_argument(
-        "--n_iters",
-        dest="n_iters",
-        type=int,
-        help=("Number of iterations for permutation testing."),
-        default=2500,
-    )
-    scale_parser.add_argument(
-        "--v_thr",
-        dest="v_thr",
-        type=float,
-        help=("Voxel p-value threshold used to create clusters."),
-        default=0.001,
-    )
-    scale_parser.add_argument(
         "--n_cores",
         dest="n_cores",
         type=int,
