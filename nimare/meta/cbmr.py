@@ -118,6 +118,8 @@ class CBMREstimator(Estimator):
         self.groups = list(self.inputs_['all_group_study_id'].keys())
         if model == 'Poisson':
             cbmr_model = GLMPoisson(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
+        elif model == 'NB':
+            cbmr_model = GLMNB(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
         if 'cuda' in device:
             cbmr_model = cbmr_model.cuda()
         
@@ -176,40 +178,34 @@ class CBMREstimator(Estimator):
 
         cbmr_model = self._model_structure(self.model, self.penalty, self.device)
         optimisation = self._optimizer(cbmr_model, self.lr, self.tol, self.n_iter, self.device)
-
-        spatial_regression_coef, spatial_intensity_values = dict(), dict()
+        
+        maps, tables = dict(), dict()
+        spatial_regression_coef, overdispersion_param = dict(), dict()
         # beta: regression coef of spatial effect
         for group in self.inputs_['all_group_study_id'].keys():
             group_beta_linear_weight = cbmr_model.all_beta_linears[group].weight
             group_beta_linear_weight = group_beta_linear_weight.cpu().detach().numpy().reshape((P,))
             spatial_regression_coef[group] = group_beta_linear_weight
-
             studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, group_beta_linear_weight))
-            # studywise_spatial_intensity = intensity2voxel(studywise_spatial_intensity, self.inputs_['mask_img']._dataobj)
-            spatial_intensity_values[group] = studywise_spatial_intensity
-        spatial_regression_coef = pd.DataFrame.from_dict(spatial_regression_coef, orient='columns')
+            maps[group+'_group_StudywiseIntensity'] = studywise_spatial_intensity
+            # overdispersion parameter: alpha
+            if self.model == 'NB':
+                alpha = cbmr_model.all_alpha_sqrt[group]**2
+                alpha = alpha.cpu().detach().numpy()
+                overdispersion_param[group] = alpha
+        tables['spatial_regression_coef'] = pd.DataFrame.from_dict(spatial_regression_coef, orient='index')
+
         # study-level moderators
-        moderators_effect_values = dict()
         if hasattr(self, "moderators"):
             self._gamma = cbmr_model.gamma_linear.weight
-            self._gamma = self._gamma.cpu().detach().numpy().flatten()
-            # moderators_regression_coef['all_groups'] = self._gamma
+            self._gamma = self._gamma.cpu().detach().numpy()
             for group in self.inputs_['all_group_study_id'].keys():
                 group_moderators = self.inputs_["all_group_moderators"][group]
-                moderators_effect = np.exp(np.matmul(group_moderators, self._gamma))
-                moderators_effect_values[group] = moderators_effect
-            moderators_regression_coef = pd.DataFrame(self._gamma)
-        
-        maps = {
-            "group-specific_StudywiseIntensity": spatial_intensity_values,
-            'group-specific_moderators_effect': moderators_effect_values,
-        }
-
-        tables = {
-            'spatial_regression_coef': spatial_regression_coef,
-            'moderators_regression_coef': moderators_regression_coef,
-        }
-
+                moderators_effect = np.exp(np.matmul(group_moderators, self._gamma.T))
+                maps[group+'_group_ModeratorsEffect'] = moderators_effect.flatten()
+            tables['moderators_regression_coef'] = pd.DataFrame(self._gamma, columns=self.moderators)
+        if self.model == 'NB':
+            tables['over_dispersion_param'] = pd.DataFrame.from_dict(overdispersion_param, orient='index')
 
         return maps, tables
 
@@ -252,6 +248,77 @@ class GLMPoisson(torch.nn.Module):
             # Under the assumption that Y_ij is either 0 or 1
             # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
             group_log_l = torch.sum(torch.mul(group_foci_per_voxel, log_mu_spatial)) + torch.sum(torch.mul(group_foci_per_study, log_mu_moderators)) - torch.sum(mu_spatial) * torch.sum(mu_moderators)
+            log_l += group_log_l
+        
+        return -log_l
+
+class GLMNB(torch.nn.Module):
+    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty='No'):
+        super().__init__()
+        self.groups = groups
+        self.study_level_moderators = study_level_moderators
+        # initialization for beta
+        all_beta_linears, all_alpha_sqrt = dict(), dict()
+        for group in groups:
+            beta_linear_group = torch.nn.Linear(beta_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(beta_linear_group.weight, a=-0.01, b=0.01)
+            all_beta_linears[group] = beta_linear_group
+            # initialization for alpha
+            alpha_init_group = torch.tensor(1e-2).double()
+            all_alpha_sqrt[group] = torch.nn.Parameter(torch.sqrt(alpha_init_group), requires_grad=True) 
+        self.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
+        self.all_alpha_sqrt = torch.nn.ParameterDict(all_alpha_sqrt)
+        # gamma 
+        if self.study_level_moderators:
+            self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
+    
+    def _three_term(y, r):
+        max_foci = np.int(torch.max(y).item())
+        sum_three_term = 0
+        for k in range(max_foci):
+            foci_index = (y == k+1).nonzero()[:,0]
+            r_j = r[foci_index]
+            n_voxel = list(foci_index.shape)[0]
+            y_j = torch.tensor([k+1]*n_voxel).double()
+            y_j = y_j.reshape((n_voxel, 1))
+            # y=0 => sum_three_term = 0
+            sum_three_term += torch.sum(torch.lgamma(y_j+r_j) - torch.lgamma(y_j+1) - torch.lgamma(r_j))
+        
+        return sum_three_term
+    
+    
+    def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
+        if isinstance(all_moderators, dict):
+            all_log_mu_moderators = dict()
+            for group in all_moderators.keys():
+                group_moderators = all_moderators[group]
+                # mu^Z = exp(Z * gamma)
+                log_mu_moderators = self.gamma_linear(group_moderators)
+                all_log_mu_moderators[group] = log_mu_moderators
+        log_l = 0
+        # spatial effect: mu^X = exp(X * beta)
+        for group in all_foci_per_voxel.keys(): 
+            alpha = self.all_alpha_sqrt[group]**2
+            v = 1 / alpha
+            log_mu_spatial = self.all_beta_linears[group](Coef_spline_bases)
+            mu_spatial = torch.exp(log_mu_spatial)
+            log_mu_moderators = all_log_mu_moderators[group]
+            mu_moderators = torch.exp(log_mu_moderators)
+            # Now the sum of NB variates are no long NB distributed (since mu_ij != mu_i'j),
+            # Therefore, we use moment matching approach,
+            # create a new NB approximation to the mixture of NB distributions: 
+            # alpha' = sum_i mu_{ij}^2 / (sum_i mu_{ij})^2 * alpha
+            numerator = mu_spatial**2 * torch.sum(mu_moderators**2)
+            denominator = mu_spatial**2 * torch.sum(mu_moderators)**2
+            estimated_sum_alpha = alpha * numerator / denominator
+            ## moment matching NB distribution
+            p = numerator / (v*mu_spatial*torch.sum(mu_moderators) + numerator)
+            r = v * denominator / numerator
+
+            group_foci_per_voxel = all_foci_per_voxel[group]
+            # group_foci_per_study = all_foci_per_study[group]
+            group_log_l = GLMNB._three_term(group_foci_per_voxel,r) + torch.sum(r*torch.log(1-p) + group_foci_per_voxel*torch.log(p))
             log_l += group_log_l
         
         return -log_l
