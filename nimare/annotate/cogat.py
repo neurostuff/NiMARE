@@ -5,16 +5,13 @@ import re
 import numpy as np
 import pandas as pd
 
-from nimare import references
 from nimare.annotate import utils
-from nimare.due import due
 from nimare.extract import download_cognitive_atlas
 from nimare.utils import _uk_to_us
 
 LGR = logging.getLogger(__name__)
 
 
-@due.dcite(references.COGNITIVE_ATLAS, description="Introduces the Cognitive Atlas.")
 class CogAtLemmatizer(object):
     """Replace synonyms and abbreviations with Cognitive Atlas identifiers in text.
 
@@ -94,7 +91,6 @@ class CogAtLemmatizer(object):
         return text
 
 
-@due.dcite(references.COGNITIVE_ATLAS, description="Introduces the Cognitive Atlas.")
 def extract_cogat(text_df, id_df=None, text_column="abstract"):
     """Extract Cognitive Atlas terms and count instances using regular expressions.
 

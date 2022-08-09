@@ -6,8 +6,6 @@ import numpy as np
 import sparse
 from scipy import ndimage
 
-from nimare import references
-from nimare.due import due
 from nimare.utils import unique_rows
 
 LGR = logging.getLogger(__name__)
@@ -297,7 +295,6 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     return kernel_data
 
 
-@due.dcite(references.ALE_KERNEL, description="Introduces sample size-dependent kernels to ALE.")
 def get_ale_kernel(img, sample_size=None, fwhm=None):
     """Estimate 3D Gaussian and sigma (in voxels) for ALE kernel given sample size or fwhm."""
     if sample_size is not None and fwhm is not None:
@@ -322,7 +319,7 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
     data = np.zeros((31, 31, 31))
     mid = int(np.floor(data.shape[0] / 2.0))
     data[mid, mid, mid] = 1.0
-    kernel = ndimage.filters.gaussian_filter(data, sigma_vox, mode="constant")
+    kernel = ndimage.gaussian_filter(data, sigma_vox, mode="constant")
 
     # Crop kernel to drop surrounding zeros
     mn = np.min(np.where(kernel > np.spacing(1))[0])
@@ -368,12 +365,12 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         arr3d[np.abs(arr3d) <= threshold] = 0
 
     labeled_arr3d = np.empty(arr3d.shape, int)
-    labeled_arr3d, _ = ndimage.measurements.label(arr3d > 0, conn)
+    labeled_arr3d, _ = ndimage.label(arr3d > 0, conn)
 
     if tail == "two":
         # Label positive and negative clusters separately
         n_positive_clusters = np.max(labeled_arr3d)
-        temp_labeled_arr3d, _ = ndimage.measurements.label(arr3d < 0, conn)
+        temp_labeled_arr3d, _ = ndimage.label(arr3d < 0, conn)
         temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
         labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
         del temp_labeled_arr3d
