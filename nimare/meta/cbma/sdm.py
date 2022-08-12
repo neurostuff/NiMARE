@@ -99,7 +99,7 @@ def simulate_voxel_with_one_neighbor(A, r_ay):
     w_a = r_ay - (w_r * r_ar)
 
     y = (w_a * A) + (w_r * R)
-    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scores by w*
+    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scored by w*
     return y
 
 
@@ -144,7 +144,7 @@ def simulate_voxel_with_two_neighbors(A, B, r_ay, r_by):
     w_a = r_ay - (w_b * r_ab) - (w_r * r_ar)
 
     y = (w_a * A) + (w_b * B) + (w_r * R)
-    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scores by w*
+    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scored by w*
     return y
 
 
@@ -226,7 +226,7 @@ def simulate_voxel_with_three_neighbors(A, B, C, r_ay, r_by, r_cy):
     w_a = r_ay - (w_b * r_ab) - (w_c * r_ac) - (w_r * r_ar)
 
     y = (w_a * A) + (w_b * B) + (w_c * C) + (w_r * R)
-    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scores by w*
+    y = stats.zscore(y)  # NOTE: The zscore isn't part of the math. It should be z-scored by w*
     return y
 
 
