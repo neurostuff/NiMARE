@@ -86,7 +86,7 @@ files = fetch_neuroquery(
     version="1",
     overwrite=False,
     source="combined",
-    vocab="neuroquery7547",
+    vocab="neuroquery6308",
     type="tfidf",
 )
 # Note that the files are saved to a new folder within "out_dir" named "neuroquery".

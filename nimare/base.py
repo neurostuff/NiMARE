@@ -328,11 +328,11 @@ class Estimator(NiMAREBase):
         """
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
-        maps = self._fit(dataset)
+        maps, tables = self._fit(dataset)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset.masker
 
-        return MetaResult(self, masker, maps)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables)

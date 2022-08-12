@@ -3,12 +3,9 @@ import numpy as np
 from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
 
-from nimare import references
 from nimare.decode.utils import weight_priors
-from nimare.due import due
 
 
-@due.dcite(references.GCLDA_DECODING, description="Citation for GCLDA encoding.")
 def gclda_encode(model, text, out_file=None, topic_priors=None, prior_weight=1.0):
     r"""Perform text-to-image encoding according to the method described in Rubin et al. (2017).
 

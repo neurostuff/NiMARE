@@ -97,6 +97,7 @@ For more information about the components of coordinate-based meta-analysis in N
    :toctree: generated/
    :template: class.rst
 
+   diagnostics.FocusFilter
    diagnostics.Jackknife
    diagnostics.FocusCounter
 
@@ -225,7 +226,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    extract.download_nidm_pain
    extract.download_cognitive_atlas
    extract.download_abstracts
-   extract.download_peaks2maps_model
 
    extract.utils.get_data_dirs
 
@@ -250,7 +250,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    stats.pearson
    stats.null_to_p
    stats.nullhist_to_p
-   stats.fdr
 
 
 .. _api_generate_ref:
@@ -294,6 +293,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    utils.mm2vox
    utils.tal2mni
    utils.mni2tal
+   utils.unique_rows
 
 .. _api_workflows_ref:
 
@@ -311,10 +311,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :template: function.rst
 
    workflows.ale_sleuth_workflow
-   workflows.conperm_workflow
    workflows.macm_workflow
-   workflows.peaks2maps_workflow
-   workflows.scale_workflow
 
 
 .. _api_base_ref:

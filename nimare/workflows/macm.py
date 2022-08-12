@@ -15,6 +15,8 @@ def macm_workflow(
     dataset_file, mask_file, output_dir=None, prefix=None, n_iters=10000, v_thr=0.001, n_cores=1
 ):
     """Perform MACM with ALE algorithm."""
+    from nimare import __version__
+
     LGR.info("Loading coordinates...")
     dset = Dataset(dataset_file)
     sel_ids = dset.get_studies_by_mask(mask_file)
@@ -30,11 +32,12 @@ Meta-analytic connectivity modeling (MACM; Laird et al., 2009; Robinson et al.,
 2009; Eickhoff et al., 2010) analysis was performed with the activation
 likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro, 2002; Eickhoff,
 Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012) meta-analysis
-algorithm using NiMARE. The input dataset included {n_foci_db}
-foci from {n_subs_db} participants across {n_exps_db} studies/experiments, from
-which studies/experiments were selected for analysis if they had at least one
-focus inside the target mask. The resulting sample included {n_foci_sel}
-foci from {n_subs_sel} participants across {n_exps_sel} studies/experiments.
+algorithm using NiMARE {version} (RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
+The input dataset included {n_foci_db} foci from {n_subs_db} participants across
+{n_exps_db} studies/experiments, from which studies/experiments were selected for analysis
+if they had at least one focus inside the target mask.
+The resulting sample included {n_foci_sel} foci from {n_subs_sel} participants across
+{n_exps_sel} studies/experiments.
 
 Modeled activation maps were generated for each study/experiment by convolving
 each focus with a Gaussian kernel determined by the study/experiment's sample
@@ -64,35 +67,44 @@ drawn from a gray matter template and the maximum ALE value was recorded.
 
 References
 ----------
-- Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
-Activation likelihood estimation meta-analysis revisited. NeuroImage,
-59(3), 2349–2361.
-- Eickhoff, S. B., Jbabdi, S., Caspers, S., Laird, A. R., Fox, P. T., Zilles,
-K., & Behrens, T. E. (2010). Anatomical and functional connectivity of
-cytoarchitectonic areas within the human parietal operculum. Journal of
-Neuroscience, 30(18), 6409-6421.
-- Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
-Collins, D. L., & Brain Development Cooperative Group. (2011).
-Unbiased average age-appropriate atlases for pediatric studies.
-Neuroimage, 54(1), 313-327.
-- Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
-(2009). Unbiased nonlinear average age-appropriate brain templates from birth
-to adulthood. NeuroImage, (47), S102.
-- Laird, A. R., Eickhoff, S. B., Li, K., Robin, D. A., Glahn, D. C., &
-Fox, P. T. (2009). Investigating the functional heterogeneity of the default
-mode network using coordinate-based meta-analytic modeling. The Journal of
-Neuroscience: The Official Journal of the Society for Neuroscience, 29(46),
-14496–14505.
-- Robinson, J. L., Laird, A. R., Glahn, D. C., Lovallo, W. R., & Fox, P. T.
-(2009). Metaanalytic connectivity modeling: Delineating the functional
-connectivity of the human amygdala. Human Brain Mapping, 31(2), 173-184.
-- Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
-Meta-analysis of the functional neuroanatomy of single-word reading: method
-and validation. NeuroImage, 16(3 Pt 1), 765–780.
-- Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
-& Fox, P. (2012). Minimizing within-experiment and within-group effects in
-Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-33(1), 1–13.
+-   Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
+    Activation likelihood estimation meta-analysis revisited. NeuroImage,
+    59(3), 2349-2361.
+-   Eickhoff, S. B., Jbabdi, S., Caspers, S., Laird, A. R., Fox, P. T., Zilles,
+    K., & Behrens, T. E. (2010). Anatomical and functional connectivity of
+    cytoarchitectonic areas within the human parietal operculum. Journal of
+    Neuroscience, 30(18), 6409-6421.
+-   Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
+    Collins, D. L., & Brain Development Cooperative Group. (2011).
+    Unbiased average age-appropriate atlases for pediatric studies.
+    Neuroimage, 54(1), 313-327.
+-   Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
+    (2009). Unbiased nonlinear average age-appropriate brain templates from birth
+    to adulthood. NeuroImage, (47), S102.
+-   Laird, A. R., Eickhoff, S. B., Li, K., Robin, D. A., Glahn, D. C., &
+    Fox, P. T. (2009). Investigating the functional heterogeneity of the default
+    mode network using coordinate-based meta-analytic modeling. The Journal of
+    Neuroscience: The Official Journal of the Society for Neuroscience, 29(46),
+    14496-14505.
+-   Robinson, J. L., Laird, A. R., Glahn, D. C., Lovallo, W. R., & Fox, P. T.
+    (2009). Metaanalytic connectivity modeling: Delineating the functional
+    connectivity of the human amygdala. Human Brain Mapping, 31(2), 173-184.
+-   Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
+    Meta-analysis of the functional neuroanatomy of single-word reading: method
+    and validation. NeuroImage, 16(3 Pt 1), 765-780.
+-   Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
+    & Fox, P. (2012). Minimizing within-experiment and within-group effects in
+    Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
+    33(1), 1-13.
+-   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
+    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
+-   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
+    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
+    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
+    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
+    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
+    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
+    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
     """
 
     LGR.info("Performing meta-analysis...")
@@ -110,6 +122,7 @@ Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
         n_foci_sel=sel_dset.coordinates.shape[0],
         unc=v_thr,
         n_iters=n_iters,
+        version=__version__,
     )
 
     if output_dir is None:

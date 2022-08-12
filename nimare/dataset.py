@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 import os.path as op
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -102,6 +103,22 @@ class Dataset(NiMAREBase):
         self.metadata = _dict_to_df(id_df, data, key="metadata")
         self.texts = _dict_to_df(id_df, data, key="text")
         self.basepath = None
+
+        if "z_stat" in self.coordinates.columns:
+            # "z_stat" column may contain Nones
+            if not self.coordinates["z_stat"].isna().any():
+                # Ensure z_stat is treated as float
+                self.coordinates["z_stat"] = self.coordinates["z_stat"].astype(float)
+
+                # Raise warning if coordinates dataset contains both positive and negative z_stats
+                if ((self.coordinates["z_stat"].values >= 0).any()) and (
+                    (self.coordinates["z_stat"].values < 0).any()
+                ):
+                    warnings.warn(
+                        "Coordinates dataset contains both positive and negative z_stats. "
+                        "The algorithms currently implemented in NiMARE are designed for "
+                        "one-sided tests. This might lead to unexpected results."
+                    )
 
     def __repr__(self):
         """Show basic Dataset representation.

@@ -28,6 +28,10 @@ Some of the values found in NiMARE include:
 - ``chi2``: Chi-squared value
 - ``prob``: Probability value
 - ``stat``: Test value of meta-analytic algorithm (e.g., ALE values for ALE, OF values for MKDA)
+- ``est``: Parameter estimate (IBMA only)
+- ``se``: Standard error of the parameter estimate (IBMA only)
+- ``tau2``: Estimated between-study variance (IBMA only)
+- ``sigma2``: Estimated within-study variance (IBMA only)
 
 Next, a series of key/value pairs describe the methods applied to generate the map.
 

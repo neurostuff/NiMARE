@@ -3,6 +3,7 @@
 import copy
 import logging
 import os.path as op
+import warnings
 
 import nibabel as nib
 import numpy as np
@@ -10,9 +11,7 @@ import pandas as pd
 from nilearn.reporting import get_clusters_table
 from scipy import stats
 
-from nimare import references
 from nimare.base import NiMAREBase
-from nimare.due import due
 from nimare.utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
 
 LGR = logging.getLogger(__name__)
@@ -456,9 +455,19 @@ class ImagesToCoordinates(NiMAREBase):
             original_ids = set(old_coordinates_df["id"])
             metadata.loc[metadata["id"].isin(original_ids), "coordinate_source"] = "original"
 
-        # ensure z_stat is treated as float
         if "z_stat" in coordinates_df.columns:
+            # ensure z_stat is treated as float
             coordinates_df["z_stat"] = coordinates_df["z_stat"].astype(float)
+
+            # Raise warning if coordinates dataset contains both positive and negative z_stats
+            if ((coordinates_df["z_stat"].values >= 0).any()) and (
+                (coordinates_df["z_stat"].values < 0).any()
+            ):
+                warnings.warn(
+                    "Coordinates dataset contains both positive and negative z_stats. "
+                    "The algorithms currently implemented in NiMARE are designed for "
+                    "one-sided tests. This might lead to unexpected results."
+                )
 
         new_dataset = copy.deepcopy(dataset)
         new_dataset.coordinates = coordinates_df
@@ -684,8 +693,6 @@ def p_to_z(p, tail="two"):
     return z
 
 
-@due.dcite(references.T2Z_TRANSFORM, description="Introduces T-to-Z transform.")
-@due.dcite(references.T2Z_IMPLEMENTATION, description="Python implementation of T-to-Z transform.")
 def t_to_z(t_values, dof):
     """Convert t-statistics to z-statistics.
 
@@ -705,6 +712,27 @@ def t_to_z(t_values, dof):
     -------
     z_values : array_like
         Z-statistics
+
+    License
+    -------
+    The MIT License (MIT)
+    Copyright (c) 2015 Vanessa Sochat
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+    and associated documentation files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or
+    substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+    PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+    FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+    ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
 
     References
     ----------

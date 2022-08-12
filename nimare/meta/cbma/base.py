@@ -6,7 +6,9 @@ from hashlib import md5
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from joblib import Parallel, delayed
+from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
 
@@ -20,11 +22,9 @@ from nimare.utils import (
     _add_metadata_to_dataframe,
     _check_ncores,
     _check_type,
-    _safe_transform,
     get_masker,
     mm2vox,
     tqdm_joblib,
-    use_memmap,
     vox2mm,
 )
 
@@ -36,8 +36,10 @@ class CBMAEstimator(Estimator):
 
     .. versionchanged:: 0.0.12
 
+        * Remove *low_memory* option
         * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
         * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
+        * Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
@@ -63,11 +65,10 @@ class CBMAEstimator(Estimator):
     # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, kernel_transformer, *, mask=None, memory_limit=None, **kwargs):
+    def __init__(self, kernel_transformer, *, mask=None, **kwargs):
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
-        self.memory_limit = memory_limit
 
         # Identify any kwargs
         kernel_args = {k: v for k, v in kwargs.items() if k.startswith("kernel__")}
@@ -143,7 +144,6 @@ class CBMAEstimator(Estimator):
                 filter_func=np.mean,
             )
 
-    @use_memmap(LGR, n_files=1)
     def _fit(self, dataset):
         """Perform coordinate-based meta-analysis on dataset.
 
@@ -154,12 +154,18 @@ class CBMAEstimator(Estimator):
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
+
+        if not isinstance(self.masker, NiftiMasker):
+            raise ValueError(
+                f"A {type(self.masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator."
+            )
+
         self.null_distributions_ = {}
 
         ma_values = self._collect_ma_maps(
             coords_key="coordinates",
             maps_key="ma_maps",
-            fname_idx=0,
         )
 
         # Infer a weight vector, when applicable. Primarily used only for MKDADensity.
@@ -179,16 +185,10 @@ class CBMAEstimator(Estimator):
             # A hidden option only used for internal validation/testing
             self._compute_null_reduced_montecarlo(ma_values, n_iters=self.n_iters)
 
-        # Only should occur when MA maps have been pre-generated in the Dataset and a memory_limit
-        # is set. The memmap must be closed.
-        if isinstance(ma_values, np.memmap):
-            LGR.debug(f"Closing memmap at {ma_values.filename}")
-            ma_values._mmap.close()
-
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
+        return images, {}
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
@@ -199,7 +199,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", fname_idx=0):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
@@ -213,37 +213,43 @@ class CBMAEstimator(Estimator):
             This key should only be present if the kernel transformer was already fitted to the
             input Dataset.
             Default is "ma_maps".
-        fname_idx : :obj:`int`, optional
-            When the Estimator is set with ``memory_limit`` as a string,
-            there is a ``memmap_filenames`` attribute that is a list of filenames or Nones.
-            This parameter specifies which item in that list should be used for a memory-mapped
-            array. Default is 0.
 
         Returns
         -------
-        ma_maps : :obj:`numpy.ndarray` or :obj:`numpy.memmap`
-            2D numpy array of shape (n_studies, n_voxels) with MA values.
-            This will be a memmap if MA maps have been pre-generated.
+        ma_maps : :obj:`sparse._coo.core.COO`
+            Return a 4D sparse array of shape
+            (n_studies, mask.shape) with MA maps.
         """
         if maps_key in self.inputs_.keys():
             LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
-            if self.memory_limit:
-                # perform transform on chunks of the input maps
-                ma_maps = _safe_transform(
-                    self.inputs_[maps_key],
-                    masker=self.masker,
-                    memory_limit=self.memory_limit,
-                    memfile=self.memmap_filenames[fname_idx],
-                )
-            else:
-                ma_maps = self.masker.transform(self.inputs_[maps_key])
+            all_exp = []
+            all_coords = []
+            all_data = []
+            for i_exp, img in enumerate(self.inputs_[maps_key]):
+                img_data = nib.load(img).get_fdata()
+                nonzero_idx = np.where(img_data != 0)
+
+                all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+                all_coords.append(np.vstack(nonzero_idx))
+                all_data.append(img_data[nonzero_idx])
+
+            n_studies = len(self.inputs_[maps_key])
+            shape = img_data.shape
+            kernel_shape = (n_studies,) + shape
+
+            exp = np.hstack(all_exp)
+            coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
+            data = np.hstack(all_data).flatten()
+
+            ma_maps = sparse.COO(coords, data, shape=kernel_shape)
 
         else:
             LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
+
             ma_maps = self.kernel_transformer.transform(
                 self.inputs_[coords_key],
                 masker=self.masker,
-                return_type="array",
+                return_type="sparse",
             )
 
         return ma_maps
@@ -258,12 +264,13 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        data : array, pandas.DataFrame, or list of img_like
+        data : array, sparse._coo.core.COO, pandas.DataFrame, or list of img_like
             Data from which to estimate summary statistics.
             The data can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            (2) a DataFrame containing coordinates to produce MA values,
-            or (3) a list of imgs containing MA values.
+            (2) a 4d sparse array of MA maps,
+            (3) a DataFrame containing coordinates to produce MA values,
+            or (4) a list of imgs containing MA values.
 
         Returns
         -------
@@ -272,13 +279,13 @@ class CBMAEstimator(Estimator):
         """
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
-                data, masker=self.masker, return_type="array"
+                data, masker=self.masker, return_type="sparse"
             )
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
-        elif isinstance(data, np.ndarray):
+        elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
             ma_values = data
-        elif not isinstance(data, np.ndarray):
+        else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         # Apply weights before returning
@@ -434,6 +441,14 @@ class CBMAEstimator(Estimator):
         --------
         This method is only retained for testing and algorithm development.
         """
+        if isinstance(ma_maps, sparse._coo.core.COO):
+            masker = self.dataset.masker if not self.masker else self.masker
+            mask = masker.mask_img
+            mask_data = mask.get_fdata().astype(bool)
+
+            ma_maps = ma_maps.todense()
+            ma_maps = ma_maps[:, mask_data]
+
         n_studies, n_voxels = ma_maps.shape
         null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
@@ -464,7 +479,7 @@ class CBMAEstimator(Estimator):
         iter_df[["x", "y", "z"]] = iter_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="array"
+            iter_df, masker=self.masker, return_type="sparse"
         )
         iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
@@ -570,7 +585,7 @@ class CBMAEstimator(Estimator):
         iter_df[["x", "y", "z"]] = iter_xyz
 
         iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="array"
+            iter_df, masker=self.masker, return_type="sparse"
         )
         iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
@@ -583,11 +598,10 @@ class CBMAEstimator(Estimator):
             iter_max_size, iter_max_mass = None, None
         else:
             # Cluster-level inference
-            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata().copy()
+            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata()
             iter_max_size, iter_max_mass = _calculate_cluster_measures(
                 iter_ss_map, voxel_thresh, conn, tail="upper"
             )
-
         return iter_max_value, iter_max_size, iter_max_mass
 
     def correct_fwe_montecarlo(
@@ -601,6 +615,10 @@ class CBMAEstimator(Estimator):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
+
+        .. versionchanged:: 0.0.13
+
+            Change cluster neighborhood from faces+edges to faces, to match Nilearn.
 
         .. versionchanged:: 0.0.12
 
@@ -715,7 +733,7 @@ class CBMAEstimator(Estimator):
             iter_df = self.inputs_["coordinates"].copy()
 
             # Define connectivity matrix for cluster labeling
-            conn = ndimage.generate_binary_structure(3, 2)
+            conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
             with tqdm_joblib(tqdm(total=n_iters)):
                 perm_results = Parallel(n_jobs=n_cores)(
@@ -737,7 +755,7 @@ class CBMAEstimator(Estimator):
                 # cluster-label
                 thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
                 thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-                labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
+                labeled_matrix, _ = ndimage.label(thresh_stat_values, conn)
 
                 cluster_labels, idx, cluster_sizes = np.unique(
                     labeled_matrix,
@@ -801,14 +819,14 @@ class CBMAEstimator(Estimator):
 
         if vfwe_only:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
             }
 
         else:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
                 "logp_desc-size_level-cluster": logp_csfwe_values,
@@ -817,11 +835,15 @@ class CBMAEstimator(Estimator):
                 "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
-        return images
+        return maps, {}
 
 
 class PairwiseCBMAEstimator(CBMAEstimator):
     """Base class for pairwise coordinate-based meta-analysis methods.
+
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
 
     .. versionchanged:: 0.0.8
 
@@ -890,11 +912,11 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps = self._fit(dataset1, dataset2)
+        maps, tables = self._fit(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset1.masker
 
-        return MetaResult(self, masker, maps)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables)

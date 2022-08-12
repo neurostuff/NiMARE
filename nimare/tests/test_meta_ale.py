@@ -6,10 +6,12 @@ import pickle
 import nibabel as nib
 import numpy as np
 import pytest
+from nilearn.input_data import NiftiLabelsMasker
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
+from nimare.tests.utils import get_test_data_path
 from nimare.utils import vox2mm
 
 
@@ -44,14 +46,6 @@ def test_ALE_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
     with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
         meta.fit(dset)
     assert "Loading pre-generated MA maps" in caplog.text
-
-    # If there is a memory limit along with pre-generated images, then we should still see the
-    # logger message.
-    meta = ale.ALE(kernel__sample_size=20, memory_limit="100mb")
-    with caplog.at_level(logging.DEBUG, logger="nimare.meta.cbma.base"):
-        meta.fit(dset)
-    assert "Loading pre-generated MA maps" in caplog.text
-    assert "Closing memmap at" in caplog.text
 
 
 def test_ALESubtraction_ma_map_reuse(testdata_cbma, tmp_path_factory, caplog):
@@ -169,7 +163,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_ALE_montecarlo_null_unit")
     out_file = os.path.join(tmpdir, "file.pkl.gz")
 
-    meta = ale.ALE(null_method="montecarlo", n_iters=10, kernel__memory_limit="1gb")
+    meta = ale.ALE(null_method="montecarlo", n_iters=10)
     res = meta.fit(testdata_cbma)
     assert "stat" in res.maps.keys()
     assert "p" in res.maps.keys()
@@ -308,3 +302,16 @@ def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
 
     meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_ALE_non_nifti_masker(testdata_cbma):
+    """Unit test for ALE with non-NiftiMasker.
+
+    CBMA estimators don't work with non-NiftiMasker (e.g., a NiftiLabelsMasker).
+    """
+    atlas = os.path.join(get_test_data_path(), "test_pain_dataset", "atlas.nii.gz")
+    masker = NiftiLabelsMasker(atlas)
+    meta = ale.ALE(mask=masker, n_iters=10)
+
+    with pytest.raises(ValueError):
+        meta.fit(testdata_cbma)

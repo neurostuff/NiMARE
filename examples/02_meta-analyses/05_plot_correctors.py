@@ -118,17 +118,16 @@ for i_ax, map_name in enumerate(MAPS_TO_PLOT):
     )
     axes[i_ax].set_title(title)
 
-from nimare.correct import FDRCorrector
-
 ###############################################################################
 # Multiple comparisons correction in image-based meta-analyses
 # -----------------------------------------------------------------------------
+from nimare.correct import FDRCorrector
 from nimare.meta.ibma import Stouffers
 
 meta = Stouffers(resample=True)
 results = meta.fit(dset)
-print(FWECorrector.inspect(results))
-print(FDRCorrector.inspect(results))
+print(f"FWECorrector options: {FWECorrector.inspect(results)}")
+print(f"FDRCorrector options: {FDRCorrector.inspect(results)}")
 
 ###############################################################################
 # Note that the FWECorrector does not support a "montecarlo" method for the
