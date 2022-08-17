@@ -5,6 +5,7 @@ from sklearn.decomposition import LatentDirichletAllocation
 
 from nimare.annotate.text import generate_counts
 from nimare.base import NiMAREBase
+from nimare.utils import _check_ncores
 
 
 class LDAModel(NiMAREBase):
@@ -30,6 +31,10 @@ class LDAModel(NiMAREBase):
     text_column : :obj:`str`, optional
         The source of text to use for the model. This should correspond to an existing column
         in the :py:attr:`~nimare.dataset.Dataset.texts` attribute. Default is "abstract".
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores.
+        Default is 1.
 
     Attributes
     ----------
@@ -52,12 +57,15 @@ class LDAModel(NiMAREBase):
     :class:`~sklearn.decomposition.LatentDirichletAllocation`: Used to train the LDA model.
     """
 
-    def __init__(self, n_topics, max_iter=1000, alpha=None, beta=0.001, text_column="abstract"):
+    def __init__(
+        self, n_topics, max_iter=1000, alpha=None, beta=0.001, text_column="abstract", n_cores=1
+    ):
         self.n_topics = n_topics
         self.max_iter = max_iter
         self.alpha = alpha
         self.beta = beta
         self.text_column = text_column
+        self.n_cores = _check_ncores(n_cores)
 
         self.model = LatentDirichletAllocation(
             n_components=n_topics,
@@ -65,6 +73,7 @@ class LDAModel(NiMAREBase):
             learning_method="online",
             doc_topic_prior=alpha,
             topic_word_prior=beta,
+            n_jobs=n_cores,
         )
 
     def fit(self, dset):
