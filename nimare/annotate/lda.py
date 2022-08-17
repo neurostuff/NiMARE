@@ -70,7 +70,7 @@ class LDAModel(NiMAREBase):
         self.model = LatentDirichletAllocation(
             n_components=n_topics,
             max_iter=max_iter,
-            learning_method="online",
+            learning_method="batch",
             doc_topic_prior=alpha,
             topic_word_prior=beta,
             n_jobs=n_cores,
