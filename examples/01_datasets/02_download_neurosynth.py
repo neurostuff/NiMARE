@@ -74,7 +74,7 @@ print(neurosynth_dset)
 # This is only possible because Neurosynth uses PMIDs as study IDs.
 #
 # Make sure you replace the example email address with your own.
-neurosynth_dset = download_abstracts(neurosynth_dset, "example@example.edu")
+neurosynth_dset = extract.download_abstracts(neurosynth_dset, "example@example.edu")
 neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pkl.gz"))
 
 ###############################################################################
