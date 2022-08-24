@@ -5,7 +5,6 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import pytest
-from numba import config
 
 from nimare import annotate, decode
 
