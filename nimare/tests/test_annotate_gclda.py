@@ -89,5 +89,5 @@ def test_gclda_asymmetric(testdata_laird):
     assert isinstance(encoded_img, nib.Nifti1Image)
 
 
-# Disable numba execution to allow pytest-cov to detect coverage in functions with @jit
+# Enable numba execution for tests that use sparse arrays
 config.DISABLE_JIT = False
