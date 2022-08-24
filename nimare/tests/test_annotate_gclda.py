@@ -1,4 +1,6 @@
 """Test nimare.annotate.gclda (GCLDA)."""
+import os
+
 import nibabel as nib
 import numpy as np
 import pandas as pd
@@ -7,12 +9,12 @@ from numba import config
 
 from nimare import annotate, decode
 
-# Disable numba execution to allow pytest-cov to detect coverage in functions with @jit
-config.DISABLE_JIT = True
-
 
 def test_gclda_symmetric(testdata_laird):
     """A smoke test for GCLDA with symmetric regions."""
+    # Disable numba execution to allow pytest-cov to detect coverage in functions with @jit
+    os.environ["NUMBA_DISABLE_JIT"] = "1"
+
     counts_df = annotate.text.generate_counts(
         testdata_laird.texts,
         text_column="abstract",
@@ -54,9 +56,15 @@ def test_gclda_symmetric(testdata_laird):
     encoded_img, _ = decode.encode.gclda_encode(model, "fmri activation")
     assert isinstance(encoded_img, nib.Nifti1Image)
 
+    # Enable numba execution for tests that use sparse arrays
+    os.environ["NUMBA_DISABLE_JIT"] = "0"
+
 
 def test_gclda_asymmetric(testdata_laird):
     """A smoke test for GCLDA with three asymmetric regions."""
+    # Disable numba execution to allow pytest-cov to detect coverage in functions with @jit
+    os.environ["NUMBA_DISABLE_JIT"] = "1"
+
     counts_df = annotate.text.generate_counts(
         testdata_laird.texts,
         text_column="abstract",
@@ -88,6 +96,5 @@ def test_gclda_asymmetric(testdata_laird):
     encoded_img, _ = decode.encode.gclda_encode(model, "fmri activation")
     assert isinstance(encoded_img, nib.Nifti1Image)
 
-
-# Enable numba execution for tests that use sparse arrays
-config.DISABLE_JIT = False
+    # Enable numba execution for tests that use sparse arrays
+    os.environ["NUMBA_DISABLE_JIT"] = "0"
