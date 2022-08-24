@@ -15,6 +15,247 @@ from nimare.utils import get_template
 LGR = logging.getLogger(__name__)
 
 
+@jit(nopython=True)
+def _update_word_topic_assignments(
+    word_topic_idx,
+    nz_word_topic,
+    nz_sum_topic,
+    nz_doc_topic,
+    ny_doc_topic,
+    word_doc_idx,
+    word_idx,
+    voc_len,
+    beta,
+    gamma,
+    randseed,
+):
+    """Update wtoken_topic_idx (z) indicator variables assigning words->topics.
+
+    Parameters
+    ----------
+    word_topic_idx : :obj:`numpy.ndarray`
+        Topic assignment for word tokens.
+    nz_word_topic : (W x T) :obj:`numpy.ndarray`
+        Number of word-tokens assigned to each topic (T) per word-type (W).
+    nz_sum_topic : (1 x T) :obj:`numpy.ndarray`
+        Total number of word-tokens assigned to each topic (T) (across all docs).
+    nz_doc_topic : (D x T) :obj:`numpy.ndarray`
+        Number of word-tokens assigned to each topic (T) per document (D).
+    ny_doc_topic : (D x T) :obj:`numpy.ndarray`
+        Number of peak-tokens assigned to each topic (T) per document (D).
+    word_doc_idx : :obj:`numpy.ndarray`
+        Document index.
+    word_idx : :obj:`numpy.ndarray`
+        Word tokens.
+    voc_len : :obj:`int`
+        Total number of word-tokens in the vocabulary.
+    beta : :obj:`float`
+        Prior count on word-types for each topic.
+    gamma : :obj:`float`
+        Prior count added to y-counts when sampling z assignments.
+    randseed : :obj:`int`
+        Random seed for this iteration.
+
+    Returns
+    -------
+    word_topic_idx : :obj:`numpy.ndarray`
+        Updated topic assignment for word tokens.
+    nz_word_topic : (W x T) :obj:`numpy.ndarray`
+        Updated number of word-tokens assigned to each topic (T) per word-type (W).
+    nz_sum_topic : (1 x T) :obj:`numpy.ndarray`
+        Updated total number of word-tokens assigned to each topic (T) (across all docs).
+    nz_doc_topic : (D x T) :obj:`numpy.ndarray`
+        Updated number of word-tokens assigned to each topic (T) per document (D).
+    """
+    # --- Seed random number generator
+    np.random.seed(randseed)
+
+    # Loop over all word tokens
+    for i_wtoken, word in enumerate(word_idx):
+        # Find document in which word token (not just word) appears
+        doc = word_doc_idx[i_wtoken]
+        # current topic assignment for word token w_i
+        topic = word_topic_idx[i_wtoken]
+
+        # Decrement count-matrices to remove current wtoken_topic_idx
+        # because wtoken will be reassigned to a new topic
+        nz_word_topic[word, topic] -= 1
+        nz_sum_topic[0, topic] -= 1
+        nz_doc_topic[doc, topic] -= 1
+
+        # Get sampling distribution:
+        #    p(z_i|z,d,w) ~ p(w|t) * p(t|d)
+        #                 ~ p_w_t * p_topic_g_doc
+        p_word_g_topic = (nz_word_topic[word, :] + beta) / (nz_sum_topic + (beta * voc_len))
+        p_topic_g_doc = ny_doc_topic[doc, :] + gamma
+        probs = p_word_g_topic * p_topic_g_doc  # The unnormalized sampling distribution
+        # print(probs.shape)
+        # Sample a z_i assignment for the current word-token from the sampling distribution
+        probs = probs.reshape(-1) / np.sum(probs)  # Normalize the sampling distribution
+        # Numpy returns a binary [1 x T] vector with a '1' in the index of sampled topic
+        # and zeros everywhere else
+        assigned_topic_vec = np.random.multinomial(1, probs)
+        # Extract selected topic from vector
+        topic = np.where(assigned_topic_vec)[0][0]
+
+        # Update the indices and the count matrices using the sampled z assignment
+        word_topic_idx[i_wtoken] = topic  # Update w_i topic-assignment
+        nz_word_topic[word, topic] += 1
+        nz_sum_topic[0, topic] += 1
+        nz_doc_topic[doc, topic] += 1
+
+    return word_topic_idx, nz_word_topic, nz_sum_topic, nz_doc_topic
+
+
+@jit(nopython=True)
+def _update_peak_assignments(
+    ny_region_topic,
+    ny_doc_topic,
+    peak_topic_idx,
+    peak_region_idx,
+    nz_doc_topic,
+    peak_probs,
+    doc_idx,
+    n_regions,
+    n_topics,
+    alpha,
+    delta,
+    gamma,
+    randseed,
+):
+    """Update y / r indicator variables assigning peaks->topics/subregions.
+
+    Parameters
+    ----------
+    ny_region_topic : (R x T) :obj:`numpy.ndarray`
+        Number of peak-tokens assigned to each subregion (R) per topic (T).
+    ny_doc_topic : (D x T) :obj:`numpy.ndarray`
+        Number of peak-tokens assigned to each topic (T) per document (D).
+    peak_topic_idx : :obj:`numpy.ndarray`
+        Topic index.
+    peak_region_idx : :obj:`numpy.ndarray`
+        Region index.
+    nz_doc_topic : (D x T) :obj:`numpy.ndarray`
+        Number of word-tokens assigned to each topic (T) per document (D).
+    peak_probs : (D x T x R) :obj:`numpy.ndarray`
+        Matrix of probabilities of all peaks given all topic/subregion spatial distributions
+    doc_idx : :obj:`numpy.ndarray`
+        Document index.
+    n_regions : :obj:`int`
+        Total number of regions.
+    n_topics : :obj:`int`
+        Total number of topics.
+    alpha : :obj:`float`
+        Prior count on topics for each document.
+    delta : :obj:`float`
+        Prior count on subregions for each topic.
+    gamma : :obj:`float`
+        Prior count added to y-counts when sampling z assignments.
+    randseed : :obj:`int`
+        Random seed for this iteration.
+
+    Returns
+    -------
+    ny_region_topic : (R x T) :obj:`numpy.ndarray`
+        Updated number of peak-tokens assigned to each subregion (R) per topic (T).
+    ny_doc_topic : (D x T) :obj:`numpy.ndarray`
+        Updated number of peak-tokens assigned to each topic (T) per document (D).
+    peak_topic_idx : :obj:`numpy.ndarray`
+        Updated topic index.
+    peak_region_idx : :obj:`numpy.ndarray`
+        Updated region index.
+    """
+    # Seed random number generator
+    np.random.seed(randseed)
+
+    # Iterate over all peaks x, and sample a new y and r assignment for each
+    for i_ptoken, doc in enumerate(doc_idx):
+        topic = peak_topic_idx[i_ptoken]
+        region = peak_region_idx[i_ptoken]
+
+        # Decrement count-matrices to remove current ptoken_topic_idx
+        # because ptoken will be reassigned to a new topic
+        ny_region_topic[region, topic] -= 1  # Decrement count in Subregion x Topic count matx
+        ny_doc_topic[doc, topic] -= 1  # Decrement count in Document x Topic count matrix
+
+        # Retrieve the probability of generating current x from all
+        # subregions: [R x T] array of probs
+        p_x_subregions = (peak_probs[i_ptoken, :, :]).transpose()
+
+        # Compute the probabilities of all subregions given doc
+        #     p(r|d) ~ p(r|t) * p(t|d)
+        # Counts of subregions per topic + prior: p(r|t)
+        p_region_g_topic = ny_region_topic + delta
+
+        # Normalize the columns such that each topic's distribution over subregions sums to 1
+        p_region_g_topic_sum = np.sum(p_region_g_topic, axis=0)
+        p_region_g_topic = np.divide(p_region_g_topic, p_region_g_topic_sum)
+
+        # Counts of topics per document + prior: p(t|d)
+        p_topic_g_doc = ny_doc_topic[doc, :] + alpha
+
+        # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
+        p_topic_g_doc = p_topic_g_doc.repeat(n_regions).reshape((-1, n_regions)).T
+
+        # Compute p(subregion | document): p(r|d) ~ p(r|t) * p(t|d)
+        # [R x T] array of probs
+        p_region_g_doc = p_topic_g_doc * p_region_g_topic
+
+        # Compute the multinomial probability: p(z|y)
+        # Need the current vector of all z and y assignments for current doc
+        # The multinomial from which z is sampled is proportional to number
+        # of y assigned to each topic, plus constant gamma
+        # Compute the proportional probabilities in log-space
+        logp = nz_doc_topic[doc, :] * np.log(
+            (ny_doc_topic[doc, :] + gamma + 1) / (ny_doc_topic[doc, :] + gamma)
+        )
+        # Add a constant before exponentiating to avoid any underflow issues
+        p_peak_g_topic = np.exp(logp - np.max(logp))
+
+        # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
+        p_peak_g_topic = p_peak_g_topic.repeat(n_regions).reshape((-1, n_regions)).T
+
+        # Get the full sampling distribution:
+        # [R x T] array containing the proportional probability of all y/r combinations
+        probs_pdf = p_x_subregions * p_region_g_doc * p_peak_g_topic
+
+        # Convert from a [R x T] matrix into a [R*T x 1] array we can sample from
+        probs_pdf = np.reshape(probs_pdf, (n_regions * n_topics))
+
+        # Normalize the sampling distribution
+        probs_pdf = probs_pdf / np.sum(probs_pdf)
+        # Float precision issue in Numba: https://github.com/numba/numba/issues/3426
+        probs_pdf = np.trunc(probs_pdf * (10**12)) / (10**12)
+
+        # Sample a single element (corresponding to a y_i and c_i assignment for the ptoken)
+        # from the sampling distribution
+        # Returns a binary [1 x R*T] vector with a '1' in location that was sampled
+        # and zeros everywhere else
+        assignment_vec = np.random.multinomial(1, probs_pdf)
+
+        # Reshape 1D back to [R x T] 2D
+        assignment_arr = np.reshape(assignment_vec, (n_regions, n_topics))
+        # Transform the linear index of the sampled element into the
+        # subregion/topic (r/y) assignment indices
+        assignment_idx = np.where(assignment_arr)
+        # Subregion sampled (r)
+        region = assignment_idx[0][0]
+        # Topic sampled (y)
+        topic = assignment_idx[1][0]
+
+        # Update the indices and the count matrices using the sampled y/r assignments
+        # Increment count in Subregion x Topic count matrix
+        ny_region_topic[region, topic] += 1
+        # Increment count in Document x Topic count matrix
+        ny_doc_topic[doc, topic] += 1
+        # Update y->topic assignment
+        peak_topic_idx[i_ptoken] = topic
+        # Update y->subregion assignment
+        peak_region_idx[i_ptoken] = region
+
+    return ny_region_topic, ny_doc_topic, peak_topic_idx, peak_region_idx
+
+
 class GCLDAModel(NiMAREBase):
     """Generate a generalized correspondence latent Dirichlet allocation (GCLDA) topic model.
 
@@ -414,7 +655,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["n_word_tokens_word_by_topic"],
             self.topics["total_n_word_tokens_by_topic"],
             self.topics["n_word_tokens_doc_by_topic"],
-        ) = self._update_word_topic_assignments(
+        ) = _update_word_topic_assignments(
             self.topics["wtoken_topic_idx"],
             self.topics["n_word_tokens_word_by_topic"],
             self.topics["total_n_word_tokens_by_topic"],
@@ -437,7 +678,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["n_peak_tokens_doc_by_topic"],
             self.topics["peak_topic_idx"],
             self.topics["peak_region_idx"],
-        ) = self._update_peak_assignments(
+        ) = _update_peak_assignments(
             self.topics["n_peak_tokens_region_by_topic"],
             self.topics["n_peak_tokens_doc_by_topic"],
             self.topics["peak_topic_idx"],
@@ -468,247 +709,6 @@ class GCLDAModel(NiMAREBase):
                 f"w = {self.loglikelihood['w'][-1]:10.1f}, "
                 f"tot = {self.loglikelihood['total'][-1]:10.1f}"
             )
-
-    @staticmethod
-    @jit(nopython=True)
-    def _update_word_topic_assignments(
-        word_topic_idx,
-        nz_word_topic,
-        nz_sum_topic,
-        nz_doc_topic,
-        ny_doc_topic,
-        word_doc_idx,
-        word_idx,
-        voc_len,
-        beta,
-        gamma,
-        randseed,
-    ):
-        """Update wtoken_topic_idx (z) indicator variables assigning words->topics.
-
-        Parameters
-        ----------
-        word_topic_idx : :obj:`numpy.ndarray`
-            Topic assignment for word tokens.
-        nz_word_topic : (W x T) :obj:`numpy.ndarray`
-            Number of word-tokens assigned to each topic (T) per word-type (W).
-        nz_sum_topic : (1 x T) :obj:`numpy.ndarray`
-            Total number of word-tokens assigned to each topic (T) (across all docs).
-        nz_doc_topic : (D x T) :obj:`numpy.ndarray`
-            Number of word-tokens assigned to each topic (T) per document (D).
-        ny_doc_topic : (D x T) :obj:`numpy.ndarray`
-            Number of peak-tokens assigned to each topic (T) per document (D).
-        word_doc_idx : :obj:`numpy.ndarray`
-            Document index.
-        word_idx : :obj:`numpy.ndarray`
-            Word tokens.
-        voc_len : :obj:`int`
-            Total number of word-tokens in the vocabulary.
-        beta : :obj:`float`
-            Prior count on word-types for each topic.
-        gamma : :obj:`float`
-            Prior count added to y-counts when sampling z assignments.
-        randseed : :obj:`int`
-            Random seed for this iteration.
-
-        Returns
-        -------
-        word_topic_idx : :obj:`numpy.ndarray`
-            Updated topic assignment for word tokens.
-        nz_word_topic : (W x T) :obj:`numpy.ndarray`
-            Updated number of word-tokens assigned to each topic (T) per word-type (W).
-        nz_sum_topic : (1 x T) :obj:`numpy.ndarray`
-            Updated total number of word-tokens assigned to each topic (T) (across all docs).
-        nz_doc_topic : (D x T) :obj:`numpy.ndarray`
-            Updated number of word-tokens assigned to each topic (T) per document (D).
-        """
-        # --- Seed random number generator
-        np.random.seed(randseed)
-
-        # Loop over all word tokens
-        for i_wtoken, word in enumerate(word_idx):
-            # Find document in which word token (not just word) appears
-            doc = word_doc_idx[i_wtoken]
-            # current topic assignment for word token w_i
-            topic = word_topic_idx[i_wtoken]
-
-            # Decrement count-matrices to remove current wtoken_topic_idx
-            # because wtoken will be reassigned to a new topic
-            nz_word_topic[word, topic] -= 1
-            nz_sum_topic[0, topic] -= 1
-            nz_doc_topic[doc, topic] -= 1
-
-            # Get sampling distribution:
-            #    p(z_i|z,d,w) ~ p(w|t) * p(t|d)
-            #                 ~ p_w_t * p_topic_g_doc
-            p_word_g_topic = (nz_word_topic[word, :] + beta) / (nz_sum_topic + (beta * voc_len))
-            p_topic_g_doc = ny_doc_topic[doc, :] + gamma
-            probs = p_word_g_topic * p_topic_g_doc  # The unnormalized sampling distribution
-            # print(probs.shape)
-            # Sample a z_i assignment for the current word-token from the sampling distribution
-            probs = probs.reshape(-1) / np.sum(probs)  # Normalize the sampling distribution
-            # Numpy returns a binary [1 x T] vector with a '1' in the index of sampled topic
-            # and zeros everywhere else
-            assigned_topic_vec = np.random.multinomial(1, probs)
-            # Extract selected topic from vector
-            topic = np.where(assigned_topic_vec)[0][0]
-
-            # Update the indices and the count matrices using the sampled z assignment
-            word_topic_idx[i_wtoken] = topic  # Update w_i topic-assignment
-            nz_word_topic[word, topic] += 1
-            nz_sum_topic[0, topic] += 1
-            nz_doc_topic[doc, topic] += 1
-
-        return word_topic_idx, nz_word_topic, nz_sum_topic, nz_doc_topic
-
-    @staticmethod
-    @jit(nopython=True)
-    def _update_peak_assignments(
-        ny_region_topic,
-        ny_doc_topic,
-        peak_topic_idx,
-        peak_region_idx,
-        nz_doc_topic,
-        peak_probs,
-        doc_idx,
-        n_regions,
-        n_topics,
-        alpha,
-        delta,
-        gamma,
-        randseed,
-    ):
-        """Update y / r indicator variables assigning peaks->topics/subregions.
-
-        Parameters
-        ----------
-        ny_region_topic : (R x T) :obj:`numpy.ndarray`
-            Number of peak-tokens assigned to each subregion (R) per topic (T).
-        ny_doc_topic : (D x T) :obj:`numpy.ndarray`
-            Number of peak-tokens assigned to each topic (T) per document (D).
-        peak_topic_idx : :obj:`numpy.ndarray`
-            Topic index.
-        peak_region_idx : :obj:`numpy.ndarray`
-            Region index.
-        nz_doc_topic : (D x T) :obj:`numpy.ndarray`
-            Number of word-tokens assigned to each topic (T) per document (D).
-        peak_probs : (D x T x R) :obj:`numpy.ndarray`
-            Matrix of probabilities of all peaks given all topic/subregion spatial distributions
-        doc_idx : :obj:`numpy.ndarray`
-            Document index.
-        n_regions : :obj:`int`
-            Total number of regions.
-        n_topics : :obj:`int`
-            Total number of topics.
-        alpha : :obj:`float`
-            Prior count on topics for each document.
-        delta : :obj:`float`
-            Prior count on subregions for each topic.
-        gamma : :obj:`float`
-            Prior count added to y-counts when sampling z assignments.
-        randseed : :obj:`int`
-            Random seed for this iteration.
-
-        Returns
-        -------
-        ny_region_topic : (R x T) :obj:`numpy.ndarray`
-            Updated number of peak-tokens assigned to each subregion (R) per topic (T).
-        ny_doc_topic : (D x T) :obj:`numpy.ndarray`
-            Updated number of peak-tokens assigned to each topic (T) per document (D).
-        peak_topic_idx : :obj:`numpy.ndarray`
-            Updated topic index.
-        peak_region_idx : :obj:`numpy.ndarray`
-            Updated region index.
-        """
-        # Seed random number generator
-        np.random.seed(randseed)
-
-        # Iterate over all peaks x, and sample a new y and r assignment for each
-        for i_ptoken, doc in enumerate(doc_idx):
-            topic = peak_topic_idx[i_ptoken]
-            region = peak_region_idx[i_ptoken]
-
-            # Decrement count-matrices to remove current ptoken_topic_idx
-            # because ptoken will be reassigned to a new topic
-            ny_region_topic[region, topic] -= 1  # Decrement count in Subregion x Topic count matx
-            ny_doc_topic[doc, topic] -= 1  # Decrement count in Document x Topic count matrix
-
-            # Retrieve the probability of generating current x from all
-            # subregions: [R x T] array of probs
-            p_x_subregions = (peak_probs[i_ptoken, :, :]).transpose()
-
-            # Compute the probabilities of all subregions given doc
-            #     p(r|d) ~ p(r|t) * p(t|d)
-            # Counts of subregions per topic + prior: p(r|t)
-            p_region_g_topic = ny_region_topic + delta
-
-            # Normalize the columns such that each topic's distribution over subregions sums to 1
-            p_region_g_topic_sum = np.sum(p_region_g_topic, axis=0)
-            p_region_g_topic = np.divide(p_region_g_topic, p_region_g_topic_sum)
-
-            # Counts of topics per document + prior: p(t|d)
-            p_topic_g_doc = ny_doc_topic[doc, :] + alpha
-
-            # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
-            p_topic_g_doc = p_topic_g_doc.repeat(n_regions).reshape((-1, n_regions)).T
-
-            # Compute p(subregion | document): p(r|d) ~ p(r|t) * p(t|d)
-            # [R x T] array of probs
-            p_region_g_doc = p_topic_g_doc * p_region_g_topic
-
-            # Compute the multinomial probability: p(z|y)
-            # Need the current vector of all z and y assignments for current doc
-            # The multinomial from which z is sampled is proportional to number
-            # of y assigned to each topic, plus constant gamma
-            # Compute the proportional probabilities in log-space
-            logp = nz_doc_topic[doc, :] * np.log(
-                (ny_doc_topic[doc, :] + gamma + 1) / (ny_doc_topic[doc, :] + gamma)
-            )
-            # Add a constant before exponentiating to avoid any underflow issues
-            p_peak_g_topic = np.exp(logp - np.max(logp))
-
-            # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
-            p_peak_g_topic = p_peak_g_topic.repeat(n_regions).reshape((-1, n_regions)).T
-
-            # Get the full sampling distribution:
-            # [R x T] array containing the proportional probability of all y/r combinations
-            probs_pdf = p_x_subregions * p_region_g_doc * p_peak_g_topic
-
-            # Convert from a [R x T] matrix into a [R*T x 1] array we can sample from
-            probs_pdf = np.reshape(probs_pdf, (n_regions * n_topics))
-
-            # Normalize the sampling distribution
-            probs_pdf = probs_pdf / np.sum(probs_pdf)
-            # Float precision issue in Numba: https://github.com/numba/numba/issues/3426
-            probs_pdf = np.trunc(probs_pdf * (10**12)) / (10**12)
-
-            # Sample a single element (corresponding to a y_i and c_i assignment for the ptoken)
-            # from the sampling distribution
-            # Returns a binary [1 x R*T] vector with a '1' in location that was sampled
-            # and zeros everywhere else
-            assignment_vec = np.random.multinomial(1, probs_pdf)
-
-            # Reshape 1D back to [R x T] 2D
-            assignment_arr = np.reshape(assignment_vec, (n_regions, n_topics))
-            # Transform the linear index of the sampled element into the
-            # subregion/topic (r/y) assignment indices
-            assignment_idx = np.where(assignment_arr)
-            # Subregion sampled (r)
-            region = assignment_idx[0][0]
-            # Topic sampled (y)
-            topic = assignment_idx[1][0]
-
-            # Update the indices and the count matrices using the sampled y/r assignments
-            # Increment count in Subregion x Topic count matrix
-            ny_region_topic[region, topic] += 1
-            # Increment count in Document x Topic count matrix
-            ny_doc_topic[doc, topic] += 1
-            # Update y->topic assignment
-            peak_topic_idx[i_ptoken] = topic
-            # Update y->subregion assignment
-            peak_region_idx[i_ptoken] = region
-
-        return ny_region_topic, ny_doc_topic, peak_topic_idx, peak_region_idx
 
     def _update_regions(self):
         """Update spatial distribution parameters (Gaussians params for all subregions).
