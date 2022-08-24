@@ -3,8 +3,12 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import pytest
+from numba import config
 
 from nimare import annotate, decode
+
+# Disable numba execution to allow pytest-cov to detect coverage in functions with @jit
+config.DISABLE_JIT = True
 
 
 def test_gclda_symmetric(testdata_laird):
