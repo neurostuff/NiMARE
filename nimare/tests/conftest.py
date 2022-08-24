@@ -6,6 +6,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 from nilearn.image import resample_img
+from numba import config
 
 import nimare
 from nimare.tests.utils import get_test_data_path
@@ -13,6 +14,9 @@ from nimare.utils import get_resource_path
 
 # Only enable the following once in a while for a check for SettingWithCopyWarnings
 # pd.options.mode.chained_assignment = "raise"
+
+# Disable numba execution to allow pytest-cov to detect coverage in functions with @jit
+config.DISABLE_JIT = True
 
 
 @pytest.fixture(scope="session")
