@@ -15,7 +15,7 @@ from nimare.utils import get_template
 LGR = logging.getLogger(__name__)
 
 
-@jit(nopython=True, cache=True)
+@jit(nopython=False, cache=True)
 def _update_word_topic_assignments(
     word_topic_idx,
     nz_word_topic,
@@ -107,7 +107,7 @@ def _update_word_topic_assignments(
     return word_topic_idx, nz_word_topic, nz_sum_topic, nz_doc_topic
 
 
-@jit(nopython=True, cache=True)
+@jit(nopython=False, cache=True)
 def _update_peak_assignments(
     ny_region_topic,
     ny_doc_topic,
