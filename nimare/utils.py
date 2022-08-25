@@ -1249,35 +1249,6 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
 
     return X
 
-def vox2idx(ijk, masker_voxels):
-    """
-    Convert coordinates in voxel space to integer index (between 0 and n-voxel)
-
-    Parameters
-    ----------
-    ijk: (x,y,z) coordinates in voxel space
-    masker_voxels : matrix with element either 0 or 1, indicating if it's within brain mask,
-    spacing: (equally spaced) knots spacing in x/y/z direction
-    Returns
-    -------
-    foci_index : 1-D ndarray (n_voxel, )
-    """
-    dim_mask = masker_voxels.shape
-    n_brain_voxel = np.sum(masker_voxels).astype(int)
-    n_foci = ijk.shape[0]
-
-    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
-    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
-    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
-    x_dim, y_dim, z_dim = xx.shape[0], yy.shape[0], zz.shape[0]
-    brain_voxels_index = [(z - np.min(zz))+ z_dim * (y - np.min(yy))+ y_dim * z_dim * (x - np.min(xx))
-                        for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1]
-    foci_index = [ijk[i, 2] - np.min(zz)+ z_dim * (ijk[i, 1] - np.min(yy))+ y_dim * z_dim * (ijk[i, 0] - np.min(xx)) for i in range(n_foci)]
-    foci_brain_index = [brain_voxels_index.index(j) for j in foci_index]
-    foci_brain_index = np.array(foci_brain_index)
-
-    return foci_brain_index
-
 def standardize_field(dataset, metadata):
     # if isinstance(metadata, str):
     #     moderators = dataset.annotations[metadata]

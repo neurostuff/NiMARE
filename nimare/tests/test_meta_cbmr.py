@@ -9,4 +9,4 @@ def test_CBMREstimator(testdata_cbmr_full):
     cbmr = CBMREstimator(group_names='diagnosis', moderators=['standardized_sample_sizes', 'standardized_avg_age'], model='NB', penalty=False, lr=0.1, tol=1)
     # prep = cbmr._preprocess_input(dset)
     cbmr.fit(dataset=dset)
-    print('123')
+    

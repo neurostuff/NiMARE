@@ -7,7 +7,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
-from nimare.utils import mm2vox, vox2idx
+from nimare.utils import mm2vox
 from nimare.diagnostics import FocusFilter
 import torch
 import logging
@@ -92,12 +92,14 @@ class CBMREstimator(Estimator):
                     # group-wise foci coordinates
                     group_xyz = group_coordinates[['x', 'y', 'z']].values
                     group_ijk = mm2vox(group_xyz, mask_img.affine)
-                    group_foci_idx = vox2idx(group_ijk, mask_img._dataobj)
+                    group_foci_per_voxel = np.zeros(mask_img.shape, dtype=int)
+                    for ijk in group_ijk:
+                        group_foci_per_voxel[ijk[0], ijk[1], ijk[2]] += 1
+                    # will not work with maskers that aren't NiftiMaskers
+                    group_foci_per_voxel = nib.Nifti1Image(group_foci_per_voxel, mask_img.affine, mask_img.header)
+                    group_foci_per_voxel = masker.transform(group_foci_per_voxel).transpose()
                     # number of foci per voxel/study
                     n_group_study = len(group_study_id)
-                    masker_voxels = np.sum(mask_img._dataobj).astype(int)
-                    group_foci_per_voxel = np.zeros((masker_voxels, 1))
-                    group_foci_per_voxel[group_foci_idx, :] += 1
                     group_foci_per_study = np.array([(group_coordinates['study_id']==i).sum() for i in group_study_id])
                     group_foci_per_study = group_foci_per_study.reshape((n_group_study, 1))
 
