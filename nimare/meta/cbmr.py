@@ -11,6 +11,7 @@ from nimare.utils import mm2vox
 from nimare.diagnostics import FocusFilter
 import torch
 import logging
+import copy
 
 LGR = logging.getLogger(__name__)
 class CBMREstimator(Estimator):
@@ -122,6 +123,8 @@ class CBMREstimator(Estimator):
             cbmr_model = GLMPoisson(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
         elif model == 'NB':
             cbmr_model = GLMNB(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
+        elif model == 'clustered_NB':
+            cbmr_model = GLMCNB(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
         if 'cuda' in device:
             cbmr_model = cbmr_model.cuda()
         
@@ -139,7 +142,23 @@ class CBMREstimator(Estimator):
             loss.backward()
             return loss
         loss = optimizer.step(closure)
+        # reset the L-BFGS params if NaN appears in coefficient of regression
+        if any([torch.any(torch.isnan(model.all_beta_linears[group].weight)) for group in self.inputs_['all_group_study_id'].keys()]): 
+            all_beta_linears, all_alpha_sqrt = dict(), dict()
+            for group in self.inputs_['all_group_study_id'].keys():
+                beta_dim = model.all_beta_linears[group].weight.shape[1]
+                beta_linear_group = torch.nn.Linear(beta_dim, 1, bias=False).double()
+                beta_linear_group.weight = torch.nn.Parameter(self.last_state['all_beta_linears.'+group+'.weight'])
+                group_alpha_sqrt = torch.nn.Parameter(self.last_state['all_alpha_sqrt.'+group])
                 
+                all_beta_linears[group] = beta_linear_group
+                all_alpha_sqrt[group] = group_alpha_sqrt
+            model.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
+            model.all_alpha_sqrt = torch.nn.ParameterDict(all_alpha_sqrt)
+            LGR.debug(f"Reset L-BFGS optimizer......")
+        else: 
+            self.last_state = copy.deepcopy(model.state_dict()) # need to change the variable name?
+
         return loss
 
     def _optimizer(self, model, lr, tol, n_iter, device): 
@@ -323,4 +342,52 @@ class GLMNB(torch.nn.Module):
             group_log_l = GLMNB._three_term(group_foci_per_voxel,r) + torch.sum(r*torch.log(1-p) + group_foci_per_voxel*torch.log(p))
             log_l += group_log_l
         
+        return -log_l
+
+class GLMCNB(torch.nn.Module):
+    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty='No'):
+        super().__init__()
+        self.groups = groups
+        self.study_level_moderators = study_level_moderators
+        # initialization for beta
+        all_beta_linears, all_alpha = dict(), dict()
+        for group in groups:
+            beta_linear_group = torch.nn.Linear(beta_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(beta_linear_group.weight, a=-0.01, b=0.01)
+            all_beta_linears[group] = beta_linear_group
+            # initialization for alpha
+            alpha_init_group = torch.tensor(1e-2).double()
+            all_alpha[group] = torch.nn.Parameter(alpha_init_group, requires_grad=True) 
+        self.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
+        self.all_alpha = torch.nn.ParameterDict(all_alpha)
+        # gamma 
+        if self.study_level_moderators:
+            self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
+    
+    def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
+        if isinstance(all_moderators, dict):
+            all_log_mu_moderators = dict()
+            for group in all_moderators.keys():
+                group_moderators = all_moderators[group]
+                # mu^Z = exp(Z * gamma)
+                log_mu_moderators = self.gamma_linear(group_moderators)
+                all_log_mu_moderators[group] = log_mu_moderators
+        log_l = 0
+        for group in all_foci_per_voxel.keys(): 
+            alpha = self.all_alpha[group]
+            v = 1 / alpha
+            log_mu_spatial = self.all_beta_linears[group](Coef_spline_bases)
+            mu_spatial = torch.exp(log_mu_spatial)
+            log_mu_moderators = all_log_mu_moderators[group]
+            mu_moderators = torch.exp(log_mu_moderators)
+
+            group_foci_per_voxel = all_foci_per_voxel[group]
+            group_foci_per_study = all_foci_per_study[group]
+            group_n_study, group_n_voxel = mu_moderators.shape[0], mu_spatial.shape[0]
+            
+            group_log_l = group_n_study * v * torch.log(v) - group_n_study * torch.lgamma(v) + torch.sum(torch.lgamma(group_foci_per_study + v)) - torch.sum((group_foci_per_study + v) * torch.log(mu_moderators + v)) \
+                + torch.sum(group_foci_per_voxel * log_mu_spatial) + torch.sum(group_foci_per_study * log_mu_moderators)
+            log_l += group_log_l
+
         return -log_l
