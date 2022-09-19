@@ -12,6 +12,7 @@ from nimare.diagnostics import FocusFilter
 import torch
 import logging
 import copy
+from functorch import hessian
 
 LGR = logging.getLogger(__name__)
 class CBMREstimator(Estimator):
@@ -34,6 +35,9 @@ class CBMREstimator(Estimator):
         self.lr = lr
         self.tol = tol
         self.device = device
+        if self.device == 'cuda' and not torch.cuda.is_available(): 
+            LGR.debug(f"cuda not found, use device 'cpu'")
+            self.device = 'cpu'
 
         # Initialize optimisation parameters
         self.iter = 0
@@ -120,21 +124,19 @@ class CBMREstimator(Estimator):
             study_level_moderators = False
         self.groups = list(self.inputs_['all_group_study_id'].keys())
         if model == 'Poisson':
-            cbmr_model = GLMPoisson(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
+            cbmr_model = GLMPoisson(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty, device=device)
         elif model == 'NB':
-            cbmr_model = GLMNB(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
+            cbmr_model = GLMNB(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty, device=device)
         elif model == 'clustered_NB':
-            cbmr_model = GLMCNB(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty)
+            cbmr_model = GLMCNB(beta_dim=beta_dim, gamma_dim=gamma_dim, groups=self.groups, study_level_moderators=study_level_moderators, penalty=penalty, device=device)
         if 'cuda' in device:
             cbmr_model = cbmr_model.cuda()
         
         return cbmr_model
 
-    def _update(self, model, optimizer, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study, prev_loss, gamma=0.999):
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=gamma) # learning rate decay
-        scheduler.step()
-        
+    def _update(self, model, optimizer, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study, prev_loss, gamma=0.999): 
         self.iter += 1
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=gamma) # learning rate decay
         scheduler.step()
         def closure():
             optimizer.zero_grad()
@@ -144,17 +146,26 @@ class CBMREstimator(Estimator):
         loss = optimizer.step(closure)
         # reset the L-BFGS params if NaN appears in coefficient of regression
         if any([torch.any(torch.isnan(model.all_beta_linears[group].weight)) for group in self.inputs_['all_group_study_id'].keys()]): 
-            all_beta_linears, all_alpha_sqrt = dict(), dict()
+            all_beta_linears, all_alpha_sqrt, all_alpha = dict(), dict(), dict()
             for group in self.inputs_['all_group_study_id'].keys():
                 beta_dim = model.all_beta_linears[group].weight.shape[1]
                 beta_linear_group = torch.nn.Linear(beta_dim, 1, bias=False).double()
                 beta_linear_group.weight = torch.nn.Parameter(self.last_state['all_beta_linears.'+group+'.weight'])
-                group_alpha_sqrt = torch.nn.Parameter(self.last_state['all_alpha_sqrt.'+group])
-                
                 all_beta_linears[group] = beta_linear_group
-                all_alpha_sqrt[group] = group_alpha_sqrt
+                
+                if self.model == 'NB':
+                    group_alpha_sqrt = torch.nn.Parameter(self.last_state['all_alpha_sqrt.'+group])
+                    all_alpha_sqrt[group] = group_alpha_sqrt
+                elif self.model == 'clustered_NB':
+                    group_alpha = torch.nn.Parameter(self.last_state['all_alpha.'+group])
+                    all_alpha[group] = group_alpha
+                
             model.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
-            model.all_alpha_sqrt = torch.nn.ParameterDict(all_alpha_sqrt)
+            if self.model == 'NB':
+                model.all_alpha_sqrt = torch.nn.ParameterDict(all_alpha_sqrt)
+            elif self.model == 'clustered_NB':
+                model.all_alpha = torch.nn.ParameterDict(all_alpha)
+
             LGR.debug(f"Reset L-BFGS optimizer......")
         else: 
             self.last_state = copy.deepcopy(model.state_dict()) # need to change the variable name?
@@ -181,6 +192,7 @@ class CBMREstimator(Estimator):
 
         if self.iter == 0:
             prev_loss = torch.tensor(float('inf')) # initialization loss difference
+
         for i in range(n_iter):
             loss = self._update(model, optimizer, Coef_spline_bases, all_group_moderators_tensor, all_foci_per_voxel_tensor, all_foci_per_study_tensor, prev_loss)
             loss_diff = loss - prev_loss
@@ -233,10 +245,14 @@ class CBMREstimator(Estimator):
     
 
 class GLMPoisson(torch.nn.Module):
-    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty='No'):
+    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty=False, device='cpu'):
         super().__init__()
+        self.beta_dim = beta_dim
+        self.gamma_dim = gamma_dim
         self.groups = groups
         self.study_level_moderators = study_level_moderators
+        self.penalty = penalty
+        self.device = device
         # initialization for beta
         all_beta_linears = dict()
         for group in groups:
@@ -249,6 +265,16 @@ class GLMPoisson(torch.nn.Module):
             self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
             torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
     
+    def _log_likelihood(self, beta, gamma, Coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
+        log_mu_spatial = torch.matmul(Coef_spline_bases, beta)
+        mu_spatial = torch.exp(log_mu_spatial)
+        log_mu_moderators = torch.matmul(moderators, gamma)
+        mu_moderators = torch.exp(log_mu_moderators)
+        log_l = torch.sum(torch.mul(foci_per_voxel, log_mu_spatial)) + torch.sum(torch.mul(foci_per_study, log_mu_moderators)) \
+                        - torch.sum(mu_spatial) * torch.sum(mu_moderators)
+
+        return log_l
+
     def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
         if isinstance(all_moderators, dict):
             all_log_mu_moderators = dict()
@@ -271,13 +297,33 @@ class GLMPoisson(torch.nn.Module):
             group_log_l = torch.sum(torch.mul(group_foci_per_voxel, log_mu_spatial)) + torch.sum(torch.mul(group_foci_per_study, log_mu_moderators)) - torch.sum(mu_spatial) * torch.sum(mu_moderators)
             log_l += group_log_l
         
+        if self.penalty == True:
+            # Firth-type penalty 
+            for group in all_foci_per_voxel.keys(): 
+                beta = self.all_beta_linears[group].weight.T
+                beta_dim = beta.shape[0]
+                gamma = self.gamma_linear.weight.T
+                group_foci_per_voxel = all_foci_per_voxel[group]
+                group_foci_per_study = all_foci_per_study[group] 
+                group_moderators = all_moderators[group]
+                nll = lambda beta: -self._log_likelihood(beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study)
+                params = (beta)
+                F = torch.autograd.functional.hessian(nll, params, create_graph=True) # vectorize=True, outer_jacobian_strategy='forward-mode' 
+                F = F.reshape((beta_dim, beta_dim))
+                eig_vals = torch.real(torch.linalg.eigvals(F)) #torch.eig(F, eigenvectors=False)[0][:,0] 
+                del F
+                group_firth_penalty = 0.5 * torch.sum(torch.log(eig_vals))
+                del eig_vals
+                log_l += group_firth_penalty
         return -log_l
 
 class GLMNB(torch.nn.Module):
-    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty='No'):
+    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty='No', device='cpu'):
         super().__init__()
         self.groups = groups
         self.study_level_moderators = study_level_moderators
+        self.penalty = penalty
+        self.device = device
         # initialization for beta
         all_beta_linears, all_alpha_sqrt = dict(), dict()
         for group in groups:
@@ -294,20 +340,36 @@ class GLMNB(torch.nn.Module):
             self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
             torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
     
-    def _three_term(y, r):
-        max_foci = np.int(torch.max(y).item())
+    def _three_term(y, r, device):
+        max_foci = torch.max(y).to(dtype=torch.int64, device=device)
         sum_three_term = 0
         for k in range(max_foci):
             foci_index = (y == k+1).nonzero()[:,0]
             r_j = r[foci_index]
             n_voxel = list(foci_index.shape)[0]
-            y_j = torch.tensor([k+1]*n_voxel).double()
+            y_j = torch.tensor([k+1]*n_voxel, device=device).double()
             y_j = y_j.reshape((n_voxel, 1))
             # y=0 => sum_three_term = 0
             sum_three_term += torch.sum(torch.lgamma(y_j+r_j) - torch.lgamma(y_j+1) - torch.lgamma(r_j))
         
         return sum_three_term
     
+    def _log_likelihood(self, alpha, beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study):
+        v = 1 / alpha
+        log_mu_spatial = Coef_spline_bases @ beta
+        mu_spatial = torch.exp(log_mu_spatial)
+        log_mu_moderators = group_moderators @ gamma
+        mu_moderators = torch.exp(log_mu_moderators)
+        numerator = mu_spatial**2 * torch.sum(mu_moderators**2)
+        denominator = mu_spatial**2 * torch.sum(mu_moderators)**2
+        estimated_sum_alpha = alpha * numerator / denominator
+
+        p = numerator / (v * mu_spatial * torch.sum(mu_moderators) + numerator)
+        r = v * denominator / numerator
+
+        log_l = GLMNB._three_term(group_foci_per_voxel,r, device=self.device) + torch.sum(r*torch.log(1-p) + group_foci_per_voxel*torch.log(p))
+
+        return log_l
     
     def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
         if isinstance(all_moderators, dict):
@@ -339,16 +401,38 @@ class GLMNB(torch.nn.Module):
 
             group_foci_per_voxel = all_foci_per_voxel[group]
             # group_foci_per_study = all_foci_per_study[group]
-            group_log_l = GLMNB._three_term(group_foci_per_voxel,r) + torch.sum(r*torch.log(1-p) + group_foci_per_voxel*torch.log(p))
+            group_log_l = GLMNB._three_term(group_foci_per_voxel,r, device=self.device) + torch.sum(r*torch.log(1-p) + group_foci_per_voxel*torch.log(p)) 
             log_l += group_log_l
+        
+        if self.penalty == True:
+            # Firth-type penalty 
+            for group in all_foci_per_voxel.keys(): 
+                alpha = self.all_alpha_sqrt[group]**2
+                beta = self.all_beta_linears[group].weight.T
+                beta_dim = beta.shape[0]
+                gamma = self.gamma_linear.weight.detach().T
+                group_foci_per_voxel = all_foci_per_voxel[group]
+                group_foci_per_study = all_foci_per_study[group]
+                group_moderators = all_moderators[group]
+                # a = -self._log_likelihood(alpha, beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study)
+                nll = lambda beta: -self._log_likelihood(alpha, beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study)
+                params = (beta)
+                F = torch.autograd.functional.hessian(nll, params, create_graph=True)
+                F = F.reshape((beta_dim, beta_dim))
+                eig_vals = eig_vals = torch.real(torch.linalg.eigvals(F))
+                del F
+                group_firth_penalty = 0.5 * torch.sum(torch.log(eig_vals))
+                del eig_vals
+                log_l += group_firth_penalty
         
         return -log_l
 
 class GLMCNB(torch.nn.Module):
-    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty='No'):
+    def __init__(self, beta_dim=None, gamma_dim=None, groups=None, study_level_moderators=False, penalty=True, device='cpu'):
         super().__init__()
         self.groups = groups
         self.study_level_moderators = study_level_moderators
+        self.penalty = penalty
         # initialization for beta
         all_beta_linears, all_alpha = dict(), dict()
         for group in groups:
@@ -365,6 +449,22 @@ class GLMCNB(torch.nn.Module):
             self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
             torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
     
+    def _log_likelihood(self, alpha, beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study):
+        v = 1 / alpha
+        log_mu_spatial = Coef_spline_bases @ beta
+        mu_spatial = torch.exp(log_mu_spatial)
+        log_mu_moderators = group_moderators @ gamma
+        mu_moderators = torch.exp(log_mu_moderators)
+        mu_sum_per_study = torch.sum(mu_spatial) * mu_moderators
+
+        group_n_study, group_n_voxel = mu_moderators.shape[0], mu_spatial.shape[0]
+
+        log_l = group_n_study * v * torch.log(v) - group_n_study * torch.lgamma(v) + torch.sum(torch.lgamma(group_foci_per_study + v)) - torch.sum((group_foci_per_study + v) * torch.log(mu_sum_per_study + v)) \
+            + torch.sum(group_foci_per_voxel * log_mu_spatial) + torch.sum(group_foci_per_study * log_mu_moderators)
+
+        return log_l
+
+
     def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
         if isinstance(all_moderators, dict):
             all_log_mu_moderators = dict()
@@ -386,8 +486,30 @@ class GLMCNB(torch.nn.Module):
             group_foci_per_study = all_foci_per_study[group]
             group_n_study, group_n_voxel = mu_moderators.shape[0], mu_spatial.shape[0]
             
-            group_log_l = group_n_study * v * torch.log(v) - group_n_study * torch.lgamma(v) + torch.sum(torch.lgamma(group_foci_per_study + v)) - torch.sum((group_foci_per_study + v) * torch.log(mu_moderators + v)) \
+            mu_sum_per_study = torch.sum(mu_spatial) * mu_moderators
+            group_log_l = group_n_study * v * torch.log(v) - group_n_study * torch.lgamma(v) + torch.sum(torch.lgamma(group_foci_per_study + v)) - torch.sum((group_foci_per_study + v) * torch.log(mu_sum_per_study + v)) \
                 + torch.sum(group_foci_per_voxel * log_mu_spatial) + torch.sum(group_foci_per_study * log_mu_moderators)
             log_l += group_log_l
+        
+        if self.penalty == True:
+            # Firth-type penalty 
+            for group in all_foci_per_voxel.keys(): 
+                alpha = self.all_alpha[group]
+                beta = self.all_beta_linears[group].weight.T
+                beta_dim = beta.shape[0]
+                gamma = self.gamma_linear.weight.T
+                group_foci_per_voxel = all_foci_per_voxel[group]
+                group_foci_per_study = all_foci_per_study[group]
+                group_moderators = all_moderators[group]
+                nll = lambda beta: -self._log_likelihood(alpha, beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study)
+                params = (beta)
+                F = torch.autograd.functional.hessian(nll, params, create_graph=True) # vectorize=True, outer_jacobian_strategy='forward-mode'
+                # F = hessian(nll)(beta)
+                F = F.reshape((beta_dim, beta_dim))
+                eig_vals = torch.real(torch.linalg.eigvals(F))
+                del F
+                group_firth_penalty = 0.5 * torch.sum(torch.log(eig_vals))
+                del eig_vals
+                log_l += group_firth_penalty
 
         return -log_l
