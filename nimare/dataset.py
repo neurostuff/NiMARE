@@ -401,10 +401,16 @@ class Dataset(NiMAREBase):
                 temp = self.get_metadata(field=vals[1])
             elif vals[0] == "coordinates":
                 dset_coord_groupby_id = dict(iter(self.coordinates.groupby("id")))
-                temp = [dset_coord_groupby_id[id_]  if id_ in dset_coord_groupby_id.keys() else None for id_ in self.ids]
+                temp = [
+                    dset_coord_groupby_id[id_] if id_ in dset_coord_groupby_id.keys() else None
+                    for id_ in self.ids
+                ]
             elif vals[0] == "annotations":
                 dset_annot_groupby_id = dict(iter(self.annotations.groupby("id")))
-                temp = [dset_annot_groupby_id[id_]  if id_ in dset_annot_groupby_id.keys() else None for id_ in self.ids]
+                temp = [
+                    dset_annot_groupby_id[id_] if id_ in dset_annot_groupby_id.keys() else None
+                    for id_ in self.ids
+                ]
             else:
                 raise ValueError(f"Input '{vals[0]}' not understood.")
 
