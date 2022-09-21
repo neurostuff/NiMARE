@@ -130,6 +130,7 @@ def compute_kda_ma(
         )
 
         all_spheres = all_spheres[idx, :]
+
         if sum_overlap:
             counts = counts[idx]
 
@@ -137,8 +138,8 @@ def compute_kda_ma(
         sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :].T
         nonzero_idx = tuple(sphere_idx_filtered)
 
-        if isinstance(counts, list):
-            nonzero_to_append = counts[sphere_idx_filtered]
+        if sum_overlap:
+            nonzero_to_append = counts[sphere_idx_inside_mask]
         else:
             nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * counts
 
