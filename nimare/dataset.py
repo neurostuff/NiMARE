@@ -400,15 +400,17 @@ class Dataset(NiMAREBase):
             elif vals[0] == "metadata":
                 temp = self.get_metadata(field=vals[1])
             elif vals[0] == "coordinates":
-                # Break DataFrame down into a list of study-specific DataFrames
-                temp = [self.coordinates.loc[self.coordinates["id"] == id_] for id_ in self.ids]
-                # Replace empty DataFrames with Nones
-                temp = [t if t.size else None for t in temp]
+                dset_coord_groupby_id = dict(iter(self.coordinates.groupby("id")))
+                temp = [
+                    dset_coord_groupby_id[id_] if id_ in dset_coord_groupby_id.keys() else None
+                    for id_ in self.ids
+                ]
             elif vals[0] == "annotations":
-                # Break DataFrame down into a list of study-specific DataFrames
-                temp = [self.annotations.loc[self.annotations["id"] == id_] for id_ in self.ids]
-                # Replace empty DataFrames with Nones
-                temp = [t if t.size else None for t in temp]
+                dset_annot_groupby_id = dict(iter(self.annotations.groupby("id")))
+                temp = [
+                    dset_annot_groupby_id[id_] if id_ in dset_annot_groupby_id.keys() else None
+                    for id_ in self.ids
+                ]
             else:
                 raise ValueError(f"Input '{vals[0]}' not understood.")
 
