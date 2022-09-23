@@ -20,7 +20,6 @@ exclude = '''
   )/
   | versioneer.py
   | nimare/_version.py
-  | nimare/due.py
 )
 '''
 

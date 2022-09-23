@@ -2,29 +2,31 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.12rc6...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.12rc7...HEAD)
 
-<!-- New Release notes will be placed here automatically -->
-## 0.0.12rc3 - 2022-03-21
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+## [0.0.12rc7](https://github.com/neurostuff/NiMARE/compare/0.0.12rc6...0.0.12rc7) - 2022-06-14
 
-Just a quick release for debugging.
+Another release candidate to test a GitHub Action.
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 ### What's Changed
 
+#### 🎉 Exciting New Features
+
+- Add warning when coordinates dataset contains both positive and negative z_stats by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/699
+- Add parameter estimate standard error to IBMA results by @tsalo in https://github.com/neurostuff/NiMARE/pull/691
+
 #### Other Changes
 
-- Document other meta-analysis tools outside our ecosystem by @tsalo in https://github.com/neurostuff/NiMARE/pull/654
-- Reorganize and streamline examples by @tsalo in https://github.com/neurostuff/NiMARE/pull/656
-- Convert CBMAEstimator method to function by @tsalo in https://github.com/neurostuff/NiMARE/pull/658
+- Fix CHANGELOG formatting issues by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/701
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc2...0.0.12rc3
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc6...0.0.12rc7
 
-## [0.0.12rc6](https://github.com/neurostuff/NiMARE/compare/0.0.12rc2...0.0.12rc6) - 2022-06-08
+## [0.0.12rc6](https://github.com/neurostuff/NiMARE/compare/0.0.12rc3...0.0.12rc6) - 2022-06-08
 
 A release candidate to test our new Action.
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
 ### What's Changed
 
 #### Other Changes
@@ -36,13 +38,49 @@ A release candidate to test our new Action.
 
 - @adelavega made their first contribution in https://github.com/neurostuff/NiMARE/pull/685
 
-**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc5...0.0.12rc6
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc3...0.0.12rc6
 
-## 0.0.12rc2 - 2022-03-04
+## [0.0.12rc3](https://github.com/neurostuff/NiMARE/compare/0.0.12rc2...0.0.12rc3) - 2022-03-21
+
+Just a quick release for debugging.
+
+## What's Changed
+
+### 🛠 Breaking Changes
+
+- Stop storing MetaResults as attributes of fitted Estimators by @tsalo in https://github.com/neurostuff/NiMARE/pull/657
+- Refactor Correctors and remove statsmodels requirement by @tsalo in https://github.com/neurostuff/NiMARE/pull/679
+
+### 🎉 Exciting New Features
+
+- Support `vfwe_only` in CBMAEstimator even when `null_method` isn't `montecarlo` by @tsalo in https://github.com/neurostuff/NiMARE/pull/678
+
+### Other Changes
+
+- Document other meta-analysis tools outside our ecosystem by @tsalo in https://github.com/neurostuff/NiMARE/pull/654
+- Reorganize and streamline examples by @tsalo in https://github.com/neurostuff/NiMARE/pull/656
+- Convert CBMAEstimator method to function by @tsalo in https://github.com/neurostuff/NiMARE/pull/658
+- Add explicit support for Python 3.10 by @tsalo in https://github.com/neurostuff/NiMARE/pull/648
+- Use BibTeX citations in documentation by @tsalo in https://github.com/neurostuff/NiMARE/pull/670
+- Replace relative imports with absolute ones by @tsalo in https://github.com/neurostuff/NiMARE/pull/674
+- Simplify organization of base classes by @tsalo in https://github.com/neurostuff/NiMARE/pull/675
+- Note why we don't implement TFCE in NiMARE (currently) by @tsalo in https://github.com/neurostuff/NiMARE/pull/680
+- Dropping the memory-mapping option for Estimators and kernel transformers by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/681
+- Optimize locating coordinates in convert_neurosynth_to_dataset by @ryanhammonds in https://github.com/neurostuff/NiMARE/pull/682
+- Reduce memory usage of `KernelTransformer.transform` and `meta.utils.compute_kda_ma` by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/676
+- Generate automatic CHANGELOG from release note and add it to docs by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/684
+- Add manual changelog to documentation by @tsalo in https://github.com/neurostuff/NiMARE/pull/635
+
+## New Contributors
+
+- @ryanhammonds made their first contribution in https://github.com/neurostuff/NiMARE/pull/682
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12rc2...0.0.12rc3
+
+## [0.0.12rc2](https://github.com/neurostuff/NiMARE/compare/0.0.12rc1...0.0.12rc2) - 2022-03-04
 
 This release candidate includes a number of changes. We have added a new `FocusCounter` diagnostic tool for characterizing results of coordinate-based meta-analyses, and have added cluster-level correction to the MKDAChi2 Estimator's Monte Carlo FWE correction method. We have also made some changes to the documentation formatting that should hopefully make the NiMARE documentation more informative and easier to read.
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
 ### What's Changed
 
 #### 🛠 Breaking Changes
@@ -71,11 +109,10 @@ This release candidate includes a number of changes. We have added a new `FocusC
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc2
 
-## 0.0.12rc1 - 2022-02-15
+## [0.0.12rc1](https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc1) - 2022-02-15
 
 This release candidate continues to optimize certain elements of NiMARE processing for its NeuroLibre preprint.
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
 ### What's Changed
 
 #### 🛠 Breaking Changes
@@ -93,7 +130,7 @@ This release candidate continues to optimize certain elements of NiMARE processi
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.11...0.0.12rc1
 
-## 0.0.11 - 2022-01-06
+## [0.0.11](https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.11) - 2022-01-06
 
 This release continues fixes and improvements we've made for the NiMARE manuscript.
 Additionally, we are starting to dramatically refactor how NiMARE stores meta-analytic data,
@@ -133,7 +170,7 @@ and (3) implementing a meta-analysis model specification that can be employed wi
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.11
 
-## 0.0.11rc1 - 2021-10-27
+## [0.0.11rc1](https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.11rc1) - 2021-10-27
 
 This release candidate includes certain enhancements and fixes necessary for the NiMARE software paper
 (https://github.com/NBCLab/nimare-paper).
@@ -147,7 +184,7 @@ This release candidate includes certain enhancements and fixes necessary for the
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.10...0.0.11rc1
 
-## 0.0.10 - 2021-10-06
+## [0.0.10](https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10) - 2021-10-06
 
 The 0.0.10 release includes a number of bug fixes and improvements.
 The two biggest changes are (1) support for fetching and using NeuroQuery's database, and
@@ -211,7 +248,7 @@ The fetching and conversion functions also now support accessing multiple vocabu
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10
 
-## 0.0.10rc2 - 2021-08-10
+## [0.0.10rc2](https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.11rc2) - 2021-08-10
 
 This second release candidate for 0.0.10 includes a major overhaul of the Neurosynth fetching and conversion functions.
 The Neurosynth database now follows a very different file format, in order to match NeuroQuery's convention.
@@ -234,7 +271,7 @@ We also have a new function to fetch NeuroQuery, and the Neurosynth conversion f
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10rc2
 
-## 0.0.10rc1 - 2021-07-15
+## [0.0.10rc1](https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10rc1) - 2021-07-15
 
 This release prepares for NeuroHackademy.
 The most relevant changes are the new ROIAssociationDecoder and the custom `__repr__` methods.
@@ -249,7 +286,7 @@ The most relevant changes are the new ROIAssociationDecoder and the custom `__re
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.9...0.0.10rc1
 
-## 0.0.9 - 2021-07-04
+## [0.0.9](https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9) - 2021-07-04
 
 This release primarily improves testing and documentation, but there are a few new features as well.
 The new features include (1) a new "merge" method for Datasets, to combine two Datasets into a new one,
@@ -276,7 +313,7 @@ enhancing NiMARE's docstrings with "versionadded" and "versionchanged" directive
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9
 
-## 0.0.9rc2 - 2021-06-02
+## [0.0.9rc2](https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9rc2) - 2021-06-02
 
 This release candidate adds the ImageTransformer class for the OHBM tutorial.
 
@@ -286,7 +323,7 @@ This release candidate adds the ImageTransformer class for the OHBM tutorial.
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9rc2
 
-## 0.0.9rc1 - 2021-05-27
+## [0.0.9rc1](https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9rc1) - 2021-05-27
 
 This release candidate adds an overwrite option in preparation for the OHBM 2021 NiMARE tutorial.
 
@@ -296,18 +333,15 @@ This release candidate adds an overwrite option in preparation for the OHBM 2021
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.8...0.0.9rc1
 
-## 0.0.8 - 2021-05-17
+## [0.0.8](https://github.com/neurostuff/NiMARE/compare/0.0.7...0.0.8) - 2021-05-17
 
 This release includes a number of bug-fixes, along with enhancements to how many tools within NiMARE implement low-memory options.
 In addition, we have renamed the CBMA estimators' null methods.
 The "analytic" method is now "approximate" and the "empirical" method is now "montecarlo".
 
-.. warning:: Known Bugs
-This version contains some bugs that were identified after it was released.
+.. warning:: Known Bugs This version contains some bugs that were identified after it was released.
+\   - The ALESubtraction class from this release should not be used, as it uses a symmetric null distribution, which does not work properly for comparisons between Datasets with different sizes.
 
-```-   The ALESubtraction class from this release should not be used, as it uses a symmetric null distribution,
-    which does not work properly for comparisons between Datasets with different sizes.
-```
 ### What's Changed
 
 - [REF] Rename CBMA null distribution generation methods (#494) @tsalo
@@ -339,7 +373,7 @@ This version contains some bugs that were identified after it was released.
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.7...0.0.8
 
-## 0.0.7 - 2021-02-25
+## [0.0.7](https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.7) - 2021-02-25
 
 This release involves two changes worth mentioning.
 First, we have fixed a bug in how permutation-based p-values are calculated (thanks to @alexenge for identifying and reporting).
@@ -362,7 +396,7 @@ This release successfully deployed to PyPi, unlike 0.0.6.
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.7
 
-## 0.0.7rc1 - 2021-02-25
+## [0.0.7rc1](https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.7rc1) - 2021-02-25
 
 This release involves two changes worth mentioning.
 First, we have fixed a bug in how permutation-based p-values are calculated (thanks to @alexenge for identifying and reporting).
@@ -383,12 +417,10 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.6...0.0.7rc1
 
-## 0.0.6 - 2021-02-25
+## [0.0.6](https://github.com/neurostuff/NiMARE/compare/0.0.5...0.0.6) - 2021-02-25
 
-.. important::
+.. important:: \ This release was not deployed to PyPi. However, 0.0.7 is the same as 0.0.6, so just use that one.
 
-```This release was not deployed to PyPi. However, 0.0.7 is the same as 0.0.6, so just use that one.
-```
 This release involves two changes worth mentioning.
 First, we have fixed a bug in how permutation-based p-values are calculated (thanks to @alexenge for identifying and reporting).
 Second, we have changed how the "empirical" null method is performed.
@@ -408,7 +440,7 @@ The "empirical" method is now much slower, but more accurate, than the "analytic
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.5...0.0.6
 
-## 0.0.5 - 2020-12-31
+## [0.0.5](https://github.com/neurostuff/NiMARE/compare/0.0.4...0.0.5) - 2020-12-31
 
 This release is focused on fixing two bugs in v0.0.4.
 One bug affected which files were packaged with the library, such that some templates were missing.
@@ -422,7 +454,7 @@ The other bug was introduced in v0.0.4 and invalidates cluster-level Monte Carlo
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.4...0.0.5
 
-## 0.0.4 - 2020-12-28
+## [0.0.4](https://github.com/neurostuff/NiMARE/compare/0.0.3...0.0.4) - 2020-12-28
 
 This release includes a number of substantial changes to `NiMARE`.
 
@@ -430,20 +462,12 @@ This release includes a number of substantial changes to `NiMARE`.
 
 #### Major changes
 
-1. We've added PyMARE as a dependency! PyMARE is a general-purpose meta-analysis library in Python that we now use to perform our
-2. image-based meta-analyses.
-3. For image-based meta-analyses, we also now have a transforms module to calculate new image types from available data.
-4. Datasets now have a number of attributes retained as properties, which will break compatibility with Datasets
-5. from older versions of NiMARE.
-6. We now have multiple methods for converting summary statistics (e.g., ALE, OF) to p-values in all of our major CBMA algorithms,
-7. thanks to @tyarkoni!
-8. The two current methods for each algorithm are a fast, but slightly less accurate, "analytic" method and a slower, but more accurate,
-9. "empirical" method.
-10. For ALE, We generally recommend the "analytic" method for maximum compatibility with GingerALE.
-11. The implementations of these algorithms have also been streamlined and sped up somewhat.
-12. We have a new generate module for simulating coordinate-based datasets, thanks to @jdkent!
-13. A number of modules, classes, and functions that were not yet implemented have been pruned from the API to make it easier to work with.
-14. Don't worry, we're still planning to get around to them at some point.
+1. We've added PyMARE as a dependency! PyMARE is a general-purpose meta-analysis library in Python that we now use to perform our image-based meta-analyses.
+2. For image-based meta-analyses, we also now have a transforms module to calculate new image types from available data.
+3. Datasets now have a number of attributes retained as properties, which will break compatibility with Datasets from older versions of NiMARE.
+4. We now have multiple methods for converting summary statistics (e.g., ALE, OF) to p-values in all of our major CBMA algorithms, thanks to @tyarkoni! The two current methods for each algorithm are a fast, but slightly less accurate, "analytic" method and a slower, but more accurate, "empirical" method. For ALE, We generally recommend the "analytic" method for maximum compatibility with GingerALE. The implementations of these algorithms have also been streamlined and sped up somewhat.
+5. We have a new generate module for simulating coordinate-based datasets, thanks to @jdkent!
+6. A number of modules, classes, and functions that were not yet implemented have been pruned from the API to make it easier to work with. Don't worry, we're still planning to get around to them at some point.
 
 ### All changes
 
@@ -529,7 +553,7 @@ This release includes a number of substantial changes to `NiMARE`.
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.3...0.0.4
 
-## 0.0.3 - 2020-07-12
+## [0.0.3](https://github.com/neurostuff/NiMARE/compare/0.0.2...0.0.3) - 2020-07-12
 
 This release consolidates changes prior to PyMARE integration.
 In addition to a number of bug fixes, this release also includes substantial changes to
@@ -563,7 +587,7 @@ ALESubtraction, annotation storage, and Dataset size.
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.2...0.0.3
 
-## 0.0.2 - 2020-05-11
+## [0.0.2](https://github.com/neurostuff/NiMARE/compare/0.0.1...0.0.2) - 2020-05-11
 
 ### What's Changed
 

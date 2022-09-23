@@ -16,6 +16,4 @@ coverage:
 
 ignore:
   - 'nimare/tests/'
-  - 'nimare/due.py'
   - 'nimare/_version.py'
-  - 'nimare/references.py'
