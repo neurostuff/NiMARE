@@ -4,7 +4,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
-from nimare.utils import mm2vox, index2vox
+from nimare.utils import mm2vox
 from nimare.diagnostics import FocusFilter
 from nimare.meta import models
 import torch
