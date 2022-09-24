@@ -7,7 +7,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
-from nimare.utils import mm2vox
+from nimare.utils import mm2vox, index2vox
 from nimare.diagnostics import FocusFilter
 import torch
 import logging
@@ -220,6 +220,7 @@ class CBMREstimator(Estimator):
             group_beta_linear_weight = group_beta_linear_weight.cpu().detach().numpy().reshape((P,))
             spatial_regression_coef[group] = group_beta_linear_weight
             studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, group_beta_linear_weight))
+            studywise_spatial_intensity = index2vox(studywise_spatial_intensity, masker_voxels)
             maps[group+'_group_StudywiseIntensity'] = studywise_spatial_intensity
             # overdispersion parameter: alpha
             if self.model == 'NB':
@@ -308,7 +309,7 @@ class GLMPoisson(torch.nn.Module):
                 group_moderators = all_moderators[group]
                 nll = lambda beta: -self._log_likelihood(beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study)
                 params = (beta)
-                F = torch.autograd.functional.hessian(nll, params, create_graph=True) # vectorize=True, outer_jacobian_strategy='forward-mode' 
+                F = torch.autograd.functional.hessian(nll, params, create_graph=False, vectorize=True, outer_jacobian_strategy='forward-mode') 
                 F = F.reshape((beta_dim, beta_dim))
                 eig_vals = torch.real(torch.linalg.eigvals(F)) #torch.eig(F, eigenvectors=False)[0][:,0] 
                 del F

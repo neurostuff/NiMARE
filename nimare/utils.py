@@ -1250,9 +1250,6 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
     return X
 
 def standardize_field(dataset, metadata):
-    # if isinstance(metadata, str):
-    #     moderators = dataset.annotations[metadata]
-    # elif isinstance(metadata, list):
     moderators = dataset.annotations[metadata]
     standardize_moderators = moderators - np.mean(moderators, axis=0)
     standardize_moderators /= np.std(standardize_moderators, axis=0)
@@ -1263,3 +1260,18 @@ def standardize_field(dataset, metadata):
     dataset.annotations[column_name] = standardize_moderators
 
     return dataset
+
+
+def index2vox(vals, masker_voxels):
+    print('23')
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+    image_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
+    spline_voxel_index = np.arange(np.prod(image_dim))
+    for i in spline_voxel_index:
+        print('13')
+
+
+
+    return 
