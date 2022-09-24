@@ -1257,7 +1257,6 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
 
     return X
 
-
 def index2vox(vals, masker_voxels):
     xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
     yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
@@ -1275,7 +1274,6 @@ def index2vox(vals, masker_voxels):
 
     return voxel_array
 
-<<<<<<< HEAD
 def dummy_encoding_moderators(dataset_annotations, moderators):
     for moderator in moderators:
         if np.array_equal(dataset_annotations[moderator], dataset_annotations[moderator].astype(str)):
@@ -1285,7 +1283,6 @@ def dummy_encoding_moderators(dataset_annotations, moderators):
                 dataset_annotations[category] = (dataset_annotations[moderator] == category).astype(int)
                 moderators.append(category) # add dummy encoded moderators
     return dataset_annotations, moderators
-=======
 def standardize_field(dataset, metadata):
     # if isinstance(metadata, str):
     #     moderators = dataset.annotations[metadata]
@@ -1299,163 +1296,4 @@ def standardize_field(dataset, metadata):
         column_name = ['standardized_' + moderator for moderator in metadata]
     dataset.annotations[column_name] = standardize_moderators
 
-<<<<<<< HEAD
-    # correspondence between xyz coordinates and spatial intensity
-    brain_voxel_coord = np.array([[x,y,z] for x in xx for y in yy for z in zz if masker_voxels[x, y, z] == 1])
-    brain_voxel_intensity = np.concatenate((brain_voxel_coord, intensity), axis=1)
-
-    intensity_array = np.zeros(masker_dim)
-    for i in range(brain_voxel_intensity.shape[0]):
-        coord_x, coord_y, coord_z, coord_intensity = brain_voxel_intensity[i, :]
-        coord_x, coord_y, coord_z = coord_x.astype(int), coord_y.astype(int), coord_z.astype(int)
-        intensity_array[coord_x, coord_y, coord_z] = coord_intensity
-    
-    return intensity_array
-=======
-    if return_counts:
-        _, unique_row_indices, counts = np.unique(
-            ar_row_view, return_index=True, return_counts=True
-        )
-
-        return ar[unique_row_indices], counts
-    else:
-        _, unique_row_indices = np.unique(ar_row_view, return_index=True)
-
-        return ar[unique_row_indices]
-
-
-def _cluster_nearest_neighbor(ijk, labels_index, labeled):
-    """Find the nearest neighbor for given points in the corresponding cluster.
-
-    Parameters
-    ----------
-    ijk : :obj:`numpy.ndarray`
-        (n_pts, 3) array of query points.
-    labels_index : :obj:`numpy.ndarray`
-        (n_pts,) array of corresponding cluster indices.
-    labeled : :obj:`numpy.ndarray`
-        3D array with voxels labeled according to cluster index.
-
-    Returns
-    -------
-    nbrs : :obj:`numpy.ndarray`
-        (n_pts, 3) nearest neighbor points.
-
-    This function is partially derived from Nilearn's code.
-
-    License
-    -------
-    New BSD License
-
-    Copyright (c) 2007 - 2022 The nilearn developers.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-
-    a. Redistributions of source code must retain the above copyright notice,
-        this list of conditions and the following disclaimer.
-    b. Redistributions in binary form must reproduce the above copyright
-        notice, this list of conditions and the following disclaimer in the
-        documentation and/or other materials provided with the distribution.
-    c. Neither the name of the nilearn developers nor the names of
-        its contributors may be used to endorse or promote products
-        derived from this software without specific prior written
-        permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-    ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR
-    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-    DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-    DAMAGE.
-    """
-    labels = labeled[labeled > 0]
-    clusters_ijk = np.array(labeled.nonzero()).T
-    nbrs = np.zeros_like(ijk)
-    for ii, (lab, point) in enumerate(zip(labels_index, ijk)):
-        lab_ijk = clusters_ijk[labels == lab]
-        dist = np.linalg.norm(lab_ijk - point, axis=1)
-        nbrs[ii] = lab_ijk[np.argmin(dist)]
-
-    return nbrs
-
-
-def _get_cluster_coms(labeled_cluster_arr):
-    """Get the center of mass of each cluster in a labeled array.
-
-    This function is partially derived from Nilearn's code.
-
-    License
-    -------
-    New BSD License
-
-    Copyright (c) 2007 - 2022 The nilearn developers.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-
-    a. Redistributions of source code must retain the above copyright notice,
-        this list of conditions and the following disclaimer.
-    b. Redistributions in binary form must reproduce the above copyright
-        notice, this list of conditions and the following disclaimer in the
-        documentation and/or other materials provided with the distribution.
-    c. Neither the name of the nilearn developers nor the names of
-        its contributors may be used to endorse or promote products
-        derived from this software without specific prior written
-        permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-    ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR
-    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-    DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-    DAMAGE.
-    """
-    cluster_ids = np.unique(labeled_cluster_arr)[1:]
-    n_clusters = cluster_ids.size
-
-    # Identify center of mass for each cluster
-    # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
-    cluster_ids = np.arange(1, n_clusters + 1, dtype=int)
-    cluster_coms = ndimage.center_of_mass(labeled_cluster_arr, labeled_cluster_arr, cluster_ids)
-    cluster_coms = np.array(cluster_coms).astype(int)
-
-    # NOTE: The following comes from Nilearn
-    # Determine if all subpeaks are within the cluster
-    # They may not be if the cluster is binary and has a shape where the COM is
-    # outside the cluster, like a donut.
-    coms_outside_clusters = (
-        labeled_cluster_arr[cluster_coms[:, 0], cluster_coms[:, 1], cluster_coms[:, 2]]
-        != cluster_ids
-    )
-    if np.any(coms_outside_clusters):
-        LGR.warning(
-            "Attention: At least one of the centers of mass falls outside of the cluster body. "
-            "Identifying the nearest in-cluster voxel."
-        )
-
-        # Replace centers of mass with their nearest neighbor points in the
-        # corresponding clusters. Note this is also equivalent to computing the
-        # centers of mass constrained to points within the cluster.
-        cluster_coms[coms_outside_clusters, :] = _cluster_nearest_neighbor(
-            cluster_coms[coms_outside_clusters, :],
-            cluster_ids[coms_outside_clusters],
-            labeled_cluster_arr,
-        )
-
-    return cluster_coms
->>>>>>> 87c3ce30c59382605fd141c6149be25be742be96
-=======
     return dataset
->>>>>>> 48d4b57 ([skip ci][wip] modify standardization of group moderators)
->>>>>>> 7b9581b ([skip ci][wip] modify standardization of group moderators)
