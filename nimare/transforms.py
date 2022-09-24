@@ -651,7 +651,7 @@ def z_to_p(z, tail="two"):
     if tail == "two":
         p = stats.norm.sf(abs(z)) * 2
     elif tail == "one":
-        p = stats.norm.sf(abs(z))
+        p = stats.norm.sf(z)
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
 
