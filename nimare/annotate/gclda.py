@@ -109,40 +109,35 @@ def _update_word_topic_assignments(
 
 
 def _update_peak_assignments(
-    i_ptoken,
-    doc,
+    region,
+    topic,
     ny_region_topic,
     ny_doc_topic,
-    peak_topic_idx,
-    peak_region_idx,
     nz_doc_topic,
-    peak_probs,
+    p_x_subregions,
     n_regions,
     n_topics,
     alpha,
     delta,
     gamma,
+    rng,
 ):
     """Update y / r indicator variables assigning peaks->topics/subregions.
 
     Parameters
     ----------
-    i_ptoken : :obj:`int`
-        Peak token index.
-    doc : :obj:`int`
-        Document i_ptoken index.
-    ny_region_topic : (R x T) :obj:`numpy.ndarray`
-        Number of peak-tokens assigned to each subregion (R) per topic (T).
-    ny_doc_topic : (D x T) :obj:`numpy.ndarray`
-        Number of peak-tokens assigned to each topic (T) per document (D).
-    peak_topic_idx : :obj:`numpy.ndarray`
-        Topic index.
-    peak_region_idx : :obj:`numpy.ndarray`
-        Region index.
-    nz_doc_topic : (D x T) :obj:`numpy.ndarray`
+    region : :obj:`int`
+        Region.
+    topic : :obj:`int`
+        Topic.
+    ny_region_topic : (1 x T) :obj:`numpy.ndarray`
+        Number of peak-tokens assigned to subregion (region) per topic (T).
+    ny_doc_topic : (1 x T) :obj:`numpy.ndarray`
+        Number of peak-tokens assigned to document (D) per topic (T).
+    nz_doc_topic : (1 x T) :obj:`numpy.ndarray`
         Number of word-tokens assigned to each topic (T) per document (D).
-    peak_probs : (D x T x R) :obj:`numpy.ndarray`
-        Matrix of probabilities of all peaks given all topic/subregion spatial distributions
+    p_x_subregions : (R x T) :obj:`numpy.ndarray`
+        Probability of generating current x from all subregions.
     n_regions : :obj:`int`
         Total number of regions.
     n_topics : :obj:`int`
@@ -153,47 +148,30 @@ def _update_peak_assignments(
         Prior count on subregions for each topic.
     gamma : :obj:`float`
         Prior count added to y-counts when sampling z assignments.
-    randseed : :obj:`int`
-        Random seed for this iteration.
+    rng : :obj:`numpy.random.default_rng`
+        default_rng() instance
 
     Returns
     -------
-    doc : :obj:`int`
-        Document i index.
-    ny_region_topic : :obj:`int`
-        Updated number of peak-tokens assigned to region i and topic i.
-    ny_doc_topic : :obj:`int`
-        Updated number of peak-tokens assigned to topic i and document i.
+    region : :obj:`int`
+        Subregion sampled (r).
+    topic : :obj:`int`
+        Topic sampled (y).
     """
-    # Iterate over all peaks x, and sample a new y and r assignment for each
-    topic = peak_topic_idx[i_ptoken]
-    region = peak_region_idx[i_ptoken]
-
-    # Make ny_region_topic and ny_doc_topic writeable when running parallel
-    if not ny_region_topic.flags.writeable:
-        ny_region_topic = ny_region_topic.copy()
-    if not ny_doc_topic.flags.writeable:
-        ny_doc_topic = ny_doc_topic.copy()
-
-    # Decrement count-matrices to remove current ptoken_topic_idx
-    # because ptoken will be reassigned to a new topic
-    ny_region_topic[region, topic] -= 1  # Decrement count in Subregion x Topic count matx
-    ny_doc_topic[doc, topic] -= 1  # Decrement count in Document x Topic count matrix
-
-    # Retrieve the probability of generating current x from all
-    # subregions: [R x T] array of probs
-    p_x_subregions = (peak_probs[i_ptoken, :, :]).transpose()
-
     # Compute the probabilities of all subregions given doc
     #     p(r|d) ~ p(r|t) * p(t|d)
     # Counts of subregions per topic + prior: p(r|t)
     p_region_g_topic = ny_region_topic + delta
+    p_region_g_topic[region, topic] -= 1  # Decrement count in Subregion x Topic count matx
+    # Decrement count-matrices to remove current ptoken_topic_idx
+    # because ptoken will be reassigned to a new topic
 
     # Normalize the columns such that each topic's distribution over subregions sums to 1
     p_region_g_topic = p_region_g_topic / np.sum(p_region_g_topic, axis=0, keepdims=True)
 
     # Counts of topics per document + prior: p(t|d)
-    p_topic_g_doc = ny_doc_topic[doc, :] + alpha
+    p_topic_g_doc = ny_doc_topic + alpha
+    p_topic_g_doc[topic] -= 1  # Decrement count in Document x Topic count matrix
 
     # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
     p_topic_g_doc = np.array([p_topic_g_doc] * n_regions)
@@ -207,9 +185,10 @@ def _update_peak_assignments(
     # The multinomial from which z is sampled is proportional to number
     # of y assigned to each topic, plus constant gamma
     # Compute the proportional probabilities in log-space
-    logp = nz_doc_topic[doc, :] * np.log(
-        (ny_doc_topic[doc, :] + gamma + 1) / (ny_doc_topic[doc, :] + gamma)
-    )
+    doc_y_counts = ny_doc_topic + gamma
+    doc_y_counts[topic] -= 1  # Decrement count in Document x Topic count matrix
+    logp = nz_doc_topic * np.log((doc_y_counts + 1) / (doc_y_counts))
+
     # Add a constant before exponentiating to avoid any underflow issues
     p_peak_g_topic = np.exp(logp - np.max(logp))
 
@@ -229,7 +208,7 @@ def _update_peak_assignments(
     # from the sampling distribution
     # Returns a binary [1 x R*T] vector with a '1' in location that was sampled
     # and zeros everywhere else
-    assignment_vec = np.random.multinomial(1, probs_pdf)
+    assignment_vec = rng.multinomial(1, probs_pdf)
 
     # Reshape 1D back to [R x T] 2D
     assignment_arr = np.reshape(assignment_vec, (n_regions, n_topics))
@@ -241,7 +220,7 @@ def _update_peak_assignments(
     # Topic sampled (y)
     topic = assignment_idx[1][0]
 
-    return doc, region, topic
+    return region, topic
 
 
 class GCLDAModel(NiMAREBase):
@@ -666,38 +645,43 @@ class GCLDAModel(NiMAREBase):
 
         LGR.debug(f"Iter {self.iter:04d}: Sampling y|r")
         # Retrieve p(x|r,y) for all subregions
-        peak_probs = self._get_peak_probs(self)
+        peak_probs = self._get_peak_probs(self).T
         self.seed += 1  # Seed random number generator
-        np.random.seed(self.seed)
+        rng = np.random.default_rng(self.seed)
+
+        # Iterate over all peaks x, and sample a new y and r assignment for each
         old_regions, old_topics = self.topics["peak_region_idx"], self.topics["peak_topic_idx"]
-        docs, regions, topics = zip(
-            *Parallel(n_jobs=self.n_cores)(
-                delayed(_update_peak_assignments)(
-                    i_ptoken,
-                    doc,
-                    self.topics["n_peak_tokens_region_by_topic"].copy(),
-                    self.topics["n_peak_tokens_doc_by_topic"].copy(),
-                    self.topics["peak_topic_idx"],
-                    self.topics["peak_region_idx"],
-                    self.topics["n_word_tokens_doc_by_topic"],
-                    peak_probs,
-                    self.params["n_regions"],
-                    self.params["n_topics"],
-                    self.params["alpha"],
-                    self.params["delta"],
-                    self.params["gamma"],
-                )
-                for i_ptoken, doc in enumerate(self.data["ptoken_doc_idx"])
+        results = Parallel(n_jobs=self.n_cores, verbose=20)(
+            delayed(_update_peak_assignments)(
+                old_regions[i_ptoken],
+                old_topics[i_ptoken],
+                self.topics["n_peak_tokens_region_by_topic"],
+                self.topics["n_peak_tokens_doc_by_topic"][doc, :],
+                self.topics["n_word_tokens_doc_by_topic"][doc, :],
+                peak_probs[:, :, i_ptoken],
+                self.params["n_regions"],
+                self.params["n_topics"],
+                self.params["alpha"],
+                self.params["delta"],
+                self.params["gamma"],
+                rng,
             )
+            for i_ptoken, doc in enumerate(self.data["ptoken_doc_idx"])
         )  # Update y-assignments
+        regions, topics = zip(*results)
+
         # Decrement count-matrices to remove current ptoken_topic_idx
         # because ptoken will be reassigned to a new topic
         np.subtract.at(self.topics["n_peak_tokens_region_by_topic"], (old_regions, old_topics), 1)
-        np.subtract.at(self.topics["n_peak_tokens_doc_by_topic"], (docs, old_topics), 1)
+        np.subtract.at(
+            self.topics["n_peak_tokens_doc_by_topic"], (self.data["ptoken_doc_idx"], old_topics), 1
+        )
 
         # Update the indices and the count matrices using the sampled y/r assignments
         np.add.at(self.topics["n_peak_tokens_region_by_topic"], (regions, topics), 1)
-        np.add.at(self.topics["n_peak_tokens_doc_by_topic"], (docs, topics), 1)
+        np.add.at(
+            self.topics["n_peak_tokens_doc_by_topic"], (self.data["ptoken_doc_idx"], topics), 1
+        )
 
         # Update y->topic assignment
         self.topics["peak_topic_idx"] = np.array(topics)
