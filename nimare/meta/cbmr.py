@@ -7,7 +7,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
-from nimare.utils import mm2vox, index2vox
+from nimare.utils import mm2vox
 from nimare.diagnostics import FocusFilter
 import torch
 import logging
@@ -220,8 +220,8 @@ class CBMREstimator(Estimator):
             group_beta_linear_weight = group_beta_linear_weight.cpu().detach().numpy().reshape((P,))
             spatial_regression_coef[group] = group_beta_linear_weight
             studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, group_beta_linear_weight))
-            studywise_spatial_intensity = index2vox(studywise_spatial_intensity, masker_voxels)
-            maps[group+'_group_StudywiseIntensity'] = studywise_spatial_intensity
+            # studywise_spatial_intensity = index2vox(studywise_spatial_intensity, masker_voxels)
+            maps[group+'_Studywise_Spatial_Intensity'] = studywise_spatial_intensity
             # overdispersion parameter: alpha
             if self.model == 'NB':
                 alpha = cbmr_model.all_alpha_sqrt[group]**2
@@ -236,10 +236,36 @@ class CBMREstimator(Estimator):
             for group in self.inputs_['all_group_study_id'].keys():
                 group_moderators = self.inputs_["all_group_moderators"][group]
                 moderators_effect = np.exp(np.matmul(group_moderators, self._gamma.T))
-                maps[group+'_group_ModeratorsEffect'] = moderators_effect.flatten()
+                maps[group+'_ModeratorsEffect'] = moderators_effect.flatten()
             tables['moderators_regression_coef'] = pd.DataFrame(self._gamma, columns=self.moderators)
+        else:
+            self._gamma = None
         if self.model == 'NB':
             tables['over_dispersion_param'] = pd.DataFrame.from_dict(overdispersion_param, orient='index')
+        
+        # standard error
+        Coef_spline_bases = torch.tensor(self.inputs_['Coef_spline_bases'], dtype=torch.float64, device=self.device)
+        for group in self.inputs_['all_group_study_id'].keys():
+            group_foci_per_voxel = torch.tensor(self.inputs_['all_foci_per_voxel'][group], dtype=torch.float64, device=self.device)
+            group_foci_per_study = torch.tensor(self.inputs_['all_foci_per_study'][group], dtype=torch.float64, device=self.device)
+            group_beta_linear_weight = cbmr_model.all_beta_linears[group].weight
+            if hasattr(self, "moderators"):
+                gamma = cbmr_model.gamma_linear.weight
+                group_moderators = self.inputs_["all_group_moderators"][group]
+                group_moderators = torch.tensor(group_moderators, dtype=torch.float64, device=self.device)
+            else:
+                group_moderators = None
+            nll = lambda beta, gamma: -GLMPoisson._log_likelihood(group_beta_linear_weight, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study)
+            params = (group_beta_linear_weight, gamma)
+            F = torch.autograd.functional.hessian(nll, params, create_graph=False, vectorize=True, outer_jacobian_strategy='forward-mode') 
+
+            spatial_dim = group_beta_linear_weight.shape[1]
+            F_spatial_coef = F[0][0].reshape((spatial_dim, spatial_dim))
+            Cov_spatial_coef = np.linalg.inv(F_spatial_coef.detach().numpy())
+            if hasattr(self, "moderators"):
+                moderators_dim = gamma.shape[1]
+                F_moderators_coef = F[1][1].reshape((moderators_dim, moderators_dim))
+                Cov_moderators_coef = np.linalg.inv(F_moderators_coef.detach().numpy())
 
         return maps, tables
 
@@ -266,10 +292,10 @@ class GLMPoisson(torch.nn.Module):
             self.gamma_linear = torch.nn.Linear(gamma_dim, 1, bias=False).double()
             torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
     
-    def _log_likelihood(self, beta, gamma, Coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        log_mu_spatial = torch.matmul(Coef_spline_bases, beta)
+    def _log_likelihood(beta, gamma, Coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
+        log_mu_spatial = torch.matmul(Coef_spline_bases, beta.T)
         mu_spatial = torch.exp(log_mu_spatial)
-        log_mu_moderators = torch.matmul(moderators, gamma)
+        log_mu_moderators = torch.matmul(moderators, gamma.T)
         mu_moderators = torch.exp(log_mu_moderators)
         log_l = torch.sum(torch.mul(foci_per_voxel, log_mu_spatial)) + torch.sum(torch.mul(foci_per_study, log_mu_moderators)) \
                         - torch.sum(mu_spatial) * torch.sum(mu_moderators)

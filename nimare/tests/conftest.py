@@ -60,7 +60,7 @@ def testdata_cbma():
 @pytest.fixture(scope="session")
 def testdata_cbmr():
     """Generate coordinate-based dataset for tests."""
-    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+    dset_file = os.path.join(get_test_data_path(), "neurosynth.json")
     dset = nimare.dataset.Dataset(dset_file)
 
     # Only retain one peak in each study in coordinates
