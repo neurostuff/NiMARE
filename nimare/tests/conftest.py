@@ -58,9 +58,19 @@ def testdata_cbma():
     return dset
 
 @pytest.fixture(scope="session")
+def testdata_cbma_full():
+    """Generate more complete coordinate-based dataset for tests.
+
+    Same as above, except returns all coords, not just one per study.
+    """
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+    dset = nimare.dataset.Dataset(dset_file)
+    return dset
+
+@pytest.fixture(scope="session")
 def testdata_cbmr():
     """Generate coordinate-based dataset for tests."""
-    dset_file = os.path.join(get_test_data_path(), "neurosynth.json")
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
     dset = nimare.dataset.Dataset(dset_file)
 
     # Only retain one peak in each study in coordinates
@@ -78,22 +88,12 @@ def testdata_cbmr():
     return dset
 
 @pytest.fixture(scope="session")
-def testdata_cbma_full():
-    """Generate more complete coordinate-based dataset for tests.
-
-    Same as above, except returns all coords, not just one per study.
-    """
-    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
-    dset = nimare.dataset.Dataset(dset_file)
-    return dset
-
-@pytest.fixture(scope="session")
 def testdata_cbmr_full():
     """Generate more complete coordinate-based dataset for tests.
 
     Same as above, except returns all coords, not just one per study.
     """
-    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+    dset_file = os.path.join(get_test_data_path(), "neurosynth_dset.json")
     dset = nimare.dataset.Dataset(dset_file)
     # set up group columns & moderators
     n_rows = dset.annotations.shape[0]
@@ -105,6 +105,24 @@ def testdata_cbmr_full():
 
     return dset
 
+@pytest.fixture(scope="session")
+def testdata_cbmr_laird():
+    """Generate more complete coordinate-based dataset for tests.
+
+    Same as above, except returns all coords, not just one per study.
+    """
+    dset_file = os.path.join(get_test_data_path(), "neurosynth_laird_studies.json") 
+    dset = nimare.dataset.Dataset(dset_file)
+    # set up group columns & moderators
+    n_rows = dset.annotations.shape[0]
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
+    dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
+    if 'year' in dset.metadata.columns:
+        dset.annotations["publication_year"] = [dset.metadata['year'][i] for i in range(n_rows)] 
+    dset.annotations["avg_age"] = np.arange(n_rows)
+
+    return dset
 
 @pytest.fixture(scope="session")
 def testdata_laird():
