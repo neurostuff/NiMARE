@@ -305,22 +305,29 @@ class CBMRInference(object):
         self.t_con_moderator = t_con_moderator
     
     def _contrast(self):
-        Spatial_Intensity_SE = self.tables['Spatial_Intensity_SE']
-        if self.spatial_homogeneity: # GLH 1 group
-            for group in self.group_names:
-                # mu_0 under null hypothesis 
-                group_foci_per_voxel, group_moderators_effect = self.maps[group+'_Foci_Per_Voxel'], self.maps[group+'_ModeratorsEffect']
-                n_voxels, n_study = group_foci_per_voxel.shape[0], group_moderators_effect.shape[0]
-                null_spatial_intensity = np.sum(group_foci_per_voxel) / (n_voxels * n_study)
-                SE_spatial_intensity = Spatial_Intensity_SE.loc[Spatial_Intensity_SE.index == group].to_numpy().reshape((-1))
-                group_Z_stat = (self.maps[group+'_Studywise_Spatial_Intensity'] - null_spatial_intensity) / SE_spatial_intensity
-                self.maps[group+'_z'] = group_Z_stat
-                group_p_vals = z_to_p(group_Z_stat, tail='one')
-                self.maps[group+'_p'] = group_p_vals
-            
         if not isinstance(self.t_con_group, type(None)):
-            self.t_con_group = np.array(self.t_con_group).reshape((-1, self.n_groups))
+            self.t_con_group = np.array(self.t_con_group)
+            if self.t_con_group.shape[1] != self.n_groups:
+                raise ValueError("The shape of contrast matrix doesn't match with groups")
+            if np.any(np.sum(self.t_con_group, axis=1)==0):
+                raise ValueError("Conflict happens between the input contrast matrix and spatial homogeneity test")
+            self.t_con_group = self.t_con_group / np.sum(self.t_con_group, axis=1)
 
+            Spatial_Intensity_SE = self.tables['Spatial_Intensity_SE']
+            if self.spatial_homogeneity: # GLH 1 group
+                for group in self.group_names:
+                    # mu_0 under null hypothesis 
+                    group_foci_per_voxel, group_moderators_effect = self.maps[group+'_Foci_Per_Voxel'], self.maps[group+'_ModeratorsEffect']
+                    n_voxels, n_study = group_foci_per_voxel.shape[0], group_moderators_effect.shape[0]
+                    null_spatial_intensity = np.sum(group_foci_per_voxel) / (n_voxels * n_study)
+                    SE_spatial_intensity = Spatial_Intensity_SE.loc[Spatial_Intensity_SE.index == group].to_numpy().reshape((-1))
+                    group_Z_stat = (self.maps[group+'_Studywise_Spatial_Intensity'] - null_spatial_intensity) / SE_spatial_intensity
+                    self.maps[group+'_z'] = group_Z_stat
+                    group_p_vals = z_to_p(group_Z_stat, tail='one')
+                    self.maps[group+'_p'] = group_p_vals
+            else: # GLH multiple groups
+                print('123')
+                
         # Wald_statistics_moderators = gamma / np.sqrt(Var_moderators)
         # p_moderators = transforms.z_to_p(z=Wald_statistics_moderators, tail='two')
         
