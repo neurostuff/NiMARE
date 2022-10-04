@@ -1159,7 +1159,7 @@ def _get_cluster_coms(labeled_cluster_arr):
 
     return cluster_coms
 
-  
+
 def variation_of_information(X, Y):
     """Calculate variation of information metric.
 
