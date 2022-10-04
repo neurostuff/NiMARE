@@ -2,8 +2,8 @@ Command Line Interface
 ========================
 
 NiMARE provides several workflows as command-line interfaces, including ALE
-meta-analysis, meta-analytic coactivation modeling (MACM) analysis, peaks2maps
-image reconstruction, and contrast map meta-analysis.
+meta-analysis, meta-analytic coactivation modeling (MACM) analysis,
+and contrast map meta-analysis.
 Each workflow should generate a boilerplate paragraph with details about the
 workflow and citations that can be used in a manuscript.
 

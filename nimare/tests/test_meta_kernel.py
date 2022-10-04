@@ -2,7 +2,7 @@
 import nibabel as nib
 import numpy as np
 import pytest
-from scipy.ndimage.measurements import center_of_mass
+from scipy.ndimage import center_of_mass
 
 from nimare.meta import kernel
 from nimare.utils import get_masker, get_template, mm2vox

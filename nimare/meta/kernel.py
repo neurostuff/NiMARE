@@ -8,25 +8,16 @@ from __future__ import division
 
 import logging
 import os
-import warnings
 from hashlib import md5
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
-from nilearn import image
 
-from nimare import references
 from nimare.base import NiMAREBase
-from nimare.due import due
-from nimare.meta.utils import (
-    compute_ale_ma,
-    compute_kda_ma,
-    compute_p2m_ma,
-    get_ale_kernel,
-)
-from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox, vox2mm
+from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
+from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -266,14 +257,6 @@ class KernelTransformer(NiMAREBase):
         pass
 
 
-@due.dcite(
-    references.ALE2,
-    description=(
-        "Modifies ALE algorithm to eliminate within-experiment "
-        "effects and generate MA maps based on subject group "
-        "instead of experiment."
-    ),
-)
 class ALEKernel(KernelTransformer):
     """Generate ALE modeled activation images from coordinates and sample size.
 
@@ -393,48 +376,3 @@ class MKDAKernel(KDAKernel):
     """
 
     _sum_overlap = False
-
-
-class Peaks2MapsKernel(KernelTransformer):
-    """Generate peaks2maps modeled activation images from coordinates.
-
-    .. deprecated:: 0.0.11
-        `Peaks2MapsKernel` will be removed in NiMARE 0.0.13.
-
-    Parameters
-    ----------
-    model_dir : :obj:`str`, optional
-        Path to model directory. Default is "auto".
-
-    Warnings
-    --------
-    Peaks2MapsKernel is not intended for serious research.
-    We strongly recommend against using it for any meaningful analyses.
-    """
-
-    def __init__(self, model_dir="auto"):
-        warnings.warn(
-            "Peaks2MapsKernel is deprecated, and will be removed in NiMARE version 0.0.13.",
-            DeprecationWarning,
-        )
-
-        # Use private attribute to hide value from get_params.
-        # get_params will find model_dir=None, which is *very important* when a path is provided.
-        self._model_dir = model_dir
-
-    def _transform(self, mask, coordinates):
-        transformed = []
-        coordinates_list = []
-        ids = []
-        for id_, data in coordinates.groupby("id"):
-            ijk = np.vstack((data.i.values, data.j.values, data.k.values)).T.astype(int)
-            xyz = vox2mm(ijk, mask.affine)
-            coordinates_list.append(xyz)
-            ids.append(id_)
-
-        imgs = compute_p2m_ma(coordinates_list, skip_out_of_bounds=True, model_dir=self._model_dir)
-        resampled_imgs = []
-        for img in imgs:
-            resampled_imgs.append(image.resample_to_img(img, mask).get_fdata())
-        transformed = list(zip(resampled_imgs, ids))
-        return transformed

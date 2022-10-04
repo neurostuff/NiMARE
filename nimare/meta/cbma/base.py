@@ -188,7 +188,7 @@ class CBMAEstimator(Estimator):
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images
+        return images, {}
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
@@ -616,6 +616,10 @@ class CBMAEstimator(Estimator):
 
         Only call this method from within a Corrector.
 
+        .. versionchanged:: 0.0.13
+
+            Change cluster neighborhood from faces+edges to faces, to match Nilearn.
+
         .. versionchanged:: 0.0.12
 
             * Fix the ``vfwe_only`` option.
@@ -729,7 +733,7 @@ class CBMAEstimator(Estimator):
             iter_df = self.inputs_["coordinates"].copy()
 
             # Define connectivity matrix for cluster labeling
-            conn = ndimage.generate_binary_structure(3, 2)
+            conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
             with tqdm_joblib(tqdm(total=n_iters)):
                 perm_results = Parallel(n_jobs=n_cores)(
@@ -751,7 +755,7 @@ class CBMAEstimator(Estimator):
                 # cluster-label
                 thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
                 thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
-                labeled_matrix, _ = ndimage.measurements.label(thresh_stat_values, conn)
+                labeled_matrix, _ = ndimage.label(thresh_stat_values, conn)
 
                 cluster_labels, idx, cluster_sizes = np.unique(
                     labeled_matrix,
@@ -815,14 +819,14 @@ class CBMAEstimator(Estimator):
 
         if vfwe_only:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
             }
 
         else:
             # Return unthresholded value images
-            images = {
+            maps = {
                 "logp_level-voxel": logp_vfwe_values,
                 "z_level-voxel": z_vfwe_values,
                 "logp_desc-size_level-cluster": logp_csfwe_values,
@@ -831,7 +835,7 @@ class CBMAEstimator(Estimator):
                 "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
-        return images
+        return maps, {}
 
 
 class PairwiseCBMAEstimator(CBMAEstimator):
@@ -908,11 +912,11 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps = self._fit(dataset1, dataset2)
+        maps, tables = self._fit(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset1.masker
 
-        return MetaResult(self, masker, maps)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables)

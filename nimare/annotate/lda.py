@@ -1,18 +1,12 @@
 """Topic modeling with latent Dirichlet allocation."""
+import numpy as np
 import pandas as pd
 from sklearn.decomposition import LatentDirichletAllocation
 
-from nimare import references
 from nimare.annotate.text import generate_counts
 from nimare.base import NiMAREBase
-from nimare.due import due
 
 
-@due.dcite(references.LDA, description="Introduces LDA.")
-@due.dcite(
-    references.LDAMODEL,
-    description="First use of LDA for automated annotation of neuroimaging literature.",
-)
 class LDAModel(NiMAREBase):
     """Generate a latent Dirichlet allocation (LDA) topic model.
 
@@ -104,19 +98,28 @@ class LDAModel(NiMAREBase):
             max_df=len(dset.ids) - 2,
             min_df=2,
         )
-        vocabulary = counts_df.columns.tolist()
+        vocabulary = counts_df.columns.to_numpy()
         count_values = counts_df.values
         study_ids = counts_df.index.tolist()
-        # TODO: LDA50__1_word1_word2_word3
-        topic_names = [f"LDA{self.n_topics}__{i + 1}" for i in range(self.n_topics)]
 
         doc_topic_weights = self.model.fit_transform(count_values)
+        topic_word_weights = self.model.components_
+
+        # Get top 3 words for each topic for annotation
+        sorted_weights_idxs = np.argsort(-topic_word_weights, axis=1)
+        top_tokens = [
+            "_".join(vocabulary[sorted_weights_idxs[topic_i, :]][:3])
+            for topic_i in range(self.n_topics)
+        ]
+        topic_names = [
+            f"LDA{self.n_topics}__{i + 1}_{top_tokens[i]}" for i in range(self.n_topics)
+        ]
+
         doc_topic_weights_df = pd.DataFrame(
             index=study_ids,
             columns=topic_names,
             data=doc_topic_weights,
         )
-        topic_word_weights = self.model.components_
         topic_word_weights_df = pd.DataFrame(
             index=topic_names,
             columns=vocabulary,

@@ -5,18 +5,13 @@ import logging
 import os
 import os.path as op
 import shutil
-import tarfile
 import time
 import zipfile
 from glob import glob
-from io import BytesIO
-from lzma import LZMAFile
 from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
-import requests
-from tqdm.auto import tqdm
 
 from nimare.dataset import Dataset
 from nimare.extract.utils import (
@@ -468,76 +463,3 @@ def download_abstracts(dataset, email):
         dataset.texts, df, left_on="study_id", right_on="study_id", how="left"
     )
     return dataset
-
-
-def download_peaks2maps_model(data_dir=None, overwrite=False):
-    """Download the trained Peaks2Maps model from OHBM 2018.
-
-    .. deprecated:: 0.0.11
-        `download_peaks2maps_model` will be removed in NiMARE 0.0.13.
-
-    .. versionadded:: 0.0.2
-
-    Parameters
-    ----------
-    data_dir : :obj:`pathlib.Path` or :obj:`str` or None, optional
-        Where to put the trained model.
-        If None, then download to the automatic NiMARE data directory.
-        Default is None.
-    overwrite : bool, optional
-        Whether to overwrite an existing model or not. Default is False.
-
-    Returns
-    -------
-    data_dir : str
-        Path to folder containing model.
-    """
-    url = "https://zenodo.org/record/1257721/files/ohbm2018_model.tar.xz?download=1"
-
-    temp_dataset_name = "peaks2maps_model_ohbm2018__temp"
-    data_dir = _get_dataset_dir("", data_dir=data_dir)
-    temp_data_dir = _get_dataset_dir(temp_dataset_name, data_dir=data_dir)
-
-    dataset_name = "peaks2maps_model_ohbm2018"
-    if dataset_name not in data_dir:  # allow data_dir to include model folder
-        data_dir = temp_data_dir.replace(temp_dataset_name, dataset_name)
-
-    desc_file = op.join(data_dir, "description.txt")
-    if op.isfile(desc_file) and overwrite is False:
-        shutil.rmtree(temp_data_dir)
-        return data_dir
-
-    LGR.info("Downloading the model (this is a one-off operation)...")
-    # Streaming, so we can iterate over the response.
-    r = requests.get(url, stream=True)
-    f = BytesIO()
-
-    # Total size in bytes.
-    total_size = int(r.headers.get("content-length", 0))
-    block_size = 1024 * 1024
-    wrote = 0
-    for data in tqdm(
-        r.iter_content(block_size),
-        total=np.ceil(total_size // block_size),
-        unit="MB",
-        unit_scale=True,
-    ):
-        wrote = wrote + len(data)
-        f.write(data)
-    if total_size != 0 and wrote != total_size:
-        raise Exception("Download interrupted")
-
-    f.seek(0)
-    LGR.info(f"Uncompressing the model to {temp_data_dir}...")
-    tf_file = tarfile.TarFile(fileobj=LZMAFile(f), mode="r")
-    tf_file.extractall(temp_data_dir)
-
-    os.rename(op.join(temp_data_dir, "ohbm2018_model"), data_dir)
-    shutil.rmtree(temp_data_dir)
-
-    with open(desc_file, "w") as fo:
-        fo.write("The trained Peaks2Maps model from OHBM 2018.")
-
-    LGR.debug(f"Dataset moved to {data_dir}")
-
-    return data_dir
