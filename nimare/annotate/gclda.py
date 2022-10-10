@@ -92,7 +92,7 @@ def _update_word_topic_assignments(
         p_word_g_topic = (nz_word_topic[word, :] + beta) / (nz_sum_topic + (beta * voc_len))
         p_topic_g_doc = ny_doc_topic[doc, :] + gamma
         probs = p_word_g_topic * p_topic_g_doc  # The unnormalized sampling distribution
-        # print(probs.shape)
+
         # Sample a z_i assignment for the current word-token from the sampling distribution
         probs = probs.reshape(-1) / np.sum(probs)  # Normalize the sampling distribution
         # Numpy returns a binary [1 x T] vector with a '1' in the index of sampled topic
@@ -116,7 +116,7 @@ def _update_peak_assignments(
     topics,
     ny_doc_topic,
     nz_doc_topic,
-    p_x_subregions,
+    peak_probs,
     n_regions,
     n_topics,
     alpha,
@@ -138,8 +138,8 @@ def _update_peak_assignments(
         Number of peak-tokens assigned to document (D) per topic (T).
     nz_doc_topic : (D x T) :obj:`numpy.ndarray`
         Number of word-tokens assigned to each topic (T) per document (D).
-    p_x_subregions : (R x T) :obj:`numpy.ndarray`
-        Probability of generating current x from all subregions.
+    peak_probs : (D x T x R) :obj:`numpy.ndarray`
+        Matrix of probabilities of all peaks given all topic/subregion spatial distributions.
     n_regions : :obj:`int`
         Total number of regions.
     n_topics : :obj:`int`
@@ -164,52 +164,50 @@ def _update_peak_assignments(
     new_topics = []
     for idx, region in enumerate(regions):
         topic = topics[idx]
-        # Compute the probabilities of all subregions given doc
-        #     p(r|d) ~ p(r|t) * p(t|d)
-        # Counts of subregions per topic + prior: p(r|t)
-        p_region_g_topic = ny_region_topic + delta
-        p_region_g_topic[region, topic] -= 1  # Decrement count in Subregion x Topic count matx
-        # Decrement count-matrices to remove current ptoken_topic_idx
-        # because ptoken will be reassigned to a new topic
 
-        # Normalize the columns such that each topic's distribution over subregions sums to 1
+        # Retrieve the probability of generating current x from all
+        # subregions: [R x T] array of probs
+        p_x_subregions = (peak_probs[idx, :, :]).transpose()
+
+        # Compute the probability of region given topic p(r|t)
+        #   Counts of subregions per topic + prior: p(r|t)
+        #   Decrement count in Subregion x Topic count matrix
+        #   Normalize the columns such that each topic's distribution over subregions sums to 1
+        p_region_g_topic = ny_region_topic + delta
+        p_region_g_topic[region, topic] -= 1
         p_region_g_topic = p_region_g_topic / np.sum(p_region_g_topic, axis=0, keepdims=True)
 
-        # Counts of topics per document + prior: p(t|d)
+        # Compute the probability of topic given doc p(t|d)
+        #   Counts of topics per document + prior: p(t|d)
+        #   Decrement count in Document x Topic count matrix
+        #   Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
         p_topic_g_doc = ny_doc_topic[idx, :] + alpha
-        p_topic_g_doc[topic] -= 1  # Decrement count in Document x Topic count matrix
-
-        # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
+        p_topic_g_doc[topic] -= 1
         p_topic_g_doc = np.array([p_topic_g_doc] * n_regions)
 
-        # Compute p(subregion | document): p(r|d) ~ p(r|t) * p(t|d)
-        # [R x T] array of probs
+        # Compute the probability of region given doc: p(r|d) ~ p(r|t) * p(t|d)
         p_region_g_doc = p_topic_g_doc * p_region_g_topic
 
         # Compute the multinomial probability: p(z|y)
-        # Need the current vector of all z and y assignments for current doc
-        # The multinomial from which z is sampled is proportional to number
-        # of y assigned to each topic, plus constant gamma
-        # Compute the proportional probabilities in log-space
+        #   The multinomial from which z is sampled is proportional to number
+        #     of y assigned to each topic, plus constant gamma
+        #   Decrement count in Document x Topic count matrix
+        #   Compute the proportional probabilities in log-space
+        #   Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
         doc_y_counts = ny_doc_topic[idx, :] + gamma
-        doc_y_counts[topic] -= 1  # Decrement count in Document x Topic count matrix
+        doc_y_counts[topic] -= 1
         logp = nz_doc_topic[idx, :] * np.log((doc_y_counts + 1) / (doc_y_counts))
-
-        # Add a constant before exponentiating to avoid any underflow issues
         p_peak_g_topic = np.exp(logp - np.max(logp))
-
-        # Reshape from (ntopics,) to (nregions, ntopics) with duplicated rows
         p_peak_g_topic = np.array([p_peak_g_topic] * n_regions)
 
         # Get the full sampling distribution:
         # [R x T] array containing the proportional probability of all y/r combinations
-        probs_pdf = p_x_subregions[:, :, idx] * p_region_g_doc * p_peak_g_topic
-
-        # Convert from a [R x T] matrix into a [R*T x 1] array we can sample from
+        #   Convert from a [R x T] matrix into a [R*T x 1] array we can sample from
+        #   Normalize the sampling distribution
+        probs_pdf = p_x_subregions * p_region_g_doc * p_peak_g_topic
         probs_pdf = np.reshape(probs_pdf, (n_regions * n_topics))
-
-        # Normalize the sampling distribution
         probs_pdf = probs_pdf / np.sum(probs_pdf)
+
         # Sample a single element (corresponding to a y_i and c_i assignment for the ptoken)
         # from the sampling distribution
         # Returns a binary [1 x R*T] vector with a '1' in location that was sampled
@@ -218,13 +216,12 @@ def _update_peak_assignments(
 
         # Reshape 1D back to [R x T] 2D
         assignment_arr = np.reshape(assignment_vec, (n_regions, n_topics))
+
         # Transform the linear index of the sampled element into the
         # subregion/topic (r/y) assignment indices
         assignment_idx = np.where(assignment_arr)
-        # Subregion sampled (r)
-        region = assignment_idx[0][0]
-        # Topic sampled (y)
-        topic = assignment_idx[1][0]
+        region = assignment_idx[0][0]  # Subregion sampled (r)
+        topic = assignment_idx[1][0]  # Topic sampled (y)
 
         new_regions.append(region)
         new_topics.append(topic)
@@ -630,7 +627,6 @@ class GCLDAModel(NiMAREBase):
             is 1 (log-likelihood is updated every iteration).
         """
         self.iter += 1  # Update total iteration count
-
         LGR.debug(f"Iter {self.iter:04d}: Sampling z")
         self.seed += 1
         (
@@ -653,33 +649,29 @@ class GCLDAModel(NiMAREBase):
         )  # Update z-assignments
 
         LGR.debug(f"Iter {self.iter:04d}: Sampling y|r")
-        # Retrieve p(x|r,y) for all subregions
-        peak_probs = self._get_peak_probs(self).T
-        self.seed += 1  # Seed random number generator
-        rng = np.random.default_rng(self.seed)
-
+        self.seed += 1
         old_regions, old_topics = self.topics["peak_region_idx"], self.topics["peak_topic_idx"]
+        peak_probs = self._get_peak_probs(self)  # Retrieve p(x|r,y) for all subregions
+        rng = np.random.default_rng(self.seed)  # Seed random number generator
 
-        # Create chunks of data to speed up Parallel()(delayed(f)(x) for x in X)
+        # When the size of X is large and the task is fast, Parallel()(delayed(f)(x) for x in X)
+        # is very slow. Split data into smaller chuncks to speed up Parallel().
+        doc_idx = self.data["ptoken_doc_idx"]
+        n_docs = len(doc_idx)
         n_chunks = self.n_cores
-        n_elements = len(self.data["ptoken_doc_idx"])
-        chunk_size = math.ceil(n_elements / n_chunks)
+        chunk_size = math.ceil(n_docs / n_chunks)
         chunks = [
             [
-                old_regions[chunk_i : chunk_i + chunk_size],
-                old_topics[chunk_i : chunk_i + chunk_size],
-                self.topics["n_peak_tokens_doc_by_topic"][
-                    self.data["ptoken_doc_idx"][chunk_i : chunk_i + chunk_size], :
-                ],
-                self.topics["n_word_tokens_doc_by_topic"][
-                    self.data["ptoken_doc_idx"][chunk_i : chunk_i + chunk_size], :
-                ],
-                peak_probs[:, :, chunk_i : chunk_i + chunk_size],
+                old_regions[chk_i : chk_i + chunk_size],
+                old_topics[chk_i : chk_i + chunk_size],
+                self.topics["n_peak_tokens_doc_by_topic"][doc_idx[chk_i : chk_i + chunk_size], :],
+                self.topics["n_word_tokens_doc_by_topic"][doc_idx[chk_i : chk_i + chunk_size], :],
+                peak_probs[chk_i : chk_i + chunk_size, :, :],
             ]
-            for chunk_i in range(0, n_elements, chunk_size)
+            for chk_i in range(0, n_docs, chunk_size)
         ]
 
-        results = Parallel(n_jobs=self.n_cores)(
+        results = Parallel(n_jobs=self.n_cores, max_nbytes=None)(
             delayed(_update_peak_assignments)(
                 self.topics["n_peak_tokens_region_by_topic"],
                 *chunk,
@@ -692,26 +684,21 @@ class GCLDAModel(NiMAREBase):
             )
             for chunk in chunks
         )  # Update y-assignments
+
         regions, topics = zip(*results)
         regions = list(itertools.chain(*regions))
         topics = list(itertools.chain(*topics))
 
-        # Decrement count-matrices to remove current ptoken_topic_idx
-        # because ptoken will be reassigned to a new topic
+        # Decrement count-matrices to remove previous ptoken_topic_idx (doc_idx)
         np.subtract.at(self.topics["n_peak_tokens_region_by_topic"], (old_regions, old_topics), 1)
-        np.subtract.at(
-            self.topics["n_peak_tokens_doc_by_topic"], (self.data["ptoken_doc_idx"], old_topics), 1
-        )
+        np.subtract.at(self.topics["n_peak_tokens_doc_by_topic"], (doc_idx, old_topics), 1)
 
-        # Update the indices and the count matrices using the sampled y/r assignments
+        # Update the indices and the count matrices using the regions and topics assignments
         np.add.at(self.topics["n_peak_tokens_region_by_topic"], (regions, topics), 1)
-        np.add.at(
-            self.topics["n_peak_tokens_doc_by_topic"], (self.data["ptoken_doc_idx"], topics), 1
-        )
+        np.add.at(self.topics["n_peak_tokens_doc_by_topic"], (doc_idx, topics), 1)
 
-        # Update y->topic assignment
+        # Update y->topic and y->subregion assignment
         self.topics["peak_topic_idx"] = np.array(topics)
-        # Update y->subregion assignment
         self.topics["peak_region_idx"] = np.array(regions)
 
         LGR.debug(f"Iter {self.iter:04d}: Updating spatial params")
