@@ -163,7 +163,6 @@ def _update_peak_assignments(
     sampled_topics : :obj:`list`
         Topics sampled (y).
     """
-
     sampled_regions = []
     sampled_topics = []
     for i_ptoken, doc in enumerate(doc_idx):
