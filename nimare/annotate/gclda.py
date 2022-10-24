@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from nilearn._utils import load_niimg
-from numba import jit
 from scipy.stats import multivariate_normal
 
 from nimare.base import NiMAREBase
@@ -18,63 +17,54 @@ from nimare.utils import _check_ncores, get_template
 LGR = logging.getLogger(__name__)
 
 
-@jit(nopython=True)
 def _update_word_topic_assignments(
+    word_idx,
+    word_doc_idx,
     word_topic_idx,
+    seeds,
     nz_word_topic,
     nz_sum_topic,
-    nz_doc_topic,
     ny_doc_topic,
-    word_doc_idx,
-    word_idx,
     voc_len,
     beta,
     gamma,
-    randseed,
 ):
     """Update wtoken_topic_idx (z) indicator variables assigning words->topics.
 
     Parameters
     ----------
-    word_topic_idx : :obj:`numpy.ndarray`
+    word_idx : (WT) :obj:`list`
+        Word tokens.
+    word_doc_idx : (WT) :obj:`list`
+        Document index.
+    word_topic_idx : (WT) :obj:`numpy.ndarray`
         Topic assignment for word tokens.
+    seeds : (WT) :obj:`numpy.ndarray`
+        Array of seeds for multi-core reproducibility of default_rng() instance.
     nz_word_topic : (W x T) :obj:`numpy.ndarray`
         Number of word-tokens assigned to each topic (T) per word-type (W).
     nz_sum_topic : (1 x T) :obj:`numpy.ndarray`
         Total number of word-tokens assigned to each topic (T) (across all docs).
-    nz_doc_topic : (D x T) :obj:`numpy.ndarray`
-        Number of word-tokens assigned to each topic (T) per document (D).
     ny_doc_topic : (D x T) :obj:`numpy.ndarray`
         Number of peak-tokens assigned to each topic (T) per document (D).
-    word_doc_idx : :obj:`numpy.ndarray`
-        Document index.
-    word_idx : :obj:`numpy.ndarray`
-        Word tokens.
     voc_len : :obj:`int`
         Total number of word-tokens in the vocabulary.
     beta : :obj:`float`
         Prior count on word-types for each topic.
     gamma : :obj:`float`
         Prior count added to y-counts when sampling z assignments.
-    randseed : :obj:`int`
-        Random seed for this iteration.
 
     Returns
     -------
-    word_topic_idx : :obj:`numpy.ndarray`
-        Updated topic assignment for word tokens.
-    nz_word_topic : (W x T) :obj:`numpy.ndarray`
-        Updated number of word-tokens assigned to each topic (T) per word-type (W).
-    nz_sum_topic : (1 x T) :obj:`numpy.ndarray`
-        Updated total number of word-tokens assigned to each topic (T) (across all docs).
-    nz_doc_topic : (D x T) :obj:`numpy.ndarray`
-        Updated number of word-tokens assigned to each topic (T) per document (D).
+    sampled_topics : :obj:`list`
+        Topics sampled (z).
     """
-    # --- Seed random number generator
-    np.random.seed(randseed)
-
+    sampled_topics = []
     # Loop over all word tokens
     for i_wtoken, word in enumerate(word_idx):
+        # --- Seed random number generator for reproducibility
+        rng = np.random.default_rng(seeds[i_wtoken])
+
         # Find document in which word token (not just word) appears
         doc = word_doc_idx[i_wtoken]
         # current topic assignment for word token w_i
@@ -82,14 +72,15 @@ def _update_word_topic_assignments(
 
         # Decrement count-matrices to remove current wtoken_topic_idx
         # because wtoken will be reassigned to a new topic
-        nz_word_topic[word, topic] -= 1
-        nz_sum_topic[0, topic] -= 1
-        nz_doc_topic[doc, topic] -= 1
+        nz_topic = nz_word_topic[word, :] + beta
+        nz_topic[topic] -= 1
+        sum_topic_counts = nz_sum_topic + (beta * voc_len)
+        sum_topic_counts[0, topic] -= 1
 
         # Get sampling distribution:
         #    p(z_i|z,d,w) ~ p(w|t) * p(t|d)
         #                 ~ p_w_t * p_topic_g_doc
-        p_word_g_topic = (nz_word_topic[word, :] + beta) / (nz_sum_topic + (beta * voc_len))
+        p_word_g_topic = nz_topic / sum_topic_counts
         p_topic_g_doc = ny_doc_topic[doc, :] + gamma
         probs = p_word_g_topic * p_topic_g_doc  # The unnormalized sampling distribution
 
@@ -97,17 +88,13 @@ def _update_word_topic_assignments(
         probs = probs.reshape(-1) / np.sum(probs)  # Normalize the sampling distribution
         # Numpy returns a binary [1 x T] vector with a '1' in the index of sampled topic
         # and zeros everywhere else
-        assigned_topic_vec = np.random.multinomial(1, probs)
+        assigned_topic_vec = rng.multinomial(1, probs)
         # Extract selected topic from vector
         topic = np.where(assigned_topic_vec)[0][0]
 
-        # Update the indices and the count matrices using the sampled z assignment
-        word_topic_idx[i_wtoken] = topic  # Update w_i topic-assignment
-        nz_word_topic[word, topic] += 1
-        nz_sum_topic[0, topic] += 1
-        nz_doc_topic[doc, topic] += 1
+        sampled_topics.append(topic)
 
-    return word_topic_idx, nz_word_topic, nz_sum_topic, nz_doc_topic
+    return sampled_topics
 
 
 def _update_peak_assignments(
@@ -637,60 +624,99 @@ class GCLDAModel(NiMAREBase):
         self.iter += 1  # Update total iteration count
         LGR.debug(f"Iter {self.iter:04d}: Sampling z")
         self.seed += 1
-        (
-            self.topics["wtoken_topic_idx"],
-            self.topics["n_word_tokens_word_by_topic"],
-            self.topics["total_n_word_tokens_by_topic"],
-            self.topics["n_word_tokens_doc_by_topic"],
-        ) = _update_word_topic_assignments(
-            self.topics["wtoken_topic_idx"],
-            self.topics["n_word_tokens_word_by_topic"],
-            self.topics["total_n_word_tokens_by_topic"],
-            self.topics["n_word_tokens_doc_by_topic"],
-            self.topics["n_peak_tokens_doc_by_topic"],
-            np.array(self.data["wtoken_doc_idx"]),
-            np.array(self.data["wtoken_word_idx"]),
-            len(self.vocabulary),
-            self.params["beta"],
-            self.params["gamma"],
-            self.seed,
+        np.random.seed(self.seed)  # Seed random number generator
+
+        old_wt_idx = self.topics["wtoken_topic_idx"]
+
+        n_wtoken = len(self.data["wtoken_word_idx"])
+        chunk_size = math.ceil(n_wtoken / self.n_cores)
+        seeds = np.random.randint(1e8, size=n_wtoken)  # Array of seeds for multicore reproducib...
+        chunks = [
+            {
+                "word_idx": self.data["wtoken_word_idx"][chunk_i : chunk_i + chunk_size],
+                "word_doc_idx": self.data["wtoken_doc_idx"][chunk_i : chunk_i + chunk_size],
+                "word_topic_idx": self.topics["wtoken_topic_idx"][chunk_i : chunk_i + chunk_size],
+                "seeds": seeds[chunk_i : chunk_i + chunk_size],
+            }
+            for chunk_i in range(0, n_wtoken, chunk_size)
+        ]
+
+        results = Parallel(n_jobs=self.n_cores, max_nbytes=None)(
+            delayed(_update_word_topic_assignments)(
+                **chunk,
+                nz_word_topic=self.topics["n_word_tokens_word_by_topic"],
+                nz_sum_topic=self.topics["total_n_word_tokens_by_topic"],
+                ny_doc_topic=self.topics["n_peak_tokens_doc_by_topic"],
+                voc_len=len(self.vocabulary),
+                beta=self.params["beta"],
+                gamma=self.params["gamma"],
+            )
+            for chunk in chunks
         )  # Update z-assignments
+        sampled_wt_idx = list(itertools.chain(*results))
+
+        # Decrement count-matrices to remove current wtoken_topic_idx
+        # because wtoken will be reassigned to a new topic
+        np.subtract.at(
+            self.topics["n_word_tokens_word_by_topic"],
+            (self.data["wtoken_word_idx"], old_wt_idx),
+            1,
+        )
+        np.subtract.at(self.topics["total_n_word_tokens_by_topic"], (0, old_wt_idx), 1)
+        np.subtract.at(
+            self.topics["n_word_tokens_doc_by_topic"],
+            (self.data["wtoken_doc_idx"], old_wt_idx),
+            1,
+        )
+        # Update the indices and the count matrices using the sampled z assignment
+        np.add.at(
+            self.topics["n_word_tokens_word_by_topic"],
+            (self.data["wtoken_word_idx"], sampled_wt_idx),
+            1,
+        )
+        np.add.at(self.topics["total_n_word_tokens_by_topic"], (0, sampled_wt_idx), 1)
+        np.add.at(
+            self.topics["n_word_tokens_doc_by_topic"],
+            (self.data["wtoken_doc_idx"], sampled_wt_idx),
+            1,
+        )
+        # Update w_i topic-assignment
+        self.topics["wtoken_topic_idx"] = np.array(sampled_wt_idx)
 
         LGR.debug(f"Iter {self.iter:04d}: Sampling y|r")
         self.seed += 1
+        np.random.seed(self.seed)  # Seed random number generator
+
         old_regions, old_topics = self.topics["peak_region_idx"], self.topics["peak_topic_idx"]
         peak_probs = self._get_peak_probs(self)  # Retrieve p(x|r,y) for all subregions
-        np.random.seed(self.seed)  # Seed random number generator
 
         # When the size of X is large and the task is fast, Parallel()(delayed(f)(x) for x in X)
         # is very slow. Split data into smaller chuncks to speed up Parallel().
         n_ptoken = len(self.data["ptoken_doc_idx"])
-        n_chunks = self.n_cores
-        chunk_size = math.ceil(n_ptoken / n_chunks)
-        # Array of seeds for multi-core reproducibility
-        seeds = np.random.randint(1e8, size=n_ptoken)
+        chunk_size = math.ceil(n_ptoken / self.n_cores)
+        seeds = np.random.randint(1e8, size=n_ptoken)  # Array of seeds for multicore reproducib...
         chunks = [
-            [
-                self.data["ptoken_doc_idx"][chunk_i : chunk_i + chunk_size],
-                old_regions[chunk_i : chunk_i + chunk_size],
-                old_topics[chunk_i : chunk_i + chunk_size],
-                peak_probs[chunk_i : chunk_i + chunk_size, :, :],
-                seeds[chunk_i : chunk_i + chunk_size],
-            ]
+            {
+                "doc_idx": self.data["ptoken_doc_idx"][chunk_i : chunk_i + chunk_size],
+                "regions": old_regions[chunk_i : chunk_i + chunk_size],
+                "topics": old_topics[chunk_i : chunk_i + chunk_size],
+                "peak_probs": peak_probs[chunk_i : chunk_i + chunk_size, :, :],
+                "seeds": seeds[chunk_i : chunk_i + chunk_size],
+            }
             for chunk_i in range(0, n_ptoken, chunk_size)
         ]
 
         results = Parallel(n_jobs=self.n_cores, max_nbytes=None)(
             delayed(_update_peak_assignments)(
-                *chunk,
-                self.topics["n_peak_tokens_region_by_topic"],
-                self.topics["n_peak_tokens_doc_by_topic"],
-                self.topics["n_word_tokens_doc_by_topic"],
-                self.params["n_regions"],
-                self.params["n_topics"],
-                self.params["alpha"],
-                self.params["delta"],
-                self.params["gamma"],
+                **chunk,
+                ny_region_topic=self.topics["n_peak_tokens_region_by_topic"],
+                ny_doc_topic=self.topics["n_peak_tokens_doc_by_topic"],
+                nz_doc_topic=self.topics["n_word_tokens_doc_by_topic"],
+                n_regions=self.params["n_regions"],
+                n_topics=self.params["n_topics"],
+                alpha=self.params["alpha"],
+                delta=self.params["delta"],
+                gamma=self.params["gamma"],
             )
             for chunk in chunks
         )  # Update y-assignments
