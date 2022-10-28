@@ -59,6 +59,7 @@ class MetaResult(object):
 
         self.maps = maps
         self.tables = tables
+        self.metadata = {}
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
