@@ -223,7 +223,7 @@ class CBMREstimator(Estimator):
             group_beta_linear_weight = group_beta_linear_weight.cpu().detach().numpy().reshape((P,))
             Spatial_Regression_Coef[group] = group_beta_linear_weight
             group_studywise_spatial_intensity = np.exp(np.matmul(Coef_spline_bases, group_beta_linear_weight))
-            maps['Group_'+group+'_Studywise_Spatial_Intensity'] = group_studywise_spatial_intensity
+            maps['Group_'+group+'_Studywise_Spatial_Intensity'] = group_studywise_spatial_intensity#.reshape((1,-1))
             # overdispersion parameter: alpha
             if self.model == 'NB':
                 alpha = cbmr_model.all_alpha_sqrt[group]**2
@@ -283,7 +283,7 @@ class CBMREstimator(Estimator):
             SE_log_spatial_intensity = np.sqrt(Var_log_spatial_intensity)
             log_spatial_intensity_se[group] = SE_log_spatial_intensity
             
-            group_studywise_spatial_intensity = maps['Group_'+group+'_Studywise_Spatial_Intensity']
+            group_studywise_spatial_intensity = maps['Group_'+group+'_Studywise_Spatial_Intensity'].reshape((-1))
             SE_spatial_intensity = group_studywise_spatial_intensity * SE_log_spatial_intensity
             spatial_intensity_se[group] = SE_spatial_intensity
 
@@ -488,27 +488,25 @@ class CBMRInference(object):
                 F_spatial_coef = self._Fisher_info_spatial_coef(con_group_involved_index)
                 Cov_spatial_coef = np.linalg.inv(F_spatial_coef)
                 spatial_coef_dim = self.CBMRResults.tables['Spatial_Regression_Coef'].to_numpy().shape[1]
-                Cov_log_intensity = list()
+                Cov_log_intensity = np.empty(shape=(0,n_brain_voxel))
                 for k in range(n_con_group_involved):
                     for s in range(n_con_group_involved):
-                        Cov_beta_ks = Cov[k*spatial_coef_dim: (k+1)*spatial_coef_dim, s*spatial_coef_dim: (s+1)*spatial_coef_dim]
-                        Cov_group_log_intensity = np.empty(shape=(0, ))
+                        Cov_beta_ks = Cov_spatial_coef[k*spatial_coef_dim: (k+1)*spatial_coef_dim, s*spatial_coef_dim: (s+1)*spatial_coef_dim]
+                        Cov_group_log_intensity = np.empty(shape=(1, 0))
                         for j in range(n_brain_voxel):
                             x_j = self.CBMRResults.estimator.inputs_['Coef_spline_bases'][j, :].reshape((1, spatial_coef_dim))
                             Cov_group_log_intensity_j = x_j @ Cov_beta_ks @ x_j.T
-                            Cov_group_log_intensity = np.concatenate((Cov_group_log_intensity, Cov_group_log_intensity_j.reshape(1,)), axis=0)
-                        Cov_log_intensity.append(Cov_group_log_intensity)
-                Cov_log_intensity = np.stack(Cov_log_intensity, axis=0) # (m^2, n_voxels)
+                            Cov_group_log_intensity = np.concatenate((Cov_group_log_intensity, Cov_group_log_intensity_j), axis=1)
+                        Cov_log_intensity = np.concatenate((Cov_log_intensity, Cov_group_log_intensity), axis=0) # (m^2, n_voxels)
                 # GLH on log_intensity (eta)
-                chi_sq_spatial = list()
+                chi_sq_spatial = np.empty(shape=(0, ))
                 for j in range(n_brain_voxel):
                     Contrast_log_intensity_j = Contrast_log_intensity[:, j].reshape(m, 1)
                     V_j = Cov_log_intensity[:, j].reshape((n_con_group_involved, n_con_group_involved))
                     CV_jC = simp_con_group @ V_j @ simp_con_group.T
                     CV_jC_inv = np.linalg.inv(CV_jC)
                     chi_sq_spatial_j = Contrast_log_intensity_j.T @ CV_jC_inv @ Contrast_log_intensity_j
-                    chi_sq_spatial.append(chi_sq_spatial_j)
-                chi_sq_spatial = np.array(chi_sq_spatial).reshape(n_brain_voxel, 1)
+                    chi_sq_spatial = np.concatenate((chi_sq_spatial, chi_sq_spatial_j.reshape(1,)), axis=0)
                 p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
 
                 con_group_name = self.t_con_group_name[con_group_count]
@@ -530,6 +528,7 @@ class CBMRInference(object):
                 F_moderator_coef = self._Fisher_info_moderator_coef()
                 Cov_moderator_coef = np.linalg.inv(F_moderator_coef)
                 chi_sq_moderator = Contrast_moderator_coef.T @ np.linalg.inv(con_moderator @ Cov_moderator_coef @ con_moderator.T) @ Contrast_moderator_coef
+                chi_sq_moderator = chi_sq_moderator.item()
                 p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
             
                 con_moderator_name = self.t_con_moderator_name[con_moderator_count]

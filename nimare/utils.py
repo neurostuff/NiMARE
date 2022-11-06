@@ -1262,16 +1262,19 @@ def standardize_field(dataset, metadata):
     return dataset
 
 
-# def index2vox(vals, masker_voxels):
-#     print('23')
-#     xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
-#     yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
-#     zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
-#     image_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
-#     spline_voxel_index = np.arange(np.prod(image_dim))
-#     for i in spline_voxel_index:
-#         print('13')
+def index2vox(vals, masker_voxels):
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+    image_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
+    voxel_array = np.zeros(shape=masker_voxels.shape)
+    index_count = 0
+    for i in range(image_dim[0]):
+        for j in range(image_dim[1]):
+            for k in range(image_dim[2]):
+                x,y,z = xx[i], yy[j], zz[k]
+                if masker_voxels[x,y,z] == 1:
+                    voxel_array[x,y,z] = vals[index_count]
+                    index_count += 1
 
-
-
-    return 
+    return voxel_array
