@@ -11,8 +11,6 @@ from nimare.utils import get_masker, get_template, mm2vox
 @pytest.mark.parametrize(
     "kern, res, param, return_type, kwargs",
     [
-        (kernel.ALEKernel, 1, "dataset", "dataset", {"sample_size": 20}),
-        (kernel.ALEKernel, 2, "dataset", "dataset", {"sample_size": 20}),
         (kernel.ALEKernel, 1, "dataset", "image", {"sample_size": 20}),
         (kernel.ALEKernel, 2, "dataset", "image", {"sample_size": 20}),
         (kernel.ALEKernel, 1, "dataframe", "image", {"sample_size": 20}),
