@@ -41,7 +41,7 @@ from nimare.io import convert_neurosynth_to_dataset
 
 # biopython is unnecessary here, but is required by download_abstracts
 # importing here only to document dependency and cause early failure if missing
-import biopython
+import Bio
 
 ###############################################################################
 # Download Neurosynth
