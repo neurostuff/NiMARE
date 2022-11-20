@@ -100,7 +100,7 @@ class CBMREstimator(Estimator):
                     # group-wise foci coordinates
                     group_xyz = group_coordinates[['x', 'y', 'z']].values
                     group_ijk = mm2vox(group_xyz, mask_img.affine)
-                    group_foci_per_voxel = np.zeros(mask_img.shape, dtype=int)
+                    group_foci_per_voxel = np.zeros(mask_img.shape, dtype=np.int32)
                     for ijk in group_ijk:
                         group_foci_per_voxel[ijk[0], ijk[1], ijk[2]] += 1
                     # will not work with maskers that aren't NiftiMaskers
@@ -140,13 +140,13 @@ class CBMREstimator(Estimator):
     def _update(self, model, optimizer, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study, prev_loss, gamma=0.999): 
         self.iter += 1
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=gamma) # learning rate decay
-        scheduler.step()
         def closure():
             optimizer.zero_grad()
             loss = model(Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study)
             loss.backward()
             return loss
         loss = optimizer.step(closure)
+        scheduler.step()
         # reset the L-BFGS params if NaN appears in coefficient of regression
         if any([torch.any(torch.isnan(model.all_beta_linears[group].weight)) for group in self.inputs_['all_group_study_id'].keys()]): 
             all_beta_linears, all_alpha_sqrt, all_alpha = dict(), dict(), dict()
@@ -413,7 +413,8 @@ class CBMRInference(object):
         involved_group_foci_per_study = [torch.tensor(self.CBMRResults.estimator.inputs_['all_foci_per_study'][group], dtype=torch.float64, device=self.device) for group in GLH_involved]
         if 'Overdispersion_Coef' in self.CBMRResults.tables.keys():
             involved_overdispersion_coef = torch.tensor([self.CBMRResults.tables['Overdispersion_Coef'].to_numpy()[i, :] for i in GLH_involved_index], dtype=torch.float64, device=self.device)
-        involved_spatial_coef = torch.tensor([self.CBMRResults.tables['Spatial_Regression_Coef'].to_numpy()[i, :].reshape((-1,1)) for i in GLH_involved_index], dtype=torch.float64, device=self.device)
+        involved_spatial_coef = np.stack([self.CBMRResults.tables['Spatial_Regression_Coef'].to_numpy()[i, :].reshape((-1,1)) for i in GLH_involved_index])
+        involved_spatial_coef = torch.tensor(involved_spatial_coef, dtype=torch.float64, device=self.device)
         n_involved_groups, spatial_coef_dim, _ = involved_spatial_coef.shape
         if self.CBMRResults.estimator.moderators:
             involved_group_moderators = [torch.tensor(self.CBMRResults.estimator.inputs_['all_group_moderators'][group], dtype=torch.float64, device=self.device) for group in GLH_involved]
@@ -436,7 +437,8 @@ class CBMRInference(object):
         Coef_spline_bases = torch.tensor(self.CBMRResults.estimator.inputs_['Coef_spline_bases'], dtype=torch.float64, device=self.device)
         all_group_foci_per_voxel = [torch.tensor(self.CBMRResults.estimator.inputs_['all_foci_per_voxel'][group], dtype=torch.float64, device=self.device) for group in self.group_names]
         all_group_foci_per_study = [torch.tensor(self.CBMRResults.estimator.inputs_['all_foci_per_study'][group], dtype=torch.float64, device=self.device) for group in self.group_names]
-        all_spatial_coef = torch.tensor([self.CBMRResults.tables['Spatial_Regression_Coef'].to_numpy()[i, :].reshape((-1,1)) for i in range(self.n_groups)], dtype=torch.float64, device=self.device)
+        all_spatial_coef = np.stack([self.CBMRResults.tables['Spatial_Regression_Coef'].to_numpy()[i, :].reshape((-1,1)) for i in range(self.n_groups)])
+        all_spatial_coef = torch.tensor(all_spatial_coef, dtype=torch.float64, device=self.device)
         
         all_moderator_coef = torch.tensor(self.CBMRResults.tables['Moderators_Regression_Coef'].to_numpy().T, dtype=torch.float64, device=self.device)
         moderator_coef_dim, _ = all_moderator_coef.shape
