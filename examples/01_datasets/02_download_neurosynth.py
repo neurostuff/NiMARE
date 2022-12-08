@@ -39,6 +39,10 @@ from pprint import pprint
 from nimare.extract import download_abstracts, fetch_neuroquery, fetch_neurosynth
 from nimare.io import convert_neurosynth_to_dataset
 
+# biopython is unnecessary here, but is required by download_abstracts.
+# We import it here only to document the dependency and cause an early failure if it's missing.
+import Bio  # pip install biopython
+
 ###############################################################################
 # Download Neurosynth
 # -----------------------------------------------------------------------------
@@ -74,7 +78,7 @@ print(neurosynth_dset)
 # This is only possible because Neurosynth uses PMIDs as study IDs.
 #
 # Make sure you replace the example email address with your own.
-neurosynth_dset = extract.download_abstracts(neurosynth_dset, "example@example.edu")
+neurosynth_dset = download_abstracts(neurosynth_dset, "example@example.edu")
 neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pkl.gz"))
 
 ###############################################################################
