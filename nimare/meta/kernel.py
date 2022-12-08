@@ -83,7 +83,7 @@ class KernelTransformer(NiMAREBase):
             If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
             Default is None.
         return_type : {'sparse', 'array', 'image', 'dataset'}, optional
-            Whether to return a sparse matrix ('sparse') numpy array ('array'),
+            Whether to return a sparse matrix ('sparse'), a numpy array ('array'),
             or a list of niimgs ('image').
             Default is 'image'.
 
