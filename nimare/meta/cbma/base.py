@@ -207,7 +207,6 @@ class CBMAEstimator(Estimator):
             Return a 4D sparse array of shape
             (n_studies, mask.shape) with MA maps.
         """
-        # if maps_key in self.inputs_.keys():
         LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
 
         ma_maps = self.kernel_transformer.transform(

@@ -215,6 +215,10 @@ class ALEKernel(KernelTransformer):
     will be determined on a study-wise basis based on the sample sizes available in the input,
     via the method described in :footcite:t:`eickhoff2012activation`.
 
+    .. versionchanged:: 0.0.13
+
+            - Remove "dataset" `return_type` option.
+
     .. versionchanged:: 0.0.12
 
         * Remove low-memory option in favor of sparse arrays for kernel transformers.
@@ -277,6 +281,10 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.0.13
+
+            - Remove "dataset" `return_type` option.
+
     .. versionchanged:: 0.0.12
 
         * Remove low-memory option in favor of sparse arrays for kernel transformers.
@@ -313,6 +321,10 @@ class KDAKernel(KernelTransformer):
 
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
+
+    .. versionchanged:: 0.0.13
+
+            - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 
