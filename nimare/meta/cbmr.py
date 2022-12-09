@@ -1,17 +1,11 @@
-from importlib.util import set_loader
-import string
-from attr import has
-from numpy import spacing
 from nimare.base import Estimator
-from nimare.utils import get_template, get_masker, B_spline_bases
+from nimare.utils import get_masker, B_spline_bases
 import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
 from nimare.utils import mm2vox
 from nimare.diagnostics import FocusFilter
-from nimare.transforms import z_to_p
-from nimare import transforms
 import torch
 import functorch
 import logging
@@ -56,8 +50,9 @@ class CBMREstimator(Estimator):
     Currently, the only available option is Firth-type penalty, which penalizes likelihood function
     by Jeffrey's invariant prior and guarantees convergent estimates.
     spline_spacing: :obj:`~int`, optional
-    Spatial structure of foci counts is parameterized by coefficient of cubic B-spline bases in CBMR.
-    Spatial smoothness in CBMR is determined by spline spacing, which is shared across x,y,z dimension.
+    Spatial structure of foci counts is parameterized by coefficient of cubic B-spline bases
+    in CBMR. Spatial smoothness in CBMR is determined by spline spacing, which is shared across
+    x,y,z dimension.
     Default is 10 (20mm).
     n_iters: :obj:`int`, optional
         Number of iterations limit in optimisation of log-likelihood function.
@@ -66,7 +61,8 @@ class CBMREstimator(Estimator):
         Learning rate in optimization of log-likelihood function.
         Default is 1e-2 for Poisson and clustered NB model, and 1e-3 for NB model.
     tol: :obj:`float`, optional
-        Stopping criteria w.r.t difference of log-likelihood function in two consecutive iterations.
+        Stopping criteria w.r.t difference of log-likelihood function in two consecutive
+        iterations.
         Default is 1e-2
     device: :obj:`string`, optional
         Device type ('cpu' or 'cuda') represents the device on which operations will be allocated
@@ -80,10 +76,14 @@ class CBMREstimator(Estimator):
     masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMR estimators, there is only multiple keys: coordinates,
-        mask_img (Niftiimage of brain mask), id (study id), all_group_study_id (study id categorized
-        by groups), all_group_moderators (study-level moderators categorized by groups if exist),
-        Coef_spline_bases (spatial matrix of coefficient of cubic B-spline bases in x,y,z dimension),
+        Inputs to the Estimator. For CBMR estimators, there is only multiple keys:
+        coordinates,
+        mask_img (Niftiimage of brain mask),
+        id (study id),
+        all_group_study_id (study id categorized by groups),
+        all_group_moderators (study-level moderators categorized by groups if exist),
+        Coef_spline_bases (spatial matrix of coefficient of cubic B-spline
+        bases in x,y,z dimension),
         all_foci_per_voxel (voxelwise sum of foci count across studies, categorized by groups),
         all_foci_per_study (study-wise sum of foci count across space, categorized by groups).
 
@@ -125,7 +125,7 @@ class CBMREstimator(Estimator):
         self.tol = tol
         self.device = device
         if self.device == "cuda" and not torch.cuda.is_available():
-            LGR.debug(f"cuda not found, use device 'cpu'")
+            LGR.debug("cuda not found, use device cpu")
             self.device = "cpu"
 
         # Initialize optimisation parameters
@@ -134,15 +134,17 @@ class CBMREstimator(Estimator):
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
 
-        Also, categorize study id, voxelwise sum of foci counts across studies, study-wise sum of foci counts
-        across space into multiple groups. And summarize study-level moderators into multiple groups (if exist).
+        Also, categorize study id, voxelwise sum of foci counts across studies, study-wise sum of
+        foci counts across space into multiple groups. And summarize study-level moderators into
+        multiple groups (if exist).
 
         Parameters
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             In this method, the Dataset is used to (1) select the appropriate mask image,
             (2) categorize it into multiple groups according to group type in annotations,
-            (3) summarize group-wise study id, foci per voxel, foci per study, moderators (if exist),
+            (3) summarize group-wise study id, foci per voxel, foci per study, moderators
+            (if exist),
             (4) extract sample size metadata and use it as one of study-level moderators.
 
         Attributes
@@ -157,7 +159,7 @@ class CBMREstimator(Estimator):
             studies, categorized by groups),
             (6) an 'all_foci_per_study' key will be added (study-wise sum of foci count across
             space, categorized by groups),
-            (7) an 'all_group_moderators' key may be added if study-level moderators are considered'
+            (7) an 'all_group_moderators' key may be added if study-level moderators exists
         """
         masker = self.masker or dataset.masker
 
@@ -182,9 +184,7 @@ class CBMREstimator(Estimator):
                 elif isinstance(self.group_names, str):
                     if self.group_names not in valid_dset_annotations.columns:
                         raise ValueError(
-                            "group_names: {} does not exist in the dataset".format(
-                                self.group_names
-                            )
+                            f"group_names: {self.group_names} does not exist in the dataset"
                         )
                     else:
                         uniq_groups = list(valid_dset_annotations[self.group_names].unique())
@@ -202,9 +202,7 @@ class CBMREstimator(Estimator):
                     ]
                     if len(not_exist_group_names) > 0:
                         raise ValueError(
-                            "group_names: {} does not exist in the dataset".format(
-                                not_exist_group_names
-                            )
+                            f"group_names: {not_exist_group_names} does not exist in the dataset"
                         )
                     uniq_group_splits = (
                         valid_dset_annotations[self.group_names].drop_duplicates().values.tolist()
@@ -282,7 +280,8 @@ class CBMREstimator(Estimator):
         penalty : :obj:`bool`
             Whether to penalize log-likelihood function with Firth-type penalty.
         device : :obj:`str`
-             Device type ('cpu' or 'cuda') represents the device on which operations will be allocated
+            Device type ('cpu' or 'cuda') represents the device on which operations will
+            be allocated
         """
         beta_dim = self.inputs_["Coef_spline_bases"].shape[1]  # regression coef of spatial effect
         if self.moderators:
@@ -337,8 +336,8 @@ class CBMREstimator(Estimator):
     ):
         """One iteration in optimization with L-BFGS.
 
-        Adjust learning rate based on the number of iteration (with learning rate decay parameter `gamma`, default value is 0.999).
-        Reset L-BFGS optimizer if NaN occurs.
+        Adjust learning rate based on the number of iteration (with learning rate decay parameter
+        `gamma`, default value is 0.999).Reset L-BFGS optimizer if NaN occurs.
         """
         self.iter += 1
         scheduler = torch.optim.lr_scheduler.ExponentialLR(
@@ -362,9 +361,8 @@ class CBMREstimator(Estimator):
         ):
             if self.iter == 1:  # NaN occurs in the first iteration
                 raise ValueError(
-                    "The current learing rate {} gives rise to NaN values, adjust it to a smaller value.".format(
-                        str(self.lr)
-                    )
+                    """The current learing rate {str(self.lr)} gives rise to NaN values, adjust
+                    to a smaller value."""
                 )
             all_beta_linears, all_alpha_sqrt, all_alpha = dict(), dict(), dict()
             for group in self.inputs_["all_group_study_id"].keys():
@@ -390,7 +388,7 @@ class CBMREstimator(Estimator):
             elif self.model == "clustered_NB":
                 model.all_alpha = torch.nn.ParameterDict(all_alpha)
 
-            LGR.debug(f"Reset L-BFGS optimizer......")
+            LGR.debug("Reset L-BFGS optimizer......")
         else:
             self.last_state = copy.deepcopy(
                 model.state_dict()
@@ -401,7 +399,8 @@ class CBMREstimator(Estimator):
     def _optimizer(self, model, lr, tol, n_iter, device):
         """Optimize regression coefficient of CBMR via L-BFGS algorithm.
 
-        Optimization terminates if the absolute value of difference of log-likelihood in two consecutive iterations is below `tol`
+        Optimization terminates if the absolute value of difference of log-likelihood in
+        two consecutive iterations is below `tol`
 
         Parameters
         ----------
@@ -414,7 +413,8 @@ class CBMREstimator(Estimator):
         n_iter : :obj:`~int`
             Maximum iterations limit of L-BFGS.
         device : :obj:`~str`
-            Device type ('cpu' or 'cuda') represents the device on which operations will be allocated.
+            Device type ('cpu' or 'cuda') represents the device on
+            which operations will be allocated.
         """
         optimizer = torch.optim.LBFGS(model.parameters(), lr)
         # load dataset info to torch.tensor
@@ -465,10 +465,12 @@ class CBMREstimator(Estimator):
     def _fit(self, dataset):
         """Perform coordinate-based meta-regression (CBMR) on dataset.
 
-        Estimate group-wise spatial regression coefficients and its standard error via inverse Fisher Information matrix,
-        estimate standard error of group-wise log intensity, group-wise intensity via delta method.  For NB or clustered model,
-        estimate regression coefficient of overdispersion. Similarly, estimate regression coefficient of study-level moderators
-        (if exist), as well as its standard error via Fisher Information matrix. Save these outcomes in `tables`.
+        (1)Estimate group-wise spatial regression coefficients and its standard error via inverse
+        Fisher Information matrix;
+        (2)estimate standard error of group-wise log intensity, group-wise intensity via delta
+        method. For NB or clustered model, estimate regression coefficient of overdispersion.
+        Similarly, estimate regression coefficient of study-level moderators (if exist), as well
+        as its standard error via Fisher Information matrix. Save these outcomes in `tables`.
         Also, estimate group-wise spatial intensity (per study) and save the results in `maps`.
 
         Parameters
@@ -484,7 +486,7 @@ class CBMREstimator(Estimator):
         self.inputs_["Coef_spline_bases"] = Coef_spline_bases
 
         cbmr_model = self._model_structure(self.model, self.penalty, self.device)
-        optimisation = self._optimizer(cbmr_model, self.lr, self.tol, self.n_iter, self.device)
+        self._optimizer(cbmr_model, self.lr, self.tol, self.n_iter, self.device)
 
         maps, tables = dict(), dict()
         Spatial_Regression_Coef, overdispersion_param = dict(), dict()
@@ -562,7 +564,6 @@ class CBMREstimator(Estimator):
                     dtype=torch.float64,
                     device=self.device,
                 )
-            # a = -GLMCNB._log_likelihood_single_group(alpha, group_beta_linear_weight, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study, self.device)
             if self.model == "Poisson":
                 nll = lambda beta: -GLMPoisson._log_likelihood_single_group(
                     beta,
@@ -716,9 +717,8 @@ class CBMRInference(object):
                     [con_group.shape[1] != self.n_groups for con_group in self.t_con_group]
                 )[0].tolist()
                 raise ValueError(
-                    "The shape of {}th contrast vector(s) in group-wise intensity contrast matrix doesn't match with groups".format(
-                        str(wrong_con_group_idx)
-                    )
+                    f"""The shape of {str(wrong_con_group_idx)}th contrast vector(s) in group-wise
+                    intensity contrast matrix doesn't match with groups"""
                 )
             con_group_zero_row = [
                 np.where(np.sum(np.abs(con_group), axis=1) == 0)[0]
@@ -733,9 +733,9 @@ class CBMRInference(object):
                 ]
                 if np.any([con_group.shape[0] == 0 for con_group in self.t_con_group]):
                     raise ValueError(
-                        "One or more of contrast vectors(s) in group-wise intensity contrast matrix are all zeros"
+                        """One or more of contrast vectors(s) in group-wise intensity
+                        contrast matrix are all zeros"""
                     )
-            n_contrasts_group = [con_group.shape[0] for con_group in self.t_con_group]
             self._Name_of_con_group()
             # standardization
             self.t_con_group = [
@@ -772,9 +772,8 @@ class CBMRInference(object):
                         ]
                     )[0].tolist()
                     raise ValueError(
-                        "The shape of {}th contrast vector(s) in moderators contrast matrix doesn't match with moderators".format(
-                            str(wrong_con_moderator_idx)
-                        )
+                        f"""The shape of {str(wrong_con_moderator_idx)}th contrast vector(s) in
+                        moderators contrast matrix doesn't match with moderators"""
                     )
                 con_moderator_zero_row = [
                     np.where(np.sum(np.abs(con_modereator), axis=1) == 0)[0]
@@ -791,11 +790,9 @@ class CBMRInference(object):
                         [con_moderator.shape[0] == 0 for con_moderator in self.t_con_moderator]
                     ):
                         raise ValueError(
-                            "One or more of contrast vectors(s) in modereators contrast matrix are all zeros"
+                            """One or more of contrast vectors(s) in modereators contrast matrix
+                            are all zeros"""
                         )
-                n_contrasts_moderator = [
-                    con_moderator.shape[0] for con_moderator in self.t_con_moderator
-                ]
                 self._Name_of_con_moderator()
                 self.t_con_moderator = [
                     con_moderator / np.sum(np.abs(con_moderator), axis=1).reshape((-1, 1))
@@ -804,7 +801,7 @@ class CBMRInference(object):
             else:
                 self.t_con_moderator = False
         if self.device == "cuda" and not torch.cuda.is_available():
-            LGR.debug(f"cuda not found, use device 'cpu'")
+            LGR.debug("cuda not found, use device 'cpu'")
             self.device = "cpu"
 
     def _Name_of_con_group(self):
@@ -957,7 +954,6 @@ class CBMRInference(object):
             )
         else:
             involved_group_moderators, involved_moderator_coef = None, None
-        # a = GLMPoisson._log_likelihood_mult_group(involved_spatial_coef, Coef_spline_bases,  involved_group_foci_per_voxel, involved_group_foci_per_study, involved_moderator_coef, involved_group_moderators, self.device)
         if self.CBMRResults.estimator.model == "Poisson":
             nll = lambda all_spatial_coef: -GLMPoisson._log_likelihood_mult_group(
                 all_spatial_coef,
@@ -1083,18 +1079,20 @@ class CBMRInference(object):
     def _contrast(self):
         """Conduct generalized linear hypothesis (GLH) testing on CBMR estimates.
 
-        Estimate group-wise spatial regression coefficients and its standard error via inverse Fisher Information matrix,
-        estimate standard error of group-wise log intensity, group-wise intensity via delta method.  For NB or clustered model,
-        estimate regression coefficient of overdispersion. Similarly, estimate regression coefficient of study-level moderators
-        (if exist), as well as its standard error via Fisher Information matrix. Save these outcomes in `tables`.
-        Also, estimate group-wise spatial intensity (per study) and save the results in `maps`.
+        Estimate group-wise spatial regression coefficients and its standard error via inverse
+        Fisher Information matrix, estimate standard error of group-wise log intensity,
+        group-wise intensity via delta method.  For NB or clustered model, estimate regression
+        coefficient of overdispersion. Similarly, estimate regression coefficient of study-level
+        moderators (if exist), as well as its standard error via Fisher Information matrix.
+        Save these outcomes in `tables`. Also, estimate group-wise spatial intensity (per study)
+        and save the results in `maps`.
 
         Parameters
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
         """
-        Log_Spatial_Intensity_SE = self.CBMRResults.tables["Log_Spatial_Intensity_SE"]
+        # Log_Spatial_Intensity_SE = self.CBMRResults.tables["Log_Spatial_Intensity_SE"]
         if self.t_con_group is not False:
             con_group_count = 0
             for con_group in self.t_con_group:
@@ -1333,14 +1331,14 @@ class GLMPoisson(torch.nn.Module):
                 torch.exp(log_moderator_effect)
                 for log_moderator_effect in all_log_moderator_effect
             ]
-        l = 0
+        log_l = 0
         for i in range(n_groups):
-            l += (
+            log_l += (
                 torch.sum(all_foci_per_voxel[i] * all_log_spatial_intensity[i])
                 + torch.sum(all_foci_per_study[i] * all_log_moderator_effect[i])
                 - torch.sum(all_spatial_intensity[i]) * torch.sum(all_moderator_effect[i])
             )
-        return l
+        return log_l
 
     def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
         if isinstance(all_moderators, dict):
@@ -1389,11 +1387,10 @@ class GLMPoisson(torch.nn.Module):
                 else:
                     gamma, group_moderators = None, None
 
-                all_spatial_coef = torch.stack([beta])
+                # all_spatial_coef = torch.stack([beta])
                 all_foci_per_voxel, all_foci_per_study = torch.stack(
                     [group_foci_per_voxel]
                 ), torch.stack([group_foci_per_study])
-                # a = -GLMPoisson._log_likelihood(all_spatial_coef, Coef_spline_bases, all_foci_per_voxel, all_foci_per_study, gamma, group_moderators)
                 nll = lambda beta: -self._log_likelihood(
                     beta,
                     gamma,
@@ -1494,7 +1491,7 @@ class GLMNB(torch.nn.Module):
             mu_moderators = torch.exp(log_mu_moderators)
         numerator = mu_spatial**2 * torch.sum(mu_moderators**2)
         denominator = mu_spatial**2 * torch.sum(mu_moderators) ** 2
-        estimated_sum_alpha = alpha * numerator / denominator
+        # estimated_sum_alpha = alpha * numerator / denominator
 
         p = numerator / (v * mu_spatial * torch.sum(mu_moderators) + numerator)
         r = v * denominator / numerator
@@ -1551,10 +1548,10 @@ class GLMNB(torch.nn.Module):
             all_spatial_intensity[i] ** 2 * torch.sum(all_moderator_effect[i]) ** 2
             for i in range(n_groups)
         ]
-        all_estimated_sum_alpha = [
-            all_overdispersion_coef[i, :] * all_numerator[i] / all_denominator[i]
-            for i in range(n_groups)
-        ]
+        # all_estimated_sum_alpha = [
+        #     all_overdispersion_coef[i, :] * all_numerator[i] / all_denominator[i]
+        #     for i in range(n_groups)
+        # ]
 
         p = [
             all_numerator[i]
@@ -1566,13 +1563,13 @@ class GLMNB(torch.nn.Module):
         ]
         r = [all_v[i] * all_denominator[i] / all_numerator[i] for i in range(n_groups)]
 
-        l = 0
+        log_l = 0
         for i in range(n_groups):
-            l += GLMNB._three_term(all_foci_per_voxel[i], r[i], device=device) + torch.sum(
+            log_l += GLMNB._three_term(all_foci_per_voxel[i], r[i], device=device) + torch.sum(
                 r[i] * torch.log(1 - p[i]) + all_foci_per_voxel[i] * torch.log(p[i])
             )
 
-        return l
+        return log_l
 
     def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
         if isinstance(all_moderators, dict):
@@ -1604,8 +1601,8 @@ class GLMNB(torch.nn.Module):
             # alpha' = sum_i mu_{ij}^2 / (sum_i mu_{ij})^2 * alpha
             numerator = mu_spatial**2 * torch.sum(mu_moderators**2)
             denominator = mu_spatial**2 * torch.sum(mu_moderators) ** 2
-            estimated_sum_alpha = alpha * numerator / denominator
-            ## moment matching NB distribution
+            # estimated_sum_alpha = alpha * numerator / denominator
+            # moment matching NB distribution
             p = numerator / (v * mu_spatial * torch.sum(mu_moderators) + numerator)
             r = v * denominator / numerator
 
@@ -1616,7 +1613,7 @@ class GLMNB(torch.nn.Module):
             ) + torch.sum(r * torch.log(1 - p) + group_foci_per_voxel * torch.log(p))
             log_l += group_log_l
 
-        if self.penalty == True:
+        if self.penalty:
             # Firth-type penalty
             for group in all_foci_per_voxel.keys():
                 alpha = self.all_alpha_sqrt[group] ** 2
@@ -1626,7 +1623,6 @@ class GLMNB(torch.nn.Module):
                 group_foci_per_voxel = all_foci_per_voxel[group]
                 group_foci_per_study = all_foci_per_study[group]
                 group_moderators = all_moderators[group]
-                # a = -self._log_likelihood(alpha, beta, gamma, Coef_spline_bases, group_moderators, group_foci_per_voxel, group_foci_per_study)
                 nll = lambda beta: -self._log_likelihood(
                     alpha,
                     beta,
@@ -1752,17 +1748,17 @@ class GLMCNB(torch.nn.Module):
                 for log_moderator_effect in all_log_moderator_effect
             ]
 
-        all_mu_sum_per_study = [
-            torch.sum(all_spatial_intensity[i]) * all_moderator_effect[i] for i in range(n_groups)
-        ]
-        l = 0
+        # all_mu_sum_per_study = [
+        # torch.sum(all_spatial_intensity[i]) * all_moderator_effect[i] for i in range(n_groups)
+        # ]
+        log_l = 0
         for i in range(n_groups):
-            l += (
+            log_l += (
                 torch.sum(all_foci_per_voxel[i] * all_log_spatial_intensity[i])
                 + torch.sum(all_foci_per_study[i] * all_log_moderator_effect[i])
                 - torch.sum(all_spatial_intensity[i]) * torch.sum(all_moderator_effect[i])
             )
-        return l
+        return log_l
 
     def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
         if isinstance(all_moderators, dict):
@@ -1783,6 +1779,7 @@ class GLMCNB(torch.nn.Module):
             if self.study_level_moderators:
                 log_mu_moderators = all_log_mu_moderators[group]
                 mu_moderators = torch.exp(log_mu_moderators)
+                
             else:
                 n_group_study, _ = group_foci_per_study.shape
                 log_mu_moderators = torch.tensor([0] * n_group_study, device=self.device).reshape(
@@ -1801,7 +1798,7 @@ class GLMCNB(torch.nn.Module):
             )
             log_l += group_log_l
 
-        if self.penalty == True:
+        if self.penalty:
             # Firth-type penalty
             for group in all_foci_per_voxel.keys():
                 alpha = self.all_alpha[group]
