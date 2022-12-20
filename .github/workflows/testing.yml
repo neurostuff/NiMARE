@@ -37,7 +37,7 @@ jobs:
     strategy:
         fail-fast: false
         matrix:
-            os: ["ubuntu-20.04", "ubuntu-latest", "macos-latest"]
+            os: ["ubuntu-latest", "macos-latest"]
             python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
             include:
               # ubuntu-20.04 is used only to test python 3.6
