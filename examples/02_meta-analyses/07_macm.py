@@ -34,7 +34,7 @@ dset = Dataset.load(dset_file)
 # -----------------------------------------------------------------------------
 # We'll use the right amygdala from the Harvard-Oxford atlas
 atlas = datasets.fetch_atlas_harvard_oxford("sub-maxprob-thr50-2mm")
-img = nib.load(atlas["maps"])
+img = atlas["maps"]
 
 roi_idx = atlas["labels"].index("Right Amygdala")
 img_vals = np.unique(img.get_fdata())
