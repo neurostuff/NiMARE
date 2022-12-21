@@ -1,16 +1,17 @@
 """Generate fixtures for tests."""
 import os
 from shutil import copyfile
-
 import nibabel as nib
 import numpy as np
+import pandas as pd 
 import pytest
 from nilearn.image import resample_img
 
 import nimare
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_resource_path
-
+from nimare.generate import create_coordinate_dataset
+import random
 # Only enable the following once in a while for a check for SettingWithCopyWarnings
 # pd.options.mode.chained_assignment = "raise"
 
@@ -56,7 +57,6 @@ def testdata_cbma():
     dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
     return dset
 
-
 @pytest.fixture(scope="session")
 def testdata_cbma_full():
     """Generate more complete coordinate-based dataset for tests.
@@ -67,6 +67,79 @@ def testdata_cbma_full():
     dset = nimare.dataset.Dataset(dset_file)
     return dset
 
+@pytest.fixture(scope="session")
+def testdata_cbmr():
+    """Generate coordinate-based dataset for tests."""
+    dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+    dset = nimare.dataset.Dataset(dset_file)
+
+    # Only retain one peak in each study in coordinates
+    # Otherwise centers of mass will be obscured in kernel tests by overlapping
+    # kernels
+    dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
+    # set up group columns & moderators
+    n_rows = dset.annotations.shape[0]
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
+    dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
+    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
+    dset.annotations["avg_age"] = np.arange(n_rows)
+    
+    return dset
+
+@pytest.fixture(scope="session")
+def testdata_cbmr_full():
+    """Generate more complete coordinate-based dataset for tests.
+
+    Same as above, except returns all coords, not just one per study.
+    """
+    dset_file = os.path.join(get_test_data_path(), "neurosynth_dset.json")
+    dset = nimare.dataset.Dataset(dset_file)
+    # set up group columns & moderators
+    n_rows = dset.annotations.shape[0]
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
+    dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
+    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
+    dset.annotations["avg_age"] = np.arange(n_rows)
+
+    return dset
+
+@pytest.fixture(scope="session")
+def testdata_cbmr_laird():
+    """Generate more complete coordinate-based dataset for tests.
+
+    Same as above, except returns all coords, not just one per study.
+    """
+    dset_file = os.path.join(get_test_data_path(), "neurosynth_laird_studies.json") 
+    dset = nimare.dataset.Dataset(dset_file)
+    # set up group columns & moderators
+    n_rows = dset.annotations.shape[0]
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
+    dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
+    if 'year' in dset.metadata.columns:
+        dset.annotations["publication_year"] = [dset.metadata['year'][i] for i in range(n_rows)] 
+    dset.annotations["avg_age"] = np.arange(n_rows)
+
+    return dset
+
+@pytest.fixture(scope="session")
+def testdata_cbmr_simulated():
+    """Simulate coordinate-based dataset for tests.
+    """
+    # simulate 
+    ground_truth_foci, dset = create_coordinate_dataset(foci=10, sample_size=(20, 40), n_studies=1000)
+    # set up group columns: diagnosis & drug_status  
+    n_rows = dset.annotations.shape[0]
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'depression' for i in range(n_rows)]
+    dset.annotations['drug_status'] = ['Yes' if i%2==0 else 'No' for i in range(n_rows)]
+    dset.annotations['drug_status'] = dset.annotations['drug_status'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
+    # set up moderators: sample sizes & avg_age
+    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
+    dset.annotations["avg_age"] = np.arange(n_rows)
+
+    return dset
 
 @pytest.fixture(scope="session")
 def testdata_laird():

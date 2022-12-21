@@ -17,6 +17,9 @@ import pandas as pd
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 
+import patsy
+import sparse
+
 LGR = logging.getLogger(__name__)
 
 
@@ -1001,7 +1004,7 @@ def unique_rows(ar, return_counts=False):
     ...                [1, 0, 1]], np.uint8)
     >>> unique_rows(ar)
     array([[0, 1, 0],
-           [1, 0, 1]], dtype=uint8)
+        [1, 0, 1]], dtype=uint8)
 
     License
     -------
@@ -1158,3 +1161,134 @@ def _get_cluster_coms(labeled_cluster_arr):
         )
 
     return cluster_coms
+
+
+def coef_spline_bases(axis_coords, spacing, margin):
+    """
+    Coefficient of cubic B-spline bases in any x/y/z direction
+
+    Parameters
+    ----------
+    axis_coords : value range in x/y/z direction
+    spacing: (equally spaced) knots spacing in x/y/z direction,
+    margin: extend the region where B-splines are constructed (min-margin, max_margin)
+            to avoid weakly-supported B-spline on the edge
+    Returns
+    -------
+    coef_spline : 2-D ndarray (n_points x n_spline_bases)
+    """
+    # create B-spline basis for x/y/z coordinate
+    wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
+    knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
+    design_matrix = patsy.dmatrix(
+        "bs(x, knots=knots, degree=3,include_intercept=False)",
+        data={"x": wider_axis_coords},
+        return_type="matrix",
+    )
+    design_array = np.array(design_matrix)[:, 1:]  # remove the first column (every element is 1)
+    coef_spline = design_array[margin : -margin + 1, :]
+    # remove the basis with no/weakly support from the square
+    supported_basis = np.sum(coef_spline, axis=0) != 0
+    coef_spline = coef_spline[:, supported_basis]
+
+    return coef_spline
+
+
+def B_spline_bases(masker_voxels, spacing, margin=10):
+    """Cubic B-spline bases for spatial intensity
+
+    The whole coefficient matrix is constructed by taking tensor product of
+    all B-spline bases coefficient matrix in three direction.
+
+    Parameters
+    ----------
+    masker_voxels : matrix with element either 0 or 1, indicating if it's within brain mask,
+    spacing: (equally spaced) knots spacing in x/y/z direction,
+    margin: extend the region where B-splines are constructed (min-margin, max_margin)
+            to avoid weakly-supported B-spline on the edge
+    Returns
+    -------
+    X : 2-D ndarray (n_voxel x n_spline_bases)
+        only keeps with within-brain voxels
+    """
+    # dim_mask = masker_voxels.shape
+    # n_brain_voxel = np.sum(masker_voxels)
+    # remove the blank space around the brain mask
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+
+    x_spline = coef_spline_bases(xx, spacing, margin)
+    y_spline = coef_spline_bases(yy, spacing, margin)
+    z_spline = coef_spline_bases(zz, spacing, margin)
+    x_spline_coords = x_spline.nonzero()
+    y_spline_coords = y_spline.nonzero()
+    z_spline_coords = z_spline.nonzero()
+    x_spline_sparse = sparse.COO(x_spline_coords, x_spline[x_spline_coords])
+    y_spline_sparse = sparse.COO(y_spline_coords, y_spline[y_spline_coords])
+    z_spline_sparse = sparse.COO(z_spline_coords, z_spline[z_spline_coords])
+
+    # create spatial design matrix by tensor product of spline bases in 3 dimesion
+    # Row sums of X are all 1=> There is no need to re-normalise X
+    X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)
+    # remove the voxels outside brain mask
+    axis_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
+    brain_voxels_index = [
+        (z - np.min(zz))
+        + axis_dim[2] * (y - np.min(yy))
+        + axis_dim[1] * axis_dim[2] * (x - np.min(xx))
+        for x in xx
+        for y in yy
+        for z in zz
+        if masker_voxels[x, y, z] == 1
+    ]
+    X = X[brain_voxels_index, :].todense()
+    # remove tensor product basis that have no support in the brain
+    x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
+    support_basis = []
+    # find and remove weakly supported B-spline bases
+    for bx in range(x_df):
+        for by in range(y_df):
+            for bz in range(z_df):
+                basis_index = bz + z_df * by + z_df * y_df * bx
+                basis_coef = X[:, basis_index]
+                if np.max(basis_coef) >= 0.1:
+                    support_basis.append(basis_index)
+    X = X[:, support_basis]
+
+    return X
+
+
+def standardize_field(dataset, metadata):
+    moderators = dataset.annotations[metadata]
+    standardize_moderators = moderators - np.mean(moderators, axis=0)
+    standardize_moderators /= np.std(standardize_moderators, axis=0)
+    if isinstance(metadata, str):
+        column_name = "standardized_" + metadata
+    elif isinstance(metadata, list):
+        column_name = ["standardized_" + moderator for moderator in metadata]
+    dataset.annotations[column_name] = standardize_moderators
+
+    return dataset
+
+
+def index2vox(vals, masker_voxels):
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+    image_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
+    voxel_array = np.zeros(shape=masker_voxels.shape)
+    index_count = 0
+    for i in range(image_dim[0]):
+        for j in range(image_dim[1]):
+            for k in range(image_dim[2]):
+                x, y, z = xx[i], yy[j], zz[k]
+                if masker_voxels[x, y, z] == 1:
+                    voxel_array[x, y, z] = vals[index_count]
+                    index_count += 1
+
+    return voxel_array
+
+def contrast_matrix_generator():
+    
+    return
