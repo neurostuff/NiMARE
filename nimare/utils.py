@@ -1162,6 +1162,7 @@ def _get_cluster_coms(labeled_cluster_arr):
 
     return cluster_coms
 
+
 def coef_spline_bases(axis_coords, spacing, margin):
     """
     Coefficient of cubic B-spline bases in any x/y/z direction
@@ -1169,14 +1170,14 @@ def coef_spline_bases(axis_coords, spacing, margin):
     Parameters
     ----------
     axis_coords : value range in x/y/z direction
-    spacing: (equally spaced) knots spacing in x/y/z direction, 
+    spacing: (equally spaced) knots spacing in x/y/z direction,
     margin: extend the region where B-splines are constructed (min-margin, max_margin)
-            to avoid weakly-supported B-spline on the edge 
+            to avoid weakly-supported B-spline on the edge
     Returns
     -------
     coef_spline : 2-D ndarray (n_points x n_spline_bases)
     """
-    ## create B-spline basis for x/y/z coordinate
+    # create B-spline basis for x/y/z coordinate
     wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
     knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
     design_matrix = patsy.dmatrix(
@@ -1251,7 +1252,7 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
             for bz in range(z_df):
                 basis_index = bz + z_df * by + z_df * y_df * bx
                 basis_coef = X[:, basis_index]
-                if np.max(basis_coef) >= 0.1: 
+                if np.max(basis_coef) >= 0.1:
                     support_basis.append(basis_index)
     X = X[:, support_basis]
 
@@ -1291,9 +1292,9 @@ def standardize_field(dataset, metadata):
     standardize_moderators = moderators - np.mean(moderators, axis=0)
     standardize_moderators /= np.std(standardize_moderators, axis=0)
     if isinstance(metadata, str):
-        column_name = 'standardized_' + metadata
+        column_name = "standardized_" + metadata
     elif isinstance(metadata, list):
-        column_name = ['standardized_' + moderator for moderator in metadata]
+        column_name = ["standardized_" + moderator for moderator in metadata]
     dataset.annotations[column_name] = standardize_moderators
 
     return dataset
