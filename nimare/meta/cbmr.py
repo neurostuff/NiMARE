@@ -1130,7 +1130,7 @@ class CBMRInference(object):
                     involved_log_intensity_per_voxel = np.stack(
                         involved_log_intensity_per_voxel, axis=0
                     )
-                else:  # GLH: group-comparison
+                else:  # GLH: group comparison
                     involved_log_intensity_per_voxel = list()
                     for group in con_group_involved:
                         group_log_intensity_per_voxel = np.log(
@@ -1159,15 +1159,8 @@ class CBMRInference(object):
                             k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
                             s * spatial_coef_dim : (s + 1) * spatial_coef_dim,
                         ]
-                        Cov_group_log_intensity = np.empty(shape=(1, 0))
-                        for j in range(n_brain_voxel):
-                            x_j = self.CBMRResults.estimator.inputs_["Coef_spline_bases"][
-                                j, :
-                            ].reshape((1, spatial_coef_dim))
-                            Cov_group_log_intensity_j = x_j @ Cov_beta_ks @ x_j.T
-                            Cov_group_log_intensity = np.concatenate(
-                                (Cov_group_log_intensity, Cov_group_log_intensity_j), axis=1
-                            )
+                        X = self.CBMRResults.estimator.inputs_["Coef_spline_bases"]
+                        Cov_group_log_intensity = (X.dot(Cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
                         Cov_log_intensity = np.concatenate(
                             (Cov_log_intensity, Cov_group_log_intensity), axis=0
                         )  # (m^2, n_voxels)
@@ -1722,6 +1715,8 @@ class GLMCNB(torch.nn.Module):
         device="cpu",
     ):
         n_groups = len(all_foci_per_voxel)
+        all_v = [1 / overdispersion_coef  for overdispersion_coef in all_overdispersion_coef]
+        # estimated intensity and log estimated intensity
         all_log_spatial_intensity = [
             torch.matmul(Coef_spline_bases, all_spatial_coef[i, :, :]) for i in range(n_groups)
         ]
@@ -1747,17 +1742,20 @@ class GLMCNB(torch.nn.Module):
                 torch.exp(log_moderator_effect)
                 for log_moderator_effect in all_log_moderator_effect
             ]
+        all_mu_sum_per_study = [torch.sum(all_spatial_intensity[i]) * all_moderator_effect[i] for i in range(n_groups)]
+        all_group_n_study = [group_foci_per_study.shape[0] for group_foci_per_study in all_foci_per_study]
 
-        # all_mu_sum_per_study = [
-        # torch.sum(all_spatial_intensity[i]) * all_moderator_effect[i] for i in range(n_groups)
-        # ]
         log_l = 0
         for i in range(n_groups):
             log_l += (
-                torch.sum(all_foci_per_voxel[i] * all_log_spatial_intensity[i])
-                + torch.sum(all_foci_per_study[i] * all_log_moderator_effect[i])
-                - torch.sum(all_spatial_intensity[i]) * torch.sum(all_moderator_effect[i])
-            )
+                    all_group_n_study[i] * all_v[i] * torch.log(all_v[i])
+                    - all_group_n_study[i] * torch.lgamma(all_v[i])
+                    + torch.sum(torch.lgamma(all_foci_per_study[i] + all_v[i]))
+                    - torch.sum((all_foci_per_study[i] + all_v[i]) * torch.log(all_mu_sum_per_study[i] + all_v[i]))
+                    + torch.sum(all_foci_per_voxel[i] * all_log_spatial_intensity[i])
+                    + torch.sum(all_foci_per_study[i] * all_log_moderator_effect[i])
+                    )
+            
         return log_l
 
     def forward(self, Coef_spline_bases, all_moderators, all_foci_per_voxel, all_foci_per_study):
@@ -1779,7 +1777,6 @@ class GLMCNB(torch.nn.Module):
             if self.study_level_moderators:
                 log_mu_moderators = all_log_mu_moderators[group]
                 mu_moderators = torch.exp(log_mu_moderators)
-                
             else:
                 n_group_study, _ = group_foci_per_study.shape
                 log_mu_moderators = torch.tensor([0] * n_group_study, device=self.device).reshape(
