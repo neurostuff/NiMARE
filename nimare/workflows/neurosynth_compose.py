@@ -10,7 +10,7 @@ COMPOSE_URL = "https://compose.neurosynth.org"
 STORE_URL = "https://neurostore.org"
 
 
-def neurosynth_workflow(meta_id):
+def compose_workflow(meta_id):
     """Run meta-analysis.
 
     Parameters

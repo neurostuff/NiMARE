@@ -143,6 +143,7 @@ class Study:
         self.name = source["name"] or ""
         self.authors = source["authors"] or ""
         self.publication = source["publication"] or ""
+        self.metadata = source.get("metadata", {})
         self.analyses = [Analysis(a) for a in source["analyses"]]
 
     def __repr__(self):
@@ -258,6 +259,22 @@ class Annotation:
         self.name = source["name"]
         self.id = source["id"]
         self.notes = source["notes"]
+
+
+class Note:
+    """A Note within an annotation.
+
+    Attributes
+    ----------
+    analysis : Analysis object
+        the analysis the note is associated with
+    note : dict
+        the attributes pertaining to the analysis
+    """
+
+    def __init__(self, analysis, note):
+        self.analysis = analysis
+        self.note = note
 
 
 class Image:

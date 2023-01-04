@@ -35,6 +35,7 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 "authors": study.name,
                 "journal": study.publication,
                 "title": study.name,
+                "sample_sizes": [study.metadata.get("sample_size")],
             },
             "coords": {
                 "space": analysis.points[0].space,
