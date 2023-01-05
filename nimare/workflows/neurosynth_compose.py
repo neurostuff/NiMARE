@@ -73,7 +73,9 @@ def load_specification(spec):
                 corrector_args.pop("**kwargs")
             corrector_init = corrector(**corrector_args)
         else:
-            corrector_init = None
+            corrector_init = corrector()
+    else:
+        corrector_init = None
 
     if corrector_init:
         return lambda dset: corrector_init.transform(estimator_init.fit(dset))
