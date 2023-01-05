@@ -26,6 +26,11 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 }
 
 
+def _create_name(resource):
+    """take study/analysis object and try to create dataframe friendly/readable name"""
+    return '_'.join(resource.name.split()) if resource.name else resource.id
+
+
 def convert_nimads_to_dataset(studyset, annotation=None):
     """Convert nimads studyset object to a dataset."""
 
@@ -58,10 +63,10 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 "journal": study.publication,
                 "title": study.name,
             },
-            "contrasts": {a.id: _analysis_to_dict(study, a, annotation) for a in study.analyses},
+            "contrasts": {_create_name(a): _analysis_to_dict(study, a, annotation) for a in study.analyses},
         }
-
-    return Dataset({s.id: _study_to_dict(s, annotation=annotation) for s in studyset.studies})
+    
+    return Dataset({_create_name(s): _study_to_dict(s, annotation=annotation) for s in studyset.studies})
 
 
 def convert_neurosynth_to_dict(
