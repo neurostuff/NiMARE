@@ -27,7 +27,7 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 
 
 def _create_name(resource):
-    """take study/analysis object and try to create dataframe friendly/readable name"""
+    """Take study/analysis object and try to create dataframe friendly/readable name"""
     return '_'.join(resource.name.split()) if resource.name else resource.id
 
 
