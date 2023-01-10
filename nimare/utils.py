@@ -1284,17 +1284,4 @@ def dummy_encoding_moderators(dataset_annotations, moderators):
                 dataset_annotations[category] = (dataset_annotations[moderator] == category).astype(int)
                 moderators.append(category) # add dummy encoded moderators
     return dataset_annotations, moderators
-def standardize_field(dataset, metadata):
-    # if isinstance(metadata, str):
-    #     moderators = dataset.annotations[metadata]
-    # elif isinstance(metadata, list):
-    moderators = dataset.annotations[metadata]
-    standardize_moderators = moderators - np.mean(moderators, axis=0)
-    standardize_moderators /= np.std(standardize_moderators, axis=0)
-    if isinstance(metadata, str):
-        column_name = "standardized_" + metadata
-    elif isinstance(metadata, list):
-        column_name = ["standardized_" + moderator for moderator in metadata]
-    dataset.annotations[column_name] = standardize_moderators
 
-    return dataset

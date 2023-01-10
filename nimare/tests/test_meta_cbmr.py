@@ -1,6 +1,9 @@
 from nimare.meta.cbmr import CBMREstimator, CBMRInference
 from nimare.tests.utils import standardize_field
+<<<<<<< HEAD
 from nimare.meta import models
+=======
+>>>>>>> e86d28d ([skip CI][WIP] Update code according to comments)
 import logging
 import torch
 import numpy as np
@@ -27,6 +30,7 @@ def test_CBMRInference(testdata_cbmr_simulated):
     dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"])
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
+<<<<<<< HEAD
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         spline_spacing=10,
         model=models.PoissonEstimator,
@@ -34,6 +38,15 @@ def test_CBMRInference(testdata_cbmr_simulated):
         lr=1e-1,
         tol=1e4,
         device="cpu",
+=======
+        moderators=["standardized_sample_sizes", "standardized_avg_age"],
+        spline_spacing=10,
+        model="Poisson",
+        penalty=False,
+        lr=1e-1,
+        tol=1e6,
+        device="cuda",
+>>>>>>> e86d28d ([skip CI][WIP] Update code according to comments)
     )
     # ["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
     cbmr_res = cbmr.fit(dataset=dset)
