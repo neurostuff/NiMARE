@@ -120,3 +120,16 @@ def _transform_res(meta, meta_res, corr):
     if isinstance(corr_expectation, type(pytest.raises(ValueError))):
         pytest.xfail("this meta-analysis & corrector combo fails")
     return cres
+
+
+def standardize_field(dataset, metadata):
+    moderators = dataset.annotations[metadata]
+    standardize_moderators = moderators - np.mean(moderators, axis=0)
+    standardize_moderators /= np.std(standardize_moderators, axis=0)
+    if isinstance(metadata, str):
+        column_name = "standardized_" + metadata
+    elif isinstance(metadata, list):
+        column_name = ["standardized_" + moderator for moderator in metadata]
+    dataset.annotations[column_name] = standardize_moderators
+
+    return dataset

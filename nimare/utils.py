@@ -1259,19 +1259,6 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
     return X
 
 
-def standardize_field(dataset, metadata):
-    moderators = dataset.annotations[metadata]
-    standardize_moderators = moderators - np.mean(moderators, axis=0)
-    standardize_moderators /= np.std(standardize_moderators, axis=0)
-    if isinstance(metadata, str):
-        column_name = "standardized_" + metadata
-    elif isinstance(metadata, list):
-        column_name = ["standardized_" + moderator for moderator in metadata]
-    dataset.annotations[column_name] = standardize_moderators
-
-    return dataset
-
-
 def index2vox(vals, masker_voxels):
     xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
     yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
