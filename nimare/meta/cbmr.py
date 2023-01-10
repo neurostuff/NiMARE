@@ -82,7 +82,7 @@ class CBMREstimator(Estimator):
         id (study id),
         studies_by_groups (study id categorized by groups),
         all_group_moderators (study-level moderators categorized by groups if exist),
-        Coef_spline_bases (spatial matrix of coefficient of cubic B-spline
+        coef_spline_bases (spatial matrix of coefficient of cubic B-spline
         bases in x,y,z dimension),
         foci_per_voxel (voxelwise sum of foci count across studies, categorized by groups),
         foci_per_study (study-wise sum of foci count across space, categorized by groups).
@@ -153,7 +153,7 @@ class CBMREstimator(Estimator):
             Specifically, (1) a “mask_img” key will be added (Niftiimage of brain mask),
             (2) an 'id' key will be added (id of all studies in the dataset),
             (3) an 'studies_by_group' key will be added (study id categorized by groups),
-            (4) a 'Coef_spline_bases' key will be added (spatial matrix of coefficient of cubic
+            (4) a 'coef_spline_bases' key will be added (spatial matrix of coefficient of cubic
             B-spline bases in x,y,z dimension),
             (5) an 'foci_per_voxel' key will be added (voxelwise sum of foci count across
             studies, categorized by groups),
@@ -279,7 +279,7 @@ class CBMREstimator(Estimator):
             Device type ('cpu' or 'cuda') represents the device on which operations will
             be allocated
         """
-        beta_dim = self.inputs_["Coef_spline_bases"].shape[1]  # regression coef of spatial effect
+        beta_dim = self.inputs_["coef_spline_bases"].shape[1]  # regression coef of spatial effect
         if self.moderators:
             gamma_dim = list(self.inputs_["moderators_by_group"].values())[0].shape[1]
             study_level_moderators = True
@@ -326,7 +326,7 @@ class CBMREstimator(Estimator):
         self,
         model,
         optimizer,
-        Coef_spline_bases,
+        coef_spline_bases,
         all_moderators,
         foci_per_voxel,
         foci_per_study,
@@ -345,7 +345,7 @@ class CBMREstimator(Estimator):
 
         def closure():
             optimizer.zero_grad()
-            loss = model(Coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study)
+            loss = model(coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study)
             loss.backward()
             return loss
 
@@ -417,8 +417,8 @@ class CBMREstimator(Estimator):
         """
         optimizer = torch.optim.LBFGS(model.parameters(), lr)
         # load dataset info to torch.tensor
-        Coef_spline_bases = torch.tensor(
-            self.inputs_["Coef_spline_bases"], dtype=torch.float64, device=device
+        coef_spline_bases = torch.tensor(
+            self.inputs_["coef_spline_bases"], dtype=torch.float64, device=device
         )
         if self.moderators:
             moderators_by_group_tensor = dict()
@@ -447,7 +447,7 @@ class CBMREstimator(Estimator):
             loss = self._update(
                 model,
                 optimizer,
-                Coef_spline_bases,
+                coef_spline_bases,
                 moderators_by_group_tensor,
                 foci_per_voxel_tensor,
                 foci_per_study_tensor,
@@ -478,11 +478,11 @@ class CBMREstimator(Estimator):
             Dataset to analyze.
         """
         masker_voxels = self.inputs_["mask_img"]._dataobj
-        Coef_spline_bases = B_spline_bases(
+        coef_spline_bases = B_spline_bases(
             masker_voxels=masker_voxels, spacing=self.spline_spacing
         )
-        P = Coef_spline_bases.shape[1]
-        self.inputs_["Coef_spline_bases"] = Coef_spline_bases
+        P = coef_spline_bases.shape[1]
+        self.inputs_["coef_spline_bases"] = coef_spline_bases
 
         cbmr_model = self._model_structure(self.model, self.penalty, self.device)
         self._optimizer(cbmr_model, self.lr, self.tol, self.n_iter, self.device)
@@ -497,7 +497,7 @@ class CBMREstimator(Estimator):
             )
             Spatial_Regression_Coef[group] = group_beta_linear_weight
             group_studywise_spatial_intensity = np.exp(
-                np.matmul(Coef_spline_bases, group_beta_linear_weight)
+                np.matmul(coef_spline_bases, group_beta_linear_weight)
             )
             maps[
                 "Group_" + group + "_Studywise_Spatial_Intensity"
@@ -523,8 +523,8 @@ class CBMREstimator(Estimator):
             self.moderators_effect = dict()
             self._gamma = cbmr_model.gamma_linear.weight
             self._gamma = self._gamma.cpu().detach().numpy()
-            for group in self.inputs_["studies_by_groups"].keys():
-                group_moderators = self.inputs_["all_group_moderators"][group]
+            for group in self.inputs_["studies_by_group"].keys():
+                group_moderators = self.inputs_["moderators_by_group"][group]
                 group_moderators_effect = np.exp(np.matmul(group_moderators, self._gamma.T))
                 self.moderators_effect[group] = group_moderators_effect
             tables["Moderators_Regression_Coef"] = pd.DataFrame(
@@ -538,10 +538,10 @@ class CBMREstimator(Estimator):
             dict(),
             dict(),
         )
-        Coef_spline_bases = torch.tensor(
-            self.inputs_["Coef_spline_bases"], dtype=torch.float64, device=self.device
+        coef_spline_bases = torch.tensor(
+            self.inputs_["coef_spline_bases"], dtype=torch.float64, device=self.device
         )
-        for group in self.inputs_["studies_by_groups"].keys():
+        for group in self.inputs_["studies_by_group"].keys():
             group_foci_per_voxel = torch.tensor(
                 self.inputs_["foci_per_voxel"][group], dtype=torch.float64, device=self.device
             )
@@ -551,7 +551,7 @@ class CBMREstimator(Estimator):
             group_beta_linear_weight = cbmr_model.all_beta_linears[group].weight
             if self.moderators:
                 gamma = cbmr_model.gamma_linear.weight
-                group_moderators = self.inputs_["all_group_moderators"][group]
+                group_moderators = self.inputs_["moderators_by_group"][group]
                 group_moderators = torch.tensor(
                     group_moderators, dtype=torch.float64, device=self.device
                 )
@@ -567,7 +567,7 @@ class CBMREstimator(Estimator):
                 nll = lambda beta: -GLMPoisson._log_likelihood_single_group(
                     beta,
                     gamma,
-                    Coef_spline_bases,
+                    coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
@@ -578,7 +578,7 @@ class CBMREstimator(Estimator):
                     alpha,
                     beta,
                     gamma,
-                    Coef_spline_bases,
+                    coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
@@ -589,7 +589,7 @@ class CBMREstimator(Estimator):
                     alpha,
                     beta,
                     gamma,
-                    Coef_spline_bases,
+                    coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
@@ -606,8 +606,8 @@ class CBMREstimator(Estimator):
 
             Var_log_spatial_intensity = np.einsum(
                 "ij,ji->i",
-                self.inputs_["Coef_spline_bases"],
-                Cov_spatial_coef @ self.inputs_["Coef_spline_bases"].T,
+                self.inputs_["coef_spline_bases"],
+                Cov_spatial_coef @ self.inputs_["coef_spline_bases"].T,
             )
             SE_log_spatial_intensity = np.sqrt(Var_log_spatial_intensity)
             log_spatial_intensity_se[group] = SE_log_spatial_intensity
@@ -634,16 +634,15 @@ class CBMREstimator(Estimator):
             nll = lambda gamma: -GLMPoisson._log_likelihood_single_group(
                 group_beta_linear_weight,
                 gamma,
-                Coef_spline_bases,
+                coef_spline_bases,
                 group_moderators,
                 group_foci_per_voxel,
                 group_foci_per_study,
                 self.device,
             )
-            params = gamma
             F_moderators_coef = torch.autograd.functional.hessian(
                 nll,
-                params,
+                gamma,
                 create_graph=False,
                 vectorize=True,
                 outer_jacobian_strategy="forward-mode",
@@ -894,8 +893,8 @@ class CBMRInference(object):
         return
 
     def _Fisher_info_spatial_coef(self, GLH_involved_index):
-        Coef_spline_bases = torch.tensor(
-            self.CBMRResults.estimator.inputs_["Coef_spline_bases"],
+        coef_spline_bases = torch.tensor(
+            self.CBMRResults.estimator.inputs_["coef_spline_bases"],
             dtype=torch.float64,
             device=self.device,
         )
@@ -956,7 +955,7 @@ class CBMRInference(object):
         if self.CBMRResults.estimator.model == "Poisson":
             nll = lambda all_spatial_coef: -GLMPoisson._log_likelihood_mult_group(
                 all_spatial_coef,
-                Coef_spline_bases,
+                coef_spline_bases,
                 involved_group_foci_per_voxel,
                 involved_group_foci_per_study,
                 involved_moderator_coef,
@@ -966,7 +965,7 @@ class CBMRInference(object):
             nll = lambda all_spatial_coef: -GLMNB._log_likelihood_mult_group(
                 involved_overdispersion_coef,
                 all_spatial_coef,
-                Coef_spline_bases,
+                coef_spline_bases,
                 involved_group_foci_per_voxel,
                 involved_group_foci_per_study,
                 involved_moderator_coef,
@@ -976,7 +975,7 @@ class CBMRInference(object):
             nll = lambda all_spatial_coef: -GLMCNB._log_likelihood_mult_group(
                 involved_overdispersion_coef,
                 all_spatial_coef,
-                Coef_spline_bases,
+                coef_spline_bases,
                 involved_group_foci_per_voxel,
                 involved_group_foci_per_study,
                 involved_moderator_coef,
@@ -988,8 +987,8 @@ class CBMRInference(object):
         return h.detach().cpu().numpy()
 
     def _Fisher_info_moderator_coef(self):
-        Coef_spline_bases = torch.tensor(
-            self.CBMRResults.estimator.inputs_["Coef_spline_bases"],
+        coef_spline_bases = torch.tensor(
+            self.CBMRResults.estimator.inputs_["coef_spline_bases"],
             dtype=torch.float64,
             device=self.device,
         )
@@ -1044,7 +1043,7 @@ class CBMRInference(object):
         if self.CBMRResults.estimator.model == "Poisson":
             nll = lambda all_moderator_coef: -GLMPoisson._log_likelihood_mult_group(
                 all_spatial_coef,
-                Coef_spline_bases,
+                coef_spline_bases,
                 all_group_foci_per_voxel,
                 all_group_foci_per_study,
                 all_moderator_coef,
@@ -1054,7 +1053,7 @@ class CBMRInference(object):
             nll = lambda all_moderator_coef: -GLMNB._log_likelihood_mult_group(
                 all_overdispersion_coef,
                 all_spatial_coef,
-                Coef_spline_bases,
+                coef_spline_bases,
                 all_group_foci_per_voxel,
                 all_group_foci_per_study,
                 all_moderator_coef,
@@ -1064,7 +1063,7 @@ class CBMRInference(object):
             nll = lambda all_moderator_coef: -GLMCNB._log_likelihood_mult_group(
                 all_overdispersion_coef,
                 all_spatial_coef,
-                Coef_spline_bases,
+                coef_spline_bases,
                 all_group_foci_per_voxel,
                 all_group_foci_per_study,
                 all_moderator_coef,
@@ -1158,7 +1157,7 @@ class CBMRInference(object):
                             k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
                             s * spatial_coef_dim : (s + 1) * spatial_coef_dim,
                         ]
-                        X = self.CBMRResults.estimator.inputs_["Coef_spline_bases"]
+                        X = self.CBMRResults.estimator.inputs_["coef_spline_bases"]
                         Cov_group_log_intensity = (X.dot(Cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
                         Cov_log_intensity = np.concatenate(
                             (Cov_log_intensity, Cov_group_log_intensity), axis=0
@@ -1267,9 +1266,9 @@ class GLMPoisson(torch.nn.Module):
             torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
 
     def _log_likelihood_single_group(
-        beta, gamma, Coef_spline_bases, moderators, foci_per_voxel, foci_per_study, device="cpu"
+        beta, gamma, coef_spline_bases, moderators, foci_per_voxel, foci_per_study, device="cpu"
     ):
-        log_mu_spatial = torch.matmul(Coef_spline_bases, beta.T)
+        log_mu_spatial = torch.matmul(coef_spline_bases, beta.T)
         mu_spatial = torch.exp(log_mu_spatial)
         if gamma is not None:
             log_mu_moderators = torch.matmul(moderators, gamma.T)
@@ -1290,7 +1289,7 @@ class GLMPoisson(torch.nn.Module):
 
     def _log_likelihood_mult_group(
         all_spatial_coef,
-        Coef_spline_bases,
+        coef_spline_bases,
         foci_per_voxel,
         foci_per_study,
         moderator_coef=None,
@@ -1299,7 +1298,7 @@ class GLMPoisson(torch.nn.Module):
     ):
         n_groups = len(all_spatial_coef)
         all_log_spatial_intensity = [
-            torch.matmul(Coef_spline_bases, all_spatial_coef[i, :, :]) for i in range(n_groups)
+            torch.matmul(coef_spline_bases, all_spatial_coef[i, :, :]) for i in range(n_groups)
         ]
         all_spatial_intensity = [
             torch.exp(log_spatial_intensity) for log_spatial_intensity in all_log_spatial_intensity
@@ -1332,7 +1331,7 @@ class GLMPoisson(torch.nn.Module):
             )
         return log_l
 
-    def forward(self, Coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study):
+    def forward(self, coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study):
         if isinstance(all_moderators, dict):
             all_log_mu_moderators = dict()
             for group in all_moderators.keys():
@@ -1343,7 +1342,7 @@ class GLMPoisson(torch.nn.Module):
         log_l = 0
         # spatial effect: mu^X = exp(X * beta)
         for group in foci_per_voxel.keys():
-            log_mu_spatial = self.all_beta_linears[group](Coef_spline_bases)
+            log_mu_spatial = self.all_beta_linears[group](coef_spline_bases)
             mu_spatial = torch.exp(log_mu_spatial)
             group_foci_per_voxel = foci_per_voxel[group]
             group_foci_per_study = foci_per_study[group]
@@ -1386,7 +1385,7 @@ class GLMPoisson(torch.nn.Module):
                 nll = lambda beta: -self._log_likelihood(
                     beta,
                     gamma,
-                    Coef_spline_bases,
+                    coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
@@ -1463,14 +1462,14 @@ class GLMNB(torch.nn.Module):
         alpha,
         beta,
         gamma,
-        Coef_spline_bases,
+        coef_spline_bases,
         group_moderators,
         group_foci_per_voxel,
         group_foci_per_study,
         device="cpu",
     ):
         v = 1 / alpha
-        log_mu_spatial = torch.matmul(Coef_spline_bases, beta.T)
+        log_mu_spatial = torch.matmul(coef_spline_bases, beta.T)
         mu_spatial = torch.exp(log_mu_spatial)
         if gamma is not None:
             log_mu_moderators = torch.matmul(group_moderators, gamma.T)
@@ -1497,7 +1496,7 @@ class GLMNB(torch.nn.Module):
     def _log_likelihood_mult_group(
         all_overdispersion_coef,
         all_spatial_coef,
-        Coef_spline_bases,
+        coef_spline_bases,
         foci_per_voxel,
         foci_per_study,
         moderator_coef=None,
@@ -1507,7 +1506,7 @@ class GLMNB(torch.nn.Module):
         all_v = 1 / all_overdispersion_coef
         n_groups = len(foci_per_voxel)
         all_log_spatial_intensity = [
-            torch.matmul(Coef_spline_bases, all_spatial_coef[i, :, :]) for i in range(n_groups)
+            torch.matmul(coef_spline_bases, all_spatial_coef[i, :, :]) for i in range(n_groups)
         ]
         all_spatial_intensity = [
             torch.exp(log_spatial_intensity) for log_spatial_intensity in all_log_spatial_intensity
@@ -1563,7 +1562,7 @@ class GLMNB(torch.nn.Module):
 
         return log_l
 
-    def forward(self, Coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study):
+    def forward(self, coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study):
         if isinstance(all_moderators, dict):
             all_log_mu_moderators = dict()
             for group in all_moderators.keys():
@@ -1576,7 +1575,7 @@ class GLMNB(torch.nn.Module):
         for group in foci_per_voxel.keys():
             alpha = self.all_alpha_sqrt[group] ** 2
             v = 1 / alpha
-            log_mu_spatial = self.all_beta_linears[group](Coef_spline_bases)
+            log_mu_spatial = self.all_beta_linears[group](coef_spline_bases)
             mu_spatial = torch.exp(log_mu_spatial)
             if self.study_level_moderators:
                 log_mu_moderators = all_log_mu_moderators[group]
@@ -1619,7 +1618,7 @@ class GLMNB(torch.nn.Module):
                     alpha,
                     beta,
                     gamma,
-                    Coef_spline_bases,
+                    coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
@@ -1671,14 +1670,14 @@ class GLMCNB(torch.nn.Module):
         alpha,
         beta,
         gamma,
-        Coef_spline_bases,
+        coef_spline_bases,
         group_moderators,
         group_foci_per_voxel,
         group_foci_per_study,
         device="cpu",
     ):
         v = 1 / alpha
-        log_mu_spatial = torch.matmul(Coef_spline_bases, beta.T)
+        log_mu_spatial = torch.matmul(coef_spline_bases, beta.T)
         mu_spatial = torch.exp(log_mu_spatial)
         if gamma is not None:
             log_mu_moderators = torch.matmul(group_moderators, gamma.T)
@@ -1706,7 +1705,7 @@ class GLMCNB(torch.nn.Module):
     def _log_likelihood_mult_group(
         all_overdispersion_coef,
         all_spatial_coef,
-        Coef_spline_bases,
+        coef_spline_bases,
         foci_per_voxel,
         foci_per_study,
         moderator_coef=None,
@@ -1717,7 +1716,7 @@ class GLMCNB(torch.nn.Module):
         all_v = [1 / overdispersion_coef  for overdispersion_coef in all_overdispersion_coef]
         # estimated intensity and log estimated intensity
         all_log_spatial_intensity = [
-            torch.matmul(Coef_spline_bases, all_spatial_coef[i, :, :]) for i in range(n_groups)
+            torch.matmul(coef_spline_bases, all_spatial_coef[i, :, :]) for i in range(n_groups)
         ]
         all_spatial_intensity = [
             torch.exp(log_spatial_intensity) for log_spatial_intensity in all_log_spatial_intensity
@@ -1757,7 +1756,7 @@ class GLMCNB(torch.nn.Module):
             
         return log_l
 
-    def forward(self, Coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study):
+    def forward(self, coef_spline_bases, all_moderators, foci_per_voxel, foci_per_study):
         if isinstance(all_moderators, dict):
             all_log_mu_moderators = dict()
             for group in all_moderators.keys():
@@ -1769,7 +1768,7 @@ class GLMCNB(torch.nn.Module):
         for group in foci_per_voxel.keys():
             alpha = self.all_alpha[group]
             v = 1 / alpha
-            log_mu_spatial = self.all_beta_linears[group](Coef_spline_bases)
+            log_mu_spatial = self.all_beta_linears[group](coef_spline_bases)
             mu_spatial = torch.exp(log_mu_spatial)
             group_foci_per_voxel = foci_per_voxel[group]
             group_foci_per_study = foci_per_study[group]
@@ -1808,7 +1807,7 @@ class GLMCNB(torch.nn.Module):
                     alpha,
                     beta,
                     gamma,
-                    Coef_spline_bases,
+                    coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
