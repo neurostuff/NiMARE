@@ -28,12 +28,11 @@ def test_CBMRInference(testdata_cbmr_simulated):
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age"],
-        spline_spacing=10,
-        model="Poisson",
+        spline_spacing=20,
         penalty=False,
         lr=1e-1,
         tol=1e6,
-        device="cuda",
+        device="cpu",
     )
     cbmr_res = cbmr.fit(dataset=dset)
     inference = CBMRInference(
