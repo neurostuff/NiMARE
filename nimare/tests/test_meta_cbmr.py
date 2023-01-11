@@ -1,5 +1,6 @@
 from nimare.meta.cbmr import CBMREstimator, CBMRInference
 from nimare.tests.utils import standardize_field
+from nimare.meta import models
 import logging
 
 
@@ -28,8 +29,9 @@ def test_CBMRInference(testdata_cbmr_simulated):
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age"],
-        spline_spacing=20,
-        penalty=False,
+        spline_spacing=10,
+        model=models.Poisson,
+        penalty=True,
         lr=1e-1,
         tol=1e6,
         device="cpu",

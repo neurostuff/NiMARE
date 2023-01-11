@@ -6,18 +6,16 @@ import torch
 class GeneralLinearModel(torch.nn.Module):
     def __init__(
         self,
-        beta_dim=None,
-        gamma_dim=None,
+        spatial_coef_dim=None,
+        moderators_coef_dim=None,
         groups=None,
-        study_level_moderators=False,
         penalty=False,
         device="cpu",
     ):  
         super().__init__()
-        self.beta_dim = beta_dim
-        self.gamma_dim = gamma_dim
+        self.spatial_coef_dim = spatial_coef_dim
+        self.moderators_coef_dim = moderators_coef_dim
         self.groups = groups
-        self.study_level_moderators = study_level_moderators
         self.penalty = penalty
         self.device = device
     
@@ -40,38 +38,43 @@ class GeneralLinearModel(torch.nn.Module):
 class Poisson(GeneralLinearModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # initialization for beta
-        all_beta_linears = dict()
+        # initialization for spatial regression coefficients
+        all_spatial_coef_linears = dict()
         for group in self.groups:
-            beta_linear_group = torch.nn.Linear(self.beta_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(beta_linear_group.weight, a=-0.01, b=0.01)
-            all_beta_linears[group] = beta_linear_group
-        self.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
-        # gamma
-        if self.study_level_moderators:
-            self.gamma_linear = torch.nn.Linear(self.gamma_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
+            spatial_coef_linear_group = torch.nn.Linear(self.spatial_coef_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(spatial_coef_linear_group.weight, a=-0.01, b=0.01)
+            all_spatial_coef_linears[group] = spatial_coef_linear_group
+        self.all_spatial_coef_linears = torch.nn.ModuleDict(all_spatial_coef_linears)
+        # initialization for regression coefficients of moderators
+        if self.moderators_coef_dim:
+            self.moderators_linear = torch.nn.Linear(self.moderators_coef_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
 
     def _log_likelihood_single_group(
-        beta, gamma, coef_spline_bases, moderators, foci_per_voxel, foci_per_study, device="cpu"
+        group_spatial_coef,
+        moderators_coef, 
+        coef_spline_bases, 
+        moderators, 
+        foci_per_voxel, 
+        foci_per_study, 
+        device="cpu"
     ):
-        log_mu_spatial = torch.matmul(coef_spline_bases, beta.T)
+        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
-        if gamma is not None:
-            log_mu_moderators = torch.matmul(moderators, gamma.T)
-            mu_moderators = torch.exp(log_mu_moderators)
-        else:
+        if moderators_coef is None:
             n_study, _ = foci_per_study.shape
             log_mu_moderators = torch.tensor(
                 [0] * n_study, dtype=torch.float64, device=device
             ).reshape((-1, 1))
+            mu_moderators = torch.exp(log_mu_moderators)
+        else:
+            log_mu_moderators = torch.matmul(moderators, moderators_coef.T)
             mu_moderators = torch.exp(log_mu_moderators)
         log_l = (
             torch.sum(torch.mul(foci_per_voxel, log_mu_spatial))
             + torch.sum(torch.mul(foci_per_study, log_mu_moderators))
             - torch.sum(mu_spatial) * torch.sum(mu_moderators)
         )
-
         return log_l
 
     def _log_likelihood_mult_group(
@@ -123,17 +126,16 @@ class Poisson(GeneralLinearModel):
             all_log_mu_moderators = dict()
             for group in all_moderators.keys():
                 group_moderators = all_moderators[group]
-                # mu^Z = exp(Z * gamma)
-                log_mu_moderators = self.gamma_linear(group_moderators)
+                log_mu_moderators = self.moderators_linear(group_moderators)
                 all_log_mu_moderators[group] = log_mu_moderators
         log_l = 0
-        # spatial effect: mu^X = exp(X * beta)
+        # spatial effect
         for group in foci_per_voxel.keys():
-            log_mu_spatial = self.all_beta_linears[group](coef_spline_bases)
+            log_mu_spatial = self.all_spatial_coef_linears[group](coef_spline_bases)
             mu_spatial = torch.exp(log_mu_spatial)
             group_foci_per_voxel = foci_per_voxel[group]
             group_foci_per_study = foci_per_study[group]
-            if self.study_level_moderators:
+            if self.moderators_coef_dim:
                 log_mu_moderators = all_log_mu_moderators[group]
                 mu_moderators = torch.exp(log_mu_moderators)
             else:
@@ -154,38 +156,31 @@ class Poisson(GeneralLinearModel):
         if self.penalty:
             # Firth-type penalty
             for group in foci_per_voxel.keys():
-                beta = self.all_beta_linears[group].weight.T
-                beta_dim = beta.shape[0]
+                group_spatial_coef = self.all_spatial_coef_linears[group].weight
                 group_foci_per_voxel = foci_per_voxel[group]
                 group_foci_per_study = foci_per_study[group]
-                if self.study_level_moderators:
-                    gamma = self.gamma_linear.weight.T
+                if self.moderators_coef_dim:
+                    moderators_coef = self.moderators_linear.weight
                     group_moderators = all_moderators[group]
-                    gamma, group_moderators = [gamma], [group_moderators]
                 else:
-                    gamma, group_moderators = None, None
+                    moderators_coef, group_moderators = None, None
 
-                # all_spatial_coef = torch.stack([beta])
-                foci_per_voxel, foci_per_study = torch.stack(
-                    [group_foci_per_voxel]
-                ), torch.stack([group_foci_per_study])
-                nll = lambda beta: -self._log_likelihood(
-                    beta,
-                    gamma,
+                nll = lambda group_spatial_coef: -Poisson._log_likelihood_single_group(
+                    group_spatial_coef,
+                    moderators_coef,
                     coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
                 )
-                params = beta
                 F = torch.autograd.functional.hessian(
                     nll,
-                    params,
+                    group_spatial_coef,
                     create_graph=False,
                     vectorize=True,
                     outer_jacobian_strategy="forward-mode",
                 )
-                F = F.reshape((beta_dim, beta_dim))
+                F = F.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
                 eig_vals = torch.real(
                     torch.linalg.eigvals(F)
                 )  # torch.eig(F, eigenvectors=False)[0][:,0]
@@ -199,23 +194,22 @@ class Poisson(GeneralLinearModel):
 class NegativeBinomial(GeneralLinearModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # initialization for beta
-        all_beta_linears, all_alpha_sqrt = dict(), dict()
+        # initialization for group-wise spatial coefficient of regression
+        all_spatial_coef_linears, all_overdispersion_sqrt = dict(), dict()
         for group in self.groups:
-            beta_linear_group = torch.nn.Linear(self.beta_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(beta_linear_group.weight, a=-0.01, b=0.01)
-            all_beta_linears[group] = beta_linear_group
+            spatial_coef_linear_group = torch.nn.Linear(self.spatial_coef_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(spatial_coef_linear_group.weight, a=-0.01, b=0.01)
+            all_spatial_coef_linears[group] = spatial_coef_linear_group
             # initialization for alpha
-            alpha_init_group = torch.tensor(1e-2).double()
-            all_alpha_sqrt[group] = torch.nn.Parameter(
-                torch.sqrt(alpha_init_group), requires_grad=True
+            overdispersion_init_group = torch.tensor(1e-2).double()
+            all_overdispersion_sqrt[group] = torch.nn.Parameter(
+                torch.sqrt(overdispersion_init_group), requires_grad=True
             )
-        self.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
-        self.all_alpha_sqrt = torch.nn.ParameterDict(all_alpha_sqrt)
-        # gamma
-        if self.study_level_moderators:
-            self.gamma_linear = torch.nn.Linear(self.gamma_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
+        self.all_spatial_coef_linears = torch.nn.ModuleDict(all_spatial_coef_linears)
+        self.all_overdispersion_sqrt = torch.nn.ParameterDict(all_overdispersion_sqrt)
+        if self.moderators_coef_dim:
+            self.moderators_linear = torch.nn.Linear(self.moderators_coef_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
 
     def _three_term(y, r, device):
         max_foci = torch.max(y).to(dtype=torch.int64, device=device)
@@ -234,20 +228,20 @@ class NegativeBinomial(GeneralLinearModel):
         return sum_three_term
 
     def _log_likelihood_single_group(
-        alpha,
-        beta,
-        gamma,
+        group_overdispersion,
+        group_spatial_coef,
+        moderators_coef,
         coef_spline_bases,
         group_moderators,
         group_foci_per_voxel,
         group_foci_per_study,
         device="cpu",
-    ):
-        v = 1 / alpha
-        log_mu_spatial = torch.matmul(coef_spline_bases, beta.T)
+    ):                
+        v = 1 / group_overdispersion
+        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
-        if gamma is not None:
-            log_mu_moderators = torch.matmul(group_moderators, gamma.T)
+        if moderators_coef is not None:
+            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
             mu_moderators = torch.exp(log_mu_moderators)
         else:
             n_study, _ = group_foci_per_study.shape
@@ -342,17 +336,16 @@ class NegativeBinomial(GeneralLinearModel):
             all_log_mu_moderators = dict()
             for group in all_moderators.keys():
                 group_moderators = all_moderators[group]
-                # mu^Z = exp(Z * gamma)
-                log_mu_moderators = self.gamma_linear(group_moderators)
+                log_mu_moderators = self.moderators_linear(group_moderators)
                 all_log_mu_moderators[group] = log_mu_moderators
         log_l = 0
-        # spatial effect: mu^X = exp(X * beta)
+        # spatial effect
         for group in foci_per_voxel.keys():
-            alpha = self.all_alpha_sqrt[group] ** 2
-            v = 1 / alpha
-            log_mu_spatial = self.all_beta_linears[group](coef_spline_bases)
+            overdispersion = self.all_overdispersion_sqrt[group] ** 2
+            v = 1 / overdispersion
+            log_mu_spatial = self.all_spatial_coef_linears[group](coef_spline_bases)
             mu_spatial = torch.exp(log_mu_spatial)
-            if self.study_level_moderators:
+            if self.moderators_coef_dim:
                 log_mu_moderators = all_log_mu_moderators[group]
                 mu_moderators = torch.exp(log_mu_moderators)
             else:
@@ -382,25 +375,24 @@ class NegativeBinomial(GeneralLinearModel):
         if self.penalty:
             # Firth-type penalty
             for group in foci_per_voxel.keys():
-                alpha = self.all_alpha_sqrt[group] ** 2
-                beta = self.all_beta_linears[group].weight.T
-                beta_dim = beta.shape[0]
-                gamma = self.gamma_linear.weight.detach().T
+                group_overdispersion = self.all_overdispersion_sqrt[group] ** 2
+                group_spatial_coef = self.all_spatial_coef_linears[group].weight
+                moderators_coef = self.moderators_linear.weight.detach()
                 group_foci_per_voxel = foci_per_voxel[group]
                 group_foci_per_study = foci_per_study[group]
                 group_moderators = all_moderators[group]
-                nll = lambda beta: -self._log_likelihood(
-                    alpha,
-                    beta,
-                    gamma,
+            
+                nll = lambda group_spatial_coef: -NegativeBinomial._log_likelihood_single_group(
+                    group_overdispersion,
+                    group_spatial_coef,
+                    moderators_coef,
                     coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
                 )
-                params = beta
-                F = torch.autograd.functional.hessian(nll, params, create_graph=True)
-                F = F.reshape((beta_dim, beta_dim))
+                F = torch.autograd.functional.hessian(nll, group_spatial_coef, create_graph=True)
+                F = F.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
                 eig_vals = eig_vals = torch.real(torch.linalg.eigvals(F))
                 del F
                 group_firth_penalty = 0.5 * torch.sum(torch.log(eig_vals))
@@ -413,37 +405,37 @@ class NegativeBinomial(GeneralLinearModel):
 class ClusteredNegativeBinomial(GeneralLinearModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # initialization for beta
-        all_beta_linears, all_alpha = dict(), dict()
+        # initialization for spatial regression coefficient 
+        all_spatial_coef_linears, all_overdispersion = dict(), dict()
         for group in self.groups:
-            beta_linear_group = torch.nn.Linear(self.beta_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(beta_linear_group.weight, a=-0.01, b=0.01)
-            all_beta_linears[group] = beta_linear_group
-            # initialization for alpha
-            alpha_init_group = torch.tensor(1e-2).double()
-            all_alpha[group] = torch.nn.Parameter(alpha_init_group, requires_grad=True)
-        self.all_beta_linears = torch.nn.ModuleDict(all_beta_linears)
-        self.all_alpha = torch.nn.ParameterDict(all_alpha)
-        # gamma
-        if self.study_level_moderators:
-            self.gamma_linear = torch.nn.Linear(self.gamma_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(self.gamma_linear.weight, a=-0.01, b=0.01)
+            spatial_coef_linear_group = torch.nn.Linear(self.spatial_coef_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(spatial_coef_linear_group.weight, a=-0.01, b=0.01)
+            all_spatial_coef_linears[group] = spatial_coef_linear_group
+            # initialization for overdispersion parameter
+            overdispersion_init_group = torch.tensor(1e-2).double()
+            all_overdispersion[group] = torch.nn.Parameter(overdispersion_init_group, requires_grad=True)
+        self.all_spatial_coef_linears = torch.nn.ModuleDict(all_spatial_coef_linears)
+        self.all_overdispersion = torch.nn.ParameterDict(all_overdispersion)
+        # regression coefficient for moderators
+        if self.moderators_coef_dim:
+            self.moderators_linear = torch.nn.Linear(self.moderators_coef_dim, 1, bias=False).double()
+            torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
 
     def _log_likelihood_single_group(
-        alpha,
-        beta,
-        gamma,
+        group_overdispersion,
+        group_spatial_coef,
+        moderators_coef,
         coef_spline_bases,
         group_moderators,
         group_foci_per_voxel,
         group_foci_per_study,
         device="cpu",
     ):
-        v = 1 / alpha
-        log_mu_spatial = torch.matmul(coef_spline_bases, beta.T)
+        v = 1 / group_overdispersion
+        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
-        if gamma is not None:
-            log_mu_moderators = torch.matmul(group_moderators, gamma.T)
+        if moderators_coef is not None:
+            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
             mu_moderators = torch.exp(log_mu_moderators)
         else:
             n_study, _ = group_foci_per_study.shape
@@ -524,14 +516,13 @@ class ClusteredNegativeBinomial(GeneralLinearModel):
             all_log_mu_moderators = dict()
             for group in all_moderators.keys():
                 group_moderators = all_moderators[group]
-                # mu^Z = exp(Z * gamma)
-                log_mu_moderators = self.gamma_linear(group_moderators)
+                log_mu_moderators = self.moderators_linear(group_moderators)
                 all_log_mu_moderators[group] = log_mu_moderators
         log_l = 0
         for group in foci_per_voxel.keys():
-            alpha = self.all_alpha[group]
-            v = 1 / alpha
-            log_mu_spatial = self.all_beta_linears[group](coef_spline_bases)
+            group_overdispersion = self.all_overdispersion[group]
+            v = 1 / group_overdispersion
+            log_mu_spatial = self.all_spatial_coef_linears[group](coef_spline_bases)
             mu_spatial = torch.exp(log_mu_spatial)
             group_foci_per_voxel = foci_per_voxel[group]
             group_foci_per_study = foci_per_study[group]
@@ -559,28 +550,26 @@ class ClusteredNegativeBinomial(GeneralLinearModel):
         if self.penalty:
             # Firth-type penalty
             for group in foci_per_voxel.keys():
-                alpha = self.all_alpha[group]
-                beta = self.all_beta_linears[group].weight.T
-                beta_dim = beta.shape[0]
-                gamma = self.gamma_linear.weight.T
+                group_overdispersion = self.all_overdispersion[group]
+                group_spatial_coef = self.all_spatial_coef_linears[group].weight
+                moderators_coef = self.moderators_linear.weight
                 group_foci_per_voxel = foci_per_voxel[group]
                 group_foci_per_study = foci_per_study[group]
                 group_moderators = all_moderators[group]
-                nll = lambda beta: -self._log_likelihood(
-                    alpha,
-                    beta,
-                    gamma,
+                
+                nll = lambda group_spatial_coef: -ClusteredNegativeBinomial._log_likelihood_single_group(
+                    group_overdispersion,
+                    group_spatial_coef,
+                    moderators_coef,
                     coef_spline_bases,
                     group_moderators,
                     group_foci_per_voxel,
                     group_foci_per_study,
                 )
-                params = beta
                 F = torch.autograd.functional.hessian(
-                    nll, params, create_graph=True
-                )  # vectorize=True, outer_jacobian_strategy='forward-mode'
-                # F = hessian(nll)(beta)
-                F = F.reshape((beta_dim, beta_dim))
+                    nll, group_spatial_coef, create_graph=True
+                ) 
+                F = F.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
                 eig_vals = torch.real(torch.linalg.eigvals(F))
                 del F
                 group_firth_penalty = 0.5 * torch.sum(torch.log(eig_vals))

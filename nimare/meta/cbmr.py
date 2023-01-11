@@ -168,7 +168,13 @@ class CBMREstimator(Estimator):
         if isinstance(mask_img, str):
             mask_img = nib.load(mask_img)
         self.inputs_["mask_img"] = mask_img
-
+        
+        # generate spatial matrix of coefficient of cubic B-spline bases in x,y,z dimension
+        coef_spline_bases = B_spline_bases(
+            masker_voxels=mask_img._dataobj, spacing=self.spline_spacing
+        )
+        self.inputs_["coef_spline_bases"] = coef_spline_bases
+        
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":
                 # remove dataset coordinates outside of mask
@@ -420,18 +426,10 @@ class CBMREstimator(Estimator):
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
         """
-        masker_voxels = self.inputs_["mask_img"]._dataobj
-        coef_spline_bases = B_spline_bases(
-            masker_voxels=masker_voxels, spacing=self.spline_spacing
-        )
-        P = coef_spline_bases.shape[1]
-        self.inputs_["coef_spline_bases"] = coef_spline_bases
-
         cbmr_model = self.model(
-            beta_dim=self.inputs_["coef_spline_bases"].shape[1],
-            gamma_dim=len(self.moderators) if self.moderators else None,
+            spatial_coef_dim=self.inputs_["coef_spline_bases"].shape[1],
+            moderators_coef_dim=len(self.moderators) if self.moderators else None,
             groups=self.groups,
-            study_level_moderators=bool(self.moderators),
             penalty=self.penalty,
             device=self.device,
         )
@@ -444,11 +442,11 @@ class CBMREstimator(Estimator):
         for group in self.inputs_["studies_by_group"].keys():
             group_beta_linear_weight = cbmr_model.all_beta_linears[group].weight
             group_beta_linear_weight = (
-                group_beta_linear_weight.cpu().detach().numpy().reshape((P,))
+                group_beta_linear_weight.cpu().detach().numpy().flatten()
             )
             Spatial_Regression_Coef[group] = group_beta_linear_weight
             group_studywise_spatial_intensity = np.exp(
-                np.matmul(coef_spline_bases, group_beta_linear_weight)
+                np.matmul(self.inputs_["coef_spline_bases"], group_beta_linear_weight)
             )
             maps[
                 "Group_" + group + "_Studywise_Spatial_Intensity"
