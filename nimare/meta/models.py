@@ -18,6 +18,13 @@ class GeneralLinearModel(torch.nn.Module):
         self.groups = groups
         self.penalty = penalty
         self.device = device
+
+        # initialization for spatial regression coefficients
+        if self.spatial_coef_dim and self.groups:
+            self.init_spatial_weights()
+        # initialization for regression coefficients of moderators
+        if self.moderators_coef_dim:
+            self.init_moderator_weights()
     
     @abc.abstractmethod
     def _log_likelihood_single_group(self, **kwargs):
@@ -34,21 +41,62 @@ class GeneralLinearModel(torch.nn.Module):
         """Document this."""
         return
 
+    def init_spatial_weights(self):
+        """Document this."""
+        # initialization for spatial regression coefficients
+        spatial_coef_linears = dict()
+        for group in self.groups:
+            spatial_coef_linear_group = torch.nn.Linear(
+                self.spatial_coef_dim, 1, bias=False
+            ).double()
+            torch.nn.init.uniform_(spatial_coef_linear_group.weight, a=-0.01, b=0.01)
+            spatial_coef_linears[group] = spatial_coef_linear_group
+        self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
+
+    def init_moderator_weights(self):
+        """Document this."""
+        self.moderators_linear = torch.nn.Linear(
+            self.moderators_coef_dim, 1, bias=False
+        ).double()
+        torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
+
+    def init_weights(self, groups, spatial_coef_dim, moderators_coef_dim):
+        """Document this."""
+        self.groups = groups
+        self.spatial_coef_dim = spatial_coef_dim
+        self.moderators_coef_dim = moderators_coef_dim
+        self.init_spatial_weights()
+        self.init_moderator_weights()
+
+
+class OverdispersionModel(GeneralLinearModel):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        square_root = kwargs.get("square_root", False)
+        if self.groups:
+            self.init_overdispersion_weights(square_root=square_root)
+
+    def init_overdispersion_weights(self, square_root=False):
+        """Document this."""
+        overdispersion = dict()
+        for group in self.groups:
+            # initialization for alpha
+            overdispersion_init_group = torch.tensor(1e-2).double()
+            if square_root:
+                overdispersion_init_group = torch.sqrt(overdispersion_init_group)
+            overdispersion[group] = torch.nn.Parameter(overdispersion_init_group, requires_grad=True)
+        self.overdispersion = torch.nn.ParameterDict(overdispersion)
+
+    def init_weights(self, groups, spatial_coef_dim, moderators_coef_dim, square_root=False):
+        """Document this."""
+        super().init_weights(groups, spatial_coef_dim, moderators_coef_dim)
+        self.init_overdispersion_weights(square_root=square_root)
+
 
 class Poisson(GeneralLinearModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # initialization for spatial regression coefficients
-        spatial_coef_linears = dict()
-        for group in self.groups:
-            spatial_coef_linear_group = torch.nn.Linear(self.spatial_coef_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(spatial_coef_linear_group.weight, a=-0.01, b=0.01)
-            spatial_coef_linears[group] = spatial_coef_linear_group
-        self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
-        # initialization for regression coefficients of moderators
-        if self.moderators_coef_dim:
-            self.moderators_linear = torch.nn.Linear(self.moderators_coef_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
 
     def _log_likelihood_single_group(
         group_spatial_coef,
@@ -191,25 +239,10 @@ class Poisson(GeneralLinearModel):
         return -log_l
 
 
-class NegativeBinomial(GeneralLinearModel):
+class NegativeBinomial(OverdispersionModel):
     def __init__(self, **kwargs):
+        kwargs['square_root'] = True
         super().__init__(**kwargs)
-        # initialization for group-wise spatial coefficient of regression
-        spatial_coef_linears, overdispersion_sqrt = dict(), dict()
-        for group in self.groups:
-            spatial_coef_linear_group = torch.nn.Linear(self.spatial_coef_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(spatial_coef_linear_group.weight, a=-0.01, b=0.01)
-            spatial_coef_linears[group] = spatial_coef_linear_group
-            # initialization for alpha
-            overdispersion_init_group = torch.tensor(1e-2).double()
-            overdispersion_sqrt[group] = torch.nn.Parameter(
-                torch.sqrt(overdispersion_init_group), requires_grad=True
-            )
-        self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
-        self.overdispersion_sqrt = torch.nn.ParameterDict(overdispersion_sqrt)
-        if self.moderators_coef_dim:
-            self.moderators_linear = torch.nn.Linear(self.moderators_coef_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
 
     def _three_term(y, r, device):
         max_foci = torch.max(y).to(dtype=torch.int64, device=device)
@@ -397,24 +430,10 @@ class NegativeBinomial(GeneralLinearModel):
         return -log_l
 
 
-class ClusteredNegativeBinomial(GeneralLinearModel):
+class ClusteredNegativeBinomial(OverdispersionModel):
     def __init__(self, **kwargs):
+        kwargs['square_root'] = False
         super().__init__(**kwargs)
-        # initialization for spatial regression coefficient 
-        spatial_coef_linears, overdispersion = dict(), dict()
-        for group in self.groups:
-            group_spatial_coef_linear = torch.nn.Linear(self.spatial_coef_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(group_spatial_coef_linear.weight, a=-0.01, b=0.01)
-            spatial_coef_linears[group] = group_spatial_coef_linear
-            # initialization for overdispersion parameter
-            overdispersion_init_group = torch.tensor(1e-2).double()
-            overdispersion[group] = torch.nn.Parameter(overdispersion_init_group, requires_grad=True)
-        self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
-        self.overdispersion = torch.nn.ParameterDict(overdispersion)
-        # regression coefficient for moderators
-        if self.moderators_coef_dim:
-            self.moderators_linear = torch.nn.Linear(self.moderators_coef_dim, 1, bias=False).double()
-            torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
 
     def _log_likelihood_single_group(
         group_overdispersion,

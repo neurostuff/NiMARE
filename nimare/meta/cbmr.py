@@ -119,7 +119,7 @@ class CBMREstimator(Estimator):
         self.moderators = moderators
 
         self.spline_spacing = spline_spacing
-        self.model = model
+        self.model = model(penalty=penalty, device=device)
         self.penalty = penalty
         self.n_iter = n_iter
         self.lr = lr
@@ -426,21 +426,25 @@ class CBMREstimator(Estimator):
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
         """
-        cbmr_model = self.model(
-            spatial_coef_dim=self.inputs_["coef_spline_bases"].shape[1],
-            moderators_coef_dim=len(self.moderators) if self.moderators else None,
-            groups=self.groups,
-            penalty=self.penalty,
-            device=self.device,
-        )
-        
-        self._optimizer(cbmr_model, self.lr, self.tol, self.n_iter, self.device)
+        init_weight_kwargs = {
+            'groups': self.groups,
+            'spatial_coef_dim': self.inputs_["coef_spline_bases"].shape[1],
+            'moderators_coef_dim': len(self.moderators) if self.moderators else None,
+        }
+        if isinstance(self.model, models.NegativeBinomial):
+            init_weight_kwargs['square_root'] = True
+        if isinstance(self.model, models.ClusteredNegativeBinomial):
+            init_weight_kwargs['square_root'] = False
+
+        self.model.init_weights(**init_weight_kwargs)
+
+        self._optimizer(self.model, self.lr, self.tol, self.n_iter, self.device)
 
         maps, tables = dict(), dict()
         Spatial_Regression_Coef, overdispersion_param = dict(), dict()
         # regression coef of spatial effect
         for group in self.groups:
-            group_spatial_coef_linear_weight = cbmr_model.spatial_coef_linears[group].weight
+            group_spatial_coef_linear_weight = self.model.spatial_coef_linears[group].weight
             group_spatial_coef_linear_weight = (
                 group_spatial_coef_linear_weight.cpu().detach().numpy().flatten()
             )
@@ -452,26 +456,26 @@ class CBMREstimator(Estimator):
                 "Group_" + group + "_Studywise_Spatial_Intensity"
             ] = group_studywise_spatial_intensity  # .reshape((1,-1))
             # overdispersion parameter
-            if isinstance(cbmr_model, models.NegativeBinomial):
-                group_overdispersion = cbmr_model.overdispersion_sqrt[group] ** 2
+            if isinstance(self.model, models.NegativeBinomial):
+                group_overdispersion = self.model.overdispersion_sqrt[group] ** 2
                 group_overdispersion = group_overdispersion.cpu().detach().numpy()
                 overdispersion_param[group] = group_overdispersion
-            elif isinstance(cbmr_model, models.ClusteredNegativeBinomial):
-                group_overdispersion = cbmr_model.overdispersion[group]
+            elif isinstance(self.model, models.ClusteredNegativeBinomial):
+                group_overdispersion = self.model.overdispersion[group]
                 group_overdispersion = group_overdispersion.cpu().detach().numpy()
                 overdispersion_param[group] = group_overdispersion
 
         tables["Spatial_Regression_Coef"] = pd.DataFrame.from_dict(
             Spatial_Regression_Coef, orient="index"
         )
-        if isinstance(cbmr_model, (models.NegativeBinomial, models.ClusteredNegativeBinomial)):
+        if isinstance(self.model, (models.NegativeBinomial, models.ClusteredNegativeBinomial)):
             tables["Overdispersion_Coef"] = pd.DataFrame.from_dict(
                 overdispersion_param, orient="index", columns=["overdispersion"]
             )
         # study-level moderators
         if self.moderators:
             self.moderators_effect = dict()
-            self._moderators_coef = cbmr_model.moderators_linear.weight
+            self._moderators_coef = self.model.moderators_linear.weight
             self._moderators_coef = self._moderators_coef.cpu().detach().numpy()
             for group in self.groups:
                 group_moderators = self.inputs_["moderators_by_group"][group]
@@ -498,7 +502,7 @@ class CBMREstimator(Estimator):
             group_foci_per_study = torch.tensor(
                 self.inputs_["foci_per_study"][group], dtype=torch.float64, device=self.device
             )
-            group_spatial_coef = torch.tensor(cbmr_model.spatial_coef_linears[group].weight,
+            group_spatial_coef = torch.tensor(self.model.spatial_coef_linears[group].weight,
                                               dtype=torch.float64, device=self.device)
             if self.moderators:
                 group_moderators = torch.tensor(
@@ -507,7 +511,7 @@ class CBMREstimator(Estimator):
                 moderators_coef = torch.tensor(self._moderators_coef, dtype=torch.float64, device=self.device)
             else:
                 group_moderators, moderators_coef = None, None
-            
+
             ll_single_group_kwargs = {
                 "moderators_coef": moderators_coef,
                 "coef_spline_bases": coef_spline_bases,
@@ -532,8 +536,8 @@ class CBMREstimator(Estimator):
 
             F_spatial_coef = functorch.hessian(nll_spatial_coef)(group_spatial_coef)
             # Inference on regression coefficient of spatial effect
-    
-            F_spatial_coef = F_spatial_coef.reshape((cbmr_model.spatial_coef_dim, cbmr_model.spatial_coef_dim))
+
+            F_spatial_coef = F_spatial_coef.reshape((self.model.spatial_coef_dim, self.model.spatial_coef_dim))
             Cov_spatial_coef = np.linalg.inv(F_spatial_coef.detach().numpy())
             Var_spatial_coef = np.diag(Cov_spatial_coef)
             SE_spatial_coef = np.sqrt(Var_spatial_coef)
@@ -581,9 +585,9 @@ class CBMREstimator(Estimator):
                 vectorize=True,
                 outer_jacobian_strategy="forward-mode",
             )
-            F_moderators_coef = F_moderators_coef.reshape((cbmr_model.moderators_coef_dim, cbmr_model.moderators_coef_dim))
+            F_moderators_coef = F_moderators_coef.reshape((self.model.moderators_coef_dim, self.model.moderators_coef_dim))
             Cov_moderators_coef = np.linalg.inv(F_moderators_coef.detach().numpy())
-            Var_moderators = np.diag(Cov_moderators_coef).reshape((1, cbmr_model.moderators_coef_dim))
+            Var_moderators = np.diag(Cov_moderators_coef).reshape((1, self.model.moderators_coef_dim))
             SE_moderators = np.sqrt(Var_moderators)
             tables["Moderators_Regression_SE"] = pd.DataFrame(
                 SE_moderators, columns=self.moderators
