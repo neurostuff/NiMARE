@@ -66,14 +66,14 @@ class GeneralLinearModel(torch.nn.Module):
         self.spatial_coef_dim = spatial_coef_dim
         self.moderators_coef_dim = moderators_coef_dim
         self.init_spatial_weights()
-        self.init_moderator_weights()
+        if moderators_coef_dim:
+            self.init_moderator_weights()
 
 
 class OverdispersionModel(GeneralLinearModel):
-
     def __init__(self, **kwargs):
+        square_root = kwargs.pop("square_root", False)
         super().__init__(**kwargs)
-        square_root = kwargs.get("square_root", False)
         if self.groups:
             self.init_overdispersion_weights(square_root=square_root)
 
@@ -99,12 +99,13 @@ class Poisson(GeneralLinearModel):
         super().__init__(**kwargs)
 
     def _log_likelihood_single_group(
+        self,
         group_spatial_coef,
-        moderators_coef, 
-        coef_spline_bases, 
-        moderators, 
-        foci_per_voxel, 
-        foci_per_study, 
+        moderators_coef,
+        coef_spline_bases,
+        moderators,
+        foci_per_voxel,
+        foci_per_study,
         device="cpu"
     ):
         log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
@@ -126,6 +127,7 @@ class Poisson(GeneralLinearModel):
         return log_l
 
     def _log_likelihood_mult_group(
+        self,
         spatial_coef,
         coef_spline_bases,
         foci_per_voxel,
@@ -170,35 +172,23 @@ class Poisson(GeneralLinearModel):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        if isinstance(moderators, dict):
-            log_mu_moderators = dict()
-            for group in self.groups:
-                group_moderators = moderators[group]
-                group_log_mu_moderators = self.moderators_linear(group_moderators)
-                log_mu_moderators[group] = group_log_mu_moderators
         log_l = 0
-        # spatial effect
         for group in self.groups:
-            group_log_mu_spatial = self.spatial_coef_linears[group](coef_spline_bases)
-            group_mu_spatial = torch.exp(group_log_mu_spatial)
+            group_spatial_coef = self.spatial_coef_linears[group].weight
             group_foci_per_voxel = foci_per_voxel[group]
             group_foci_per_study = foci_per_study[group]
-            if self.moderators_coef_dim:
-                group_log_mu_moderators = log_mu_moderators[group]
-                group_mu_moderators = torch.exp(group_log_mu_moderators)
+            if isinstance(moderators, dict):
+                moderators_coef = self.moderators_linear.weight
+                group_moderators = moderators[group]
             else:
-                n_group_study, _ = group_foci_per_study.shape
-                group_log_mu_moderators = torch.tensor([0] * n_group_study, device=self.device).reshape(
-                    (-1, 1)
-                )
-                group_mu_moderators = torch.exp(group_log_mu_moderators)
-            # Under the assumption that Y_ij is either 0 or 1
-            # l = [Y_g]^T * log(mu^X) + [Y^t]^T * log(mu^Z) - [1^T mu_g^X]*[1^T mu_g^Z]
-            group_log_l = (
-                torch.sum(torch.mul(group_foci_per_voxel, group_log_mu_spatial))
-                + torch.sum(torch.mul(group_foci_per_study, group_log_mu_moderators))
-                - torch.sum(group_mu_spatial) * torch.sum(group_mu_moderators)
-            )
+                moderators_coef, group_moderators = None, None
+            group_log_l = self._log_likelihood_single_group(
+                        group_spatial_coef,
+                        moderators_coef,
+                        coef_spline_bases,
+                        group_moderators,
+                        group_foci_per_voxel,
+                        group_foci_per_study)
             log_l += group_log_l
 
         if self.penalty:
@@ -213,7 +203,7 @@ class Poisson(GeneralLinearModel):
                 else:
                     moderators_coef, group_moderators = None, None
 
-                nll = lambda group_spatial_coef: -Poisson._log_likelihood_single_group(
+                nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
                     group_spatial_coef,
                     moderators_coef,
                     coef_spline_bases,
@@ -261,6 +251,7 @@ class NegativeBinomial(OverdispersionModel):
         return sum_three_term
 
     def _log_likelihood_single_group(
+        self,
         group_overdispersion,
         group_spatial_coef,
         moderators_coef,
@@ -296,6 +287,7 @@ class NegativeBinomial(OverdispersionModel):
         return log_l
 
     def _log_likelihood_mult_group(
+        self,
         overdispersion_coef,
         spatial_coef,
         coef_spline_bases,
@@ -360,57 +352,41 @@ class NegativeBinomial(OverdispersionModel):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        if isinstance(moderators, dict):
-            log_mu_moderators = dict()
-            for group in self.groups:
-                group_moderators = moderators[group]
-                group_log_mu_moderators = self.moderators_linear(group_moderators)
-                log_mu_moderators[group] = group_log_mu_moderators
         log_l = 0
-        # spatial effect
         for group in self.groups:
-            group_overdispersion = self.overdispersion_sqrt[group] ** 2
-            group_v = 1 / group_overdispersion
-            group_log_mu_spatial = self.spatial_coef_linears[group](coef_spline_bases)
-            group_mu_spatial = torch.exp(group_log_mu_spatial)
-            if self.moderators_coef_dim:
-                group_log_mu_moderators = log_mu_moderators[group]
-                group_mu_moderators = torch.exp(group_log_mu_moderators)
-            else:
-                n_group_study, _ = foci_per_study[group].shape
-                group_log_mu_moderators = torch.tensor([0] * n_group_study, device=self.device).reshape(
-                    (-1, 1)
-                )
-                group_mu_moderators = torch.exp(group_log_mu_moderators)
-            # Now the sum of NB variates are no long NB distributed (since mu_ij != mu_i'j),
-            # Therefore, we use moment matching approach,
-            # create a new NB approximation to the mixture of NB distributions:
-            # alpha' = sum_i mu_{ij}^2 / (sum_i mu_{ij})^2 * alpha
-            group_numerator = group_mu_spatial**2 * torch.sum(group_mu_moderators**2)
-            group_denominator = group_mu_spatial**2 * torch.sum(group_mu_moderators) ** 2
-            # estimated_sum_alpha = alpha * numerator / denominator
-            # moment matching NB distribution
-            p = group_numerator / (group_v * group_mu_spatial * torch.sum(group_mu_moderators) + group_numerator)
-            r = group_v * group_denominator / group_numerator
-
+            group_overdispersion = self.overdispersion[group] ** 2
+            group_spatial_coef = self.spatial_coef_linears[group].weight
             group_foci_per_voxel = foci_per_voxel[group]
-            # group_foci_per_study = foci_per_study[group]
-            group_log_l = NegativeBinomial._three_term(
-                group_foci_per_voxel, r, device=self.device
-            ) + torch.sum(r * torch.log(1 - p) + group_foci_per_voxel * torch.log(p))
+            group_foci_per_study = foci_per_study[group]
+            if isinstance(moderators, dict):
+                moderators_coef = self.moderators_linear.weight
+                group_moderators = moderators[group]
+            else:
+                moderators_coef, group_moderators = None, None
+            group_log_l = self._log_likelihood_single_group(
+                        group_overdispersion,
+                        group_spatial_coef,
+                        moderators_coef,
+                        coef_spline_bases,
+                        group_moderators,
+                        group_foci_per_voxel,
+                        group_foci_per_study)
             log_l += group_log_l
 
         if self.penalty:
             # Firth-type penalty
             for group in self.groups:
-                group_overdispersion = self.overdispersion_sqrt[group] ** 2
+                group_overdispersion = self.overdispersion[group] ** 2
                 group_spatial_coef = self.spatial_coef_linears[group].weight
-                moderators_coef = self.moderators_linear.weight.detach()
+                if self.moderators_coef_dim:
+                    moderators_coef = self.moderators_linear.weight
+                    group_moderators = moderators[group]
+                else:
+                    moderators_coef, group_moderators = None, None
                 group_foci_per_voxel = foci_per_voxel[group]
                 group_foci_per_study = foci_per_study[group]
-                group_moderators = moderators[group]
             
-                nll = lambda group_spatial_coef: -NegativeBinomial._log_likelihood_single_group(
+                nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
                     group_overdispersion,
                     group_spatial_coef,
                     moderators_coef,
@@ -436,6 +412,7 @@ class ClusteredNegativeBinomial(OverdispersionModel):
         super().__init__(**kwargs)
 
     def _log_likelihood_single_group(
+        self,
         group_overdispersion,
         group_spatial_coef,
         moderators_coef,
@@ -472,6 +449,7 @@ class ClusteredNegativeBinomial(OverdispersionModel):
         return log_l
 
     def _log_likelihood_mult_group(
+        self,
         overdispersion_coef,
         spatial_coef,
         coef_spline_bases,
@@ -526,39 +504,25 @@ class ClusteredNegativeBinomial(OverdispersionModel):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        if isinstance(moderators, dict):
-            log_mu_moderators = dict()
-            for group in self.groups:
-                group_moderators = moderators[group]
-                group_log_mu_moderators = self.moderators_linear(group_moderators)
-                log_mu_moderators[group] = group_log_mu_moderators
         log_l = 0
         for group in self.groups:
             group_overdispersion = self.overdispersion[group]
-            group_v = 1 / group_overdispersion
-            group_log_mu_spatial = self.spatial_coef_linears[group](coef_spline_bases)
-            group_mu_spatial = torch.exp(group_log_mu_spatial)
+            group_spatial_coef = self.spatial_coef_linears[group].weight
             group_foci_per_voxel = foci_per_voxel[group]
             group_foci_per_study = foci_per_study[group]
-            if self.moderators_coef_dim:
-                group_log_mu_moderators = log_mu_moderators[group]
-                group_mu_moderators = torch.exp(group_log_mu_moderators)
+            if isinstance(moderators, dict):
+                moderators_coef = self.moderators_linear.weight
+                group_moderators = moderators[group]
             else:
-                n_group_study, _ = group_foci_per_study.shape
-                group_log_mu_moderators = torch.tensor([0] * n_group_study, device=self.device).reshape(
-                    (-1, 1)
-                )
-                group_mu_moderators = torch.exp(group_log_mu_moderators)
-            group_n_study, _ = group_foci_per_study.shape
-            group_mu_sum_per_study = torch.sum(group_mu_spatial) * group_mu_moderators
-            group_log_l = (
-                group_n_study * group_v * torch.log(group_v)
-                - group_n_study * torch.lgamma(group_v)
-                + torch.sum(torch.lgamma(group_foci_per_study + group_v))
-                - torch.sum((group_foci_per_study + group_v) * torch.log(group_mu_sum_per_study + group_v))
-                + torch.sum(group_foci_per_voxel * group_log_mu_spatial)
-                + torch.sum(group_foci_per_study * group_log_mu_moderators)
-            )
+                moderators_coef, group_moderators = None, None
+            group_log_l = self._log_likelihood_single_group(
+                        group_overdispersion,
+                        group_spatial_coef,
+                        moderators_coef,
+                        coef_spline_bases,
+                        group_moderators,
+                        group_foci_per_voxel,
+                        group_foci_per_study)
             log_l += group_log_l
 
         if self.penalty:
@@ -566,12 +530,16 @@ class ClusteredNegativeBinomial(OverdispersionModel):
             for group in self.groups:
                 group_overdispersion = self.overdispersion[group]
                 group_spatial_coef = self.spatial_coef_linears[group].weight
-                moderators_coef = self.moderators_linear.weight
+                if self.moderators_coef_dim:
+                    moderators_coef = self.moderators_linear.weight
+                    group_moderators = moderators[group]
+                else:
+                    moderators_coef, group_moderators = None, None
                 group_foci_per_voxel = foci_per_voxel[group]
                 group_foci_per_study = foci_per_study[group]
                 group_moderators = moderators[group]
                 
-                nll = lambda group_spatial_coef: -ClusteredNegativeBinomial._log_likelihood_single_group(
+                nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
                     group_overdispersion,
                     group_spatial_coef,
                     moderators_coef,

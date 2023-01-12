@@ -344,7 +344,7 @@ class CBMREstimator(Estimator):
 
         return loss
 
-    def _optimizer(self, model, lr, tol, n_iter, device):
+    def _optimizer(self, model):
         """Optimize regression coefficient of CBMR via L-BFGS algorithm.
 
         Optimization terminates if the absolute value of difference of log-likelihood in
@@ -364,16 +364,16 @@ class CBMREstimator(Estimator):
             Device type ('cpu' or 'cuda') represents the device on
             which operations will be allocated.
         """
-        optimizer = torch.optim.LBFGS(model.parameters(), lr)
+        optimizer = torch.optim.LBFGS(model.parameters(), self.lr)
         # load dataset info to torch.tensor
         coef_spline_bases = torch.tensor(
-            self.inputs_["coef_spline_bases"], dtype=torch.float64, device=device
+            self.inputs_["coef_spline_bases"], dtype=torch.float64, device=self.device
         )
         if self.moderators:
             moderators_by_group_tensor = dict()
             for group in self.groups:
                 moderators_tensor = torch.tensor(
-                    self.inputs_["moderators_by_group"][group], dtype=torch.float64, device=device
+                    self.inputs_["moderators_by_group"][group], dtype=torch.float64, device=self.device
                 )
                 moderators_by_group_tensor[group] = moderators_tensor
         else:
@@ -381,10 +381,10 @@ class CBMREstimator(Estimator):
         foci_per_voxel_tensor, foci_per_study_tensor = dict(), dict()
         for group in self.groups:
             group_foci_per_voxel_tensor = torch.tensor(
-                self.inputs_["foci_per_voxel"][group], dtype=torch.float64, device=device
+                self.inputs_["foci_per_voxel"][group], dtype=torch.float64, device=self.device
             )
             group_foci_per_study_tensor = torch.tensor(
-                self.inputs_["foci_per_study"][group], dtype=torch.float64, device=device
+                self.inputs_["foci_per_study"][group], dtype=torch.float64, device=self.device
             )
             foci_per_voxel_tensor[group] = group_foci_per_voxel_tensor
             foci_per_study_tensor[group] = group_foci_per_study_tensor
@@ -392,7 +392,7 @@ class CBMREstimator(Estimator):
         if self.iter == 0:
             prev_loss = torch.tensor(float("inf"))  # initialization loss difference
 
-        for i in range(n_iter):
+        for i in range(self.n_iter):
             loss = self._update(
                 model,
                 optimizer,
@@ -404,7 +404,7 @@ class CBMREstimator(Estimator):
             )
             loss_diff = loss - prev_loss
             LGR.debug(f"Iter {self.iter:04d}: log-likelihood {loss:.4f}")
-            if torch.abs(loss_diff) < tol:
+            if torch.abs(loss_diff) < self.tol:
                 break
             prev_loss = loss
 
@@ -438,7 +438,7 @@ class CBMREstimator(Estimator):
 
         self.model.init_weights(**init_weight_kwargs)
 
-        self._optimizer(self.model, self.lr, self.tol, self.n_iter, self.device)
+        self._optimizer(self.model)
 
         maps, tables = dict(), dict()
         Spatial_Regression_Coef, overdispersion_param = dict(), dict()
@@ -527,7 +527,7 @@ class CBMREstimator(Estimator):
                     dtype=torch.float64,
                     device=self.device,
                 )
-
+                
             # create a negative log-likelihood function
             def nll_spatial_coef(group_spatial_coef):
                 return -self.model._log_likelihood_single_group(

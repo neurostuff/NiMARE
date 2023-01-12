@@ -13,14 +13,14 @@ def test_CBMREstimator(testdata_cbmr_simulated):
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age"],
         spline_spacing=10,
-        model=models.Poisson,
-        penalty=False,
-        lr=1e-1,
+        model=models.ClusteredNegativeBinomial,
+        penalty=True,
+        lr=1e-4,
         tol=1e6,
-        device="cpu",
+        device="cpu"
     )
     cbmr.fit(dataset=dset)
-
+# ["standardized_sample_sizes", "standardized_avg_age"],
 
 def test_CBMRInference(testdata_cbmr_simulated):
     logging.getLogger().setLevel(logging.DEBUG)
