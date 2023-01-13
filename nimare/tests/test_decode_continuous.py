@@ -2,6 +2,8 @@
 
 Tests for nimare.decode.continuous.gclda_decode_map are in test_annotate_gclda.
 """
+import os
+
 import pandas as pd
 import pytest
 
@@ -29,6 +31,7 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDistributionDecoder")
 
     testdata_laird = testdata_laird.copy()
+    dset = testdata_laird.copy()
     features = testdata_laird.get_labels(ids=testdata_laird.ids[0])[:5]
 
     decoder = continuous.CorrelationDistributionDecoder(features=features)
@@ -42,7 +45,16 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
 
     # Then let's make some images to decode
     kern = kernel.MKDAKernel(r=10, value=1)
-    dset = kern.transform(testdata_laird, return_type="dataset")
+    kern._infer_names()  # Determine MA map filenames
+
+    imgs = kern.transform(testdata_laird, return_type="image")
+    for i_img, img in enumerate(imgs):
+        id_ = testdata_laird.ids[i_img]
+        out_file = os.path.join(testdata_laird.basepath, kern.filename_pattern.format(id=id_))
+
+        # Add file names to dset.images DataFrame
+        img.to_filename(out_file)
+        dset.images.loc[testdata_laird.images["id"] == id_, kern.image_type] = out_file
 
     # And now we have images we can use for decoding!
     decoder = continuous.CorrelationDistributionDecoder(
