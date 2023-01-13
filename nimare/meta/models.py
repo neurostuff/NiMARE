@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 import functorch
 
-class GeneralLinearModel(torch.nn.Module):
+
+class GeneralLinearModelEstimator(torch.nn.Module):
     def __init__(
         self,
         spatial_coef_dim=None,
@@ -97,6 +98,7 @@ class GeneralLinearModel(torch.nn.Module):
             
         return spatial_regression_coef, spatial_intensity_estimation, moderators_coef, moderators_effect
 
+
     def standard_error_estimation(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         """Document this."""
         spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se = dict(), dict(), dict()
@@ -125,13 +127,14 @@ class GeneralLinearModel(torch.nn.Module):
                 "foci_per_study": group_foci_per_study,
                 "device": self.device,
             }
-            
-            # if "Overdispersion_Coef" in tables.keys():
-            #         ll_single_group_kwargs['overdispersion'] = torch.tensor(
-            #         tables["Overdispersion_Coef"].to_dict()["overdispersion"][group],
-            #         dtype=torch.float64,
-            #         device=self.device,
-            #     )
+
+            if getattr(self, 'overdispersion'):
+                ll_single_group_kwargs['overdispersion'] = torch.tensor(
+                    self.overdispersion[group],
+                    dtype=torch.float64,
+                    device=self.device,
+                )
+
             # create a negative log-likelihood function
             def nll_spatial_coef(group_spatial_coef):
                 return -self._log_likelihood_single_group(
@@ -184,6 +187,7 @@ class GeneralLinearModel(torch.nn.Module):
             se_moderators = np.sqrt(var_moderators)
         else: 
             se_moderators = None
+
         return spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se, se_moderators
     
     def inference_outcome(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
@@ -213,7 +217,7 @@ class GeneralLinearModel(torch.nn.Module):
         return maps, tables
     
        
-class OverdispersionModel(GeneralLinearModel):
+class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
         square_root = kwargs.pop("square_root", False)
         super().__init__(**kwargs)
@@ -245,11 +249,12 @@ class OverdispersionModel(GeneralLinearModel):
             group_overdispersion = group_overdispersion.cpu().detach().numpy()
             overdispersion_param[group] = group_overdispersion
         tables["Overdispersion_Coef"] = pd.DataFrame.from_dict(
-                overdispersion_param, orient="index", columns=["overdispersion"])
+            overdispersion_param, orient="index", columns=["overdispersion"])
         
         return maps, tables
 
-class Poisson(GeneralLinearModel):
+
+class PoissonEstimator(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -384,7 +389,7 @@ class Poisson(GeneralLinearModel):
         return -log_l
 
 
-class NegativeBinomial(OverdispersionModel):
+class NegativeBinomialEstimator(OverdispersionModelEstimator):
     def __init__(self, **kwargs):
         kwargs['square_root'] = True
         super().__init__(**kwargs)
@@ -407,23 +412,23 @@ class NegativeBinomial(OverdispersionModel):
 
     def _log_likelihood_single_group(
         self,
-        group_overdispersion,
+        overdispersion,
         group_spatial_coef,
         moderators_coef,
         coef_spline_bases,
-        group_moderators,
-        group_foci_per_voxel,
-        group_foci_per_study,
+        moderators,
+        foci_per_voxel,
+        foci_per_study,
         device="cpu",
     ):                
-        v = 1 / group_overdispersion
+        v = 1 / overdispersion
         log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
         if moderators_coef is not None:
-            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
+            log_mu_moderators = torch.matmul(moderators, moderators_coef.T)
             mu_moderators = torch.exp(log_mu_moderators)
         else:
-            n_study, _ = group_foci_per_study.shape
+            n_study, _ = foci_per_study.shape
             log_mu_moderators = torch.tensor(
                 [0] * n_study, dtype=torch.float64, device=device
             ).reshape((-1, 1))
@@ -435,8 +440,8 @@ class NegativeBinomial(OverdispersionModel):
         p = numerator / (v * mu_spatial * torch.sum(mu_moderators) + numerator)
         r = v * denominator / numerator
 
-        log_l = NegativeBinomial._three_term(group_foci_per_voxel, r, device=device) + torch.sum(
-            r * torch.log(1 - p) + group_foci_per_voxel * torch.log(p)
+        log_l = NegativeBinomial._three_term(foci_per_voxel, r, device=device) + torch.sum(
+            r * torch.log(1 - p) + foci_per_voxel * torch.log(p)
         )
 
         return log_l
@@ -519,13 +524,15 @@ class NegativeBinomial(OverdispersionModel):
             else:
                 moderators_coef, group_moderators = None, None
             group_log_l = self._log_likelihood_single_group(
-                        group_overdispersion,
-                        group_spatial_coef,
-                        moderators_coef,
-                        coef_spline_bases,
-                        group_moderators,
-                        group_foci_per_voxel,
-                        group_foci_per_study)
+                group_overdispersion,
+                group_spatial_coef,
+                moderators_coef,
+                coef_spline_bases,
+                group_moderators,
+                group_foci_per_voxel,
+                group_foci_per_study
+            )
+
             log_l += group_log_l
 
         if self.penalty:
@@ -561,44 +568,44 @@ class NegativeBinomial(OverdispersionModel):
         return -log_l
 
 
-class ClusteredNegativeBinomial(OverdispersionModel):
+class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
     def __init__(self, **kwargs):
         kwargs['square_root'] = False
         super().__init__(**kwargs)
 
     def _log_likelihood_single_group(
         self,
-        group_overdispersion,
+        overdispersion,
         group_spatial_coef,
         moderators_coef,
         coef_spline_bases,
-        group_moderators,
-        group_foci_per_voxel,
-        group_foci_per_study,
+        moderators,
+        foci_per_voxel,
+        foci_per_study,
         device="cpu",
     ):
-        v = 1 / group_overdispersion
+        v = 1 / overdispersion
         log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
         if moderators_coef is not None:
-            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
+            log_mu_moderators = torch.matmul(moderators, moderators_coef.T)
             mu_moderators = torch.exp(log_mu_moderators)
         else:
-            n_study, _ = group_foci_per_study.shape
+            n_study, _ = foci_per_study.shape
             log_mu_moderators = torch.tensor(
                 [0] * n_study, dtype=torch.float64, device=device
             ).reshape((-1, 1))
             mu_moderators = torch.exp(log_mu_moderators)
         mu_sum_per_study = torch.sum(mu_spatial) * mu_moderators
-        group_n_study, _ = group_foci_per_study.shape
+        group_n_study, _ = foci_per_study.shape
 
         log_l = (
             group_n_study * v * torch.log(v)
             - group_n_study * torch.lgamma(v)
-            + torch.sum(torch.lgamma(group_foci_per_study + v))
-            - torch.sum((group_foci_per_study + v) * torch.log(mu_sum_per_study + v))
-            + torch.sum(group_foci_per_voxel * log_mu_spatial)
-            + torch.sum(group_foci_per_study * log_mu_moderators)
+            + torch.sum(torch.lgamma(foci_per_study + v))
+            - torch.sum((foci_per_study + v) * torch.log(mu_sum_per_study + v))
+            + torch.sum(foci_per_voxel * log_mu_spatial)
+            + torch.sum(foci_per_study * log_mu_moderators)
         )
 
         return log_l
