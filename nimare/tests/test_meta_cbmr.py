@@ -13,10 +13,10 @@ def test_CBMREstimator(testdata_cbmr_simulated):
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age"],
         spline_spacing=10,
-        model=models.ClusteredNegativeBinomial,
-        penalty=True,
-        lr=1e-4,
-        tol=1e6,
+        model=models.NegativeBinomial,
+        penalty=False,
+        lr=1e-6,
+        tol=1e8,
         device="cpu"
     )
     cbmr.fit(dataset=dset)

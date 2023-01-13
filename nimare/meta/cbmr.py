@@ -21,27 +21,27 @@ class CBMREstimator(Estimator):
     Parameters
     ----------
     group_categories : :obj:`~str` or obj:`~list` or obj:`~None`, optional
-        CBMR allows dataset to be categorized into mutiple groups, according to group names.
+        CBMR allows dataset to be categorized into mutiple groups, according to group categories.
         Default is one-group CBMR.
     moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
         CBMR can accommodate study-level moderators (e.g. sample size, year of publication).
         Default is CBMR without study-level moderators.
-    model : {"Poisson", "NB", "clustered NB"}, optional
+    model : : :obj:`~nimare.meta.models.GeneralLinearModel`, optional
         Stochastic models in CBMR. The available options are
 
-        ======================= =================================================================
-        "Poisson" (default)     This is the most efficient and widely used method, but slightly
+        ======================= ==================================================================
+        Poisson (default)       This is the most efficient and widely used method, but slightly
                                 less accurate, because Poisson model is an approximation for
                                 low-rate Binomial data, but cannot account over-dispersion in
                                 foci counts and may underestimate the standard error.
 
-        "NB"                    This method is much slower and less stable, but slightly more
+        NegativeBinomial        This method might be slower and less stable, but slightly more
                                 accurate. Negative Binomial (NB) model asserts foci counts follow
                                 a NB distribution, and allows for anticipated excess variance
-                                relative to Poisson (there's an overdispersion parameter shared 
-                                by all studies and all voxels to index excess variance).
+                                relative to Poisson (there's an group-wise overdispersion parameter
+                                shared by all studies and all voxels to index excess variance).
 
-        "clustered NB"          This method is also an efficient but less accurate approach.
+        ClusteredNegativeBinomial This method is also an efficient but less accurate approach.
                                 Clustered NB model is "random effect" Poisson model, which asserts
                                 that the random effects are latent characteristics of each study,
                                 and represent a shared effect over the entire brain for a given
@@ -61,6 +61,9 @@ class CBMREstimator(Estimator):
     lr: :obj:`float`, optional
         Learning rate in optimization of log-likelihood function.
         Default is 1e-2 for Poisson and clustered NB model, and 1e-3 for NB model.
+    lr_decay: :obj:`float`, optional
+        Multiplicative factor of learning rate decay.
+        Default is 0.999.
     tol: :obj:`float`, optional
         Stopping criteria w.r.t difference of log-likelihood function in two consecutive
         iterations.
@@ -88,7 +91,6 @@ class CBMREstimator(Estimator):
         foci_per_voxel (voxelwise sum of foci count across studies, categorized by groups),
         foci_per_study (study-wise sum of foci count across space, categorized by groups).
 
-
     Notes
     -----
     Available correction methods: :meth:`~nimare.meta.cbmr.CBMRInference`.
@@ -106,6 +108,7 @@ class CBMREstimator(Estimator):
         penalty=False,
         n_iter=1000,
         lr=1e-2,
+        lr_decay=0.999,
         tol=1e-2,
         device="cpu",
         **kwargs,
@@ -123,6 +126,7 @@ class CBMREstimator(Estimator):
         self.penalty = penalty
         self.n_iter = n_iter
         self.lr = lr
+        self.lr_decay = lr_decay
         self.tol = tol
         self.device = device
         if self.device == "cuda" and not torch.cuda.is_available():
@@ -143,9 +147,8 @@ class CBMREstimator(Estimator):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             In this method, the Dataset is used to (1) select the appropriate mask image,
-            (2) categorize it into multiple groups according to group type in annotations,
-            (3) summarize group-wise study id, foci per voxel, foci per study, moderators
-            (if exist),
+            (2) categorize studies into multiple groups according to group categories in annotations,
+            (3) summarize group-wise study id, moderators (if exist), foci per voxel, foci per study,
             (4) extract sample size metadata and use it as one of study-level moderators.
 
         Attributes
@@ -153,14 +156,15 @@ class CBMREstimator(Estimator):
         inputs_ : :obj:`dict`
             Specifically, (1) a “mask_img” key will be added (Niftiimage of brain mask),
             (2) an 'id' key will be added (id of all studies in the dataset),
-            (3) an 'studies_by_group' key will be added (study id categorized by groups),
-            (4) a 'coef_spline_bases' key will be added (spatial matrix of coefficient of cubic
+            (3) a 'coef_spline_bases' key will be added (spatial matrix of coefficient of cubic
             B-spline bases in x,y,z dimension),
-            (5) an 'foci_per_voxel' key will be added (voxelwise sum of foci count across
+            (4) an 'studies_by_group' key will be added (study id categorized by groups),
+            (5) an 'moderators_by_group' key will be added (study-level moderators categorized 
+            by groups) if study-level moderators are considered,
+            (6) an 'foci_per_voxel' key will be added (voxelwise sum of foci count across
             studies, categorized by groups),
-            (6) an 'foci_per_study' key will be added (study-wise sum of foci count across
-            space, categorized by groups),
-            (7) an 'moderators_by_group' key may be added if study-level moderators exists
+            (7) an 'foci_per_study' key will be added (study-wise sum of foci count across
+            space, categorized by groups).
         """
         masker = self.masker or dataset.masker
 
@@ -220,7 +224,7 @@ class CBMREstimator(Estimator):
                         ]
                         studies_by_group["_".join(group)] = group_study_id.unique().tolist()
                 self.inputs_["studies_by_group"] = studies_by_group
-                self.groups = self.inputs_["studies_by_group"].keys()
+                self.groups = list(self.inputs_["studies_by_group"].keys())
                 # collect studywise moderators if specficed
                 if self.moderators:
                     if isinstance(self.moderators, str):
@@ -273,28 +277,27 @@ class CBMREstimator(Estimator):
 
     def _update(
         self,
-        model,
         optimizer,
         coef_spline_bases,
         moderators,
         foci_per_voxel,
         foci_per_study,
         prev_loss,
-        gamma=0.999,
     ):
         """One iteration in optimization with L-BFGS.
 
         Adjust learning rate based on the number of iteration (with learning rate decay parameter
-        `gamma`, default value is 0.999).Reset L-BFGS optimizer if NaN occurs.
+        `lr_decay`, default value is 0.999). Reset L-BFGS optimizer (as params in the previous 
+        iteration) if NaN occurs.
         """
         self.iter += 1
         scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            optimizer, gamma=gamma
+            optimizer, gamma=self.lr_decay
         )  # learning rate decay
 
         def closure():
             optimizer.zero_grad()
-            loss = model(coef_spline_bases, moderators, foci_per_voxel, foci_per_study)
+            loss = self.model(coef_spline_bases, moderators, foci_per_voxel, foci_per_study)
             loss.backward()
             return loss
 
@@ -303,7 +306,7 @@ class CBMREstimator(Estimator):
         # reset the L-BFGS params if NaN appears in coefficient of regression
         if any(
             [
-                torch.any(torch.isnan(model.spatial_coef_linears[group].weight))
+                torch.any(torch.isnan(self.model.spatial_coef_linears[group].weight))
                 for group in self.groups
             ]
         ):
@@ -315,36 +318,36 @@ class CBMREstimator(Estimator):
             spatial_coef_linears, overdispersion_sqrt, overdispersion = dict(), dict(), dict()
             for group in self.groups:
     
-                group_spatial_linear = torch.nn.Linear(model.spatial_coef_dim, 1, bias=False).double()
+                group_spatial_linear = torch.nn.Linear(self.model.spatial_coef_dim, 1, bias=False).double()
                 group_spatial_linear.weight = torch.nn.Parameter(
                     self.last_state["spatial_coef_linears." + group + ".weight"]
                 )
                 spatial_coef_linears[group] = group_spatial_linear
 
-                if isinstance(model, models.NegativeBinomial):
+                if isinstance(self.model, models.NegativeBinomial):
                     group_overdispersion_sqrt = torch.nn.Parameter(
                         self.last_state["overdispersion_sqrt." + group]
                     )
                     overdispersion_sqrt[group] = group_overdispersion_sqrt
-                elif isinstance(model, models.ClusteredNegativeBinomial):
+                elif isinstance(self.model, models.ClusteredNegativeBinomial):
                     group_overdispersion = torch.nn.Parameter(self.last_state["overdispersion." + group])
                     overdispersion[group] = group_overdispersion
 
-            model.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
-            if isinstance(model, models.NegativeBinomial):
-                model.overdispersion_sqrt = torch.nn.ParameterDict(overdispersion_sqrt)
-            elif isinstance(model, models.ClusteredNegativeBinomial):
-                model.overdispersion = torch.nn.ParameterDict(overdispersion)
+            self.model.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
+            if isinstance(self.model, models.NegativeBinomial):
+                self.model.overdispersion_sqrt = torch.nn.ParameterDict(overdispersion_sqrt)
+            elif isinstance(self.model, models.ClusteredNegativeBinomial):
+                self.model.overdispersion = torch.nn.ParameterDict(overdispersion)
 
             LGR.debug("Reset L-BFGS optimizer......")
         else:
             self.last_state = copy.deepcopy(
-                model.state_dict()
+                self.model.state_dict()
             ) 
 
         return loss
 
-    def _optimizer(self, model):
+    def _optimizer(self):
         """Optimize regression coefficient of CBMR via L-BFGS algorithm.
 
         Optimization terminates if the absolute value of difference of log-likelihood in
@@ -364,7 +367,7 @@ class CBMREstimator(Estimator):
             Device type ('cpu' or 'cuda') represents the device on
             which operations will be allocated.
         """
-        optimizer = torch.optim.LBFGS(model.parameters(), self.lr)
+        optimizer = torch.optim.LBFGS(self.model.parameters(), self.lr)
         # load dataset info to torch.tensor
         coef_spline_bases = torch.tensor(
             self.inputs_["coef_spline_bases"], dtype=torch.float64, device=self.device
@@ -394,7 +397,6 @@ class CBMREstimator(Estimator):
 
         for i in range(self.n_iter):
             loss = self._update(
-                model,
                 optimizer,
                 coef_spline_bases,
                 moderators_by_group_tensor,
@@ -413,13 +415,14 @@ class CBMREstimator(Estimator):
     def _fit(self, dataset):
         """Perform coordinate-based meta-regression (CBMR) on dataset.
 
-        (1)Estimate group-wise spatial regression coefficients and its standard error via inverse
+        (1) Estimate group-wise spatial regression coefficients and its standard error via 
+        inverse of Fisher Information matrix; Similarly, estimate regression coefficient of 
+        study-level moderators (if exist), as well as its standard error via inverse of
         Fisher Information matrix;
-        (2)estimate standard error of group-wise log intensity, group-wise intensity via delta
-        method. For NB or clustered model, estimate regression coefficient of overdispersion.
-        Similarly, estimate regression coefficient of study-level moderators (if exist), as well
-        as its standard error via Fisher Information matrix. Save these outcomes in `tables`.
-        Also, estimate group-wise spatial intensity (per study) and save the results in `maps`.
+        (2) Estimate standard error of group-wise log intensity, group-wise intensity via delta
+        method;
+        (3) For NegativeBinomial or ClusteredNegativeBinomial model, estimate regression 
+        coefficient of overdispersion.s
 
         Parameters
         ----------
@@ -432,166 +435,169 @@ class CBMREstimator(Estimator):
             'moderators_coef_dim': len(self.moderators) if self.moderators else None,
         }
         if isinstance(self.model, models.NegativeBinomial):
-            init_weight_kwargs['square_root'] = True
+            init_weight_kwargs["square_root"] = True
         if isinstance(self.model, models.ClusteredNegativeBinomial):
-            init_weight_kwargs['square_root'] = False
+            init_weight_kwargs["square_root"] = False
 
         self.model.init_weights(**init_weight_kwargs)
 
-        self._optimizer(self.model)
+        self._optimizer()
 
         maps, tables = dict(), dict()
-        Spatial_Regression_Coef, overdispersion_param = dict(), dict()
-        # regression coef of spatial effect
-        for group in self.groups:
-            group_spatial_coef_linear_weight = self.model.spatial_coef_linears[group].weight
-            group_spatial_coef_linear_weight = (
-                group_spatial_coef_linear_weight.cpu().detach().numpy().flatten()
-            )
-            Spatial_Regression_Coef[group] = group_spatial_coef_linear_weight
-            group_studywise_spatial_intensity = np.exp(
-                np.matmul(self.inputs_["coef_spline_bases"], group_spatial_coef_linear_weight)
-            )
-            maps[
-                "Group_" + group + "_Studywise_Spatial_Intensity"
-            ] = group_studywise_spatial_intensity  # .reshape((1,-1))
+        moderators_by_group = self.inputs_["moderators_by_group"] if self.moderators else None
+        maps, tables = self.model.inference_outcome(self.inputs_["coef_spline_bases"], moderators_by_group, self.inputs_["foci_per_voxel"], self.inputs_["foci_per_study"])
+        
+        # Spatial_Regression_Coef, overdispersion_param = dict(), dict()
+        # # regression coef of spatial effect
+        # for group in self.groups:
+            # group_spatial_coef_linear_weight = self.model.spatial_coef_linears[group].weight
+            # group_spatial_coef_linear_weight = (
+            #     group_spatial_coef_linear_weight.cpu().detach().numpy().flatten()
+            # )
+            # Spatial_Regression_Coef[group] = group_spatial_coef_linear_weight
+            # group_studywise_spatial_intensity = np.exp(
+            #     np.matmul(self.inputs_["coef_spline_bases"], group_spatial_coef_linear_weight)
+            # )
+            # maps[
+            #     "Group_" + group + "_Studywise_Spatial_Intensity"
+            # ] = group_studywise_spatial_intensity  # .reshape((1,-1))
             # overdispersion parameter
-            if isinstance(self.model, models.NegativeBinomial):
-                group_overdispersion = self.model.overdispersion_sqrt[group] ** 2
-                group_overdispersion = group_overdispersion.cpu().detach().numpy()
-                overdispersion_param[group] = group_overdispersion
-            elif isinstance(self.model, models.ClusteredNegativeBinomial):
-                group_overdispersion = self.model.overdispersion[group]
-                group_overdispersion = group_overdispersion.cpu().detach().numpy()
-                overdispersion_param[group] = group_overdispersion
+        #     if isinstance(self.model, models.NegativeBinomial):
+        #         group_overdispersion = self.model.overdispersion_sqrt[group] ** 2
+        #         group_overdispersion = group_overdispersion.cpu().detach().numpy()
+        #         overdispersion_param[group] = group_overdispersion
+        #     elif isinstance(self.model, models.ClusteredNegativeBinomial):
+        #         group_overdispersion = self.model.overdispersion[group]
+        #         group_overdispersion = group_overdispersion.cpu().detach().numpy()
+        #         overdispersion_param[group] = group_overdispersion
 
-        tables["Spatial_Regression_Coef"] = pd.DataFrame.from_dict(
-            Spatial_Regression_Coef, orient="index"
-        )
-        if isinstance(self.model, (models.NegativeBinomial, models.ClusteredNegativeBinomial)):
-            tables["Overdispersion_Coef"] = pd.DataFrame.from_dict(
-                overdispersion_param, orient="index", columns=["overdispersion"]
-            )
+        # # tables["Spatial_Regression_Coef"] = pd.DataFrame.from_dict(
+        # #     Spatial_Regression_Coef, orient="index"
+        # # )
+        # if isinstance(self.model, (models.NegativeBinomial, models.ClusteredNegativeBinomial)):
+        #     tables["Overdispersion_Coef"] = pd.DataFrame.from_dict(
+        #         overdispersion_param, orient="index", columns=["overdispersion"]
         # study-level moderators
-        if self.moderators:
-            self.moderators_effect = dict()
-            self._moderators_coef = self.model.moderators_linear.weight
-            self._moderators_coef = self._moderators_coef.cpu().detach().numpy()
-            for group in self.groups:
-                group_moderators = self.inputs_["moderators_by_group"][group]
-                group_moderators_effect = np.exp(np.matmul(group_moderators, self._moderators_coef.T))
-                self.moderators_effect[group] = group_moderators_effect
-            tables["Moderators_Regression_Coef"] = pd.DataFrame(
-                self._moderators_coef, columns=self.moderators
-            )
-        else:
-            self._moderators_coef = None
+        # if self.moderators:
+            # self.moderators_effect = dict()
+            # self._moderators_coef = self.model.moderators_linear.weight
+            # self._moderators_coef = self._moderators_coef.cpu().detach().numpy()
+            # for group in self.groups:
+            #     group_moderators = self.inputs_["moderators_by_group"][group]
+            #     group_moderators_effect = np.exp(np.matmul(group_moderators, self._moderators_coef.T))
+            #     self.moderators_effect[group] = group_moderators_effect
+            # tables["Moderators_Regression_Coef"] = pd.DataFrame(
+            #     self._moderators_coef, columns=self.moderators
+            # )
+        # else:
+        #     self._moderators_coef = None
         # standard error
-        spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se = (
-            dict(),
-            dict(),
-            dict(),
-        )
-        coef_spline_bases = torch.tensor(
-            self.inputs_["coef_spline_bases"], dtype=torch.float64, device=self.device
-        )
-        for group in self.groups:
-            group_foci_per_voxel = torch.tensor(
-                self.inputs_["foci_per_voxel"][group], dtype=torch.float64, device=self.device
-            )
-            group_foci_per_study = torch.tensor(
-                self.inputs_["foci_per_study"][group], dtype=torch.float64, device=self.device
-            )
-            group_spatial_coef = torch.tensor(self.model.spatial_coef_linears[group].weight,
-                                              dtype=torch.float64, device=self.device)
-            if self.moderators:
-                group_moderators = torch.tensor(
-                    self.inputs_["moderators_by_group"][group], dtype=torch.float64, device=self.device
-                )
-                moderators_coef = torch.tensor(self._moderators_coef, dtype=torch.float64, device=self.device)
-            else:
-                group_moderators, moderators_coef = None, None
+        # spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se = (
+        #     dict(),
+        #     dict(),
+        #     dict(),
+        # )
+        # coef_spline_bases = torch.tensor(
+        #     self.inputs_["coef_spline_bases"], dtype=torch.float64, device=self.device
+        # )
+        # for group in self.groups:
+        #     group_foci_per_voxel = torch.tensor(
+        #         self.inputs_["foci_per_voxel"][group], dtype=torch.float64, device=self.device
+        #     )
+        #     group_foci_per_study = torch.tensor(
+        #         self.inputs_["foci_per_study"][group], dtype=torch.float64, device=self.device
+        #     )
+        #     group_spatial_coef = torch.tensor(self.model.spatial_coef_linears[group].weight,
+        #                                       dtype=torch.float64, device=self.device)
+        #     if self.moderators:
+        #         group_moderators = torch.tensor(
+        #             self.inputs_["moderators_by_group"][group], dtype=torch.float64, device=self.device
+        #         )
+        #         moderators_coef = torch.tensor(self._moderators_coef, dtype=torch.float64, device=self.device)
+        #     else:
+        #         group_moderators, moderators_coef = None, None
 
-            ll_single_group_kwargs = {
-                "moderators_coef": moderators_coef,
-                "coef_spline_bases": coef_spline_bases,
-                "moderators": group_moderators,
-                "foci_per_voxel": group_foci_per_voxel,
-                "foci_per_study": group_foci_per_study,
-                "device": self.device,
-            }
+        #     ll_single_group_kwargs = {
+        #         "moderators_coef": moderators_coef,
+        #         "coef_spline_bases": coef_spline_bases,
+        #         "moderators": group_moderators,
+        #         "foci_per_voxel": group_foci_per_voxel,
+        #         "foci_per_study": group_foci_per_study,
+        #         "device": self.device,
+        #     }
 
-            if "Overdispersion_Coef" in tables.keys():
-                ll_single_group_kwargs['overdispersion'] = torch.tensor(
-                    tables["Overdispersion_Coef"].to_dict()["overdispersion"][group],
-                    dtype=torch.float64,
-                    device=self.device,
-                )
+        #     if "Overdispersion_Coef" in tables.keys():
+        #         ll_single_group_kwargs['overdispersion'] = torch.tensor(
+        #             tables["Overdispersion_Coef"].to_dict()["overdispersion"][group],
+        #             dtype=torch.float64,
+        #             device=self.device,
+        #         )
                 
-            # create a negative log-likelihood function
-            def nll_spatial_coef(group_spatial_coef):
-                return -self.model._log_likelihood_single_group(
-                    group_spatial_coef=group_spatial_coef, **ll_single_group_kwargs,
-                )
+        #     # create a negative log-likelihood function
+        #     def nll_spatial_coef(group_spatial_coef):
+        #         return -self.model._log_likelihood_single_group(
+        #             group_spatial_coef=group_spatial_coef, **ll_single_group_kwargs,
+        #         )
 
-            F_spatial_coef = functorch.hessian(nll_spatial_coef)(group_spatial_coef)
-            # Inference on regression coefficient of spatial effect
+        #     F_spatial_coef = functorch.hessian(nll_spatial_coef)(group_spatial_coef)
+        #     # Inference on regression coefficient of spatial effect
 
-            F_spatial_coef = F_spatial_coef.reshape((self.model.spatial_coef_dim, self.model.spatial_coef_dim))
-            Cov_spatial_coef = np.linalg.inv(F_spatial_coef.detach().numpy())
-            Var_spatial_coef = np.diag(Cov_spatial_coef)
-            SE_spatial_coef = np.sqrt(Var_spatial_coef)
-            spatial_regression_coef_se[group] = SE_spatial_coef
+        #     F_spatial_coef = F_spatial_coef.reshape((self.model.spatial_coef_dim, self.model.spatial_coef_dim))
+        #     Cov_spatial_coef = np.linalg.inv(F_spatial_coef.detach().numpy())
+        #     Var_spatial_coef = np.diag(Cov_spatial_coef)
+        #     SE_spatial_coef = np.sqrt(Var_spatial_coef)
+        #     spatial_regression_coef_se[group] = SE_spatial_coef
 
-            Var_log_spatial_intensity = np.einsum(
-                "ij,ji->i",
-                self.inputs_["coef_spline_bases"],
-                Cov_spatial_coef @ self.inputs_["coef_spline_bases"].T,
-            )
-            SE_log_spatial_intensity = np.sqrt(Var_log_spatial_intensity)
-            log_spatial_intensity_se[group] = SE_log_spatial_intensity
+        #     Var_log_spatial_intensity = np.einsum(
+        #         "ij,ji->i",
+        #         self.inputs_["coef_spline_bases"],
+        #         Cov_spatial_coef @ self.inputs_["coef_spline_bases"].T,
+        #     )
+        #     SE_log_spatial_intensity = np.sqrt(Var_log_spatial_intensity)
+        #     log_spatial_intensity_se[group] = SE_log_spatial_intensity
 
-            group_studywise_spatial_intensity = maps[
-                "Group_" + group + "_Studywise_Spatial_Intensity"
-            ]
-            SE_spatial_intensity = group_studywise_spatial_intensity * SE_log_spatial_intensity
-            spatial_intensity_se[group] = SE_spatial_intensity
+        #     group_studywise_spatial_intensity = maps[
+        #         "Group_" + group + "_Studywise_Spatial_Intensity"
+        #     ]
+        #     SE_spatial_intensity = group_studywise_spatial_intensity * SE_log_spatial_intensity
+        #     spatial_intensity_se[group] = SE_spatial_intensity
 
-        tables["Spatial_Regression_Coef_SE"] = pd.DataFrame.from_dict(
-            spatial_regression_coef_se, orient="index"
-        )
-        tables["Log_Spatial_Intensity_SE"] = pd.DataFrame.from_dict(
-            log_spatial_intensity_se, orient="index"
-        )
-        tables["Spatial_Intensity_SE"] = pd.DataFrame.from_dict(
-            spatial_intensity_se, orient="index"
-        )
+        # tables["Spatial_Regression_Coef_SE"] = pd.DataFrame.from_dict(
+        #     spatial_regression_coef_se, orient="index"
+        # )
+        # tables["Log_Spatial_Intensity_SE"] = pd.DataFrame.from_dict(
+        #     log_spatial_intensity_se, orient="index"
+        # )
+        # tables["Spatial_Intensity_SE"] = pd.DataFrame.from_dict(
+        #     spatial_intensity_se, orient="index"
+        # )
 
-        # Inference on regression coefficient of moderators
-        if self.moderators:
-            # modify ll_single_group_kwargs so that beta is fixed and gamma can vary
-            del ll_single_group_kwargs["moderators_coef"]
-            ll_single_group_kwargs["group_spatial_coef"] = group_spatial_coef
+        # # Inference on regression coefficient of moderators
+        # if self.moderators:
+        #     # modify ll_single_group_kwargs so that spatial_coef is fixed
+        #     # and moderators_coef can vary
+        #     del ll_single_group_kwargs["moderators_coef"]
+        #     ll_single_group_kwargs["group_spatial_coef"] = group_spatial_coef
 
-            def nll_moderators_coef(moderators_coef):
-                return -self.model._log_likelihood_single_group(
-                    moderators_coef=moderators_coef, **ll_single_group_kwargs,
-                )
+        #     def nll_moderators_coef(moderators_coef):
+        #         return -self.model._log_likelihood_single_group(
+        #             moderators_coef=moderators_coef, **ll_single_group_kwargs,
+        #         )
 
-            F_moderators_coef = torch.autograd.functional.hessian(
-                nll_moderators_coef,
-                moderators_coef,
-                create_graph=False,
-                vectorize=True,
-                outer_jacobian_strategy="forward-mode",
-            )
-            F_moderators_coef = F_moderators_coef.reshape((self.model.moderators_coef_dim, self.model.moderators_coef_dim))
-            Cov_moderators_coef = np.linalg.inv(F_moderators_coef.detach().numpy())
-            Var_moderators = np.diag(Cov_moderators_coef).reshape((1, self.model.moderators_coef_dim))
-            SE_moderators = np.sqrt(Var_moderators)
-            tables["Moderators_Regression_SE"] = pd.DataFrame(
-                SE_moderators, columns=self.moderators
-            )
+        #     F_moderators_coef = torch.autograd.functional.hessian(
+        #         nll_moderators_coef,
+        #         moderators_coef,
+        #         create_graph=False,
+        #         vectorize=True,
+        #         outer_jacobian_strategy="forward-mode",
+        #     )
+        #     F_moderators_coef = F_moderators_coef.reshape((self.model.moderators_coef_dim, self.model.moderators_coef_dim))
+        #     Cov_moderators_coef = np.linalg.inv(F_moderators_coef.detach().numpy())
+        #     Var_moderators = np.diag(Cov_moderators_coef).reshape((1, self.model.moderators_coef_dim))
+        #     SE_moderators = np.sqrt(Var_moderators)
+        #     tables["Moderators_Regression_SE"] = pd.DataFrame(
+        #         SE_moderators, columns=self.moderators
+        #     )
 
         return maps, tables
 

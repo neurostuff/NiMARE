@@ -1,7 +1,9 @@
 
 import abc
 import torch
-
+import numpy as np
+import pandas as pd
+import functorch
 
 class GeneralLinearModel(torch.nn.Module):
     def __init__(
@@ -68,8 +70,143 @@ class GeneralLinearModel(torch.nn.Module):
         self.init_spatial_weights()
         if moderators_coef_dim:
             self.init_moderator_weights()
+    
+    def extract_optimized_params(self, coef_spline_bases, moderators_by_group):
+        """Document this."""
+        spatial_regression_coef, spatial_intensity_estimation = dict(), dict()
+        for group in self.groups:
+            # Extract optimized spatial regression coefficients from the model
+            group_spatial_coef_linear_weight = self.spatial_coef_linears[group].weight
+            group_spatial_coef_linear_weight = group_spatial_coef_linear_weight.cpu().detach().numpy().flatten()
+            spatial_regression_coef[group] = group_spatial_coef_linear_weight
+            # Estimate group-specific spatial intensity
+            group_spatial_intensity_estimation = np.exp(np.matmul(coef_spline_bases, group_spatial_coef_linear_weight))
+            spatial_intensity_estimation["Group_" + group + "_Studywise_Spatial_Intensity"] = group_spatial_intensity_estimation
+            
+        # Extract optimized regression coefficient of study-level moderators from the model
+        if self.moderators_coef_dim:
+            moderators_effect = dict()
+            moderators_coef = self.moderators_linear.weight
+            moderators_coef = moderators_coef.cpu().detach().numpy()
+            for group in self.groups:
+                group_moderators = moderators_by_group[group]
+                group_moderators_effect = np.exp(np.matmul(group_moderators, moderators_coef.T))
+                moderators_effect[group] = group_moderators_effect.flatten()
+        else:
+            moderators_coef, moderators_effect = None, None
+            
+        return spatial_regression_coef, spatial_intensity_estimation, moderators_coef, moderators_effect
 
+    def standard_error_estimation(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        """Document this."""
+        spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se = dict(), dict(), dict()
+        for group in self.groups:
+            group_foci_per_voxel = torch.tensor(
+                foci_per_voxel[group], dtype=torch.float64, device=self.device)
+            group_foci_per_study = torch.tensor(
+                foci_per_study[group], dtype=torch.float64, device=self.device
+            )
+            group_spatial_coef = torch.tensor(self.spatial_coef_linears[group].weight,
+                                              dtype=torch.float64, device=self.device)
+            
+            if self.moderators_coef_dim:
+                group_moderators = torch.tensor(
+                    moderators_by_group[group], dtype=torch.float64, device=self.device
+                )
+                moderators_coef = torch.tensor(self.moderators_linear.weight, dtype=torch.float64, device=self.device)
+            else:
+                group_moderators, moderators_coef = None, None
+            
+            ll_single_group_kwargs = {
+                "moderators_coef": moderators_coef if self.moderators_coef_dim else None,
+                "coef_spline_bases": torch.tensor(coef_spline_bases, dtype=torch.float64, device=self.device),
+                "moderators": group_moderators if self.moderators_coef_dim else None,
+                "foci_per_voxel": group_foci_per_voxel,
+                "foci_per_study": group_foci_per_study,
+                "device": self.device,
+            }
+            
+            # create a negative log-likelihood function
+            def nll_spatial_coef(group_spatial_coef):
+                return -self._log_likelihood_single_group(
+                    group_spatial_coef=group_spatial_coef, **ll_single_group_kwargs,
+                )
 
+            F_spatial_coef = functorch.hessian(nll_spatial_coef)(group_spatial_coef)
+            F_spatial_coef = F_spatial_coef.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
+            cov_spatial_coef = np.linalg.inv(F_spatial_coef.detach().numpy())
+            var_spatial_coef = np.diag(cov_spatial_coef)
+            se_spatial_coef = np.sqrt(var_spatial_coef)
+            spatial_regression_coef_se[group] = se_spatial_coef
+
+            var_log_spatial_intensity = np.einsum(
+                "ij,ji->i",
+                coef_spline_bases,
+                cov_spatial_coef @ coef_spline_bases.T,
+            )
+            se_log_spatial_intensity = np.sqrt(var_log_spatial_intensity)
+            log_spatial_intensity_se[group] = se_log_spatial_intensity
+
+            group_studywise_spatial_intensity = np.exp(
+                np.matmul(coef_spline_bases, group_spatial_coef.detach().cpu().numpy().T)
+                ).flatten()
+            se_spatial_intensity = group_studywise_spatial_intensity * se_log_spatial_intensity
+            spatial_intensity_se[group] = se_spatial_intensity
+
+        # Inference on regression coefficient of moderators
+        if self.moderators_coef_dim:
+            # modify ll_single_group_kwargs so that spatial_coef is fixed
+            # and moderators_coef can vary
+            del ll_single_group_kwargs["moderators_coef"]
+            ll_single_group_kwargs["group_spatial_coef"] = group_spatial_coef
+
+            def nll_moderators_coef(moderators_coef):
+                return -self._log_likelihood_single_group(
+                    moderators_coef=moderators_coef, **ll_single_group_kwargs,
+                )
+
+            F_moderators_coef = torch.autograd.functional.hessian(
+                nll_moderators_coef,
+                moderators_coef,
+                create_graph=False,
+                vectorize=True,
+                outer_jacobian_strategy="forward-mode",
+            )
+            F_moderators_coef = F_moderators_coef.reshape((self.moderators_coef_dim, self.moderators_coef_dim))
+            cov_moderators_coef = np.linalg.inv(F_moderators_coef.detach().numpy())
+            var_moderators = np.diag(cov_moderators_coef).reshape((1, self.moderators_coef_dim))
+            se_moderators = np.sqrt(var_moderators)
+        else: 
+            se_moderators = None
+        return spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se, se_moderators
+    
+    def inference_outcome(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        """Document this."""
+        tables = dict()
+        # Extract optimized regression coefficients from model
+        spatial_regression_coef, spatial_intensity_estimation, moderators_coef, moderators_effect = self.extract_optimized_params(coef_spline_bases, moderators_by_group)
+        tables["Spatial_Regression_Coef"] = pd.DataFrame.from_dict(spatial_regression_coef, orient="index")
+        maps = spatial_intensity_estimation
+        if self.moderators_coef_dim:
+            tables["Moderators_Regression_Coef"] = pd.DataFrame(moderators_coef)
+            tables["Moderators_Effect"] = pd.DataFrame.from_dict(moderators_effect, orient="index")
+        
+        # Estimate standard error of regression coefficient and (Log-)spatial intensity
+        spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se, se_moderators = self.standard_error_estimation(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
+        tables["Spatial_Regression_Coef_SE"] = pd.DataFrame.from_dict(
+            spatial_regression_coef_se, orient="index"
+        )
+        tables["Log_Spatial_Intensity_SE"] = pd.DataFrame.from_dict(
+            log_spatial_intensity_se, orient="index"
+        )
+        tables["Spatial_Intensity_SE"] = pd.DataFrame.from_dict(
+            spatial_intensity_se, orient="index"
+        )
+        if self.moderators_coef_dim:
+            tables["Moderators_Regression_SE"] = pd.DataFrame(se_moderators)
+        return maps, tables
+    
+       
 class OverdispersionModel(GeneralLinearModel):
     def __init__(self, **kwargs):
         square_root = kwargs.pop("square_root", False)
@@ -93,6 +230,18 @@ class OverdispersionModel(GeneralLinearModel):
         super().init_weights(groups, spatial_coef_dim, moderators_coef_dim)
         self.init_overdispersion_weights(square_root=square_root)
 
+    def inference_outcome(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        """Document this."""
+        maps, tables = super(GeneralLinearModel, self).inference_outcome(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
+        overdispersion_param = dict()
+        for group in self.groups:
+            group_overdispersion = self.overdispersion[group]
+            group_overdispersion = group_overdispersion.cpu().detach().numpy()
+            overdispersion_param[group] = group_overdispersion
+        tables["Overdispersion_Coef"] = pd.DataFrame.from_dict(
+                overdispersion_param, orient="index", columns=["overdispersion"])
+        
+        return maps, tables
 
 class Poisson(GeneralLinearModel):
     def __init__(self, **kwargs):
