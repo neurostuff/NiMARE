@@ -122,6 +122,7 @@ class CBMREstimator(Estimator):
         self.moderators = moderators
 
         self.spline_spacing = spline_spacing
+        # self.model = model(penalty=penalty, device=device, lr=lr, lr_decay=lr_decay, tol=tol, n_iter=n_iter)
         self.model = model(penalty=penalty, device=device)
         self.penalty = penalty
         self.n_iter = n_iter
