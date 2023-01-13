@@ -126,6 +126,12 @@ class GeneralLinearModel(torch.nn.Module):
                 "device": self.device,
             }
             
+            # if "Overdispersion_Coef" in tables.keys():
+            #         ll_single_group_kwargs['overdispersion'] = torch.tensor(
+            #         tables["Overdispersion_Coef"].to_dict()["overdispersion"][group],
+            #         dtype=torch.float64,
+            #         device=self.device,
+            #     )
             # create a negative log-likelihood function
             def nll_spatial_coef(group_spatial_coef):
                 return -self._log_likelihood_single_group(
@@ -232,7 +238,7 @@ class OverdispersionModel(GeneralLinearModel):
 
     def inference_outcome(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         """Document this."""
-        maps, tables = super(GeneralLinearModel, self).inference_outcome(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
+        maps, tables = super().inference_outcome(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
         overdispersion_param = dict()
         for group in self.groups:
             group_overdispersion = self.overdispersion[group]
