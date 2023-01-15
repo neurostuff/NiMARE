@@ -4,7 +4,10 @@ import torch
 import numpy as np
 import pandas as pd
 import functorch
+import logging
+import copy
 
+LGR = logging.getLogger(__name__)
 class GeneralLinearModel(torch.nn.Module):
     def __init__(
         self,
@@ -12,6 +15,10 @@ class GeneralLinearModel(torch.nn.Module):
         moderators_coef_dim=None,
         groups=None,
         penalty=False,
+        lr = 0.1,
+        lr_decay=0.999,
+        n_iter=1000,
+        tol=1e-2,
         device="cpu",
     ):  
         super().__init__()
@@ -19,6 +26,10 @@ class GeneralLinearModel(torch.nn.Module):
         self.moderators_coef_dim = moderators_coef_dim
         self.groups = groups
         self.penalty = penalty
+        self.lr = lr
+        self.lr_decay = lr_decay
+        self.n_iter = n_iter
+        self.tol = tol
         self.device = device
 
         # initialization for spatial regression coefficients
@@ -27,7 +38,9 @@ class GeneralLinearModel(torch.nn.Module):
         # initialization for regression coefficients of moderators
         if self.moderators_coef_dim:
             self.init_moderator_weights()
-    
+        # initialization for iteration set up
+        self.iter = 0
+        
     @abc.abstractmethod
     def _log_likelihood_single_group(self, **kwargs):
         """Document this."""
@@ -70,6 +83,116 @@ class GeneralLinearModel(torch.nn.Module):
         self.init_spatial_weights()
         if moderators_coef_dim:
             self.init_moderator_weights()
+    
+    def _update(
+        self,
+        optimizer,
+        coef_spline_bases,
+        moderators,
+        foci_per_voxel,
+        foci_per_study,
+        prev_loss,
+    ):
+        """One iteration in optimization with L-BFGS.
+
+        Adjust learning rate based on the number of iteration (with learning rate decay parameter
+        `lr_decay`, default value is 0.999). Reset L-BFGS optimizer (as params in the previous 
+        iteration) if NaN occurs.
+        """
+        self.iter += 1
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer, gamma=self.lr_decay
+        )  # learning rate decay
+
+        def closure():
+            optimizer.zero_grad()
+            loss = self(coef_spline_bases, moderators, foci_per_voxel, foci_per_study)
+            loss.backward()
+            return loss
+
+        loss = optimizer.step(closure)
+        scheduler.step()
+        # reset the L-BFGS params if NaN appears in coefficient of regression
+        if any(
+            [
+                torch.any(torch.isnan(self.spatial_coef_linears[group].weight))
+                for group in self.groups
+            ]
+        ):
+            if self.iter == 1:  # NaN occurs in the first iteration
+                raise ValueError(
+                    """The current learing rate {str(self.lr)} gives rise to NaN values, adjust
+                    to a smaller value."""
+                )
+            spatial_coef_linears, overdispersion = dict(), dict()
+            for group in self.groups:
+                group_spatial_linear = torch.nn.Linear(self.spatial_coef_dim, 1, bias=False).double()
+                group_spatial_linear.weight = torch.nn.Parameter(
+                    self.last_state["spatial_coef_linears." + group + ".weight"]
+                )
+                spatial_coef_linears[group] = group_spatial_linear
+
+                if hasattr(self, "overdispersion"):
+                    group_overdispersion = torch.nn.Parameter(
+                        self.last_state["overdispersion." + group]
+                    )
+                    overdispersion[group] = group_overdispersion
+            self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
+            if hasattr(self, "overdispersion"):
+                self.overdispersion = torch.nn.ParameterDict(overdispersion)
+            LGR.debug("Reset L-BFGS optimizer......")
+        else:
+            self.last_state = copy.deepcopy(
+                self.state_dict()
+            ) 
+
+        return loss
+    
+    def _optimizer(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        optimizer = torch.optim.LBFGS(self.parameters(), self.lr)
+        # load dataset info to torch.tensor
+        coef_spline_bases = torch.tensor(
+            coef_spline_bases, dtype=torch.float64, device=self.device
+        )
+        if moderators_by_group:
+            moderators_by_group_tensor = dict()
+            for group in self.groups:
+                moderators_tensor = torch.tensor(
+                    moderators_by_group[group], dtype=torch.float64, device=self.device
+                )
+                moderators_by_group_tensor[group] = moderators_tensor
+        else:
+            moderators_by_group_tensor = None
+        foci_per_voxel_tensor, foci_per_study_tensor = dict(), dict()
+        for group in self.groups:
+            group_foci_per_voxel_tensor = torch.tensor(
+                foci_per_voxel[group], dtype=torch.float64, device=self.device
+            )
+            group_foci_per_study_tensor = torch.tensor(
+                foci_per_study[group], dtype=torch.float64, device=self.device
+            )
+            foci_per_voxel_tensor[group] = group_foci_per_voxel_tensor
+            foci_per_study_tensor[group] = group_foci_per_study_tensor
+
+        if self.iter == 0:
+            prev_loss = torch.tensor(float("inf"))  # initialization loss difference
+
+        for i in range(self.n_iter):
+            loss = self._update(
+                optimizer,
+                coef_spline_bases,
+                moderators_by_group_tensor,
+                foci_per_voxel_tensor,
+                foci_per_study_tensor,
+                prev_loss,
+            )
+            loss_diff = loss - prev_loss
+            LGR.debug(f"Iter {self.iter:04d}: log-likelihood {loss:.4f}")
+            if torch.abs(loss_diff) < self.tol:
+                break
+            prev_loss = loss
+
+        return
     
     def extract_optimized_params(self, coef_spline_bases, moderators_by_group):
         """Document this."""
@@ -120,18 +243,14 @@ class GeneralLinearModel(torch.nn.Module):
             ll_single_group_kwargs = {
                 "moderators_coef": moderators_coef if self.moderators_coef_dim else None,
                 "coef_spline_bases": torch.tensor(coef_spline_bases, dtype=torch.float64, device=self.device),
-                "moderators": group_moderators if self.moderators_coef_dim else None,
-                "foci_per_voxel": group_foci_per_voxel,
-                "foci_per_study": group_foci_per_study,
+                "group_moderators": group_moderators if self.moderators_coef_dim else None,
+                "group_foci_per_voxel": group_foci_per_voxel,
+                "group_foci_per_study": group_foci_per_study,
                 "device": self.device,
             }
-            
-            # if "Overdispersion_Coef" in tables.keys():
-            #         ll_single_group_kwargs['overdispersion'] = torch.tensor(
-            #         tables["Overdispersion_Coef"].to_dict()["overdispersion"][group],
-            #         dtype=torch.float64,
-            #         device=self.device,
-            #     )
+
+            if hasattr(self, "overdispersion"):
+                ll_single_group_kwargs['group_overdispersion'] = self.overdispersion[group]
             # create a negative log-likelihood function
             def nll_spatial_coef(group_spatial_coef):
                 return -self._log_likelihood_single_group(
@@ -170,14 +289,7 @@ class GeneralLinearModel(torch.nn.Module):
                 return -self._log_likelihood_single_group(
                     moderators_coef=moderators_coef, **ll_single_group_kwargs,
                 )
-
-            F_moderators_coef = torch.autograd.functional.hessian(
-                nll_moderators_coef,
-                moderators_coef,
-                create_graph=False,
-                vectorize=True,
-                outer_jacobian_strategy="forward-mode",
-            )
+            F_moderators_coef = functorch.hessian(nll_moderators_coef)(moderators_coef)
             F_moderators_coef = F_moderators_coef.reshape((self.moderators_coef_dim, self.moderators_coef_dim))
             cov_moderators_coef = np.linalg.inv(F_moderators_coef.detach().numpy())
             var_moderators = np.diag(cov_moderators_coef).reshape((1, self.moderators_coef_dim))
@@ -211,8 +323,7 @@ class GeneralLinearModel(torch.nn.Module):
         if self.moderators_coef_dim:
             tables["Moderators_Regression_SE"] = pd.DataFrame(se_moderators)
         return maps, tables
-    
-       
+
 class OverdispersionModel(GeneralLinearModel):
     def __init__(self, **kwargs):
         square_root = kwargs.pop("square_root", False)
@@ -258,25 +369,25 @@ class Poisson(GeneralLinearModel):
         group_spatial_coef,
         moderators_coef,
         coef_spline_bases,
-        moderators,
-        foci_per_voxel,
-        foci_per_study,
+        group_moderators,
+        group_foci_per_voxel,
+        group_foci_per_study,
         device="cpu"
     ):
         log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
         if moderators_coef is None:
-            n_study, _ = foci_per_study.shape
+            n_study, _ = group_foci_per_study.shape
             log_mu_moderators = torch.tensor(
                 [0] * n_study, dtype=torch.float64, device=device
             ).reshape((-1, 1))
             mu_moderators = torch.exp(log_mu_moderators)
         else:
-            log_mu_moderators = torch.matmul(moderators, moderators_coef.T)
+            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
             mu_moderators = torch.exp(log_mu_moderators)
         log_l = (
-            torch.sum(torch.mul(foci_per_voxel, log_mu_spatial))
-            + torch.sum(torch.mul(foci_per_study, log_mu_moderators))
+            torch.sum(torch.mul(group_foci_per_voxel, log_mu_spatial))
+            + torch.sum(torch.mul(group_foci_per_study, log_mu_moderators))
             - torch.sum(mu_spatial) * torch.sum(mu_moderators)
         )
         return log_l
@@ -389,14 +500,14 @@ class NegativeBinomial(OverdispersionModel):
         kwargs['square_root'] = True
         super().__init__(**kwargs)
 
-    def _three_term(y, r, device):
-        max_foci = torch.max(y).to(dtype=torch.int64, device=device)
+    def _three_term(self, y, r):
+        max_foci = torch.max(y).to(dtype=torch.int64, device=self.device)
         sum_three_term = 0
         for k in range(max_foci):
             foci_index = (y == k + 1).nonzero()[:, 0]
             r_j = r[foci_index]
             n_voxel = list(foci_index.shape)[0]
-            y_j = torch.tensor([k + 1] * n_voxel, device=device).double()
+            y_j = torch.tensor([k + 1] * n_voxel, device=self.device).double()
             y_j = y_j.reshape((n_voxel, 1))
             # y=0 => sum_three_term = 0
             sum_three_term += torch.sum(
@@ -435,7 +546,7 @@ class NegativeBinomial(OverdispersionModel):
         p = numerator / (v * mu_spatial * torch.sum(mu_moderators) + numerator)
         r = v * denominator / numerator
 
-        log_l = NegativeBinomial._three_term(group_foci_per_voxel, r, device=device) + torch.sum(
+        log_l = self._three_term(group_foci_per_voxel, r) + torch.sum(
             r * torch.log(1 - p) + group_foci_per_voxel * torch.log(p)
         )
 

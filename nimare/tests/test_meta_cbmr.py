@@ -13,14 +13,13 @@ def test_CBMREstimator(testdata_cbmr_simulated):
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age"],
         spline_spacing=10,
-        model=models.NegativeBinomial,
+        model=models.ClusteredNegativeBinomial,
         penalty=False,
         lr=1e-6,
         tol=1e8,
         device="cpu"
     )
     cbmr.fit(dataset=dset)
-# ["standardized_sample_sizes", "standardized_avg_age"],
 
 def test_CBMRInference(testdata_cbmr_simulated):
     logging.getLogger().setLevel(logging.DEBUG)
@@ -46,19 +45,22 @@ def test_CBMRInference(testdata_cbmr_simulated):
 #     [[[1,0],[0,1]], [1, -1]]
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
-    cbmr = CBMREstimator(model=models.ClusteredNegativeBinomial, lr=1e-4)
+    cbmr = CBMREstimator(model=models.Poisson, lr=1e-4)
 
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)
     cbmr._preprocess_input(testdata_cbmr_simulated)
-    cbmr_model = cbmr.model(
-        spatial_coef_dim=cbmr.inputs_["coef_spline_bases"].shape[1],
-        moderators_coef_dim=len(cbmr.moderators) if cbmr.moderators else None,
-        groups=cbmr.groups,
-        penalty=cbmr.penalty,
-        device=cbmr.device,
-        )
+    init_weight_kwargs = {
+            'groups': cbmr.groups,
+            'spatial_coef_dim': cbmr.inputs_["coef_spline_bases"].shape[1],
+            'moderators_coef_dim': len(cbmr.moderators) if cbmr.moderators else None,
+        }
+    if isinstance(cbmr.model, models.NegativeBinomial):
+        init_weight_kwargs["square_root"] = True
+    if isinstance(cbmr.model, models.ClusteredNegativeBinomial):
+        init_weight_kwargs["square_root"] = False
+    cbmr.model.init_weights(**init_weight_kwargs)
     
-    optimizer = torch.optim.LBFGS(cbmr_model.parameters(), cbmr.lr)
+    optimizer = torch.optim.LBFGS(cbmr.model.parameters(), cbmr.lr)
     # load dataset info to torch.tensor
     coef_spline_bases = torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device)
     if cbmr.moderators:
@@ -71,7 +73,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
     else:
         moderators_by_group_tensor = None
     foci_per_voxel_tensor, foci_per_study_tensor = dict(), dict()
-    for group in cbmr_model.groups:
+    for group in cbmr.model.groups:
         group_foci_per_voxel_tensor = torch.tensor(
             cbmr.inputs_["foci_per_voxel"][group], dtype=torch.float64, device=cbmr.device
         )
@@ -80,12 +82,11 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         )
         foci_per_voxel_tensor[group] = group_foci_per_voxel_tensor
         foci_per_study_tensor[group] = group_foci_per_study_tensor
-    optimizer = torch.optim.LBFGS(cbmr_model.parameters(), cbmr.lr)
+
     if cbmr.iter == 0:
         prev_loss = torch.tensor(float("inf"))  # initialization loss difference
     
-    loss = cbmr._update(
-                    cbmr_model,
+    loss = cbmr.model._update(
                     optimizer,
                     torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
                     moderators_by_group_tensor,
@@ -95,12 +96,11 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
             )
     
     # deliberately set the first spatial coefficient to nan
-    nan_coef = torch.tensor(cbmr_model.spatial_coef_linears['default'].weight)
+    nan_coef = torch.tensor(cbmr.model.spatial_coef_linears['default'].weight)
     nan_coef[:, 0] = float('nan')
-    cbmr_model.spatial_coef_linears['default'].weight = torch.nn.Parameter(nan_coef)
+    cbmr.model.spatial_coef_linears['default'].weight = torch.nn.Parameter(nan_coef)
     
-    loss = cbmr._update(
-                    cbmr_model,
+    loss = cbmr.model._update(
                     optimizer,
                     torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
                     moderators_by_group_tensor,
@@ -108,7 +108,5 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
                     foci_per_study_tensor,
                     prev_loss,
             )
-
-
 
 
