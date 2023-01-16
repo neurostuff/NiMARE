@@ -11,9 +11,9 @@ def test_CBMREstimator(testdata_cbmr_simulated):
     dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age"])
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age"],
+        moderators=None,
         spline_spacing=10,
-        model=models.NegativeBinomial,
+        model=models.ClusteredNegativeBinomialEstimator,
         penalty=False,
         lr=1e-6,
         tol=1e8,
