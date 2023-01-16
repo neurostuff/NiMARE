@@ -8,7 +8,7 @@ import logging
 import copy
 
 LGR = logging.getLogger(__name__)
-class GeneralLinearModel(torch.nn.Module):
+class GeneralLinearModelEstimator(torch.nn.Module):
     def __init__(
         self,
         spatial_coef_dim=None,
@@ -40,6 +40,26 @@ class GeneralLinearModel(torch.nn.Module):
             self.init_moderator_weights()
         # initialization for iteration set up
         self.iter = 0
+
+        # after fitting, the following attributes will be created
+        self.spatial_regression_coef = None
+        self.spatial_intensity_estimation = None
+        self.moderators_coef = None
+        self.moderators_effect = None
+        self.spatial_regression_coef_se = None
+        self.log_spatial_intensity_se = None
+        self.spatial_intensity_se = None
+        self.se_moderators = None
+        self.params = (
+            self.spatial_regression_coef,
+            self.spatial_intensity_estimation,
+            self.moderators_coef,
+            self.moderators_effect,
+            self.spatial_regression_coef_se,
+            self.log_spatial_intensity_se,
+            self.spatial_intensity_se,
+            self.se_moderators,
+        )
         
     @abc.abstractmethod
     def _log_likelihood_single_group(self, **kwargs):
@@ -193,7 +213,15 @@ class GeneralLinearModel(torch.nn.Module):
             prev_loss = loss
 
         return
-    
+
+    def fit(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        """Fit the model."""
+        self._optimizer(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
+        self.extract_optimized_params(coef_spline_bases, moderators_by_group)
+        self.standard_error_estimation(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
+
+        return
+
     def extract_optimized_params(self, coef_spline_bases, moderators_by_group):
         """Document this."""
         spatial_regression_coef, spatial_intensity_estimation = dict(), dict()
@@ -217,8 +245,11 @@ class GeneralLinearModel(torch.nn.Module):
                 moderators_effect[group] = group_moderators_effect.flatten()
         else:
             moderators_coef, moderators_effect = None, None
-            
-        return spatial_regression_coef, spatial_intensity_estimation, moderators_coef, moderators_effect
+
+        self.spatial_regression_coef = spatial_regression_coef
+        self.spatial_intensity_estimation = spatial_intensity_estimation
+        self.moderators_coef = moderators_coef
+        self.moderators_effect = moderators_effect
 
     def standard_error_estimation(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         """Document this."""
@@ -296,10 +327,16 @@ class GeneralLinearModel(torch.nn.Module):
             se_moderators = np.sqrt(var_moderators)
         else: 
             se_moderators = None
-        return spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se, se_moderators
-    
-    def inference_outcome(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+
+        self.spatial_regression_coef_se = spatial_regression_coef_se
+        self.log_spatial_intensity_se = log_spatial_intensity_se
+        self.spatial_intensity_se = spatial_intensity_se
+        self.se_moderators = se_moderators
+
+    def summary(self):
         """Document this."""
+        if not all(self.params):
+            raise ValueError("Run fit first")
         tables = dict()
         # Extract optimized regression coefficients from model
         spatial_regression_coef, spatial_intensity_estimation, moderators_coef, moderators_effect = self.extract_optimized_params(coef_spline_bases, moderators_by_group)
@@ -324,7 +361,7 @@ class GeneralLinearModel(torch.nn.Module):
             tables["Moderators_Regression_SE"] = pd.DataFrame(se_moderators)
         return maps, tables
 
-class OverdispersionModel(GeneralLinearModel):
+class OverdispersionModel(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
         square_root = kwargs.pop("square_root", False)
         super().__init__(**kwargs)
@@ -360,7 +397,7 @@ class OverdispersionModel(GeneralLinearModel):
         
         return maps, tables
 
-class Poisson(GeneralLinearModel):
+class Poisson(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
