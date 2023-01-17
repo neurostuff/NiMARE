@@ -359,26 +359,26 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
 class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
-        square_root = kwargs.pop("square_root", False)
+        self.square_root = kwargs.pop("square_root", False)
         super().__init__(**kwargs)
         if self.groups:
-            self.init_overdispersion_weights(square_root=square_root)
+            self.init_overdispersion_weights()
 
-    def init_overdispersion_weights(self, square_root=False):
+    def init_overdispersion_weights(self):
         """Document this."""
         overdispersion = dict()
         for group in self.groups:
             # initialization for alpha
             overdispersion_init_group = torch.tensor(1e-2).double()
-            if square_root:
+            if self.square_root:
                 overdispersion_init_group = torch.sqrt(overdispersion_init_group)
             overdispersion[group] = torch.nn.Parameter(overdispersion_init_group, requires_grad=True)
         self.overdispersion = torch.nn.ParameterDict(overdispersion)
 
-    def init_weights(self, groups, spatial_coef_dim, moderators_coef_dim, square_root=False):
+    def init_weights(self, groups, spatial_coef_dim, moderators_coef_dim):
         """Document this."""
         super().init_weights(groups, spatial_coef_dim, moderators_coef_dim)
-        self.init_overdispersion_weights(square_root=square_root)
+        self.init_overdispersion_weights()
 
     def inference_outcome(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         """Document this."""
