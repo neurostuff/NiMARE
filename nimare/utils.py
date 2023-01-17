@@ -1158,3 +1158,36 @@ def _get_cluster_coms(labeled_cluster_arr):
         )
 
     return cluster_coms
+
+
+def variation_of_information(X, Y):
+    """Calculate variation of information metric.
+
+    Parameters
+    ----------
+    X, Y : :obj:`list` of :obj:`list`
+        Partitions to compare
+
+    Notes
+    -----
+    Implementation adapted from https://gist.github.com/jwcarr/626cbc80e0006b526688.
+
+    Examples
+    --------
+    >>> X = [[1, 2, 3], [4, 5, 6, 7]]
+    >>> Y = [[1, 2, 3, 4], [5, 6, 7]]
+    >>> variation_of_information(X, Y)
+    0.9271749993818661
+    """
+    from math import log
+
+    n = float(sum([len(x) for x in X]))
+    sigma = 0.0
+    for x in X:
+        p = len(x) / n
+        for y in Y:
+            q = len(y) / n
+            r = len(set(x) & set(y)) / n
+            if r > 0.0:
+                sigma += r * (log(r / p, 2) + log(r / q, 2))
+    return abs(sigma)

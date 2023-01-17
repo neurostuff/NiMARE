@@ -31,7 +31,15 @@ def test_dataset_smoke():
     assert isinstance(dset.get_images(imtype="beta"), list)
     assert isinstance(dset.get_metadata(field="sample_sizes"), list)
     assert isinstance(dset.get_studies_by_label("cogat_cognitive_control"), list)
-    assert isinstance(dset.get_studies_by_coordinate(np.array([[20, 20, 20]])), list)
+    assert isinstance(dset.get_studies_by_coordinate([20, 20, 20], r=20), list)
+
+    assert len(dset.get_studies_by_coordinate([20, 20, 20], n=2)) == 2
+    assert len(dset.get_studies_by_coordinate([20, 20, 20], n=3)) == 3
+    with pytest.raises(ValueError):
+        dset.get_studies_by_coordinate([20, 20, 20])
+
+    with pytest.raises(ValueError):
+        dset.get_studies_by_coordinate([20, 20, 20], r=20, n=4)
 
     # If label is not available, raise ValueError
     with pytest.raises(ValueError):

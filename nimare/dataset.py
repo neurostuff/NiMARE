@@ -604,7 +604,8 @@ class Dataset(NiMAREBase):
             the labels above the threshold, it will be returned.
             Default is None.
         label_threshold : :obj:`float`, optional
-            Default is 0.5.
+            Default is 0.001, which corresponds to terms appearing at least once in abstracts
+            for the commonly-used Neurosynth TF-IDF feature set.
 
         Returns
         -------
@@ -657,27 +658,49 @@ class Dataset(NiMAREBase):
         found_ids = list(self.coordinates.loc[distances, "id"].unique())
         return found_ids
 
-    def get_studies_by_coordinate(self, xyz, r=20):
+    def get_studies_by_coordinate(self, xyz, r=None, n=None):
         """Extract list of studies with at least one focus within radius of requested coordinates.
+
+        .. versionchanged:: 0.0.9
+
+            New option (n) supported to identify closest n studies to coordinate.
+            Default value for r changed to None.
 
         Parameters
         ----------
         xyz : (X x 3) array_like
             List of coordinates against which to find studies.
         r : :obj:`float`, optional
-            Radius (in mm) within which to find studies. Default is 20mm.
+            Radius (in mm) within which to find studies. Mutually exclusive with ``n``.
+            Default is None.
+        n : :obj:`int`, optional
+            Number of closest studies to identify. Mutually exclusive with ``r``.
+            Default is None.
 
         Returns
         -------
         found_ids : :obj:`list`
-            A list of IDs from the Dataset with at least one focus within
-            radius r of requested coordinates.
+            A list of IDs from the Dataset matching the search criterion.
         """
+        if n and r:
+            raise ValueError("Only one of 'r' and 'n' may be provided.")
+        elif not n and not r:
+            raise ValueError("Either 'r' or 'n' must be provided.")
+
         from scipy.spatial.distance import cdist
 
-        xyz = np.array(xyz)
+        temp_coords = self.coordinates.copy()
+
+        xyz = np.atleast_2d(xyz)
         assert xyz.shape[1] == 3 and xyz.ndim == 2
-        distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
-        distances = np.any(distances <= r, axis=0)
-        found_ids = list(self.coordinates.loc[distances, "id"].unique())
+        distances = cdist(xyz, temp_coords[["x", "y", "z"]].values)
+        distances = np.min(distances, axis=0)
+        temp_coords["distance"] = distances
+        min_dist_ser = temp_coords.groupby("id")["distance"].min()
+
+        if r:
+            found_ids = min_dist_ser.loc[min_dist_ser <= r].index.tolist()
+        elif n:
+            found_ids = min_dist_ser.nsmallest(n).index.tolist()
+
         return found_ids
