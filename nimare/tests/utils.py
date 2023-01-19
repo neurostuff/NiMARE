@@ -5,7 +5,7 @@ from contextlib import ExitStack as does_not_raise
 import nibabel as nib
 import numpy as np
 import pytest
-import warnings 
+import logging 
 
 from nimare.meta.utils import compute_kda_ma
 
@@ -13,6 +13,7 @@ from nimare.meta.utils import compute_kda_ma
 # duplicated in test_estimator_performance
 ALPHA = 0.05
 
+LGR = logging.getLogger(__name__)
 
 def get_test_data_path():
     """Return the path to test datasets, terminated with separator.
@@ -132,7 +133,7 @@ def standardize_field(dataset, metadata):
         elif np.array_equal(dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(float)):
             numerical_metadata.append(metadata_name)
     if len(categorical_metadata) > 0:
-        warnings.warn(f"Categorical metadata {categorical_metadata} can't be standardized.")
+        LGR.warning(f"Categorical metadata {categorical_metadata} can't be standardized.")
     if len(numerical_metadata) == 0:
         raise ValueError("No numerical metadata found.")
     

@@ -13,7 +13,7 @@ def test_CBMREstimator(testdata_cbmr_simulated):
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         spline_spacing=10,
-        model=models.NegativeBinomialEstimator,
+        model=models.PoissonEstimator,
         penalty=False,
         lr=1e-6,
         tol=1e8,

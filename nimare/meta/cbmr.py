@@ -299,11 +299,6 @@ class CBMREstimator(Estimator):
             'spatial_coef_dim': self.inputs_["coef_spline_bases"].shape[1],
             'moderators_coef_dim': len(self.moderators) if self.moderators else None,
         }
-        if isinstance(self.model, models.NegativeBinomialEstimator):
-            init_weight_kwargs["square_root"] = True
-        if isinstance(self.model, models.ClusteredNegativeBinomialEstimator):
-            init_weight_kwargs["square_root"] = False
-
         self.model.init_weights(**init_weight_kwargs)
 
         moderators_by_group = self.inputs_["moderators_by_group"] if self.moderators else None
