@@ -8,12 +8,12 @@ import numpy as np
 def test_CBMREstimator(testdata_cbmr_simulated):
     logging.getLogger().setLevel(logging.DEBUG)
     """Unit test for CBMR estimator."""
-    dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age"])
+    dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"])
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
-        moderators=None,
+        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         spline_spacing=10,
-        model=models.ClusteredNegativeBinomialEstimator,
+        model=models.NegativeBinomialEstimator,
         penalty=False,
         lr=1e-6,
         tol=1e8,

@@ -5,6 +5,7 @@ from contextlib import ExitStack as does_not_raise
 import nibabel as nib
 import numpy as np
 import pytest
+import warnings 
 
 from nimare.meta.utils import compute_kda_ma
 
@@ -123,13 +124,25 @@ def _transform_res(meta, meta_res, corr):
 
 
 def standardize_field(dataset, metadata):
-    moderators = dataset.annotations[metadata]
+    # moderators = dataset.annotations[metadata]
+    categorical_metadata, numerical_metadata = [], []
+    for metadata_name in metadata:
+        if np.array_equal(dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(str)):
+            categorical_metadata.append(metadata_name)
+        elif np.array_equal(dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(float)):
+            numerical_metadata.append(metadata_name)
+    if len(categorical_metadata) > 0:
+        warnings.warn(f"Categorical metadata {categorical_metadata} can't be standardized.")
+    if len(numerical_metadata) == 0:
+        raise ValueError("No numerical metadata found.")
+    
+    moderators = dataset.annotations[numerical_metadata]
     standardize_moderators = moderators - np.mean(moderators, axis=0)
     standardize_moderators /= np.std(standardize_moderators, axis=0)
     if isinstance(metadata, str):
         column_name = "standardized_" + metadata
     elif isinstance(metadata, list):
-        column_name = ["standardized_" + moderator for moderator in metadata]
+        column_name = ["standardized_" + moderator for moderator in numerical_metadata]
     dataset.annotations[column_name] = standardize_moderators
 
     return dataset

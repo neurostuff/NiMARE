@@ -1276,6 +1276,12 @@ def index2vox(vals, masker_voxels):
 
     return voxel_array
 
-def contrast_matrix_generator():
-    
-    return
+def dummy_encoding_moderators(dataset_annotations, moderators):
+    for moderator in moderators:
+        if np.array_equal(dataset_annotations[moderator], dataset_annotations[moderator].astype(str)):
+            moderators.remove(moderator) # remove moderators that are dummy encoded
+            categories_unique = dataset_annotations[moderator].unique().tolist()
+            for category in categories_unique:
+                dataset_annotations[category] = (dataset_annotations[moderator] == category).astype(int)
+                moderators.append(category) # add dummy encoded moderators
+    return dataset_annotations, moderators

@@ -1,5 +1,5 @@
 from nimare.base import Estimator
-from nimare.utils import get_masker, B_spline_bases
+from nimare.utils import get_masker, B_spline_bases, dummy_encoding_moderators
 import nibabel as nib
 import numpy as np
 import pandas as pd
@@ -11,6 +11,7 @@ import torch
 import functorch
 import logging
 import copy
+
 
 LGR = logging.getLogger(__name__)
 
@@ -227,6 +228,7 @@ class CBMREstimator(Estimator):
                 self.groups = list(self.inputs_["studies_by_group"].keys())
                 # collect studywise moderators if specficed
                 if self.moderators:
+                    valid_dset_annotations, self.moderators = dummy_encoding_moderators(valid_dset_annotations, self.moderators)
                     if isinstance(self.moderators, str):
                         self.moderators = [
                             self.moderators
@@ -297,17 +299,15 @@ class CBMREstimator(Estimator):
             'spatial_coef_dim': self.inputs_["coef_spline_bases"].shape[1],
             'moderators_coef_dim': len(self.moderators) if self.moderators else None,
         }
+        if isinstance(self.model, models.NegativeBinomialEstimator):
+            init_weight_kwargs["square_root"] = True
+        if isinstance(self.model, models.ClusteredNegativeBinomialEstimator):
+            init_weight_kwargs["square_root"] = False
 
         self.model.init_weights(**init_weight_kwargs)
 
         moderators_by_group = self.inputs_["moderators_by_group"] if self.moderators else None
-        self.model.fit(
-            self.inputs_["coef_spline_bases"],
-            moderators_by_group,
-            self.inputs_["foci_per_voxel"],
-            self.inputs_["foci_per_study"]
-        )
-
+        self.model.fit(self.inputs_["coef_spline_bases"], moderators_by_group, self.inputs_["foci_per_voxel"], self.inputs_["foci_per_study"])
 
         maps, tables = self.model.summary()
 
@@ -347,8 +347,8 @@ class CBMRInference(object):
         Device type ('cpu' or 'cuda') represents the device on which operations will be allocated.
         Default is 'cpu'.
     """
-
-    def __init__(self, CBMRResults, t_con_group=None, t_con_moderator=None, device="cpu"):
+    
+    def __init__(self, CBMRResults, t_con_group=None, t_con_moderator=None, device="cpu"): 
         self.device = device
         self.CBMRResults = CBMRResults
         self.t_con_group = t_con_group
@@ -374,7 +374,6 @@ class CBMRInference(object):
                     f"""The shape of {str(wrong_con_group_idx)}th contrast vector(s) in group-wise
                     intensity contrast matrix doesn't match with groups"""
                 )
-            # remove zero rows in contrast matrix (function: remove_empty_rows)
             con_group_zero_row = [
                 np.where(np.sum(np.abs(con_group), axis=1) == 0)[0]
                 for con_group in self.t_con_group
@@ -392,7 +391,7 @@ class CBMRInference(object):
                         contrast matrix are all zeros"""
                     )
             self._Name_of_con_group()
-            # standardization (function: standardize_contrast)
+            # standardization
             self.t_con_group = [
                 con_group / np.sum(np.abs(con_group), axis=1).reshape((-1, 1))
                 for con_group in self.t_con_group
