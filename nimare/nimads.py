@@ -25,7 +25,7 @@ class Studyset:
 
     def __str__(self):
         """Give useful information about the Studyset."""
-        return str(" ".join(["Studyset:", self.name, "::", f"studies: {len(self.studies)}"]))
+        return f"Studyset: {self.name} :: studies: {len(self.studies)}"
 
     @property
     def annotations(self):
