@@ -241,7 +241,6 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self.moderators_coef = moderators_coef
         self.moderators_effect = moderators_effect
 
-
     def standard_error_estimation(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         """Document this."""
         spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se = dict(), dict(), dict()
