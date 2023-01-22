@@ -813,7 +813,7 @@ class CBMRInference(object):
             )
             m, n_brain_voxel = Contrast_log_intensity.shape
             # Correlation of involved group-wise spatial coef
-            
+            self.CBMRResults.estimator.model.summary()
             F_spatial_coef = self._Fisher_info_spatial_coef(con_group_involved_index)
             Cov_spatial_coef = np.linalg.inv(F_spatial_coef)
             spatial_coef_dim = (
