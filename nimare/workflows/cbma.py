@@ -22,7 +22,7 @@ def cbma_workflow(
     .. versionadded:: 0.0.14
 
     This workflow performs a coordinate-based meta-analysis, multiple comparison correction,
-    and diagnosis analysis on corrected meta-analytic images.
+    and diagnostics analyses on corrected meta-analytic images.
 
     Parameters
     ----------
