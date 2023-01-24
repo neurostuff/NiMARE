@@ -11,6 +11,7 @@ import torch
 import functorch
 import logging
 import copy
+import re
 
 
 LGR = logging.getLogger(__name__)
@@ -343,25 +344,103 @@ class CBMRInference(object):
         Default is 'cpu'.
     """
     
-    def __init__(self, CBMRResults, t_con_group=None, t_con_moderator=None, device="cpu"): 
+    def __init__(self, CBMRResults, device="cpu"): 
         self.device = device
         self.CBMRResults = CBMRResults
-        self.t_con_group = t_con_group
-        self.t_con_moderator = t_con_moderator
-        self.group_names = self.CBMRResults.tables["Spatial_Regression_Coef"].index.values.tolist()
-        self.n_groups = len(self.group_names)
-        if self.t_con_group is not False:
-            self._preprocess_t_con_group()
-
-        if self.t_con_moderator is not False:
-            if self.CBMRResults.estimator.moderators:
-                self._preprocess_t_con_moderator()
-            else:
-                self.t_con_moderator = False
+        self.groups = self.CBMRResults.estimator.groups
+        self.n_groups = len(self.groups)
+        
+        # visialize group/moderator names and their indices in contrast array
+        self.group_reference_dict, self.moderator_reference_dict = dict(), dict()
+        LGR.info("Group Reference in contrast array")
+        for i in range(self.n_groups):
+            self.group_reference_dict[self.groups[i]] = i
+            LGR.info(f"{self.groups[i]} = index_{i}")
+        if self.CBMRResults.estimator.moderators:
+            n_moderators = len(self.CBMRResults.estimator.moderators)
+            LGR.info("Moderator Reference in contrast array")
+            for j in range(n_moderators):
+                self.moderator_reference_dict[self.CBMRResults.estimator.moderators[j]] = j
+                LGR.info(f"{self.CBMRResults.estimator.moderators[j]} = index_{j}")
+            
         # device check
         if self.device == "cuda" and not torch.cuda.is_available():
             LGR.debug("cuda not found, use device 'cpu'")
             self.device = "cpu"
+
+    def create_contrast(self, contrast_name, type="group"):
+        if isinstance(contrast_name, str):
+            contrast_name = [contrast_name]
+        contrast_matrix = list()
+        if type == "group": # contrast matrix for spatial intensity
+            for contrast in contrast_name:
+                contrast_vector = np.zeros(self.n_groups)
+                if contrast.startswith("homo_test_"): # homogeneity test
+                    contrast_groups = contrast.split("homo_test_",1)[1]
+                    if contrast_groups not in self.groups:
+                        raise ValueError(f"{contrast_groups} is not a valid group name.")
+                    contrast_vector[self.group_reference_dict[contrast_groups]] = 1 
+                elif "VS" in contrast: # group comparison
+                    contrast_groups = contrast.split("VS")
+                    if not set(contrast_groups).issubset(set(self.groups)):
+                        not_valid_groups = set(contrast_groups).difference(set(self.groups))
+                        raise ValueError(f"{not_valid_groups} is not a valid group name.")
+                    contrast_vector[self.group_reference_dict[contrast_groups[0]]] = 1
+                    contrast_vector[self.group_reference_dict[contrast_groups[1]]] = -1
+                contrast_matrix.append(contrast_vector)
+        
+        elif type == "moderator": # contrast matrix for moderator effect
+            n_moderators = len(self.CBMRResults.estimator.moderators)
+            for contrast in contrast_name:
+                contrast_vector = np.zeros(n_moderators)
+                if contrast.startswith("moderator_"): # moderator effect
+                    contrast_moderators = contrast.split("moderator_",1)[1]
+                    if contrast_moderators not in self.CBMRResults.estimator.moderators:
+                        raise ValueError(f"{contrast_moderators} is not a valid moderator name.")
+                    contrast_vector[self.moderator_reference_dict[contrast_moderators]] = 1
+                elif "VS" in contrast:
+                    contrast_moderators = contrast.split("VS")
+                    if not set(contrast_moderators).issubset(set(self.CBMRResults.estimator.moderators)):
+                        not_valid_moderators = set(contrast_moderators).difference(set(self.CBMRResults.estimator.moderators))
+                        raise ValueError(f"{not_valid_moderators} is not a valid moderator name.")
+                    contrast_vector[self.moderator_reference_dict[contrast_moderators[0]]] = 1
+                    contrast_vector[self.moderator_reference_dict[contrast_moderators[1]]] = -1
+                else:
+                    raise ValueError(f"{contrast} is not a valid contrast type.")
+                contrast_matrix.append(contrast_vector)
+                
+        return contrast_matrix
+    
+    def compute_contrast(self, t_con_group=None, t_con_moderator=None): 
+        """Conduct generalized linear hypothesis (GLH) testing on CBMR estimates.
+
+        Estimate group-wise spatial regression coefficients and its standard error via inverse
+        Fisher Information matrix, estimate standard error of group-wise log intensity,
+        group-wise intensity via delta method.  For NB or clustered model, estimate regression
+        coefficient of overdispersion. Similarly, estimate regression coefficient of study-level
+        moderators (if exist), as well as its standard error via Fisher Information matrix.
+        Save these outcomes in `tables`. Also, estimate group-wise spatial intensity (per study)
+        and save the results in `maps`.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            Dataset to analyze.
+        """
+        
+        self.t_con_group = t_con_group
+        self.t_con_moderator = t_con_moderator
+        
+        if self.t_con_group is not False:
+            # preprocess and standardize group contrast
+            self._preprocess_t_con_group()
+            # GLH test for group contrast
+            self._GLH_con_group()
+        if self.t_con_moderator is not False:
+            # preprocess and standardize moderator contrast
+            self._preprocess_t_con_moderator()
+            # GLH test for moderator contrast
+            self._GLH_con_moderator()
 
     def _preprocess_t_con_group(self):
         # Conduct group-wise spatial homogeneity test by default
@@ -476,7 +555,7 @@ class CBMRInference(object):
                 if np.sum(idx) != 0:  # homogeneity test
                     nonzero_con_group_info = str()
                     nonzero_group_index = np.where(idx != 0)[0].tolist()
-                    nonzero_group_name = [self.group_names[i] for i in nonzero_group_index]
+                    nonzero_group_name = [self.groups[i] for i in nonzero_group_index]
                     nonzero_con = [int(idx[i]) for i in nonzero_group_index]
                     for i in range(len(nonzero_group_index)):
                         nonzero_con_group_info += (
@@ -489,8 +568,8 @@ class CBMRInference(object):
                         np.where(idx < 0)[0].tolist(),
                     )
                     pos_group_name, neg_group_name = [
-                        self.group_names[i] for i in pos_group_idx
-                    ], [self.group_names[i] for i in neg_group_idx]
+                        self.groups[i] for i in pos_group_idx
+                    ], [self.groups[i] for i in neg_group_idx]
                     pos_group_con, neg_group_con = [int(idx[i]) for i in pos_group_idx], [
                         int(idx[i]) for i in neg_group_idx
                     ]
@@ -526,7 +605,7 @@ class CBMRInference(object):
                         nonzero_con_moderator_info += (
                             str(abs(nonzero_con[i])) + "x" + str(nonzero_moderator_name[i])
                         )
-                    con_moderator_name.append("Effect_of_" + nonzero_con_moderator_info)
+                    con_moderator_name.append("ModeratorEffect_of_" + nonzero_con_moderator_info)
                 else:  # group-comparison test
                     pos_moderator_idx, neg_moderator_idx = (
                         np.where(idx > 0)[0].tolist(),
@@ -552,218 +631,12 @@ class CBMRInference(object):
                     )
             self.t_con_moderator_name.append(con_moderator_name)
         return
-
-    def _Fisher_info_spatial_coef(self, GLH_involved_index):
-        coef_spline_bases = torch.tensor(
-            self.CBMRResults.estimator.inputs_["coef_spline_bases"],
-            dtype=torch.float64,
-            device=self.device,
-        )
-        GLH_involved = [self.group_names[i] for i in GLH_involved_index]
-        involved_group_foci_per_voxel = [
-            torch.tensor(
-                self.CBMRResults.estimator.inputs_["foci_per_voxel"][group],
-                dtype=torch.float64,
-                device=self.device,
-            )
-            for group in GLH_involved
-        ]
-        involved_group_foci_per_study = [
-            torch.tensor(
-                self.CBMRResults.estimator.inputs_["foci_per_study"][group],
-                dtype=torch.float64,
-                device=self.device,
-            )
-            for group in GLH_involved
-        ]
-        if "Overdispersion_Coef" in self.CBMRResults.tables.keys():
-            involved_overdispersion_coef = torch.tensor(
-                [
-                    self.CBMRResults.tables["Overdispersion_Coef"].to_numpy()[i, :]
-                    for i in GLH_involved_index
-                ],
-                dtype=torch.float64,
-                device=self.device,
-            )
-        involved_spatial_coef = np.stack(
-            [
-                self.CBMRResults.tables["Spatial_Regression_Coef"]
-                .to_numpy()[i, :]
-                .reshape((-1, 1))
-                for i in GLH_involved_index
-            ]
-        )
-        involved_spatial_coef = torch.tensor(
-            involved_spatial_coef, dtype=torch.float64, device=self.device
-        )
-        n_involved_groups, spatial_coef_dim, _ = involved_spatial_coef.shape
-        if self.CBMRResults.estimator.moderators:
-            involved_group_moderators = [
-                torch.tensor(
-                    self.CBMRResults.estimator.inputs_["moderators_by_group"][group],
-                    dtype=torch.float64,
-                    device=self.device,
-                )
-                for group in GLH_involved
-            ]
-            involved_moderator_coef = torch.tensor(
-                self.CBMRResults.tables["Moderators_Regression_Coef"].to_numpy().T,
-                dtype=torch.float64,
-                device=self.device,
-            )
-        else:
-            involved_group_moderators, involved_moderator_coef = None, None
-        if self.CBMRResults.estimator.model == "Poisson":
-            nll = lambda spatial_coef: -GLMPoisson._log_likelihood_mult_group(
-                spatial_coef,
-                coef_spline_bases,
-                involved_group_foci_per_voxel,
-                involved_group_foci_per_study,
-                involved_moderator_coef,
-                involved_group_moderators,
-            )
-        elif self.CBMRResults.estimator.model == "NB":
-            nll = lambda spatial_coef: -GLMNB._log_likelihood_mult_group(
-                involved_overdispersion_coef,
-                spatial_coef,
-                coef_spline_bases,
-                involved_group_foci_per_voxel,
-                involved_group_foci_per_study,
-                involved_moderator_coef,
-                involved_group_moderators,
-            )
-        elif self.CBMRResults.estimator.model == "clustered_NB":
-            nll = lambda spatial_coef: -GLMCNB._log_likelihood_mult_group(
-                involved_overdispersion_coef,
-                spatial_coef,
-                coef_spline_bases,
-                involved_group_foci_per_voxel,
-                involved_group_foci_per_study,
-                involved_moderator_coef,
-                involved_group_moderators,
-            )
-        h = functorch.hessian(nll)(involved_spatial_coef)
-        h = h.view(n_involved_groups * spatial_coef_dim, -1)
-
-        return h.detach().cpu().numpy()
-
-    def _Fisher_info_moderator_coef(self):
-        coef_spline_bases = torch.tensor(
-            self.CBMRResults.estimator.inputs_["coef_spline_bases"],
-            dtype=torch.float64,
-            device=self.device,
-        )
-        all_group_foci_per_voxel = [
-            torch.tensor(
-                self.CBMRResults.estimator.inputs_["foci_per_voxel"][group],
-                dtype=torch.float64,
-                device=self.device,
-            )
-            for group in self.group_names
-        ]
-        all_group_foci_per_study = [
-            torch.tensor(
-                self.CBMRResults.estimator.inputs_["foci_per_study"][group],
-                dtype=torch.float64,
-                device=self.device,
-            )
-            for group in self.group_names
-        ]
-        spatial_coef = np.stack(
-            [
-                self.CBMRResults.tables["Spatial_Regression_Coef"]
-                .to_numpy()[i, :]
-                .reshape((-1, 1))
-                for i in range(self.n_groups)
-            ]
-        )
-        spatial_coef = torch.tensor(spatial_coef, dtype=torch.float64, device=self.device)
-
-        all_moderator_coef = torch.tensor(
-            self.CBMRResults.tables["Moderators_Regression_Coef"].to_numpy().T,
-            dtype=torch.float64,
-            device=self.device,
-        )
-        moderator_coef_dim, _ = all_moderator_coef.shape
-        all_group_moderators = [
-            torch.tensor(
-                self.CBMRResults.estimator.inputs_["moderators_by_group"][group],
-                dtype=torch.float64,
-                device=self.device,
-            )
-            for group in self.group_names
-        ]
-
-        if "Overdispersion_Coef" in self.CBMRResults.tables.keys():
-            overdispersion_coef = torch.tensor(
-                self.CBMRResults.tables["Overdispersion_Coef"].to_numpy(),
-                dtype=torch.float64,
-                device=self.device,
-            )
-
-        if self.CBMRResults.estimator.model == "Poisson":
-            nll = lambda all_moderator_coef: -GLMPoisson._log_likelihood_mult_group(
-                spatial_coef,
-                coef_spline_bases,
-                all_group_foci_per_voxel,
-                all_group_foci_per_study,
-                all_moderator_coef,
-                all_group_moderators,
-            )
-        elif self.CBMRResults.estimator.model == "NB":
-            nll = lambda all_moderator_coef: -GLMNB._log_likelihood_mult_group(
-                overdispersion_coef,
-                spatial_coef,
-                coef_spline_bases,
-                all_group_foci_per_voxel,
-                all_group_foci_per_study,
-                all_moderator_coef,
-                all_group_moderators,
-            )
-        elif self.CBMRResults.estimator.model == "clustered_NB":
-            nll = lambda all_moderator_coef: -GLMCNB._log_likelihood_mult_group(
-                overdispersion_coef,
-                spatial_coef,
-                coef_spline_bases,
-                all_group_foci_per_voxel,
-                all_group_foci_per_study,
-                all_moderator_coef,
-                all_group_moderators,
-            )
-        h = functorch.hessian(nll)(all_moderator_coef)
-        h = h.view(moderator_coef_dim, moderator_coef_dim)
-
-        return h.detach().cpu().numpy()
-
-    def _contrast(self):
-        """Conduct generalized linear hypothesis (GLH) testing on CBMR estimates.
-
-        Estimate group-wise spatial regression coefficients and its standard error via inverse
-        Fisher Information matrix, estimate standard error of group-wise log intensity,
-        group-wise intensity via delta method.  For NB or clustered model, estimate regression
-        coefficient of overdispersion. Similarly, estimate regression coefficient of study-level
-        moderators (if exist), as well as its standard error via Fisher Information matrix.
-        Save these outcomes in `tables`. Also, estimate group-wise spatial intensity (per study)
-        and save the results in `maps`.
-
-        Parameters
-        ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset to analyze.
-        """
-        # Log_Spatial_Intensity_SE = self.CBMRResults.tables["Log_Spatial_Intensity_SE"]
-        if self.t_con_group is not False:
-            self.GLH_con_group()
-
-        if self.t_con_moderator is not False:
-            self.GLH_con_moderator()
-        return
     
-    def GLH_con_group(self):
+    def _GLH_con_group(self):
         con_group_count = 0
         for con_group in self.t_con_group:
             con_group_involved_index = np.where(np.any(con_group != 0, axis=0))[0].tolist()
-            con_group_involved = [self.group_names[i] for i in con_group_involved_index]
+            con_group_involved = [self.groups[i] for i in con_group_involved_index]
             n_con_group_involved = len(con_group_involved)
             simp_con_group = con_group[
                 :, ~np.all(con_group == 0, axis=0)
@@ -813,8 +686,9 @@ class CBMRInference(object):
             )
             m, n_brain_voxel = Contrast_log_intensity.shape
             # Correlation of involved group-wise spatial coef
-            self.CBMRResults.estimator.model.summary()
-            F_spatial_coef = self._Fisher_info_spatial_coef(con_group_involved_index)
+            moderators_by_group = self.CBMRResults.estimator.inputs_["moderators_by_group"] if self.CBMRResults.estimator.moderators else None
+            F_spatial_coef = self.CBMRResults.estimator.model.FisherInfo_MultipleGroup_spatial(con_group_involved, self.CBMRResults.estimator.inputs_["coef_spline_bases"], 
+                            moderators_by_group, self.CBMRResults.estimator.inputs_["foci_per_voxel"], self.CBMRResults.estimator.inputs_["foci_per_study"])            
             Cov_spatial_coef = np.linalg.inv(F_spatial_coef)
             spatial_coef_dim = (
                 self.CBMRResults.tables["Spatial_Regression_Coef"].to_numpy().shape[1]
@@ -870,13 +744,17 @@ class CBMRInference(object):
                 ] = con_group_name
             con_group_count += 1
 
-    def GLH_con_moderator(self):
+    def _GLH_con_moderator(self):
         con_moderator_count = 0
         for con_moderator in self.t_con_moderator:
             m_con_moderator, _ = con_moderator.shape
             moderator_coef = self.CBMRResults.tables["Moderators_Regression_Coef"].to_numpy().T
             Contrast_moderator_coef = np.matmul(con_moderator, moderator_coef)
-            F_moderator_coef = self._Fisher_info_moderator_coef()
+            
+            moderators_by_group = self.CBMRResults.estimator.inputs_["moderators_by_group"] if self.CBMRResults.estimator.moderators else None
+            F_moderator_coef = self.CBMRResults.estimator.model.FisherInfo_MultipleGroup_moderator(self.CBMRResults.estimator.inputs_["coef_spline_bases"], 
+                            moderators_by_group, self.CBMRResults.estimator.inputs_["foci_per_voxel"], self.CBMRResults.estimator.inputs_["foci_per_study"])            
+            
             Cov_moderator_coef = np.linalg.inv(F_moderator_coef)
             chi_sq_moderator = (
                 Contrast_moderator_coef.T
@@ -901,3 +779,5 @@ class CBMRInference(object):
                     "moderator_coef_GLH_" + str(con_moderator_count)
                 ] = con_moderator_name
             con_moderator_count += 1
+        
+        return

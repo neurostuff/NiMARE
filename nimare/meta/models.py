@@ -356,6 +356,79 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             tables["Moderators_Regression_SE"] = pd.DataFrame(self.se_moderators)
         return maps, tables
 
+    def FisherInfo_MultipleGroup_spatial(self, involved_groups, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        """Document this."""
+        n_involved_groups = len(involved_groups)
+        involved_foci_per_voxel = [torch.tensor(foci_per_voxel[group], dtype=torch.float64, device=self.device) for group in involved_groups]
+        involved_foci_per_study = [torch.tensor(foci_per_study[group], dtype=torch.float64, device=self.device) for group in involved_groups]
+        spatial_coef = [torch.tensor(self.spatial_coef_linears[group].weight.T, dtype=torch.float64, device=self.device) for group in involved_groups]
+        spatial_coef = torch.stack(spatial_coef, dim=0)
+        if self.moderators_coef_dim:
+            involved_moderators_by_group = [torch.tensor(
+                moderators_by_group[group], dtype=torch.float64, device=self.device
+            ) for group in involved_groups]
+            moderators_coef = torch.tensor(self.moderators_coef.T, dtype=torch.float64, device=self.device)
+        else:
+            involved_moderators_by_group, moderators_coef = None, None
+                
+        ll_mult_group_kwargs = {
+            "moderator_coef": moderators_coef,
+            "coef_spline_bases": torch.tensor(coef_spline_bases, dtype=torch.float64, device=self.device),
+            "foci_per_voxel": involved_foci_per_voxel,
+            "foci_per_study": involved_foci_per_study,
+            "moderators": involved_moderators_by_group,
+            "device": self.device
+        }
+            
+        if hasattr(self, "overdispersion"):
+            ll_mult_group_kwargs['overdispersion_coef'] = [self.overdispersion[group] for group in involved_groups]
+        # create a negative log-likelihood function
+        def nll_spatial_coef(spatial_coef):
+            return -self._log_likelihood_mult_group(
+                spatial_coef=spatial_coef, **ll_mult_group_kwargs,
+            )
+    
+        h = functorch.hessian(nll_spatial_coef)(spatial_coef)
+        h = h.view(n_involved_groups * self.spatial_coef_dim, -1)
+
+        return h.detach().cpu().numpy()
+    
+    def FisherInfo_MultipleGroup_moderator(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        """Document this."""
+        foci_per_voxel = [torch.tensor(foci_per_voxel[group], dtype=torch.float64, device=self.device) for group in self.groups]
+        foci_per_study = [torch.tensor(foci_per_study[group], dtype=torch.float64, device=self.device) for group in self.groups]
+        spatial_coef = [torch.tensor(self.spatial_coef_linears[group].weight.T, dtype=torch.float64, device=self.device) for group in self.groups]
+        spatial_coef = torch.stack(spatial_coef, dim=0)
+        
+        if self.moderators_coef_dim:
+            moderators_by_group = [torch.tensor(
+                moderators_by_group[group], dtype=torch.float64, device=self.device
+            ) for group in self.groups]
+            moderator_coef = torch.tensor(self.moderators_coef.T, dtype=torch.float64, device=self.device)
+        else:
+            moderators_by_group, moderator_coef = None, None
+        
+        ll_mult_group_kwargs = {
+            "spatial_coef": spatial_coef,
+            "coef_spline_bases": torch.tensor(coef_spline_bases, dtype=torch.float64, device=self.device),
+            "foci_per_voxel": foci_per_voxel,
+            "foci_per_study": foci_per_study,
+            "moderators": moderators_by_group,
+            "device": self.device
+        }
+        if hasattr(self, "overdispersion"):
+            ll_mult_group_kwargs['overdispersion_coef'] = [self.overdispersion[group] for group in self.groups]
+        # create a negative log-likelihood function w.r.t moderator coefficients
+        def nll_moderator_coef(moderator_coef):
+            return -self._log_likelihood_mult_group(
+                moderator_coef=moderator_coef, **ll_mult_group_kwargs,
+            )
+    
+        h = functorch.hessian(nll_moderator_coef)(moderator_coef)
+        h = h.view(self.moderators_coef_dim, self.moderators_coef_dim)
+
+        return h.detach().cpu().numpy()
+    
 class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
         self.square_root = kwargs.pop("square_root", False)
@@ -427,11 +500,11 @@ class PoissonEstimator(GeneralLinearModelEstimator):
     def _log_likelihood_mult_group(
         self,
         spatial_coef,
+        moderator_coef,
         coef_spline_bases,
         foci_per_voxel,
         foci_per_study,
-        moderator_coef=None,
-        moderators=None,
+        moderators,
         device="cpu",
     ):
         n_groups = len(spatial_coef)
@@ -595,7 +668,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         moderators=None,
         device="cpu",
     ):
-        v = 1 / overdispersion_coef
+        v = [1 / overdispersion_params for overdispersion_params in overdispersion_coef]
         n_groups = len(foci_per_voxel)
         log_spatial_intensity = [
             torch.matmul(coef_spline_bases, spatial_coef[i, :, :]) for i in range(n_groups)
@@ -643,7 +716,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
 
         log_l = 0
         for i in range(n_groups):
-            log_l += NegativeBinomial._three_term(foci_per_voxel[i], r[i], device=device) + torch.sum(
+            log_l += self._three_term(foci_per_voxel[i], r[i]) + torch.sum(
                 r[i] * torch.log(1 - p[i]) + foci_per_voxel[i] * torch.log(p[i])
             )
 
