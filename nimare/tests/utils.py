@@ -51,8 +51,12 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
     )
     nonsig_prob_map = nonsig_prob_map[0].todense()
 
-    sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(int), affine=mask.affine)
-    nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(int), affine=mask.affine)
+    hdr = nib.Nifti1Header()  # Passing an int64 array to Nifti1Image requires a header
+    hdr.set_data_dtype(np.int64)
+    sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(int), affine=mask.affine, header=hdr)
+    nonsig_map = nib.Nifti1Image(
+        (nonsig_prob_map == 0).astype(int), affine=mask.affine, header=hdr
+    )
     return sig_map, nonsig_map
 
 

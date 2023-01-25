@@ -37,9 +37,11 @@ def test_dataset_smoke():
     with pytest.raises(ValueError):
         dset.get_studies_by_label("dog")
 
+    hdr = nib.Nifti1Header()  # Passing an int64 array to Nifti1Image requires a header
+    hdr.set_data_dtype(np.int64)
     mask_data = np.zeros(dset.masker.mask_img.shape, int)
     mask_data[40, 40, 40] = 1
-    mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
+    mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine, header=hdr)
     assert isinstance(dset.get_studies_by_mask(mask_img), list)
 
     dset1 = dset.slice(dset.ids[:5])

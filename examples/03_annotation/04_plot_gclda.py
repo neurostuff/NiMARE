@@ -113,9 +113,11 @@ decoded_df.sort_values(by="Weight", ascending=False).head(10)
 
 ###############################################################################
 # First we'll make an ROI
+hdr = nib.Nifti1Header()  # Passing an int64 array to Nifti1Image requires a header
+hdr.set_data_dtype(np.int64)
 arr = np.zeros(dset.masker.mask_img.shape, int)
 arr[65:75, 50:60, 50:60] = 1
-mask_img = nib.Nifti1Image(arr, dset.masker.mask_img.affine)
+mask_img = nib.Nifti1Image(arr, dset.masker.mask_img.affine, header=hdr)
 plotting.plot_roi(mask_img, draw_cross=False)
 
 ###############################################################################
