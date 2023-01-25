@@ -22,7 +22,7 @@ def cbma_workflow(
     .. versionadded:: 0.0.14
 
     This workflow performs a coordinate-based meta-analysis, multiple comparison correction,
-    and diagnostics analyses on corrected meta-analytic images.
+    and diagnostics analyses on corrected meta-analytic maps.
 
     Parameters
     ----------
@@ -50,34 +50,41 @@ def cbma_workflow(
     LGR.info("Performing correction on meta-analysis...")
     corr_results = corrector.transform(results)
 
+    LGR.info("Generating cluster tables and performing diagnostics on corrected meta-analyses...")
     for img_key in corr_results.maps.keys():
         # Save cluster table only for z maps
         if img_key.startswith("z_"):
             cbma_img = corr_results.get_map(img_key)
-
-            LGR.info("Generating cluster tables...")
             cluster_df = reporting.get_clusters_table(cbma_img, stat_threshold=0)
+
             # Remove prefix from name
             img_name = "_".join(img_key.split("_")[1:])
-
+            clust_tbl_name = f"cluster_{img_name}"
             if not cluster_df.empty:
-                clust_tbl_name = f"cluster_{img_name}"
                 corr_results.tables[clust_tbl_name] = cluster_df
+            else:
+                LGR.warn(
+                    f"Key {clust_tbl_name} will not be stored in MetaResult.tables dictionary."
+                )
 
             # Run diagnostic on corrected z maps
             if "_corr-" in img_key:
+                LGR.info("Performing diagnostic on corrected meta-analysis...")
                 for diagnostic in diagnostics:
                     diagnostic.target_image = img_key
-
-                    LGR.info("Performing diagnostic on corrected meta-analysis...")
                     count_df, _ = diagnostic.transform(corr_results)
 
+                    diag_tbl_name = f"{diagnostic.__class__.__name__}_{img_name}"
                     if not count_df.empty:
-                        diag_tbl_name = f"{diagnostic.__class__.__name__}_{img_name}"
                         corr_results.tables[diag_tbl_name] = count_df
+                    else:
+                        LGR.warn(
+                            f"Key {diag_tbl_name} will not be stored in "
+                            "MetaResult.tables dictionary."
+                        )
 
     if output_dir is not None:
-        LGR.info(f"Saving meta-result object to {output_dir}...")
+        LGR.info(f"Saving meta-analytic maps and tables result to {output_dir}...")
         corr_results.save_maps(output_dir=output_dir)
         corr_results.save_tables(output_dir=output_dir)
 
