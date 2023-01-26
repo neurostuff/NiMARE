@@ -11,9 +11,6 @@ In other tools for CBMA, such as `GingerALE`_, most of the elements we discuss o
 However, we have chosen to modularize these elements in order to support a range of testing possibilities,
 such as combining different kernels with different estimators.
 
-.. note::
-    Seed Based *d* Mapping (SDM) is currently not implemented in NiMARE because the source code is not publicly available.
-
 First, let's describe, in basic terms, what each of these elements means.
 
 Kernels
