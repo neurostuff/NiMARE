@@ -373,7 +373,7 @@ class CBMRInference(object):
 
         (1) if `type` is "group", create contrast matrix for GLH on spatial intensity;
         if `contrast_name` begins with 'homo_test_', followed by a valid group name, 
-        create a contrast matrix for homogeneity test on estimated group spatial intensity;
+        create a contrast matrix for one-group homogeneity test on spatial intensity;
         if `contrast_name` comes in the form of "group1VSgroup2", with valid group names 
         "group1" and "group2", create a contrast matrix for group comparison on estimated 
         group spatial intensity;
@@ -444,8 +444,12 @@ class CBMRInference(object):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset to analyze.
+        t_con_group : :obj:`~list`, optional
+            Contrast matrix for GLH on group-wise spatial intensity estimation.
+            Default is None (group-wise homogeneity test for all groups).
+        t_con_moderator : :obj:`~list`, optional
+            Contrast matrix for GLH on moderator effects.
+            Default is None (tests if moderator effects exist for all moderators).
         """
         
         self.t_con_group = t_con_group
@@ -474,6 +478,7 @@ class CBMRInference(object):
             con_group.reshape((1, -1)) if len(con_group.shape) == 1 else con_group
             for con_group in self.t_con_group
         ]  
+        # raise error if dimension of contrast matrix/vector doesn't match with number of groups
         if np.any([con_group.shape[1] != self.n_groups for con_group in self.t_con_group]):
             wrong_con_group_idx = np.where(
                 [con_group.shape[1] != self.n_groups for con_group in self.t_con_group]
@@ -482,7 +487,7 @@ class CBMRInference(object):
                 f"""The shape of {str(wrong_con_group_idx)}th contrast vector(s) in group-wise
                 intensity contrast matrix doesn't match with groups"""
             )
-        # remove zero rows in contrast matrix
+        # remove zero rows in contrast matrix (if exist)
         con_group_zero_row = [
             np.where(np.sum(np.abs(con_group), axis=1) == 0)[0]
             for con_group in self.t_con_group
@@ -490,7 +495,6 @@ class CBMRInference(object):
         if np.any(
             [len(zero_row) > 0 for zero_row in con_group_zero_row]
         ):  
-            # remove zero rows in contrast matrix
             self.t_con_group = [
                 np.delete(self.t_con_group[i], con_group_zero_row[i], axis=0)
                 for i in range(len(self.t_con_group))
@@ -500,13 +504,17 @@ class CBMRInference(object):
                     """One or more of contrast vectors(s) in group-wise intensity
                     contrast matrix are all zeros"""
                 )
+        # name of GLH contrasts and save to `tables` later
         self._Name_of_con_group()
-        # standardization
+        # standardization (row sum 1)
         self.t_con_group = [
             con_group / np.sum(np.abs(con_group), axis=1).reshape((-1, 1))
             for con_group in self.t_con_group
         ]
-
+        # remove duplicate rows in contrast matrix (after standardization)
+        uniq_con_group_idx = np.unique(self.t_con_group, axis=0, return_index=True)[1].tolist()
+        self.t_con_group = [self.t_con_group[i] for i in uniq_con_group_idx[::-1]]
+        
     def _preprocess_t_con_moderator(self):
         self.moderator_names = self.CBMRResults.estimator.moderators
         self.n_moderators = len(self.moderator_names)
@@ -561,6 +569,10 @@ class CBMRInference(object):
             con_moderator / np.sum(np.abs(con_moderator), axis=1).reshape((-1, 1))
             for con_moderator in self.t_con_moderator
         ]
+        # remove duplicate rows in contrast matrix (after standardization)
+        uniq_con_moderator_idx = np.unique(self.t_con_moderator, axis=0, return_index=True)[1].tolist()
+        self.t_con_moderator = [self.t_con_moderator[i] for i in uniq_con_moderator_idx[::-1]]
+        return 
     
     def _Name_of_con_group(self):
         """Define the name of GLH contrasts on spatial intensity estimation.
