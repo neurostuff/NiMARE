@@ -369,6 +369,26 @@ class CBMRInference(object):
             self.device = "cpu"
 
     def create_contrast(self, contrast_name, type="group"):
+        """Create contrast matrix for generalized hypothesis testing (GLH).
+
+        (1) if `type` is "group", create contrast matrix for GLH on spatial intensity;
+        if `contrast_name` begins with 'homo_test_', followed by a valid group name, 
+        create a contrast matrix for homogeneity test on estimated group spatial intensity;
+        if `contrast_name` comes in the form of "group1VSgroup2", with valid group names 
+        "group1" and "group2", create a contrast matrix for group comparison on estimated 
+        group spatial intensity;
+        (2) if `type` is "moderator", create contrast matrix for GLH on study-level moderators;
+        if `contrast_name` begins with 'moderator_', followed by a valid moderator name,
+        we create a contrast matrix for testing if the effect of this moderator exists;
+        if `contrast_name` comes in the form of "moderator1VSmoderator2", with valid moderator names
+        "modeator1" and "moderator2", we create a contrast matrix for testing if the effect of
+        these two moderators are different.
+
+        Parameters
+        ----------
+        contrast_name : :obj:`~string`
+            Name of contrast in GLH.
+        """
         if isinstance(contrast_name, str):
             contrast_name = [contrast_name]
         contrast_matrix = list()
