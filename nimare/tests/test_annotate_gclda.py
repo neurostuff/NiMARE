@@ -70,11 +70,9 @@ def test_gclda_asymmetric(testdata_laird):
     model.fit(n_iters=5, loglikely_freq=5)
 
     # Create ROI to decode
-    hdr = nib.Nifti1Header()  # Passing an int64 array to Nifti1Image requires a header
-    hdr.set_data_dtype(np.int64)
-    arr = np.zeros(testdata_laird.masker.mask_img.shape, int)
+    arr = np.zeros(testdata_laird.masker.mask_img.shape, np.int32)
     arr[40:44, 45:49, 40:44] = 1
-    mask_img = nib.Nifti1Image(arr, testdata_laird.masker.mask_img.affine, header=hdr)
+    mask_img = nib.Nifti1Image(arr, testdata_laird.masker.mask_img.affine)
     decoded_df, _ = decode.discrete.gclda_decode_roi(model, mask_img)
     assert isinstance(decoded_df, pd.DataFrame)
 
