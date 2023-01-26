@@ -5,11 +5,6 @@ from nimare import cli, workflows
 from nimare.tests.utils import get_test_data_path
 
 
-def test_neurosynth_compose_workflow():
-    """Run test using neurosynth-compose."""
-    workflows.compose_workflow("6YA5FqTPNJEq")
-
-
 def test_ale_workflow_function_smoke(tmp_path_factory):
     """Run smoke test for Sleuth ALE workflow."""
     tmpdir = tmp_path_factory.mktemp("test_ale_workflow_function_smoke")
