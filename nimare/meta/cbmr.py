@@ -670,9 +670,10 @@ class CBMRInference(object):
             con_group_involved_index = np.where(np.any(con_group != 0, axis=0))[0].tolist()
             con_group_involved = [self.groups[i] for i in con_group_involved_index]
             n_con_group_involved = len(con_group_involved)
+            # Simplify contrast matrix by removing irrelevant columns
             simp_con_group = con_group[
                 :, ~np.all(con_group == 0, axis=0)
-            ]  # contrast matrix of involved groups only
+            ]  
             if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
                 involved_log_intensity_per_voxel = list()
                 for group in con_group_involved:
@@ -811,5 +812,3 @@ class CBMRInference(object):
                     "moderator_coef_GLH_" + str(con_moderator_count)
                 ] = con_moderator_name
             con_moderator_count += 1
-        
-        return
