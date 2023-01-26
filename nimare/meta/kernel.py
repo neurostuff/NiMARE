@@ -169,10 +169,8 @@ class KernelTransformer(NiMAREBase):
                 img = kernel_data[mask_data]
                 imgs.append(img)
             elif return_type == "image":
-                hdr = nib.Nifti1Header()  # Passing an int64 array to Nifti1Image requires a header
-                hdr.set_data_dtype(np.int64)
                 kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, mask.affine, header=hdr)
+                img = nib.Nifti1Image(kernel_data, mask.affine)
                 imgs.append(img)
 
         del kernel_data, transformed_maps

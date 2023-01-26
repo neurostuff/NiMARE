@@ -144,7 +144,7 @@ def compute_kda_ma(
     exp = np.hstack(all_exp)
     coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
 
-    data = np.hstack(all_data).flatten()
+    data = np.hstack(all_data).flatten().astype(np.int32)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
