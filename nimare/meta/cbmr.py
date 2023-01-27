@@ -505,7 +505,7 @@ class CBMRInference(object):
                     contrast matrix are all zeros"""
                 )
         # name of GLH contrasts and save to `tables` later
-        self._Name_of_con_group()
+        self._name_of_con_group()
         # standardization (row sum 1)
         self.t_con_group = [
             con_group / np.sum(np.abs(con_group), axis=1).reshape((-1, 1))
@@ -564,7 +564,7 @@ class CBMRInference(object):
                     """One or more of contrast vectors(s) in modereators contrast matrix
                     are all zeros"""
                 )
-        self._Name_of_con_moderator()
+        self._name_of_con_moderator()
         self.t_con_moderator = [
             con_moderator / np.sum(np.abs(con_moderator), axis=1).reshape((-1, 1))
             for con_moderator in self.t_con_moderator
@@ -574,7 +574,7 @@ class CBMRInference(object):
         self.t_con_moderator = [self.t_con_moderator[i] for i in uniq_con_moderator_idx[::-1]]
         return 
     
-    def _Name_of_con_group(self):
+    def _name_of_con_group(self):
         """Define the name of GLH contrasts on spatial intensity estimation.
 
         And the names will be displayed as keys of `CBMRResults.maps` (if `t_con_group`
@@ -616,7 +616,7 @@ class CBMRInference(object):
             self.t_con_group_name.append(con_group_name)
         return
 
-    def _Name_of_con_moderator(self):
+    def _name_of_con_moderator(self):
         """Define the name of GLH contrasts on regressors of study-level moderators.
 
         And the names will be displayed as keys of `CBMRResults.maps` (if `t_con_moderators`
