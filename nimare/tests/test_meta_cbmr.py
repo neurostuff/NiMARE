@@ -40,7 +40,7 @@ def test_CBMRInference(testdata_cbmr_simulated):
     inference = CBMRInference(
         CBMRResults=cbmr_res, device="cuda"
     )
-    t_con_group = inference.create_contrast(["homo_test_schizophrenia_Yes", "schizophrenia_YesVSschizophrenia_No"], type='group')
+    t_con_group = inference.create_contrast(["schizophrenia_Yes", "schizophrenia_Yes-schizophrenia_No"], type='group')
     t_con_moderator = inference.create_contrast(["moderator_standardized_sample_sizes", "standardized_sample_sizesVSstandardized_avg_age"], type='moderator')
     contrast_result = inference.compute_contrast(t_con_group=t_con_group, t_con_moderator=t_con_moderator)
     # inference.summary()
