@@ -478,16 +478,16 @@ class CBMRInference(object):
 
         if self.t_con_group is not False:
             # preprocess and standardize group contrast
-            self.t_con_group_name, self.t_con_group = self._preprocess_t_con_regressor(attr_list=["t_con_group", "groups", "n_groups"], type='groups')
+            self.t_con_group, self.t_con_group_name = self._preprocess_t_con_regressor(attr_list=["t_con_group", "groups", "n_groups"], type='groups')
             # GLH test for group contrast
-            # self._glh_con_group()
+            self._glh_con_group()
         if self.t_con_moderator is not False:
             self.moderators = self.CBMRResults.estimator.moderators
             self.n_moderators = len(self.moderators)
             # preprocess and standardize moderator contrast
-            self.t_con_moderator_name, self.t_con_moderator = self._preprocess_t_con_regressor(attr_list=["t_con_moderator", "moderators", "n_moderators"], type='moderators')
+            self.t_con_moderator, self.t_con_moderator_name = self._preprocess_t_con_regressor(attr_list=["t_con_moderator", "moderators", "n_moderators"], type='moderators')
             # GLH test for moderator contrast
-            # self._glh_con_moderator()
+            self._glh_con_moderator()
 
     def _preprocess_t_con_regressor(self, attr_list, type):
         # regressor can be either groups or moderators
@@ -555,7 +555,7 @@ class CBMRInference(object):
                     if type == 'groups':
                         con_regressor_name.append("homo_test_" + nonzero_con_regressor_info)
                     elif type == 'moderators':
-                        con_regressor_name.append("ModeratorEffect_of_" + nonzero_con_info)
+                        con_regressor_name.append("ModeratorEffect_of_" + nonzero_con_regressor_info)
                 else:  # group-comparison test
                     pos_regressor_idx, neg_regressor_idx = (
                         np.where(idx > 0)[0].tolist(),
@@ -574,100 +574,10 @@ class CBMRInference(object):
                         neg_con_regressor_info += (
                             str(abs(neg_group_con[i])) + "x" + str(neg_regressor_name[i])
                         )
-                    con_regressor_name.append(pos_con_regressor_info + "VS" + neg_con_regressor_info)
+                    con_regressor_name.append(pos_con_regressor_info + " - " + neg_con_regressor_info)
             t_con_regressor_name.append(con_regressor_name)
         
         return t_con_regressor_name
-    
-    def _name_of_con_group(self):
-        """Define the name of GLH contrasts on spatial intensity estimation.
-
-        And the names will be displayed as keys of `CBMRResults.maps` (if `t_con_group`
-        exists).
-        """
-        self.t_con_group_name = list()
-        for con_group in self.t_con_group:
-            con_group_name = list()
-            for num, idx in enumerate(con_group):
-                if np.sum(idx) != 0:  # homogeneity test
-                    nonzero_con_group_info = str()
-                    nonzero_group_index = np.where(idx != 0)[0].tolist()
-                    nonzero_group_name = [self.groups[i] for i in nonzero_group_index]
-                    nonzero_con = [int(idx[i]) for i in nonzero_group_index]
-                    for i in range(len(nonzero_group_index)):
-                        nonzero_con_group_info += (
-                            str(abs(nonzero_con[i])) + "x" + str(nonzero_group_name[i])
-                        )
-                    con_group_name.append("homo_test_" + nonzero_con_group_info)
-                else:  # group-comparison test
-                    pos_group_idx, neg_group_idx = (
-                        np.where(idx > 0)[0].tolist(),
-                        np.where(idx < 0)[0].tolist(),
-                    )
-                    pos_group_name, neg_group_name = [self.groups[i] for i in pos_group_idx], [
-                        self.groups[i] for i in neg_group_idx
-                    ]
-                    pos_group_con, neg_group_con = [int(idx[i]) for i in pos_group_idx], [
-                        int(idx[i]) for i in neg_group_idx
-                    ]
-                    pos_con_group_info, neg_con_group_info = str(), str()
-                    for i in range(len(pos_group_idx)):
-                        pos_con_group_info += str(pos_group_con[i]) + "x" + str(pos_group_name[i])
-                    for i in range(len(neg_group_idx)):
-                        neg_con_group_info += (
-                            str(abs(neg_group_con[i])) + "x" + str(neg_group_name[i])
-                        )
-                    con_group_name.append(pos_con_group_info + "VS" + neg_con_group_info)
-            self.t_con_group_name.append(con_group_name)
-        return
-
-    def _name_of_con_moderator(self):
-        """Define the name of GLH contrasts on regressors of study-level moderators.
-
-        And the names will be displayed as keys of `CBMRResults.maps` (if `t_con_moderators`
-        exists).
-        """
-        self.t_con_moderator_name = list()
-        for con_moderator in self.t_con_moderator:
-            con_moderator_name = list()
-            for num, idx in enumerate(con_moderator):
-                if np.sum(idx) != 0:  # homogeneity test
-                    nonzero_con_moderator_info = str()
-                    nonzero_moderator_index = np.where(idx != 0)[0].tolist()
-                    nonzero_moderator_name = [
-                        self.moderator_names[i] for i in nonzero_moderator_index
-                    ]
-                    nonzero_con = [int(idx[i]) for i in nonzero_moderator_index]
-                    for i in range(len(nonzero_moderator_index)):
-                        nonzero_con_moderator_info += (
-                            str(abs(nonzero_con[i])) + "x" + str(nonzero_moderator_name[i])
-                        )
-                    con_moderator_name.append("ModeratorEffect_of_" + nonzero_con_moderator_info)
-                else:  # group-comparison test
-                    pos_moderator_idx, neg_moderator_idx = (
-                        np.where(idx > 0)[0].tolist(),
-                        np.where(idx < 0)[0].tolist(),
-                    )
-                    pos_moderator_name, neg_moderator_name = [
-                        self.moderator_names[i] for i in pos_moderator_idx
-                    ], [self.moderator_names[i] for i in neg_moderator_idx]
-                    pos_moderator_con, neg_moderator_con = [
-                        int(idx[i]) for i in pos_moderator_idx
-                    ], [int(idx[i]) for i in neg_moderator_idx]
-                    pos_con_moderator_info, neg_con_moderator_info = str(), str()
-                    for i in range(len(pos_moderator_idx)):
-                        pos_con_moderator_info += (
-                            str(pos_moderator_con[i]) + "x" + str(pos_moderator_name[i])
-                        )
-                    for i in range(len(neg_moderator_idx)):
-                        neg_con_moderator_info += (
-                            str(abs(neg_moderator_con[i])) + "x" + str(neg_moderator_name[i])
-                        )
-                    con_moderator_name.append(
-                        pos_con_moderator_info + "VS" + neg_con_moderator_info
-                    )
-            self.t_con_moderator_name.append(con_moderator_name)
-        return
 
     def _glh_con_group(self):
         con_group_count = 0
