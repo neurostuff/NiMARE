@@ -1,18 +1,13 @@
 """Topic modeling with latent Dirichlet allocation."""
+import numpy as np
 import pandas as pd
 from sklearn.decomposition import LatentDirichletAllocation
 
-from nimare import references
 from nimare.annotate.text import generate_counts
 from nimare.base import NiMAREBase
-from nimare.due import due
+from nimare.utils import _check_ncores
 
 
-@due.dcite(references.LDA, description="Introduces LDA.")
-@due.dcite(
-    references.LDAMODEL,
-    description="First use of LDA for automated annotation of neuroimaging literature.",
-)
 class LDAModel(NiMAREBase):
     """Generate a latent Dirichlet allocation (LDA) topic model.
 
@@ -36,6 +31,10 @@ class LDAModel(NiMAREBase):
     text_column : :obj:`str`, optional
         The source of text to use for the model. This should correspond to an existing column
         in the :py:attr:`~nimare.dataset.Dataset.texts` attribute. Default is "abstract".
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores.
+        Default is 1.
 
     Attributes
     ----------
@@ -58,19 +57,23 @@ class LDAModel(NiMAREBase):
     :class:`~sklearn.decomposition.LatentDirichletAllocation`: Used to train the LDA model.
     """
 
-    def __init__(self, n_topics, max_iter=1000, alpha=None, beta=0.001, text_column="abstract"):
+    def __init__(
+        self, n_topics, max_iter=1000, alpha=None, beta=0.001, text_column="abstract", n_cores=1
+    ):
         self.n_topics = n_topics
         self.max_iter = max_iter
         self.alpha = alpha
         self.beta = beta
         self.text_column = text_column
+        self.n_cores = _check_ncores(n_cores)
 
         self.model = LatentDirichletAllocation(
             n_components=n_topics,
             max_iter=max_iter,
-            learning_method="online",
+            learning_method="batch",
             doc_topic_prior=alpha,
             topic_word_prior=beta,
+            n_jobs=n_cores,
         )
 
     def fit(self, dset):
@@ -104,19 +107,28 @@ class LDAModel(NiMAREBase):
             max_df=len(dset.ids) - 2,
             min_df=2,
         )
-        vocabulary = counts_df.columns.tolist()
+        vocabulary = counts_df.columns.to_numpy()
         count_values = counts_df.values
         study_ids = counts_df.index.tolist()
-        # TODO: LDA50__1_word1_word2_word3
-        topic_names = [f"LDA{self.n_topics}__{i + 1}" for i in range(self.n_topics)]
 
         doc_topic_weights = self.model.fit_transform(count_values)
+        topic_word_weights = self.model.components_
+
+        # Get top 3 words for each topic for annotation
+        sorted_weights_idxs = np.argsort(-topic_word_weights, axis=1)
+        top_tokens = [
+            "_".join(vocabulary[sorted_weights_idxs[topic_i, :]][:3])
+            for topic_i in range(self.n_topics)
+        ]
+        topic_names = [
+            f"LDA{self.n_topics}__{i + 1}_{top_tokens[i]}" for i in range(self.n_topics)
+        ]
+
         doc_topic_weights_df = pd.DataFrame(
             index=study_ids,
             columns=topic_names,
             data=doc_topic_weights,
         )
-        topic_word_weights = self.model.components_
         topic_word_weights_df = pd.DataFrame(
             index=topic_names,
             columns=vocabulary,

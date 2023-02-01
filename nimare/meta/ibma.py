@@ -5,6 +5,7 @@ import logging
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pymare
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
@@ -135,6 +136,13 @@ class Fishers(IBMAEstimator):
     -----
     Requires ``z`` images.
 
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    ============== ===============================================================================
+
     Warnings
     --------
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
@@ -171,11 +179,11 @@ class Fishers(IBMAEstimator):
         est = pymare.estimators.FisherCombinationTest()
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
-        results = {
+        maps = {
             "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return results
+        return maps, {}
 
 
 class Stouffers(IBMAEstimator):
@@ -195,6 +203,13 @@ class Stouffers(IBMAEstimator):
     Notes
     -----
     Requires ``z`` images and optionally the sample size metadata field.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    ============== ===============================================================================
 
     Warnings
     --------
@@ -247,15 +262,19 @@ class Stouffers(IBMAEstimator):
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
 
-        results = {
+        maps = {
             "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
             "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return results
+        return maps, {}
 
 
 class WeightedLeastSquares(IBMAEstimator):
     """Weighted least-squares meta-regression.
+
+    .. versionchanged:: 0.0.12
+
+        * Add "se" to outputs.
 
     .. versionchanged:: 0.0.8
 
@@ -277,7 +296,16 @@ class WeightedLeastSquares(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    "est"          Fixed effects estimate for intercept test.
+    "se"           Standard error of fixed effects estimate.
+    ============== ===============================================================================
 
     Warnings
     --------
@@ -319,23 +347,28 @@ class WeightedLeastSquares(IBMAEstimator):
         est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
+
+        fe_stats = est_summary.get_fe_stats()
         # tau2 is an float, not a map, so it can't go in the results dictionary
-        results = {
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
+        maps = {
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return results
+
+        tables = {
+            "level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2]),
+        }
+        return maps, tables
 
 
 class DerSimonianLaird(IBMAEstimator):
     """DerSimonian-Laird meta-regression estimator.
+
+    .. versionchanged:: 0.0.12
+
+        * Add "se" to outputs.
 
     .. versionchanged:: 0.0.8
 
@@ -348,7 +381,17 @@ class DerSimonianLaird(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    "est"          Fixed effects estimate for intercept test.
+    "se"           Standard error of fixed effects estimate.
+    "tau2"         Estimated between-study variance.
+    ============== ===============================================================================
 
     Warnings
     --------
@@ -386,23 +429,24 @@ class DerSimonianLaird(IBMAEstimator):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
-        results = {
+
+        fe_stats = est_summary.get_fe_stats()
+        maps = {
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
         }
-        return results
+        return maps, {}
 
 
 class Hedges(IBMAEstimator):
     """Hedges meta-regression estimator.
+
+    .. versionchanged:: 0.0.12
+
+        * Add "se" to outputs.
 
     .. versionchanged:: 0.0.8
 
@@ -415,7 +459,17 @@ class Hedges(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    "est"          Fixed effects estimate for intercept test.
+    "se"           Standard error of fixed effects estimate.
+    "tau2"         Estimated between-study variance.
+    ============== ===============================================================================
 
     Warnings
     --------
@@ -453,23 +507,23 @@ class Hedges(IBMAEstimator):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
-        results = {
+        fe_stats = est_summary.get_fe_stats()
+        maps = {
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
         }
-        return results
+        return maps, {}
 
 
 class SampleSizeBasedLikelihood(IBMAEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
+
+    .. versionchanged:: 0.0.12
+
+        * Add "se" and "sigma2" to outputs.
 
     .. versionchanged:: 0.0.8
 
@@ -492,10 +546,21 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` images and sample size from metadata.
+    Requires :term:`beta` images and sample size from metadata.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    "est"          Fixed effects estimate for intercept test.
+    "se"           Standard error of fixed effects estimate.
+    "tau2"         Estimated between-study variance.
+    "sigma2"       Estimated within-study variance. Assumed to be the same for all studies.
+    ============== ===============================================================================
 
     Homogeneity of sigma^2 across studies is assumed.
-    The ML and REML solutions are obtained via SciPy’s scalar function
+    The ML and REML solutions are obtained via SciPy's scalar function
     minimizer (:func:`scipy.optimize.minimize`).
     Parameters to ``minimize()`` can be passed in as keyword arguments.
 
@@ -534,23 +599,27 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
-        results = {
+        fe_stats = est_summary.get_fe_stats()
+        maps = {
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
+            "sigma2": _boolean_unmask(
+                est.params_["sigma2"].squeeze(),
+                self.inputs_["aggressive_mask"],
             ),
         }
-        return results
+        return maps, {}
 
 
 class VarianceBasedLikelihood(IBMAEstimator):
     """A likelihood-based meta-analysis method for estimates with known variances.
+
+    .. versionchanged:: 0.0.12
+
+        Add "se" output.
 
     .. versionchanged:: 0.0.8
 
@@ -574,7 +643,17 @@ class VarianceBasedLikelihood(IBMAEstimator):
 
     Notes
     -----
-    Requires ``beta`` and ``varcope`` images.
+    Requires :term:`beta` and :term:`varcope` images.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    "est"          Fixed effects estimate for intercept test.
+    "se"           Standard error of fixed effects estimate.
+    "tau2"         Estimated between-study variance.
+    ============== ===============================================================================
 
     The ML and REML solutions are obtained via SciPy's scalar function
     minimizer (:func:`scipy.optimize.minimize`).
@@ -626,23 +705,23 @@ class VarianceBasedLikelihood(IBMAEstimator):
         pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], v=self.inputs_["varcope_maps"])
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
-        results = {
+        fe_stats = est_summary.get_fe_stats()
+        maps = {
+            "z": _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"]),
+            "p": _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"]),
+            "est": _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"]),
+            "se": _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"]),
             "tau2": _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(
-                est_summary.get_fe_stats()["z"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "p": _boolean_unmask(
-                est_summary.get_fe_stats()["p"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "est": _boolean_unmask(
-                est_summary.get_fe_stats()["est"].squeeze(), self.inputs_["aggressive_mask"]
-            ),
         }
-        return results
+        return maps, {}
 
 
 class PermutedOLS(IBMAEstimator):
     r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
+
+    .. versionchanged:: 0.0.12
+
+        * Use beta maps instead of z maps.
 
     .. versionchanged:: 0.0.8
 
@@ -662,7 +741,14 @@ class PermutedOLS(IBMAEstimator):
 
     Notes
     -----
-    Requires ``z`` images.
+    Requires ``beta`` images.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "t"            T-statistic map from one-sample test.
+    "z"            Z-statistic map from one-sample test.
+    ============== ===============================================================================
 
     Available correction methods: :func:`PermutedOLS.correct_fwe_montecarlo`
 
@@ -681,7 +767,7 @@ class PermutedOLS(IBMAEstimator):
     nilearn.mass_univariate.permuted_ols : The function used for this IBMA.
     """
 
-    _required_inputs = {"z_maps": ("image", "z")}
+    _required_inputs = {"beta_maps": ("image", "beta")}
 
     def __init__(self, two_sided=True, **kwargs):
         super().__init__(**kwargs)
@@ -691,12 +777,12 @@ class PermutedOLS(IBMAEstimator):
     def _fit(self, dataset):
         self.dataset = dataset
         # Use intercept as explanatory variable
-        self.parameters_["tested_vars"] = np.ones((self.inputs_["z_maps"].shape[0], 1))
+        self.parameters_["tested_vars"] = np.ones((self.inputs_["beta_maps"].shape[0], 1))
         self.parameters_["confounding_vars"] = None
 
         _, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
-            self.inputs_["z_maps"],
+            self.inputs_["beta_maps"],
             confounding_vars=self.parameters_["confounding_vars"],
             model_intercept=False,  # modeled by tested_vars
             n_perm=0,
@@ -709,11 +795,11 @@ class PermutedOLS(IBMAEstimator):
         # Convert t to z, preserving signs
         dof = self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
         z_map = t_to_z(t_map, dof)
-        images = {
+        maps = {
             "t": _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"]),
             "z": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return images
+        return maps, {}
 
     def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
@@ -742,8 +828,7 @@ class PermutedOLS(IBMAEstimator):
         images : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked images generated by
             the correction procedure. The following arrays are generated by
-            this method: 'z_vthresh', 'p_level-voxel', 'z_level-voxel', and
-            'logp_level-cluster'.
+            this method: 'p_level-voxel', 'z_level-voxel', 'logp_level-voxel'.
 
         See Also
         --------
@@ -762,7 +847,7 @@ class PermutedOLS(IBMAEstimator):
 
         log_p_map, t_map, _ = permuted_ols(
             self.parameters_["tested_vars"],
-            self.inputs_["z_maps"],
+            self.inputs_["beta_maps"],
             confounding_vars=self.parameters_["confounding_vars"],
             model_intercept=False,  # modeled by tested_vars
             n_perm=n_iters,
@@ -779,10 +864,10 @@ class PermutedOLS(IBMAEstimator):
         sign = np.sign(t_map)
         sign[sign == 0] = 1
         z_map = p_to_z(p_map, tail="two") * sign
-        images = {
+        maps = {
             "logp_level-voxel": _boolean_unmask(
                 log_p_map.squeeze(), self.inputs_["aggressive_mask"]
             ),
             "z_level-voxel": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
         }
-        return images
+        return maps, {}

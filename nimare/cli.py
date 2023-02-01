@@ -4,10 +4,7 @@ import os.path as op
 
 from nimare.io import convert_neurosynth_to_json, convert_sleuth_to_json
 from nimare.workflows.ale import ale_sleuth_workflow
-from nimare.workflows.conperm import conperm_workflow
 from nimare.workflows.macm import macm_workflow
-from nimare.workflows.peaks2maps import peaks2maps_workflow
-from nimare.workflows.scale import scale_workflow
 
 
 def _is_valid_file(parser, arg):
@@ -93,91 +90,6 @@ def _get_parser():
         help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
-    # Contrast permutation workflow
-    conperm_parser = subparsers.add_parser(
-        "conperm",
-        help=(
-            "Meta-analysis of contrast maps using random effects and "
-            "two-sided inference with empirical (permutation-based) null "
-            "distribution and Family Wise Error multiple comparisons "
-            "correction. Input may be a list of 3D files or a single 4D "
-            "file."
-        ),
-    )
-    conperm_parser.set_defaults(func=conperm_workflow)
-    conperm_parser.add_argument(
-        "contrast_images",
-        nargs="+",
-        metavar="FILE",
-        type=lambda x: _is_valid_file(parser, x),
-        help=("Data to analyze. May be a single 4D file or a list of 3D files."),
-    )
-    conperm_parser.add_argument(
-        "--mask",
-        dest="mask_image",
-        metavar="FILE",
-        type=lambda x: _is_valid_file(parser, x),
-        help=("Mask file."),
-        default=None,
-    )
-    conperm_parser.add_argument(
-        "--output_dir",
-        dest="output_dir",
-        metavar="PATH",
-        type=str,
-        help=("Output directory."),
-        default=".",
-    )
-    conperm_parser.add_argument(
-        "--prefix", dest="prefix", type=str, help=("Common prefix for output maps."), default=""
-    )
-    conperm_parser.add_argument(
-        "--n_iters",
-        dest="n_iters",
-        type=int,
-        help=("Number of iterations for permutation testing."),
-        default=10000,
-    )
-
-    # Contrast permutation applied to Peaks2Maps-reconstructed maps
-    peaks2maps_parser = subparsers.add_parser(
-        "peaks2maps",
-        help=(
-            "Method for performing coordinate-based meta-analysis that "
-            "uses a pretrained deep neural network to reconstruct "
-            "unthresholded maps from peak coordinates. The reconstructed "
-            "maps are evaluated for statistical significance using a "
-            "permutation-based approach with Family Wise Error multiple "
-            "comparison correction. "
-            "WARNING: "
-            "The peaks2maps workflow is deprecated and will be removed in NiMARE version 0.0.13."
-        ),
-    )
-    peaks2maps_parser.set_defaults(func=peaks2maps_workflow)
-    peaks2maps_parser.add_argument(
-        "sleuth_file",
-        type=lambda x: _is_valid_file(parser, x),
-        help=("Sleuth text file to analyze."),
-    )
-    peaks2maps_parser.add_argument(
-        "--output_dir",
-        dest="output_dir",
-        metavar="PATH",
-        type=str,
-        help=("Output directory."),
-        default=".",
-    )
-    peaks2maps_parser.add_argument(
-        "--prefix", dest="prefix", type=str, help=("Common prefix for output maps."), default=""
-    )
-    peaks2maps_parser.add_argument(
-        "--n_iters",
-        dest="n_iters",
-        type=int,
-        help=("Number of iterations for permutation testing."),
-        default=10000,
-    )
-
     # MACM
     macm_parser = subparsers.add_parser(
         "macm",
@@ -225,59 +137,6 @@ def _get_parser():
         default=0.001,
     )
     macm_parser.add_argument(
-        "--n_cores",
-        dest="n_cores",
-        type=int,
-        default=1,
-        help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
-    )
-
-    # SCALE
-    scale_parser = subparsers.add_parser(
-        "scale",
-        help=(
-            "Method for performing Specific CoActivation Likelihood "
-            "Estimation (SCALE), a modified meta-analytic coactivation "
-            "modeling (MACM) that takes activation frequency bias into "
-            "account, for delineating distinct core networks of "
-            "coactivation, using a permutation-based approach."
-        ),
-    )
-    scale_parser.set_defaults(func=scale_workflow)
-    scale_parser.add_argument(
-        "dataset_file", type=lambda x: _is_valid_file(parser, x), help=("Dataset file to analyze.")
-    )
-    scale_parser.add_argument(
-        "--baseline",
-        type=lambda x: _is_valid_file(parser, x),
-        help=("Voxel-wise baseline activation rates."),
-    )
-    scale_parser.add_argument(
-        "--output_dir",
-        dest="output_dir",
-        metavar="PATH",
-        type=str,
-        help=("Output directory."),
-        default=".",
-    )
-    scale_parser.add_argument(
-        "--prefix", dest="prefix", type=str, help=("Common prefix for output maps."), default=""
-    )
-    scale_parser.add_argument(
-        "--n_iters",
-        dest="n_iters",
-        type=int,
-        help=("Number of iterations for permutation testing."),
-        default=2500,
-    )
-    scale_parser.add_argument(
-        "--v_thr",
-        dest="v_thr",
-        type=float,
-        help=("Voxel p-value threshold used to create clusters."),
-        default=0.001,
-    )
-    scale_parser.add_argument(
         "--n_cores",
         dest="n_cores",
         type=int,

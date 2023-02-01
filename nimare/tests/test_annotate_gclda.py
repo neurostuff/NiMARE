@@ -36,7 +36,7 @@ def test_gclda_symmetric(testdata_laird):
     model.fit(n_iters=5, loglikely_freq=5)
 
     # Create ROI to decode
-    arr = np.zeros(testdata_laird.masker.mask_img.shape, int)
+    arr = np.zeros(testdata_laird.masker.mask_img.shape, np.int32)
     arr[40:44, 45:49, 40:44] = 1
     mask_img = nib.Nifti1Image(arr, testdata_laird.masker.mask_img.affine)
     decoded_df, _ = decode.discrete.gclda_decode_roi(model, mask_img)
@@ -70,7 +70,7 @@ def test_gclda_asymmetric(testdata_laird):
     model.fit(n_iters=5, loglikely_freq=5)
 
     # Create ROI to decode
-    arr = np.zeros(testdata_laird.masker.mask_img.shape, int)
+    arr = np.zeros(testdata_laird.masker.mask_img.shape, np.int32)
     arr[40:44, 45:49, 40:44] = 1
     mask_img = nib.Nifti1Image(arr, testdata_laird.masker.mask_img.affine)
     decoded_df, _ = decode.discrete.gclda_decode_roi(model, mask_img)
