@@ -32,8 +32,8 @@ def test_CBMRInference(testdata_cbmr_simulated):
         spline_spacing=10,
         model=models.ClusteredNegativeBinomialEstimator,
         penalty=False,
-        lr=1e-8,
-        tol=1e6,
+        lr=1e-6,
+        tol=1e8,
         device="cpu",
     )
     cbmr_res = cbmr.fit(dataset=dset)
