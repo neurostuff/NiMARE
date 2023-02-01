@@ -28,6 +28,10 @@ LGR = logging.getLogger(__name__)
 class Jackknife(NiMAREBase):
     """Run a jackknife analysis on a meta-analysis result.
 
+    .. versionchanged:: 0.0.14
+
+        Return clusters table.
+
     .. versionchanged:: 0.0.13
 
         Change cluster neighborhood from faces+edges to faces, to match Nilearn.
@@ -90,6 +94,12 @@ class Jackknife(NiMAREBase):
             (below the header), which has the center of mass of each cluster.
             There is one column for each cluster, with column names being integers indicating the
             cluster's associated value in the ``labeled_cluster_img`` output.
+        clusters_table : :obj:`pandas.DataFrame`
+            A DataFrame with information about each cluster.
+            There is one row for each cluster.
+            The columns in this table include: ``Cluster ID`` (cluster number), ``X``/``Y``/``Z``
+            (coordinate for the center of mass), ``Max Stat`` (maximum statistical value in the
+            cluster), and ``Cluster Size (mm3)`` (the size of the cluster, in cubic millimeters).
         labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
             The labeled, thresholded map that is used to identify clusters characterized by this
             analysis.
@@ -118,6 +128,8 @@ class Jackknife(NiMAREBase):
                 f"Available maps in result are: {', '.join(available_maps)}."
             )
 
+        voxel_size = np.prod(target_img.header.get_zooms())
+
         if self.voxel_thresh:
             thresh_img = image.threshold_img(target_img, self.voxel_thresh)
         else:
@@ -139,7 +151,8 @@ class Jackknife(NiMAREBase):
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
         meta_ids = estimator.inputs_["id"]
-        rows = ["Center of Mass"] + list(meta_ids)
+        diag_table_rows = ["Center of Mass"] + list(meta_ids)
+        clust_table_cols = ["Cluster ID", "X", "Y", "Z", "Max Stat", "Cluster Size (mm3)"]
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
@@ -153,24 +166,45 @@ class Jackknife(NiMAREBase):
 
         if n_clusters == 0:
             LGR.warning("No clusters found")
-            contribution_table = pd.DataFrame(index=rows)
-            return contribution_table, labeled_cluster_img
+            contribution_table = pd.DataFrame(index=diag_table_rows)
+            clusters_table = pd.DataFrame(columns=clust_table_cols)
+
+            contribution_table = contribution_table.reset_index()
+            return contribution_table, clusters_table, labeled_cluster_img
+
+        # Follow Nilearn's re-labeling, sorting by descending max value; then create tables
+        clust_ids = sorted(list(np.unique(labeled_cluster_arr)[1:]))
+        peak_vals = np.array([np.max(thresh_arr * (labeled_cluster_arr == c)) for c in clust_ids])
+        sorted_peak_vals = (-peak_vals).argsort()
+        clust_ids = [clust_ids[c] for c in sorted_peak_vals]
 
         cluster_coms = _get_cluster_coms(labeled_cluster_arr)
         cluster_coms = vox2mm(cluster_coms, target_img.affine)
 
+        clust_table_rows = []
         cluster_com_strs = []
-        for i_peak in range(cluster_coms.shape[0]):
+        for i_peak, c_val in enumerate(clust_ids):
             x, y, z = cluster_coms[i_peak, :].astype(int)
             xyz_str = f"({x}, {y}, {z})"
             cluster_com_strs.append(xyz_str)
+
+            cluster_mask = labeled_cluster_arr == c_val
+            cluster_size_mm = int(np.sum(cluster_mask) * voxel_size)
+            clust_table_rows.append(
+                [i_peak + 1, x, y, z, peak_vals[sorted_peak_vals[i_peak]], cluster_size_mm]
+            )
+
+        # Create clusters table
+        clusters_table = pd.DataFrame(columns=clust_table_cols, data=clust_table_rows)
 
         # Mask using a labels masker, so that we can easily get the mean value for each cluster
         cluster_masker = input_data.NiftiLabelsMasker(labeled_cluster_img)
         cluster_masker.fit(labeled_cluster_img)
 
         # Create empty contribution table
-        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
+        contribution_table = pd.DataFrame(
+            index=diag_table_rows, columns=list(range(1, n_clusters + 1))
+        )
         contribution_table.index.name = "Cluster ID"
         contribution_table.loc["Center of Mass"] = cluster_com_strs
 
@@ -193,7 +227,9 @@ class Jackknife(NiMAREBase):
         for expid, stat_prop_values in jackknife_results:
             contribution_table.loc[expid] = stat_prop_values
 
-        return contribution_table, labeled_cluster_img
+        contribution_table = contribution_table.reset_index()
+
+        return contribution_table, clusters_table, labeled_cluster_img
 
     def _transform(
         self,
@@ -239,6 +275,10 @@ class Jackknife(NiMAREBase):
 
 class FocusCounter(NiMAREBase):
     """Run a focus-count analysis on a coordinate-based meta-analysis result.
+
+    .. versionchanged:: 0.0.14
+
+        Return clusters table.
 
     .. versionchanged:: 0.0.13
 
@@ -302,6 +342,12 @@ class FocusCounter(NiMAREBase):
             (below the header), which has the center of mass of each cluster.
             There is one column for each cluster, with column names being integers indicating the
             cluster's associated value in the ``labeled_cluster_img`` output.
+        clusters_table : :obj:`pandas.DataFrame`
+            A DataFrame with information about each cluster.
+            There is one row for each cluster.
+            The columns in this table include: ``Cluster ID`` (cluster number), ``X``/``Y``/``Z``
+            (coordinate for the center of mass), ``Max Stat`` (maximum statistical value in the
+            cluster), and ``Cluster Size (mm3)`` (the size of the cluster, in cubic millimeters).
         labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
             The labeled, thresholded map that is used to identify clusters characterized by this
             analysis.
@@ -329,6 +375,8 @@ class FocusCounter(NiMAREBase):
                 f"Available maps in result are: {', '.join(available_maps)}."
             )
 
+        voxel_size = np.prod(target_img.header.get_zooms())
+
         if self.voxel_thresh:
             thresh_img = image.threshold_img(target_img, self.voxel_thresh)
         else:
@@ -339,7 +387,8 @@ class FocusCounter(NiMAREBase):
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
         meta_ids = estimator.inputs_["id"]
-        rows = ["Center of Mass"] + list(meta_ids)
+        diag_table_rows = ["Center of Mass"] + list(meta_ids)
+        clust_table_cols = ["Cluster ID", "X", "Y", "Z", "Max Stat", "Cluster Size (mm3)"]
 
         # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
         # This won't work when the Estimator's masker isn't a NiftiMasker... :(
@@ -353,20 +402,41 @@ class FocusCounter(NiMAREBase):
 
         if n_clusters == 0:
             LGR.warning("No clusters found")
-            contribution_table = pd.DataFrame(index=rows)
-            return contribution_table, labeled_cluster_img
+            contribution_table = pd.DataFrame(index=diag_table_rows)
+            clusters_table = pd.DataFrame(columns=clust_table_cols)
+
+            contribution_table = contribution_table.reset_index()
+            return contribution_table, clusters_table, labeled_cluster_img
+
+        # Follow Nilearn's re-labeling, sorting by descending max value; then create tables
+        clust_ids = sorted(list(np.unique(labeled_cluster_arr)[1:]))
+        peak_vals = np.array([np.max(thresh_arr * (labeled_cluster_arr == c)) for c in clust_ids])
+        sorted_peak_vals = (-peak_vals).argsort()
+        clust_ids = [clust_ids[c] for c in sorted_peak_vals]
 
         cluster_coms = _get_cluster_coms(labeled_cluster_arr)
         cluster_coms = vox2mm(cluster_coms, target_img.affine)
 
+        clust_table_rows = []
         cluster_com_strs = []
-        for i_peak in range(cluster_coms.shape[0]):
+        for i_peak, c_val in enumerate(clust_ids):
             x, y, z = cluster_coms[i_peak, :].astype(int)
             xyz_str = f"({x}, {y}, {z})"
             cluster_com_strs.append(xyz_str)
 
+            cluster_mask = labeled_cluster_arr == c_val
+            cluster_size_mm = int(np.sum(cluster_mask) * voxel_size)
+            clust_table_rows.append(
+                [i_peak + 1, x, y, z, peak_vals[sorted_peak_vals[i_peak]], cluster_size_mm]
+            )
+
+        # Create clusters table
+        clusters_table = pd.DataFrame(columns=clust_table_cols, data=clust_table_rows)
+
         # Create empty contribution table
-        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
+        contribution_table = pd.DataFrame(
+            index=diag_table_rows, columns=list(range(1, n_clusters + 1))
+        )
         contribution_table.index.name = "Cluster ID"
         contribution_table.loc["Center of Mass"] = cluster_com_strs
 
@@ -385,7 +455,9 @@ class FocusCounter(NiMAREBase):
         for expid, focus_counts in jackknife_results:
             contribution_table.loc[expid] = focus_counts
 
-        return contribution_table, labeled_cluster_img
+        contribution_table = contribution_table.reset_index()
+
+        return contribution_table, clusters_table, labeled_cluster_img
 
     def _transform(self, expid, coordinates_df, labeled_cluster_map, affine):
         coords = coordinates_df.loc[coordinates_df["id"] == expid]
