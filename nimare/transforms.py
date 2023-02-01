@@ -685,10 +685,7 @@ def p_to_z(p, tail="two"):
     if tail == "two":
         z = stats.norm.isf(p / 2)
     elif tail == "one":
-        z = stats.norm.isf(p)
-        # Replace negative values in z with values estimated by CDF
-        zval_cdf = stats.norm.ppf(p)
-        z[np.atleast_1d(z < 0)] = zval_cdf[z < 0]
+        z = np.abs(stats.norm.isf(p))
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
 
