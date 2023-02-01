@@ -366,25 +366,47 @@ class CBMRInference(object):
         self.CBMRResults = CBMRResults
         self.groups = self.CBMRResults.estimator.groups
         self.n_groups = len(self.groups)
-
+        self.moderators = self.CBMRResults.estimator.moderators
         # visialize group/moderator names and their indices in contrast array
         self.group_reference_dict, self.moderator_reference_dict = dict(), dict()
         LGR.info("Group Reference in contrast array")
         for i in range(self.n_groups):
             self.group_reference_dict[self.groups[i]] = i
             LGR.info(f"{self.groups[i]} = index_{i}")
-        if self.CBMRResults.estimator.moderators:
-            n_moderators = len(self.CBMRResults.estimator.moderators)
+        if self.moderators:
+            self.n_moderators = len(self.moderators)
             LGR.info("Moderator Reference in contrast array")
-            for j in range(n_moderators):
-                self.moderator_reference_dict[self.CBMRResults.estimator.moderators[j]] = j
-                LGR.info(f"{self.CBMRResults.estimator.moderators[j]} = index_{j}")
+            for j in range(self.n_moderators):
+                self.moderator_reference_dict[self.moderators[j]] = j
+                LGR.info(f"{self.moderators[j]} = index_{j}")
 
         # device check
         if self.device == "cuda" and not torch.cuda.is_available():
             LGR.debug("cuda not found, use device 'cpu'")
             self.device = "cpu"
 
+    def create_regular_expressions(self):
+        """
+        Create regular expressions for parsing contrast names.
+        creates the following attributes:
+        self.groups_regular_expression: regular expression for parsing group names
+        self.moderators_regular_expression: regular expression for parsing moderator names
+
+        usage:
+        >>> self.groups_regular_expression.match("group1 - group2").groupdict()
+        """
+
+        operator = '(\\ ?(?P<operator>[+-]?)\\ ??)'
+        for attr in ['groups', 'moderators']:
+            groups = getattr(self, attr)
+            first_group, second_group = [
+                f"(?P<{order}>{'|'.join([re.escape(g) for g in groups])})"
+                for order in ["first", "second"]
+            ]
+            reg_expr = re.compile(first_group + "(" + operator + second_group + "?)")
+
+            setattr(self, "{}_regular_expression".format(attr), reg_expr)
+            
     def create_contrast(self, contrast_name, type="group"):
         """Create contrast matrix for generalized hypothesis testing (GLH).
 
@@ -406,48 +428,41 @@ class CBMRInference(object):
         contrast_name : :obj:`~string`
             Name of contrast in GLH.
         """
+        self.create_regular_expressions()
+        
         if isinstance(contrast_name, str):
             contrast_name = [contrast_name]
         contrast_matrix = list()
         if type == "group":  # contrast matrix for spatial intensity
             for contrast in contrast_name:
                 contrast_vector = np.zeros(self.n_groups)
-                if contrast in self.groups:  # homogeneity test
+                contrast_match = self.groups_regular_expression.match(contrast)
+                # check validity of contrast name
+                if contrast_match is None:
+                    raise ValueError(f"{contrast} is not a valid contrast.")
+                groups_contrast = contrast_match.groupdict()
+                # create contrast matrix
+                if all(groups_contrast.values()):  # group comparison
+                    contrast_vector[self.group_reference_dict[groups_contrast["first"]]] = 1
+                    contrast_vector[self.group_reference_dict[groups_contrast["second"]]] = int(contrast_match["operator"] + "1")
+                else: # homogeneity test
                     contrast_vector[self.group_reference_dict[contrast]] = 1
-                elif "-" in contrast:  # group comparison
-                    contrast_groups = contrast.split("-")
-                    if not set(contrast_groups).issubset(set(self.groups)):
-                        not_valid_groups = set(contrast_groups).difference(set(self.groups))
-                        raise ValueError(f"{not_valid_groups} is not a valid group name.")
-                    contrast_vector[self.group_reference_dict[contrast_groups[0]]] = 1
-                    contrast_vector[self.group_reference_dict[contrast_groups[1]]] = -1
-                else:
-                    raise ValueError(
-                        f"{contrast} is not a valid contrast name.")
                 contrast_matrix.append(contrast_vector)
 
         elif type == "moderator":  # contrast matrix for moderator effect
-            n_moderators = len(self.CBMRResults.estimator.moderators)
             for contrast in contrast_name:
-                contrast_vector = np.zeros(n_moderators)
-                if contrast.startswith("moderator_"):  # moderator effect
-                    contrast_moderators = contrast.split("moderator_", 1)[1]
-                    if contrast_moderators not in self.CBMRResults.estimator.moderators:
-                        raise ValueError(f"{contrast_moderators} is not a valid moderator name.")
-                    contrast_vector[self.moderator_reference_dict[contrast_moderators]] = 1
-                elif "VS" in contrast:
-                    contrast_moderators = contrast.split("VS")
-                    if not set(contrast_moderators).issubset(
-                        set(self.CBMRResults.estimator.moderators)
-                    ):
-                        not_valid_moderators = set(contrast_moderators).difference(
-                            set(self.CBMRResults.estimator.moderators)
-                        )
-                        raise ValueError(f"{not_valid_moderators} is not a valid moderator name.")
-                    contrast_vector[self.moderator_reference_dict[contrast_moderators[0]]] = 1
-                    contrast_vector[self.moderator_reference_dict[contrast_moderators[1]]] = -1
-                else:
-                    raise ValueError(f"{contrast} is not a valid contrast type.")
+                contrast_vector = np.zeros(self.n_moderators)
+                contrast_match = self.moderators_regular_expression.match(contrast)
+                if contrast_match is None:
+                    raise ValueError(f"{contrast} is not a valid contrast.")
+                moderators_contrast = contrast_match.groupdict()
+                if all(moderators_contrast.values()):  # moderator comparison
+                    moderator_groups = list(map(moderators_contrast.get, ["first", "second"]))
+                    contrast_vector[self.moderator_reference_dict[moderators_contrast["first"]]] = 1
+                    contrast_vector[self.moderator_reference_dict[moderators_contrast["second"]]] = int(moderators_contrast["operator"] + "1")
+                else: # moderator effect
+                    contrast_vector[self.moderator_reference_dict[contrast]] = 1
+
                 contrast_matrix.append(contrast_vector)
 
         return contrast_matrix
@@ -482,7 +497,6 @@ class CBMRInference(object):
             # GLH test for group contrast
             self._glh_con_group()
         if self.t_con_moderator is not False:
-            self.moderators = self.CBMRResults.estimator.moderators
             self.n_moderators = len(self.moderators)
             # preprocess and standardize moderator contrast
             self.t_con_moderator, self.t_con_moderator_name = self._preprocess_t_con_regressor(attr_list=["t_con_moderator", "moderators", "n_moderators"], type='moderators')
@@ -628,7 +642,7 @@ class CBMRInference(object):
             # Correlation of involved group-wise spatial coef
             moderators_by_group = (
                 self.CBMRResults.estimator.inputs_["moderators_by_group"]
-                if self.CBMRResults.estimator.moderators
+                if self.moderators
                 else None
             )
             F_spatial_coef = self.CBMRResults.estimator.model.FisherInfo_MultipleGroup_spatial(
@@ -700,7 +714,7 @@ class CBMRInference(object):
 
             moderators_by_group = (
                 self.CBMRResults.estimator.inputs_["moderators_by_group"]
-                if self.CBMRResults.estimator.moderators
+                if self.moderators
                 else None
             )
             F_moderator_coef = self.CBMRResults.estimator.model.FisherInfo_MultipleGroup_moderator(

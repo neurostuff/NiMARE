@@ -32,16 +32,17 @@ def test_CBMRInference(testdata_cbmr_simulated):
         spline_spacing=10,
         model=models.ClusteredNegativeBinomialEstimator,
         penalty=False,
-        lr=1e-6,
-        tol=1e8,
+        lr=1e-1,
+        tol=1e4,
         device="cpu",
     )
+    # ["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
     cbmr_res = cbmr.fit(dataset=dset)
     inference = CBMRInference(
         CBMRResults=cbmr_res, device="cuda"
     )
     t_con_group = inference.create_contrast(["schizophrenia_Yes", "schizophrenia_Yes-schizophrenia_No"], type='group')
-    t_con_moderator = inference.create_contrast(["moderator_standardized_sample_sizes", "standardized_sample_sizesVSstandardized_avg_age"], type='moderator')
+    t_con_moderator = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type='moderator')
     contrast_result = inference.compute_contrast(t_con_group=t_con_group, t_con_moderator=t_con_moderator)
     # inference.summary()
 
