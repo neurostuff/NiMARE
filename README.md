@@ -3,6 +3,7 @@ A Python library for coordinate- and image-based meta-analysis.
 
 [![Latest Version](https://img.shields.io/pypi/v/nimare.svg)](https://pypi.python.org/pypi/nimare/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/nimare.svg)](https://pypi.python.org/pypi/nimare/)
+[![GitHub Repository](https://img.shields.io/badge/Source%20Code-neurostuff%2Fnimare-purple)](https://github.com/neurostuff/NiMARE)
 [![DOI](https://zenodo.org/badge/117724523.svg)](https://zenodo.org/badge/latestdoi/117724523)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Test Status](https://github.com/neurostuff/NiMARE/actions/workflows/testing.yml/badge.svg)](https://github.com/neurostuff/NiMARE/actions/workflows/testing.yml)
