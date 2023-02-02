@@ -77,7 +77,7 @@ class Decoder(NiMAREBase):
         if not len(features):
             raise Exception("No features identified in Dataset!")
         elif len(features) < n_features_orig:
-            LGR.info(f"Retaining {len(features)}/({n_features_orig} features.")
+            LGR.info(f"Retaining {len(features)}/{n_features_orig} features.")
 
         self.features_ = features
 

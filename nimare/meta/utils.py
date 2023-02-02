@@ -116,13 +116,10 @@ def compute_kda_ma(
         all_spheres = _convolve_sphere(kernel, peaks)
 
         if sum_overlap:
-            # if sum_overlap, counts=list
             all_spheres, counts = unique_rows(all_spheres, return_counts=True)
             counts = counts * value
         else:
-            # if not sum_overlap, counts=value
             all_spheres = unique_rows(all_spheres)
-            counts = value
 
         # Mask coordinates beyond space
         idx = np.all(
@@ -130,24 +127,24 @@ def compute_kda_ma(
         )
 
         all_spheres = all_spheres[idx, :]
+
+        sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
+        sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :].T
+        nonzero_idx = tuple(sphere_idx_filtered)
+
         if sum_overlap:
-            counts = counts[idx]
-
-        ma_values = np.zeros(shape)
-        ma_values[tuple(all_spheres.T)] = counts
-        # Set voxel outside the mask to zero.
-        ma_values[~mask_data] = 0
-
-        nonzero_idx = np.where(ma_values > 0)
+            nonzero_to_append = counts[idx][sphere_idx_inside_mask]
+        else:
+            nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
 
         all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
         all_coords.append(np.vstack(nonzero_idx))
-        all_data.append(ma_values[nonzero_idx])
+        all_data.append(nonzero_to_append)
 
     exp = np.hstack(all_exp)
     coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
 
-    data = np.hstack(all_data).flatten()
+    data = np.hstack(all_data).flatten().astype(np.int32)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
@@ -226,7 +223,6 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     all_coords = []
     all_data = []
     for i_exp, _ in enumerate(exp_idx_uniq):
-
         # Index peaks by experiment
         curr_exp_idx = exp_idx == i_exp
         ijk = ijks[curr_exp_idx]
@@ -274,7 +270,6 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
                 & (zlk >= 0)
                 & (zhk >= 0)
             ):
-
                 ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
                     ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
                 )

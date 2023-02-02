@@ -1300,7 +1300,6 @@ class KDA(CBMAEstimator):
         stat_hist = ma_hists[0, :].copy()
 
         for i_exp in range(1, ma_hists.shape[0]):
-
             exp_hist = ma_hists[i_exp, :]
 
             # Find histogram bins with nonzero values for each histogram.

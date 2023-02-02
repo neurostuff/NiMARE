@@ -11,8 +11,6 @@ from nimare.utils import get_masker, get_template, mm2vox
 @pytest.mark.parametrize(
     "kern, res, param, return_type, kwargs",
     [
-        (kernel.ALEKernel, 1, "dataset", "dataset", {"sample_size": 20}),
-        (kernel.ALEKernel, 2, "dataset", "dataset", {"sample_size": 20}),
         (kernel.ALEKernel, 1, "dataset", "image", {"sample_size": 20}),
         (kernel.ALEKernel, 2, "dataset", "image", {"sample_size": 20}),
         (kernel.ALEKernel, 1, "dataframe", "image", {"sample_size": 20}),
@@ -37,7 +35,6 @@ def test_kernel_peaks(testdata_cbma, tmp_path_factory, kern, res, param, return_
     Notes
     -----
     Remember that dataframe --> dataset won't work.
-    Only testing dataset --> dataset with ALEKernel because it takes a while.
     Test on multiple template resolutions.
     """
     tmpdir = tmp_path_factory.mktemp("test_kernel_peaks")
@@ -88,12 +85,12 @@ def test_kernel_peaks(testdata_cbma, tmp_path_factory, kern, res, param, return_
         (kernel.KDAKernel, {"r": 4, "value": 1}),
     ],
 )
-def test_kernel_transform_attributes(testdata_cbma, kern, kwargs):
+def test_kernel_transform_attributes(kern, kwargs):
     """Check that attributes are added at transform."""
     kern_instance = kern(**kwargs)
     assert not hasattr(kern_instance, "filename_pattern")
     assert not hasattr(kern_instance, "image_type")
-    _ = kern_instance.transform(testdata_cbma, return_type="image")
+    kern_instance._infer_names()
     assert hasattr(kern_instance, "filename_pattern")
     assert hasattr(kern_instance, "image_type")
 

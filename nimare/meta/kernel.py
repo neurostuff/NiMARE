@@ -7,23 +7,24 @@ size and test statistic values).
 from __future__ import division
 
 import logging
-import os
-from hashlib import md5
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import sparse
 
 from nimare.base import NiMAREBase
 from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
-from nimare.utils import _add_metadata_to_dataframe, _safe_transform, mm2vox
+from nimare.utils import _add_metadata_to_dataframe, mm2vox
 
 LGR = logging.getLogger(__name__)
 
 
 class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
+
+    .. versionchanged:: 0.0.13
+
+            - Remove "dataset" `return_type` option.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -39,7 +40,7 @@ class KernelTransformer(NiMAREBase):
     """
 
     def _infer_names(self, **kwargs):
-        """Determine filename pattern and image type for files created with this transformer.
+        """Determine filename pattern and image type.
 
         The parameters used to construct the filenames come from the transformer's
         parameters (attributes saved in ``__init__()``).
@@ -53,7 +54,7 @@ class KernelTransformer(NiMAREBase):
         Attributes
         ----------
         filename_pattern : str
-            Filename pattern for images that will be saved by the transformer.
+            Filename pattern for images.
         image_type : str
             Name of the corresponding column in the Dataset.images DataFrame.
         """
@@ -81,9 +82,9 @@ class KernelTransformer(NiMAREBase):
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
             If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
             Default is None.
-        return_type : {'sparse', 'array', 'image', 'dataset'}, optional
-            Whether to return a numpy array ('array'), a list of niimgs ('image'),
-            or a Dataset with MA images saved as files ('dataset').
+        return_type : {'sparse', 'array', 'image'}, optional
+            Whether to return a sparse matrix ('sparse'), a numpy array ('array'),
+            or a list of niimgs ('image').
             Default is 'image'.
 
         Returns
@@ -97,19 +98,17 @@ class KernelTransformer(NiMAREBase):
             contrast and V is voxel.
             If return_type is 'image', a list of modeled activation images
             (one for each of the Contrasts in the input dataset).
-            If return_type is 'dataset', a new Dataset object with modeled
-            activation images saved to files and referenced in the
-            Dataset.images attribute.
 
         Attributes
         ----------
         filename_pattern : str
-            Filename pattern for MA maps that will be saved by the transformer.
+            Filename pattern for MA maps. If :meth:`_infer_names` is executed.
         image_type : str
             Name of the corresponding column in the Dataset.images DataFrame.
+            If :meth:`_infer_names` is executed.
         """
-        if return_type not in ("sparse", "array", "image", "dataset"):
-            raise ValueError('Argument "return_type" must be "image", "array", or "dataset".')
+        if return_type not in ("sparse", "array", "image"):
+            raise ValueError('Argument "return_type" must be "image", "array", or "sparse".')
 
         if isinstance(dataset, pd.DataFrame):
             assert (
@@ -117,9 +116,6 @@ class KernelTransformer(NiMAREBase):
             ), "Argument 'masker' must be provided if dataset is a DataFrame."
             mask = masker.mask_img
             coordinates = dataset
-            assert (
-                return_type != "dataset"
-            ), "Input dataset must be a Dataset if return_type='dataset'."
 
             # Calculate IJK. Must assume that the masker is in same space,
             # but has different affine, from original IJK.
@@ -128,24 +124,6 @@ class KernelTransformer(NiMAREBase):
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
             coordinates = dataset.coordinates.copy()
-
-            # Determine MA map filenames. Must happen after parameters are set.
-            self._infer_names(affine=md5(mask.affine).hexdigest())
-
-            # Check for existing MA maps
-            # Use coordinates to get IDs instead of Dataset.ids bc of possible
-            # mismatch between full Dataset and contrasts with coordinates.
-            if self.image_type in dataset.images.columns:
-                files = dataset.get_images(ids=coordinates["id"].unique(), imtype=self.image_type)
-                if all(f is not None for f in files):
-                    LGR.debug("Files already exist. Using them.")
-                    if return_type == "array":
-                        masked_data = _safe_transform(files, masker)
-                        return masked_data
-                    elif return_type == "image":
-                        return [nib.load(f) for f in files]
-                    elif return_type == "dataset":
-                        return dataset.copy()
 
             # Calculate IJK
             if not np.array_equal(mask.affine, dataset.masker.mask_img.affine):
@@ -170,24 +148,13 @@ class KernelTransformer(NiMAREBase):
                     filter_func=np.mean,
                 )
 
-        # Generate the MA maps if they weren't already available as images
         if return_type == "array":
             mask_data = mask.get_fdata().astype(bool)
         elif return_type == "image":
             dtype = type(self.value) if hasattr(self, "value") else float
             mask_data = mask.get_fdata().astype(dtype)
-        elif return_type == "dataset":
-            if dataset.basepath is None:
-                raise ValueError(
-                    "Dataset output path is not set. Set the path with Dataset.update_path()."
-                )
-            elif not os.path.isdir(dataset.basepath):
-                raise ValueError(
-                    "Output directory does not exist. Set the path to an existing folder with "
-                    "Dataset.update_path()."
-                )
-            dataset = dataset.copy()
 
+        # Generate the MA maps
         transformed_maps = self._transform(mask, coordinates)
 
         if return_type == "sparse":
@@ -195,11 +162,8 @@ class KernelTransformer(NiMAREBase):
 
         imgs = []
         # Loop over exp ids since sparse._coo.core.COO is not iterable
-        for i_exp, id_ in enumerate(transformed_maps[1]):
-            if isinstance(transformed_maps[0][i_exp], sparse._coo.core.COO):
-                # This step is slow, but it is here just in case user want a
-                # return_type = "array", "image", or "dataset"
-                kernel_data = transformed_maps[0][i_exp].todense()
+        for i_exp, _ in enumerate(transformed_maps[1]):
+            kernel_data = transformed_maps[0][i_exp].todense()
 
             if return_type == "array":
                 img = kernel_data[mask_data]
@@ -208,11 +172,6 @@ class KernelTransformer(NiMAREBase):
                 kernel_data *= mask_data
                 img = nib.Nifti1Image(kernel_data, mask.affine)
                 imgs.append(img)
-            elif return_type == "dataset":
-                img = nib.Nifti1Image(kernel_data, mask.affine)
-                out_file = os.path.join(dataset.basepath, self.filename_pattern.format(id=id_))
-                img.to_filename(out_file)
-                dataset.images.loc[dataset.images["id"] == id_, self.image_type] = out_file
 
         del kernel_data, transformed_maps
 
@@ -220,14 +179,6 @@ class KernelTransformer(NiMAREBase):
             return np.vstack(imgs)
         elif return_type == "image":
             return imgs
-        elif return_type == "dataset":
-            # Replace NaNs with Nones
-            dataset.images[self.image_type] = dataset.images[self.image_type].where(
-                dataset.images[self.image_type].notnull(), None
-            )
-            # Infer relative path
-            dataset.images = dataset.images
-            return dataset
 
     def _transform(self, mask, coordinates):
         """Apply the kernel's unique transformer.
@@ -263,6 +214,10 @@ class ALEKernel(KernelTransformer):
     By default (if neither ``fwhm`` nor ``sample_size`` is provided), the FWHM of the kernel
     will be determined on a study-wise basis based on the sample sizes available in the input,
     via the method described in :footcite:t:`eickhoff2012activation`.
+
+    .. versionchanged:: 0.0.13
+
+            - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 
@@ -358,6 +313,10 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.0.13
+
+            - Remove "dataset" `return_type` option.
+
     .. versionchanged:: 0.0.12
 
         * Remove low-memory option in favor of sparse arrays for kernel transformers.
@@ -377,7 +336,6 @@ class KDAKernel(KernelTransformer):
         self.value = value
 
     def _transform(self, mask, coordinates):
-
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(
@@ -411,6 +369,10 @@ class KDAKernel(KernelTransformer):
 
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
+
+    .. versionchanged:: 0.0.13
+
+            - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 

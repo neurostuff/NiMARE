@@ -2,9 +2,58 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.12rc7...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.13rc1...HEAD)
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
+## [0.0.13rc1](https://github.com/neurostuff/NiMARE/compare/0.0.12rc7...0.0.13rc1) - 2023-01-13
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+Testing release code
+
+#### 🛠 Breaking Changes
+
+- Remove Peaks2Maps from NiMARE by @tsalo in https://github.com/neurostuff/NiMARE/pull/644
+- Remove duecredit in favor of BibTeX references by @tsalo in https://github.com/neurostuff/NiMARE/pull/736
+- Switch from face+edge connectivity to face-only by @tsalo in https://github.com/neurostuff/NiMARE/pull/733
+- Remove conperm and scale CLI workflows by @tsalo in https://github.com/neurostuff/NiMARE/pull/740
+
+#### 🎉 Exciting New Features
+
+- Add `tables` attribute to MetaResult class by @tsalo in https://github.com/neurostuff/NiMARE/pull/734
+- Add FocusFilter class for removing coordinates outside of a mask by @tsalo in https://github.com/neurostuff/NiMARE/pull/732
+- Add parallelization option to `CorrelationDecoder` and `CorrelationDistributionDecoder` by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/738
+- Append the top 3 words to LDA topic names by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/741
+- Enhance LDA annotator by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/742
+
+#### 🐛 Bug Fixes
+
+- Shift centers of mass into clusters in Jackknife/FocusCounter by @tsalo in https://github.com/neurostuff/NiMARE/pull/735
+- fix a bug in conversion from z statistics to p values by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/749
+- Remove "dataset" `return_type` option from kernel transformers by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/752
+
+#### Other Changes
+
+- Fix import in download_neurosynth example by @PTDZ in https://github.com/neurostuff/NiMARE/pull/743
+- Optimize compute_kda_ma by @liuzhenqi77 in https://github.com/neurostuff/NiMARE/pull/745
+- Optimize dataset.get by @liuzhenqi77 in https://github.com/neurostuff/NiMARE/pull/746
+- Fix MACM analysis example by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/750
+- Remove upper bound for matplotlib version by @ghisvail in https://github.com/neurostuff/NiMARE/pull/751
+- Fix neurosyth download_abstracts example; inc biopython by @WillForan in https://github.com/neurostuff/NiMARE/pull/753
+- Raise deprecation warnings with Python 3.6 and 3.7 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/754
+- [MAINT] Fix various errors due to major version changes in dependencies by @jdkent in https://github.com/neurostuff/NiMARE/pull/757
+
+### New Contributors
+
+- @PTDZ made their first contribution in https://github.com/neurostuff/NiMARE/pull/743
+- @liuzhenqi77 made their first contribution in https://github.com/neurostuff/NiMARE/pull/745
+- @yifan0330 made their first contribution in https://github.com/neurostuff/NiMARE/pull/749
+- @ghisvail made their first contribution in https://github.com/neurostuff/NiMARE/pull/751
+- @WillForan made their first contribution in https://github.com/neurostuff/NiMARE/pull/753
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.12...0.0.13rc1
+
 ## [0.0.12rc7](https://github.com/neurostuff/NiMARE/compare/0.0.12rc6...0.0.12rc7) - 2022-06-14
 
 Another release candidate to test a GitHub Action.
