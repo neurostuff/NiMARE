@@ -78,12 +78,12 @@ class MetaResult(object):
         self.description_ = description
 
     @property
-    def description(self):
+    def description_(self):
         """:obj:`str`: A textual description of the method that generated the result."""
         return self.__description
 
-    @description.setter
-    def description(self, desc):
+    @description_.setter
+    def description_(self, desc):
         """Automatically extract references when the description is set."""
         self.__description = desc
         self.bibtex_ = get_description_references(desc)
