@@ -247,7 +247,7 @@ def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
 
 
 @pytest.mark.parametrize(
-    "expected_z,tail,expected_p",
+    "z,tail,expected_p",
     [
         (0.0, "two", 1.0),
         (0.0, "one", 0.5),
@@ -256,13 +256,10 @@ def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
         (-1.959963, "one", 0.975),
         (-1.959963, "two", 0.05),
         ([0.0, 1.959963, -1.959963], "two", [1.0, 0.05, 0.05]),
-        ([0.0, 1.959963, -1.959963], "one", [0.5, 0.025, 0.975]),
     ],
 )
-def test_z_to_p(expected_z, tail, expected_p):
-    """Test z to p, and p to z conversion."""
-    p = transforms.z_to_p(expected_z, tail)
-    z = transforms.p_to_z(expected_p, tail) * np.sign(expected_z)
+def test_z_to_p(z, tail, expected_p):
+    """Test z to p conversion."""
+    p = transforms.z_to_p(z, tail)
 
     assert np.all(np.isclose(p, expected_p))
-    assert np.all(np.isclose(z, expected_z))

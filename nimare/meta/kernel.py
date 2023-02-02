@@ -304,6 +304,7 @@ class KDAKernel(KernelTransformer):
         self.value = value
 
     def _transform(self, mask, coordinates):
+
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         transformed = compute_kda_ma(

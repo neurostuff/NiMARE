@@ -157,6 +157,7 @@ class CorrelationDecoder(Decoder):
         target_image="z_desc-specificity",
         n_cores=1,
     ):
+
         if meta_estimator is None:
             meta_estimator = MKDAChi2()
         else:
