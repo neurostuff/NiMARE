@@ -217,7 +217,7 @@ class Corrector(metaclass=ABCMeta):
         corr_tables : :obj:`dict`
             An empty dictionary meant to contain any tables (pandas DataFrames) produced by the
             correction procedure.
-        description : :obj:`str`
+        description_ : :obj:`str`
             A description of the correction procedure.
         """
         p = result.maps["p"]
@@ -294,7 +294,7 @@ class FWECorrector(Corrector):
         tables : :obj:`dict`
             A dictionary of DataFrames with summary information from the correction.
             This correction method does not produce any tables, so it will be an empty dict.
-        description : :obj:`str`
+        description_ : :obj:`str`
             A description of the correction procedure.
 
         References
@@ -371,7 +371,7 @@ class FDRCorrector(Corrector):
         tables : :obj:`dict`
             A dictionary of DataFrames with summary information from the correction.
             This correction method does not produce any tables, so it will be an empty dict.
-        description : :obj:`str`
+        description_ : :obj:`str`
             A description of the correction procedure.
 
         References
@@ -412,7 +412,7 @@ class FDRCorrector(Corrector):
         tables : :obj:`dict`
             A dictionary of DataFrames with summary information from the correction.
             This correction method does not produce any tables, so it will be an empty dict.
-        description : :obj:`str`
+        description_ : :obj:`str`
             A description of the correction procedure.
 
         Notes

@@ -28,7 +28,7 @@ class MetaResult(object):
         Maps to store in the object. The maps must be provided as 1D numpy arrays. Default is None.
     tables : None or :obj:`dict` of :obj:`pandas.DataFrame`, optional
         Pandas DataFrames to store in the object. Default is None.
-    description : :obj:`str`, optional
+    description_ : :obj:`str`, optional
         Description of the method that generated the result. Default is "".
 
     Attributes
@@ -41,11 +41,11 @@ class MetaResult(object):
         Keys are map names and values are 1D arrays.
     tables : :obj:`dict`
         Keys are table levels and values are pandas DataFrames.
-    description : :obj:`str`
+    description_ : :obj:`str`
         A textual description of the method that generated the result.
 
         Citations in this description are formatted according to ``natbib``'s LaTeX format.
-    bibtex : :obj:`str`
+    bibtex_ : :obj:`str`
         The BibTeX entries for any citations in ``description``.
         These entries are extracted from NiMARE's references.bib file and filtered based on the
         description automatically.

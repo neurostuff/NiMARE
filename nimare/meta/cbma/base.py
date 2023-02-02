@@ -629,7 +629,7 @@ class CBMAEstimator(Estimator):
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
                 (i.e., hundreds of studies), per :footcite:t:`eickhoff2016behavior`.
-        description : :obj:`str`
+        description_ : :obj:`str`
             A text description of the correction procedure.
 
         Notes

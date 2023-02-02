@@ -1131,7 +1131,7 @@ def find_citations(description):
 
     Parameters
     ----------
-    description : :obj:`str`
+    description_ : :obj:`str`
         Description of a method, optionally with citations.
 
     Returns
@@ -1184,7 +1184,7 @@ def get_description_references(description):
 
     Parameters
     ----------
-    description : :obj:`str`
+    description_ : :obj:`str`
         Description of a method, optionally with citations.
 
     Returns
