@@ -19,10 +19,6 @@ A common project workflow with two meta-analytic samples involves the following:
 5. Compare the two samples with a subtraction analysis.
 6. Compare the two within-sample meta-analyses with a conjunction analysis.
 """
-import os
-
-import matplotlib.pyplot as plt
-from nilearn.plotting import plot_stat_map
 
 ###############################################################################
 # Load Sleuth text files into Datasets
@@ -33,33 +29,78 @@ from nilearn.plotting import plot_stat_map
 # (e.g., correctly naming an object after hearing its auditory description)
 # while a second group of studies asked children to decide if two (or more)
 # words were semantically related to one another or not.
+import os
+
 from nimare.io import convert_sleuth_to_dataset
 from nimare.utils import get_resource_path
 
-knowledge_file = os.path.join(get_resource_path(), "semantic_knowledge_children.txt")
-related_file = os.path.join(get_resource_path(), "semantic_relatedness_children.txt")
+knowledge_file = os.path.join(get_resource_path(), "Enge2021_knowledge.txt")
+related_file = os.path.join(get_resource_path(), "Enge2021_relatedness.txt")
+# Some papers reported MNI coordinates
+objects_file_mni = os.path.join(get_resource_path(), "Enge2021_objects_mni.txt")
+# Other papers reported Talairach coordinates
+objects_file_talairach = os.path.join(get_resource_path(), "Enge2021_objects_talairach.txt")
 
 knowledge_dset = convert_sleuth_to_dataset(knowledge_file)
 related_dset = convert_sleuth_to_dataset(related_file)
+objects_dset = convert_sleuth_to_dataset(
+    [
+        objects_file_mni,
+        objects_file_talairach,  # NiMARE will automatically convert the Talairach foci to MNI
+    ]
+)
 
 ###############################################################################
-# Individual group ALEs
+# View the contents of one of the Sleuth files
+with open(knowledge_file, "r") as fo:
+    sleuth_file_contents = fo.readlines()
+
+sleuth_file_contents = sleuth_file_contents[:20]
+print("".join(sleuth_file_contents))
+
+###############################################################################
+# Meta-analysis of semantic knowledge experiments
 # -----------------------------------------------------------------------------
-# Computing separate ALE analyses for each group is not strictly necessary for
-# performing the subtraction analysis but will help the experimenter to appreciate the
-# similarities and differences between the groups.
-from nimare.correct import FWECorrector
 from nimare.meta.cbma import ALE
 
 ale = ALE(null_method="approximate")
 knowledge_results = ale.fit(knowledge_dset)
-related_results = ale.fit(related_dset)
+
+###############################################################################
+# Plot the uncorrected statistical map
+# `````````````````````````````````````````````````````````````````````````````
+from nilearn.plotting import plot_stat_map
+
+plot_stat_map(
+    knowledge_results.get_map("z"),
+    cut_coords=4,
+    display_mode="z",
+    title="Semantic knowledge",
+    threshold=2.326,  # cluster-level p < .01, one-tailed
+    cmap="RdBu_r",
+    vmax=4,
+)
+
+###############################################################################
+# This z-statistic map is not corrected for multiple comparisons.
+# In order to account for the many voxel-wise tests that are performed in
+# parallel, we must apply some type of multiple comparisons correction.
+# To that end, we will use an :class:`~nimare.correct.FWECorrector` with the
+# Monte Carlo method.
+#
+# Multiple comparisons correction with a Monte Carlo procedure
+# -----------------------------------------------------------------------------
+# We will use the cluster-level corrected map, using a cluster-defining
+# threshold of p < 0.001 and 100 iterations.
+# In the actual paper, :footcite:`enge2021meta` used 10000 iterations instead.
+from nimare.correct import FWECorrector
 
 corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
 knowledge_corrected_results = corr.transform(knowledge_results)
-related_corrected_results = corr.transform(related_results)
 
-fig, axes = plt.subplots(figsize=(12, 10), nrows=2)
+###############################################################################
+# Plot the corrected statistical map
+# `````````````````````````````````````````````````````````````````````````````
 knowledge_img = knowledge_corrected_results.get_map(
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
 )
@@ -71,10 +112,45 @@ plot_stat_map(
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
     vmax=4,
-    axes=axes[0],
-    figure=fig,
 )
 
+###############################################################################
+# Save the results to disk
+# `````````````````````````````````````````````````````````````````````````````
+knowledge_corrected_results.save_maps(
+    output_dir=".",
+    prefix="Enge2021_knowledge",
+)
+
+###############################################################################
+# Characterize the relative contributions of experiments in the results
+# `````````````````````````````````````````````````````````````````````````````
+# NiMARE contains two methods for this: :class:`~nimare.diagnostics.Jackknife`
+# and :class:`~nimare.diagnostics.FocusCounter`.
+# We will show both below, but for the sake of speed we will only apply one to
+# each subgroup meta-analysis.
+from nimare.diagnostics import Jackknife
+
+jackknife = Jackknife(
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
+)
+knowledge_jackknife_table, _ = jackknife.transform(knowledge_corrected_results)
+knowledge_jackknife_table
+
+###############################################################################
+# Meta-analysis of semantic relatedness experiments
+# -----------------------------------------------------------------------------
+ale = ALE(null_method="approximate")
+related_results = ale.fit(related_dset)
+
+# Perform Monte Carlo-based multiple comparisons correction
+corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
+related_corrected_results = corr.transform(related_results)
+
+###############################################################################
+# Plot the resulting statistical map
+# `````````````````````````````````````````````````````````````````````````````
 related_img = related_corrected_results.get_map(
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
 )
@@ -86,59 +162,91 @@ plot_stat_map(
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
     vmax=4,
-    axes=axes[1],
-    figure=fig,
 )
-fig.show()
 
 ###############################################################################
-# Characterize the relative contributions of experiments in the ALE results
-# -----------------------------------------------------------------------------
-# NiMARE contains two methods for this: :class:`~nimare.diagnostics.Jackknife`
-# and :class:`~nimare.diagnostics.FocusCounter`.
-# We will show both below, but for the sake of speed we will only apply one to
-# each subgroup meta-analysis.
-from nimare.diagnostics import FocusCounter
-
-counter = FocusCounter(
-    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
-    voxel_thresh=None,
-)
-knowledge_count_table, _ = counter.transform(knowledge_corrected_results)
-knowledge_count_table.head(10)
-
-###############################################################################
-from nimare.diagnostics import Jackknife
-
+# Characterize the relative contributions of experiments in the results
+# `````````````````````````````````````````````````````````````````````````````
 jackknife = Jackknife(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
 related_jackknife_table, _ = jackknife.transform(related_corrected_results)
-related_jackknife_table.head(10)
+related_jackknife_table
 
 ###############################################################################
-# Subtraction analysis
+# Meta-analysis of semantic object experiments
 # -----------------------------------------------------------------------------
-# Typically, one would use at least 10000 iterations for a subtraction analysis.
-# However, we have reduced this to 100 iterations for this example.
+ale = ALE(null_method="approximate")
+objects_results = ale.fit(objects_dset)
+
+# Perform Monte Carlo-based multiple comparisons correction
+corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
+objects_corrected_results = corr.transform(objects_results)
+
+###############################################################################
+# Plot the resulting statistical map
+# `````````````````````````````````````````````````````````````````````````````
+objects_img = objects_corrected_results.get_map(
+    "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
+)
+plot_stat_map(
+    objects_img,
+    cut_coords=4,
+    display_mode="z",
+    title="Semantic objects",
+    threshold=2.326,  # cluster-level p < .01, one-tailed
+    cmap="RdBu_r",
+    vmax=4,
+)
+
+###############################################################################
+# Characterize the relative contributions of experiments in the results
+# `````````````````````````````````````````````````````````````````````````````
+jackknife = Jackknife(
+    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
+)
+objects_jackknife_table, _ = jackknife.transform(objects_corrected_results)
+objects_jackknife_table
+
+###############################################################################
+# Compare semantic knowledge to the other conditions with subtraction analysis
+# -----------------------------------------------------------------------------
+# The semantic knowledge experiments can be compared to the experiments from
+# the other two conditions by first merging the other two sets of experiments
+# into a single Dataset, and then performing a subtraction analysis between the
+# semantic knowledge Dataset and the new semantic relatedness/objects Dataset.
+#
+# In :footcite:t:`enge2021meta`, additional subtraction analyses were performed
+# for semantic relatedness vs. (knowledge + objects) and semantic objects vs.
+# (knowledge + relatedness).
+# However, for the sake of executing this example online, we only perform the
+# first of these analyses.
+#
+# .. important::
+#   Typically, one would use at least 10000 iterations for a subtraction analysis.
+#   However, we have reduced this to 100 iterations for this example.
 from nimare.meta.cbma import ALESubtraction
 
+# First, we combine the relatedness and objects Datasets
+related_and_objects_dset = related_dset.merge(objects_dset)
+
 sub = ALESubtraction(n_iters=100, n_cores=1)
-res_sub = sub.fit(knowledge_dset, related_dset)
+res_sub = sub.fit(knowledge_dset, related_and_objects_dset)
 img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
 
 plot_stat_map(
     img_sub,
     cut_coords=4,
     display_mode="z",
-    title="Subtraction",
+    title="Knowledge > Other",
     cmap="RdBu_r",
     vmax=4,
 )
 
 ###############################################################################
-# Conjunction analysis
+# Evaluate convergence across datasets with a conjunction analysis
 # -----------------------------------------------------------------------------
 # To determine the overlap of the meta-analytic results, a conjunction image
 # can be computed by (a) identifying voxels that were statistically significant
@@ -149,8 +257,12 @@ plot_stat_map(
 # :func:`nilearn.image.math_img`.
 from nilearn.image import math_img
 
-formula = "np.where(img1 * img2 > 0, np.minimum(img1, img2), 0)"
-img_conj = math_img(formula, img1=knowledge_img, img2=related_img)
+img_conj = math_img(
+    "np.where((img1 * img2 * img3) > 0, np.minimum(img1, np.minimum(img2, img3)), 0)",
+    img1=knowledge_img,
+    img2=related_img,
+    img3=objects_img,
+)
 
 plot_stat_map(
     img_conj,
