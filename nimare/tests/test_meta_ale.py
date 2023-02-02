@@ -51,7 +51,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
     corr_results = corr.transform(results)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
     assert "z_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps.keys()
@@ -87,7 +87,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     corr = FWECorrector(method="bonferroni")
     corr_results = corr.transform(results)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
     assert isinstance(
         corr_results.get_map("z_corr-FWE_method-bonferroni", return_type="image"), nib.Nifti1Image
     )
@@ -99,7 +99,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     corr = FDRCorrector(method="indep", alpha=0.05)
     corr_results = corr.transform(results)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
     assert isinstance(
         corr_results.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
     )
@@ -118,7 +118,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
 
     meta = ale.ALE(null_method="montecarlo", n_iters=10)
     results = meta.fit(testdata_cbma)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert "stat" in results.maps.keys()
     assert "p" in results.maps.keys()
     assert "z" in results.maps.keys()
@@ -149,7 +149,7 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
     corr_results = corr.transform(results)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
     assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
     assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
     assert "z_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps.keys()
@@ -228,7 +228,7 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     sub_meta = ale.ALESubtraction(n_iters=10, n_cores=2)
     results = sub_meta.fit(testdata_cbma, testdata_cbma)
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert "z_desc-group1MinusGroup2" in results.maps.keys()
     assert isinstance(
         results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
@@ -262,7 +262,7 @@ def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
     meta = ale.SCALE(xyz, n_iters=5, n_cores=1)
     results = meta.fit(dset)
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert "z" in results.maps.keys()
     assert isinstance(results.get_map("z", return_type="image"), nib.Nifti1Image)
     assert isinstance(results.get_map("z", return_type="array"), np.ndarray)

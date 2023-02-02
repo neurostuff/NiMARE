@@ -44,9 +44,9 @@ results = meta.fit(dset)
 
 # You can also look at the description of the Estimator.
 print("Description:")
-pprint(results.description)
+pprint(results.description_)
 print("References:")
-pprint(results.bibtex)
+pprint(results.bibtex_)
 
 ###############################################################################
 # Coordinate-based Estimators allow you to provide a specific KernelTransformer

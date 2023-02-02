@@ -49,8 +49,8 @@ def ale_sleuth_workflow(
             voxel_thresh=None,
         )
         count_df, _ = fcounter.transform(cres)
-        boilerplate = cres.description
-        bibtex = cres.bibtex
+        boilerplate = cres.description_
+        bibtex = cres.bibtex_
 
     else:
         # Two ALEs and an ALESubtraction
@@ -74,7 +74,7 @@ def ale_sleuth_workflow(
             n_cores=n_cores,
         )
         cres1 = corr.transform(res1)
-        boilerplate = cres1.description
+        boilerplate = cres1.description_
 
         fcounter = FocusCounter(
             target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
@@ -83,18 +83,18 @@ def ale_sleuth_workflow(
         count_df1, _ = fcounter.transform(cres1)
 
         cres2 = corr.transform(res2)
-        boilerplate += "\n" + cres2.description
+        boilerplate += "\n" + cres2.description_
 
         count_df2, _ = fcounter.transform(cres2)
 
         sub = ALESubtraction(n_iters=n_iters, kernel__fwhm=fwhm)
         sres = sub.fit(dset1, dset2)
-        boilerplate += "\n" + sres.description
+        boilerplate += "\n" + sres.description_
 
         # Inject the composite description into the ALESubtraction MetaResult to trigger
         # a re-compilation of references
-        sres.description = boilerplate
-        bibtex = sres.bibtex  # This will now include references from all three analyses
+        sres.description_ = boilerplate
+        bibtex = sres.bibtex_  # This will now include references from all three analyses
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(sleuth_file))

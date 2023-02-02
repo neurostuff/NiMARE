@@ -42,9 +42,9 @@ def test_MKDADensity_approximate_null(testdata_cbma_full, caplog):
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
 
     # Check that the vfwe_only option does not work
     corr2 = FWECorrector(
@@ -71,9 +71,9 @@ def test_MKDADensity_montecarlo_null(testdata_cbma):
     corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
 
     # Check that the vfwe_only option works
     corr2 = FWECorrector(
@@ -96,9 +96,9 @@ def test_MKDAChi2_fdr(testdata_cbma):
     corr = FDRCorrector(method="indep", alpha=0.001)
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
 
     methods = FDRCorrector.inspect(results)
     assert methods == ["indep", "negcorr"]
@@ -114,9 +114,9 @@ def test_MKDAChi2_fwe_1core(testdata_cbma):
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
     assert (
         "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
         in corr_results.estimator.null_distributions_.keys()
@@ -144,10 +144,10 @@ def test_KDA_approximate_null(testdata_cbma):
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert results.get_map("p", return_type="array").dtype == np.float64
     assert isinstance(corr_results, nimare.results.MetaResult)
-    assert isinstance(corr_results.description, str)
+    assert isinstance(corr_results.description_, str)
     assert (
         corr_results.get_map(
             "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"

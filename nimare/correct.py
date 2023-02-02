@@ -182,7 +182,7 @@ class Corrector(metaclass=ABCMeta):
         # Update corrected map names and add them to maps dict
         corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
         result.maps.update(corr_maps)
-        result.description += " " + description
+        result.description_ += " " + description
 
         corr_tables = {(k + self._name_suffix): v for k, v in corr_tables.items()}
         result.tables.update(corr_tables)

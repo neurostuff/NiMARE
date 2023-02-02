@@ -114,7 +114,7 @@ def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwarg
         assert expected_map in results.maps.keys()
 
     assert isinstance(results, nimare.results.MetaResult)
-    assert isinstance(results.description, str)
+    assert isinstance(results.description_, str)
     assert results.get_map("z", return_type="array").ndim == 1
     z_img = results.get_map("z")
     assert z_img.ndim == 3
@@ -123,7 +123,7 @@ def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwarg
         corr = corrector(**corrector_kwargs)
         corr_results = corr.transform(results)
         assert isinstance(corr_results, nimare.results.MetaResult)
-        assert isinstance(corr_results.description, str)
+        assert isinstance(corr_results.description_, str)
         assert corr_results.get_map("z", return_type="array").ndim == 1
         assert corr_results.get_map("z").ndim == 3
 

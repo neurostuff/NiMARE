@@ -36,7 +36,7 @@ def macm_workflow(
     corr = FWECorrector(method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores)
     cres = corr.transform(results)
 
-    boilerplate = cres.description
+    boilerplate = cres.description_
 
     boilerplate = (
         "A meta-analytic connectivity modeling (MACM; "
@@ -50,8 +50,8 @@ def macm_workflow(
 
     # Inject the composite description into the ALESubtraction MetaResult to trigger
     # a re-compilation of references
-    cres.description = boilerplate
-    bibtex = cres.bibtex  # This will now include references from all three analyses
+    cres.description_ = boilerplate
+    bibtex = cres.bibtex_  # This will now include references from all three analyses
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(dataset_file))

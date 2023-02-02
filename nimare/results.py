@@ -75,7 +75,7 @@ class MetaResult(object):
 
         self.maps = maps
         self.tables = tables
-        self.description = description
+        self.description_ = description
 
     @property
     def description(self):
@@ -86,7 +86,7 @@ class MetaResult(object):
     def description(self, desc):
         """Automatically extract references when the description is set."""
         self.__description = desc
-        self.bibtex = get_description_references(desc)
+        self.bibtex_ = get_description_references(desc)
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
@@ -187,6 +187,6 @@ class MetaResult(object):
             mask=self.masker,
             maps=copy.deepcopy(self.maps),
             tables=copy.deepcopy(self.tables),
-            description=self.description,
+            description=self.description_,
         )
         return new
