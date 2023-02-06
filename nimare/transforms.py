@@ -368,7 +368,6 @@ class ImagesToCoordinates(NiMAREBase):
 
         coordinates_dict = {}
         for _, row in images_df.iterrows():
-
             if row["id"] in list(dataset.coordinates["id"]) and self.merge_strategy == "fill":
                 continue
 
