@@ -33,6 +33,11 @@ Some of the values found in NiMARE include:
 - ``tau2``: Estimated between-study variance (IBMA only)
 - ``sigma2``: Estimated within-study variance (IBMA only)
 
+.. note::
+    For one-sided tests, p-values > 0.5 will have negative z-statistics. These values should not 
+    be confused with significant negative results. As a result, in NiMARE, these values are 
+    replaced by 0.
+
 Next, a series of key/value pairs describe the methods applied to generate the map.
 
 - ``desc``: Description of the data type. Only used when multiple maps with the same data type are produced by the same method.
