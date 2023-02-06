@@ -678,13 +678,12 @@ def p_to_z(p, tail="two"):
         Z-statistics (unsigned)
     """
     p = np.array(p)
-
-    # Ensure that no p-values are converted to Inf/NaNs
-    p = np.clip(p, 1.0e-300, 1.0 - 1.0e-16)
     if tail == "two":
         z = stats.norm.isf(p / 2)
     elif tail == "one":
-        z = np.abs(stats.norm.isf(p))
+        z = stats.norm.isf(p)
+        z = np.array(z)
+        z[z < 0] = 0
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
 
