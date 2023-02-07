@@ -120,9 +120,14 @@ class Jackknife(NiMAREBase):
                 f"Available maps in result are: {', '.join(available_maps)}."
             )
 
-        # Get clusters table
-        stat_threshold = self.voxel_thresh or 0
-        clusters_table = reporting.get_clusters_table(target_img, stat_threshold)
+        img_name = "_".join(self.target_image.split("_")[1:])
+        clust_tbl_name = f"cluster_{img_name}"
+        if clust_tbl_name in result.tables:
+            clusters_table = result.tables[clust_tbl_name].copy()
+        else:
+            # Get clusters table
+            stat_threshold = self.voxel_thresh or 0
+            clusters_table = reporting.get_clusters_table(target_img, stat_threshold)
 
         if self.voxel_thresh:
             thresh_img = image.threshold_img(target_img, self.voxel_thresh)
