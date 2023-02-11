@@ -137,13 +137,13 @@ def standardize_field(dataset, metadata):
     if len(numerical_metadata) == 0:
         raise ValueError("No numerical metadata found.")
     
-    moderators = dataset.annotations[numerical_metadata]
+    moderators = dataset.annotations[numerical_metadata] 
     standardize_moderators = moderators - np.mean(moderators, axis=0)
     standardize_moderators /= np.std(standardize_moderators, axis=0)
     if isinstance(metadata, str):
         column_name = "standardized_" + metadata
     elif isinstance(metadata, list):
-        column_name = ["standardized_" + moderator for moderator in numerical_metadata]
+        column_name = ["standardized_" + moderator for moderator in numerical_metadata] 
     dataset.annotations[column_name] = standardize_moderators
 
     return dataset

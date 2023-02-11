@@ -16,11 +16,10 @@ def test_CBMREstimator(testdata_cbmr_simulated):
         model=models.PoissonEstimator,
         penalty=False,
         lr=1e-1,
-        tol=1e4,
+        tol=1e1,
         device="cpu"
     )
     cbmr.fit(dataset=dset)
-# ["standardized_sample_sizes", "standardized_avg_age"],
 
 def test_CBMRInference(testdata_cbmr_simulated):
     logging.getLogger().setLevel(logging.DEBUG)
@@ -30,7 +29,7 @@ def test_CBMRInference(testdata_cbmr_simulated):
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         spline_spacing=10,
-        model=models.ClusteredNegativeBinomialEstimator,
+        model=models.PoissonEstimator,
         penalty=False,
         lr=1e-1,
         tol=1e4,
@@ -41,14 +40,12 @@ def test_CBMRInference(testdata_cbmr_simulated):
     inference = CBMRInference(
         CBMRResults=cbmr_res, device="cuda"
     )
-    t_con_group = inference.create_contrast(["schizophrenia_Yes", "schizophrenia_Yes-schizophrenia_No"], type='group')
-    t_con_moderator = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type='moderator')
-    contrast_result = inference.compute_contrast(t_con_group=t_con_group, t_con_moderator=t_con_moderator)
-    # inference.summary()
-
-
-#     [[[1,0,0,0],[0,0,1,0]], [1, 0, 0, 0]]
-#     [[[1,0],[0,1]], [1, -1]]
+    t_con_groups = inference.create_contrast(["schizophrenia_Yes", "schizophrenia_Yes-schizophrenia_No"], type="groups")
+    t_con_moderators = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type="moderators")
+    contrast_result = inference.compute_contrast(t_con_groups=[[1,-1,0,0],[0,0,1,0]], t_con_moderators=[[1,-1,0,0],[0,0,1,0]])
+    # self.maps.schizophrenia_Yes_p_values = ...
+    # self.maps.schizophrenia_Yes_chi_square_vals = ...
+    # self.tables.standardized_sample_sizes = ...
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     cbmr = CBMREstimator(model=models.ClusteredNegativeBinomial, lr=1e-4)

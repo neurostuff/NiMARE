@@ -337,23 +337,23 @@ class CBMRInference(object):
         Results of optimized regression coefficients of CBMR, as well as their
         standard error in `tables`. Results of estimated spatial intensity function
         (per study) in `maps`.
-    t_con_group : :obj:`~bool` or obj:`~list` or obj:`~None`, optional
+    t_con_groups : :obj:`~bool` or obj:`~list` or obj:`~None`, optional
         Contrast matrix for homogeneity test or group comparison on estimated spatial
         intensity function.
         For boolean inputs, no statistical inference will be conducted for spatial intensity
-        if `t_con_group` is False, and spatial homogeneity test for groupwise intensity
-        function will be conducted if `t_con_group` is True.
+        if `t_con_groups` is False, and spatial homogeneity test for groupwise intensity
+        function will be conducted if `t_con_groups` is True.
         For list inputs, generialized linear hypothesis (GLH) testing will be conducted for
-        each element independently. We also allow any element of `t_con_group` in list type,
+        each element independently. We also allow any element of `t_con_groups` in list type,
         which represents GLH is conducted for all contrasts in this element simultaneously.
         Default is homogeneity test on group-wise estimated intensity function.
-    t_con_moderators : :obj:`~bool` or obj:`~list` or obj:`~None`, optional
+    t_con_moderatorss : :obj:`~bool` or obj:`~list` or obj:`~None`, optional
         Contrast matrix for testing the existence of one or more study-level moderator effects.
         For boolean inputs, no statistical inference will be conducted for study-level moderators
-        if `t_con_moderators` is False, and statistical inference on the effect of each study-level
-        moderators will be conducted if `t_con_group` is True.
+        if `t_con_moderatorss` is False, and statistical inference on the effect of each study-level
+        moderators will be conducted if `t_con_groups` is True.
         For list inputs, generialized linear hypothesis (GLH) testing will be conducted for
-        each element independently. We also allow any element of `t_con_moderators` in list type,
+        each element independently. We also allow any element of `t_con_moderatorss` in list type,
         which represents GLH is conducted for all contrasts in this element simultaneously.
         Default is statistical inference on the effect of each study-level moderators
     device: :obj:`string`, optional
@@ -407,7 +407,7 @@ class CBMRInference(object):
 
             setattr(self, "{}_regular_expression".format(attr), reg_expr)
             
-    def create_contrast(self, contrast_name, type="group"):
+    def create_contrast(self, contrast_name, type="groups"):
         """Create contrast matrix for generalized hypothesis testing (GLH).
 
         (1) if `type` is "group", create contrast matrix for GLH on spatial intensity;
@@ -432,8 +432,8 @@ class CBMRInference(object):
         
         if isinstance(contrast_name, str):
             contrast_name = [contrast_name]
-        contrast_matrix = list()
-        if type == "group":  # contrast matrix for spatial intensity
+        contrast_matrix = {}
+        if type == "groups":  # contrast matrix for spatial intensity
             for contrast in contrast_name:
                 contrast_vector = np.zeros(self.n_groups)
                 contrast_match = self.groups_regular_expression.match(contrast)
@@ -447,9 +447,9 @@ class CBMRInference(object):
                     contrast_vector[self.group_reference_dict[groups_contrast["second"]]] = int(contrast_match["operator"] + "1")
                 else: # homogeneity test
                     contrast_vector[self.group_reference_dict[contrast]] = 1
-                contrast_matrix.append(contrast_vector)
+                contrast_matrix[contrast] = contrast_vector
 
-        elif type == "moderator":  # contrast matrix for moderator effect
+        elif type == "moderators":  # contrast matrix for moderator effect
             for contrast in contrast_name:
                 contrast_vector = np.zeros(self.n_moderators)
                 contrast_match = self.moderators_regular_expression.match(contrast)
@@ -462,12 +462,11 @@ class CBMRInference(object):
                     contrast_vector[self.moderator_reference_dict[moderators_contrast["second"]]] = int(moderators_contrast["operator"] + "1")
                 else: # moderator effect
                     contrast_vector[self.moderator_reference_dict[contrast]] = 1
-
-                contrast_matrix.append(contrast_vector)
+                contrast_matrix[contrast] = contrast_vector
 
         return contrast_matrix
 
-    def compute_contrast(self, t_con_group=None, t_con_moderator=None):
+    def compute_contrast(self, t_con_groups=None, t_con_moderators=None):
         """Conduct generalized linear hypothesis (GLH) testing on CBMR estimates.
 
         Estimate group-wise spatial regression coefficients and its standard error via inverse
@@ -480,34 +479,43 @@ class CBMRInference(object):
 
         Parameters
         ----------
-        t_con_group : :obj:`~list`, optional
+        t_con_groups : :obj:`~list`, optional
             Contrast matrix for GLH on group-wise spatial intensity estimation.
             Default is None (group-wise homogeneity test for all groups).
-        t_con_moderator : :obj:`~list`, optional
+        t_con_moderators : :obj:`~list`, optional
             Contrast matrix for GLH on moderator effects.
             Default is None (tests if moderator effects exist for all moderators).
         """
 
-        self.t_con_group = t_con_group
-        self.t_con_moderator = t_con_moderator
+        self.t_con_groups = t_con_groups
+        self.t_con_moderators = t_con_moderators
 
-        if self.t_con_group is not False:
+        if self.t_con_groups is not False:
             # preprocess and standardize group contrast
-            self.t_con_group, self.t_con_group_name = self._preprocess_t_con_regressor(attr_list=["t_con_group", "groups", "n_groups"], type='groups')
+            self.t_con_groups, self.t_con_groups_name = self._preprocess_t_con_regressor(type="groups")
             # GLH test for group contrast
             self._glh_con_group()
-        if self.t_con_moderator is not False:
+        if self.t_con_moderators is not False:
             self.n_moderators = len(self.moderators)
             # preprocess and standardize moderator contrast
-            self.t_con_moderator, self.t_con_moderator_name = self._preprocess_t_con_regressor(attr_list=["t_con_moderator", "moderators", "n_moderators"], type='moderators')
+            self.t_con_moderators, self.t_con_moderators_name = self._preprocess_t_con_regressor(type="moderators")
             # GLH test for moderator contrast
             self._glh_con_moderator()
 
-    def _preprocess_t_con_regressor(self, attr_list, type):
+    def _preprocess_t_con_regressor(self, type):
         # regressor can be either groups or moderators
-        t_con_regressor, regressors, n_regressors = [getattr(self, attr) for attr in attr_list]
+        t_con_regressor = getattr(self, f"t_con_{type}")
+        n_regressors = getattr(self, f"n_{type}")
+        # if contrast matrix is a dictionary, convert it to list
+        if isinstance(t_con_regressor, dict):
+            t_con_regressor_name = list(t_con_regressor.keys())
+            t_con_regressor = list(t_con_regressor.values())
+        elif isinstance(t_con_regressor, (list, np.ndarray)):
+            for i in range(len(t_con_regressor)):
+                self.CBMRResults.metadata[f"GLH_{type}_{i}"] = t_con_regressor[i]
+            t_con_regressor_name = None
         # Conduct group-wise spatial homogeneity test by default
-        t_con_regressor = [np.eye(n_regressors)] if not self.t_con_group else [np.array(con_regressor) for con_regressor in t_con_regressor]
+        t_con_regressor = [np.eye(n_regressors)] if t_con_regressor is None else [np.array(con_regressor) for con_regressor in t_con_regressor]
         # make sure contrast matrix/vector is 2D
         t_con_regressor = [
             con_regressor.reshape((1, -1)) if len(con_regressor.shape) == 1 else con_regressor
@@ -534,8 +542,6 @@ class CBMRInference(object):
                 raise ValueError(
                     """One or more of contrast vector(s) in {type} contrast matrix are all zeros."""
                 )
-        # name of GLH contrasts and save to `tables` later
-        t_con_regressor_name = self._name_of_con_regressor(t_con_regressor=t_con_regressor, regressors=regressors, type=type)
         # standardization (row sum 1)
         t_con_regressor = [
             con_regressor / np.sum(np.abs(con_regressor), axis=1).reshape((-1, 1))
@@ -547,55 +553,9 @@ class CBMRInference(object):
         
         return t_con_regressor, t_con_regressor_name
 
-    def _name_of_con_regressor(self, t_con_regressor, regressors, type):
-        """Define the name of GLH contrasts on spatial intensity estimation.
-
-        And the names will be displayed as keys of `CBMRResults.maps` (if `t_con_group`
-        exists).
-        """
-        t_con_regressor_name = list()
-        for con_regressor in t_con_regressor:
-            con_regressor_name = list()
-            for num, idx in enumerate(con_regressor):
-                if np.sum(idx) != 0:  # homogeneity test
-                    nonzero_con_regressor_info = str()
-                    nonzero_regressor_index = np.where(idx != 0)[0].tolist()
-                    nonzero_regressor_name = [regressors[i] for i in nonzero_regressor_index]
-                    nonzero_con = [int(idx[i]) for i in nonzero_regressor_index]
-                    for i in range(len(nonzero_regressor_index)):
-                        nonzero_con_regressor_info += (
-                            str(abs(nonzero_con[i])) + "x" + str(nonzero_regressor_name[i])
-                        )
-                    if type == 'groups':
-                        con_regressor_name.append("homo_test_" + nonzero_con_regressor_info)
-                    elif type == 'moderators':
-                        con_regressor_name.append("ModeratorEffect_of_" + nonzero_con_regressor_info)
-                else:  # group-comparison test
-                    pos_regressor_idx, neg_regressor_idx = (
-                        np.where(idx > 0)[0].tolist(),
-                        np.where(idx < 0)[0].tolist(),
-                    )
-                    pos_regressor_name, neg_regressor_name = [regressors[i] for i in pos_regressor_idx], [
-                        regressors[i] for i in neg_regressor_idx
-                    ]
-                    pos_group_con, neg_group_con = [int(idx[i]) for i in pos_regressor_idx], [
-                        int(idx[i]) for i in neg_regressor_idx
-                    ]
-                    pos_con_regressor_info, neg_con_regressor_info = str(), str()
-                    for i in range(len(pos_regressor_idx)):
-                        pos_con_regressor_info += str(pos_group_con[i]) + "x" + str(pos_regressor_name[i])
-                    for i in range(len(neg_regressor_idx)):
-                        neg_con_regressor_info += (
-                            str(abs(neg_group_con[i])) + "x" + str(neg_regressor_name[i])
-                        )
-                    con_regressor_name.append(pos_con_regressor_info + " - " + neg_con_regressor_info)
-            t_con_regressor_name.append(con_regressor_name)
-        
-        return t_con_regressor_name
-
     def _glh_con_group(self):
         con_group_count = 0
-        for con_group in self.t_con_group:
+        for con_group in self.t_con_groups:
             con_group_involved_index = np.where(np.any(con_group != 0, axis=0))[0].tolist()
             con_group_involved = [self.groups[i] for i in con_group_involved_index]
             n_con_group_involved = len(con_group_involved)
@@ -669,45 +629,40 @@ class CBMRInference(object):
                         (Cov_log_intensity, Cov_group_log_intensity), axis=0
                     )  # (m^2, n_voxels)
             # GLH on log_intensity (eta)
-            chi_sq_spatial = np.empty(shape=(0,))
-            for j in range(n_brain_voxel):
-                Contrast_log_intensity_j = Contrast_log_intensity[:, j].reshape(m, 1)
-                V_j = Cov_log_intensity[:, j].reshape((n_con_group_involved, n_con_group_involved))
-                CV_jC = simp_con_group @ V_j @ simp_con_group.T
-                CV_jC_inv = np.linalg.inv(CV_jC)
-                chi_sq_spatial_j = (
-                    Contrast_log_intensity_j.T @ CV_jC_inv @ Contrast_log_intensity_j
-                )
-                chi_sq_spatial = np.concatenate(
-                    (
-                        chi_sq_spatial,
-                        chi_sq_spatial_j.reshape(
-                            1,
-                        ),
-                    ),
-                    axis=0,
-                )
+            chi_sq_spatial = self._chi_square_log_intensity(m, n_brain_voxel, n_con_group_involved, simp_con_group, Cov_log_intensity, Contrast_log_intensity)
             p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
-
-            con_group_name = self.t_con_group_name[con_group_count]
-            if len(con_group_name) == 1:
-                self.CBMRResults.maps[con_group_name[0] + "_chi_sq"] = chi_sq_spatial
-                self.CBMRResults.maps[con_group_name[0] + "_p"] = p_vals_spatial
+            if self.t_con_groups_name:
+                self.CBMRResults.maps[f"{self.t_con_groups_name[con_group_count]}_chi_square_values"] = chi_sq_spatial
+                self.CBMRResults.maps[f"{self.t_con_groups_name[con_group_count]}_p_values"] = p_vals_spatial
             else:
-                self.CBMRResults.maps[
-                    "spatial_coef_GLH_" + str(con_group_count) + "_chi_sq"
-                ] = chi_sq_spatial
-                self.CBMRResults.maps[
-                    "spatial_coef_GLH_" + str(con_group_count) + "_p"
-                ] = p_vals_spatial
-                self.CBMRResults.metadata[
-                    "spatial_coef_GLH_" + str(con_group_count)
-                ] = con_group_name
+                self.CBMRResults.maps[f"GLH_groups_{con_group_count}_chi_square_values"] = chi_sq_spatial
+                self.CBMRResults.maps[f"GLH_groups_{con_group_count}_p_values"] = p_vals_spatial
             con_group_count += 1
-
+    
+    def _chi_square_log_intensity(self, m, n_brain_voxel, n_con_group_involved, simp_con_group, Cov_log_intensity, Contrast_log_intensity):
+        chi_sq_spatial = np.empty(shape=(0,))
+        for j in range(n_brain_voxel):
+            Contrast_log_intensity_j = Contrast_log_intensity[:, j].reshape(m, 1)
+            V_j = Cov_log_intensity[:, j].reshape((n_con_group_involved, n_con_group_involved))
+            CV_jC = simp_con_group @ V_j @ simp_con_group.T
+            CV_jC_inv = np.linalg.inv(CV_jC)
+            chi_sq_spatial_j = (
+                Contrast_log_intensity_j.T @ CV_jC_inv @ Contrast_log_intensity_j
+            )
+            chi_sq_spatial = np.concatenate(
+                (
+                    chi_sq_spatial,
+                    chi_sq_spatial_j.reshape(
+                        1,
+                    ),
+                ),
+                axis=0,
+            )
+        return chi_sq_spatial
+    
     def _glh_con_moderator(self):
         con_moderator_count = 0
-        for con_moderator in self.t_con_moderator:
+        for con_moderator in self.t_con_moderators:
             m_con_moderator, _ = con_moderator.shape
             moderator_coef = self.CBMRResults.tables["Moderators_Regression_Coef"].to_numpy().T
             Contrast_moderator_coef = np.matmul(con_moderator, moderator_coef)
@@ -733,18 +688,10 @@ class CBMRInference(object):
             chi_sq_moderator = chi_sq_moderator.item()
             p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
 
-            con_moderator_name = self.t_con_moderator_name[con_moderator_count]
-            if len(con_moderator_name) == 1:
-                self.CBMRResults.tables[con_moderator_name[0] + "_chi_sq"] = chi_sq_moderator
-                self.CBMRResults.tables[con_moderator_name[0] + "_p"] = p_vals_moderator
+            if self.t_con_moderators_name: # None?
+                self.CBMRResults.tables[f"{self.t_con_moderators_name[con_moderator_count]}_chi_square_values"] = chi_sq_moderator
+                self.CBMRResults.tables[f"{self.t_con_moderators_name[con_moderator_count]}_p_values"] = p_vals_moderator
             else:
-                self.CBMRResults.tables[
-                    "moderator_coef_GLH_" + str(con_moderator_count) + "_chi_sq"
-                ] = chi_sq_moderator
-                self.CBMRResults.tables[
-                    "moderator_coef_GLH_" + str(con_moderator_count) + "_p"
-                ] = p_vals_moderator
-                self.CBMRResults.metadata[
-                    "moderator_coef_GLH_" + str(con_moderator_count)
-                ] = con_moderator_name
+                self.CBMRResults.tables[f"GLH_moderators_{con_moderator_count}_chi_square_values"] = chi_sq_moderator
+                self.CBMRResults.tables[f"GLH_moderators_{con_moderator_count}_p_values"] = p_vals_moderator
             con_moderator_count += 1

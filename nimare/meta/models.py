@@ -79,12 +79,13 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
 
     def init_moderator_weights(self):
-        """Document this."""
+        """Initialize the intercept and regression coefficients for moderators."""
         self.moderators_linear = torch.nn.Linear(
             self.moderators_coef_dim, 1, bias=False
         ).double()
         torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
-
+        return 
+    
     def init_weights(self, groups, spatial_coef_dim, moderators_coef_dim):
         """Document this."""
         self.groups = groups
@@ -250,14 +251,12 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             group_foci_per_study = torch.tensor(
                 foci_per_study[group], dtype=torch.float64, device=self.device
             )
-            group_spatial_coef = torch.tensor(self.spatial_coef_linears[group].weight,
-                                              dtype=torch.float64, device=self.device)
-            
+            group_spatial_coef = self.spatial_coef_linears[group].weight
             if self.moderators_coef_dim:
                 group_moderators = torch.tensor(
                     moderators_by_group[group], dtype=torch.float64, device=self.device
                 )
-                moderators_coef = torch.tensor(self.moderators_linear.weight, dtype=torch.float64, device=self.device)
+                moderators_coef = self.moderators_linear.weight
             else:
                 group_moderators, moderators_coef = None, None
             
@@ -337,7 +336,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         # Extract optimized regression coefficients from model and store them in 'tables'
         tables["Spatial_Regression_Coef"] = pd.DataFrame.from_dict(self.spatial_regression_coef, orient="index")
         maps = self.spatial_intensity_estimation
-        if self.moderators_coef_dim:
+        if self.moderators_coef_dim: 
             tables["Moderators_Regression_Coef"] = pd.DataFrame(self.moderators_coef)
             tables["Moderators_Effect"] = pd.DataFrame.from_dict(self.moderators_effect, orient="index")
         
@@ -361,7 +360,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         n_involved_groups = len(involved_groups)
         involved_foci_per_voxel = [torch.tensor(foci_per_voxel[group], dtype=torch.float64, device=self.device) for group in involved_groups]
         involved_foci_per_study = [torch.tensor(foci_per_study[group], dtype=torch.float64, device=self.device) for group in involved_groups]
-        spatial_coef = [torch.tensor(self.spatial_coef_linears[group].weight.T, dtype=torch.float64, device=self.device) for group in involved_groups]
+        spatial_coef = [self.spatial_coef_linears[group].weight.T for group in involved_groups]
         spatial_coef = torch.stack(spatial_coef, dim=0)
         if self.moderators_coef_dim:
             involved_moderators_by_group = [torch.tensor(
@@ -397,7 +396,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         """Document this."""
         foci_per_voxel = [torch.tensor(foci_per_voxel[group], dtype=torch.float64, device=self.device) for group in self.groups]
         foci_per_study = [torch.tensor(foci_per_study[group], dtype=torch.float64, device=self.device) for group in self.groups]
-        spatial_coef = [torch.tensor(self.spatial_coef_linears[group].weight.T, dtype=torch.float64, device=self.device) for group in self.groups]
+        spatial_coef = [self.spatial_coef_linears[group].weight.T for group in self.groups]
         spatial_coef = torch.stack(spatial_coef, dim=0)
         
         if self.moderators_coef_dim:
