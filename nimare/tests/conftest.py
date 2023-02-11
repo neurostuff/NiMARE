@@ -69,14 +69,11 @@ def testdata_cbmr():
     dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
 
     n_rows = dset.annotations.shape[0]
-    dset.annotations["group_id"] = ["group_1"] * n_rows  # group_id
-    dset.annotations[
-        "sample_sizes"
-    ] = dset.metadata.sample_sizes  # sample sizes as study-level covariates
-    dset.annotations["study_level_covariates"] = np.random.rand(
-        n_rows, 1
-    )  # random study-level covariates
-
+    dset.annotations['diagnosis'] = ["schizophrenia" if i%2==0 else 'dementia' for i in range(n_rows)]
+    dset.annotations['treatment'] = [False if i%2==0 else True for i in range(n_rows)]
+    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
+    dset.annotations["avg_age"] = np.arange(n_rows)
+    
     return dset
 
 

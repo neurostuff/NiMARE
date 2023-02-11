@@ -3,10 +3,14 @@ from nimare.utils import get_masker, B_spline_bases, dummy_encoding_moderators
 import nibabel as nib
 import numpy as np
 import pandas as pd
+<<<<<<< HEAD
 import scipy
 from nimare.utils import mm2vox
 from nimare.diagnostics import FocusFilter
 from nimare.meta import models
+=======
+from nimare.utils import mm2vox, vox2idx, intensity2voxel
+>>>>>>> 055370d ([skip CI][WIP] solve conflict)
 import torch
 import functorch
 import logging

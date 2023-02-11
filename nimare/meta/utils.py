@@ -120,6 +120,7 @@ def compute_kda_ma(
             counts = counts * value
         else:
             all_spheres = unique_rows(all_spheres)
+            counts = value
 
         # Mask coordinates beyond space
         idx = np.all(
@@ -127,6 +128,8 @@ def compute_kda_ma(
         )
 
         all_spheres = all_spheres[idx, :]
+        if sum_overlap:
+            counts = counts[idx]
 
         sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
         sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :].T
