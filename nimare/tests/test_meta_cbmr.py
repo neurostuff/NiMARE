@@ -27,7 +27,8 @@ def test_CBMRInference(testdata_cbmr_simulated):
     dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"])
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        moderators=["standardized_sample_sizes", "standardized_avg_age"
+                    , "schizophrenia_subtype"],
         spline_spacing=10,
         model=models.PoissonEstimator,
         penalty=False,
