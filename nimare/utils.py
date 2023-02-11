@@ -1189,6 +1189,19 @@ def coef_spline_bases(axis_coords, spacing, margin):
 
 
 def coef_spline_bases(axis_coords, spacing, margin):
+    """
+    Coefficient of cubic B-spline bases in any x/y/z direction
+
+    Parameters
+    ----------
+    axis_coords : value range in x/y/z direction
+    spacing: (equally spaced) knots spacing in x/y/z direction, 
+    margin: extend the region where B-splines are constructed (min-margin, max_margin)
+            to avoid weakly-supported B-spline on the edge 
+    Returns
+    -------
+    coef_spline : 2-D ndarray (n_points x n_spline_bases)
+    """
     ## create B-spline basis for x/y/z coordinate
 >>>>>>> f00c309 (create a design matrix function for cbmr)
     wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
@@ -1265,7 +1278,7 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
             for bz in range(z_df):
                 basis_index = bz + z_df * by + z_df * y_df * bx
                 basis_coef = X[:, basis_index]
-                if np.max(basis_coef) >= 0.1:
+                if np.max(basis_coef) >= 0.1: 
                     support_basis.append(basis_index)
     X = X[:, support_basis]
 
