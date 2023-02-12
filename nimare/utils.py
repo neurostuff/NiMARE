@@ -1162,7 +1162,6 @@ def _get_cluster_coms(labeled_cluster_arr):
 
     return cluster_coms
 
-
 def coef_spline_bases(axis_coords, spacing, margin):
     """
     Coefficient of cubic B-spline bases in any x/y/z direction
