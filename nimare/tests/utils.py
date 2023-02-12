@@ -5,11 +5,7 @@ from contextlib import ExitStack as does_not_raise
 import nibabel as nib
 import numpy as np
 import pytest
-<<<<<<< HEAD
 import logging 
-=======
-import warnings 
->>>>>>> 92ffce8 (allow categorical variables in CBMR)
 
 from nimare.meta.utils import compute_kda_ma
 

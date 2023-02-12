@@ -90,55 +90,6 @@ def _get_parser():
         help=("Number of processes to use for meta-analysis. If -1, use all available cores."),
     )
 
-<<<<<<< HEAD
-=======
-    # Contrast permutation workflow
-    conperm_parser = subparsers.add_parser(
-        "conperm",
-        help=(
-            "Meta-analysis of contrast maps using random effects and "
-            "two-sided inference with empirical (permutation-based) null "
-            "distribution and Family Wise Error multiple comparisons "
-            "correction. Input may be a list of 3D files or a single 4D "
-            "file."
-        ),
-    )
-    conperm_parser.set_defaults(func=conperm_workflow)
-    conperm_parser.add_argument(
-        "contrast_images",
-        nargs="+",
-        metavar="FILE",
-        type=lambda x: _is_valid_file(parser, x),
-        help=("Data to analyze. May be a single 4D file or a list of 3D files."),
-    )
-    conperm_parser.add_argument(
-        "--mask",
-        dest="mask_image",
-        metavar="FILE",
-        type=lambda x: _is_valid_file(parser, x),
-        help=("Mask file."),
-        default=None,
-    )
-    conperm_parser.add_argument(
-        "--output_dir",
-        dest="output_dir",
-        metavar="PATH",
-        type=str,
-        help=("Output directory."),
-        default=".",
-    )
-    conperm_parser.add_argument(
-        "--prefix", dest="prefix", type=str, help=("Common prefix for output maps."), default=""
-    )
-    conperm_parser.add_argument(
-        "--n_iters",
-        dest="n_iters",
-        type=int,
-        help=("Number of iterations for permutation testing."),
-        default=10000,
-    )
-
->>>>>>> ab450fa ([skip ci][wip] fix conflict to merge)
     # MACM
     macm_parser = subparsers.add_parser(
         "macm",

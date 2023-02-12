@@ -551,11 +551,7 @@ class CBMRInference(object):
         t_con_regressor = [t_con_regressor[i] for i in uniq_con_regressor_idx[::-1]]
         
         return t_con_regressor, t_con_regressor_name
-<<<<<<< HEAD
     
-=======
-
->>>>>>> 53676d6 ([skip CI][WIP] update example file based on reconstructed code)
     def _glh_con_group(self):
         con_group_count = 0
         for con_group in self.t_con_groups:

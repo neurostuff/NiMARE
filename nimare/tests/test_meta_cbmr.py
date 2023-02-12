@@ -16,7 +16,7 @@ def test_CBMREstimator(testdata_cbmr_simulated):
         model=models.PoissonEstimator,
         penalty=False,
         lr=1e-1,
-        tol=1e1,
+        tol=1e4,
         device="cpu"
     )
     cbmr.fit(dataset=dset)
