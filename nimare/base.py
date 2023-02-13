@@ -6,8 +6,6 @@ import pickle
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
-from nimare.results import MetaResult
-
 LGR = logging.getLogger(__name__)
 
 
@@ -326,6 +324,8 @@ class Estimator(NiMAREBase):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
+        from nimare.results import MetaResult
+
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps, tables = self._fit(dataset)
