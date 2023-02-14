@@ -170,6 +170,12 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
     although there is a closed pull request with an implementation that worked at the time it was closed
     (see `#655 <https://github.com/neurostuff/NiMARE/pull/655>`_).
 
+
+.. admonition:: Where is SDM?
+
+    Seed Based *d* Mapping (SDM) is currently not implemented in NiMARE because the source code is not publicly available.
+    To follow the current discussion on SDM in the context of NiMARE, see `#183 <https://github.com/neurostuff/NiMARE/issues/183>`.
+
 References
 ----------
 .. footbibliography::
