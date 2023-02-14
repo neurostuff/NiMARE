@@ -26,6 +26,7 @@ API
 
 For more information about the components of coordinate-based meta-analysis in NiMARE, see :doc:`cbma`.
 
+
 .. automodule:: nimare.meta
    :no-members:
    :no-inherited-members:
