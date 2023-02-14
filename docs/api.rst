@@ -26,8 +26,6 @@ API
 
 For more information about the components of coordinate-based meta-analysis in NiMARE, see :doc:`cbma`.
 
-.. note::
-    Seed Based *d* Mapping (SDM) is currently not implemented in NiMARE because the source code is not publicly available.
 
 .. automodule:: nimare.meta
    :no-members:
