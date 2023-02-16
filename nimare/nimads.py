@@ -1,5 +1,6 @@
 """NIMADS-related classes for NiMARE."""
 import json
+from copy import deepcopy
 
 
 class Studyset:
@@ -16,9 +17,7 @@ class Studyset:
     def __init__(self, source, target_space=None, mask=None):
         self.id = source["id"]
         self.name = source["name"] or ""
-        self.studies = {
-            s["id"]: Study(s) for s in source["studies"]
-        }
+        self.studies = {s["id"]: Study(s) for s in source["studies"]}
         self._annotations = []
 
     def __repr__(self):
@@ -68,11 +67,13 @@ class Studyset:
 
     def copy(self):
         """Create a copy of the Studyset."""
-        ...
+        return deepcopy(self)
 
     def slice(self, analyses):
         """Create a new Studyset with only requested Analyses."""
-        ...
+        studyset = self.copy()
+        return studyset
+        # studyset.studies
 
     def merge(self, right):
         """Merge a separate Studyset into the current one."""
@@ -144,7 +145,7 @@ class Study:
         self.authors = source["authors"] or ""
         self.publication = source["publication"] or ""
         self.metadata = source.get("metadata", {})
-        self.analyses = {a['id']: Analysis(a) for a in source["analyses"]}
+        self.analyses = {a["id"]: Analysis(a) for a in source["analyses"]}
 
     def __repr__(self):
         """My Simple representation."""
@@ -259,13 +260,10 @@ class Annotation:
         self.name = source["name"]
         self.id = source["id"]
         self.analyses = {
-            a_id: a
-            for study in studyset.studies.values()
-            for a_id, a in study.analyses.items()
+            a_id: a for study in studyset.studies.values() for a_id, a in study.analyses.items()
         }
         self.notes = {
-            n['analysis']: Note(self.analyses[n['analysis']], n['note'])
-            for n in source["notes"]
+            n["analysis"]: Note(self.analyses[n["analysis"]], n["note"]) for n in source["notes"]
         }
 
 
