@@ -10,6 +10,7 @@ from nilearn.input_data import NiftiLabelsMasker
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import ale
+from nimare.results import MetaResult
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import vox2mm
 
@@ -17,7 +18,8 @@ from nimare.utils import vox2mm
 def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     """Unit test for ALE with approximate null_method."""
     tmpdir = tmp_path_factory.mktemp("test_ALE_approximate_null_unit")
-    out_file = os.path.join(tmpdir, "file.pkl.gz")
+    est_out_file = os.path.join(tmpdir, "est_file.pkl.gz")
+    res_out_file = os.path.join(tmpdir, "res_file.pkl.gz")
 
     meta = ale.ALE(null_method="approximate")
     res = meta.fit(testdata_cbma)
@@ -31,20 +33,31 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     assert res2 != res
     assert isinstance(res, nimare.results.MetaResult)
 
-    # Test saving/loading
-    meta.save(out_file, compress=True)
-    assert os.path.isfile(out_file)
-    meta2 = ale.ALE.load(out_file, compressed=True)
-    assert isinstance(meta2, ale.ALE)
-    with pytest.raises(pickle.UnpicklingError):
-        ale.ALE.load(out_file, compressed=False)
+    # Test saving/loading estimator
+    for compress in [True, False]:
+        meta.save(est_out_file, compress=compress)
+        assert os.path.isfile(est_out_file)
+        meta2 = ale.ALE.load(est_out_file, compressed=compress)
+        assert isinstance(meta2, ale.ALE)
+        if compress:
+            with pytest.raises(pickle.UnpicklingError):
+                ale.ALE.load(est_out_file, compressed=(not compress))
+        else:
+            with pytest.raises(OSError):
+                ale.ALE.load(est_out_file, compressed=(not compress))
 
-    meta.save(out_file, compress=False)
-    assert os.path.isfile(out_file)
-    meta2 = ale.ALE.load(out_file, compressed=False)
-    assert isinstance(meta2, ale.ALE)
-    with pytest.raises(OSError):
-        ale.ALE.load(out_file, compressed=True)
+    # Test saving/loading MetaResult object
+    for compress in [True, False]:
+        res.save(res_out_file, compress=compress)
+        assert os.path.isfile(res_out_file)
+        res2 = MetaResult.load(res_out_file, compressed=compress)
+        assert isinstance(res2, MetaResult)
+        if compress:
+            with pytest.raises(pickle.UnpicklingError):
+                MetaResult.load(res_out_file, compressed=(not compress))
+        else:
+            with pytest.raises(OSError):
+                MetaResult.load(res_out_file, compressed=(not compress))
 
     # Test MCC methods
     # Monte Carlo FWE
