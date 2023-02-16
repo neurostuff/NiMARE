@@ -16,7 +16,9 @@ class Studyset:
     def __init__(self, source, target_space=None, mask=None):
         self.id = source["id"]
         self.name = source["name"] or ""
-        self.studies = [Study(s) for s in source["studies"]]
+        self.studies = {
+            s["id"]: Study(s) for s in source["studies"]
+        }
         self._annotations = []
 
     def __repr__(self):
@@ -34,10 +36,8 @@ class Studyset:
 
     @annotations.setter
     def annotations(self, annotation):
-        # some logic to compare ids
-        # ss_analysis_ids = set([a.id for s in self.studies for a in s.analyses])
-        # annot_analysis_ids = set([n['analysis'] for n in annotation.notes])
-        self._annotations.append(annotation)
+        loaded_annotation = Annotation(annotation, self)
+        self._annotations.append(loaded_annotation)
 
     @annotations.deleter
     def annotations(self, annotation_id=None):
@@ -144,7 +144,7 @@ class Study:
         self.authors = source["authors"] or ""
         self.publication = source["publication"] or ""
         self.metadata = source.get("metadata", {})
-        self.analyses = [Analysis(a) for a in source["analyses"]]
+        self.analyses = {a['id']: Analysis(a) for a in source["analyses"]}
 
     def __repr__(self):
         """My Simple representation."""
@@ -255,10 +255,18 @@ class Annotation:
     Or could use Analysis.id as key.
     """
 
-    def __init__(self, source):
+    def __init__(self, source, studyset):
         self.name = source["name"]
         self.id = source["id"]
-        self.notes = source["notes"]
+        self.analyses = {
+            a_id: a
+            for study in studyset.studies.values()
+            for a_id, a in study.analyses.items()
+        }
+        self.notes = {
+            n['analysis']: Note(self.analyses[n['analysis']], n['note'])
+            for n in source["notes"]
+        }
 
 
 class Note:
