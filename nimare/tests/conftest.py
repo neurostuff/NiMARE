@@ -158,7 +158,8 @@ def testdata_cbmr_simulated():
     # set up moderators: sample sizes & avg_age
     dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)] 
     dset.annotations["avg_age"] = np.arange(n_rows)
-    dset.annotations['schizophrenia_subtype'] = ['type1' if i%2==0 else 'type2' for i in range(n_rows)]
+    dset.annotations['schizophrenia_subtype'] = ["type1", "type2", "type3", "type4", "type5"] * int(n_rows/5)
+    # dset.annotations['schizophrenia_subtype'] = ['type1' if i%2==0 else 'type2' for i in range(n_rows)]
     dset.annotations['schizophrenia_subtype'] = dset.annotations['schizophrenia_subtype'].sample(frac=1).reset_index(drop=True) # random shuffle drug_status column
 
     return dset

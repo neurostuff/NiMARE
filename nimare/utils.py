@@ -1275,12 +1275,16 @@ def index2vox(vals, masker_voxels):
     return voxel_array
 
 def dummy_encoding_moderators(dataset_annotations, moderators):
-    for moderator in moderators:
+    new_moderators = moderators.copy()
+    for moderator in new_moderators:
         if np.array_equal(dataset_annotations[moderator], dataset_annotations[moderator].astype(str)):
-            moderators.remove(moderator) # remove moderators that are dummy encoded
+            new_moderators.remove(moderator) # remove moderators that are dummy encoded
             categories_unique = dataset_annotations[moderator].unique().tolist()
             for category in categories_unique:
                 dataset_annotations[category] = (dataset_annotations[moderator] == category).astype(int)
-                moderators.append(category) # add dummy encoded moderators
-    return dataset_annotations, moderators
+                new_moderators.append(category) # add dummy encoded moderators
+            # remove last categorical moderator column as it encoded as the other dummy encoded columns being zero
+            dataset_annotations = dataset_annotations.drop([categories_unique[0]], axis=1)
+            new_moderators.remove(categories_unique[0])
+    return dataset_annotations, new_moderators
 

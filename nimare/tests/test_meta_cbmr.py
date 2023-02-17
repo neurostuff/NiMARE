@@ -16,7 +16,7 @@ def test_CBMREstimator(testdata_cbmr_simulated):
         model=models.PoissonEstimator,
         penalty=False,
         lr=1e-1,
-        tol=1e4,
+        tol=1,
         device="cpu"
     )
     cbmr.fit(dataset=dset)
@@ -43,7 +43,7 @@ def test_CBMRInference(testdata_cbmr_simulated):
     )
     t_con_groups = inference.create_contrast(["schizophrenia_Yes", "schizophrenia_Yes-schizophrenia_No"], type="groups")
     t_con_moderators = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type="moderators")
-    contrast_result = inference.compute_contrast(t_con_groups=[[1,-1,0,0],[0,0,1,0]], t_con_moderators=[[1,-1,0,0],[0,0,1,0]])
+    contrast_result = inference.compute_contrast(t_con_groups=False, t_con_moderators=t_con_moderators)
     # self.maps.schizophrenia_Yes_p_values = ...
     # self.maps.schizophrenia_Yes_chi_square_vals = ...
     # self.tables.standardized_sample_sizes = ...
