@@ -161,15 +161,14 @@ class Jackknife(NiMAREBase):
             header=target_img.header,
         )
 
-        # Create empty contribution table
-        cols = ["Cluster ID"] + list(meta_ids)
-        contribution_table = pd.DataFrame(columns=cols)
+        rows = list(meta_ids)
+        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
+        contribution_table.index.name = "id"
 
         if n_clusters == 0:
             LGR.warning("No clusters found")
+            contribution_table = contribution_table.reset_index()
             return contribution_table, clusters_table, labeled_cluster_img
-
-        contribution_table["Cluster ID"] = list(range(1, n_clusters + 1))
 
         # Mask using a labels masker, so that we can easily get the mean value for each cluster
         cluster_masker = input_data.NiftiLabelsMasker(labeled_cluster_img)
@@ -192,7 +191,9 @@ class Jackknife(NiMAREBase):
 
         # Add the results to the table
         for expid, stat_prop_values in jackknife_results:
-            contribution_table[expid] = stat_prop_values.flatten()
+            contribution_table.loc[expid] = stat_prop_values.flatten()
+
+        contribution_table = contribution_table.reset_index()
 
         return contribution_table, clusters_table, labeled_cluster_img
 
@@ -365,14 +366,14 @@ class FocusCounter(NiMAREBase):
         )
 
         # Create empty contribution table
-        cols = ["Cluster ID"] + list(meta_ids)
-        contribution_table = pd.DataFrame(columns=cols)
+        rows = list(meta_ids)
+        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
+        contribution_table.index.name = "id"
 
         if n_clusters == 0:
             LGR.warning("No clusters found")
+            contribution_table = contribution_table.reset_index()
             return contribution_table, clusters_table, labeled_cluster_img
-
-        contribution_table["Cluster ID"] = list(range(1, n_clusters + 1))
 
         with tqdm_joblib(tqdm(total=len(meta_ids))):
             jackknife_results = Parallel(n_jobs=self.n_cores)(
@@ -387,7 +388,9 @@ class FocusCounter(NiMAREBase):
 
         # Add the results to the table
         for expid, focus_counts in jackknife_results:
-            contribution_table[expid] = focus_counts
+            contribution_table.loc[expid] = focus_counts
+
+        contribution_table = contribution_table.reset_index()
 
         return contribution_table, clusters_table, labeled_cluster_img
 
@@ -398,7 +401,7 @@ class FocusCounter(NiMAREBase):
         clust_ids = sorted(list(np.unique(labeled_cluster_map)[1:]))
         focus_counts = []
 
-        for i_cluster, c_val in enumerate(clust_ids):
+        for c_val in clust_ids:
             cluster_mask = labeled_cluster_map == c_val
             cluster_idx = np.vstack(np.where(cluster_mask))
             distances = cdist(cluster_idx.T, ijk)
@@ -458,13 +461,13 @@ class FocusFilter(NiMAREBase):
         # mm2vox automatically rounds the coordinates
         dset_ijk = mm2vox(dset_xyz, masker.mask_img.affine)
 
-        keep_idx = []
-        for i, coord in enumerate(dset_ijk):
-            # Check if each coordinate in Dataset is within the mask
-            # If it is, log that coordinate in keep_idx
-            if len(np.where((mask_ijk == coord).all(axis=1))[0]):
-                keep_idx.append(i)
-
+        # Check if each coordinate in Dataset is within the mask
+        # If it is, log that coordinate in keep_idx
+        keep_idx = [
+            i
+            for i, coord in enumerate(dset_ijk)
+            if len(np.where((mask_ijk == coord).all(axis=1))[0])
+        ]
         LGR.info(
             f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
             "the mask. Removing them."
