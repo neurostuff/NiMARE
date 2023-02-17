@@ -49,7 +49,7 @@ def test_jackknife_smoke(
             jackknife.transform(res)
     else:
         contribution_table, cluster_table, labeled_img = jackknife.transform(res)
-        assert contribution_table.shape[1] == len(meta.inputs_["id"]) + 1
+        assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
 
 def test_jackknife_with_custom_masker_smoke(testdata_ibma):
@@ -66,7 +66,7 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
 
     jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=0.5)
     contribution_table, cluster_table, labeled_img = jackknife.transform(res)
-    assert contribution_table.shape[1] == len(meta.inputs_["id"]) + 1
+    assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
     # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
     with pytest.raises(ValueError):
@@ -106,7 +106,7 @@ def test_focuscounter_smoke(
             counter.transform(res)
     else:
         contribution_table, cluster_table, labeled_img = counter.transform(res)
-        assert contribution_table.shape[1] == len(meta.inputs_["id"]) + 1
+        assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
 
 def test_focusfilter(testdata_laird):
