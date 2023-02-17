@@ -104,7 +104,14 @@ counter = FocusCounter(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
-knowledge_count_table, _, _ = counter.transform(knowledge_corrected_results)
+knowledge_count_table, knowledge_clusters_table, _ = counter.transform(knowledge_corrected_results)
+
+###############################################################################
+# Clusters table
+knowledge_clusters_table.head(10)
+
+###############################################################################
+# Contribution table
 knowledge_count_table.head(10)
 
 ###############################################################################
