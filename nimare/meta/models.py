@@ -14,7 +14,6 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self,
         spatial_coef_dim=None,
         moderators_coef_dim=None,
-        groups=None,
         penalty=False,
         lr = 0.1,
         lr_decay=0.999,
@@ -25,7 +24,6 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         super().__init__()
         self.spatial_coef_dim = spatial_coef_dim
         self.moderators_coef_dim = moderators_coef_dim
-        self.groups = groups
         self.penalty = penalty
         self.lr = lr
         self.lr_decay = lr_decay
@@ -87,9 +85,10 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
         return 
     
-    def init_weights(self, groups, spatial_coef_dim, moderators_coef_dim):
+    def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
         """Document this."""
         self.groups = groups
+        self.moderators = moderators
         self.spatial_coef_dim = spatial_coef_dim
         self.moderators_coef_dim = moderators_coef_dim
         self.init_spatial_weights()
@@ -338,8 +337,8 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         tables["Spatial_Regression_Coef"] = pd.DataFrame.from_dict(self.spatial_regression_coef, orient="index")
         maps = self.spatial_intensity_estimation
         if self.moderators_coef_dim: 
-            tables["Moderators_Regression_Coef"] = pd.DataFrame(self.moderators_coef)
-            tables["Moderators_Effect"] = pd.DataFrame.from_dict(self.moderators_effect, orient="index")
+            tables["Moderators_Regression_Coef"] = pd.DataFrame(data=self.moderators_coef, columns=self.moderators)
+            tables["Moderators_Effect"] = pd.DataFrame.from_dict(data=self.moderators_effect, orient="index")
         
         # Estimate standard error of regression coefficient and (Log-)spatial intensity and store them in 'tables'
         # spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se, se_moderators = self.standard_error_estimation(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
@@ -353,7 +352,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             self.spatial_intensity_se, orient="index"
         )
         if self.moderators_coef_dim:
-            tables["Moderators_Regression_SE"] = pd.DataFrame(self.se_moderators)
+            tables["Moderators_Regression_SE"] = pd.DataFrame(data=self.se_moderators, columns=self.moderators)
         return maps, tables
 
     def FisherInfo_MultipleGroup_spatial(self, involved_groups, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):

@@ -309,6 +309,7 @@ class CBMREstimator(Estimator):
         """
         init_weight_kwargs = {
             "groups": self.groups,
+            "moderators": self.moderators,
             "spatial_coef_dim": self.inputs_["coef_spline_bases"].shape[1],
             "moderators_coef_dim": len(self.moderators) if self.moderators else None,
         }
@@ -630,12 +631,23 @@ class CBMRInference(object):
             # GLH on log_intensity (eta)
             chi_sq_spatial = self._chi_square_log_intensity(m, n_brain_voxel, n_con_group_involved, simp_con_group, Cov_log_intensity, Contrast_log_intensity)
             p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
+            # convert p-values to z-scores for visualization
+            if np.all(np.count_nonzero(con_group, axis=1) == 1): # GLH: homogeneity test
+                z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
+                z_stats_spatial[z_stats_spatial < 0] = 0
+            else: 
+                z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial/2)
+                if con_group.shape[0] == 1: # GLH one test: Z statistics are signed 
+                    z_stats_spatial *= np.sign(Contrast_log_intensity.flatten())
+            z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
             if self.t_con_groups_name:
                 self.CBMRResults.maps[f"{self.t_con_groups_name[con_group_count]}_chi_square_values"] = chi_sq_spatial
                 self.CBMRResults.maps[f"{self.t_con_groups_name[con_group_count]}_p_values"] = p_vals_spatial
+                self.CBMRResults.maps[f"{self.t_con_groups_name[con_group_count]}_z_statistics"] = z_stats_spatial
             else:
                 self.CBMRResults.maps[f"GLH_groups_{con_group_count}_chi_square_values"] = chi_sq_spatial
                 self.CBMRResults.maps[f"GLH_groups_{con_group_count}_p_values"] = p_vals_spatial
+                self.CBMRResults.maps[f"GLH_groups_{con_group_count}_z_statistics"] = z_stats_spatial
             con_group_count += 1
     
     def _chi_square_log_intensity(self, m, n_brain_voxel, n_con_group_involved, simp_con_group, Cov_log_intensity, Contrast_log_intensity):
@@ -686,7 +698,6 @@ class CBMRInference(object):
             )
             chi_sq_moderator = chi_sq_moderator.item()
             p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
-
             if self.t_con_moderators_name: # None?
                 self.CBMRResults.tables[f"{self.t_con_moderators_name[con_moderator_count]}_chi_square_values"] = chi_sq_moderator
                 self.CBMRResults.tables[f"{self.t_con_moderators_name[con_moderator_count]}_p_values"] = p_vals_moderator
