@@ -448,7 +448,7 @@ class ImagesToCoordinates(NiMAREBase):
         if self.merge_strategy != "demolish":
             original_idxs = ~dataset.coordinates["id"].isin(coordinates_df["id"])
             old_coordinates_df = dataset.coordinates[original_idxs]
-            coordinates_df = coordinates_df.append(old_coordinates_df, ignore_index=True)
+            coordinates_df = pd.concat([coordinates_df, old_coordinates_df], ignore_index=True)
 
             # specify original coordinates
             original_ids = set(old_coordinates_df["id"])
