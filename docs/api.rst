@@ -327,4 +327,4 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :template: class.rst
 
    base.NiMAREBase
-   base.Estimator
+   estimator.Estimator
