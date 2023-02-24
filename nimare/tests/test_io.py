@@ -2,26 +2,19 @@
 import os
 
 import pytest
-import requests
 
 import nimare
 from nimare import io
+from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_template
 
 
-def test_convert_nimads_to_dataset():
+def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):
     """Conversion of nimads JSON to nimare dataset."""
-    nimads_data = requests.get(
-        "https://neurostore.xyz/api/studysets/78rWEjjjuC65?nested=true"
-    ).json()
-    studyset = nimare.nimads.Studyset(nimads_data)
-
-    annotation_data = requests.get("https://neurostore.xyz/api/annotations/4aLPSznu6jJa").json()
-
-    annotation = nimare.nimads.Annotation(annotation_data)
-
-    dset = io.convert_nimads_to_dataset(studyset, annotation)
+    studyset = Studyset(example_nimads_studyset)
+    studyset.annotations = example_nimads_annotation
+    dset = io.convert_nimads_to_dataset(studyset)
 
     assert isinstance(dset, nimare.dataset.Dataset)
 

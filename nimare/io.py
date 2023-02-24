@@ -27,14 +27,14 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 
 
 def _create_name(resource):
-    """Take study/analysis object and try to create dataframe friendly/readable name"""
+    """Take study/analysis object and try to create dataframe friendly/readable name."""
     return "_".join(resource.name.split()) if resource.name else resource.id
 
 
-def convert_nimads_to_dataset(studyset, annotation=None):
+def convert_nimads_to_dataset(studyset):
     """Convert nimads studyset object to a dataset."""
 
-    def _analysis_to_dict(study, analysis, annotation=None):
+    def _analysis_to_dict(study, analysis):
         result = {
             "metadata": {
                 "authors": study.name,
@@ -50,13 +50,14 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             },
         }
 
-        if annotation:
-            notes = next(n for n in annotation.notes if n["analysis"] == analysis.id)
-            result["labels"] = notes["note"]
+        if analysis.annotations:
+            result["labels"] = {}
+            for annotation in analysis.annotations.values():
+                result["labels"].update(annotation)
 
         return result
 
-    def _study_to_dict(study, annotation=None):
+    def _study_to_dict(study):
         return {
             "metadata": {
                 "authors": study.authors,
@@ -64,12 +65,12 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 "title": study.name,
             },
             "contrasts": {
-                _create_name(a): _analysis_to_dict(study, a, annotation) for a in study.analyses
+                _create_name(a): _analysis_to_dict(study, a) for a in study.analyses
             },
         }
 
     return Dataset(
-        {_create_name(s): _study_to_dict(s, annotation=annotation) for s in studyset.studies}
+        {_create_name(s): _study_to_dict(s) for s in list(studyset.studies.values())}
     )
 
 

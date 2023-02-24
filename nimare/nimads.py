@@ -1,6 +1,7 @@
 """NIMADS-related classes for NiMARE."""
 import json
 from copy import deepcopy
+import weakref
 
 
 class Studyset:
@@ -17,7 +18,7 @@ class Studyset:
     def __init__(self, source, target_space=None, mask=None):
         self.id = source["id"]
         self.name = source["name"] or ""
-        self.studies = {s["id"]: Study(s) for s in source["studies"]}
+        self.studies = [Study(s) for s in source["studies"]]
         self._annotations = []
 
     def __repr__(self):
@@ -57,6 +58,9 @@ class Studyset:
         """Write the Studyset to a NIMADS JSON file."""
         ...
 
+    def to_dict(self):
+        """Return a dictionary representation of the Studyset."""
+
     def load(self, filename):
         """Load a Studyset from a pickled file."""
         ...
@@ -72,6 +76,15 @@ class Studyset:
     def slice(self, analyses):
         """Create a new Studyset with only requested Analyses."""
         studyset = self.copy()
+
+        for study in studyset.studies:
+            unused_analyses = [a for a in study.analyses if a.id not in analyses]
+            for a in unused_analyses:
+                del a
+        for study in studyset.studies:
+            unused_analyses = [a for a in study.analyses if a.id not in analyses]
+            for a in unused_analyses:
+                del a
         return studyset
         # studyset.studies
 
@@ -145,7 +158,7 @@ class Study:
         self.authors = source["authors"] or ""
         self.publication = source["publication"] or ""
         self.metadata = source.get("metadata", {})
-        self.analyses = {a["id"]: Analysis(a) for a in source["analyses"]}
+        self.analyses = [Analysis(a) for a in source["analyses"]]
 
     def __repr__(self):
         """My Simple representation."""
@@ -199,10 +212,11 @@ class Analysis:
         ]
         self.images = [Image(i) for i in source["images"]]
         self.points = [Point(p) for p in source["points"]]
+        self.annotations = {}
 
     def __repr__(self):
         """My Simple representation."""
-        return repr(self.id)
+        return repr(f"Analysis: {self.id}")
 
     def __str__(self):
         """My Simple representation."""
@@ -232,6 +246,13 @@ class Condition:
         self.description = condition["description"]
         self.weight = weight
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "description": self.description,
+            "weight": self.weight
+        }
+
 
 class Annotation:
     """A collection of labels and associated weights from the same Annotator.
@@ -259,12 +280,12 @@ class Annotation:
     def __init__(self, source, studyset):
         self.name = source["name"]
         self.id = source["id"]
-        self.analyses = {
-            a_id: a for study in studyset.studies.values() for a_id, a in study.analyses.items()
+        self._analysis_ref = {
+            a.id: weakref.proxy(a) for study in studyset.studies for a in study.analyses
         }
-        self.notes = {
-            n["analysis"]: Note(self.analyses[n["analysis"]], n["note"]) for n in source["notes"]
-        }
+        self.notes = [Note(self._analysis_ref[n["analysis"]], n["note"]) for n in source["notes"]]
+        for note in self.notes:
+            self._analysis_ref[note.analysis.id].annotations[self.id] = note.note
 
 
 class Note:
@@ -279,8 +300,14 @@ class Note:
     """
 
     def __init__(self, analysis, note):
-        self.analysis = analysis
+        self.analysis = weakref.proxy(analysis)
         self.note = note
+
+    def to_dict(self):
+        return {
+            "analysis": self.analysis.id,
+            "note": self.note
+        }
 
 
 class Image:
@@ -302,6 +329,15 @@ class Image:
         self.space = source["space"]
         self.value_type = source["value_type"]
 
+    def to_dict(self):
+        """Convert the Image to a dictionary."""
+        return {
+            "url": self.url,
+            "filename": self.filename,
+            "space": self.space,
+            "value_type": self.value_type
+        }
+
 
 class Point:
     """A single peak coordinate from an Analysis.
@@ -322,3 +358,10 @@ class Point:
         self.x = source["coordinates"][0]
         self.y = source["coordinates"][1]
         self.z = source["coordinates"][2]
+
+    def to_dict(self):
+        """Convert the Point to a dictionary."""
+        return {
+            "space": self.space,
+            "coordinates": [self.x, self.y, self.z]
+        }
