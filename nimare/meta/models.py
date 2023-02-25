@@ -10,6 +10,7 @@ import copy
 
 LGR = logging.getLogger(__name__)
 class GeneralLinearModelEstimator(torch.nn.Module):
+
     def __init__(
         self,
         spatial_coef_dim=None,
@@ -20,7 +21,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         n_iter=1000,
         tol=1e-2,
         device="cpu",
-    ):  
+    ):
         super().__init__()
         self.spatial_coef_dim = spatial_coef_dim
         self.moderators_coef_dim = moderators_coef_dim
@@ -49,7 +50,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self.log_spatial_intensity_se = None
         self.spatial_intensity_se = None
         self.se_moderators = None
-        
+
     @abc.abstractmethod
     def _log_likelihood_single_group(self, **kwargs):
         """Document this."""
@@ -83,8 +84,8 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             self.moderators_coef_dim, 1, bias=False
         ).double()
         torch.nn.init.uniform_(self.moderators_linear.weight, a=-0.01, b=0.01)
-        return 
-    
+        return
+
     def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
         """Document this."""
         self.groups = groups
@@ -94,7 +95,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self.init_spatial_weights()
         if moderators_coef_dim:
             self.init_moderator_weights()
-    
+
     def _update(
         self,
         optimizer,
@@ -107,7 +108,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         """One iteration in optimization with L-BFGS.
 
         Adjust learning rate based on the number of iteration (with learning rate decay parameter
-        `lr_decay`, default value is 0.999). Reset L-BFGS optimizer (as params in the previous 
+        `lr_decay`, default value is 0.999). Reset L-BFGS optimizer (as params in the previous
         iteration) if NaN occurs.
         """
         self.iter += 1
@@ -155,10 +156,10 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         else:
             self.last_state = copy.deepcopy(
                 self.state_dict()
-            ) 
+            )
 
         return loss
-    
+
     def _optimizer(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         optimizer = torch.optim.LBFGS(self.parameters(), self.lr)
         # load dataset info to torch.tensor
@@ -224,7 +225,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             # Estimate group-specific spatial intensity
             group_spatial_intensity_estimation = np.exp(np.matmul(coef_spline_bases, group_spatial_coef_linear_weight))
             spatial_intensity_estimation["Group_" + group + "_Studywise_Spatial_Intensity"] = group_spatial_intensity_estimation
-            
+
         # Extract optimized regression coefficient of study-level moderators from the model
         if self.moderators_coef_dim:
             moderators_effect = dict()
@@ -259,7 +260,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
                 moderators_coef = self.moderators_linear.weight
             else:
                 group_moderators, moderators_coef = None, None
-            
+
             ll_single_group_kwargs = {
                 "moderators_coef": moderators_coef if self.moderators_coef_dim else None,
                 "coef_spline_bases": torch.tensor(coef_spline_bases, dtype=torch.float64, device=self.device),
@@ -313,7 +314,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             cov_moderators_coef = np.linalg.inv(F_moderators_coef.detach().numpy())
             var_moderators = np.diag(cov_moderators_coef).reshape((1, self.moderators_coef_dim))
             se_moderators = np.sqrt(var_moderators)
-        else: 
+        else:
             se_moderators = None
 
         self.spatial_regression_coef_se = spatial_regression_coef_se
@@ -336,10 +337,10 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         # Extract optimized regression coefficients from model and store them in 'tables'
         tables["Spatial_Regression_Coef"] = pd.DataFrame.from_dict(self.spatial_regression_coef, orient="index")
         maps = self.spatial_intensity_estimation
-        if self.moderators_coef_dim: 
+        if self.moderators_coef_dim:
             tables["Moderators_Regression_Coef"] = pd.DataFrame(data=self.moderators_coef, columns=self.moderators)
             tables["Moderators_Effect"] = pd.DataFrame.from_dict(data=self.moderators_effect, orient="index")
-        
+
         # Estimate standard error of regression coefficient and (Log-)spatial intensity and store them in 'tables'
         # spatial_regression_coef_se, log_spatial_intensity_se, spatial_intensity_se, se_moderators = self.standard_error_estimation(coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study)
         tables["Spatial_Regression_Coef_SE"] = pd.DataFrame.from_dict(
@@ -369,7 +370,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             moderators_coef = torch.tensor(self.moderators_coef.T, dtype=torch.float64, device=self.device)
         else:
             involved_moderators_by_group, moderators_coef = None, None
-                
+
         ll_mult_group_kwargs = {
             "moderator_coef": moderators_coef,
             "coef_spline_bases": torch.tensor(coef_spline_bases, dtype=torch.float64, device=self.device),
@@ -378,7 +379,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             "moderators": involved_moderators_by_group,
             "device": self.device
         }
-            
+
         if hasattr(self, "overdispersion"):
             ll_mult_group_kwargs['overdispersion_coef'] = [self.overdispersion[group] for group in involved_groups]
         # create a negative log-likelihood function
@@ -386,19 +387,19 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             return -self._log_likelihood_mult_group(
                 spatial_coef=spatial_coef, **ll_mult_group_kwargs,
             )
-    
+
         h = functorch.hessian(nll_spatial_coef)(spatial_coef)
         h = h.view(n_involved_groups * self.spatial_coef_dim, -1)
 
         return h.detach().cpu().numpy()
-    
+
     def FisherInfo_MultipleGroup_moderator(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         """Document this."""
         foci_per_voxel = [torch.tensor(foci_per_voxel[group], dtype=torch.float64, device=self.device) for group in self.groups]
         foci_per_study = [torch.tensor(foci_per_study[group], dtype=torch.float64, device=self.device) for group in self.groups]
         spatial_coef = [self.spatial_coef_linears[group].weight.T for group in self.groups]
         spatial_coef = torch.stack(spatial_coef, dim=0)
-        
+
         if self.moderators_coef_dim:
             moderators_by_group = [torch.tensor(
                 moderators_by_group[group], dtype=torch.float64, device=self.device
@@ -406,7 +407,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             moderator_coef = torch.tensor(self.moderators_coef.T, dtype=torch.float64, device=self.device)
         else:
             moderators_by_group, moderator_coef = None, None
-        
+
         ll_mult_group_kwargs = {
             "spatial_coef": spatial_coef,
             "coef_spline_bases": torch.tensor(coef_spline_bases, dtype=torch.float64, device=self.device),
@@ -422,12 +423,12 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             return -self._log_likelihood_mult_group(
                 moderator_coef=moderator_coef, **ll_mult_group_kwargs,
             )
-    
+
         h = functorch.hessian(nll_moderator_coef)(moderator_coef)
         h = h.view(self.moderators_coef_dim, self.moderators_coef_dim)
 
         return h.detach().cpu().numpy()
-    
+
 class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
         self.square_root = kwargs.pop("square_root", False)
@@ -461,7 +462,7 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
             overdispersion_param[group] = group_overdispersion
         tables["Overdispersion_Coef"] = pd.DataFrame.from_dict(
             overdispersion_param, orient="index", columns=["overdispersion"])
-        
+
         return maps, tables
 
 class PoissonEstimator(GeneralLinearModelEstimator):
@@ -591,7 +592,7 @@ class PoissonEstimator(GeneralLinearModelEstimator):
                 group_F = group_F.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
                 group_eig_vals = torch.real(
                     torch.linalg.eigvals(group_F)
-                )  
+                )
                 del group_F
                 group_firth_penalty = 0.5 * torch.sum(torch.log(group_eig_vals))
                 del group_eig_vals
@@ -630,7 +631,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         group_foci_per_voxel,
         group_foci_per_study,
         device="cpu",
-    ):                
+    ):
         v = 1 / group_overdispersion
         log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
@@ -757,7 +758,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
                     moderators_coef, group_moderators = None, None
                 group_foci_per_voxel = foci_per_voxel[group]
                 group_foci_per_study = foci_per_study[group]
-            
+
                 nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
                     group_overdispersion,
                     group_spatial_coef,
@@ -871,8 +872,8 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
                     - torch.sum((foci_per_study[i] + v[i]) * torch.log(mu_sum_per_study[i] + v[i]))
                     + torch.sum(foci_per_voxel[i] * log_spatial_intensity[i])
                     + torch.sum(foci_per_study[i] * log_moderator_effect[i])
-                    )
-            
+            )
+
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
@@ -894,7 +895,8 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
                         coef_spline_bases,
                         group_moderators,
                         group_foci_per_voxel,
-                        group_foci_per_study)
+                        group_foci_per_study
+                    )
             log_l += group_log_l
 
         if self.penalty:
@@ -910,7 +912,6 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
                 group_foci_per_voxel = foci_per_voxel[group]
                 group_foci_per_study = foci_per_study[group]
                 group_moderators = moderators[group]
-                
                 nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
                     group_overdispersion,
                     group_spatial_coef,
@@ -922,7 +923,7 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
                 )
                 group_F = torch.autograd.functional.hessian(
                     nll, group_spatial_coef, create_graph=True
-                ) 
+                )
                 group_F = group_F.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
                 group_eig_vals = torch.real(torch.linalg.eigvals(group_F))
                 del group_F
