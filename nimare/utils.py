@@ -1041,6 +1041,7 @@ def unique_rows(ar, return_counts=False):
 
 def _local_max(data, affine, min_distance):
     """Find all local maxima of the array, separated by at least min_distance.
+
     Adapted from https://stackoverflow.com/a/22631583/2589328
 
     Parameters
