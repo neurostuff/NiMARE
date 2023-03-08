@@ -1070,7 +1070,7 @@ def _local_max(data, affine, min_distance):
     -------
     New BSD License
 
-    Copyright (c) 2007 - 2022 The nilearn developers.
+    Copyright (c) 2007 - 2023 The nilearn developers.
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions are met:
@@ -1131,7 +1131,7 @@ def _identify_subpeaks(data):
     -------
     New BSD License
 
-    Copyright (c) 2007 - 2022 The nilearn developers.
+    Copyright (c) 2007 - 2023 The nilearn developers.
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions are met:
@@ -1188,7 +1188,9 @@ def _identify_subpeaks(data):
         # corresponding clusters. Note this is also equivalent to computing the
         # centers of mass constrained to points within the cluster.
         ijk[subpeaks_outside_cluster] = _cluster_nearest_neighbor(
-            ijk[subpeaks_outside_cluster], labels_index[subpeaks_outside_cluster], labeled
+            ijk[subpeaks_outside_cluster],
+            labels_index[subpeaks_outside_cluster],
+            labeled,
         )
     vals = data[ijk[:, 0], ijk[:, 1], ijk[:, 2]]
     return ijk, vals
@@ -1217,7 +1219,7 @@ def _cluster_nearest_neighbor(ijk, labels_index, labeled):
     -------
     New BSD License
 
-    Copyright (c) 2007 - 2022 The nilearn developers.
+    Copyright (c) 2007 - 2023 The nilearn developers.
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions are met:
@@ -1282,7 +1284,7 @@ def _sort_subpeaks(ijk, vals, affine):
     -------
     New BSD License
 
-    Copyright (c) 2007 - 2022 The nilearn developers.
+    Copyright (c) 2007 - 2023 The nilearn developers.
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions are met:
@@ -1344,7 +1346,7 @@ def _pare_subpeaks(xyz, ijk, vals, min_distance):
     -------
     New BSD License
 
-    Copyright (c) 2007 - 2022 The nilearn developers.
+    Copyright (c) 2007 - 2023 The nilearn developers.
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions are met:
@@ -1471,7 +1473,7 @@ def _get_clusters_table(
     -------
     New BSD License
 
-    Copyright (c) 2007 - 2022 The nilearn developers.
+    Copyright (c) 2007 - 2023 The nilearn developers.
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions are met:
@@ -1505,6 +1507,7 @@ def _get_clusters_table(
     # check that stat_img is niimg-like object and 3D
     stat_img = check_niimg_3d(stat_img)
     affine = stat_img.affine
+    shape = stat_img.shape
 
     # Apply threshold(s) to image
     stat_img = threshold_img(
@@ -1519,7 +1522,9 @@ def _get_clusters_table(
     # If cluster threshold is used, there is chance that stat_map will be
     # modified, therefore copy is needed
     stat_map = _safe_get_data(
-        stat_img, ensure_finite=True, copy_data=(cluster_threshold is not None)
+        stat_img,
+        ensure_finite=True,
+        copy_data=(cluster_threshold is not None),
     )
 
     # Define array for 6-connectivity, aka NN1 or "faces"
@@ -1551,18 +1556,21 @@ def _get_clusters_table(
 
         # Now re-label and create table
         label_map = label(binarized, bin_struct)[0]
-
         clust_ids = sorted(list(np.unique(label_map)[1:]))
         peak_vals = np.array([np.max(temp_stat_map * (label_map == c)) for c in clust_ids])
         # Sort by descending max value
         clust_ids = [clust_ids[c] for c in (-peak_vals).argsort()]
 
-        re_label_map = np.zeros_like(label_map)
+        if return_label_maps:
+            # Relabel label_map based on sorted ids
+            relabel_idx = np.insert(clust_ids, 0, 0).argsort().astype(np.int32)
+            relabel_map = relabel_idx[label_map.flatten()].reshape(shape)
+            # Save label maps as nifti objects
+            label_maps.append(new_img_like(stat_img, relabel_map, affine=affine))
+
         for c_id, c_val in enumerate(clust_ids):
             cluster_mask = label_map == c_val
             masked_data = temp_stat_map * cluster_mask
-
-            re_label_map[cluster_mask] = c_id + 1
 
             cluster_size_mm = int(np.sum(cluster_mask) * voxel_size)
 
@@ -1611,9 +1619,6 @@ def _get_clusters_table(
                         "",
                     ]
                 rows += [row]
-
-        # Save label maps as nifti objects
-        label_maps.append(new_img_like(stat_img, re_label_map, affine=affine))
 
         # If we reach this point, there are clusters in this sign
         no_clusters_found = False

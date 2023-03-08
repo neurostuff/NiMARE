@@ -87,20 +87,24 @@ class Jackknife(NiMAREBase):
         contribution_table : :obj:`pandas.DataFrame`
             A DataFrame with information about relative contributions of each experiment to each
             cluster in the thresholded map.
-            There is one row for each cluster, with row names being integers indicating the
-            cluster's associated value in the ``labeled_cluster_img`` output.
-            There is one column for each experiment.
+            There is one row for each experiment.
+            There is one column for each cluster, with column names being
+            ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
+            statistical values, plus an integer indicating the cluster's associated value
+            in the ``label_maps[0]``/``label_maps[1]`` output.
         clusters_table : :obj:`pandas.DataFrame`
             A DataFrame with information about each cluster.
             There is one row for each cluster.
-            The columns in this table include: ``Cluster ID`` (cluster number), ``X``/``Y``/``Z``
-            (coordinate for the center of mass), ``Max Stat`` (statistical value of the peak),
-            and ``Cluster Size (mm3)`` (the size of the cluster, in cubic millimeters).
-        labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
-            The labeled, thresholded map that is used to identify clusters characterized by this
-            analysis.
-            Each cluster in the map has a single value, which corresponds to the cluster's column
-            name in ``contribution_table``.
+            The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
+            for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
+            ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
+            (the size of the cluster, in cubic millimeters).
+        label_maps : :obj:`list`
+            List of :obj:`nibabel.nifti1.Nifti1Image` objects of cluster label maps.
+            Each cluster in the map has a single value, which corresponds to the cluster number
+            of the column name in ``contribution_table``.
+            If target_image has negative values after thresholding, first and second maps
+            correspond to positive and negative tails.
         """
         if not hasattr(result.estimator, "dataset"):
             raise AttributeError(
@@ -144,8 +148,21 @@ class Jackknife(NiMAREBase):
         two_sided = (target_img.get_fdata() < 0).any()
         stat_threshold = self.voxel_thresh or 0
         clusters_table, label_maps = _get_clusters_table(
-            target_img, stat_threshold, two_sided=two_sided, return_label_maps=True
+            target_img,
+            stat_threshold,
+            two_sided=two_sided,
+            return_label_maps=True,
         )
+
+        # Make sure cluster IDs are strings
+        clusters_table = clusters_table.astype({"Cluster ID": "str"})
+        # Rename the clusters_table cluster IDs to match the contribution table columns
+        clusters_table["Cluster ID"] = [
+            f"PositiveTail {row['Cluster ID']}"
+            if row["Peak Stat"] > 0
+            else f"NegativeTail {row['Cluster ID']}"
+            for _, row in clusters_table.iterrows()
+        ]
 
         if clusters_table.shape[0] == 0:
             LGR.warning("No clusters found")
@@ -158,7 +175,7 @@ class Jackknife(NiMAREBase):
             cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
 
             # Create contribution table
-            col_name = "PosTail" if sign == 1 else "NegTail"
+            col_name = "PositiveTail" if sign == 1 else "NegativeTail"
             cols = [f"{col_name} {int(c_id)}" for c_id in cluster_ids]
             contribution_table = pd.DataFrame(index=rows, columns=cols)
             contribution_table.index.name = "id"
@@ -299,20 +316,24 @@ class FocusCounter(NiMAREBase):
         contribution_table : :obj:`pandas.DataFrame`
             A DataFrame with information about relative contributions of each experiment to each
             cluster in the thresholded map.
-            There is one row for each cluster, with row names being integers indicating the
-            cluster's associated value in the ``labeled_cluster_img`` output.
-            There is one column for each experiment.
+            There is one row for each experiment.
+            There is one column for each cluster, with column names being
+            ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
+            statistical values, plus an integer indicating the cluster's associated value
+            in the ``label_maps[0]``/``label_maps[1]`` output.
         clusters_table : :obj:`pandas.DataFrame`
             A DataFrame with information about each cluster.
             There is one row for each cluster.
-            The columns in this table include: ``Cluster ID`` (cluster number), ``X``/``Y``/``Z``
-            (coordinate for the center of mass), ``Max Stat`` (statistical value of the peak),
-            and ``Cluster Size (mm3)`` (the size of the cluster, in cubic millimeters).
-        labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
-            The labeled, thresholded map that is used to identify clusters characterized by this
-            analysis.
-            Each cluster in the map has a single value, which corresponds to the cluster's column
-            name in ``contribution_table``.
+            The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
+            for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
+            ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
+            (the size of the cluster, in cubic millimeters).
+        label_maps : :obj:`list`
+            List of :obj:`nibabel.nifti1.Nifti1Image` objects of cluster label maps.
+            Each cluster in the map has a single value, which corresponds to the cluster number
+            of the column name in ``contribution_table``.
+            If target_image has negative values after thresholding, first and second maps
+            correspond to positive and negative tails.
         """
         if not hasattr(result.estimator, "dataset"):
             raise AttributeError(
@@ -348,8 +369,21 @@ class FocusCounter(NiMAREBase):
         two_sided = (target_img.get_fdata() < 0).any()
         stat_threshold = self.voxel_thresh or 0
         clusters_table, label_maps = _get_clusters_table(
-            target_img, stat_threshold, two_sided=two_sided, return_label_maps=True
+            target_img,
+            stat_threshold,
+            two_sided=two_sided,
+            return_label_maps=True,
         )
+
+        # Make sure cluster IDs are strings
+        clusters_table = clusters_table.astype({"Cluster ID": "str"})
+        # Rename the clusters_table cluster IDs to match the contribution table columns
+        clusters_table["Cluster ID"] = [
+            f"PositiveTail {row['Cluster ID']}"
+            if row["Peak Stat"] > 0
+            else f"NegativeTail {row['Cluster ID']}"
+            for _, row in clusters_table.iterrows()
+        ]
 
         if clusters_table.shape[0] == 0:
             LGR.warning("No clusters found")
@@ -363,7 +397,7 @@ class FocusCounter(NiMAREBase):
             cluster_ids = sorted(list(np.unique(label_arr)[1:]))
 
             # Create contribution table
-            col_name = "PosTail" if sign == 1 else "NegTail"
+            col_name = "PositiveTail" if sign == 1 else "NegativeTail"
             cols = [f"{col_name} {int(c_id)}" for c_id in cluster_ids]
             contribution_table = pd.DataFrame(index=rows, columns=cols)
             contribution_table.index.name = "id"

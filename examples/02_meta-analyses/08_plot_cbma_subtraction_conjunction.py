@@ -107,11 +107,11 @@ counter = FocusCounter(
 knowledge_count_table, knowledge_clusters_table, _ = counter.transform(knowledge_corrected_results)
 
 ###############################################################################
-# Clusters table
+# Clusters table.
 knowledge_clusters_table.head(10)
 
 ###############################################################################
-# Contribution table
+# Contribution table. Here ``PostiveTail`` refers to clusters with positive statistics.
 knowledge_count_table.head(10)
 
 ###############################################################################
