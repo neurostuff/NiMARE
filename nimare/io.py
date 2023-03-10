@@ -64,14 +64,10 @@ def convert_nimads_to_dataset(studyset):
                 "journal": study.publication,
                 "title": study.name,
             },
-            "contrasts": {
-                _create_name(a): _analysis_to_dict(study, a) for a in study.analyses
-            },
+            "contrasts": {_create_name(a): _analysis_to_dict(study, a) for a in study.analyses},
         }
 
-    return Dataset(
-        {_create_name(s): _study_to_dict(s) for s in list(studyset.studies.values())}
-    )
+    return Dataset({_create_name(s): _study_to_dict(s) for s in list(studyset.studies)})
 
 
 def convert_neurosynth_to_dict(

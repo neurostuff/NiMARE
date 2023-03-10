@@ -1,7 +1,7 @@
 """NIMADS-related classes for NiMARE."""
 import json
-from copy import deepcopy
 import weakref
+from copy import deepcopy
 
 
 class Studyset:
@@ -36,7 +36,10 @@ class Studyset:
 
     @annotations.setter
     def annotations(self, annotation):
-        loaded_annotation = Annotation(annotation, self)
+        if isinstance(annotation, dict):
+            loaded_annotation = Annotation(annotation, self)
+        elif isinstance(annotation, Annotation):
+            loaded_annotation = annotation
         self._annotations.append(loaded_annotation)
 
     @annotations.deleter
@@ -60,6 +63,11 @@ class Studyset:
 
     def to_dict(self):
         """Return a dictionary representation of the Studyset."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "studies": [s.to_dict() for s in self.studies],
+        }
 
     def load(self, filename):
         """Load a Studyset from a pickled file."""
@@ -75,18 +83,19 @@ class Studyset:
 
     def slice(self, analyses):
         """Create a new Studyset with only requested Analyses."""
-        studyset = self.copy()
+        studyset_dict = self.to_dict()
+        annotations = [annot.to_dict() for annot in self.annotations]
 
-        for study in studyset.studies:
-            unused_analyses = [a for a in study.analyses if a.id not in analyses]
-            for a in unused_analyses:
-                del a
-        for study in studyset.studies:
-            unused_analyses = [a for a in study.analyses if a.id not in analyses]
-            for a in unused_analyses:
-                del a
+        for study in studyset_dict["studies"]:
+            study["analyses"] = [a for a in study["analyses"] if a["id"] in analyses]
+
+        studyset = self.__class__(source=studyset_dict)
+
+        for annot in annotations:
+            annot["notes"] = [n for n in annot["notes"] if n["analysis"] in analyses]
+            studyset.annotation = annot
+
         return studyset
-        # studyset.studies
 
     def merge(self, right):
         """Merge a separate Studyset into the current one."""
@@ -177,6 +186,17 @@ class Study:
         """
         ...
 
+    def to_dict(self):
+        """Return a dictionary representation of the Study."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "authors": self.authors,
+            "publication": self.publication,
+            "metadata": self.metadata,
+            "analyses": [a.to_dict() for a in self.analyses],
+        }
+
 
 class Analysis:
     """A single statistical analyses from a Study.
@@ -224,6 +244,20 @@ class Analysis:
             " ".join([self.name, f"images: {len(self.images)}", f"points: {len(self.points)}"])
         )
 
+    def to_dict(self):
+        """Convert the Analysis to a dictionary."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "conditions": [
+                {k: v for k, v in c.to_dict().items() if k in ["name", "description"]}
+                for c in self.conditions
+            ],
+            "images": [i.to_dict() for i in self.images],
+            "points": [p.to_dict() for p in self.points],
+            "weights": [c.to_dict()["weight"] for c in self.conditions],
+        }
+
 
 class Condition:
     """A condition within an Analysis.
@@ -247,11 +281,8 @@ class Condition:
         self.weight = weight
 
     def to_dict(self):
-        return {
-            "name": self.name,
-            "description": self.description,
-            "weight": self.weight
-        }
+        """Convert the Condition to a dictionary."""
+        return {"name": self.name, "description": self.description, "weight": self.weight}
 
 
 class Annotation:
@@ -287,6 +318,10 @@ class Annotation:
         for note in self.notes:
             self._analysis_ref[note.analysis.id].annotations[self.id] = note.note
 
+    def to_dict(self):
+        """Convert the Annotation to a dictionary."""
+        return {"name": self.name, "id": self.id, "notes": [note.to_dict() for note in self.notes]}
+
 
 class Note:
     """A Note within an annotation.
@@ -300,14 +335,12 @@ class Note:
     """
 
     def __init__(self, analysis, note):
-        self.analysis = weakref.proxy(analysis)
+        self.analysis = analysis
         self.note = note
 
     def to_dict(self):
-        return {
-            "analysis": self.analysis.id,
-            "note": self.note
-        }
+        """Convert the Note to a dictionary."""
+        return {"analysis": self.analysis.id, "note": self.note}
 
 
 class Image:
@@ -335,7 +368,7 @@ class Image:
             "url": self.url,
             "filename": self.filename,
             "space": self.space,
-            "value_type": self.value_type
+            "value_type": self.value_type,
         }
 
 
@@ -361,7 +394,4 @@ class Point:
 
     def to_dict(self):
         """Convert the Point to a dictionary."""
-        return {
-            "space": self.space,
-            "coordinates": [self.x, self.y, self.z]
-        }
+        return {"space": self.space, "coordinates": [self.x, self.y, self.z]}
