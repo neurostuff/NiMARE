@@ -192,10 +192,10 @@ class CBMREstimator(Estimator):
                 ]
                 studies_by_group = dict()
                 if self.group_categories is None:
-                    studies_by_group["default"] = (
+                    studies_by_group["Default"] = (
                         valid_dset_annotations["study_id"].unique().tolist()
                     )
-                    unique_groups = ["default"]
+                    unique_groups = ["Default"]
                 elif isinstance(self.group_categories, str):
                     if self.group_categories not in valid_dset_annotations.columns:
                         raise ValueError(
@@ -213,7 +213,7 @@ class CBMREstimator(Estimator):
                             group_study_id = valid_dset_annotations.loc[group_study_id_bool][
                                 "study_id"
                             ]
-                            studies_by_group[group] = group_study_id.unique().tolist()
+                            studies_by_group[group.capitalize()] = group_study_id.unique().tolist()
                 elif isinstance(self.group_categories, list):
                     missing_categories = set(self.group_categories) - set(
                         dataset.annotations.columns
@@ -235,7 +235,8 @@ class CBMREstimator(Estimator):
                         group_study_id = valid_dset_annotations.loc[group_study_id_bool][
                             "study_id"
                         ]
-                        studies_by_group["_".join(group)] = group_study_id.unique().tolist()
+                        camelcase_group = "".join([g.capitalize() for g in group])
+                        studies_by_group[camelcase_group] = group_study_id.unique().tolist()
                 self.inputs_["studies_by_group"] = studies_by_group
                 self.groups = list(self.inputs_["studies_by_group"].keys())
                 # collect studywise moderators if specficed
@@ -597,7 +598,7 @@ class CBMRInference(object):
                         np.sum(group_foci_per_voxel) / (n_voxels * n_study)
                     )
                     group_log_intensity_per_voxel = np.log(
-                        self.CBMRResults.maps["Group_" + group + "_Studywise_Spatial_Intensity"]
+                        self.CBMRResults.maps[group + "_Studywise_Spatial_Intensity"]
                     )
                     group_log_intensity_per_voxel = (
                         group_log_intensity_per_voxel - group_null_log_spatial_intensity
@@ -610,7 +611,7 @@ class CBMRInference(object):
                 involved_log_intensity_per_voxel = list()
                 for group in con_group_involved:
                     group_log_intensity_per_voxel = np.log(
-                        self.CBMRResults.maps["Group_" + group + "_Studywise_Spatial_Intensity"]
+                        self.CBMRResults.maps[group + "_Studywise_Spatial_Intensity"]
                     )
                     involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
                 involved_log_intensity_per_voxel = np.stack(
@@ -668,21 +669,21 @@ class CBMRInference(object):
             z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
             if self.t_con_groups_name:
                 self.CBMRResults.maps[
-                    f"{self.t_con_groups_name[con_group_count]}_chi_square_values"
+                    f"chi_square_{self.t_con_groups_name[con_group_count]}"
                 ] = chi_sq_spatial
                 self.CBMRResults.maps[
-                    f"{self.t_con_groups_name[con_group_count]}_p_values"
+                    f"p_{self.t_con_groups_name[con_group_count]}"
                 ] = p_vals_spatial
                 self.CBMRResults.maps[
-                    f"{self.t_con_groups_name[con_group_count]}_z_statistics"
+                    f"z_{self.t_con_groups_name[con_group_count]}"
                 ] = z_stats_spatial
             else:
                 self.CBMRResults.maps[
-                    f"GLH_groups_{con_group_count}_chi_square_values"
+                    f"chi_square_GLH_groups_{con_group_count}"
                 ] = chi_sq_spatial
-                self.CBMRResults.maps[f"GLH_groups_{con_group_count}_p_values"] = p_vals_spatial
+                self.CBMRResults.maps[f"p_GLH_groups_{con_group_count}"] = p_vals_spatial
                 self.CBMRResults.maps[
-                    f"GLH_groups_{con_group_count}_z_statistics"
+                    f"z_GLH_groups_{con_group_count}"
                 ] = z_stats_spatial
             con_group_count += 1
 
@@ -745,13 +746,13 @@ class CBMRInference(object):
                     f"{self.t_con_moderators_name[con_moderator_count]}_chi_square_values"
                 ] = chi_sq_moderator
                 self.CBMRResults.tables[
-                    f"{self.t_con_moderators_name[con_moderator_count]}_p_values"
+                    f"p_{self.t_con_moderators_name[con_moderator_count]}"
                 ] = p_vals_moderator
             else:
                 self.CBMRResults.tables[
                     f"GLH_moderators_{con_moderator_count}_chi_square_values"
                 ] = chi_sq_moderator
                 self.CBMRResults.tables[
-                    f"GLH_moderators_{con_moderator_count}_p_values"
+                    f"p_GLH_moderators_{con_moderator_count}"
                 ] = p_vals_moderator
             con_moderator_count += 1

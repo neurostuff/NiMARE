@@ -11,7 +11,7 @@ def test_CBMREstimator(testdata_cbmr_simulated):
     """Unit test for CBMR estimator."""
     dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"])
     cbmr = CBMREstimator(
-        group_categories=["diagnosis", "drug_status"],
+        group_categories= ["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         spline_spacing=10,
         model=models.PoissonEstimator,
@@ -42,12 +42,15 @@ def test_CBMRInference(testdata_cbmr_simulated):
     inference = CBMRInference(
         CBMRResults=cbmr_res, device="cuda"
     )
-    t_con_groups = inference.create_contrast(["schizophrenia_Yes", "schizophrenia_No"], type="groups")
+    t_con_groups = inference.create_contrast(["SchizophreniaYes", "SchizophreniaNo"], type="groups")
     # t_con_moderators = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type="moderators")
     contrast_result = inference.compute_contrast(t_con_groups=t_con_groups, t_con_moderators=False)
     
     corr = FDRCorrector(method="indep", alpha=0.05)
     cres = corr.transform(cbmr_res)
+    
+    corr = FDRCorrector(method="indep", alpha=0.05)
+    cres2 = corr.transform(cres)
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     cbmr = CBMREstimator(model=models.ClusteredNegativeBinomial, lr=1e-4)
