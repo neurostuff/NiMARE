@@ -1159,39 +1159,47 @@ def _get_cluster_coms(labeled_cluster_arr):
 
     return cluster_coms
 
+
+def _create_name(resource):
+    """Take study/analysis object and try to create dataframe friendly/readable name."""
+    return "_".join(resource.name.split()) if resource.name else resource.id
+
+
 def nimads_to_dataset(studyset):
     """Convert a StudySet to a Dataset."""
+    from nimare.dataset import Dataset
+
     def _analysis_to_dict(study, analysis):
-            result = {
-                "metadata": {
-                    "authors": study.name,
-                    "journal": study.publication,
-                    "title": study.name,
-                    "sample_sizes": [study.metadata.get("sample_size")],
-                },
-                "coords": {
-                    "space": analysis.points[0].space,
-                    "x": [p.x for p in analysis.points],
-                    "y": [p.y for p in analysis.points],
-                    "z": [p.z for p in analysis.points],
-                },
-            }
+        result = {
+            "metadata": {
+                "authors": study.name,
+                "journal": study.publication,
+                "title": study.name,
+                "sample_sizes": [study.metadata.get("sample_size")],
+            },
+            "coords": {
+                "space": analysis.points[0].space,
+                "x": [p.x for p in analysis.points],
+                "y": [p.y for p in analysis.points],
+                "z": [p.z for p in analysis.points],
+            },
+        }
 
-            if analysis.annotations:
-                result["labels"] = {}
-                for annotation in analysis.annotations.values():
-                    result["labels"].update(annotation)
+        if analysis.annotations:
+            result["labels"] = {}
+            for annotation in analysis.annotations.values():
+                result["labels"].update(annotation)
 
-            return result
+        return result
 
-        def _study_to_dict(study):
-            return {
-                "metadata": {
-                    "authors": study.authors,
-                    "journal": study.publication,
-                    "title": study.name,
-                },
-                "contrasts": {_create_name(a): _analysis_to_dict(study, a) for a in study.analyses},
-            }
+    def _study_to_dict(study):
+        return {
+            "metadata": {
+                "authors": study.authors,
+                "journal": study.publication,
+                "title": study.name,
+            },
+            "contrasts": {_create_name(a): _analysis_to_dict(study, a) for a in study.analyses},
+        }
 
         return Dataset({_create_name(s): _study_to_dict(s) for s in list(studyset.studies)})

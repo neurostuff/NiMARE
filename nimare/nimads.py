@@ -1,7 +1,9 @@
 """NIMADS-related classes for NiMARE."""
+
 import json
 import weakref
 from copy import deepcopy
+
 from nimare.utils import nimads_to_dataset
 
 

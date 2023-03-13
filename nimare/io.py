@@ -14,8 +14,8 @@ from scipy import sparse
 
 from nimare.dataset import Dataset
 from nimare.extract.utils import _get_dataset_dir
+from nimare.nimads import Studyset
 from nimare.utils import nimads_to_dataset
-from nimare.nimads import Studyset, Annotation
 
 LGR = logging.getLogger(__name__)
 
@@ -26,11 +26,6 @@ DEFAULT_MAP_TYPE_CONVERSION = {
     "Z map": "z",
     "p map": "p",
 }
-
-
-def _create_name(resource):
-    """Take study/analysis object and try to create dataframe friendly/readable name."""
-    return "_".join(resource.name.split()) if resource.name else resource.id
 
 
 def convert_nimads_to_dataset(studyset, annotation=None):
