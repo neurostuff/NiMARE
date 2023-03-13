@@ -2,6 +2,7 @@
 import json
 import weakref
 from copy import deepcopy
+from nimare.utils import nimads_to_dataset
 
 
 class Studyset:
@@ -15,11 +16,19 @@ class Studyset:
         The Study objects comprising the Studyset.
     """
 
-    def __init__(self, source, target_space=None, mask=None):
+    def __init__(self, source, target_space=None, mask=None, annotations=None):
+        # load source as json
+        if isinstance(source, str):
+            with open(source, "r+") as f:
+                source = json.load(f)
+
         self.id = source["id"]
         self.name = source["name"] or ""
         self.studies = [Study(s) for s in source["studies"]]
-        self._annotations = []
+        if annotations:
+            self.annotations = annotations
+        else:
+            self._annotations = []
 
     def __repr__(self):
         """My Simple representation."""
@@ -38,6 +47,9 @@ class Studyset:
     def annotations(self, annotation):
         if isinstance(annotation, dict):
             loaded_annotation = Annotation(annotation, self)
+        elif isinstance(annotation, str):
+            with open(annotation, "r+") as f:
+                loaded_annotation = Annotation(json.load(f), self)
         elif isinstance(annotation, Annotation):
             loaded_annotation = annotation
         self._annotations.append(loaded_annotation)
@@ -68,6 +80,10 @@ class Studyset:
             "name": self.name,
             "studies": [s.to_dict() for s in self.studies],
         }
+
+    def to_dataset(self):
+        """Convert the Studyset to a NiMARE Dataset."""
+        return nimads_to_dataset(self)
 
     def load(self, filename):
         """Load a Studyset from a pickled file."""
