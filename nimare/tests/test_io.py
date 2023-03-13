@@ -232,6 +232,6 @@ def test_convert_neurovault_to_dataset(kwargs):
         ([1, 1, 2, 2], 1),
     ],
 )
-def test_resolve_sample_sizes(sample_sizes, expected_sample_size):
+def test_resolve_sample_sizes(sample_sizes, expected_sample_size, firth_penalty):
     """Test modal sample size heuristic."""
     assert io._resolve_sample_size(sample_sizes) == expected_sample_size

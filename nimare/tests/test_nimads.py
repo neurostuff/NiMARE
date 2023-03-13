@@ -1,5 +1,6 @@
 """Test NiMADS functionality."""
 from nimare import nimads
+from nimare.dataset import Dataset
 
 
 def test_load_nimads(example_nimads_studyset, example_nimads_annotation):
@@ -12,3 +13,5 @@ def test_load_nimads(example_nimads_studyset, example_nimads_annotation):
     analysis_ids = analysis_ids[0:5]
     filtered_studyset = studyset.slice(analyses=analysis_ids)
     assert isinstance(filtered_studyset, nimads.Studyset)
+    dataset = filtered_studyset.to_dataset()
+    assert isinstance(dataset, Dataset)
