@@ -7,6 +7,7 @@ import sparse
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
+from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
 from nimare.stats import null_to_p, nullhist_to_p
@@ -14,6 +15,7 @@ from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, tqdm_joblib, use_memmap
 
 LGR = logging.getLogger(__name__)
+__version__ = _version.get_versions()["version"]
 
 
 class ALE(CBMAEstimator):
@@ -34,9 +36,11 @@ class ALE(CBMAEstimator):
         ======================= =================================================================
         "approximate" (default) Build a histogram of summary-statistic values and their
                                 expected frequencies under the assumption of random spatial
-                                associated between studies, via a weighted convolution.
+                                associated between studies, via a weighted convolution, as
+                                described in :footcite:t:`eickhoff2012activation`.
 
-                                This method is much faster, but slightly less accurate.
+                                This method is much faster, but slightly less accurate, than the
+                                "montecarlo" option.
         "montecarlo"            Perform a large number of permutations, in which the coordinates
                                 in the studies are randomly drawn from the Estimator's brain mask
                                 and the full set of resulting summary-statistic values are
@@ -138,6 +142,49 @@ class ALE(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.n_iters} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution \\citep{eickhoff2012activation}"
+
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str = ""
+
+        description = (
+            "An activation likelihood estimation (ALE) meta-analysis "
+            "\\citep{turkeltaub2002meta,turkeltaub2012minimizing,eickhoff2012activation} was "
+            f"performed with NiMARE {__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), using a(n) "
+            f"{self.kernel_transformer.__class__.__name__.replace('Kernel', '')} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            f"ALE values were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
+        )
+        return description
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -345,6 +392,55 @@ class ALESubtraction(PairwiseCBMAEstimator):
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
 
+    def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates1"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str1 = f", with a total of {int(n_subjects)} participants"
+            n_subjects = (
+                self.inputs_["coordinates2"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str2 = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str1 = ""
+            sample_size_str2 = ""
+
+        description = (
+            "An activation likelihood estimation (ALE) subtraction analysis "
+            "\\citep{laird2005ale,eickhoff2012activation} was performed with NiMARE "
+            f"v{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), "
+            f"using a(n) {self.kernel_transformer.__class__.__name__.replace('Kernel', '')} "
+            "kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2022} "
+            "approach, which differs from the original version. "
+            "In this version, ALE-difference scores are calculated between the two datasets, "
+            "for all voxels in the mask, rather than for voxels significant in the main effects "
+            "analyses of the two datasets. "
+            "Next, voxel-wise null distributions of ALE-difference scores were generated via a "
+            "randomized group assignment procedure, in which the studies in the two datasets were "
+            "randomly reassigned and ALE-difference scores were calculated for the randomized "
+            "datasets. "
+            f"This randomization procedure was repeated {self.n_iters} times to build the null "
+            "distributions. "
+            "The significance of the original ALE-difference scores was assessed using a "
+            "two-sided statistical test. "
+            "The null distributions were assumed to be asymmetric, as ALE-difference scores will "
+            "be skewed based on the sample sizes of the two datasets. "
+            f"The first input dataset (group1) included {self.inputs_['coordinates1'].shape[0]} "
+            f"foci from {len(self.inputs_['id1'])} experiments{sample_size_str1}. "
+            f"The second input dataset (group2) included {self.inputs_['coordinates2'].shape[0]} "
+            f"foci from {len(self.inputs_['id2'])} experiments{sample_size_str2}. "
+        )
+        return description
+
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
@@ -423,7 +519,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "z_desc-group1MinusGroup2": z_arr,
             "logp_desc-group1MinusGroup2": logp_arr,
         }
-        return maps, {}
+        description = self._generate_description()
+
+        return maps, {}, description
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -579,6 +677,31 @@ class SCALE(CBMAEstimator):
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
 
+    def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str = ""
+
+        description = (
+            "A specific coactivation likelihood estimation (SCALE) meta-analysis "
+            "\\citep{langner2014meta} was performed with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), with "
+            f"{self.n_iters} iterations. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
+        )
+        return description
+
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
@@ -639,9 +762,11 @@ class SCALE(CBMAEstimator):
         logp_values = -np.log10(p_values)
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
-        # Write out unthresholded value maps
+        # Write out unthresholded value images
         maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
-        return maps, {}
+        description = self._generate_description()
+
+        return maps, {}, description
 
     def _compute_summarystat_est(self, data):
         """Generate ALE-value array and null distribution from a list of contrasts.

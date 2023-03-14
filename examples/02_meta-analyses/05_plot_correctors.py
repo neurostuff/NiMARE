@@ -8,6 +8,7 @@ The Corrector class
 
 Here we take a look at multiple comparisons correction in meta-analyses.
 """
+from pprint import pprint
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -86,6 +87,13 @@ for i_ax, dist_name in enumerate(DISTS_TO_PLOT):
     axes[i_ax].set_xlim(0, None)
 
 fig.tight_layout()
+
+###############################################################################
+# You can also look at the description of the Corrector.
+print("Description:")
+pprint(cres.description_)
+print("References:")
+pprint(cres.bibtex_)
 
 ###############################################################################
 # Show corrected results
