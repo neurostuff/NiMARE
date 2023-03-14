@@ -4,7 +4,7 @@ import os.path as op
 import nimare
 from nimare import cli, workflows
 from nimare.correct import FWECorrector
-from nimare.diagnostics import FocusCounter
+from nimare.diagnostics import Jackknife
 from nimare.meta.cbma.ale import ALE
 from nimare.tests.utils import get_test_data_path
 
@@ -94,7 +94,7 @@ def test_cbma_workflow_function_smoke(tmp_path_factory, testdata_cbma_full):
     # Initialize estimator, corrector and diagnostic classes
     est = ALE(null_method="approximate")
     corr = FWECorrector(method="montecarlo", n_iters=100)
-    diag = FocusCounter()
+    diag = Jackknife()
 
     cres = workflows.cbma_workflow(
         testdata_cbma_full,
@@ -109,9 +109,9 @@ def test_cbma_workflow_function_smoke(tmp_path_factory, testdata_cbma_full):
     assert "cluster_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
     assert "cluster_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
     assert "cluster_level-voxel_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "FocusCounter_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "FocusCounter_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "FocusCounter_level-voxel_corr-FWE_method-montecarlo" in cres.tables.keys()
+    assert "Jackknife_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
+    assert "Jackknife_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
+    assert "Jackknife_level-voxel_corr-FWE_method-montecarlo" in cres.tables.keys()
 
     for imgtype in cres.maps.keys():
         filename = imgtype + ".nii.gz"
