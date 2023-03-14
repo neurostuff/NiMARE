@@ -81,11 +81,9 @@ class Corrector(metaclass=ABCMeta):
                 f"\tAvailable native methods: {', '.join(corr_methods)}\n"
                 f"\tAvailable estimator methods: {', '.join(est_methods)}"
             )
-        for rm in self._required_maps:
-            print(rm)
         # Check required maps
         # for cbmr approach, we have customized name for groupwise p maps
-        p_map_cbmr = tuple([m for m in result.maps.keys() if re.search("p_", m)])
+        p_map_cbmr = tuple([m for m in result.maps.keys() if m.startswith("p_") and "_corr-" not in m])
         if len(p_map_cbmr) > 0:
             self._required_maps = p_map_cbmr
         for rm in self._required_maps:

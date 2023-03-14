@@ -4,7 +4,7 @@ from nimare.meta import models
 import logging
 import torch
 import numpy as np
-from nimare.correct import FDRCorrector
+from nimare.correct import FDRCorrector, FWECorrector
 
 def test_CBMREstimator(testdata_cbmr_simulated):
     logging.getLogger().setLevel(logging.DEBUG)
@@ -42,15 +42,21 @@ def test_CBMRInference(testdata_cbmr_simulated):
     inference = CBMRInference(
         CBMRResults=cbmr_res, device="cuda"
     )
-    t_con_groups = inference.create_contrast(["SchizophreniaYes", "SchizophreniaNo"], type="groups")
-    # t_con_moderators = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type="moderators")
-    contrast_result = inference.compute_contrast(t_con_groups=t_con_groups, t_con_moderators=False)
+    t_con_groups = inference.create_contrast(
+    [
+        "SchizophreniaYes-SchizophreniaNo",
+        "SchizophreniaNo-DepressionYes",
+        "DepressionYes-DepressionNo",
+    ],
+    type="groups",
+    )
+    # t_con_groups = inference.create_contrast(["SchizophreniaYes", "SchizophreniaNo"], type="groups")
+    t_con_moderators = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type="moderators")
+    contrast_result = inference.compute_contrast(t_con_groups=t_con_groups, t_con_moderators=t_con_moderators)
     
-    corr = FDRCorrector(method="indep", alpha=0.05)
+    corr = FWECorrector(method="bonferroni")
     cres = corr.transform(cbmr_res)
     
-    corr = FDRCorrector(method="indep", alpha=0.05)
-    cres2 = corr.transform(cres)
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     cbmr = CBMREstimator(model=models.ClusteredNegativeBinomial, lr=1e-4)

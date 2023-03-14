@@ -224,7 +224,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             spatial_regression_coef[group] = group_spatial_coef_linear_weight
             # Estimate group-specific spatial intensity
             group_spatial_intensity_estimation = np.exp(np.matmul(coef_spline_bases, group_spatial_coef_linear_weight))
-            spatial_intensity_estimation[group + "_Studywise_Spatial_Intensity"] = group_spatial_intensity_estimation
+            spatial_intensity_estimation["SpatialIntensity_group-" + group] = group_spatial_intensity_estimation
 
         # Extract optimized regression coefficient of study-level moderators from the model
         if self.moderators_coef_dim:

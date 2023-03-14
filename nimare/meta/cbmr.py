@@ -2,6 +2,7 @@ from nimare.base import Estimator
 from nimare.utils import get_masker, B_spline_bases, dummy_encoding_moderators
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import scipy
 from nimare.utils import mm2vox
 from nimare.diagnostics import FocusFilter
@@ -598,7 +599,7 @@ class CBMRInference(object):
                         np.sum(group_foci_per_voxel) / (n_voxels * n_study)
                     )
                     group_log_intensity_per_voxel = np.log(
-                        self.CBMRResults.maps[group + "_Studywise_Spatial_Intensity"]
+                        self.CBMRResults.maps["SpatialIntensity_group-" + group]
                     )
                     group_log_intensity_per_voxel = (
                         group_log_intensity_per_voxel - group_null_log_spatial_intensity
@@ -611,7 +612,7 @@ class CBMRInference(object):
                 involved_log_intensity_per_voxel = list()
                 for group in con_group_involved:
                     group_log_intensity_per_voxel = np.log(
-                        self.CBMRResults.maps[group + "_Studywise_Spatial_Intensity"]
+                        self.CBMRResults.maps["SpatialIntensity_group-" + group]
                     )
                     involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
                 involved_log_intensity_per_voxel = np.stack(
@@ -669,13 +670,13 @@ class CBMRInference(object):
             z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
             if self.t_con_groups_name:
                 self.CBMRResults.maps[
-                    f"chi_square_{self.t_con_groups_name[con_group_count]}"
+                    f"chi_square_group-{self.t_con_groups_name[con_group_count]}"
                 ] = chi_sq_spatial
                 self.CBMRResults.maps[
-                    f"p_{self.t_con_groups_name[con_group_count]}"
+                    f"p_group-{self.t_con_groups_name[con_group_count]}"
                 ] = p_vals_spatial
                 self.CBMRResults.maps[
-                    f"z_{self.t_con_groups_name[con_group_count]}"
+                    f"z_group-{self.t_con_groups_name[con_group_count]}"
                 ] = z_stats_spatial
             else:
                 self.CBMRResults.maps[
@@ -739,20 +740,19 @@ class CBMRInference(object):
                 @ np.linalg.inv(con_moderator @ Cov_moderator_coef @ con_moderator.T)
                 @ Contrast_moderator_coef
             )
-            chi_sq_moderator = chi_sq_moderator.item()
             p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
             if self.t_con_moderators_name:  # None?
                 self.CBMRResults.tables[
-                    f"{self.t_con_moderators_name[con_moderator_count]}_chi_square_values"
-                ] = chi_sq_moderator
+                    f"chi_square_{self.t_con_moderators_name[con_moderator_count]}"
+                ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
                 self.CBMRResults.tables[
                     f"p_{self.t_con_moderators_name[con_moderator_count]}"
-                ] = p_vals_moderator
+                ] = pd.DataFrame(data=np.array(p_vals_moderator), columns=["p_value"])
             else:
                 self.CBMRResults.tables[
-                    f"GLH_moderators_{con_moderator_count}_chi_square_values"
-                ] = chi_sq_moderator
+                    f"chi_square_GLH_moderators_{con_moderator_count}"
+                ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
                 self.CBMRResults.tables[
                     f"p_GLH_moderators_{con_moderator_count}"
-                ] = p_vals_moderator
+                ] = pd.DataFrame(data=np.array(p_vals_moderator), columns=["p_value"])
             con_moderator_count += 1

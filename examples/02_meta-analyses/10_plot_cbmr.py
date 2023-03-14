@@ -81,40 +81,40 @@ cbmr = CBMREstimator(
     model=models.PoissonEstimator,
     penalty=False,
     lr=1e-1,
-    tol=1e1,
+    tol=1e3,
     device="cpu",
 )
 results = cbmr.fit(dataset=dset)
 plot_stat_map(
-    results.get_map("Group_schizophrenia_Yes_Studywise_Spatial_Intensity"),
+    results.get_map("SpatialIntensity_group-SchizophreniaYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="schizophrenia_Yes",
+    title="SchizophreniaYes",
     threshold=1e-4,
 )
 plot_stat_map(
-    results.get_map("Group_schizophrenia_No_Studywise_Spatial_Intensity"),
+    results.get_map("SpatialIntensity_group-SchizophreniaNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="schizophrenia_No",
+    title="SchizophreniaNo",
     threshold=1e-4,
 )
 plot_stat_map(
-    results.get_map("Group_depression_Yes_Studywise_Spatial_Intensity"),
+    results.get_map("SpatialIntensity_group-DepressionYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="depression_Yes",
+    title="DepressionYes",
     threshold=1e-4,
 )
 plot_stat_map(
-    results.get_map("Group_depression_No_Studywise_Spatial_Intensity"),
+    results.get_map("SpatialIntensity_group-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="depression_No",
+    title="DepressionNo",
     threshold=1e-4,
 )
 
@@ -133,44 +133,44 @@ from nimare.correct import FWECorrector
 
 inference = CBMRInference(CBMRResults=results, device="cuda")
 t_con_groups = inference.create_contrast(
-    ["schizophrenia_Yes", "schizophrenia_No", "depression_Yes", "depression_No"], type="groups"
+    ["SchizophreniaYes", "SchizophreniaNo", "DepressionYes", "DepressionNo"], type="groups"
 )
 contrast_result = inference.compute_contrast(t_con_groups=t_con_groups, t_con_moderators=False)
 
-# generate chi-square maps for each group
+# generate z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
-    results.get_map("schizophrenia_Yes_z_statistics"),
+    results.get_map("z_group-SchizophreniaYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="schizophrenia_Yes",
+    title="SchizophreniaYes",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
 plot_stat_map(
-    results.get_map("schizophrenia_No_z_statistics"),
+    results.get_map("z_group-SchizophreniaNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="schizophrenia_No",
+    title="SchizophreniaNo",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
 plot_stat_map(
-    results.get_map("depression_Yes_z_statistics"),
+    results.get_map("z_group-DepressionYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="depression_Yes",
+    title="DepressionYes",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
 plot_stat_map(
-    results.get_map("depression_No_z_statistics"),
+    results.get_map("z_group-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="depression_No",
+    title="DepressionNo",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
@@ -183,6 +183,55 @@ plot_stat_map(
 # significant p-values are highlighted (under significance level $0.05$).
 
 ###############################################################################
+# Perform fasle discovery rate (FDR) correction on spatial homogeneity test
+# -----------------------------------------------------------------------------
+# The default FDR correction method is "indep", using Benjamini-Hochberg(BH) procedure.
+from nimare.correct import FDRCorrector
+corr = FDRCorrector(method="indep", alpha=0.05)
+cres = corr.transform(results)
+
+# generate FDR corrected z-score maps for group-wise spatial homogeneity test
+plot_stat_map(
+    cres.get_map("z_group-SchizophreniaYes_corr-FDR_method-indep"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    title="FDRcorrecred-SchizophreniaYes",
+    threshold=scipy.stats.norm.isf(0.05),
+)
+
+plot_stat_map(
+    cres.get_map("z_group-SchizophreniaNo_corr-FDR_method-indep"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    title="FDRcorrecred-SchizophreniaNo",
+    threshold=scipy.stats.norm.isf(0.05),
+)
+
+plot_stat_map(
+    cres.get_map("z_group-DepressionYes_corr-FDR_method-indep"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    title="FDRcorrecred-DepressionYes",
+    threshold=scipy.stats.norm.isf(0.05),
+)
+
+plot_stat_map(
+    cres.get_map("z_group-DepressionNo_corr-FDR_method-indep"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    title="FDRcorrecred-DepressionNo",
+    threshold=scipy.stats.norm.isf(0.05),
+)
+
+###############################################################################
+# After FDR correction (via BH procedure), areas with stronger spatial intensity
+# are more stringent, (the number of voxels with significant p-values is reduced).
+
+###############################################################################
 # GLH testing for group comparisons among any two groups
 # -----------------------------------------------------------------------------
 # In the most basic scenario of group comparison test, contrast matrix `t_con_groups`
@@ -191,9 +240,9 @@ plot_stat_map(
 inference = CBMRInference(CBMRResults=results, device="cuda")
 t_con_groups = inference.create_contrast(
     [
-        "schizophrenia_Yes-schizophrenia_No",
-        "schizophrenia_No-depression_Yes",
-        "depression_Yes-depression_No",
+        "SchizophreniaYes-SchizophreniaNo",
+        "SchizophreniaNo-DepressionYes",
+        "DepressionYes-DepressionNo",
     ],
     type="groups",
 )
@@ -201,29 +250,29 @@ contrast_result = inference.compute_contrast(t_con_groups=t_con_groups, t_con_mo
 
 # generate z-statistics maps for each group
 plot_stat_map(
-    results.get_map("schizophrenia_Yes-schizophrenia_No_z_statistics"),
+    results.get_map("z_group-SchizophreniaYes-SchizophreniaNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="schizophrenia_Yes",
+    title="SchizophreniaYes-SchizophreniaNo",
     threshold=scipy.stats.norm.isf(0.4),
 )
 
 plot_stat_map(
-    results.get_map("schizophrenia_No-depression_Yes_z_statistics"),
+    results.get_map("z_group-SchizophreniaNo-DepressionYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="schizophrenia_No",
+    title="SchizophreniaNo-DepressionYes",
     threshold=scipy.stats.norm.isf(0.4),
 )
 
 plot_stat_map(
-    results.get_map("depression_Yes-depression_No_z_statistics"),
+    results.get_map("z_group-DepressionYes-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="depression_Yes",
+    title="DepressionYes-DepressionNo",
     threshold=scipy.stats.norm.isf(0.4),
 )
 ###############################################################################
@@ -234,6 +283,30 @@ plot_stat_map(
 # within brain mask, $j$ is the index of voxel. Areas with significant p-values
 # (significant difference in spatial intensity estimation between two groups)
 # are highlighted (under significance level $0.05$).
+
+###############################################################################
+# Perform family-wise error rate (FWE) correction on group comparison tests
+# -----------------------------------------------------------------------------
+# The default setting is performing Bonferroni FWE correction.
+from nimare.correct import FWECorrector
+corr = FWECorrector(method="bonferroni")
+cres = corr.transform(results)
+
+
+# generate FDR corrected z-score maps for group-wise spatial homogeneity test
+plot_stat_map(
+    cres.get_map("z_group-SchizophreniaYes-SchizophreniaNo_corr-FWE_method-bonferroni"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    title="FWEcorrecred-SchizophreniaYes-SchizophreniaNo",
+    threshold=scipy.stats.norm.isf(0.05),
+)
+
+###############################################################################
+# Bonferroni correction is a very conservative FWE correction methods, especially
+# because most functional imaging data have some degree of spatial correlation
+
 
 ###############################################################################
 # GLH testing with contrast matrix specified
@@ -257,7 +330,7 @@ contrast_result = inference.compute_contrast(
     t_con_groups=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]], t_con_moderators=False
 )
 plot_stat_map(
-    results.get_map("GLH_groups_0_z_statistics"),
+    results.get_map("z_GLH_groups_0"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -278,12 +351,12 @@ contrast_result = inference.compute_contrast(t_con_groups=False, t_con_moderator
 print(results.tables["Moderators_Regression_Coef"])
 print(
     "P-values of moderator effects `sample_sizes` is {}".format(
-        results.tables["standardized_sample_sizes_p_values"]
+        results.tables["p_standardized_sample_sizes"]
     )
 )
 print(
     "P-value of moderator effects `avg_age` is {}".format(
-        results.tables["standardized_avg_age_p_values"]
+        results.tables["p_standardized_avg_age"]
     )
 )
 
@@ -302,7 +375,7 @@ t_con_moderators = inference.create_contrast(
 contrast_result = inference.compute_contrast(t_con_groups=False, t_con_moderators=t_con_moderators)
 print(
     "P-values of difference in two moderator effectors (`sample_size-avg_age`) is {}".format(
-        results.tables["standardized_sample_sizes-standardized_avg_age_p_values"]
+        results.tables["p_standardized_sample_sizes-standardized_avg_age"]
     )
 )
 
