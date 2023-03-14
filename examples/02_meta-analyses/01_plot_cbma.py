@@ -67,7 +67,10 @@ plot_stat_map(
     threshold=0.1,
 )
 
-pprint(cres.description_)
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # MKDA Chi-Squared
@@ -93,7 +96,10 @@ plot_stat_map(
     threshold=0.1,
 )
 
-pprint(cres.description_)
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Kernel Density Analysis
@@ -121,7 +127,10 @@ plot_stat_map(
     threshold=0.1,
 )
 
-pprint(cres.description_)
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Activation Likelihood Estimation
@@ -149,7 +158,10 @@ plot_stat_map(
     threshold=0.1,
 )
 
-pprint(cres.description_)
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Specific Co-Activation Likelihood Estimation
@@ -191,4 +203,7 @@ plot_stat_map(
     threshold=0.1,
 )
 
-results.description_
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)

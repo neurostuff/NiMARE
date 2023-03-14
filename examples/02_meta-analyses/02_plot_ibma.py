@@ -58,7 +58,10 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
 pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Stouffer's with weighting by sample size
@@ -73,7 +76,10 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
 pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Fisher's
@@ -90,7 +96,10 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
 pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Permuted OLS
@@ -118,7 +127,10 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
 pprint(cresult.description_)
+print("References:")
+pprint(cresult.bibtex_)
 
 ###############################################################################
 # Weighted Least Squares
@@ -135,7 +147,10 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
 pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # DerSimonian-Laird
@@ -152,7 +167,10 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
 pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Hedges
@@ -169,4 +187,7 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
 pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
