@@ -328,7 +328,7 @@ class Dataset(NiMAREBase):
         for attribute in ("annotations", "coordinates", "images", "metadata", "texts"):
             df1 = getattr(self, attribute)
             df2 = getattr(right, attribute)
-            new_df = df1.append(df2, ignore_index=True, sort=False)
+            new_df = pd.concat([df1, df2], ignore_index=True, sort=False)
             new_df.sort_values(by="id", inplace=True)
             new_df.reset_index(drop=True, inplace=True)
             new_df = new_df.where(~new_df.isna(), None)

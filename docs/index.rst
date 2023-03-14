@@ -16,6 +16,10 @@ To install NiMARE check out our `installation guide`_.
    :target: https://pypi.python.org/pypi/nimare/
    :alt: PyPI - Python Version
 
+.. image:: https://img.shields.io/badge/Source%20Code-neurostuff%2Fnimare-purple
+   :target: https://github.com/neurostuff/NiMARE
+   :alt: GitHub Repository
+
 .. image:: https://zenodo.org/badge/117724523.svg
    :target: https://zenodo.org/badge/latestdoi/117724523
    :alt: DOI

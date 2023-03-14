@@ -11,7 +11,7 @@ from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from nimare.base import Estimator
+from nimare.estimator import Estimator
 from nimare.meta.kernel import KernelTransformer
 from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
 from nimare.results import MetaResult
