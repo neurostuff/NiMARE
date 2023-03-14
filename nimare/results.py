@@ -7,12 +7,13 @@ import numpy as np
 import pandas as pd
 from nibabel.funcs import squeeze_image
 
+from nimare.base import NiMAREBase
 from nimare.utils import get_masker
 
 LGR = logging.getLogger(__name__)
 
 
-class MetaResult(object):
+class MetaResult(NiMAREBase):
     """Base class for meta-analytic results.
 
     Parameters
