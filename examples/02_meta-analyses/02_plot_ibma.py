@@ -29,6 +29,7 @@ dset_dir = download_nidm_pain()
 # Load Dataset
 # -----------------------------------------------------------------------------
 import os
+from pprint import pprint
 
 from nimare.dataset import Dataset
 from nimare.transforms import ImageTransformer
@@ -57,6 +58,8 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+pprint(results.description_)
+
 ###############################################################################
 # Stouffer's with weighting by sample size
 # -----------------------------------------------------------------------------
@@ -69,6 +72,8 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+pprint(results.description_)
 
 ###############################################################################
 # Fisher's
@@ -84,6 +89,8 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+pprint(results.description_)
 
 ###############################################################################
 # Permuted OLS
@@ -111,6 +118,8 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+pprint(cresult.description_)
+
 ###############################################################################
 # Weighted Least Squares
 # -----------------------------------------------------------------------------
@@ -125,6 +134,8 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+pprint(results.description_)
 
 ###############################################################################
 # DerSimonian-Laird
@@ -141,6 +152,8 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+pprint(results.description_)
+
 ###############################################################################
 # Hedges
 # -----------------------------------------------------------------------------
@@ -155,3 +168,5 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+pprint(results.description_)

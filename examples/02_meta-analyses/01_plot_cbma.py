@@ -25,6 +25,7 @@ meta-analysis, see other stuff.
 #   NIDM-Results-compliant, so the nidmresults library could not be used to
 #   facilitate data extraction.
 import os
+from pprint import pprint
 
 from nilearn.plotting import plot_stat_map
 
@@ -66,6 +67,8 @@ plot_stat_map(
     threshold=0.1,
 )
 
+pprint(cres.description_)
+
 ###############################################################################
 # MKDA Chi-Squared
 # -----------------------------------------------------------------------------
@@ -89,6 +92,8 @@ plot_stat_map(
     cmap="RdBu_r",
     threshold=0.1,
 )
+
+pprint(cres.description_)
 
 ###############################################################################
 # Kernel Density Analysis
@@ -116,6 +121,8 @@ plot_stat_map(
     threshold=0.1,
 )
 
+pprint(cres.description_)
+
 ###############################################################################
 # Activation Likelihood Estimation
 # -----------------------------------------------------------------------------
@@ -141,6 +148,8 @@ plot_stat_map(
     cmap="RdBu_r",
     threshold=0.1,
 )
+
+pprint(cres.description_)
 
 ###############################################################################
 # Specific Co-Activation Likelihood Estimation
@@ -181,3 +190,5 @@ plot_stat_map(
     cmap="RdBu_r",
     threshold=0.1,
 )
+
+results.description_
