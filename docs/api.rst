@@ -26,6 +26,7 @@ API
 
 For more information about the components of coordinate-based meta-analysis in NiMARE, see :doc:`cbma`.
 
+
 .. automodule:: nimare.meta
    :no-members:
    :no-inherited-members:
@@ -326,4 +327,4 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :template: class.rst
 
    base.NiMAREBase
-   base.Estimator
+   estimator.Estimator

@@ -37,7 +37,7 @@ def test_dataset_smoke():
     with pytest.raises(ValueError):
         dset.get_studies_by_label("dog")
 
-    mask_data = np.zeros(dset.masker.mask_img.shape, int)
+    mask_data = np.zeros(dset.masker.mask_img.shape, np.int32)
     mask_data[40, 40, 40] = 1
     mask_img = nib.Nifti1Image(mask_data, dset.masker.mask_img.affine)
     assert isinstance(dset.get_studies_by_mask(mask_img), list)

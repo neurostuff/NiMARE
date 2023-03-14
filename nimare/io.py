@@ -529,7 +529,6 @@ def convert_neurovault_to_dataset(
 
     dataset_dict = {}
     for coll_name, nv_coll in collection_ids.items():
-
         nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
         images = requests.get(nv_url).json()
         if "Not found" in images.get("detail", ""):

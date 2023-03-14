@@ -51,8 +51,8 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
     )
     nonsig_prob_map = nonsig_prob_map[0].todense()
 
-    sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(int), affine=mask.affine)
-    nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(int), affine=mask.affine)
+    sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(np.int32), affine=mask.affine)
+    nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(np.int32), affine=mask.affine)
     return sig_map, nonsig_map
 
 

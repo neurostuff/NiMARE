@@ -2,24 +2,21 @@
 import copy
 import logging
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from nibabel.funcs import squeeze_image
-from nilearn import image, input_data
-from scipy import ndimage
+from nilearn import input_data, reporting
 from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
 from nimare.utils import (
     _check_ncores,
-    _get_cluster_coms,
+    _get_clusters_table,
     get_masker,
     mm2vox,
     tqdm_joblib,
-    vox2mm,
 )
 
 LGR = logging.getLogger(__name__)
@@ -27,6 +24,10 @@ LGR = logging.getLogger(__name__)
 
 class Jackknife(NiMAREBase):
     """Run a jackknife analysis on a meta-analysis result.
+
+    .. versionchanged:: 0.0.14
+
+        Return clusters table.
 
     .. versionchanged:: 0.0.13
 
@@ -86,15 +87,24 @@ class Jackknife(NiMAREBase):
         contribution_table : :obj:`pandas.DataFrame`
             A DataFrame with information about relative contributions of each experiment to each
             cluster in the thresholded map.
-            There is one row for each experiment, as well as one more row at the top of the table
-            (below the header), which has the center of mass of each cluster.
-            There is one column for each cluster, with column names being integers indicating the
-            cluster's associated value in the ``labeled_cluster_img`` output.
-        labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
-            The labeled, thresholded map that is used to identify clusters characterized by this
-            analysis.
-            Each cluster in the map has a single value, which corresponds to the cluster's column
-            name in ``contribution_table``.
+            There is one row for each experiment.
+            There is one column for each cluster, with column names being
+            ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
+            statistical values, plus an integer indicating the cluster's associated value
+            in the ``label_maps[0]``/``label_maps[1]`` output.
+        clusters_table : :obj:`pandas.DataFrame`
+            A DataFrame with information about each cluster.
+            There is one row for each cluster.
+            The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
+            for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
+            ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
+            (the size of the cluster, in cubic millimeters).
+        label_maps : :obj:`list`
+            List of :obj:`nibabel.nifti1.Nifti1Image` objects of cluster label maps.
+            Each cluster in the map has a single value, which corresponds to the cluster number
+            of the column name in ``contribution_table``.
+            If target_image has negative values after thresholding, first and second maps
+            correspond to positive and negative tails.
         """
         if not hasattr(result.estimator, "dataset"):
             raise AttributeError(
@@ -118,13 +128,6 @@ class Jackknife(NiMAREBase):
                 f"Available maps in result are: {', '.join(available_maps)}."
             )
 
-        if self.voxel_thresh:
-            thresh_img = image.threshold_img(target_img, self.voxel_thresh)
-        else:
-            thresh_img = target_img
-
-        thresh_arr = thresh_img.get_fdata()
-
         # CBMAs have "stat" maps, while most IBMAs have "est" maps.
         # Fisher's and Stouffer's only have "z" maps though.
         if "est" in result.maps:
@@ -139,61 +142,72 @@ class Jackknife(NiMAREBase):
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
         meta_ids = estimator.inputs_["id"]
-        rows = ["Center of Mass"] + list(meta_ids)
+        rows = list(meta_ids)
 
-        # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
-        # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
-        labeled_cluster_arr, n_clusters = ndimage.label(thresh_arr, conn)
-        labeled_cluster_img = nib.Nifti1Image(
-            labeled_cluster_arr,
-            affine=target_img.affine,
-            header=target_img.header,
+        # Get clusters table
+        two_sided = (target_img.get_fdata() < 0).any()
+        stat_threshold = self.voxel_thresh or 0
+        clusters_table, label_maps = _get_clusters_table(
+            target_img,
+            stat_threshold,
+            two_sided=two_sided,
+            return_label_maps=True,
         )
 
-        if n_clusters == 0:
+        # Make sure cluster IDs are strings
+        clusters_table = clusters_table.astype({"Cluster ID": "str"})
+        # Rename the clusters_table cluster IDs to match the contribution table columns
+        clusters_table["Cluster ID"] = [
+            f"PositiveTail {row['Cluster ID']}"
+            if row["Peak Stat"] > 0
+            else f"NegativeTail {row['Cluster ID']}"
+            for _, row in clusters_table.iterrows()
+        ]
+
+        if clusters_table.shape[0] == 0:
             LGR.warning("No clusters found")
-            contribution_table = pd.DataFrame(index=rows)
-            return contribution_table, labeled_cluster_img
+            contribution_table = pd.DataFrame(columns=["id"], data=rows)
+            return contribution_table, clusters_table, label_maps
 
-        cluster_coms = _get_cluster_coms(labeled_cluster_arr)
-        cluster_coms = vox2mm(cluster_coms, target_img.affine)
+        contribution_tables = []
+        signs = [1, -1] if len(label_maps) == 2 else [1]
+        for sign, label_map in zip(signs, label_maps):
+            cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
 
-        cluster_com_strs = []
-        for i_peak in range(cluster_coms.shape[0]):
-            x, y, z = cluster_coms[i_peak, :].astype(int)
-            xyz_str = f"({x}, {y}, {z})"
-            cluster_com_strs.append(xyz_str)
+            # Create contribution table
+            col_name = "PositiveTail" if sign == 1 else "NegativeTail"
+            cols = [f"{col_name} {int(c_id)}" for c_id in cluster_ids]
+            contribution_table = pd.DataFrame(index=rows, columns=cols)
+            contribution_table.index.name = "id"
 
-        # Mask using a labels masker, so that we can easily get the mean value for each cluster
-        cluster_masker = input_data.NiftiLabelsMasker(labeled_cluster_img)
-        cluster_masker.fit(labeled_cluster_img)
+            # Mask using a labels masker, so that we can easily get the mean value for each cluster
+            cluster_masker = input_data.NiftiLabelsMasker(label_map)
+            cluster_masker.fit(label_map)
 
-        # Create empty contribution table
-        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
-        contribution_table.index.name = "Cluster ID"
-        contribution_table.loc["Center of Mass"] = cluster_com_strs
-
-        with tqdm_joblib(tqdm(total=len(meta_ids))):
-            jackknife_results = Parallel(n_jobs=self.n_cores)(
-                delayed(self._transform)(
-                    study_id,
-                    all_ids=meta_ids,
-                    dset=dset,
-                    estimator=estimator,
-                    target_value_map=target_value_map,
-                    stat_values=stat_values,
-                    original_masker=original_masker,
-                    cluster_masker=cluster_masker,
+            with tqdm_joblib(tqdm(total=len(meta_ids))):
+                jackknife_results = Parallel(n_jobs=self.n_cores)(
+                    delayed(self._transform)(
+                        study_id,
+                        all_ids=meta_ids,
+                        dset=dset,
+                        estimator=estimator,
+                        target_value_map=target_value_map,
+                        stat_values=stat_values,
+                        original_masker=original_masker,
+                        cluster_masker=cluster_masker,
+                    )
+                    for study_id in meta_ids
                 )
-                for study_id in meta_ids
-            )
 
-        # Add the results to the table
-        for expid, stat_prop_values in jackknife_results:
-            contribution_table.loc[expid] = stat_prop_values
+            # Add the results to the table
+            for expid, stat_prop_values in jackknife_results:
+                contribution_table.loc[expid] = stat_prop_values.flatten()
 
-        return contribution_table, labeled_cluster_img
+            contribution_tables.append(contribution_table.reset_index())
+
+        contribution_table = pd.concat(contribution_tables, ignore_index=True, sort=False)
+
+        return contribution_table, clusters_table, label_maps
 
     def _transform(
         self,
@@ -239,6 +253,10 @@ class Jackknife(NiMAREBase):
 
 class FocusCounter(NiMAREBase):
     """Run a focus-count analysis on a coordinate-based meta-analysis result.
+
+    .. versionchanged:: 0.0.14
+
+        Return clusters table.
 
     .. versionchanged:: 0.0.13
 
@@ -298,15 +316,24 @@ class FocusCounter(NiMAREBase):
         contribution_table : :obj:`pandas.DataFrame`
             A DataFrame with information about relative contributions of each experiment to each
             cluster in the thresholded map.
-            There is one row for each experiment, as well as one more row at the top of the table
-            (below the header), which has the center of mass of each cluster.
-            There is one column for each cluster, with column names being integers indicating the
-            cluster's associated value in the ``labeled_cluster_img`` output.
-        labeled_cluster_img : :obj:`nibabel.nifti1.Nifti1Image`
-            The labeled, thresholded map that is used to identify clusters characterized by this
-            analysis.
-            Each cluster in the map has a single value, which corresponds to the cluster's column
-            name in ``contribution_table``.
+            There is one row for each experiment.
+            There is one column for each cluster, with column names being
+            ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
+            statistical values, plus an integer indicating the cluster's associated value
+            in the ``label_maps[0]``/``label_maps[1]`` output.
+        clusters_table : :obj:`pandas.DataFrame`
+            A DataFrame with information about each cluster.
+            There is one row for each cluster.
+            The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
+            for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
+            ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
+            (the size of the cluster, in cubic millimeters).
+        label_maps : :obj:`list`
+            List of :obj:`nibabel.nifti1.Nifti1Image` objects of cluster label maps.
+            Each cluster in the map has a single value, which corresponds to the cluster number
+            of the column name in ``contribution_table``.
+            If target_image has negative values after thresholding, first and second maps
+            correspond to positive and negative tails.
         """
         if not hasattr(result.estimator, "dataset"):
             raise AttributeError(
@@ -329,63 +356,72 @@ class FocusCounter(NiMAREBase):
                 f"Available maps in result are: {', '.join(available_maps)}."
             )
 
-        if self.voxel_thresh:
-            thresh_img = image.threshold_img(target_img, self.voxel_thresh)
-        else:
-            thresh_img = target_img
-
-        thresh_arr = thresh_img.get_fdata()
+        # Get clusters table
+        stat_threshold = self.voxel_thresh or 0
+        clusters_table = reporting.get_clusters_table(target_img, stat_threshold)
 
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
         meta_ids = estimator.inputs_["id"]
-        rows = ["Center of Mass"] + list(meta_ids)
+        rows = list(meta_ids)
 
-        # Let's label the clusters in the thresholded map so we can use it as a NiftiLabelsMasker
-        # This won't work when the Estimator's masker isn't a NiftiMasker... :(
-        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
-        labeled_cluster_arr, n_clusters = ndimage.label(thresh_arr, conn)
-        labeled_cluster_img = nib.Nifti1Image(
-            labeled_cluster_arr,
-            affine=target_img.affine,
-            header=target_img.header,
+        # Get clusters table
+        two_sided = (target_img.get_fdata() < 0).any()
+        stat_threshold = self.voxel_thresh or 0
+        clusters_table, label_maps = _get_clusters_table(
+            target_img,
+            stat_threshold,
+            two_sided=two_sided,
+            return_label_maps=True,
         )
 
-        if n_clusters == 0:
+        # Make sure cluster IDs are strings
+        clusters_table = clusters_table.astype({"Cluster ID": "str"})
+        # Rename the clusters_table cluster IDs to match the contribution table columns
+        clusters_table["Cluster ID"] = [
+            f"PositiveTail {row['Cluster ID']}"
+            if row["Peak Stat"] > 0
+            else f"NegativeTail {row['Cluster ID']}"
+            for _, row in clusters_table.iterrows()
+        ]
+
+        if clusters_table.shape[0] == 0:
             LGR.warning("No clusters found")
-            contribution_table = pd.DataFrame(index=rows)
-            return contribution_table, labeled_cluster_img
+            contribution_table = pd.DataFrame(columns=["id"], data=rows)
+            return contribution_table, clusters_table, label_maps
 
-        cluster_coms = _get_cluster_coms(labeled_cluster_arr)
-        cluster_coms = vox2mm(cluster_coms, target_img.affine)
+        contribution_tables = []
+        signs = [1, -1] if len(label_maps) == 2 else [1]
+        for sign, label_map in zip(signs, label_maps):
+            label_arr = label_map.get_fdata()
+            cluster_ids = sorted(list(np.unique(label_arr)[1:]))
 
-        cluster_com_strs = []
-        for i_peak in range(cluster_coms.shape[0]):
-            x, y, z = cluster_coms[i_peak, :].astype(int)
-            xyz_str = f"({x}, {y}, {z})"
-            cluster_com_strs.append(xyz_str)
+            # Create contribution table
+            col_name = "PositiveTail" if sign == 1 else "NegativeTail"
+            cols = [f"{col_name} {int(c_id)}" for c_id in cluster_ids]
+            contribution_table = pd.DataFrame(index=rows, columns=cols)
+            contribution_table.index.name = "id"
 
-        # Create empty contribution table
-        contribution_table = pd.DataFrame(index=rows, columns=list(range(1, n_clusters + 1)))
-        contribution_table.index.name = "Cluster ID"
-        contribution_table.loc["Center of Mass"] = cluster_com_strs
-
-        with tqdm_joblib(tqdm(total=len(meta_ids))):
-            jackknife_results = Parallel(n_jobs=self.n_cores)(
-                delayed(self._transform)(
-                    study_id,
-                    coordinates_df=estimator.inputs_["coordinates"],
-                    labeled_cluster_map=labeled_cluster_arr,
-                    affine=target_img.affine,
+            with tqdm_joblib(tqdm(total=len(meta_ids))):
+                jackknife_results = Parallel(n_jobs=self.n_cores)(
+                    delayed(self._transform)(
+                        study_id,
+                        coordinates_df=estimator.inputs_["coordinates"],
+                        labeled_cluster_map=label_arr,
+                        affine=target_img.affine,
+                    )
+                    for study_id in meta_ids
                 )
-                for study_id in meta_ids
-            )
 
-        # Add the results to the table
-        for expid, focus_counts in jackknife_results:
-            contribution_table.loc[expid] = focus_counts
+            # Add the results to the table
+            for expid, focus_counts in jackknife_results:
+                contribution_table.loc[expid] = focus_counts
 
-        return contribution_table, labeled_cluster_img
+            contribution_tables.append(contribution_table.reset_index())
+
+        contribution_table = pd.concat(contribution_tables, ignore_index=True, sort=False)
+
+        return contribution_table, clusters_table, label_maps
 
     def _transform(self, expid, coordinates_df, labeled_cluster_map, affine):
         coords = coordinates_df.loc[coordinates_df["id"] == expid]
@@ -394,7 +430,7 @@ class FocusCounter(NiMAREBase):
         clust_ids = sorted(list(np.unique(labeled_cluster_map)[1:]))
         focus_counts = []
 
-        for i_cluster, c_val in enumerate(clust_ids):
+        for c_val in clust_ids:
             cluster_mask = labeled_cluster_map == c_val
             cluster_idx = np.vstack(np.where(cluster_mask))
             distances = cdist(cluster_idx.T, ijk)
@@ -454,13 +490,13 @@ class FocusFilter(NiMAREBase):
         # mm2vox automatically rounds the coordinates
         dset_ijk = mm2vox(dset_xyz, masker.mask_img.affine)
 
-        keep_idx = []
-        for i, coord in enumerate(dset_ijk):
-            # Check if each coordinate in Dataset is within the mask
-            # If it is, log that coordinate in keep_idx
-            if len(np.where((mask_ijk == coord).all(axis=1))[0]):
-                keep_idx.append(i)
-
+        # Check if each coordinate in Dataset is within the mask
+        # If it is, log that coordinate in keep_idx
+        keep_idx = [
+            i
+            for i, coord in enumerate(dset_ijk)
+            if len(np.where((mask_ijk == coord).all(axis=1))[0])
+        ]
         LGR.info(
             f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
             "the mask. Removing them."

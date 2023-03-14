@@ -144,7 +144,7 @@ def compute_kda_ma(
     exp = np.hstack(all_exp)
     coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
 
-    data = np.hstack(all_data).flatten()
+    data = np.hstack(all_data).flatten().astype(np.int32)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
@@ -223,7 +223,6 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     all_coords = []
     all_data = []
     for i_exp, _ in enumerate(exp_idx_uniq):
-
         # Index peaks by experiment
         curr_exp_idx = exp_idx == i_exp
         ijk = ijks[curr_exp_idx]
@@ -271,7 +270,6 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
                 & (zlk >= 0)
                 & (zhk >= 0)
             ):
-
                 ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
                     ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
                 )
