@@ -9,18 +9,29 @@ Using NIMADS with NiMARE
 How to use the NeuroImaging Meta-Analysis Data Structure
 `(NIMADS) <https://neurostuff.github.io/NIMADS/>`_ with NiMARE.
 """
-import os.path as op
+from requests import request
 
 from nimare.io import convert_nimads_to_dataset
 from nimare.nimads import Studyset
-from nimare.tests.utils import get_test_data_path
 
 ###############################################################################
-# Access Data
+# Download Data from NeuroStore
 # -----------------------------------------------------------------------------
 
-nimads_studyset = op.join(get_test_data_path(), "nimads_studyset.json")
-nimads_annotation = op.join(get_test_data_path(), "nimads_annotation.json")
+
+def download_file(url):
+    """Download a file from NeuroStore."""
+    response = request("GET", url)
+    return response.json()
+
+
+nimads_studyset = download_file(
+    "https://neurostore.org/api/studysets/Cv2LLUqG76W9?nested=true"
+)
+nimads_annotation = download_file(
+    "https://neurostore.org/api/annotations/76PyNqoTNEsE"
+)
+
 
 ###############################################################################
 # Load Data
