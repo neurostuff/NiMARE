@@ -18,8 +18,6 @@ import pandas as pd
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 
-from nimare.nimads import Studyset
-
 LGR = logging.getLogger(__name__)
 
 
@@ -1170,6 +1168,8 @@ def _create_name(resource):
 
 def load_nimads(studyset, annotation=None):
     """Load a studyset object from a dictionary, json file, or studyset object."""
+    from nimare.nimads import Studyset
+
     if isinstance(studyset, dict):
         studyset = Studyset(studyset)
     elif isinstance(studyset, str):
