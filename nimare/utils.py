@@ -2,6 +2,7 @@
 import contextlib
 import datetime
 import inspect
+import json
 import logging
 import multiprocessing as mp
 import os
@@ -16,6 +17,8 @@ import numpy as np
 import pandas as pd
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
+
+from nimare.nimads import Studyset
 
 LGR = logging.getLogger(__name__)
 
@@ -1165,41 +1168,18 @@ def _create_name(resource):
     return "_".join(resource.name.split()) if resource.name else resource.id
 
 
-def nimads_to_dataset(studyset):
-    """Convert a StudySet to a Dataset."""
-    from nimare.dataset import Dataset
+def load_nimads(studyset, annotation=None):
+    """Load a studyset object from a dictionary, json file, or studyset object."""
+    if isinstance(studyset, dict):
+        studyset = Studyset(studyset)
+    elif isinstance(studyset, str):
+        with open(studyset, "r") as f:
+            studyset = Studyset(json.load(f))
+    else:
+        raise ValueError(
+            "studyset must be: a dictionary, a path to a json file, or studyset object"
+        )
 
-    def _analysis_to_dict(study, analysis):
-        result = {
-            "metadata": {
-                "authors": study.name,
-                "journal": study.publication,
-                "title": study.name,
-                "sample_sizes": [study.metadata.get("sample_size")],
-            },
-            "coords": {
-                "space": analysis.points[0].space,
-                "x": [p.x for p in analysis.points],
-                "y": [p.y for p in analysis.points],
-                "z": [p.z for p in analysis.points],
-            },
-        }
-
-        if analysis.annotations:
-            result["labels"] = {}
-            for annotation in analysis.annotations.values():
-                result["labels"].update(annotation)
-
-        return result
-
-    def _study_to_dict(study):
-        return {
-            "metadata": {
-                "authors": study.authors,
-                "journal": study.publication,
-                "title": study.name,
-            },
-            "contrasts": {_create_name(a): _analysis_to_dict(study, a) for a in study.analyses},
-        }
-
-        return Dataset({_create_name(s): _study_to_dict(s) for s in list(studyset.studies)})
+    if annotation:
+        studyset.annotations = annotation
+    return studyset

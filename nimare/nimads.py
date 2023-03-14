@@ -4,7 +4,7 @@ import json
 import weakref
 from copy import deepcopy
 
-from nimare.utils import nimads_to_dataset
+from nimare.io import convert_nimads_to_dataset
 
 
 class Studyset:
@@ -85,7 +85,7 @@ class Studyset:
 
     def to_dataset(self):
         """Convert the Studyset to a NiMARE Dataset."""
-        return nimads_to_dataset(self)
+        return convert_nimads_to_dataset(self)
 
     def load(self, filename):
         """Load a Studyset from a pickled file."""
