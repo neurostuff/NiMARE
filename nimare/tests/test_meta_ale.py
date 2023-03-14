@@ -48,7 +48,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
 
     # Test saving/loading MetaResult object
     for compress in [True, False]:
-        res.save(res_out_file, compress=compress)
+        results.save(res_out_file, compress=compress)
         assert os.path.isfile(res_out_file)
         res2 = MetaResult.load(res_out_file, compressed=compress)
         assert isinstance(res2, MetaResult)
