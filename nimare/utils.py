@@ -1175,6 +1175,8 @@ def load_nimads(studyset, annotation=None):
     elif isinstance(studyset, str):
         with open(studyset, "r") as f:
             studyset = Studyset(json.load(f))
+    elif isinstance(studyset, Studyset):
+        pass
     else:
         raise ValueError(
             "studyset must be: a dictionary, a path to a json file, or studyset object"
