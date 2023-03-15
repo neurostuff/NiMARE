@@ -1,6 +1,7 @@
 """Tests for the nimare.diagnostics module."""
 import os.path as op
 
+import numpy as np
 import pytest
 from nilearn.input_data import NiftiLabelsMasker
 
@@ -50,8 +51,13 @@ def test_jackknife_smoke(
     else:
         assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
-    # Test for zero clusters
-    jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=20)
+
+def test_jackknife_with_zero_clusters(testdata_cbma_full):
+    """Ensure that Jackknife will work with zero clusters."""
+    meta = cbma.ALE()
+    res = meta.fit(testdata_cbma_full)
+
+    jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=10)
     contribution_table, clusters_table, _ = jackknife.transform(res)
 
     assert contribution_table.empty
