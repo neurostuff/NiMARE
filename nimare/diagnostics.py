@@ -62,7 +62,7 @@ class Diagnostics(NiMAREBase):
             for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
             ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
             (the size of the cluster, in cubic millimeters).
-            If no clusters are found, this table will be empty..
+            If no clusters are found, this table will be empty.
         label_maps : :obj:`list`
             List of :obj:`nibabel.nifti1.Nifti1Image` objects of cluster label maps.
             Each cluster in the map has a single value, which corresponds to the cluster number
