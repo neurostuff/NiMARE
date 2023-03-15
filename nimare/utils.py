@@ -2,6 +2,7 @@
 import contextlib
 import datetime
 import inspect
+import json
 import logging
 import multiprocessing as mp
 import os
@@ -1808,3 +1809,29 @@ def _get_clusters_table(
         df = pd.DataFrame(columns=cols, data=rows)
 
     return (df, label_maps) if return_label_maps else df
+
+
+def _create_name(resource):
+    """Take study/analysis object and try to create dataframe friendly/readable name."""
+    return "_".join(resource.name.split()) if resource.name else resource.id
+
+
+def load_nimads(studyset, annotation=None):
+    """Load a studyset object from a dictionary, json file, or studyset object."""
+    from nimare.nimads import Studyset
+
+    if isinstance(studyset, dict):
+        studyset = Studyset(studyset)
+    elif isinstance(studyset, str):
+        with open(studyset, "r") as f:
+            studyset = Studyset(json.load(f))
+    elif isinstance(studyset, Studyset):
+        pass
+    else:
+        raise ValueError(
+            "studyset must be: a dictionary, a path to a json file, or studyset object"
+        )
+
+    if annotation:
+        studyset.annotations = annotation
+    return studyset
