@@ -10,6 +10,7 @@ from scipy import ndimage
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 
+from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
@@ -18,6 +19,7 @@ from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
 
 LGR = logging.getLogger(__name__)
+__version__ = _version.get_versions()["version"]
 
 
 class MKDADensity(CBMAEstimator):
@@ -140,6 +142,36 @@ class MKDADensity(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.n_iters} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution"
+
+        description = (
+            "A multilevel kernel density (MKDA) meta-analysis \\citep{wager2007meta} was "
+            "performed was performed with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), using a(n) "
+            f"{self.kernel_transformer.__class__.__name__.replace('Kernel', '')} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments."
+        )
+        return description
 
     def _compute_weights(self, ma_values):
         """Determine experiment-wise weights per the conventional MKDA approach."""
@@ -335,6 +367,26 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         self.prior = prior
 
+    def _generate_description(self):
+        description = (
+            "A multilevel kernel density chi-squared analysis \\citep{wager2007meta} was "
+            "performed according to the same procedure as implemented in Neurosynth with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), "
+            f"using a(n) {self.kernel_transformer.__class__.__name__.replace('Kernel', '')} "
+            "kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            "This analysis calculated several measures. "
+            "The first dataset was evaluated for consistency of activation via a one-way "
+            "chi-square test. "
+            f"The first input dataset included {self.inputs_['coordinates1'].shape[0]} foci from "
+            f"{len(self.inputs_['id1'])} experiments. "
+            f"The second input dataset included {self.inputs_['coordinates2'].shape[0]} foci from "
+            f"{len(self.inputs_['id2'])} experiments."
+        )
+
+        return description
+
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
@@ -445,7 +497,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-consistency": pAgF_p_vals,
             "p_desc-specificity": pFgA_p_vals,
         }
-        return maps, {}
+        description = self._generate_description()
+
+        return maps, {}, description
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
         """Run a single permutation of the Monte Carlo FWE correction procedure.
@@ -891,7 +945,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "z_desc-specificitySize_level-cluster": pFgA_z_csfwe_vals,
             "logp_desc-specificitySize_level-cluster": pFgA_logp_csfwe_vals,
         }
-        return maps, {}
+
+        description = ""
+
+        return maps, {}, description
 
     def correct_fdr_indep(self, result, alpha=0.05):
         """Perform FDR correction using the Benjamini-Hochberg method.
@@ -943,7 +1000,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "z_desc-consistency_level-voxel": pAgF_z_FDR,
             "z_desc-specificity_level-voxel": pFgA_z_FDR,
         }
-        return maps, {}
+
+        description = ""
+
+        return maps, {}, description
 
 
 class KDA(CBMAEstimator):
@@ -1075,6 +1135,37 @@ class KDA(CBMAEstimator):
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.n_iters} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution"
+
+        description = (
+            "A kernel density (KDA) meta-analysis \\citep{wager2007meta} was "
+            "performed was performed with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2022}), "
+            f"using a(n) {self.kernel_transformer.__class__.__name__.replace('Kernel', '')} "
+            "kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments."
+        )
+        return description
 
     def _compute_summarystat_est(self, ma_values):
         """Compute OF scores from data.

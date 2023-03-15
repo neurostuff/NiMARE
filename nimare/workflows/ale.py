@@ -25,90 +25,23 @@ def ale_sleuth_workflow(
     n_cores=1,
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
-    from nimare import __version__
-
     LGR.info("Loading coordinates...")
 
-    if fwhm:
-        fwhm_str = f"of {fwhm} mm"
-    else:
-        fwhm_str = "determined by sample size"
-
     if not sleuth_file2:
+        # One ALE
         dset = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
         n_subs = dset.get_metadata(field="sample_sizes")
         n_subs = np.sum(n_subs)
-
-        boilerplate = """
-An activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
-2002; Eickhoff, Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012)
-meta-analysis was performed using NiMARE {version}
-(RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b).
-The input dataset included {n_foci} foci from {n_subs} participants across
-{n_exps} studies/experiments.
-
-Modeled activation maps were generated for each study/experiment by convolving
-each focus with a Gaussian kernel {fwhm_str}.
-For voxels with overlapping kernels, the maximum value was retained.
-The modeled activation maps were rendered in MNI 152 space (Fonov et al., 2009;
-Fonov et al., 2011) at 2x2x2mm resolution. A map of ALE values was then
-computed for the sample as the union of modeled activation values across
-studies/experiments. Voxelwise statistical significance was determined based on
-an analytically derived null distribution using the method described in
-Eickhoff, Bzdok, Laird, Kurth, & Fox (2012), prior to multiple comparisons
-correction.
-
--> If the cluster-level FWE-corrected results were used, include the following:
-A cluster-forming threshold of p < {unc} was used to perform cluster-level FWE
-correction. {n_iters} iterations were performed to estimate a null distribution
-of cluster sizes, in which the locations of coordinates were randomly drawn
-from a gray matter template and the maximum cluster size was recorded after
-applying an uncorrected cluster-forming threshold of p < {unc}. The negative
-log-transformed p-value for each cluster in the thresholded map was determined
-based on the cluster sizes.
-
--> If voxel-level FWE-corrected results were used, include the following:
-Voxel-level FWE-correction was performed. {n_iters} iterations were performed
-to estimate a null distribution of ALE values, in which the locations of
-coordinates were randomly drawn from a gray matter template and the maximum
-ALE value was recorded.
-
-References
-----------
--   Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
-    Activation likelihood estimation meta-analysis revisited. NeuroImage,
-    59(3), 2349-2361.
--   Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
-    Collins, D. L., & Brain Development Cooperative Group. (2011).
-    Unbiased average age-appropriate atlases for pediatric studies.
-    Neuroimage, 54(1), 313-327.
--   Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
-    (2009). Unbiased nonlinear average age-appropriate brain templates from birth
-    to adulthood. NeuroImage, (47), S102.
--   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
-    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
--   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
-    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
-    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
-    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
-    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
-    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
-    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
--   Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
-    Meta-analysis of the functional neuroanatomy of single-word reading: method
-    and validation. NeuroImage, 16(3 Pt 1), 765-780.
--   Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
-    & Fox, P. (2012). Minimizing within-experiment and within-group effects in
-    Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-    33(1), 1-13.
-        """
 
         ale = ALE(kernel__fwhm=fwhm)
 
         LGR.info("Performing meta-analysis...")
         results = ale.fit(dset)
         corr = FWECorrector(
-            method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
+            method="montecarlo",
+            n_iters=n_iters,
+            voxel_thresh=v_thr,
+            n_cores=n_cores,
         )
         cres = corr.transform(results)
         fcounter = FocusCounter(
@@ -116,89 +49,17 @@ References
             voxel_thresh=None,
         )
         count_df, _, _ = fcounter.transform(cres)
+        boilerplate = cres.description_
+        bibtex = cres.bibtex_
 
-        boilerplate = boilerplate.format(
-            n_exps=len(dset.ids),
-            n_subs=n_subs,
-            n_foci=dset.coordinates.shape[0],
-            unc=v_thr,
-            n_iters=n_iters,
-            fwhm_str=fwhm_str,
-            version=__version__,
-        )
     else:
+        # Two ALEs and an ALESubtraction
         dset1 = convert_sleuth_to_dataset(sleuth_file, target="ale_2mm")
         dset2 = convert_sleuth_to_dataset(sleuth_file2, target="ale_2mm")
         n_subs1 = dset1.get_metadata(field="sample_sizes")
         n_subs1 = np.sum(n_subs1)
         n_subs2 = dset2.get_metadata(field="sample_sizes")
         n_subs2 = np.sum(n_subs2)
-
-        boilerplate = """
-Activation likelihood estimation (ALE; Turkeltaub, Eden, Jones, & Zeffiro,
-2002; Eickhoff, Bzdok, Laird, Kurth, & Fox, 2012; Turkeltaub et al., 2012)
-meta-analyses were performed using NiMARE {version}
-(RRID:SCR_017398; Salo et al., 2022a; Salo et al., 2022b) for each of two datasets.
-The first input dataset included {n_foci1} foci from {n_subs1} participants
-across {n_exps1} studies/experiments. The second input dataset included
-{n_foci2} foci from {n_subs2} participants across {n_exps2} studies/experiments.
-
-Foci were convolved with Gaussian kernels {fwhm_str},
-implemented on the MNI 152 template (Fonov et al., 2009; Fonov et al., 2011)
-at 2x2x2mm resolution.
-
--> If the cluster-level FWE-corrected results were used, include the following:
-A cluster-forming threshold of p < {unc} was used to perform cluster-level FWE
-correction. {n_iters} iterations were performed to estimate a null distribution
-of cluster sizes, in which the locations of coordinates were randomly drawn
-from a gray matter template and the maximum cluster size was recorded after
-applying an uncorrected cluster-forming threshold of p < {unc}. The negative
-log-transformed p-value for each cluster in the thresholded map was determined
-based on the cluster sizes.
-
--> If voxel-level FWE-corrected results were used, include the following:
-Voxel-level FWE-correction was performed. {n_iters} iterations were performed
-to estimate a null distribution of ALE values, in which the locations of
-coordinates were randomly drawn from a gray matter template and the maximum
-ALE value was recorded.
-
-Following dataset-specific ALE meta-analyses, a subtraction analysis was
-performed to compare the two datasets according to the procedure from Laird
-et al. (2005). {n_iters} iterations were performed.
-
-References
-----------
--   Turkeltaub, P. E., Eden, G. F., Jones, K. M., & Zeffiro, T. A. (2002).
-    Meta-analysis of the functional neuroanatomy of single-word reading: method
-    and validation. NeuroImage, 16(3 Pt 1), 765-780.
--   Eickhoff, S. B., Bzdok, D., Laird, A. R., Kurth, F., & Fox, P. T. (2012).
-    Activation likelihood estimation meta-analysis revisited. NeuroImage,
-    59(3), 2349-2361.
--   Salo et al. (2022). NiMARE: Neuroimaging Meta-Analysis Research Environment.
-    NeuroLibre Reproducible Preprint Server, 1(1), 7, https://doi.org/10.55458/neurolibre.00007.
--   Salo, Taylor, Yarkoni, Tal, Nichols, Thomas E., Poline, Jean-Baptiste, Kent, James D.,
-    Gorgolewski, Krzysztof J., Glerean, Enrico, Bottenhorn, Katherine L., Bilgel, Murat,
-    Wright, Jessey, Reeders, Puck, Kimbler, Adam, Nielson, Dylan N., Yanes, Julio A.,
-    Pérez, Alexandre, Oudyk, Kendra M., Jarecka, Dorota, Enge, Alexander,
-    Peraza, Julio A., ... Laird, Angela R. (2022). neurostuff/NiMARE: {version}
-    ({version}). Zenodo. https://doi.org/10.5281/zenodo.6642243.
-    **NOTE** Please replace this with the version-specific Zenodo reference in your manuscript.
--   Turkeltaub, P. E., Eickhoff, S. B., Laird, A. R., Fox, M., Wiener, M.,
-    & Fox, P. (2012). Minimizing within-experiment and within-group effects in
-    Activation Likelihood Estimation meta-analyses. Human Brain Mapping,
-    33(1), 1-13.
--   Fonov, V., Evans, A. C., Botteron, K., Almli, C. R., McKinstry, R. C.,
-    Collins, D. L., & Brain Development Cooperative Group. (2011).
-    Unbiased average age-appropriate atlases for pediatric studies.
-    Neuroimage, 54(1), 313-327.
--   Fonov, V. S., Evans, A. C., McKinstry, R. C., Almli, C. R., & Collins, D. L.
-    (2009). Unbiased nonlinear average age-appropriate brain templates from birth
-    to adulthood. NeuroImage, (47), S102.
--   Laird, A. R., Fox, P. M., Price, C. J., Glahn, D. C., Uecker, A. M.,
-    Lancaster, J. L., ... & Fox, P. T. (2005). ALE meta-analysis: Controlling the
-    false discovery rate and performing statistical contrasts. Human brain mapping,
-    25(1), 155-164.
-        """
 
         ale1 = ALE(kernel__fwhm=fwhm)
         ale2 = ALE(kernel__fwhm=fwhm)
@@ -207,9 +68,14 @@ References
         res1 = ale1.fit(dset1)
         res2 = ale2.fit(dset2)
         corr = FWECorrector(
-            method="montecarlo", n_iters=n_iters, voxel_thresh=v_thr, n_cores=n_cores
+            method="montecarlo",
+            n_iters=n_iters,
+            voxel_thresh=v_thr,
+            n_cores=n_cores,
         )
         cres1 = corr.transform(res1)
+        boilerplate = cres1.description_
+
         fcounter = FocusCounter(
             target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
             voxel_thresh=None,
@@ -217,23 +83,18 @@ References
         count_df1, _, _ = fcounter.transform(cres1)
 
         cres2 = corr.transform(res2)
+        boilerplate += "\n" + cres2.description_
+
         count_df2, _, _ = fcounter.transform(cres2)
 
         sub = ALESubtraction(n_iters=n_iters, kernel__fwhm=fwhm)
         sres = sub.fit(dset1, dset2)
+        boilerplate += "\n" + sres.description_
 
-        boilerplate = boilerplate.format(
-            n_exps1=len(dset1.ids),
-            n_subs1=n_subs1,
-            n_foci1=dset1.coordinates.shape[0],
-            n_exps2=len(dset2.ids),
-            n_subs2=n_subs2,
-            n_foci2=dset2.coordinates.shape[0],
-            unc=v_thr,
-            n_iters=n_iters,
-            fwhm_str=fwhm_str,
-            version=__version__,
-        )
+        # Inject the composite description into the ALESubtraction MetaResult to trigger
+        # a re-compilation of references
+        sres.description_ = boilerplate
+        bibtex = sres.bibtex_  # This will now include references from all three analyses
 
     if output_dir is None:
         output_dir = os.path.abspath(os.path.dirname(sleuth_file))
@@ -252,6 +113,7 @@ References
         cres.save_maps(output_dir=output_dir, prefix=prefix)
         count_df.to_csv(os.path.join(output_dir, prefix + "_clust.tsv"), index=False, sep="\t")
         copyfile(sleuth_file, os.path.join(output_dir, prefix + "input_coordinates.txt"))
+
     else:
         prefix1 = os.path.splitext(os.path.basename(sleuth_file))[0] + "_"
         prefix2 = os.path.splitext(os.path.basename(sleuth_file2))[0] + "_"
@@ -264,5 +126,10 @@ References
         copyfile(sleuth_file, os.path.join(output_dir, prefix + "group1_input_coordinates.txt"))
         copyfile(sleuth_file2, os.path.join(output_dir, prefix + "group2_input_coordinates.txt"))
 
+    with open(os.path.join(output_dir, prefix + "boilerplate.txt"), "w") as fo:
+        fo.write(boilerplate)
+
+    with open(os.path.join(output_dir, prefix + "references.bib"), "w") as fo:
+        fo.write(bibtex)
+
     LGR.info("Workflow completed.")
-    LGR.info(boilerplate)

@@ -8,13 +8,16 @@ import pandas as pd
 from nibabel.funcs import squeeze_image
 
 from nimare.base import NiMAREBase
-from nimare.utils import get_masker
+from nimare.utils import get_description_references, get_masker
 
 LGR = logging.getLogger(__name__)
 
 
 class MetaResult(NiMAREBase):
     """Base class for meta-analytic results.
+
+    .. versionchanged:: 0.0.12
+        - Added the description attribute.
 
     Parameters
     ----------
@@ -26,6 +29,8 @@ class MetaResult(NiMAREBase):
         Maps to store in the object. The maps must be provided as 1D numpy arrays. Default is None.
     tables : None or :obj:`dict` of :obj:`pandas.DataFrame`, optional
         Pandas DataFrames to store in the object. Default is None.
+    description_ : :obj:`str`, optional
+        Description of the method that generated the result. Default is "".
 
     Attributes
     ----------
@@ -37,9 +42,20 @@ class MetaResult(NiMAREBase):
         Keys are map names and values are 1D arrays.
     tables : :obj:`dict`
         Keys are table levels and values are pandas DataFrames.
+    description_ : :obj:`str`
+        A textual description of the method that generated the result.
+
+        Citations in this description are formatted according to ``natbib``'s LaTeX format.
+    bibtex_ : :obj:`str`
+        The BibTeX entries for any citations in ``description``.
+        These entries are extracted from NiMARE's references.bib file and filtered based on the
+        description automatically.
+
+        Users should be able to copy the contents of the ``bibtex`` attribute into their own
+        BibTeX file without issue.
     """
 
-    def __init__(self, estimator, mask, maps=None, tables=None):
+    def __init__(self, estimator, mask, maps=None, tables=None, description=""):
         self.estimator = copy.deepcopy(estimator)
         self.masker = get_masker(mask)
 
@@ -60,6 +76,18 @@ class MetaResult(NiMAREBase):
 
         self.maps = maps
         self.tables = tables
+        self.description_ = description
+
+    @property
+    def description_(self):
+        """:obj:`str`: A textual description of the method that generated the result."""
+        return self.__description
+
+    @description_.setter
+    def description_(self, desc):
+        """Automatically extract references when the description is set."""
+        self.__description = desc
+        self.bibtex_ = get_description_references(desc)
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
@@ -160,5 +188,6 @@ class MetaResult(NiMAREBase):
             mask=self.masker,
             maps=copy.deepcopy(self.maps),
             tables=copy.deepcopy(self.tables),
+            description=self.description_,
         )
         return new

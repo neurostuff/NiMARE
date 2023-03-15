@@ -277,6 +277,38 @@ class ALEKernel(KernelTransformer):
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 
+    def _generate_description(self):
+        """Generate a description of the fitted KernelTransformer.
+
+        Returns
+        -------
+        str
+            Description of the KernelTransformer.
+        """
+        if self.sample_size is not None:
+            fwhm_str = (
+                "with a full-width at half max corresponding to a sample size of "
+                f"{self.sample_size}, according to the formulae provided in "
+                "\\cite{eickhoff2012activation}"
+            )
+        elif self.fwhm is not None:
+            fwhm_str = f"with a full-width at half max of {self.fwhm}"
+        else:
+            fwhm_str = (
+                "with full-width at half max values determined on a study-wise basis based on the "
+                "study sample sizes according to the formulae provided in "
+                "\\cite{eickhoff2012activation}"
+            )
+
+        description = (
+            "An ALE kernel \\citep{eickhoff2012activation} was used to generate study-wise "
+            "modeled activation maps from coordinates. "
+            "In this kernel method, each coordinate is convolved with a Gaussian kernel "
+            f"{fwhm_str}. "
+            "For voxels with overlapping kernels, the maximum value was retained."
+        )
+        return description
+
 
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
@@ -317,6 +349,23 @@ class KDAKernel(KernelTransformer):
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 
+    def _generate_description(self):
+        """Generate a description of the fitted KernelTransformer.
+
+        Returns
+        -------
+        str
+            Description of the KernelTransformer.
+        """
+        description = (
+            "A KDA kernel \\citep{wager2003valence,wager2004neuroimaging} was used to generate "
+            "study-wise modeled activation maps from coordinates. "
+            "In this kernel method, each coordinate is convolved with a sphere with a radius of "
+            f"{self.r} and a value of {self.value}. "
+            "These spheres are then summed within each study to produce the study's MA map."
+        )
+        return description
+
 
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
@@ -338,3 +387,20 @@ class MKDAKernel(KDAKernel):
     """
 
     _sum_overlap = False
+
+    def _generate_description(self):
+        """Generate a description of the fitted KernelTransformer.
+
+        Returns
+        -------
+        str
+            Description of the KernelTransformer.
+        """
+        description = (
+            "An MKDA kernel \\citep{wager2007meta} was used to generate "
+            "study-wise modeled activation maps from coordinates. "
+            "In this kernel method, each coordinate is convolved with a sphere with a radius of "
+            f"{self.r} and a value of {self.value}. "
+            "For voxels with overlapping spheres, the maximum value was retained."
+        )
+        return description

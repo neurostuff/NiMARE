@@ -14,6 +14,7 @@ from scipy import sparse
 
 from nimare.dataset import Dataset
 from nimare.extract.utils import _get_dataset_dir
+from nimare.utils import _create_name, load_nimads
 
 LGR = logging.getLogger(__name__)
 
@@ -24,6 +25,47 @@ DEFAULT_MAP_TYPE_CONVERSION = {
     "Z map": "z",
     "p map": "p",
 }
+
+
+def convert_nimads_to_dataset(studyset, annotation=None):
+    """Convert nimads studyset to a dataset."""
+
+    def _analysis_to_dict(study, analysis):
+        result = {
+            "metadata": {
+                "authors": study.name,
+                "journal": study.publication,
+                "title": study.name,
+                "sample_sizes": [study.metadata.get("sample_size")],
+            },
+            "coords": {
+                "space": analysis.points[0].space,
+                "x": [p.x for p in analysis.points],
+                "y": [p.y for p in analysis.points],
+                "z": [p.z for p in analysis.points],
+            },
+        }
+
+        if analysis.annotations:
+            result["labels"] = {}
+            for annotation in analysis.annotations.values():
+                result["labels"].update(annotation)
+
+        return result
+
+    def _study_to_dict(study):
+        return {
+            "metadata": {
+                "authors": study.authors,
+                "journal": study.publication,
+                "title": study.name,
+            },
+            "contrasts": {_create_name(a): _analysis_to_dict(study, a) for a in study.analyses},
+        }
+
+    # load nimads studyset
+    studyset = load_nimads(studyset, annotation)
+    return Dataset({_create_name(s): _study_to_dict(s) for s in list(studyset.studies)})
 
 
 def convert_neurosynth_to_dict(

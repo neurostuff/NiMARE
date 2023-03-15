@@ -1,4 +1,5 @@
 """Generate fixtures for tests."""
+import json
 import os
 from shutil import copyfile
 
@@ -6,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 from nilearn.image import resample_img
+from requests import request
 
 import nimare
 from nimare.tests.utils import get_test_data_path
@@ -133,3 +135,31 @@ def testdata_ibma_resample(tmp_path_factory):
             nib.save(img, new_f)
     dset.update_path(tmpdir)
     return dset
+
+
+@pytest.fixture(scope="session")
+def example_nimads_studyset():
+    """Download/lookup example NiMADS studyset."""
+    out_file = os.path.join(get_test_data_path(), "nimads_studyset.json")
+    if not os.path.isfile(out_file):
+        url = "https://neurostore.org/api/studysets/Cv2LLUqG76W9?nested=true"
+        response = request("GET", url)
+        with open(out_file, "wb") as f:
+            f.write(response.content)
+    with open(out_file, "r") as f:
+        studyset = json.load(f)
+    return studyset
+
+
+@pytest.fixture(scope="session")
+def example_nimads_annotation():
+    """Download/lookup example NiMADS annotation."""
+    out_file = os.path.join(get_test_data_path(), "nimads_annotation.json")
+    if not os.path.isfile(out_file):
+        url = "https://neurostore.org/api/annotations/76PyNqoTNEsE"
+        response = request("GET", url)
+        with open(out_file, "wb") as f:
+            f.write(response.content)
+    with open(out_file, "r") as f:
+        annotation = json.load(f)
+    return annotation
