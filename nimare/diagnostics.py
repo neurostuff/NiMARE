@@ -6,7 +6,6 @@ from abc import abstractmethod
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from nibabel.funcs import squeeze_image
 from nilearn import input_data
 from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
