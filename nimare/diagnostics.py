@@ -90,11 +90,6 @@ class Diagnostics(NiMAREBase):
                 f"Available maps in result are: {', '.join(available_maps)}."
             )
 
-        # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
-        # estimator to a study that might have been filtered out by the estimator's criteria.
-        meta_ids = result.estimator.inputs_["id"]
-        rows = list(meta_ids)
-
         # Get clusters table
         two_sided = (target_img.get_fdata() < 0).any()
         stat_threshold = self.voxel_thresh or 0
@@ -123,6 +118,11 @@ class Diagnostics(NiMAREBase):
         if (n_clusters == 0) or empty_contribution_table:
             contribution_table = pd.DataFrame()
             return contribution_table, clusters_table, label_maps
+
+        # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
+        # estimator to a study that might have been filtered out by the estimator's criteria.
+        meta_ids = result.estimator.inputs_["id"]
+        rows = list(meta_ids)
 
         contribution_tables = []
         signs = [1, -1] if len(label_maps) == 2 else [1]
