@@ -68,6 +68,11 @@ class Estimator(NiMAREBase):
                 self.inputs_[k] = v
 
     @abstractmethod
+    def _generate_description(self):
+        """Generate a text description of the Estimator."""
+        pass
+
+    @abstractmethod
     def _preprocess_input(self, dataset):
         """Perform any additional preprocessing steps on data in self.inputs_.
 
@@ -117,11 +122,11 @@ class Estimator(NiMAREBase):
         """
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
-        maps, tables = self._fit(dataset)
+        maps, tables, description = self._fit(dataset)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset.masker
 
-        return MetaResult(self, mask=masker, maps=maps, tables=tables)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)

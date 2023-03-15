@@ -36,7 +36,7 @@ class CBMAEstimator(Estimator):
     .. versionchanged:: 0.0.12
 
         * Remove *low_memory* option
-        * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
+        * CBMA-specific elements of ``Estimator`` excised and moved into ``CBMAEstimator``.
         * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
         * Use a 4D sparse array for modeled activation maps.
 
@@ -53,10 +53,10 @@ class CBMAEstimator(Estimator):
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.Estimator`
         __init__ (called automatically).
     """
 
@@ -174,8 +174,9 @@ class CBMAEstimator(Estimator):
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images, {}
+        maps = {"stat": stat_values, "p": p_values, "z": z_values}
+        description = self._generate_description()
+        return maps, {}, description
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
@@ -628,6 +629,8 @@ class CBMAEstimator(Estimator):
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
                 (i.e., hundreds of studies), per :footcite:t:`eickhoff2016behavior`.
+        description_ : :obj:`str`
+            A text description of the correction procedure.
 
         Notes
         -----
@@ -798,7 +801,30 @@ class CBMAEstimator(Estimator):
                 "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
-        return maps, {}
+        if vfwe_only:
+            description = (
+                "Family-wise error correction was performed using a voxel-level Monte Carlo "
+                "procedure. "
+                "In this procedure, null datasets are generated in which dataset coordinates are "
+                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
+                "the maximum summary statistic is retained. "
+                f"This procedure was repeated {n_iters} times to build a null distribution of "
+                "summary statistics."
+            )
+        else:
+            description = (
+                "Family-wise error rate correction was performed using a Monte Carlo procedure. "
+                "In this procedure, null datasets are generated in which dataset coordinates are "
+                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
+                "maximum values are retained. "
+                f"This procedure was repeated {n_iters} times to build null distributions of "
+                "summary statistics, cluster sizes, and cluster masses. "
+                "Clusters for cluster-level correction were defined using edge-wise connectivity "
+                f"and a voxel-level threshold of p < {voxel_thresh} from the uncorrected null "
+                "distribution."
+            )
+
+        return maps, {}, description
 
 
 class PairwiseCBMAEstimator(CBMAEstimator):
@@ -820,10 +846,10 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
     *args
-        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.Estimator`
         __init__ (called automatically).
     """
 
@@ -863,6 +889,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             # Grab pre-generated MA maps
             self.inputs_["ma_maps1"] = self.inputs_.pop("ma_maps")
 
+        self.inputs_["id1"] = self.inputs_.pop("id")
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
 
         # Reproduce fit() for dataset2 to collect and process inputs.
@@ -872,14 +899,15 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             # Grab pre-generated MA maps
             self.inputs_["ma_maps2"] = self.inputs_.pop("ma_maps")
 
+        self.inputs_["id2"] = self.inputs_.pop("id")
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps, tables = self._fit(dataset1, dataset2)
+        maps, tables, description = self._fit(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset1.masker
 
-        return MetaResult(self, mask=masker, maps=maps, tables=tables)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)

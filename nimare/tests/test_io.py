@@ -5,8 +5,18 @@ import pytest
 
 import nimare
 from nimare import io
+from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_template
+
+
+def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):
+    """Conversion of nimads JSON to nimare dataset."""
+    studyset = Studyset(example_nimads_studyset)
+    studyset.annotations = example_nimads_annotation
+    dset = io.convert_nimads_to_dataset(studyset)
+
+    assert isinstance(dset, nimare.dataset.Dataset)
 
 
 def test_convert_sleuth_to_dataset_smoke():

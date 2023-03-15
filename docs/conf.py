@@ -209,7 +209,7 @@ plot_gallery = True
 # -----------------------------------------------------------------------------
 # sphinxcontrib-bibtex
 # -----------------------------------------------------------------------------
-bibtex_bibfiles = ["./references.bib"]
+bibtex_bibfiles = ["../nimare/resources/references.bib"]
 bibtex_style = "unsrt"
 bibtex_reference_style = "author_year"
 bibtex_footbibliography_header = ""
