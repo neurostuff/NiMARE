@@ -35,7 +35,6 @@ class Diagnostics(NiMAREBase):
 
         Must return a 1D array with the contribution of `expid` in each cluster of `label_map`.
         """
-        pass
 
     def transform(self, result):
         """Apply the analysis to a MetaResult.
