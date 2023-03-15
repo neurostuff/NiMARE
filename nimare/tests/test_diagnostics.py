@@ -1,7 +1,6 @@
 """Tests for the nimare.diagnostics module."""
 import os.path as op
 
-import numpy as np
 import pytest
 from nilearn.input_data import NiftiLabelsMasker
 
