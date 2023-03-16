@@ -1,5 +1,7 @@
 """Workflow for running an coordinates-based meta-analysis from a NiMARE database."""
+import itertools
 import logging
+import os.path as op
 
 from nimare.correct import FWECorrector
 from nimare.diagnostics import Jackknife
@@ -10,7 +12,7 @@ LGR = logging.getLogger(__name__)
 
 def cbma_workflow(
     dataset,
-    meta_estimator=ALE(),
+    meta_estimator=ALE(null_method="approximate"),
     corrector=FWECorrector(),
     diagnostics=(Jackknife(),),
     output_dir=None,
@@ -49,30 +51,39 @@ def cbma_workflow(
     corr_results = corrector.transform(results)
 
     LGR.info("Generating clusters tables and performing diagnostics on corrected meta-analyses...")
-    for img_key in corr_results.maps.keys():
-        # Save cluster table only for z maps
-        if img_key.startswith("z_") and ("_corr-" in img_key):
-            img_name = "_".join(img_key.split("_")[1:])
+    img_keys = [
+        img_key
+        for img_key in corr_results.maps.keys()
+        if img_key.startswith("z_") and ("_corr-" in img_key)
+    ]
+    for img_key, diagnostic in itertools.product(img_keys, diagnostics):
+        diagnostic.target_image = img_key
+        contribution_table, clusters_table, _ = diagnostic.transform(corr_results)
 
-            for diagnostic in diagnostics:
-                diagnostic.target_image = img_key
-                contribution_table, cluster_df, _ = diagnostic.transform(corr_results)
-
-                diag_name = diagnostic.__class__.__name__
-                clust_tbl_name = f"cluster_{img_name}"
-                diag_tbl_name = f"{diag_name}_{img_name}"
-                if not contribution_table.empty:
-                    corr_results.tables[clust_tbl_name] = cluster_df
-                    corr_results.tables[diag_tbl_name] = contribution_table
-                else:
-                    LGR.warn(
-                        f"Key {diag_tbl_name} and {clust_tbl_name} will not be stored in "
-                        "MetaResult.tables dictionary."
-                    )
+        diag_name = diagnostic.__class__.__name__
+        clust_tbl_name = f"{img_key}_clust"
+        count_tbl_name = f"{img_key}_{diag_name}"
+        if not contribution_table.empty:
+            corr_results.tables[clust_tbl_name] = clusters_table
+            corr_results.tables[count_tbl_name] = contribution_table
+        else:
+            LGR.warn(
+                f"Key {count_tbl_name} and {clust_tbl_name} will not be stored in "
+                "MetaResult.tables dictionary."
+            )
 
     if output_dir is not None:
-        LGR.info(f"Saving meta-analytic maps and tables result to {output_dir}...")
+        LGR.info(f"Saving meta-analytic maps, tables and boilerplate to {output_dir}...")
         corr_results.save_maps(output_dir=output_dir)
         corr_results.save_tables(output_dir=output_dir)
 
+        boilerplate = corr_results.description_
+        with open(op.join(output_dir, "boilerplate.txt"), "w") as fo:
+            fo.write(boilerplate)
+
+        bibtex = corr_results.bibtex_
+        with open(op.join(output_dir, "references.bib"), "w") as fo:
+            fo.write(bibtex)
+
+    LGR.info("Workflow completed.")
     return corr_results
