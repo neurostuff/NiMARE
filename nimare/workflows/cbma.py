@@ -14,7 +14,7 @@ from nimare.utils import _check_type
 LGR = logging.getLogger(__name__)
 
 
-def _collect_class(obj, clss):
+def _collect_class(str_name, base_clss):
     """Collect a class from a module."""
     pass
 
@@ -77,7 +77,7 @@ def cbma_workflow(
 
     # Check inputs and set defaults
     estimator = (
-        ALE() if corrector is None else _check_input(corrector, CBMAEstimator, estm_options)
+        ALE() if estimator is None else _check_input(estimator, CBMAEstimator, estm_options)
     )
     corrector = (
         FWECorrector() if corrector is None else _check_input(corrector, Corrector, corr_options)
