@@ -12,7 +12,7 @@ LGR = logging.getLogger(__name__)
 
 def cbma_workflow(
     dataset,
-    meta_estimator=ALE(null_method="approximate"),
+    meta_estimator=ALE(),
     corrector=FWECorrector(),
     diagnostics=(Jackknife(),),
     output_dir=None,
