@@ -14,11 +14,28 @@ from nimare.utils import _check_type
 LGR = logging.getLogger(__name__)
 
 
+def _collect_class(obj, clss):
+    """Collect a class from a module."""
+    pass
+
+
+def _check_input(obj, clss, options):
+    if inspect.isclass(obj):
+        obj = _check_type(obj, clss)
+    elif isinstance(obj, str):
+        if obj not in options:
+            raise ValueError(f'"estimator" of kind string must be {", ".join(options)}')
+        obj = _collect_class(obj, clss)
+    else:
+        raise ValueError(f'"estimator" is {type(obj)}, it must be a kind of {clss}, or a string.')
+    return obj
+
+
 def cbma_workflow(
     dataset,
     estimator=None,
-    corrector=FWECorrector(),
-    diagnostics=(Jackknife(),),
+    corrector=None,
+    diagnostics=None,
     output_dir=None,
 ):
     """Compose a coordinate-based meta-analysis workflow.
@@ -58,40 +75,18 @@ def cbma_workflow(
     corr_options = ("montecarlo", "fdr", "bonferroni")
     diag_options = ("jackknife", "focuscounter")
 
-    # Check estimator type
-    if estimator is None:
-        estimator = ALE()
-    elif inspect.isclass(estimator):
-        estimator = _check_type(estimator, CBMAEstimator)
-    elif isinstance(estimator, str):
-        if estimator not in estm_options:
-            raise ValueError(f'"estimator" of kind string must be {", ".join(estm_options)}')
-    else:
-        raise ValueError(
-            f'"estimator" is {type(estimator)}, it must be a kind of CBMAEstimator, or a string.'
-        )
-
-    # Check corrector type
-    if inspect.isclass(corrector):
-        corrector = _check_type(corrector, Corrector)
-    elif isinstance(corrector, str):
-        if corrector not in corr_options:
-            raise ValueError(f'"corrector" of kind string must be {", ".join(corr_options)}')
-    else:
-        raise ValueError(
-            f'"corrector" is {type(corrector)}, it must be a kind of Corrector, or a string.'
-        )
-
-    # Check diagnostics type
-    if inspect.isclass(diagnostics):
-        diagnostics = _check_type(diagnostics, Diagnostics)
-    elif isinstance(diagnostics, str):
-        if diagnostics not in diag_options:
-            raise ValueError(f'"diagnostics" of kind string must be {", ".join(diag_options)}')
-    else:
-        raise ValueError(
-            f'"diagnostics" is {type(diagnostics)}, it must be a kind of Diagnostics, or a string.'
-        )
+    # Check inputs and set defaults
+    estimator = (
+        ALE() if corrector is None else _check_input(corrector, CBMAEstimator, estm_options)
+    )
+    corrector = (
+        FWECorrector() if corrector is None else _check_input(corrector, Corrector, corr_options)
+    )
+    diagnostics = (
+        (Jackknife(),)
+        if diagnostics is None
+        else _check_input(diagnostics, Diagnostics, diag_options)
+    )
 
     if isinstance(estimator, PairwiseCBMAEstimator):
         raise AttributeError(
