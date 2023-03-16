@@ -9,7 +9,7 @@ from nimare.dataset import Dataset
 from nimare.diagnostics import Diagnostics, Jackknife
 from nimare.meta import ALE
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
-from nimare.utils import _check_type
+from nimare.utils import _check_ncores, _check_type
 
 LGR = logging.getLogger(__name__)
 
@@ -19,13 +19,13 @@ def _collect_class(str_name, base_clss):
     pass
 
 
-def _check_input(obj, clss, options):
+def _check_input(obj, clss, options, **kwargs):
     if inspect.isclass(obj):
-        obj = _check_type(obj, clss)
+        obj = _check_type(obj, clss, **kwargs)
     elif isinstance(obj, str):
         if obj not in options:
             raise ValueError(f'"estimator" of kind string must be {", ".join(options)}')
-        obj = _collect_class(obj, clss)
+        obj = _collect_class(obj, clss, **kwargs)
     else:
         raise ValueError(f'"estimator" is {type(obj)}, it must be a kind of {clss}, or a string.')
     return obj
@@ -37,6 +37,7 @@ def cbma_workflow(
     corrector=None,
     diagnostics=None,
     output_dir=None,
+    n_cores=1,
 ):
     """Compose a coordinate-based meta-analysis workflow.
 
@@ -61,12 +62,18 @@ def cbma_workflow(
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
         exist, it will be created. Default is None (the results are not saved).
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores.
+        Default is 1.
 
     Returns
     -------
     :obj:`~nimare.results.MetaResult`
         Results of Estimator and Corrector fitting with cluster and diagnostic tables.
     """
+    n_cores = _check_ncores(n_cores)
+
     # Check dataset type
     dataset = _check_type(dataset, Dataset)
 
@@ -75,22 +82,26 @@ def cbma_workflow(
     corr_options = ("montecarlo", "fdr", "bonferroni")
     diag_options = ("jackknife", "focuscounter")
 
-    # Check inputs and set defaults
+    # Check inputs and set defaults if input is None
     estimator = (
-        ALE() if estimator is None else _check_input(estimator, CBMAEstimator, estm_options)
+        ALE(n_cores=n_cores)
+        if estimator is None
+        else _check_input(estimator, CBMAEstimator, estm_options, n_cores=n_cores)
     )
     corrector = (
-        FWECorrector() if corrector is None else _check_input(corrector, Corrector, corr_options)
+        FWECorrector(method="montecarlo", n_cores=n_cores)
+        if corrector is None
+        else _check_input(corrector, Corrector, corr_options, n_cores=n_cores)
     )
     diagnostics = (
-        (Jackknife(),)
+        (Jackknife(n_cores=n_cores),)
         if diagnostics is None
-        else _check_input(diagnostics, Diagnostics, diag_options)
+        else _check_input(diagnostics, Diagnostics, diag_options, n_cores=n_cores)
     )
 
     if isinstance(estimator, PairwiseCBMAEstimator):
         raise AttributeError(
-            "The cbma_workflow function does not currently work with pairwise Estimators."
+            'The "cbma_workflow" function does not currently work with pairwise Estimators.'
         )
 
     LGR.info("Performing meta-analysis...")
