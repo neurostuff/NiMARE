@@ -1,18 +1,22 @@
 """Workflow for running an coordinates-based meta-analysis from a NiMARE database."""
+import inspect
 import itertools
 import logging
 import os.path as op
 
-from nimare.correct import FWECorrector
-from nimare.diagnostics import Jackknife
+from nimare.correct import Corrector, FWECorrector
+from nimare.dataset import Dataset
+from nimare.diagnostics import Diagnostics, Jackknife
 from nimare.meta import ALE
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.utils import _check_type
 
 LGR = logging.getLogger(__name__)
 
 
 def cbma_workflow(
     dataset,
-    meta_estimator=ALE(),
+    estimator=None,
     corrector=FWECorrector(),
     diagnostics=(Jackknife(),),
     output_dir=None,
@@ -28,11 +32,13 @@ def cbma_workflow(
     ----------
     dataset : :obj:`~nimare.dataset.Dataset`
         Dataset for which to run meta-analyses to generate maps.
-    meta_estimator : :class:`~nimare.base.CBMAEstimator`, optional
+    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', 'mkdadensity',
+    'kda'}, or optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.ale.ALE`.
-    meta_corrector : :class:`~nimare.correct.Corrector`, optional
+    corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', 'bonferroni'}
+    or optional
         Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
-    diagnostics : :obj:`tuple`, optional
+    diagnostics : :obj:`tuple`, :obj:`str` {'jackknife', 'focusCounter'}, or optional
         Tuple of meta-analysis diagnostic classes.
         Default is :class:`~nimare.diagnostics.FocusCounter`.
     output_dir : :obj:`str`, optional
@@ -44,8 +50,56 @@ def cbma_workflow(
     :obj:`~nimare.results.MetaResult`
         Results of Estimator and Corrector fitting with cluster and diagnostic tables.
     """
+    # Check dataset type
+    dataset = _check_type(dataset, Dataset)
+
+    # Options allows for string input
+    estm_options = ("ale", "scale", "mkdadensity", "kda")
+    corr_options = ("montecarlo", "fdr", "bonferroni")
+    diag_options = ("jackknife", "focuscounter")
+
+    # Check estimator type
+    if estimator is None:
+        estimator = ALE()
+    elif inspect.isclass(estimator):
+        estimator = _check_type(estimator, CBMAEstimator)
+    elif isinstance(estimator, str):
+        if estimator not in estm_options:
+            raise ValueError(f'"estimator" of kind string must be {", ".join(estm_options)}')
+    else:
+        raise ValueError(
+            f'"estimator" is {type(estimator)}, it must be a kind of CBMAEstimator, or a string.'
+        )
+
+    # Check corrector type
+    if inspect.isclass(corrector):
+        corrector = _check_type(corrector, Corrector)
+    elif isinstance(corrector, str):
+        if corrector not in corr_options:
+            raise ValueError(f'"corrector" of kind string must be {", ".join(corr_options)}')
+    else:
+        raise ValueError(
+            f'"corrector" is {type(corrector)}, it must be a kind of Corrector, or a string.'
+        )
+
+    # Check diagnostics type
+    if inspect.isclass(diagnostics):
+        diagnostics = _check_type(diagnostics, Diagnostics)
+    elif isinstance(diagnostics, str):
+        if diagnostics not in diag_options:
+            raise ValueError(f'"diagnostics" of kind string must be {", ".join(diag_options)}')
+    else:
+        raise ValueError(
+            f'"diagnostics" is {type(diagnostics)}, it must be a kind of Diagnostics, or a string.'
+        )
+
+    if isinstance(estimator, PairwiseCBMAEstimator):
+        raise AttributeError(
+            "The cbma_workflow function does not currently work with pairwise Estimators."
+        )
+
     LGR.info("Performing meta-analysis...")
-    results = meta_estimator.fit(dataset)
+    results = estimator.fit(dataset)
 
     LGR.info("Performing correction on meta-analysis...")
     corr_results = corrector.transform(results)

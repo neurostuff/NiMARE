@@ -106,12 +106,12 @@ def test_cbma_workflow_function_smoke(tmp_path_factory, testdata_cbma_full):
 
     assert isinstance(cres, nimare.results.MetaResult)
 
-    assert "cluster_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "cluster_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "cluster_level-voxel_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "Jackknife_desc-mass_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "Jackknife_desc-size_level-cluster_corr-FWE_method-montecarlo" in cres.tables.keys()
-    assert "Jackknife_level-voxel_corr-FWE_method-montecarlo" in cres.tables.keys()
+    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo_clust" in cres.tables.keys()
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo_clust" in cres.tables.keys()
+    assert "z_level-voxel_corr-FWE_method-montecarlo_clust" in cres.tables.keys()
+    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo_Jackknife" in cres.tables.keys()
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo_Jackknife" in cres.tables.keys()
+    assert "z_level-voxel_corr-FWE_method-montecarlo_Jackknife" in cres.tables.keys()
 
     for imgtype in cres.maps.keys():
         filename = imgtype + ".nii.gz"
