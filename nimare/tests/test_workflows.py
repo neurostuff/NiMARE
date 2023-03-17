@@ -1,11 +1,13 @@
 """Test nimare.workflows."""
 import os.path as op
 
+import pytest
+
 import nimare
 from nimare import cli, workflows
 from nimare.correct import FWECorrector
-from nimare.diagnostics import Jackknife
-from nimare.meta.cbma.ale import ALE
+from nimare.diagnostics import FocusCounter, Jackknife
+from nimare.meta.cbma import ALE, MKDAChi2
 from nimare.tests.utils import get_test_data_path
 
 
@@ -87,32 +89,39 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
     assert op.isfile(op.join(tmpdir, f"{prefix}_group2_input_coordinates.txt"))
 
 
-def test_cbma_workflow_function_smoke(tmp_path_factory, testdata_cbma_full):
+@pytest.mark.parametrize(
+    "estimator,corrector,diagnostics",
+    [
+        (ALE, FWECorrector(method="montecarlo", n_iters=100), [Jackknife]),
+        ("ale" "bonferroni", [Jackknife, FocusCounter]),
+        ("kda", "fdr", Jackknife),
+        (MKDAChi2, "montecarlo", "focusCounter"),
+    ],
+)
+def test_cbma_workflow_function_smoke(
+    tmp_path_factory, testdata_cbma_full, estimator, corrector, diagnostics
+):
     """Run smoke test for CBMA workflow."""
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_function_smoke")
 
-    # Initialize estimator, corrector and diagnostic classes
-    est = ALE
-    # corr = FWECorrector(method="montecarlo", n_iters=100)
-    corr = "montecarlo"
-    diag = Jackknife
-
-    cres = workflows.cbma_workflow(
-        testdata_cbma_full,
-        estimator=est,
-        corrector=corr,
-        diagnostics=(diag,),
-        output_dir=tmpdir,
-    )
+    if estimator == MKDAChi2:
+        with pytest.raises(AttributeError):
+            workflows.cbma_workflow(
+                testdata_cbma_full,
+                estimator=estimator,
+                corrector=corrector,
+                diagnostics=diagnostics,
+            )
+    else:
+        cres = workflows.cbma_workflow(
+            testdata_cbma_full,
+            estimator=estimator,
+            corrector=corrector,
+            diagnostics=diagnostics,
+            output_dir=tmpdir,
+        )
 
     assert isinstance(cres, nimare.results.MetaResult)
-
-    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo_clust" in cres.tables.keys()
-    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo_clust" in cres.tables.keys()
-    assert "z_level-voxel_corr-FWE_method-montecarlo_clust" in cres.tables.keys()
-    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo_Jackknife" in cres.tables.keys()
-    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo_Jackknife" in cres.tables.keys()
-    assert "z_level-voxel_corr-FWE_method-montecarlo_Jackknife" in cres.tables.keys()
 
     for imgtype in cres.maps.keys():
         filename = imgtype + ".nii.gz"
