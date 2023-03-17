@@ -93,7 +93,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
     "estimator,corrector,diagnostics",
     [
         (ALE, FWECorrector(method="montecarlo", n_iters=100), [Jackknife]),
-        ("ale" "bonferroni", [Jackknife, FocusCounter]),
+        ("ale", "bonferroni", [Jackknife, FocusCounter]),
         ("kda", "fdr", Jackknife),
         (MKDAChi2, "montecarlo", "focusCounter"),
     ],
