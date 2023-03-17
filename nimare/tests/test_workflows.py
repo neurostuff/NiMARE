@@ -95,7 +95,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
         (ALE, FWECorrector(method="montecarlo", n_iters=100), [Jackknife]),
         ("ale", "bonferroni", [Jackknife, FocusCounter]),
         ("kda", "fdr", Jackknife),
-        (MKDAChi2, "montecarlo", "focusCounter"),
+        (MKDAChi2, "montecarlo", "focuscounter"),
     ],
 )
 def test_cbma_workflow_function_smoke(
@@ -121,16 +121,16 @@ def test_cbma_workflow_function_smoke(
             output_dir=tmpdir,
         )
 
-    assert isinstance(cres, nimare.results.MetaResult)
-    assert op.isfile(op.join(tmpdir, "boilerplate.txt"))
-    assert op.isfile(op.join(tmpdir, "references.bib"))
+        assert isinstance(cres, nimare.results.MetaResult)
+        assert op.isfile(op.join(tmpdir, "boilerplate.txt"))
+        assert op.isfile(op.join(tmpdir, "references.bib"))
 
-    for imgtype in cres.maps.keys():
-        filename = imgtype + ".nii.gz"
-        outpath = op.join(tmpdir, filename)
-        assert op.isfile(outpath)
+        for imgtype in cres.maps.keys():
+            filename = imgtype + ".nii.gz"
+            outpath = op.join(tmpdir, filename)
+            assert op.isfile(outpath)
 
-    for tabletype in cres.tables.keys():
-        filename = tabletype + ".tsv"
-        outpath = op.join(tmpdir, filename)
-        assert op.isfile(outpath)
+        for tabletype in cres.tables.keys():
+            filename = tabletype + ".tsv"
+            outpath = op.join(tmpdir, filename)
+            assert op.isfile(outpath)
