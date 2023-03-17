@@ -34,12 +34,15 @@ dset = Dataset(dset_file)
 # The CBMA workflow function runs the following steps:
 #
 # 1. Runs a meta-analysis using the specified method (default: ALE)
-# 2. Applies a corrector to the meta-analysis results (default: FWECorrector)
+# 2. Applies a corrector to the meta-analysis results (default: FWECorrector, montecarlo)
 # 3. Generates cluster tables and runs diagnostics on the corrected results (default: Jackknife)
 #
 # All in one function call!
-
-result = cbma_workflow(dset)
+# result = cbma_workflow(dset)
+# For this example, we use an FDR correction because the default corrector (FWE correction with
+# Monte Carlo simulation) takes a long time to run due to the high number of iterations that
+# are required
+result = cbma_workflow(dset, corrector="fdr")
 
 ###############################################################################
 # Plot Results
@@ -48,7 +51,7 @@ result = cbma_workflow(dset)
 # where you can access the corrected results of the meta-analysis and diagnostics tables.
 #
 # Corrected map:
-img = result.get_map("z_corr-FWE_method-bonferroni")
+img = result.get_map("z_corr-FDR")
 plot_stat_map(
     img,
     cut_coords=4,
@@ -62,12 +65,12 @@ plt.show()
 ###############################################################################
 # Clusters table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FWE_method-bonferroni_clust"]
+result.tables["z_corr-FDR_clust"]
 
 ###############################################################################
 # Contribution table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FWE_method-bonferroni_Jackknife"]
+result.tables["z_corr-FDR_Jackknife"]
 
 ###############################################################################
 # Methods
