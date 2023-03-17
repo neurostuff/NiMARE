@@ -122,6 +122,8 @@ def test_cbma_workflow_function_smoke(
         )
 
     assert isinstance(cres, nimare.results.MetaResult)
+    assert op.isfile(op.join(tmpdir, "boilerplate.txt"))
+    assert op.isfile(op.join(tmpdir, "references.bib"))
 
     for imgtype in cres.maps.keys():
         filename = imgtype + ".nii.gz"
