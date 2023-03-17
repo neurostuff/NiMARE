@@ -1,12 +1,11 @@
 """Workflow for running an coordinates-based meta-analysis from a NiMARE database."""
-import inspect
 import itertools
 import logging
 import os.path as op
 
 from nimare.correct import Corrector, FDRCorrector, FWECorrector
 from nimare.dataset import Dataset
-from nimare.diagnostics import FocusCounter, Jackknife
+from nimare.diagnostics import Diagnostics, FocusCounter, Jackknife
 from nimare.meta import ALE, KDA, SCALE, MKDADensity
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.utils import _check_ncores, _check_type
@@ -72,8 +71,9 @@ def cbma_workflow(
     corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', 'bonferroni'}
     or optional
         Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
-    diagnostics : :obj:`tuple`, :obj:`str` {'jackknife', 'focusCounter'}, or optional
-        Tuple of meta-analysis diagnostic classes.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`,
+    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focusCounter'}, or optional
+        List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
         Default is :class:`~nimare.diagnostics.FocusCounter`.
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
@@ -81,6 +81,8 @@ def cbma_workflow(
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
+        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
+        will be ignored.
         Default is 1.
 
     Returns
@@ -89,6 +91,9 @@ def cbma_workflow(
         Results of Estimator and Corrector fitting with cluster and diagnostic tables.
     """
     n_cores = _check_ncores(n_cores)
+
+    if not isinstance(diagnostics, list) and diagnostics is not None:
+        diagnostics = [diagnostics]
 
     # Check dataset type
     dataset = _check_type(dataset, Dataset)
@@ -109,11 +114,14 @@ def cbma_workflow(
         if corrector is None
         else _check_input(corrector, Corrector, corr_options, n_cores=n_cores)
     )
-    diagnostics = (
-        (Jackknife(n_cores=n_cores),)
-        if diagnostics is None
-        else _check_input(diagnostics, Jackknife, diag_options, n_cores=n_cores)
-    )
+
+    if diagnostics is None:
+        diagnostics = [FocusCounter(n_cores=n_cores)]
+    else:
+        diagnostics = [
+            _check_input(diagnostic, Diagnostics, diag_options, n_cores=n_cores)
+            for diagnostic in diagnostics
+        ]
 
     if isinstance(estimator, PairwiseCBMAEstimator):
         raise AttributeError(
