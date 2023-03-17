@@ -51,12 +51,12 @@ result = cbma_workflow(dset, corrector="fdr")
 # where you can access the corrected results of the meta-analysis and diagnostics tables.
 #
 # Corrected map:
-img = result.get_map("z_corr-FDR")
+img = result.get_map("z_corr-FDR_method-indep")
 plot_stat_map(
     img,
     cut_coords=4,
     display_mode="z",
-    threshold=2.326,  # cluster-level p < .01, one-tailed
+    threshold=3.1,  # cluster-level p < 0.001, one-tailed
     cmap="RdBu_r",
     vmax=4,
 )
@@ -65,12 +65,12 @@ plt.show()
 ###############################################################################
 # Clusters table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FDR_clust"]
+result.tables["z_corr-FDR_method-indep_clust"]
 
 ###############################################################################
 # Contribution table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FDR_Jackknife"]
+result.tables["z_corr-FDR_method-indep_Jackknife"]
 
 ###############################################################################
 # Methods

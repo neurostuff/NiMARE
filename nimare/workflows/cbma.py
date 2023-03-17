@@ -8,6 +8,7 @@ from nimare.dataset import Dataset
 from nimare.diagnostics import Diagnostics, FocusCounter, Jackknife
 from nimare.meta import ALE, KDA, SCALE, MKDADensity
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, _check_type
 
 LGR = logging.getLogger(__name__)
@@ -115,11 +116,13 @@ def cbma_workflow(
         else _check_input(corrector, Corrector, corr_options, n_cores=n_cores)
     )
 
+    pval = 0.05 if corrector.method == "montecarlo" else 0.001
+    vthr = p_to_z(pval, tail="one")  # Set voxel_thresh for diagnostics
     if diagnostics is None:
-        diagnostics = [FocusCounter(n_cores=n_cores)]
+        diagnostics = [Jackknife(voxel_thresh=vthr, n_cores=n_cores)]
     else:
         diagnostics = [
-            _check_input(diagnostic, Diagnostics, diag_options, n_cores=n_cores)
+            _check_input(diagnostic, Diagnostics, diag_options, voxel_thresh=vthr, n_cores=n_cores)
             for diagnostic in diagnostics
         ]
 
