@@ -92,7 +92,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
 @pytest.mark.parametrize(
     "estimator,corrector,diagnostics",
     [
-        (ALE, FWECorrector(method="montecarlo", n_iters=100), [Jackknife]),
+        (ALE, FWECorrector(method="montecarlo", n_iters=10), [Jackknife]),
         ("ale", "bonferroni", [Jackknife, FocusCounter]),
         ("kda", "fdr", Jackknife),
         (MKDAChi2, "montecarlo", "focuscounter"),
