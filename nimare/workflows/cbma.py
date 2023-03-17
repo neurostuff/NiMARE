@@ -66,14 +66,15 @@ def cbma_workflow(
     ----------
     dataset : :obj:`~nimare.dataset.Dataset`
         Dataset for which to run meta-analyses to generate maps.
-    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', 'mkdadensity',
+    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', 'mkdadensity', \
     'kda'}, or optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.ale.ALE`.
-    corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', 'bonferroni'}
-    or optional
+    corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
+    'bonferroni'} or optional
         Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
-    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`,
-    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focusCounter'}, or optional
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`, \
+    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focusCounter'}, \
+    or optional
         List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
         Default is :class:`~nimare.diagnostics.FocusCounter`.
     output_dir : :obj:`str`, optional
@@ -150,7 +151,7 @@ def cbma_workflow(
         diag_name = diagnostic.__class__.__name__
         clust_tbl_name = f"{img_key}_clust"
         count_tbl_name = f"{img_key}_{diag_name}"
-        if not contribution_table.empty:
+        if not clusters_table.empty:
             corr_results.tables[clust_tbl_name] = clusters_table
             corr_results.tables[count_tbl_name] = contribution_table
         else:

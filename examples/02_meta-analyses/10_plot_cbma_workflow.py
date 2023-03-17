@@ -38,7 +38,9 @@ dset = Dataset(dset_file)
 # 3. Generates cluster tables and runs diagnostics on the corrected results (default: Jackknife)
 #
 # All in one function call!
+#
 # result = cbma_workflow(dset)
+#
 # For this example, we use an FDR correction because the default corrector (FWE correction with
 # Monte Carlo simulation) takes a long time to run due to the high number of iterations that
 # are required
