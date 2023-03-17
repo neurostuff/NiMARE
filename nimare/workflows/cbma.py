@@ -4,31 +4,47 @@ import itertools
 import logging
 import os.path as op
 
-from nimare.correct import Corrector, FWECorrector
+from nimare.correct import Corrector, FDRCorrector, FWECorrector
 from nimare.dataset import Dataset
-from nimare.diagnostics import Diagnostics, Jackknife
-from nimare.meta import ALE
+from nimare.diagnostics import FocusCounter, Jackknife
+from nimare.meta import ALE, KDA, SCALE, MKDADensity
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.utils import _check_ncores, _check_type
 
 LGR = logging.getLogger(__name__)
 
 
-def _collect_class(str_name, base_clss):
-    """Collect a class from a module."""
-    pass
+def _str_to_class(str_name):
+    """Match a string to a class name without initializing the class."""
+    classes = {
+        "ale": ALE,
+        "scale": SCALE,
+        "mkdadensity": MKDADensity,
+        "kda": KDA,
+        "montecarlo": FWECorrector,
+        "fdr": FDRCorrector,
+        "bonferroni": FWECorrector,
+        "jackknife": Jackknife,
+        "focuscounter": FocusCounter,
+    }
+    return classes[str_name]
 
 
 def _check_input(obj, clss, options, **kwargs):
-    if inspect.isclass(obj):
-        obj = _check_type(obj, clss, **kwargs)
-    elif isinstance(obj, str):
+    """Check input for workflow functions."""
+    if isinstance(obj, str):
         if obj not in options:
             raise ValueError(f'"estimator" of kind string must be {", ".join(options)}')
-        obj = _collect_class(obj, clss, **kwargs)
-    else:
-        raise ValueError(f'"estimator" is {type(obj)}, it must be a kind of {clss}, or a string.')
-    return obj
+
+        # Get the class from the string
+        obj_str = obj
+        obj = _str_to_class(obj_str)
+
+        # Add the method to the kwargs if it's a FWECorrector
+        if obj == FWECorrector:
+            kwargs["method"] = obj_str
+
+    return _check_type(obj, clss, **kwargs)
 
 
 def cbma_workflow(
@@ -96,7 +112,7 @@ def cbma_workflow(
     diagnostics = (
         (Jackknife(n_cores=n_cores),)
         if diagnostics is None
-        else _check_input(diagnostics, Diagnostics, diag_options, n_cores=n_cores)
+        else _check_input(diagnostics, Jackknife, diag_options, n_cores=n_cores)
     )
 
     if isinstance(estimator, PairwiseCBMAEstimator):

@@ -92,13 +92,14 @@ def test_cbma_workflow_function_smoke(tmp_path_factory, testdata_cbma_full):
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_function_smoke")
 
     # Initialize estimator, corrector and diagnostic classes
-    est = ALE(null_method="approximate")
-    corr = FWECorrector(method="montecarlo", n_iters=100)
-    diag = Jackknife()
+    est = ALE
+    # corr = FWECorrector(method="montecarlo", n_iters=100)
+    corr = "montecarlo"
+    diag = Jackknife
 
     cres = workflows.cbma_workflow(
         testdata_cbma_full,
-        meta_estimator=est,
+        estimator=est,
         corrector=corr,
         diagnostics=(diag,),
         output_dir=tmpdir,
