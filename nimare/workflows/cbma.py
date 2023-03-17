@@ -151,7 +151,7 @@ def cbma_workflow(
             corr_results.tables[clust_tbl_name] = clusters_table
             corr_results.tables[count_tbl_name] = contribution_table
         else:
-            LGR.warn(
+            LGR.warning(
                 f"Key {count_tbl_name} and {clust_tbl_name} will not be stored in "
                 "MetaResult.tables dictionary."
             )
