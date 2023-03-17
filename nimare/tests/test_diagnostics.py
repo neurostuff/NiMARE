@@ -43,13 +43,28 @@ def test_jackknife_smoke(
         res = meta.fit(testdata)
 
     jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=1.65)
+    contribution_table, clusters_table, label_maps = jackknife.transform(res)
 
     if n_samples == "twosample":
-        with pytest.raises(AttributeError):
-            jackknife.transform(res)
+        assert contribution_table is None
+        assert not clusters_table.empty
+        assert len(label_maps) > 0
     else:
-        contribution_table, cluster_table, labeled_img = jackknife.transform(res)
         assert contribution_table.shape[0] == len(meta.inputs_["id"])
+        assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
+
+
+def test_jackknife_with_zero_clusters(testdata_cbma_full):
+    """Ensure that Jackknife will work with zero clusters."""
+    meta = cbma.ALE()
+    res = meta.fit(testdata_cbma_full)
+
+    jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=10)
+    contribution_table, clusters_table, label_maps = jackknife.transform(res)
+
+    assert contribution_table is None
+    assert clusters_table.empty
+    assert not label_maps
 
 
 def test_jackknife_with_custom_masker_smoke(testdata_ibma):
@@ -65,7 +80,7 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
     res = meta.fit(testdata_ibma)
 
     jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=0.5)
-    contribution_table, cluster_table, labeled_img = jackknife.transform(res)
+    contribution_table, _, _ = jackknife.transform(res)
     assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
     # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
@@ -100,13 +115,15 @@ def test_focuscounter_smoke(
         res = meta.fit(testdata)
 
     counter = diagnostics.FocusCounter(target_image=target_image, voxel_thresh=1.65)
+    contribution_table, clusters_table, label_maps = counter.transform(res)
 
     if n_samples == "twosample":
-        with pytest.raises(AttributeError):
-            counter.transform(res)
+        assert contribution_table is None
+        assert not clusters_table.empty
+        assert len(label_maps) > 0
     else:
-        contribution_table, cluster_table, labeled_img = counter.transform(res)
         assert contribution_table.shape[0] == len(meta.inputs_["id"])
+        assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
 
 
 def test_focusfilter(testdata_laird):
