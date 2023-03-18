@@ -73,7 +73,7 @@ def cbma_workflow(
     'bonferroni'} or optional
         Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
     diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`, \
-    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focusCounter'}, \
+    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focuscounter'}, \
     or optional
         List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
         Default is :class:`~nimare.diagnostics.FocusCounter`.
