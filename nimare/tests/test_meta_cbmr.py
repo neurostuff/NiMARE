@@ -1,26 +1,44 @@
+import nimare 
 from nimare.meta.cbmr import CBMREstimator, CBMRInference
 from nimare.tests.utils import standardize_field
 from nimare.meta import models
 import logging
 import torch
+import pytest
 import numpy as np
 from nimare.correct import FDRCorrector, FWECorrector
 
-def test_CBMREstimator(testdata_cbmr_simulated):
+# @pytest.mark.parametrize(
+#     "group_categories, spline_spacing, model",
+#     [
+#         (None, 10, models.PoissonEstimator),
+#         ("diagnosis", 10, models.PoissonEstimator),
+#         (["diagnosis", "drug_status"], 10, models.PoissonEstimator),
+#     ]
+# )
+@pytest.mark.parametrize("group_categories", [["diagnosis", "drug_status"]])
+@pytest.mark.parametrize("spline_spacing", [10, 5])
+@pytest.mark.parametrize("model",[models.NegativeBinomialEstimator])
+
+def test_CBMREstimator(testdata_cbmr_simulated, group_categories, spline_spacing, model):
     logging.getLogger().setLevel(logging.DEBUG)
-    """Unit test for CBMR estimator."""
+    LGR = logging.getLogger(__name__)
+    """Unit test for CBMR estimator.""" 
     dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"])
+    LGR.debug("group_categories: {}, spline_spacing: {}, model: {}".format(group_categories, spline_spacing, model)) 
     cbmr = CBMREstimator(
-        group_categories= ["diagnosis", "drug_status"],
+        group_categories= group_categories,
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
-        spline_spacing=10,
-        model=models.PoissonEstimator,
+        spline_spacing=spline_spacing,
+        model=model,
         penalty=False,
         lr=1e-1,
-        tol=1e4,
+        tol=1,
         device="cpu"
     )
-    cbmr.fit(dataset=dset)
+    res = cbmr.fit(dataset=dset)
+    assert isinstance(res, nimare.results.MetaResult)
+
 
 def test_CBMRInference(testdata_cbmr_simulated):
     logging.getLogger().setLevel(logging.DEBUG)

@@ -32,12 +32,6 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self.tol = tol
         self.device = device
 
-        # initialization for spatial regression coefficients
-        if self.spatial_coef_dim and self.groups:
-            self.init_spatial_weights()
-        # initialization for regression coefficients of moderators
-        if self.moderators_coef_dim:
-            self.init_moderator_weights()
         # initialization for iteration set up
         self.iter = 0
 
@@ -124,6 +118,12 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
         loss = optimizer.step(closure)
         scheduler.step()
+        if torch.isnan(loss):
+            raise ValueError(
+                f"""The current learing rate {str(self.lr)} or choice of model gives rise to
+                NaN log-likelihood, please try Poisson model or adjust learning rate to a smaller
+                value."""
+            )
         # reset the L-BFGS params if NaN appears in coefficient of regression
         if any(
             [
@@ -433,8 +433,6 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     def __init__(self, **kwargs):
         self.square_root = kwargs.pop("square_root", False)
         super().__init__(**kwargs)
-        if self.groups:
-            self.init_overdispersion_weights()
 
     def init_overdispersion_weights(self):
         """Document this."""
@@ -447,9 +445,9 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
             overdispersion[group] = torch.nn.Parameter(overdispersion_init_group, requires_grad=True)
         self.overdispersion = torch.nn.ParameterDict(overdispersion)
 
-    def init_weights(self, groups, spatial_coef_dim, moderators_coef_dim):
+    def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
         """Document this."""
-        super().init_weights(groups, spatial_coef_dim, moderators_coef_dim)
+        super().init_weights(groups, moderators, spatial_coef_dim, moderators_coef_dim)
         self.init_overdispersion_weights()
 
     def inference_outcome(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
