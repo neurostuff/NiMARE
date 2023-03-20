@@ -16,7 +16,7 @@ from nimare.correct import FDRCorrector, FWECorrector
 #         (["diagnosis", "drug_status"], 10, models.PoissonEstimator),
 #     ]
 # )
-@pytest.mark.parametrize("group_categories", [["diagnosis", "drug_status"]])
+@pytest.mark.parametrize("group_categories", [None, ["diagnosis", "drug_status"]])
 @pytest.mark.parametrize("spline_spacing", [10, 5])
 @pytest.mark.parametrize("model",[models.NegativeBinomialEstimator])
 
