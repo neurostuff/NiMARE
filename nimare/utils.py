@@ -14,11 +14,10 @@ import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn.input_data import NiftiMasker
-from scipy import ndimage
-
 import patsy
 import sparse
+from nilearn.input_data import NiftiMasker
+from scipy import ndimage
 
 LGR = logging.getLogger(__name__)
 
@@ -1162,6 +1161,7 @@ def _get_cluster_coms(labeled_cluster_arr):
 
     return cluster_coms
 
+
 def coef_spline_bases(axis_coords, spacing, margin):
     """
     Coefficient of cubic B-spline bases in any x/y/z direction
@@ -1257,6 +1257,7 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
 
     return X
 
+
 def index2vox(vals, masker_voxels):
     xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
     yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
@@ -1274,25 +1275,31 @@ def index2vox(vals, masker_voxels):
 
     return voxel_array
 
+
 def dummy_encoding_moderators(dataset_annotations, moderators):
     new_moderators = []
     for moderator in moderators.copy():
         if len(moderator.split(":reference=")) == 2:
             moderator, reference_subtype = moderator.split(":reference=")
-        if np.array_equal(dataset_annotations[moderator], dataset_annotations[moderator].astype(str)):
+        if np.array_equal(
+            dataset_annotations[moderator], dataset_annotations[moderator].astype(str)
+        ):
             categories_unique = dataset_annotations[moderator].unique().tolist()
             # sort categories alphabetically
             categories_unique = sorted(categories_unique, key=str.lower)
             if "reference_subtype" in locals():
                 # remove reference subgroup from list and add it to the first position
-                categories_unique.remove(reference_subtype) 
+                categories_unique.remove(reference_subtype)
                 categories_unique.insert(0, reference_subtype)
             for category in categories_unique:
-                dataset_annotations[category] = (dataset_annotations[moderator] == category).astype(int)
+                dataset_annotations[category] = (
+                    dataset_annotations[moderator] == category
+                ).astype(int)
             # remove last categorical moderator column as it encoded as the other dummy encoded columns being zero
             dataset_annotations = dataset_annotations.drop([categories_unique[0]], axis=1)
-            new_moderators.extend(categories_unique[1:]) # add dummy encoded moderators (except from the reference subgroup)
+            new_moderators.extend(
+                categories_unique[1:]
+            )  # add dummy encoded moderators (except from the reference subgroup)
         else:
             new_moderators.append(moderator)
     return dataset_annotations, new_moderators
-

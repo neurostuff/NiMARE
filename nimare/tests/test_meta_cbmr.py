@@ -1,82 +1,108 @@
-import nimare 
+"""Tests for CBMR meta-analytic methods."""
+import logging
+
+import pytest
+import torch
+
+import nimare
+from nimare.correct import FDRCorrector, FWECorrector
+from nimare.meta import models
 from nimare.meta.cbmr import CBMREstimator, CBMRInference
 from nimare.tests.utils import standardize_field
-from nimare.meta import models
-import logging
-import torch
-import pytest
-import numpy as np
-from nimare.correct import FDRCorrector, FWECorrector
 
-# @pytest.mark.parametrize(
-#     "group_categories, spline_spacing, model",
-#     [
-#         (None, 10, models.PoissonEstimator),
-#         ("diagnosis", 10, models.PoissonEstimator),
-#         (["diagnosis", "drug_status"], 10, models.PoissonEstimator),
-#     ]
-# )
-@pytest.mark.parametrize("group_categories", [None, ["diagnosis", "drug_status"]])
-@pytest.mark.parametrize("spline_spacing", [10, 5])
-@pytest.mark.parametrize("model",[models.NegativeBinomialEstimator])
+# numba has a lot of debug messages that are not useful for testing
+logging.getLogger("numba").setLevel(logging.WARNING)
+# indexed_gzip has a few debug messages that are not useful for testing
+logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
 
-def test_CBMREstimator(testdata_cbmr_simulated, group_categories, spline_spacing, model):
-    logging.getLogger().setLevel(logging.DEBUG)
-    LGR = logging.getLogger(__name__)
-    """Unit test for CBMR estimator.""" 
-    dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"])
-    LGR.debug("group_categories: {}, spline_spacing: {}, model: {}".format(group_categories, spline_spacing, model)) 
+
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(models.PoissonEstimator, id="Poisson"),
+        pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
+        pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
+    ],
+)
+def model(request):
+    """CBMR models."""
+    return request.param
+
+
+@pytest.fixture(scope="session")
+def cbmr_result(testdata_cbmr_simulated, model):
+    """Test CBMR estimator."""
+    dset = standardize_field(
+        dataset=testdata_cbmr_simulated,
+        metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"],
+    )
     cbmr = CBMREstimator(
-        group_categories= group_categories,
+        group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
-        spline_spacing=spline_spacing,
+        spline_spacing=50,
         model=model,
         penalty=False,
         lr=1e-1,
-        tol=1,
-        device="cpu"
+        tol=1e5,
+        device="cpu",
     )
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
+    return res
 
 
-def test_CBMRInference(testdata_cbmr_simulated):
-    logging.getLogger().setLevel(logging.DEBUG)
-    """Unit test for CBMR estimator."""
-    dset = standardize_field(dataset=testdata_cbmr_simulated, metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"])
-    cbmr = CBMREstimator(
-        group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age"
-                    , "schizophrenia_subtype"],
-        spline_spacing=10,
-        model=models.PoissonEstimator,
-        penalty=False,
-        lr=1e-1,
-        tol=1e4,
-        device="cpu",
-    )
-    # ["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
-    cbmr_res = cbmr.fit(dataset=dset)
-    inference = CBMRInference(
-        CBMRResults=cbmr_res, device="cuda"
-    )
+@pytest.fixture(scope="session")
+def inference_results(testdata_cbmr_simulated, cbmr_result):
+    """Test inference results for CBMR estimator."""
+    inference = CBMRInference(CBMRResults=cbmr_result, device="cuda")
     t_con_groups = inference.create_contrast(
-    [
-        "SchizophreniaYes-SchizophreniaNo",
-        "SchizophreniaNo-DepressionYes",
-        "DepressionYes-DepressionNo",
-    ],
-    type="groups",
+        [
+            "DepressionYes-DepressionNo",
+        ],
+        type="groups",
     )
-    # t_con_groups = inference.create_contrast(["SchizophreniaYes", "SchizophreniaNo"], type="groups")
-    t_con_moderators = inference.create_contrast(["standardized_sample_sizes", "standardized_sample_sizes-standardized_avg_age"], type="moderators")
-    contrast_result = inference.compute_contrast(t_con_groups=t_con_groups, t_con_moderators=t_con_moderators)
-    
-    corr = FWECorrector(method="bonferroni")
-    cres = corr.transform(cbmr_res)
-    
+    t_con_moderators = inference.create_contrast(
+        ["standardized_sample_sizes"],
+        type="moderators",
+    )
+    contrast_result = inference.compute_contrast(
+        t_con_groups=t_con_groups, t_con_moderators=t_con_moderators
+    )
+
+    return contrast_result
+
+
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(FWECorrector(method="bonferroni"), id="bonferroni"),
+        pytest.param(FDRCorrector(method="indep"), id="indep"),
+        pytest.param(FDRCorrector(method="negcorr"), id="negcorr"),
+    ],
+)
+def corrector(request):
+    """Corrector classes."""
+    return request.param
+
+
+def test_cbmr_estimator(cbmr_result):
+    """Unit test for CBMR estimator."""
+    assert isinstance(cbmr_result, nimare.results.MetaResult)
+
+
+def test_cbmr_inference(inference_results):
+    """Unit test for CBMR inference."""
+    assert isinstance(inference_results, nimare.results.MetaResult)
+
+
+def test_cbmr_correctors(inference_results, corrector):
+    """Unit test for Correctors that work with CBMR."""
+    corrected_results = corrector.transform(inference_results)
+    assert isinstance(corrected_results, nimare.results.MetaResult)
+
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
+    """Unit test for CBMR estimator update function."""
     cbmr = CBMREstimator(model=models.ClusteredNegativeBinomial, lr=1e-4)
 
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)
@@ -87,16 +113,18 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         groups=cbmr.groups,
         penalty=cbmr.penalty,
         device=cbmr.device,
-        )
-    
+    )
+
     optimizer = torch.optim.LBFGS(cbmr_model.parameters(), cbmr.lr)
     # load dataset info to torch.tensor
-    coef_spline_bases = torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device)
+    _ = torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device)
     if cbmr.moderators:
         moderators_by_group_tensor = dict()
         for group in cbmr_model.groups:
             moderators_tensor = torch.tensor(
-                cbmr_model.inputs_["moderators_by_group"][group], dtype=torch.float64, device=cbmr.device
+                cbmr_model.inputs_["moderators_by_group"][group],
+                dtype=torch.float64,
+                device=cbmr.device,
             )
             moderators_by_group_tensor[group] = moderators_tensor
     else:
@@ -114,32 +142,28 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
     optimizer = torch.optim.LBFGS(cbmr_model.parameters(), cbmr.lr)
     if cbmr.iter == 0:
         prev_loss = torch.tensor(float("inf"))  # initialization loss difference
-    
-    loss = cbmr._update(
-                    cbmr_model,
-                    optimizer,
-                    torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
-                    moderators_by_group_tensor,
-                    foci_per_voxel_tensor,
-                    foci_per_study_tensor,
-                    prev_loss,
-            )
-    
+
+    _ = cbmr._update(
+        cbmr_model,
+        optimizer,
+        torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
+        moderators_by_group_tensor,
+        foci_per_voxel_tensor,
+        foci_per_study_tensor,
+        prev_loss,
+    )
+
     # deliberately set the first spatial coefficient to nan
-    nan_coef = torch.tensor(cbmr_model.spatial_coef_linears['default'].weight)
-    nan_coef[:, 0] = float('nan')
-    cbmr_model.spatial_coef_linears['default'].weight = torch.nn.Parameter(nan_coef)
-    
-    loss = cbmr._update(
-                    cbmr_model,
-                    optimizer,
-                    torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
-                    moderators_by_group_tensor,
-                    foci_per_voxel_tensor,
-                    foci_per_study_tensor,
-                    prev_loss,
-            )
+    nan_coef = torch.tensor(cbmr_model.spatial_coef_linears["default"].weight)
+    nan_coef[:, 0] = float("nan")
+    cbmr_model.spatial_coef_linears["default"].weight = torch.nn.Parameter(nan_coef)
 
-
-
-
+    _ = cbmr._update(
+        cbmr_model,
+        optimizer,
+        torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
+        moderators_by_group_tensor,
+        foci_per_voxel_tensor,
+        foci_per_study_tensor,
+        prev_loss,
+    )

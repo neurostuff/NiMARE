@@ -1,16 +1,17 @@
-from nimare.base import Estimator
-from nimare.utils import get_masker, B_spline_bases, dummy_encoding_moderators
+"""Cla."""
+import logging
+import re
+
 import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
-from nimare.utils import mm2vox
+import torch
+
+from nimare.base import Estimator
 from nimare.diagnostics import FocusFilter
 from nimare.meta import models
-import torch
-import logging
-import re
-
+from nimare.utils import B_spline_bases, dummy_encoding_moderators, get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -332,8 +333,9 @@ class CBMREstimator(Estimator):
 
 
 class CBMRInference(object):
-    """Statistical inference on outcomes (intensity estimation and study-level
-    moderator regressors) of CBMR.
+    """Statistical inference on outcomes of CBMR.
+
+    (intensity estimation and study-level moderator regressors)
 
     Parameters
     ----------
@@ -463,7 +465,7 @@ class CBMRInference(object):
                     raise ValueError(f"{contrast} is not a valid contrast.")
                 moderators_contrast = contrast_match.groupdict()
                 if all(moderators_contrast.values()):  # moderator comparison
-                    moderator_groups = list(map(moderators_contrast.get, ["first", "second"]))
+                    _ = list(map(moderators_contrast.get, ["first", "second"]))
                     contrast_vector[
                         self.moderator_reference_dict[moderators_contrast["first"]]
                     ] = 1
@@ -679,13 +681,9 @@ class CBMRInference(object):
                     f"z_group-{self.t_con_groups_name[con_group_count]}"
                 ] = z_stats_spatial
             else:
-                self.CBMRResults.maps[
-                    f"chi_square_GLH_groups_{con_group_count}"
-                ] = chi_sq_spatial
+                self.CBMRResults.maps[f"chi_square_GLH_groups_{con_group_count}"] = chi_sq_spatial
                 self.CBMRResults.maps[f"p_GLH_groups_{con_group_count}"] = p_vals_spatial
-                self.CBMRResults.maps[
-                    f"z_GLH_groups_{con_group_count}"
-                ] = z_stats_spatial
+                self.CBMRResults.maps[f"z_GLH_groups_{con_group_count}"] = z_stats_spatial
             con_group_count += 1
 
     def _chi_square_log_intensity(
@@ -752,7 +750,7 @@ class CBMRInference(object):
                 self.CBMRResults.tables[
                     f"chi_square_GLH_moderators_{con_moderator_count}"
                 ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
-                self.CBMRResults.tables[
-                    f"p_GLH_moderators_{con_moderator_count}"
-                ] = pd.DataFrame(data=np.array(p_vals_moderator), columns=["p_value"])
+                self.CBMRResults.tables[f"p_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
+                    data=np.array(p_vals_moderator), columns=["p_value"]
+                )
             con_moderator_count += 1

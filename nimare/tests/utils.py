@@ -1,11 +1,11 @@
 """Utility functions for testing nimare."""
+import logging
 import os.path as op
 from contextlib import ExitStack as does_not_raise
 
 import nibabel as nib
 import numpy as np
 import pytest
-import logging 
 
 from nimare.meta.utils import compute_kda_ma
 
@@ -14,6 +14,7 @@ from nimare.meta.utils import compute_kda_ma
 ALPHA = 0.05
 
 LGR = logging.getLogger(__name__)
+
 
 def get_test_data_path():
     """Return the path to test datasets, terminated with separator.
@@ -128,22 +129,26 @@ def standardize_field(dataset, metadata):
     # moderators = dataset.annotations[metadata]
     categorical_metadata, numerical_metadata = [], []
     for metadata_name in metadata:
-        if np.array_equal(dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(str)):
+        if np.array_equal(
+            dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(str)
+        ):
             categorical_metadata.append(metadata_name)
-        elif np.array_equal(dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(float)):
+        elif np.array_equal(
+            dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(float)
+        ):
             numerical_metadata.append(metadata_name)
     if len(categorical_metadata) > 0:
         LGR.warning(f"Categorical metadata {categorical_metadata} can't be standardized.")
     if len(numerical_metadata) == 0:
         raise ValueError("No numerical metadata found.")
-    
-    moderators = dataset.annotations[numerical_metadata] 
+
+    moderators = dataset.annotations[numerical_metadata]
     standardize_moderators = moderators - np.mean(moderators, axis=0)
     standardize_moderators /= np.std(standardize_moderators, axis=0)
     if isinstance(metadata, str):
         column_name = "standardized_" + metadata
     elif isinstance(metadata, list):
-        column_name = ["standardized_" + moderator for moderator in numerical_metadata] 
+        column_name = ["standardized_" + moderator for moderator in numerical_metadata]
     dataset.annotations[column_name] = standardize_moderators
 
     return dataset

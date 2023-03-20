@@ -1,10 +1,10 @@
 """Multiple comparisons correction methods."""
 import inspect
 import logging
+import re
 from abc import ABCMeta, abstractproperty
 
 import numpy as np
-import re
 from pymare.stats import bonferroni, fdr
 
 from nimare.results import MetaResult
@@ -83,7 +83,9 @@ class Corrector(metaclass=ABCMeta):
             )
         # Check required maps
         # for cbmr approach, we have customized name for groupwise p maps
-        p_map_cbmr = tuple([m for m in result.maps.keys() if m.startswith("p_") and "_corr-" not in m])
+        p_map_cbmr = tuple(
+            [m for m in result.maps.keys() if m.startswith("p_") and "_corr-" not in m]
+        )
         if len(p_map_cbmr) > 0:
             self._required_maps = p_map_cbmr
         for rm in self._required_maps:
@@ -92,8 +94,7 @@ class Corrector(metaclass=ABCMeta):
                     f"{type(self)} requires '{rm}' maps to be present in the MetaResult, "
                     "but none were found."
                 )
-            
-            
+
     def _generate_secondary_maps(self, result, corr_maps, rm):
         """Generate corrected version of z and log-p maps if they exist."""
 
@@ -244,7 +245,7 @@ class Corrector(metaclass=ABCMeta):
             # Create a dictionary of the corrected results
             corr_maps[rm] = p_corr
             self._generate_secondary_maps(result, corr_maps, rm)
-        
+
         return corr_maps, tables
 
 
