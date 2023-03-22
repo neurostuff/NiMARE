@@ -179,7 +179,10 @@ class MetaResult(NiMAREBase):
         for tabletype, table in tables.items():
             filename = prefix + tabletype + ".tsv"
             outpath = os.path.join(output_dir, filename)
-            table.to_csv(outpath, sep="\t", index=False)
+            if table is not None:
+                table.to_csv(outpath, sep="\t", index=False)
+            else:
+                LGR.warning(f"Table {tabletype} is None. Not saving.")
 
     def copy(self):
         """Return copy of result object."""
