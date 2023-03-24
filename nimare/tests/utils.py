@@ -126,6 +126,7 @@ def _transform_res(meta, meta_res, corr):
 
 
 def standardize_field(dataset, metadata):
+    """Document This."""
     # moderators = dataset.annotations[metadata]
     categorical_metadata, numerical_metadata = [], []
     for metadata_name in metadata:

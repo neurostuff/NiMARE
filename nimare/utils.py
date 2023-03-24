@@ -1855,7 +1855,9 @@ def coef_spline_bases(axis_coords, spacing, margin):
     """
     # create B-spline basis for x/y/z coordinate
     wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
-    # knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
+    knots = np.arange(  # noqa: F841
+        np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing
+    )
     design_matrix = patsy.dmatrix(
         "bs(x, knots=knots, degree=3,include_intercept=False)",
         data={"x": wider_axis_coords},

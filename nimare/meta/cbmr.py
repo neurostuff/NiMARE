@@ -9,8 +9,8 @@ import pandas as pd
 import scipy
 import torch
 
-from nimare.base import Estimator
 from nimare.diagnostics import FocusFilter
+from nimare.estimator import Estimator
 from nimare.meta import models
 from nimare.utils import b_spline_bases, dummy_encoding_moderators, get_masker, mm2vox
 
@@ -139,6 +139,18 @@ class CBMREstimator(Estimator):
 
         # Initialize optimisation parameters
         self.iter = 0
+
+    def _generate_description(self):
+        """Generate a description of the Estimator instance.
+
+        Returns
+        -------
+        description : :obj:`str`
+            Description of the Estimator instance.
+        """
+        description = "CBMR!!!"
+
+        return description
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
@@ -330,7 +342,7 @@ class CBMREstimator(Estimator):
 
         maps, tables = self.model.summary()
 
-        return maps, tables
+        return maps, tables, self._generate_description()
 
 
 class CBMRInference(object):
@@ -377,8 +389,6 @@ class CBMRInference(object):
         self.result = None
         self.groups = None
         self.moderators = None
-        self.n_groups = None
-        self.n_moderators = None
 
     def _check_fit(fn):
         """Check if CBMRInference instance has been fit."""
@@ -402,19 +412,17 @@ class CBMRInference(object):
             (per study) in `maps`.
         """
         self.result = result.copy()
-        self.groups = result.groups
-        self.moderators = result.moderators
-        self.n_groups = result.n_groups
-        self.n_moderators = result.n_moderators
+        self.estimator = self.result.estimator
+        self.groups = self.result.estimator.groups
+        self.moderators = self.result.estimator.moderators
 
         self.create_regular_expressions()
 
         self.group_reference_dict, self.moderator_reference_dict = dict(), dict()
-        for i in range(self.n_groups):
+        for i in range(len(self.groups)):
             self.group_reference_dict[self.groups[i]] = i
         if self.moderators:
-            self.n_moderators = len(self.moderators)
-            for j in range(self.n_moderators):
+            for j in range(len(self.moderators)):
                 self.moderator_reference_dict[self.moderators[j]] = j
                 LGR.info(f"{self.moderators[j]} = index_{j}")
 
@@ -479,7 +487,7 @@ class CBMRInference(object):
         contrast_matrix = {}
         if source == "groups":  # contrast matrix for spatial intensity
             for contrast in contrast_name:
-                contrast_vector = np.zeros(self.n_groups)
+                contrast_vector = np.zeros(len(self.groups))
                 contrast_match = self.groups_regular_expression.match(contrast)
                 # check validity of contrast name
                 if contrast_match is None:
@@ -497,7 +505,7 @@ class CBMRInference(object):
 
         elif source == "moderators":  # contrast matrix for moderator effect
             for contrast in contrast_name:
-                contrast_vector = np.zeros(self.n_moderators)
+                contrast_vector = np.zeros(len(self.moderators))
                 contrast_match = self.moderators_regular_expression.match(contrast)
                 if contrast_match is None:
                     raise ValueError(f"{contrast} is not a valid contrast.")
@@ -548,7 +556,6 @@ class CBMRInference(object):
             # GLH test for group contrast
             self._glh_con_group()
         if self.t_con_moderators:
-            self.n_moderators = len(self.moderators)
             # preprocess and standardize moderator contrast
             self.t_con_moderators, self.t_con_moderators_name = self._preprocess_t_con_regressor(
                 source="moderators"
@@ -567,7 +574,7 @@ class CBMRInference(object):
     def _preprocess_t_con_regressor(self, source):
         # regressor can be either groups or moderators
         t_con_regressor = getattr(self, f"t_con_{source}")
-        n_regressors = getattr(self, f"n_{source}")
+        n_regressors = len(getattr(self, f"{source}"))
         # if contrast matrix is a dictionary, convert it to list
         if isinstance(t_con_regressor, dict):
             t_con_regressor_name = list(t_con_regressor.keys())
@@ -667,7 +674,7 @@ class CBMRInference(object):
             m, n_brain_voxel = contrast_log_intensity.shape
             # Correlation of involved group-wise spatial coef
             moderators_by_group = (
-                self.result.estimator.inputs_["moderators_by_group"] if self.moderators else None
+                self.estimator.inputs_["moderators_by_group"] if self.moderators else None
             )
             f_spatial_coef = self.estimator.model.fisher_info_multiple_group_spatial(
                 con_group_involved,
@@ -761,13 +768,13 @@ class CBMRInference(object):
             contrast_moderator_coef = np.matmul(con_moderator, moderator_coef)
 
             moderators_by_group = (
-                self.result.estimator.inputs_["moderators_by_group"] if self.moderators else None
+                self.estimator.inputs_["moderators_by_group"] if self.moderators else None
             )
-            f_moderator_coef = self.result.estimator.model.fisher_info_multiple_group_moderator(
-                self.result.estimator.inputs_["coef_spline_bases"],
+            f_moderator_coef = self.estimator.model.fisher_info_multiple_group_moderator(
+                self.estimator.inputs_["coef_spline_bases"],
                 moderators_by_group,
-                self.result.estimator.inputs_["foci_per_voxel"],
-                self.result.estimator.inputs_["foci_per_study"],
+                self.estimator.inputs_["foci_per_voxel"],
+                self.estimator.inputs_["foci_per_study"],
             )
 
             cov_moderator_coef = np.linalg.inv(f_moderator_coef)

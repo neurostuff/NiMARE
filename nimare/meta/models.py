@@ -371,7 +371,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         )
         maps = self.spatial_intensity_estimation
         if self.moderators_coef_dim:
-            tables["moderators_regression_Coef"] = pd.DataFrame(
+            tables["moderators_regression_coef"] = pd.DataFrame(
                 data=self.moderators_coef, columns=self.moderators
             )
             tables["moderators_effect"] = pd.DataFrame.from_dict(

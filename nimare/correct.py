@@ -249,9 +249,6 @@ class Corrector(metaclass=ABCMeta):
             corr_maps[rm] = p_corr
             self._generate_secondary_maps(result, corr_maps, rm)
 
-        # Create a dictionary of the corrected results
-        corr_maps = {"p": p_corr}
-        self._generate_secondary_maps(result, corr_maps)
         return corr_maps, tables, description
 
 

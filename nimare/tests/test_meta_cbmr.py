@@ -54,18 +54,19 @@ def cbmr_result(testdata_cbmr_simulated, model):
 @pytest.fixture(scope="session")
 def inference_results(testdata_cbmr_simulated, cbmr_result):
     """Test inference results for CBMR estimator."""
-    inference = CBMRInference(CBMRResults=cbmr_result, device="cuda")
+    inference = CBMRInference(device="cuda")
+    inference.fit(cbmr_result)
     t_con_groups = inference.create_contrast(
         [
             "DepressionYes-DepressionNo",
         ],
-        type="groups",
+        source="groups",
     )
     t_con_moderators = inference.create_contrast(
         ["standardized_sample_sizes"],
-        type="moderators",
+        source="moderators",
     )
-    contrast_result = inference.compute_contrast(
+    contrast_result = inference.transform(
         t_con_groups=t_con_groups, t_con_moderators=t_con_moderators
     )
 
