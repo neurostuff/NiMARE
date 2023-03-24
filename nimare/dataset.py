@@ -135,7 +135,7 @@ class Dataset(NiMAREBase):
             if v.default is not inspect.Parameter.empty
         }
 
-        # Eliminate any sub-parameters (e.g., parameters for a MetaEstimator's KernelTransformer),
+        # Eliminate any sub-parameters (e.g., parameters for a Estimator's KernelTransformer),
         # as well as default values
         params = self.get_params()
         params = {k: v for k, v in params.items() if "__" not in k}
@@ -329,7 +329,7 @@ class Dataset(NiMAREBase):
         for attribute in ("annotations", "coordinates", "images", "metadata", "texts"):
             df1 = getattr(self, attribute)
             df2 = getattr(right, attribute)
-            new_df = df1.append(df2, ignore_index=True, sort=False)
+            new_df = pd.concat([df1, df2], ignore_index=True, sort=False)
             new_df.sort_values(by="id", inplace=True)
             new_df.reset_index(drop=True, inplace=True)
             new_df = new_df.where(~new_df.isna(), None)

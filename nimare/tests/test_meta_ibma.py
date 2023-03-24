@@ -109,20 +109,23 @@ from nimare.tests.utils import get_test_data_path
 def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwargs, maps):
     """Smoke test for IBMA estimators."""
     meta = meta(**meta_kwargs)
-    res = meta.fit(testdata_ibma)
+    results = meta.fit(testdata_ibma)
     for expected_map in maps:
-        assert expected_map in res.maps.keys()
+        assert expected_map in results.maps.keys()
 
-    assert isinstance(res, nimare.results.MetaResult)
-    assert res.get_map("z", return_type="array").ndim == 1
-    z_img = res.get_map("z")
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert results.get_map("z", return_type="array").ndim == 1
+    z_img = results.get_map("z")
     assert z_img.ndim == 3
     assert z_img.shape == (10, 10, 10)
     if corrector:
         corr = corrector(**corrector_kwargs)
-        cres = corr.transform(res)
-        assert cres.get_map("z", return_type="array").ndim == 1
-        assert cres.get_map("z").ndim == 3
+        corr_results = corr.transform(results)
+        assert isinstance(corr_results, nimare.results.MetaResult)
+        assert isinstance(corr_results.description_, str)
+        assert corr_results.get_map("z", return_type="array").ndim == 1
+        assert corr_results.get_map("z").ndim == 3
 
 
 @pytest.mark.parametrize(
@@ -157,23 +160,23 @@ def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation, 
             meta.fit(dset)
     elif expectation == "warning":
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            res = meta.fit(dset)
+            results = meta.fit(dset)
             assert "will likely produce biased results" in caplog.text
         caplog.clear()
     else:
         with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
-            res = meta.fit(dset)
+            results = meta.fit(dset)
             assert "will likely produce biased results" not in caplog.text
         caplog.clear()
 
     # Only fit the estimator if it doesn't raise a ValueError
     if expectation != "error":
-        assert isinstance(res, nimare.results.MetaResult)
+        assert isinstance(results, nimare.results.MetaResult)
         # There are five "labels", but one of them has no good data,
         # so the outputs should be 4 long.
-        assert res.maps["z"].shape == (5,)
-        assert np.isnan(res.maps["z"][0])
-        assert res.get_map("z").shape == (10, 10, 10)
+        assert results.maps["z"].shape == (5,)
+        assert np.isnan(results.maps["z"][0])
+        assert results.get_map("z").shape == (10, 10, 10)
 
 
 @pytest.mark.parametrize(
@@ -193,7 +196,7 @@ def test_ibma_resampling(testdata_ibma_resample, resample, resample_kwargs, expe
     """Test image-based resampling performance."""
     meta = ibma.Fishers(resample=resample, **resample_kwargs)
     with expectation:
-        res = meta.fit(testdata_ibma_resample)
+        results = meta.fit(testdata_ibma_resample)
 
     if isinstance(expectation, does_not_raise):
-        assert isinstance(res, nimare.results.MetaResult)
+        assert isinstance(results, nimare.results.MetaResult)
