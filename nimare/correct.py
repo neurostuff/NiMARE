@@ -1,7 +1,6 @@
 """Multiple comparisons correction methods."""
 import inspect
 import logging
-import re
 from abc import ABCMeta, abstractproperty
 
 import numpy as np
@@ -97,7 +96,6 @@ class Corrector(metaclass=ABCMeta):
 
     def _generate_secondary_maps(self, result, corr_maps, rm):
         """Generate corrected version of z and log-p maps if they exist."""
-
         p = corr_maps[rm]
 
         if rm == "p":

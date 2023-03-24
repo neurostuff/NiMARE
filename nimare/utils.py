@@ -1164,7 +1164,7 @@ def _get_cluster_coms(labeled_cluster_arr):
 
 def coef_spline_bases(axis_coords, spacing, margin):
     """
-    Coefficient of cubic B-spline bases in any x/y/z direction
+    Coefficient of cubic B-spline bases in any x/y/z direction.
 
     Parameters
     ----------
@@ -1178,7 +1178,7 @@ def coef_spline_bases(axis_coords, spacing, margin):
     """
     # create B-spline basis for x/y/z coordinate
     wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
-    knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
+    # knots = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing)
     design_matrix = patsy.dmatrix(
         "bs(x, knots=knots, degree=3,include_intercept=False)",
         data={"x": wider_axis_coords},
@@ -1193,8 +1193,8 @@ def coef_spline_bases(axis_coords, spacing, margin):
     return coef_spline
 
 
-def B_spline_bases(masker_voxels, spacing, margin=10):
-    """Cubic B-spline bases for spatial intensity
+def b_spline_bases(masker_voxels, spacing, margin=10):
+    """Cubic B-spline bases for spatial intensity.
 
     The whole coefficient matrix is constructed by taking tensor product of
     all B-spline bases coefficient matrix in three direction.
@@ -1259,6 +1259,7 @@ def B_spline_bases(masker_voxels, spacing, margin=10):
 
 
 def index2vox(vals, masker_voxels):
+    """Document This Function."""
     xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
     yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
     zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
@@ -1277,6 +1278,7 @@ def index2vox(vals, masker_voxels):
 
 
 def dummy_encoding_moderators(dataset_annotations, moderators):
+    """Document This Function."""
     new_moderators = []
     for moderator in moderators.copy():
         if len(moderator.split(":reference=")) == 2:
@@ -1295,7 +1297,8 @@ def dummy_encoding_moderators(dataset_annotations, moderators):
                 dataset_annotations[category] = (
                     dataset_annotations[moderator] == category
                 ).astype(int)
-            # remove last categorical moderator column as it encoded as the other dummy encoded columns being zero
+            # remove last categorical moderator column as it encoded
+            # as the other dummy encoded columns being zero
             dataset_annotations = dataset_annotations.drop([categories_unique[0]], axis=1)
             new_moderators.extend(
                 categories_unique[1:]
