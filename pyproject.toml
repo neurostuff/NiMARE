@@ -29,8 +29,6 @@ markers = [
     "performance_estimators: mark tests that measure estimator performance",
     "performance_correctors: mark tests that measure corrector performance",
 ]
-log_cli = true
-log_cli_level = "DEBUG"
 
 [tool.isort]
 profile = "black"
