@@ -518,8 +518,10 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             partial_kwargs = {"coef_spline_bases": coef_spline_bases}
             if overdispersion:
                 partial_kwargs["group_overdispersion"] = self.overdispersion[group]
-            if getattr(self, 'square_root', False):
-                partial_kwargs["group_overdispersion"] = partial_kwargs["group_overdispersion"] ** 2
+            if getattr(self, "square_root", False):
+                partial_kwargs["group_overdispersion"] = (
+                    partial_kwargs["group_overdispersion"] ** 2
+                )
             partial_kwargs["group_foci_per_voxel"] = foci_per_voxel[group]
             partial_kwargs["group_foci_per_study"] = foci_per_study[group]
             if self.moderators_coef_dim:
@@ -604,9 +606,9 @@ class PoissonEstimator(GeneralLinearModelEstimator):
     """Document this."""
 
     _hessian_kwargs = {
-        'create_graph': False,
-        'vectorize': True,
-        'outer_jacobian_strategy': "forward-mode",
+        "create_graph": False,
+        "vectorize": True,
+        "outer_jacobian_strategy": "forward-mode",
     }
 
     def __init__(self, **kwargs):
