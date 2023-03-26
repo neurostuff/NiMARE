@@ -78,7 +78,7 @@ cbmr = CBMREstimator(
         "standardized_avg_age",
         "schizophrenia_subtype:reference=type1",
     ],
-    spline_spacing=10,
+    spline_spacing=100,  # a reasonable choice is 10, 100 is for speed
     model=models.PoissonEstimator,
     penalty=False,
     lr=1e-1,
@@ -87,41 +87,41 @@ cbmr = CBMREstimator(
 )
 results = cbmr.fit(dataset=dset)
 plot_stat_map(
-    results.get_map("SpatialIntensity_group-SchizophreniaYes"),
+    results.get_map("spatialIntensity_group-SchizophreniaYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="SchizophreniaYes",
+    title="Schizophrenia with drug treatment",
     threshold=1e-4,
 )
 plot_stat_map(
-    results.get_map("SpatialIntensity_group-SchizophreniaNo"),
+    results.get_map("spatialIntensity_group-SchizophreniaNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="SchizophreniaNo",
+    title="Schizophrenia without drug treatment",
     threshold=1e-4,
 )
 plot_stat_map(
-    results.get_map("SpatialIntensity_group-DepressionYes"),
+    results.get_map("spatialIntensity_group-DepressionYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="DepressionYes",
+    title="Depression with drug treatment",
     threshold=1e-4,
 )
 plot_stat_map(
-    results.get_map("SpatialIntensity_group-DepressionNo"),
+    results.get_map("spatialIntensity_group-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="DepressionNo",
+    title="Depression without drug treatment",
     threshold=1e-4,
 )
 
 ###############################################################################
 # Four figures correspond to group-specific spatial intensity map of four groups
-# ("schizophrenia_Yes", "schizophrenia_No", "depression_Yes", "depression_No").
+# ("schizophreniaYes", "schizophreniaNo", "depressionYes", "depressionNo").
 # Areas with stronger spatial intensity are highlighted.
 
 ###############################################################################
@@ -136,7 +136,7 @@ inference.fit(result=results)
 t_con_groups = inference.create_contrast(
     ["SchizophreniaYes", "SchizophreniaNo", "DepressionYes", "DepressionNo"], source="groups"
 )
-contrast_result = inference.fit_transform(t_con_groups=t_con_groups, t_con_moderators=False)
+contrast_result = inference.transform(t_con_groups=t_con_groups)
 
 # generate z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
@@ -198,7 +198,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="FDRcorrecred-SchizophreniaYes",
+    title="Schizophrenia with drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
@@ -207,7 +207,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="FDRcorrecred-SchizophreniaNo",
+    title="Schizophrenia without drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
@@ -216,7 +216,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="FDRcorrecred-DepressionYes",
+    title="Depression with drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
@@ -225,7 +225,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="FDRcorrecred-DepressionNo",
+    title="Depression without drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
 )
 
@@ -242,7 +242,7 @@ plot_stat_map(
 t_con_groups = inference.create_contrast(
     [
         "SchizophreniaYes-SchizophreniaNo",
-        "SchizophreniaNo-DepressionYes",
+        "SchizophreniaNo-DepressionNo",
         "DepressionYes-DepressionNo",
     ],
     source="groups",
@@ -255,16 +255,16 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="SchizophreniaYes-SchizophreniaNo",
+    title="Drug Treatment Effect for Schizophrenia",
     threshold=scipy.stats.norm.isf(0.4),
 )
 
 plot_stat_map(
-    results.get_map("z_group-SchizophreniaNo-DepressionYes"),
+    results.get_map("z_group-SchizophreniaNo-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="SchizophreniaNo-DepressionYes",
+    title="Untreated Schizophrenia vs. Untreated Depression",
     threshold=scipy.stats.norm.isf(0.4),
 )
 
@@ -273,7 +273,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
-    title="DepressionYes-DepressionNo",
+    title="Drug Treatment Effect for Depression",
     threshold=scipy.stats.norm.isf(0.4),
 )
 ###############################################################################
