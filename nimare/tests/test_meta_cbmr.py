@@ -39,11 +39,11 @@ def cbmr_result(testdata_cbmr_simulated, model):
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
-        spline_spacing=50,
+        spline_spacing=200,
         model=model,
         penalty=False,
         lr=1e-1,
-        tol=1e5,
+        tol=1e7,
         device="cpu",
     )
     res = cbmr.fit(dataset=dset)
