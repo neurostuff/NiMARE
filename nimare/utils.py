@@ -17,7 +17,6 @@ import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import patsy
 import sparse
 from nilearn._utils import check_niimg_3d
 from nilearn._utils.niimg import _safe_get_data
@@ -1853,6 +1852,8 @@ def coef_spline_bases(axis_coords, spacing, margin):
     -------
     coef_spline : 2-D ndarray (n_points x n_spline_bases)
     """
+    import patsy
+
     # create B-spline basis for x/y/z coordinate
     wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
     knots = np.arange(  # noqa: F841
