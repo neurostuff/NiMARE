@@ -148,7 +148,7 @@ class CBMREstimator(Estimator):
         description : :obj:`str`
             Description of the Estimator instance.
         """
-        description = "CBMR!!!"
+        description = "Document this (insert description of how this estimator was fit)"
 
         return description
 
