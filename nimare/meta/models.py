@@ -2,7 +2,7 @@
 import abc
 import copy
 import logging
-from functools import partial
+from functools import partial, wraps
 
 import functorch
 import numpy as np
@@ -12,13 +12,10 @@ import torch
 LGR = logging.getLogger(__name__)
 
 
-def opposite(fn):
-    """Return the opposite of a function."""
-    return lambda x: -fn(x)
-
-
 class GeneralLinearModelEstimator(torch.nn.Module):
     """Base class for GLM estimators."""
+
+    _hessian_kwargs = {}
 
     def __init__(
         self,
@@ -507,9 +504,60 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
         return h.detach().cpu().numpy()
 
+    def firth_penalty(
+        self,
+        foci_per_voxel,
+        foci_per_study,
+        moderators,
+        coef_spline_bases,
+        overdispersion=False,
+    ):
+        """Document this."""
+        group_firth_penalty = 0
+        for group in self.groups:
+            partial_kwargs = {"coef_spline_bases": coef_spline_bases}
+            if overdispersion:
+                partial_kwargs["group_overdispersion"] = self.overdispersion[group]
+            if getattr(self, 'square_root', False):
+                partial_kwargs["group_overdispersion"] = partial_kwargs["group_overdispersion"] ** 2
+            partial_kwargs["group_foci_per_voxel"] = foci_per_voxel[group]
+            partial_kwargs["group_foci_per_study"] = foci_per_study[group]
+            if self.moderators_coef_dim:
+                moderators_coef = self.moderators_linear.weight
+                group_moderators = moderators[group]
+            else:
+                moderators_coef, group_moderators = None, None
+            partial_kwargs["moderators_coef"] = moderators_coef
+            partial_kwargs["group_moderators"] = group_moderators
+
+            # create a negative log-likelihood function w.r.t spatial coefficients
+            def nll_spatial_coef(group_spatial_coef):
+                return -self._log_likelihood_single_group(
+                    group_spatial_coef=group_spatial_coef,
+                    **partial_kwargs,
+                )
+
+            group_spatial_coef = self.spatial_coef_linears[group].weight
+            group_f = torch.autograd.functional.hessian(
+                nll_spatial_coef,
+                group_spatial_coef,
+                **self._hessian_kwargs,
+            )
+
+            group_f = group_f.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
+            group_eig_vals = torch.real(torch.linalg.eigvals(group_f))
+            del group_f
+            group_firth_penalty = 0.5 * torch.sum(torch.log(group_eig_vals))
+            del group_eig_vals
+            group_firth_penalty += group_firth_penalty
+
+        return group_firth_penalty
+
 
 class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     """Document this."""
+
+    _hessian_kwargs = {"create_graph": True}
 
     def __init__(self, **kwargs):
         self.square_root = kwargs.pop("square_root", False)
@@ -554,6 +602,12 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
 
 class PoissonEstimator(GeneralLinearModelEstimator):
     """Document this."""
+
+    _hessian_kwargs = {
+        'create_graph': False,
+        'vectorize': True,
+        'outer_jacobian_strategy': "forward-mode",
+    }
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -656,36 +710,13 @@ class PoissonEstimator(GeneralLinearModelEstimator):
 
         if self.penalty:
             # Firth-type penalty
-            for group in self.groups:
-                group_spatial_coef = self.spatial_coef_linears[group].weight
-                group_foci_per_voxel = foci_per_voxel[group]
-                group_foci_per_study = foci_per_study[group]
-                if self.moderators_coef_dim:
-                    moderators_coef = self.moderators_linear.weight
-                    group_moderators = moderators[group]
-                else:
-                    moderators_coef, group_moderators = None, None
-                nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
-                    group_spatial_coef,
-                    moderators_coef,
-                    coef_spline_bases,
-                    group_moderators,
-                    group_foci_per_voxel,
-                    group_foci_per_study,
-                )
-                group_f = torch.autograd.functional.hessian(
-                    nll,
-                    group_spatial_coef,
-                    create_graph=False,
-                    vectorize=True,
-                    outer_jacobian_strategy="forward-mode",
-                )
-                group_f = group_f.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
-                group_eig_vals = torch.real(torch.linalg.eigvals(group_f))
-                del group_f
-                group_firth_penalty = 0.5 * torch.sum(torch.log(group_eig_vals))
-                del group_eig_vals
-                log_l += group_firth_penalty
+            log_l += self.firth_penalty(
+                foci_per_voxel,
+                foci_per_study,
+                moderators,
+                coef_spline_bases,
+                overdispersion=False,
+            )
         return -log_l
 
 
@@ -838,35 +869,13 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
 
         if self.penalty:
             # Firth-type penalty
-            for group in self.groups:
-                group_overdispersion = self.overdispersion[group] ** 2
-                group_spatial_coef = self.spatial_coef_linears[group].weight
-                if self.moderators_coef_dim:
-                    moderators_coef = self.moderators_linear.weight
-                    group_moderators = moderators[group]
-                else:
-                    moderators_coef, group_moderators = None, None
-                group_foci_per_voxel = foci_per_voxel[group]
-                group_foci_per_study = foci_per_study[group]
-
-                nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
-                    group_overdispersion,
-                    group_spatial_coef,
-                    moderators_coef,
-                    coef_spline_bases,
-                    group_moderators,
-                    group_foci_per_voxel,
-                    group_foci_per_study,
-                )
-                group_f = torch.autograd.functional.hessian(
-                    nll, group_spatial_coef, create_graph=True
-                )
-                group_f = group_f.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
-                group_eig_vals = torch.real(torch.linalg.eigvals(group_f))
-                del group_f
-                group_firth_penalty = 0.5 * torch.sum(torch.log(group_eig_vals))
-                del group_eig_vals
-                log_l += group_firth_penalty
+            log_l += self.firth_penalty(
+                foci_per_voxel,
+                foci_per_study,
+                moderators,
+                coef_spline_bases,
+                overdispersion=True,
+            )
 
         return -log_l
 
@@ -999,34 +1008,12 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
 
         if self.penalty:
             # Firth-type penalty
-            for group in self.groups:
-                group_overdispersion = self.overdispersion[group]
-                group_spatial_coef = self.spatial_coef_linears[group].weight
-                if self.moderators_coef_dim:
-                    moderators_coef = self.moderators_linear.weight
-                    group_moderators = moderators[group]
-                else:
-                    moderators_coef, group_moderators = None, None
-                group_foci_per_voxel = foci_per_voxel[group]
-                group_foci_per_study = foci_per_study[group]
-                group_moderators = moderators[group]
-                nll = lambda group_spatial_coef: -self._log_likelihood_single_group(
-                    group_overdispersion,
-                    group_spatial_coef,
-                    moderators_coef,
-                    coef_spline_bases,
-                    group_moderators,
-                    group_foci_per_voxel,
-                    group_foci_per_study,
-                )
-                group_f = torch.autograd.functional.hessian(
-                    nll, group_spatial_coef, create_graph=True
-                )
-                group_f = group_f.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
-                group_eig_vals = torch.real(torch.linalg.eigvals(group_f))
-                del group_f
-                group_firth_penalty = 0.5 * torch.sum(torch.log(group_eig_vals))
-                del group_eig_vals
-                log_l += group_firth_penalty
+            log_l += self.firth_penalty(
+                foci_per_voxel,
+                foci_per_study,
+                moderators,
+                coef_spline_bases,
+                overdispersion=True,
+            )
 
         return -log_l

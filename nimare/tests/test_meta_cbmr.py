@@ -102,6 +102,27 @@ def test_cbmr_correctors(inference_results, corrector):
     assert isinstance(corrected_results, nimare.results.MetaResult)
 
 
+def test_firth_penalty(testdata_cbmr_simulated):
+    """Unit test for Firth penalty."""
+
+    dset = standardize_field(
+        dataset=testdata_cbmr_simulated,
+        metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"],
+    )
+    cbmr = CBMREstimator(
+        group_categories=["diagnosis", "drug_status"],
+        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        spline_spacing=100,
+        model=models.ClusteredNegativeBinomialEstimator,
+        penalty=True,
+        lr=1e-1,
+        tol=1e7,
+        device="cpu",
+    )
+    res = cbmr.fit(dataset=dset)
+    assert isinstance(res, nimare.results.MetaResult)
+
+
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
     cbmr = CBMREstimator(model=models.ClusteredNegativeBinomial, lr=1e-4)
