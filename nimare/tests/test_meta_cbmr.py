@@ -104,7 +104,6 @@ def test_cbmr_correctors(inference_results, corrector):
 
 def test_firth_penalty(testdata_cbmr_simulated):
     """Unit test for Firth penalty."""
-
     dset = standardize_field(
         dataset=testdata_cbmr_simulated,
         metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"],
