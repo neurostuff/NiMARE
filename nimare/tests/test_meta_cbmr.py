@@ -8,7 +8,7 @@ import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import models
 from nimare.meta.cbmr import CBMREstimator, CBMRInference
-from nimare.tests.utils import standardize_field
+from nimare.transforms import StandardizeField
 
 # numba has a lot of debug messages that are not useful for testing
 logging.getLogger("numba").setLevel(logging.WARNING)
@@ -32,10 +32,10 @@ def model(request):
 @pytest.fixture(scope="session")
 def cbmr_result(testdata_cbmr_simulated, model):
     """Test CBMR estimator."""
-    dset = standardize_field(
-        dataset=testdata_cbmr_simulated,
-        metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"],
+    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
+        testdata_cbmr_simulated
     )
+
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
@@ -104,9 +104,8 @@ def test_cbmr_correctors(inference_results, corrector):
 
 def test_firth_penalty(testdata_cbmr_simulated):
     """Unit test for Firth penalty."""
-    dset = standardize_field(
-        dataset=testdata_cbmr_simulated,
-        metadata=["sample_sizes", "avg_age", "schizophrenia_subtype"],
+    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
+        testdata_cbmr_simulated
     )
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],

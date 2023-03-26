@@ -18,7 +18,7 @@ from nilearn.plotting import plot_stat_map
 
 from nimare.generate import create_coordinate_dataset
 from nimare.meta import models
-from nimare.tests.utils import standardize_field
+from nimare.transforms import StandardizeField
 
 ###############################################################################
 # Load Dataset
@@ -70,7 +70,8 @@ dset.annotations["schizophrenia_subtype"] = (
 # interpret them as categorical study-level moderators.
 from nimare.meta.cbmr import CBMREstimator
 
-dset = standardize_field(dataset=dset, metadata=["sample_sizes", "avg_age"])
+dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(dset)
+
 cbmr = CBMREstimator(
     group_categories=["diagnosis", "drug_status"],
     moderators=[
