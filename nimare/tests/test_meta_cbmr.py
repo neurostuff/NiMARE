@@ -124,7 +124,7 @@ def test_firth_penalty(testdata_cbmr_simulated):
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
-    cbmr = CBMREstimator(model=models.ClusteredNegativeBinomial, lr=1e-4)
+    cbmr = CBMREstimator(model=models.ClusteredNegativeBinomialEstimator, lr=1e-4)
 
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)
     cbmr._preprocess_input(testdata_cbmr_simulated)
