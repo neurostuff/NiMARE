@@ -1,12 +1,10 @@
 """Generate fixtures for tests."""
 import json
 import os
-import random
 from shutil import copyfile
 
 import nibabel as nib
 import numpy as np
-import pandas as pd
 import pytest
 from nilearn.image import resample_img
 from requests import request
@@ -59,28 +57,6 @@ def testdata_cbma():
     # Otherwise centers of mass will be obscured in kernel tests by overlapping
     # kernels
     dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
-    return dset
-
-
-@pytest.fixture(scope="session")
-def testdata_cbmr():
-    """Generate coordinate-based dataset for tests."""
-    dset_file = os.path.join(get_test_data_path(), "neurosynth.json")
-    dset = nimare.dataset.Dataset(dset_file)
-
-    # Only retain one peak in each study in coordinates
-    # Otherwise centers of mass will be obscured in kernel tests by overlapping
-    # kernels
-    dset.coordinates = dset.coordinates.drop_duplicates(subset=["id"])
-
-    n_rows = dset.annotations.shape[0]
-    dset.annotations["diagnosis"] = [
-        "schizophrenia" if i % 2 == 0 else "dementia" for i in range(n_rows)
-    ]
-    dset.annotations["treatment"] = [False if i % 2 == 0 else True for i in range(n_rows)]
-    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)]
-    dset.annotations["avg_age"] = np.arange(n_rows)
-
     return dset
 
 
@@ -193,7 +169,6 @@ def testdata_cbmr_simulated():
         "type4",
         "type5",
     ] * int(n_rows / 5)
-    # dset.annotations['schizophrenia_subtype'] = ['type1' if i%2==0 else 'type2' for i in range(n_rows)]
     dset.annotations["schizophrenia_subtype"] = (
         dset.annotations["schizophrenia_subtype"].sample(frac=1).reset_index(drop=True)
     )  # random shuffle drug_status column
