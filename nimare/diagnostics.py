@@ -27,7 +27,37 @@ class Diagnostics(NiMAREBase):
 
     .. versionadded:: 0.0.14
 
+    Parameters
+    ----------
+    target_image : :obj:`str`, optional
+        The meta-analytic map for which clusters will be characterized.
+        The default is z because log-p will not always have value of zero for non-cluster voxels.
+    voxel_thresh : :obj:`float` or None, optional
+        An optional voxel-level threshold that may be applied to the ``target_image`` to define
+        clusters. This can be None if the ``target_image`` is already thresholded
+        (e.g., a cluster-level corrected map).
+        Default is None.
+    cluster_threshold : :obj:`int` or None, optional
+        Cluster size threshold, in :term:`voxels<voxel>`.
+        If None, then no cluster size threshold will be applied. Default=None.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores.
+        Default is 1.
+
     """
+
+    def __init__(
+        self,
+        target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+        voxel_thresh=None,
+        cluster_threshold=None,
+        n_cores=1,
+    ):
+        self.target_image = target_image
+        self.voxel_thresh = voxel_thresh
+        self.cluster_threshold = cluster_threshold
+        self.n_cores = _check_ncores(n_cores)
 
     @abstractmethod
     def _transform(self, expid, label_map, result):
@@ -91,12 +121,13 @@ class Diagnostics(NiMAREBase):
                 f"Available maps in result are: {', '.join(available_maps)}."
             )
 
-        # Get clusters table
-        two_sided = (target_img.get_fdata() < 0).any()
+        # Get clusters table and label maps
         stat_threshold = self.voxel_thresh or 0
+        two_sided = (target_img.get_fdata() < 0).any()
         clusters_table, label_maps = _get_clusters_table(
             target_img,
             stat_threshold,
+            self.cluster_threshold,
             two_sided=two_sided,
             return_label_maps=True,
         )
@@ -157,28 +188,14 @@ class Jackknife(Diagnostics):
 
     .. versionchanged:: 0.0.14
 
-        Return clusters table.
+        * New parameter: `cluster_threshold`.
+        * Return clusters table.
 
     .. versionchanged:: 0.0.13
 
         Change cluster neighborhood from faces+edges to faces, to match Nilearn.
 
     .. versionadded:: 0.0.11
-
-    Parameters
-    ----------
-    target_image : :obj:`str`, optional
-        The meta-analytic map for which clusters will be characterized.
-        The default is z because log-p will not always have value of zero for non-cluster voxels.
-    voxel_thresh : :obj:`float` or None, optional
-        An optional voxel-level threshold that may be applied to the ``target_image`` to define
-        clusters. This can be None if the ``target_image`` is already thresholded
-        (e.g., a cluster-level corrected map).
-        Default is None.
-    n_cores : :obj:`int`, optional
-        Number of cores to use for parallelization.
-        If <=0, defaults to using all available cores.
-        Default is 1.
 
     Notes
     -----
@@ -193,16 +210,6 @@ class Jackknife(Diagnostics):
     Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
     method.
     """
-
-    def __init__(
-        self,
-        target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
-        voxel_thresh=None,
-        n_cores=1,
-    ):
-        self.target_image = target_image
-        self.voxel_thresh = voxel_thresh
-        self.n_cores = _check_ncores(n_cores)
 
     def _transform(self, expid, label_map, result):
         """Apply transform to study ID and label map.
@@ -270,28 +277,14 @@ class FocusCounter(Diagnostics):
 
     .. versionchanged:: 0.0.14
 
-        Return clusters table.
+        * New parameter: `cluster_threshold`.
+        * Return clusters table.
 
     .. versionchanged:: 0.0.13
 
         Change cluster neighborhood from faces+edges to faces, to match Nilearn.
 
     .. versionadded:: 0.0.12
-
-    Parameters
-    ----------
-    target_image : :obj:`str`, optional
-        The meta-analytic map for which clusters will be characterized.
-        The default is z because log-p will not always have value of zero for non-cluster voxels.
-    voxel_thresh : :obj:`float` or None, optional
-        An optional voxel-level threshold that may be applied to the ``target_image`` to define
-        clusters. This can be None if the ``target_image`` is already thresholded
-        (e.g., a cluster-level corrected map).
-        Default is None.
-    n_cores : :obj:`int`, optional
-        Number of cores to use for parallelization.
-        If <=0, defaults to using all available cores.
-        Default is 1.
 
     Notes
     -----
@@ -306,16 +299,6 @@ class FocusCounter(Diagnostics):
     Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
     method.
     """
-
-    def __init__(
-        self,
-        target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
-        voxel_thresh=None,
-        n_cores=1,
-    ):
-        self.target_image = target_image
-        self.voxel_thresh = voxel_thresh
-        self.n_cores = _check_ncores(n_cores)
 
     def _transform(self, expid, label_map, result):
         """Apply transform to study ID and label map.
