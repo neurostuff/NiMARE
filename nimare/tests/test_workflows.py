@@ -8,6 +8,7 @@ from nimare import cli, workflows
 from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALE, MKDAChi2
+from nimare.meta.ibma import Fishers
 from nimare.tests.utils import get_test_data_path
 
 
@@ -96,6 +97,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
         ("ale", "bonferroni", [Jackknife, FocusCounter]),
         ("kda", "fdr", Jackknife),
         (MKDAChi2, "montecarlo", "focuscounter"),
+        (Fishers, "montecarlo", None),
     ],
 )
 def test_cbma_workflow_function_smoke(
@@ -106,6 +108,14 @@ def test_cbma_workflow_function_smoke(
 
     if estimator == MKDAChi2:
         with pytest.raises(AttributeError):
+            workflows.cbma_workflow(
+                testdata_cbma_full,
+                estimator=estimator,
+                corrector=corrector,
+                diagnostics=diagnostics,
+            )
+    elif estimator == Fishers:
+        with pytest.raises((AttributeError, ValueError)):
             workflows.cbma_workflow(
                 testdata_cbma_full,
                 estimator=estimator,
@@ -133,4 +143,6 @@ def test_cbma_workflow_function_smoke(
         for tabletype in cres.tables.keys():
             filename = tabletype + ".tsv"
             outpath = op.join(tmpdir, filename)
-            assert op.isfile(outpath)
+            # For estimator == ALE, tables are None
+            if estimator != ALE:
+                assert op.isfile(outpath)
