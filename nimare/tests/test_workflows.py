@@ -96,8 +96,9 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
         (ALE, FWECorrector(method="montecarlo", n_iters=10), [Jackknife]),
         ("ale", "bonferroni", [Jackknife, FocusCounter]),
         ("kda", "fdr", Jackknife),
-        (MKDAChi2, "montecarlo", "focuscounter"),
-        (Fishers, "montecarlo", None),
+        ("mkdadensity", "fdr", "focuscounter"),
+        (MKDAChi2, "montecarlo", None),
+        (Fishers, "montecarlo", "jackknife"),
     ],
 )
 def test_cbma_workflow_function_smoke(
