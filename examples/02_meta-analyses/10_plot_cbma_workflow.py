@@ -58,7 +58,7 @@ plot_stat_map(
     img,
     cut_coords=4,
     display_mode="z",
-    threshold=3.1,  # cluster-level p < 0.001, one-tailed
+    threshold=1.65,  # voxel_thresh p < .05, one-tailed
     cmap="RdBu_r",
     vmax=4,
 )
