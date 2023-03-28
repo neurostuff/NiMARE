@@ -51,6 +51,8 @@ def cbma_workflow(
     estimator=None,
     corrector=None,
     diagnostics=None,
+    voxel_thresh=1.65,
+    cluster_threshold=10,
     output_dir=None,
     n_cores=1,
 ):
@@ -76,6 +78,19 @@ def cbma_workflow(
     or optional
         List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
         Default is :class:`~nimare.diagnostics.FocusCounter`.
+    voxel_thresh : :obj:`float` or None, optional
+        An optional voxel-level threshold that may be applied to the ``target_image`` to define
+        clusters. This can be None if the ``target_image`` is already thresholded
+        (e.g., a cluster-level corrected map).
+        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
+        will be ignored.
+        Default is 1.96, which correspond with `p-value = .05`.
+    cluster_threshold : :obj:`int` or None, optional
+        Cluster size threshold, in :term:`voxels<voxel>`.
+        If None, then no cluster size threshold will be applied.
+        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
+        will be ignored.
+        Default is 10.
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
         exist, it will be created. Default is None (the results are not saved).
@@ -116,11 +131,16 @@ def cbma_workflow(
         else _check_input(corrector, Corrector, corr_options, n_cores=n_cores)
     )
 
+    diag_kwargs = {
+        "voxel_thresh": voxel_thresh,
+        "cluster_threshold": cluster_threshold,
+        "n_cores": n_cores,
+    }
     if diagnostics is None:
-        diagnostics = [Jackknife(n_cores=n_cores)]
+        diagnostics = [Jackknife(**diag_kwargs)]
     else:
         diagnostics = [
-            _check_input(diagnostic, Diagnostics, diag_options, n_cores=n_cores)
+            _check_input(diagnostic, Diagnostics, diag_options, **diag_kwargs)
             for diagnostic in diagnostics
         ]
 
