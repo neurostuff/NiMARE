@@ -60,8 +60,8 @@ def cbma_workflow(
 
     .. versionadded:: 0.0.14
 
-    This workflow performs a coordinate-based meta-analysis, multiple comparison correction,
-    and diagnostics analyses on corrected meta-analytic maps.
+    This workflow performs a coordinate-based meta-analysis, multiple comparison corrections,
+    and diagnostics analyses on corrected meta-analytic z-score maps.
 
     Parameters
     ----------
@@ -79,17 +79,15 @@ def cbma_workflow(
         List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
         Default is :class:`~nimare.diagnostics.FocusCounter`.
     voxel_thresh : :obj:`float` or None, optional
-        An optional voxel-level threshold that may be applied to the ``target_image`` to define
-        clusters. This can be None if the ``target_image`` is already thresholded
-        (e.g., a cluster-level corrected map).
-        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
-        will be ignored.
-        Default is 1.96, which correspond with `p-value = .05`.
+        An optional voxel-level threshold that may be applied to the ``target_image`` in the
+        :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
+        if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
+        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        Default is 1.65, which corresponds to p-value = .05, one-tailed.
     cluster_threshold : :obj:`int` or None, optional
         Cluster size threshold, in :term:`voxels<voxel>`.
         If None, then no cluster size threshold will be applied.
-        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
-        will be ignored.
+        If diagnostics are passed as initialized objects, this parameter will be ignored.
         Default is 10.
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
