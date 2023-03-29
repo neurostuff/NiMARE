@@ -94,6 +94,7 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
     "estimator,corrector,diagnostics",
     [
         (ALE, FWECorrector(method="montecarlo", n_iters=10), [Jackknife]),
+        ("ales", "bonferroni", Jackknife),
         ("ale", "bonferroni", [Jackknife, FocusCounter]),
         ("kda", "fdr", Jackknife),
         ("mkdadensity", "fdr", "focuscounter"),
@@ -117,6 +118,14 @@ def test_cbma_workflow_function_smoke(
             )
     elif estimator == Fishers:
         with pytest.raises((AttributeError, ValueError)):
+            workflows.cbma_workflow(
+                testdata_cbma_full,
+                estimator=estimator,
+                corrector=corrector,
+                diagnostics=diagnostics,
+            )
+    elif estimator == "ales":
+        with pytest.raises(ValueError):
             workflows.cbma_workflow(
                 testdata_cbma_full,
                 estimator=estimator,

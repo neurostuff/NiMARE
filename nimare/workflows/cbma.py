@@ -33,7 +33,7 @@ def _check_input(obj, clss, options, **kwargs):
     """Check input for workflow functions."""
     if isinstance(obj, str):
         if obj not in options:
-            raise ValueError(f'"estimator" of kind string must be {", ".join(options)}')
+            raise ValueError(f'"{obj}" of kind string must be {", ".join(options)}')
 
         # Get the class from the string
         obj_str = obj
