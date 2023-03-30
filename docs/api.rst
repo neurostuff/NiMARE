@@ -168,6 +168,29 @@ For more information about functional characterization analysis, see :doc:`decod
    io.convert_neurovault_to_dataset
 
 
+.. _api_nimads_ref:
+
+:mod:`nimare.nimads`: NeuroImaging Meta-Analysis Data Structure
+---------------------------------------------------------------
+.. automodule:: nimare.nimads
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   nimads.Studyset
+   nimads.Annotation
+   nimads.Study
+   nimads.Analysis
+   nimads.Condition
+   nimads.Image
+   nimads.Point
+
+
 .. _api_transforms_ref:
 
 :mod:`nimare.transforms`: Data transforms
