@@ -182,6 +182,14 @@ For more information about functional characterization analysis, see :doc:`decod
    :toctree: generated/
    :template: class.rst
 
+   nimads.Studyset
+   nimads.Annotation
+   nimads.Study
+   nimads.Analysis
+   nimads.Condition
+   nimads.Image
+   nimads.Point
+
 
 .. _api_transforms_ref:
 
