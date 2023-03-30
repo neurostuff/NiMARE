@@ -237,7 +237,7 @@ class Study:
 
 
 class Analysis:
-    """A single statistical analyses from a Study.
+    """A single statistical contrast from a Study.
 
     .. versionadded:: 0.0.14
 
