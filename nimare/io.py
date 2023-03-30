@@ -28,7 +28,24 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 
 
 def convert_nimads_to_dataset(studyset, annotation=None):
-    """Convert nimads studyset to a dataset."""
+    """Convert nimads studyset to a dataset.
+
+    .. versionadded:: 0.0.14
+
+    Parameters
+    ----------
+    studyset : :obj:`str`, :obj:`dict`, :obj:`nimare.nimads.StudySet`
+        Path to a JSON file containing a nimads studyset, a dictionary containing a nimads
+        studyset, or a nimads studyset object.
+    annotation : :obj:`str`, :obj:`dict`, :obj:`nimare.nimads.Annotation`, optional
+        Optional path to a JSON file containing a nimads annotation, a dictionary containing a
+        nimads annotation, or a nimads annotation object.
+
+    Returns
+    -------
+    dset : :obj:`nimare.dataset.Dataset`
+        NiMARE Dataset object containing experiment information from nimads studyset.
+    """
 
     def _analysis_to_dict(study, analysis):
         result = {
