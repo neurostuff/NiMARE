@@ -2,9 +2,42 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.13rc1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.14rc1...HEAD)
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
+## [0.0.14rc1](https://github.com/neurostuff/NiMARE/compare/0.0.13rc1...0.0.14rc1) - 2023-03-31
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🛠 Breaking Changes
+
+- Support clusters table in Diagnostics by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/765
+
+#### 🎉 Exciting New Features
+
+- Add `save()` and `load()` methods to `MetaResult` objects by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/771
+- Incorporate Estimator and Corrector descriptions into MetaResult objects by @tsalo in https://github.com/neurostuff/NiMARE/pull/724
+- Add `cluster_threshold` option to Diagnostics by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/777
+- Add CBMA workflow by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/761
+- [ENH] rudimentary support for nimads by @jdkent in https://github.com/neurostuff/NiMARE/pull/763
+
+#### 🐛 Bug Fixes
+
+- Do not zero out one-tailed z-statistics for p-values > 0.5 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/693
+
+#### Other Changes
+
+- Support nibabel 5.0.0 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/762
+- Link to NeuroStars software support category instead of neuro questions by @tsalo in https://github.com/neurostuff/NiMARE/pull/768
+- Revert "Do not zero out one-tailed z-statistics for p-values > 0.5" by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/769
+- [DOC] add note about SDM by @jdkent in https://github.com/neurostuff/NiMARE/pull/764
+- Replace `pandas.DataFrame.append` with `pandas.concat` by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/774
+- Major refactoring of Diagnostics module by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/776
+- [DOC] add proper documentation to nimads module by @jdkent in https://github.com/neurostuff/NiMARE/pull/778
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.13...0.0.14rc1
+
 ## [0.0.13rc1](https://github.com/neurostuff/NiMARE/compare/0.0.12rc7...0.0.13rc1) - 2023-01-13
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
