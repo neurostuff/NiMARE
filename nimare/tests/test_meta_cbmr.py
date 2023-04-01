@@ -124,26 +124,37 @@ def test_firth_penalty(testdata_cbmr_simulated):
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
-    cbmr = CBMREstimator(model=models.ClusteredNegativeBinomialEstimator, lr=1e-4)
+    testdata_cbmr_simulated = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
+        testdata_cbmr_simulated
+    )
+    cbmr = CBMREstimator(
+        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        model=models.PoissonEstimator, 
+        lr=1e-4)
 
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)
     cbmr._preprocess_input(testdata_cbmr_simulated)
-    cbmr_model = cbmr.model(
-        spatial_coef_dim=cbmr.inputs_["coef_spline_bases"].shape[1],
-        moderators_coef_dim=len(cbmr.moderators) if cbmr.moderators else None,
-        groups=cbmr.groups,
-        penalty=cbmr.penalty,
-        device=cbmr.device,
-    )
-
-    optimizer = torch.optim.LBFGS(cbmr_model.parameters(), cbmr.lr)
+    
+    # fit the model
+    init_weight_kwargs = {
+            "groups": cbmr.groups,
+            "moderators": cbmr.moderators,
+            "spatial_coef_dim": cbmr.inputs_["coef_spline_bases"].shape[1],
+            "moderators_coef_dim": len(cbmr.moderators) if cbmr.moderators else None}
+    
+    cbmr.model.init_weights(**init_weight_kwargs)
+        
+    moderators_by_group = cbmr.inputs_["moderators_by_group"] if cbmr.moderators else None
+    # cbmr.model._optimizer(cbmr.inputs_["coef_spline_bases"], moderators_by_group, cbmr.inputs_["foci_per_voxel"], cbmr.inputs_["foci_per_study"])
+    optimizer = torch.optim.LBFGS(cbmr.model.parameters(), cbmr.lr)
+    
     # load dataset info to torch.tensor
-    _ = torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device)
+    # _ = torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device)
     if cbmr.moderators:
         moderators_by_group_tensor = dict()
-        for group in cbmr_model.groups:
+        for group in cbmr.model.groups:
             moderators_tensor = torch.tensor(
-                cbmr_model.inputs_["moderators_by_group"][group],
+                cbmr.inputs_["moderators_by_group"][group],
                 dtype=torch.float64,
                 device=cbmr.device,
             )
@@ -151,7 +162,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
     else:
         moderators_by_group_tensor = None
     foci_per_voxel_tensor, foci_per_study_tensor = dict(), dict()
-    for group in cbmr_model.groups:
+    for group in cbmr.model.groups:
         group_foci_per_voxel_tensor = torch.tensor(
             cbmr.inputs_["foci_per_voxel"][group], dtype=torch.float64, device=cbmr.device
         )
@@ -160,31 +171,30 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         )
         foci_per_voxel_tensor[group] = group_foci_per_voxel_tensor
         foci_per_study_tensor[group] = group_foci_per_study_tensor
-    optimizer = torch.optim.LBFGS(cbmr_model.parameters(), cbmr.lr)
+   
     if cbmr.iter == 0:
         prev_loss = torch.tensor(float("inf"))  # initialization loss difference
 
-    _ = cbmr._update(
-        cbmr_model,
+    cbmr.model._update(
         optimizer,
         torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
         moderators_by_group_tensor,
         foci_per_voxel_tensor,
         foci_per_study_tensor,
-        prev_loss,
-    )
-
+        prev_loss)
     # deliberately set the first spatial coefficient to nan
-    nan_coef = torch.tensor(cbmr_model.spatial_coef_linears["default"].weight)
-    nan_coef[:, 0] = float("nan")
-    cbmr_model.spatial_coef_linears["default"].weight = torch.nn.Parameter(nan_coef)
+    for group in cbmr.model.groups:
+        nan_coef = torch.tensor(cbmr.model.spatial_coef_linears[group].weight)
+        nan_coef[:, 0] = float("nan")
+        cbmr.model.spatial_coef_linears[group].weight = torch.nn.Parameter(nan_coef)
 
-    _ = cbmr._update(
-        cbmr_model,
-        optimizer,
-        torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
-        moderators_by_group_tensor,
-        foci_per_voxel_tensor,
-        foci_per_study_tensor,
-        prev_loss,
-    )
+    # Expect exceptions when one of the spatial coefficients is nan.
+    with pytest.raises(ValueError):
+        cbmr.model._update(
+            optimizer,
+            torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
+            moderators_by_group_tensor,
+            foci_per_voxel_tensor,
+            foci_per_study_tensor,
+            prev_loss,
+        )
