@@ -48,6 +48,7 @@ def cbmr_result(testdata_cbmr_simulated, model):
     )
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
+
     return res
 
 

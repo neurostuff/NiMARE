@@ -141,7 +141,7 @@ contrast_result = inference.transform(t_con_groups=t_con_groups)
 
 # generate z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
-    results.get_map("z_group-SchizophreniaYes"),
+    contrast_result.get_map("z_group-SchizophreniaYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -150,7 +150,7 @@ plot_stat_map(
 )
 
 plot_stat_map(
-    results.get_map("z_group-SchizophreniaNo"),
+    contrast_result.get_map("z_group-SchizophreniaNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -159,7 +159,7 @@ plot_stat_map(
 )
 
 plot_stat_map(
-    results.get_map("z_group-DepressionYes"),
+    contrast_result.get_map("z_group-DepressionYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -168,7 +168,7 @@ plot_stat_map(
 )
 
 plot_stat_map(
-    results.get_map("z_group-DepressionNo"),
+    contrast_result.get_map("z_group-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -191,7 +191,7 @@ plot_stat_map(
 from nimare.correct import FDRCorrector
 
 corr = FDRCorrector(method="indep", alpha=0.05)
-cres = corr.transform(results)
+cres = corr.transform(contrast_result)
 
 # generate FDR corrected z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
@@ -252,7 +252,7 @@ contrast_result = inference.transform(t_con_groups=t_con_groups, t_con_moderator
 
 # generate z-statistics maps for each group
 plot_stat_map(
-    results.get_map("z_group-SchizophreniaYes-SchizophreniaNo"),
+    contrast_result.get_map("z_group-SchizophreniaYes-SchizophreniaNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -261,7 +261,7 @@ plot_stat_map(
 )
 
 plot_stat_map(
-    results.get_map("z_group-SchizophreniaNo-DepressionNo"),
+    contrast_result.get_map("z_group-SchizophreniaNo-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -270,7 +270,7 @@ plot_stat_map(
 )
 
 plot_stat_map(
-    results.get_map("z_group-DepressionYes-DepressionNo"),
+    contrast_result.get_map("z_group-DepressionYes-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -308,14 +308,14 @@ contrast_result = inference.transform(
     t_con_groups=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]], t_con_moderators=False
 )
 plot_stat_map(
-    results.get_map("z_GLH_groups_0"),
+    contrast_result.get_map("z_GLH_groups_0"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     title="GLH_groups_0",
     threshold=scipy.stats.norm.isf(0.4),
 )
-print("The contrast matrix of GLH_0 is {}".format(results.metadata["GLH_groups_0"]))
+print("The contrast matrix of GLH_0 is {}".format(contrast_result.metadata["GLH_groups_0"]))
 
 ###############################################################################
 # GLH testing for study-level moderators
@@ -325,14 +325,14 @@ print("The contrast matrix of GLH_0 is {}".format(results.metadata["GLH_groups_0
 contrast_name = results.estimator.moderators
 t_con_moderators = inference.create_contrast(contrast_name, source="moderators")
 contrast_result = inference.transform(t_con_moderators=t_con_moderators)
-print(results.tables["Moderators_Regression_Coef"])
+print(contrast_result.tables["moderators_regression_coef"])
 print(
     "P-values of moderator effects `sample_sizes` is {}".format(
-        results.tables["p_standardized_sample_sizes"]
+        contrast_result.tables["p_standardized_sample_sizes"]
     )
 )
 print(
-    "P-value of moderator effects `avg_age` is {}".format(results.tables["p_standardized_avg_age"])
+    "P-value of moderator effects `avg_age` is {}".format(contrast_result.tables["p_standardized_avg_age"])
 )
 
 ###############################################################################
@@ -349,7 +349,7 @@ t_con_moderators = inference.create_contrast(
 contrast_result = inference.transform(t_con_moderators=t_con_moderators)
 print(
     "P-values of difference in two moderator effectors (`sample_size-avg_age`) is {}".format(
-        results.tables["p_standardized_sample_sizes-standardized_avg_age"]
+        contrast_result.tables["p_standardized_sample_sizes-standardized_avg_age"]
     )
 )
 
