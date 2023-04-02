@@ -1063,7 +1063,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
 
 
 class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
-     """CBMR framework with Clustered Negative Binomial (Clustered NB) model.
+    """CBMR framework with Clustered Negative Binomial (Clustered NB) model.
     
     Clustered NB model can also accommodate over-dispersion in foci counts. 
     In NB model, the latent Gamma random variable introduces indepdentent variation
