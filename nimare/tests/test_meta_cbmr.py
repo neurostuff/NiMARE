@@ -41,7 +41,7 @@ def cbmr_result(testdata_cbmr_simulated, model):
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         spline_spacing=200,
         model=model,
-        penalty=False,
+        penalty=True,
         lr=1e-1,
         tol=1e7,
         device="cpu",
