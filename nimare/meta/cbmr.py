@@ -9,13 +9,14 @@ import pandas as pd
 import scipy
 import torch
 
+from nimare import _version
 from nimare.diagnostics import FocusFilter
 from nimare.estimator import Estimator
 from nimare.meta import models
 from nimare.utils import b_spline_bases, dummy_encoding_moderators, get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
-
+__version__ = _version.get_versions()["version"]
 
 class CBMREstimator(Estimator):
     """Coordinate-based meta-regression with a spatial model.
@@ -156,7 +157,54 @@ class CBMREstimator(Estimator):
                     (NB), Clustered NB) to model group-wise spatial intensity function).
                     CBMR is fitted via maximizing the log-likelihood function with L-BFGS
                     algorithm."""
+        if self.moderators:
+            moderators_str = f"""and accommodate the following study-level moderators: {', '.join(self.moderators)}"""
+        else:
+            moderators_str = ""
+        if self.model.penalty:
+            penalty_str = " Firth-type penalty is applied to ensure convergence."
+        else:
+            penalty_str = ""
 
+        if type(self.model).__name__ == "PoissonEstimator":
+            model_str = (" Here, Poisson model \\citep{eisenberg1966general} is the most basic CBMR model. "
+                        "It's based on the assumption that foci arise from a realisation of a (continues) "
+                        "inhomogeneous Poisson process, so that the (discrete) voxel-wise foci counts will "
+                        "be independently distributed as Poisson random variables, with rate equal to the "
+                        "integral of the (true, unobserved, continous) intensity function over each voxels."
+            )
+        elif type(self.model).__name__ == "NegativeBinomialEstimator":
+            model_str = (" Negative Binomial (NB) model \\citep{barndorff1969negative} is a generalized "
+                         "Poisson model with over-dispersion. "
+                        "It's a more flexible model, but more difficult to estimate. In practice, foci" 
+                        "counts often display over-dispersion (the variance of response variable" 
+                        "substantially exceeeds the mean), which is not captured by Poisson model."       
+            )
+        elif type(self.model).__name__ == "ClusteredNegativeBinomialEstimator":
+            model_str = (
+                " Clustered NB model \\citep{geoffroy2001poisson} can also accommodate " 
+                "over-dispersion in foci counts. "
+                "In NB model, the latent random variable introduces indepdentent variation"
+                "at each voxel. While in Clustered NB model, we assert the random effects are not "
+                "independent voxelwise effects, but rather latent characteristics of each study, "
+                "and represent a shared effect over the entire brain for a given study."
+            )
+        
+        model_description = (
+            f"CBMR is a meta-regression framework that was performed with NiMARE {__version__}. "
+            f"{type(self.model).__name__} model was used to model group-wise spatial intensity "
+            f"functions {moderators_str}." + model_str
+        )
+        
+        optimization_description = (
+            "CBMR is fitted via maximizing the log-likelihood function with L-BFGS algorithm, with "
+            f"learning rate {self.lr}, learning rate decay {self.lr_decay} and tolerance {self.tol}."
+            + penalty_str + f" The optimization is run on {self.device}."
+            f" The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments."
+        )
+        
+        description = model_description + "\n" + optimization_description      
         return description
 
     def _preprocess_input(self, dataset):

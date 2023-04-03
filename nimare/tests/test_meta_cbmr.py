@@ -47,8 +47,9 @@ def cbmr_result(testdata_cbmr_simulated, model):
         device="cpu",
     )
     res = cbmr.fit(dataset=dset)
+    # a = res.description_
     assert isinstance(res, nimare.results.MetaResult)
-
+    # assert isinstance(results.description_, str)
     return res
 
 
