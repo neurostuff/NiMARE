@@ -1881,14 +1881,17 @@ def b_spline_bases(masker_voxels, spacing, margin=10):
 
     Parameters
     ----------
-    masker_voxels : matrix with element either 0 or 1, indicating if it's within brain mask,
-    spacing: (equally spaced) knots spacing in x/y/z direction,
-    margin: extend the region where B-splines are constructed (min-margin, max_margin)
-            to avoid weakly-supported B-spline on the edge
+    masker_voxels : :obj:`numpy.ndarray`
+        matrix with element either 0 or 1, indicating if it's within brain mask,
+    spacing : :obj:`int`
+        (equally spaced) knots spacing in x/y/z direction,
+    margin : :obj:`int`
+        extend the region where B-splines are constructed (min-margin, max_margin)
+        to avoid weakly-supported B-spline on the edge
     Returns
     -------
-    X : 2-D ndarray (n_voxel x n_spline_bases)
-        only keeps with within-brain voxels
+    X : :obj:`numpy.ndarray`
+        2-D ndarray (n_voxel x n_spline_bases) only keeps with within-brain voxels
     """
     # dim_mask = masker_voxels.shape
     # n_brain_voxel = np.sum(masker_voxels)
@@ -1937,28 +1940,23 @@ def b_spline_bases(masker_voxels, spacing, margin=10):
 
     return X
 
-
-def index2vox(vals, masker_voxels):
-    """Document This Function."""
-    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
-    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
-    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
-    image_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
-    voxel_array = np.zeros(shape=masker_voxels.shape)
-    index_count = 0
-    for i in range(image_dim[0]):
-        for j in range(image_dim[1]):
-            for k in range(image_dim[2]):
-                x, y, z = xx[i], yy[j], zz[k]
-                if masker_voxels[x, y, z] == 1:
-                    voxel_array[x, y, z] = vals[index_count]
-                    index_count += 1
-
-    return voxel_array
-
-
 def dummy_encoding_moderators(dataset_annotations, moderators):
-    """Document This Function."""
+    """Convert categorical moderators to dummy encoded variables.
+    
+    Parameters
+    ----------
+    dataset_annotations : :obj:`pandas.DataFrame`
+        Annotations of the dataset.
+    moderators : :obj:`list`
+        Study-level moderators to be considered into CBMR framework.
+    
+    Returns
+    -------
+    dataset_annotations : :obj:`pandas.DataFrame`
+        Annotations of the dataset with dummy encoded moderator columns.
+    new_moderators : :obj:`list`
+        List of study-level moderators after dummy encoding.
+    """
     new_moderators = []
     for moderator in moderators.copy():
         if len(moderator.split(":reference=")) == 2:
