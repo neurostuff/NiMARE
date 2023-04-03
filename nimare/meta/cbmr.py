@@ -148,7 +148,14 @@ class CBMREstimator(Estimator):
         description : :obj:`str`
             Description of the Estimator instance.
         """
-        description = "Document this (insert description of how this estimator was fit)"
+        description = """CBMR is a meta-regression framework that can explicitly model
+                    group-wise spatial intensity function, and consider the effect of 
+                    study-level moderators. It consists of two components: (1) a spatial
+                    model that makes use of a spline parameterization to induce a smooth
+                    response; (2) a generalized linear model (Poisson, Negative Binomial
+                    (NB), Clustered NB) to model group-wise spatial intensity function).
+                    CBMR is fitted via maximizing the log-likelihood function with L-BFGS
+                    algorithm."""
 
         return description
 
