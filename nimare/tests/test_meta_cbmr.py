@@ -42,7 +42,7 @@ def cbmr_result(testdata_cbmr_simulated, model):
         spline_spacing=200,
         model=model,
         penalty=False,
-        lr=1e-1,
+        lr=1e-2,
         tol=1e7,
         device="cpu",
     )
