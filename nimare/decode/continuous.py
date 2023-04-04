@@ -164,7 +164,6 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
-        mask=None,
         n_cores=1,
     ):
         if meta_estimator is None:
@@ -177,7 +176,6 @@ class CorrelationDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.meta_estimator = meta_estimator
         self.target_image = target_image
-
         self.n_cores = _check_ncores(n_cores)
 
     def _fit(self, dataset):
