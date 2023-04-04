@@ -4,7 +4,6 @@ from abc import abstractmethod
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.decode.continuous import CorrelationDecoder
 
 LGR = logging.getLogger(__name__)
 
@@ -114,11 +113,6 @@ class Decoder(NiMAREBase):
         if issubclass(type(dataset), Dataset):
             self._collect_inputs(dataset, drop_invalid=drop_invalid)
             self._preprocess_input(dataset)
-        elif isinstance(dataset, dict) and not issubclass(type(self), CorrelationDecoder):
-            raise ValueError(
-                f"Argument 'dataset' of type dictionary is only supported for "
-                f"CorrelationDecoder, not {type(self)}."
-            )
         elif not isinstance(dataset, dict):
             raise ValueError(
                 f"Argument 'dataset' must be a valid Dataset object or a dictionary "
