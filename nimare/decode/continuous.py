@@ -234,8 +234,10 @@ class CorrelationDecoder(Decoder):
             images_ = []
             for feature in dataset:
                 img = nib.load(dataset[feature])
-                images_.append(self.masker.transform(img))
+                images_.append(np.squeeze(self.masker.transform(img)))
+
             self.features_ = list(dataset.keys())
+            images_ = np.array(images_)
 
         self.images_ = images_
 
