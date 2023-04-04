@@ -2,6 +2,7 @@
 import inspect
 import logging
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -9,12 +10,19 @@ from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
+from nimare.dataset import Dataset
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.meta.cbma.base import CBMAEstimator
 from nimare.meta.cbma.mkda import MKDAChi2
 from nimare.stats import pearson
-from nimare.utils import _check_ncores, _check_type, _safe_transform, tqdm_joblib
+from nimare.utils import (
+    _check_ncores,
+    _check_type,
+    _safe_transform,
+    get_masker,
+    tqdm_joblib,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -121,20 +129,35 @@ class CorrelationDecoder(Decoder):
 
     Parameters
     ----------
-    feature_group : :obj:`str`
-        Feature group
-    features : :obj:`list`
-        Features
-    frequency_threshold : :obj:`float`
-        Frequency threshold
+    feature_group : :obj:`str`, optional
+        Feature group.
+        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
+        maps.
+    features : :obj:`list`, optional
+        Features.
+        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
+        maps.
+    frequency_threshold : :obj:`float`, optional
+        Frequency threshold.
+        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
+        maps.
     meta_estimator : :class:`~nimare.base.CBMAEstimator`, optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.mkda.MKDAChi2`.
-    target_image : :obj:`str`
+        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
+        maps.
+    target_image : :obj:`str`, optional
         Name of meta-analysis results image to use for decoding.
+        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
+        maps.
+    mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker, optional
+        Mask to apply to pre-generated maps.
+        This parameter is not used if the Decoder object is fit to a Dataset object.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         Default is 1.
+        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
+        maps.
 
     Warnings
     --------
@@ -155,6 +178,7 @@ class CorrelationDecoder(Decoder):
         frequency_threshold=0.001,
         meta_estimator=None,
         target_image="z_desc-specificity",
+        mask=None,
         n_cores=1,
     ):
         if meta_estimator is None:
@@ -167,6 +191,9 @@ class CorrelationDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.meta_estimator = meta_estimator
         self.target_image = target_image
+        if mask is not None:
+            mask = get_masker(mask)
+        self.masker = mask
         self.n_cores = _check_ncores(n_cores)
 
     def _fit(self, dataset):
@@ -174,8 +201,11 @@ class CorrelationDecoder(Decoder):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`dict`
             Dataset for which to run meta-analyses to generate maps.
+            If dataset is :obj:`~nimare.dataset.Dataset`, _fit will generate maps each annotation.
+            If dataset is :obj:`dict`, the keys will be used as the feature names and the values
+            as path meta-analytic nifti files.
 
         Attributes
         ----------
@@ -186,18 +216,27 @@ class CorrelationDecoder(Decoder):
         images_ : array_like
             Masked meta-analytic maps
         """
-        self.masker = dataset.masker
+        if issubclass(type(dataset), Dataset):
+            self.masker = dataset.masker
 
-        n_features = len(self.features_)
-        with tqdm_joblib(tqdm(total=n_features)):
-            images_, feature_idx = zip(
-                *Parallel(n_jobs=self.n_cores)(
-                    delayed(self._run_fit)(i_feature, feature, dataset)
-                    for i_feature, feature in enumerate(self.features_)
+            n_features = len(self.features_)
+            with tqdm_joblib(tqdm(total=n_features)):
+                images_, feature_idx = zip(
+                    *Parallel(n_jobs=self.n_cores)(
+                        delayed(self._run_fit)(i_feature, feature, dataset)
+                        for i_feature, feature in enumerate(self.features_)
+                    )
                 )
-            )
-        # Convert to an array and sort the images_ array based on the feature index.
-        images_ = np.array(images_)[np.array(feature_idx)]
+            # Convert to an array and sort the images_ array based on the feature index.
+            images_ = np.array(images_)[np.array(feature_idx)]
+        else:
+            # Use pre-generated maps
+            images_ = []
+            for feature in dataset:
+                img = nib.load(dataset[feature])
+                images_.append(self.masker.transform(img))
+            self.features_ = list(dataset.keys())
+
         self.images_ = images_
 
     def _run_fit(self, i_feature, feature, dataset):
