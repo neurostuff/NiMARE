@@ -83,6 +83,7 @@ class Decoder(NiMAREBase):
 
     def fit(self, dataset, drop_invalid=True):
         """Fit Decoder to Dataset.
+
         Parameters
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
@@ -90,16 +91,19 @@ class Decoder(NiMAREBase):
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
             Default is True.
+
         Returns
         -------
         :obj:`~nimare.results.MetaResult`
             Results of Decoder fitting.
+
         Notes
         -----
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Decoders' individual
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
+
         Selection of features based on requested features and feature group is performed in
         `Decoder._preprocess_input`.
         """

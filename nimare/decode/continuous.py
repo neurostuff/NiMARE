@@ -12,7 +12,6 @@ from nilearn._utils import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
-from nimare.dataset import Dataset
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.meta.cbma.base import CBMAEstimator
@@ -132,31 +131,19 @@ class CorrelationDecoder(Decoder):
     Parameters
     ----------
     feature_group : :obj:`str`, optional
-        Feature group.
-        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
-        maps.
+        Feature group
     features : :obj:`list`, optional
-        Features.
-        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
-        maps.
+        Features
     frequency_threshold : :obj:`float`, optional
-        Frequency threshold.
-        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
-        maps.
+        Frequency threshold
     meta_estimator : :class:`~nimare.base.CBMAEstimator`, optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.mkda.MKDAChi2`.
-        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
-        maps.
     target_image : :obj:`str`, optional
         Name of meta-analysis results image to use for decoding.
-        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
-        maps.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         Default is 1.
-        This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
-        maps.
 
     Warnings
     --------
@@ -195,10 +182,12 @@ class CorrelationDecoder(Decoder):
 
     def _fit(self, dataset):
         """Generate feature-specific meta-analytic maps for dataset.
+
         Parameters
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset for which to run meta-analyses to generate maps.
+
         Attributes
         ----------
         masker : :class:`~nilearn.input_data.NiftiMasker` or similar
