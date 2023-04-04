@@ -26,7 +26,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     decoded_df = decoder.transform(img)
     assert isinstance(decoded_df, pd.DataFrame)
 
-    # Save images to disk
+    # Save images to disk to use in load_imgs
     img_dict = {}
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDecoder")
     for feature_i, feature in enumerate(features):
@@ -37,8 +37,8 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
         img_dict[feature] = out_file
 
     # Train decoder with pregenerated maps
-    decoder2 = continuous.CorrelationDecoder(mask=testdata_laird.masker)
-    decoder2.fit(img_dict)
+    decoder2 = continuous.CorrelationDecoder()
+    decoder2.load_imgs(img_dict, mask=testdata_laird.masker)
     decoded2_df = decoder2.transform(img)
 
     assert np.array_equal(decoder.features_, decoder2.features_)

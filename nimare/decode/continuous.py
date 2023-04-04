@@ -1,6 +1,8 @@
 """Methods for decoding unthresholded brain maps into text."""
 import inspect
 import logging
+import os
+from glob import glob
 
 import nibabel as nib
 import numpy as np
@@ -149,9 +151,6 @@ class CorrelationDecoder(Decoder):
         Name of meta-analysis results image to use for decoding.
         This parameter is not used if the Decoder object is fit to a dictionary of pre-generated
         maps.
-    mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker, optional
-        Mask to apply to pre-generated maps.
-        This parameter is not used if the Decoder object is fit to a Dataset object.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
@@ -191,22 +190,15 @@ class CorrelationDecoder(Decoder):
         self.frequency_threshold = frequency_threshold
         self.meta_estimator = meta_estimator
         self.target_image = target_image
-        if mask is not None:
-            mask = get_masker(mask)
-        self.masker = mask
+
         self.n_cores = _check_ncores(n_cores)
 
     def _fit(self, dataset):
         """Generate feature-specific meta-analytic maps for dataset.
-
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`dict`
+        dataset : :obj:`~nimare.dataset.Dataset`
             Dataset for which to run meta-analyses to generate maps.
-            If dataset is :obj:`~nimare.dataset.Dataset`, _fit will generate maps each annotation.
-            If dataset is :obj:`dict`, the keys will be used as the feature names and the values
-            as path meta-analytic nifti files.
-
         Attributes
         ----------
         masker : :class:`~nilearn.input_data.NiftiMasker` or similar
@@ -216,29 +208,18 @@ class CorrelationDecoder(Decoder):
         images_ : array_like
             Masked meta-analytic maps
         """
-        if issubclass(type(dataset), Dataset):
-            self.masker = dataset.masker
+        self.masker = dataset.masker
 
-            n_features = len(self.features_)
-            with tqdm_joblib(tqdm(total=n_features)):
-                images_, feature_idx = zip(
-                    *Parallel(n_jobs=self.n_cores)(
-                        delayed(self._run_fit)(i_feature, feature, dataset)
-                        for i_feature, feature in enumerate(self.features_)
-                    )
+        n_features = len(self.features_)
+        with tqdm_joblib(tqdm(total=n_features)):
+            images_, feature_idx = zip(
+                *Parallel(n_jobs=self.n_cores)(
+                    delayed(self._run_fit)(i_feature, feature, dataset)
+                    for i_feature, feature in enumerate(self.features_)
                 )
-            # Convert to an array and sort the images_ array based on the feature index.
-            images_ = np.array(images_)[np.array(feature_idx)]
-        else:
-            # Use pre-generated maps
-            images_ = []
-            for feature in dataset:
-                img = nib.load(dataset[feature])
-                images_.append(np.squeeze(self.masker.transform(img)))
-
-            self.features_ = list(dataset.keys())
-            images_ = np.array(images_)
-
+            )
+        # Convert to an array and sort the images_ array based on the feature index.
+        images_ = np.array(images_)[np.array(feature_idx)]
         self.images_ = images_
 
     def _run_fit(self, i_feature, feature, dataset):
@@ -267,6 +248,55 @@ class CorrelationDecoder(Decoder):
         )
 
         return feature_data, i_feature
+
+    def load_imgs(self, feature_imgs, mask=None):
+        """Load pregenerated maps from disk.
+
+        Parameters
+        ----------
+        feature_imgs : :obj:`dict`, or str
+            Dictionary with feature names as keys and paths to images as values.
+            If a string is provided, it is assumed to be a path to a folder with NIfTI images,
+            where the file's name (without the extension .nii.gz) will be considered as the
+            feature name by the decoder.
+        mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
+            Mask to apply to pre-generated maps.
+
+        Attributes
+        ----------
+        masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+            Masker from dataset
+        features_ : :obj:`list`
+            Reduced list of features
+        images_ : array_like
+            Masked meta-analytic maps
+        """
+        if isinstance(feature_imgs, dict):
+            feature_imgs_dict = feature_imgs
+        elif isinstance(feature_imgs, str):
+            img_paths = glob(os.path.join(feature_imgs, "*.nii.gz"))
+            feature_imgs_dict = {f"{img.split(os.extsep)[0]}": img for img in img_paths}
+        else:
+            raise ValueError(
+                f'"feature_imgs" must be a dictionary or a string, not a {type(feature_imgs)}.'
+            )
+
+        if mask is not None:
+            mask = get_masker(mask)
+        else:
+            raise ValueError("A mask must be provided.")
+        self.masker = mask
+
+        # Load pre-generated maps
+        images_ = []
+        for feature in feature_imgs_dict:
+            img = nib.load(feature_imgs_dict[feature])
+            images_.append(np.squeeze(self.masker.transform(img)))
+
+        self.features_ = list(feature_imgs_dict.keys())
+        images_ = np.array(images_)
+
+        self.images_ = images_
 
     def transform(self, img):
         """Correlate target image with each feature-specific meta-analytic map.

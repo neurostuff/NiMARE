@@ -3,7 +3,6 @@ import logging
 from abc import abstractmethod
 
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
 
 LGR = logging.getLogger(__name__)
 
@@ -84,41 +83,28 @@ class Decoder(NiMAREBase):
 
     def fit(self, dataset, drop_invalid=True):
         """Fit Decoder to Dataset.
-
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`dict`
-            Dataset or dict object to train the Decoder on.
+        dataset : :obj:`~nimare.dataset.Dataset`
+            Dataset object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
-            This parameter is not used if dataset is a dictionary.
             Default is True.
-
-
         Returns
         -------
         :obj:`~nimare.results.MetaResult`
             Results of Decoder fitting.
-
         Notes
         -----
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Decoders' individual
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
-
         Selection of features based on requested features and feature group is performed in
         `Decoder._preprocess_input`.
         """
-        if issubclass(type(dataset), Dataset):
-            self._collect_inputs(dataset, drop_invalid=drop_invalid)
-            self._preprocess_input(dataset)
-        elif not isinstance(dataset, dict):
-            raise ValueError(
-                f"Argument 'dataset' must be a valid Dataset object or a dictionary "
-                f"with path to pregenerated map, not a {type(dataset)}."
-            )
-
+        self._collect_inputs(dataset, drop_invalid=drop_invalid)
+        self._preprocess_input(dataset)
         self._fit(dataset)
 
     @abstractmethod
