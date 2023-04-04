@@ -161,7 +161,7 @@ def extract_cogat(text_df, id_df=None, text_column="abstract"):
         term_id = id_df["id"].loc[term_idx]
         pattern = regex_dict[term]
         counts_df[term_id] += text_df[text_column].str.count(pattern).astype(int)
-        text_df[text_column] = text_df[text_column].str.replace(pattern, term_id)
+        text_df[text_column] = text_df[text_column].str.replace(pattern, term_id, regex=True)
 
     return counts_df, text_df
 
