@@ -119,4 +119,3 @@ class Decoder(NiMAREBase):
 
         Must return a DataFrame, with one row for each feature.
         """
-        pass
