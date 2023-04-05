@@ -126,7 +126,10 @@ class CorrelationDecoder(Decoder):
         * New method: `load_imgs`. Load pre-generated meta-analytic maps for decoding.
 
         * New attribute: `results`. MetaResult object containing masker, meta-analytic maps,
-        and tables. This attribute replaces `masker`, `features_`, and `images_`.
+          and tables. This attribute replaces `masker`, `features_`, and `images_`.
+
+        * Braking-change: `transform` now require a MetaResult object in addition to the
+          image to decode.
 
     .. versionchanged:: 0.0.13
 
@@ -174,10 +177,9 @@ class CorrelationDecoder(Decoder):
         target_image="z_desc-specificity",
         n_cores=1,
     ):
-        if meta_estimator is None:
-            meta_estimator = MKDAChi2()
-        else:
-            meta_estimator = _check_type(meta_estimator, CBMAEstimator)
+        meta_estimator = (
+            MKDAChi2() if meta_estimator is None else _check_type(meta_estimator, CBMAEstimator)
+        )
 
         self.feature_group = feature_group
         self.features = features
@@ -321,7 +323,10 @@ class CorrelationDistributionDecoder(Decoder):
     .. versionchanged:: 0.1.0
 
         * New attribute: `results`. MetaResult object containing masker, meta-analytic maps,
-        and tables. This attribute replaces `masker`, `features_`, and `images_`.
+          and tables. This attribute replaces `masker`, `features_`, and `images_`.
+
+        * Braking-change: `transform` now require a MetaResult object in addition to the
+          image to decode.
 
     .. versionchanged:: 0.0.13
 

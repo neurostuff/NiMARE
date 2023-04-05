@@ -70,6 +70,11 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     with pytest.raises(ValueError):
         decoder4.load_imgs(testdata_laird, mask=testdata_laird.masker)
 
+    # Test: try loading pregenerated maps without a masker
+    decoder5 = continuous.CorrelationDecoder()
+    with pytest.raises(ValueError):
+        decoder5.load_imgs(img_dict)
+
 
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     """Smoke test for continuous.CorrelationDistributionDecoder."""
