@@ -16,34 +16,59 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     """Smoke test for continuous.CorrelationDecoder."""
     testdata_laird = testdata_laird.copy()
     features = testdata_laird.get_labels(ids=testdata_laird.ids[0])[:5]
-    decoder = continuous.CorrelationDecoder(features=features)
-    decoder.fit(testdata_laird)
 
     # Make an image to decode
     meta = mkda.KDA(null_method="approximate")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
-    decoded_df = decoder.transform(img)
+
+    # Test: train decoder with Dataset object
+    decoder = continuous.CorrelationDecoder(features=features)
+    result = decoder.fit(testdata_laird)
+    result = decoder.transform(result, img)
+
+    features = list(result.maps.keys())
+    images = np.array(list(result.maps.values()))
+    decoded_df = result.tables["correlation"]
     assert isinstance(decoded_df, pd.DataFrame)
 
-    # Save images to disk to use in load_imgs
-    img_dict = {}
+    # Save images to disk to test load_imgs method
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDecoder")
-    for feature_i, feature in enumerate(features):
-        out_file = os.path.join(tmpdir, f"{feature}.nii.gz")
-        pregen_img = testdata_laird.masker.inverse_transform(decoder.images_[feature_i])
-        pregen_img.to_filename(out_file)
+    result.save_maps(tmpdir)
 
-        img_dict[feature] = out_file
-
-    # Train decoder with pregenerated maps
+    # Test: load pregenerated maps using a dictionary of feature names and paths
+    img_dict = {feature: os.path.join(tmpdir, f"{feature}.nii.gz") for feature in features}
     decoder2 = continuous.CorrelationDecoder()
-    decoder2.load_imgs(img_dict, mask=testdata_laird.masker)
-    decoded2_df = decoder2.transform(img)
+    result2 = decoder2.load_imgs(img_dict, mask=testdata_laird.masker)
+    result2 = decoder2.transform(result2, img)
 
-    assert np.array_equal(decoder.features_, decoder2.features_)
-    assert np.array_equal(decoder.images_, decoder2.images_)
+    features2 = list(result2.maps.keys())
+    images2 = np.array(list(result2.maps.values()))
+    decoded2_df = result2.tables["correlation"]
+    assert isinstance(decoded2_df, pd.DataFrame)
+
+    assert np.array_equal(features, features2)
+    assert np.array_equal(images, images2)
     assert decoded_df.equals(decoded2_df)
+
+    # Test: load pregenerated maps from a directory
+    decoder3 = continuous.CorrelationDecoder()
+    result3 = decoder3.load_imgs(tmpdir.as_posix(), mask=testdata_laird.masker)
+    result3 = decoder3.transform(result3, img)
+
+    features3 = list(result3.maps.keys())
+    images3 = np.array(list(result3.maps.values()))
+    decoded3_df = result3.tables["correlation"]
+    assert isinstance(decoded3_df, pd.DataFrame)
+
+    assert np.array_equal(features, features3)
+    assert np.array_equal(images, images3)
+    assert decoded_df.equals(decoded3_df)
+
+    # Test: passing a dataset to load_imgs
+    decoder4 = continuous.CorrelationDecoder()
+    with pytest.raises(ValueError):
+        decoder4.load_imgs(testdata_laird, mask=testdata_laird.masker)
 
 
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
@@ -81,11 +106,13 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
         features=features,
         target_image=kern.image_type,
     )
-    decoder.fit(dset)
+    result = decoder.fit(dset)
 
     # Make an image to decode
     meta = mkda.KDA(null_method="approximate")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
-    decoded_df = decoder.transform(img)
+    result = decoder.transform(result, img)
+
+    decoded_df = result.tables["correlation"]
     assert isinstance(decoded_df, pd.DataFrame)
