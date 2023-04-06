@@ -92,11 +92,6 @@ class Decoder(NiMAREBase):
             Whether to automatically ignore any studies without the required data or not.
             Default is True.
 
-        Returns
-        -------
-        :obj:`~nimare.results.MetaResult`
-            Results of Decoder fitting. Returned if a ``self.results`` was set in ``_fit``.
-
         Notes
         -----
         The `fit` method is a light wrapper that runs input validation and
@@ -110,8 +105,6 @@ class Decoder(NiMAREBase):
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         self._fit(dataset)
-
-        return self.results if hasattr(self, "results") else None
 
     @abstractmethod
     def _fit(self, dataset):

@@ -125,11 +125,8 @@ class CorrelationDecoder(Decoder):
 
         * New method: `load_imgs`. Load pre-generated meta-analytic maps for decoding.
 
-        * New attribute: `results`. MetaResult object containing masker, meta-analytic maps,
+        * New attribute: `results_`. MetaResult object containing masker, meta-analytic maps,
           and tables. This attribute replaces `masker`, `features_`, and `images_`.
-
-        * Braking-change: `transform` now require a MetaResult object in addition to the
-          image to decode.
 
     .. versionchanged:: 0.0.13
 
@@ -198,7 +195,7 @@ class CorrelationDecoder(Decoder):
 
         Attributes
         ----------
-        results : :obj:`~nimare.results.MetaResult`
+        results_ : :obj:`~nimare.results.MetaResult`
             MetaResult with meta-analytic maps and masker added.
         """
         n_features = len(self.features_)
@@ -209,7 +206,7 @@ class CorrelationDecoder(Decoder):
                 )
             )
 
-        self.results = MetaResult(self, mask=dataset.masker, maps=maps)
+        self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 
     def _run_fit(self, feature, dataset):
         feature_ids = dataset.get_studies_by_label(
@@ -253,9 +250,9 @@ class CorrelationDecoder(Decoder):
         mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
             Mask to apply to pre-generated maps.
 
-        Returns
-        -------
-        result : :obj:`~nimare.results.MetaResult`
+        Attributes
+        ----------
+        results_ : :obj:`~nimare.results.MetaResult`
             MetaResult with meta-analytic maps and masker added.
         """
         if isinstance(features_imgs, dict):
@@ -269,6 +266,11 @@ class CorrelationDecoder(Decoder):
                 f'"feature_imgs" must be a dictionary or a string, not a {type(features_imgs)}.'
             )
 
+        # Replace attributes of initialized class self with Nones, so that default values are not
+        # confused with the parameters used before to generate the maps that are read from disk.
+        for attr in self.__dict__:
+            setattr(self, attr, None)
+
         if mask is not None:
             mask = get_masker(mask)
         else:
@@ -276,23 +278,20 @@ class CorrelationDecoder(Decoder):
         self.masker = mask
 
         # Load pre-generated maps
-        images = []
-        for img_path in feature_imgs_dict.values():
+        features, images = ([], [])
+        for feature, img_path in feature_imgs_dict.items():
             img = nib.load(img_path)
+            features.append(feature)
             images.append(np.squeeze(self.masker.transform(img)))
 
-        features = list(feature_imgs_dict.keys())
         maps = {feature: image for feature, image in zip(features, images)}
+        self.results_ = MetaResult(self, mask=self.masker, maps=maps)
 
-        return MetaResult(self, mask=self.masker, maps=maps)
-
-    def transform(self, result, img):
+    def transform(self, img):
         """Correlate target image with each feature-specific meta-analytic map.
 
         Parameters
         ----------
-        result : :obj:`~nimare.results.MetaResult`
-            MetaResult with meta-analytic maps and masker added.
         img : :obj:`~nibabel.nifti1.Nifti1Image`
             Image to decode. Must be in same space as ``dataset``.
 
@@ -301,20 +300,29 @@ class CorrelationDecoder(Decoder):
         result : :obj:`~nimare.results.MetaResult`
             MetaResult with meta-analytic masker, maps, and tables added.
         """
-        # Make sure we return a copy of the MetaResult
-        result = result.copy()
-        features = list(result.maps.keys())
-        images = np.array(list(result.maps.values()))
+        if not hasattr(self, "results_"):
+            raise AttributeError(
+                f"This {self.__class__.__name__} instance is not fitted yet. "
+                "Call 'fit' or 'load_imgs' before using 'transform'."
+            )
 
-        img_vec = result.masker.transform(img)
+        # Make sure we return a copy of the MetaResult
+        results = self.results_.copy()
+        features = list(results.maps.keys())
+        images = np.array(list(results.maps.values()))
+
+        img_vec = results.masker.transform(img)
         corrs = pearson(img_vec, images)
         out_df = pd.DataFrame(index=features, columns=["r"], data=corrs)
         out_df.index.name = "feature"
 
         # DataFrame with one row for each feature, an index named "feature", and one column: "r".
-        result.tables["correlation"] = out_df
+        results.tables["correlation"] = out_df
 
-        return result
+        # update self.results_ to include the new table
+        self.results_ = results
+
+        return results
 
 
 class CorrelationDistributionDecoder(Decoder):
@@ -322,11 +330,8 @@ class CorrelationDistributionDecoder(Decoder):
 
     .. versionchanged:: 0.1.0
 
-        * New attribute: `results`. MetaResult object containing masker, meta-analytic maps,
+        * New attribute: `results_`. MetaResult object containing masker, meta-analytic maps,
           and tables. This attribute replaces `masker`, `features_`, and `images_`.
-
-        * Braking-change: `transform` now require a MetaResult object in addition to the
-          image to decode.
 
     .. versionchanged:: 0.0.13
 
@@ -393,7 +398,7 @@ class CorrelationDistributionDecoder(Decoder):
                 )
             )
 
-        self.results = MetaResult(self, mask=dataset.masker, maps=maps)
+        self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 
     def _run_fit(self, feature, dataset):
         feature_ids = dataset.get_studies_by_label(
@@ -416,31 +421,35 @@ class CorrelationDistributionDecoder(Decoder):
         else:
             LGR.info(f"Skipping feature '{feature}'. No images found.")
 
-    def transform(self, result, img):
+    def transform(self, img):
         """Correlate target image with each map associated with each feature.
 
         Parameters
         ----------
-        result : :obj:`~nimare.results.MetaResult`
-            MetaResult with meta-analytic maps and masker added.
         img : :obj:`~nibabel.nifti1.Nifti1Image`
             Image to decode. Must be in same space as ``dataset``.
 
         Returns
         -------
-        result : :obj:`~nimare.results.MetaResult`
+        results : :obj:`~nimare.results.MetaResult`
             MetaResult with meta-analytic masker, maps, and tables added.
         """
-        # Make sure we return a copy of the MetaResult
-        result = result.copy()
-        features = list(result.maps.keys())
+        if not hasattr(self, "results_"):
+            raise AttributeError(
+                f"This {self.__class__.__name__} instance is not fitted yet. "
+                "Call 'fit' before using 'transform'."
+            )
 
-        img_vec = result.masker.transform(img)
+        # Make sure we return a copy of the MetaResult
+        results = self.results_.copy()
+        features = list(results.maps.keys())
+
+        img_vec = results.masker.transform(img)
         out_df = pd.DataFrame(
             index=features, columns=["mean", "std"], data=np.zeros((len(features), 2))
         )
         out_df.index.name = "feature"
-        for feature, feature_arr in result.maps.items():
+        for feature, feature_arr in results.maps.items():
             corrs = pearson(img_vec, feature_arr)
             corrs_z = np.arctanh(corrs)
             out_df.loc[feature, "mean"] = np.mean(corrs_z)
@@ -448,6 +457,9 @@ class CorrelationDistributionDecoder(Decoder):
 
         # DataFrame with one row for each feature, an index named "feature", and two columns:
         # "mean" and "std".
-        result.tables["correlation"] = out_df
+        results.tables["correlation"] = out_df
 
-        return result
+        # update self.results_ to include the new table
+        self.results_ = results
+
+        return results

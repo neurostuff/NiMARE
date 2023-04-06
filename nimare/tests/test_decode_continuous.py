@@ -24,8 +24,8 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
 
     # Test: train decoder with Dataset object
     decoder = continuous.CorrelationDecoder(features=features)
-    result = decoder.fit(testdata_laird)
-    result = decoder.transform(result, img)
+    decoder.fit(testdata_laird)
+    result = decoder.transform(img)
 
     features = list(result.maps.keys())
     images = np.array(list(result.maps.values()))
@@ -39,8 +39,8 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     # Test: load pregenerated maps using a dictionary of feature names and paths
     img_dict = {feature: os.path.join(tmpdir, f"{feature}.nii.gz") for feature in features}
     decoder2 = continuous.CorrelationDecoder()
-    result2 = decoder2.load_imgs(img_dict, mask=testdata_laird.masker)
-    result2 = decoder2.transform(result2, img)
+    decoder2.load_imgs(img_dict, mask=testdata_laird.masker)
+    result2 = decoder2.transform(img)
 
     features2 = list(result2.maps.keys())
     images2 = np.array(list(result2.maps.values()))
@@ -53,8 +53,8 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
 
     # Test: load pregenerated maps from a directory
     decoder3 = continuous.CorrelationDecoder()
-    result3 = decoder3.load_imgs(tmpdir.as_posix(), mask=testdata_laird.masker)
-    result3 = decoder3.transform(result3, img)
+    decoder3.load_imgs(tmpdir.as_posix(), mask=testdata_laird.masker)
+    result3 = decoder3.transform(img)
 
     features3 = list(result3.maps.keys())
     images3 = np.array(list(result3.maps.values()))
@@ -74,6 +74,11 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     decoder5 = continuous.CorrelationDecoder()
     with pytest.raises(ValueError):
         decoder5.load_imgs(img_dict)
+
+    # Test: try transforming an image without fitting the decoder
+    decoder6 = continuous.CorrelationDecoder()
+    with pytest.raises(AttributeError):
+        decoder6.transform(img)
 
 
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
@@ -111,13 +116,18 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
         features=features,
         target_image=kern.image_type,
     )
-    result = decoder.fit(dset)
+    decoder.fit(dset)
 
     # Make an image to decode
     meta = mkda.KDA(null_method="approximate")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
-    result = decoder.transform(result, img)
+    result = decoder.transform(img)
 
     decoded_df = result.tables["correlation"]
     assert isinstance(decoded_df, pd.DataFrame)
+
+    # Test: try transforming an image without fitting the decoder
+    decoder2 = decoder = continuous.CorrelationDistributionDecoder()
+    with pytest.raises(AttributeError):
+        decoder2.transform(img)
