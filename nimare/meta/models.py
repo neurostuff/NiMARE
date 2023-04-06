@@ -242,6 +242,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_study : :obj:`dict`
             Dictionary of group-wise number of foci per study.
         """
+        torch.manual_seed(100) 
         optimizer = torch.optim.LBFGS(self.parameters(), self.lr)
         # load dataset info to torch.tensor
         coef_spline_bases = torch.tensor(
