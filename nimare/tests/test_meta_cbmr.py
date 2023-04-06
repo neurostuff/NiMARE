@@ -199,3 +199,4 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
             foci_per_study_tensor,
             prev_loss,
         )
+
