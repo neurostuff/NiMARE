@@ -128,6 +128,8 @@ class CorrelationDecoder(Decoder):
         * New attribute: `results_`. MetaResult object containing masker, meta-analytic maps,
           and tables. This attribute replaces `masker`, `features_`, and `images_`.
 
+        * `transform` now return a MetaResult object instead of a DataFrame.
+
     .. versionchanged:: 0.0.13
 
         * New parameter: `n_cores`. Number of cores to use for parallelization.
@@ -332,6 +334,8 @@ class CorrelationDistributionDecoder(Decoder):
 
         * New attribute: `results_`. MetaResult object containing masker, meta-analytic maps,
           and tables. This attribute replaces `masker`, `features_`, and `images_`.
+
+        * `transform` now return a MetaResult object instead of a DataFrame.
 
     .. versionchanged:: 0.0.13
 
