@@ -15,19 +15,12 @@ logging.getLogger("numba").setLevel(logging.WARNING)
 # indexed_gzip has a few debug messages that are not useful for testing
 logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
 
-# @pytest.fixture(
-#     scope="session",
-#     params=[
-#         pytest.param(models.PoissonEstimator, id="Poisson"),
-#         pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
-#         pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
-#     ],
-# )
-
 @pytest.fixture(
     scope="session",
     params=[
         pytest.param(models.PoissonEstimator, id="Poisson"),
+        pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
+        pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
     ],
 )
 
