@@ -128,8 +128,6 @@ class CorrelationDecoder(Decoder):
         * New attribute: `results_`. MetaResult object containing masker, meta-analytic maps,
           and tables. This attribute replaces `masker`, `features_`, and `images_`.
 
-        * `transform` now return a MetaResult object instead of a DataFrame.
-
     .. versionchanged:: 0.0.13
 
         * New parameter: `n_cores`. Number of cores to use for parallelization.
@@ -299,8 +297,8 @@ class CorrelationDecoder(Decoder):
 
         Returns
         -------
-        result : :obj:`~nimare.results.MetaResult`
-            MetaResult with meta-analytic masker, maps, and tables added.
+        out_df : :obj:`pandas.DataFrame`
+            DataFrame with one row for each feature, an index named "feature", and one column: "r".
         """
         if not hasattr(self, "results_"):
             raise AttributeError(
@@ -318,13 +316,11 @@ class CorrelationDecoder(Decoder):
         out_df = pd.DataFrame(index=features, columns=["r"], data=corrs)
         out_df.index.name = "feature"
 
-        # DataFrame with one row for each feature, an index named "feature", and one column: "r".
+        # Update self.results_ to include the new table
         results.tables["correlation"] = out_df
-
-        # update self.results_ to include the new table
         self.results_ = results
 
-        return results
+        return out_df
 
 
 class CorrelationDistributionDecoder(Decoder):
@@ -334,8 +330,6 @@ class CorrelationDistributionDecoder(Decoder):
 
         * New attribute: `results_`. MetaResult object containing masker, meta-analytic maps,
           and tables. This attribute replaces `masker`, `features_`, and `images_`.
-
-        * `transform` now return a MetaResult object instead of a DataFrame.
 
     .. versionchanged:: 0.0.13
 
@@ -435,8 +429,9 @@ class CorrelationDistributionDecoder(Decoder):
 
         Returns
         -------
-        results : :obj:`~nimare.results.MetaResult`
-            MetaResult with meta-analytic masker, maps, and tables added.
+        out_df : :obj:`pandas.DataFrame`
+            DataFrame with one row for each feature, an index named "feature", and two columns:
+            "mean" and "std".
         """
         if not hasattr(self, "results_"):
             raise AttributeError(
@@ -459,11 +454,8 @@ class CorrelationDistributionDecoder(Decoder):
             out_df.loc[feature, "mean"] = np.mean(corrs_z)
             out_df.loc[feature, "std"] = np.std(corrs_z)
 
-        # DataFrame with one row for each feature, an index named "feature", and two columns:
-        # "mean" and "std".
+        # Update self.results_ to include the new table
         results.tables["correlation"] = out_df
-
-        # update self.results_ to include the new table
         self.results_ = results
 
-        return results
+        return out_df
