@@ -34,7 +34,11 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         Device to use for computations. Default is "cpu".
     """
 
-    _hessian_kwargs = {}
+    _hessian_kwargs = {
+        "create_graph": False,
+        "vectorize": True,
+        "outer_jacobian_strategy": "forward-mode",
+    }
 
     def __init__(
         self,
@@ -707,7 +711,6 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
 class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     """Base class for CBMR models with over-dispersion parameter."""
-    _hessian_kwargs = {"create_graph": True}
 
     def __init__(self, **kwargs):
         self.square_root = kwargs.pop("square_root", False)
@@ -764,12 +767,6 @@ class PoissonEstimator(GeneralLinearModelEstimator):
     be independently distributed as Poisson random variables, with rate equal to the
     integral of the (true, unobserved, continous) intensity function over each voxels.
     """
-
-    _hessian_kwargs = {
-        "create_graph": False,
-        "vectorize": True,
-        "outer_jacobian_strategy": "forward-mode",
-    }
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -901,7 +898,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
     def __init__(self, **kwargs):
         kwargs["square_root"] = True
         super().__init__(**kwargs)
-
+    
     def _three_term(self, y, r):
         max_foci = torch.max(y).to(dtype=torch.int64, device=self.device)
         sum_three_term = 0
@@ -917,7 +914,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
             )
 
         return sum_three_term
-
+    
     def _log_likelihood_single_group(
         self,
         group_overdispersion,
@@ -941,16 +938,12 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
                 [0] * n_study, dtype=torch.float64, device=device
             ).reshape((-1, 1))
             mu_moderators = torch.exp(log_mu_moderators)
-        numerator = mu_spatial**2 * torch.sum(mu_moderators**2)
-        denominator = mu_spatial**2 * torch.sum(mu_moderators) ** 2
-        # estimated_sum_alpha = alpha * numerator / denominator
-
-        p = numerator / (v * mu_spatial * torch.sum(mu_moderators) + numerator)
-        r = v * denominator / numerator
-
-        log_l = self._three_term(group_foci_per_voxel, r) + torch.sum(
-            r * torch.log(1 - p) + group_foci_per_voxel * torch.log(p)
-        )
+        # parameter of a NB variable to approximate a sum of NB variables
+        r = 1/group_overdispersion * torch.sum(mu_moderators)**2 / torch.sum(mu_moderators**2)
+        p = 1 / (1 + torch.sum(mu_moderators) / (group_overdispersion * mu_spatial * torch.sum(mu_moderators**2)))
+        # log-likelihood (moment matching approach)
+        log_l = torch.sum(torch.lgamma(group_foci_per_voxel+r) - torch.lgamma(group_foci_per_voxel+1) \
+                          - torch.lgamma(r) + r*torch.log(1-p) + group_foci_per_voxel*torch.log(p))
 
         return log_l
 
@@ -993,28 +986,18 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
                 torch.exp(group_log_moderator_effect)
                 for group_log_moderator_effect in log_moderator_effect
             ]
-
-        numerators = [
-            spatial_intensity[i] ** 2 * torch.sum(moderator_effect[i] ** 2)
-            for i in range(n_groups)
-        ]
-        denominators = [
-            spatial_intensity[i] ** 2 * torch.sum(moderator_effect[i]) ** 2
-            for i in range(n_groups)
-        ]
-        p = [
-            numerators[i]
-            / (v[i] * spatial_intensity[i] * torch.sum(moderator_effect[i]) + denominators[i])
-            for i in range(n_groups)
-        ]
-        r = [v[i] * denominators[i] / numerators[i] for i in range(n_groups)]
+        # After similification, we have:
+        # r' = 1/alpha * sum(mu^Z_i)^2 / sum((mu^Z_i)^2)
+        # p'_j = 1 / (1 + sum(mu^Z_i) / (alpha * mu^X_j * sum((mu^Z_i)^2)
+        r = [1/overdispersion_coef[i] * torch.sum(moderator_effect[i])**2 / torch.sum(moderator_effect[i]**2) for i in range(n_groups)] 
+        p_frac = [torch.sum(moderator_effect[i]) / (overdispersion_coef[i] * spatial_intensity[i] * torch.sum(moderator_effect[i]**2)) for i in range(n_groups)]
+        p = [1 / (1 + p_frac[i]) for i in range(n_groups)]
 
         log_l = 0
         for i in range(n_groups):
-            log_l += self._three_term(foci_per_voxel[i], r[i]) + torch.sum(
-                r[i] * torch.log(1 - p[i]) + foci_per_voxel[i] * torch.log(p[i])
-            )
-
+            group_log_l = torch.sum(torch.lgamma(foci_per_voxel[i]+r[i]) - torch.lgamma(foci_per_voxel[i]+1) - torch.lgamma(r[i]) + r[i]*torch.log(1-p[i]) + foci_per_voxel[i]*torch.log(p[i]))
+            log_l += group_log_l
+            
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
