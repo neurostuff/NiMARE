@@ -69,7 +69,7 @@ def inference_results(testdata_cbmr_simulated, cbmr_result):
         source="moderators",
     )
     contrast_result = inference.transform(
-        t_con_groups=False, t_con_moderators=t_con_moderators
+        t_con_groups=t_con_groups, t_con_moderators=t_con_moderators
     )
 
     return contrast_result
