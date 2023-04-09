@@ -711,6 +711,8 @@ class CBMRInference(object):
         intensity, including group-wise spatial homogeneity test and 
         group comparison test.
         """
+        X = self.estimator.inputs_["coef_spline_bases"]
+        n_brain_voxel, spatial_coef_dim = X.shape
         con_group_count = 0
         for con_group in self.t_con_groups:
             con_group_involved_index = np.where(np.any(con_group != 0, axis=0))[0].tolist()
@@ -718,41 +720,7 @@ class CBMRInference(object):
             n_con_group_involved = len(con_group_involved)
             # Simplify contrast matrix by removing irrelevant columns
             simp_con_group = con_group[:, ~np.all(con_group == 0, axis=0)]
-            if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
-                involved_log_intensity_per_voxel = list()
-                for group in con_group_involved:
-                    group_foci_per_voxel = self.estimator.inputs_["foci_per_voxel"][group]
-                    group_foci_per_study = self.estimator.inputs_["foci_per_study"][group]
-                    n_voxels, n_study = (
-                        group_foci_per_voxel.shape[0],
-                        group_foci_per_study.shape[0],
-                    )
-                    group_null_log_spatial_intensity = np.log(
-                        np.sum(group_foci_per_voxel) / (n_voxels * n_study)
-                    )
-                    group_log_intensity_per_voxel = np.log(
-                        self.result.maps["spatialIntensity_group-" + group]
-                    )
-                    group_log_intensity_per_voxel = (
-                        group_log_intensity_per_voxel - group_null_log_spatial_intensity
-                    )
-                    involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
-                involved_log_intensity_per_voxel = np.stack(
-                    involved_log_intensity_per_voxel, axis=0
-                )
-            else:  # GLH: group comparison
-                involved_log_intensity_per_voxel = list()
-                for group in con_group_involved:
-                    group_log_intensity_per_voxel = np.log(
-                        self.result.maps["spatialIntensity_group-" + group]
-                    )
-                    involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
-                involved_log_intensity_per_voxel = np.stack(
-                    involved_log_intensity_per_voxel, axis=0
-                )
-            contrast_log_intensity = np.matmul(simp_con_group, involved_log_intensity_per_voxel)
-            m, n_brain_voxel = contrast_log_intensity.shape
-            # Correlation of involved group-wise spatial coef
+            # Covariance of involved group-wise spatial coef (either one or multiple groups)
             moderators_by_group = (
                 self.estimator.inputs_["moderators_by_group"] if self.moderators else None
             )
@@ -764,42 +732,86 @@ class CBMRInference(object):
                 self.estimator.inputs_["foci_per_study"],
             )
             cov_spatial_coef = np.linalg.inv(f_spatial_coef)
-            spatial_coef_dim = self.result.tables["spatial_regression_coef"].to_numpy().shape[1]
-            cov_log_intensity = np.empty(shape=(0, n_brain_voxel))
-            for k in range(n_con_group_involved):
-                for s in range(n_con_group_involved):
-                    cov_beta_ks = cov_spatial_coef[
-                        k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
-                        s * spatial_coef_dim : (s + 1) * spatial_coef_dim,
-                    ]
-                    X = self.estimator.inputs_["coef_spline_bases"]
-                    cov_group_log_intensity = (X.dot(cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
-                    cov_log_intensity = np.concatenate(
-                        (cov_log_intensity, cov_group_log_intensity), axis=0
-                    )  # (m^2, n_voxels)
-            # GLH on log_intensity (eta)
-            chi_sq_spatial = self._chi_square_log_intensity(
-                m,
-                n_brain_voxel,
-                n_con_group_involved,
-                simp_con_group,
-                cov_log_intensity,
-                contrast_log_intensity,
+            # compute numerator: contrast vector * group-wise log spatial intensity
+            involved_log_intensity_per_voxel = list()
+            for group in con_group_involved:
+                group_log_intensity_per_voxel = np.log(
+                    self.result.maps["spatialIntensity_group-" + group]
+                )
+                if np.all(np.count_nonzero(con_group, axis=1) == 1):# GLH: homogeneity test
+                    group_foci_per_voxel = self.estimator.inputs_["foci_per_voxel"][group]
+                    group_foci_per_study = self.estimator.inputs_["foci_per_study"][group]
+                    n_voxels, n_study = (
+                        group_foci_per_voxel.shape[0],
+                        group_foci_per_study.shape[0],
+                    )
+                    group_null_log_spatial_intensity = np.log(
+                        np.sum(group_foci_per_voxel) / (n_voxels * n_study)
+                    )
+                    group_log_intensity_per_voxel -= group_null_log_spatial_intensity
+                involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
+            involved_log_intensity_per_voxel = np.stack(
+                involved_log_intensity_per_voxel, axis=0
             )
-            p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
-            # convert p-values to z-scores for visualization
-            if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
-                z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
-                z_stats_spatial[z_stats_spatial < 0] = 0
-            else:
-                z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial / 2)
-                if con_group.shape[0] == 1:  # GLH one test: Z statistics are signed
-                    z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
-            z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
+            contrast_log_intensity = np.matmul(simp_con_group, involved_log_intensity_per_voxel)
+                
+            # check if a single hypothesis is tested or GLH tests (with multiple contrasts) are conducted
+            m, _ = con_group.shape
+            if m == 1: # a single contrast vector, use Wald test
+                var_log_intensity = []
+                for k in range(n_con_group_involved):
+                    cov_spatial_coef_k = cov_spatial_coef[
+                        k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
+                        k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
+                    ]
+                    var_log_intensity_k = np.sum(np.multiply(X @ cov_spatial_coef_k, X), axis=1)
+                    var_log_intensity.append(var_log_intensity_k)
+                var_log_intensity = np.stack(var_log_intensity, axis=0)
+                involved_var_log_intensity = simp_con_group**2 @ var_log_intensity
+                involved_std_log_intensity = np.sqrt(involved_var_log_intensity)
+                # Conduct Wald test (Z test)
+                z_stats_spatial = contrast_log_intensity / involved_std_log_intensity
+                if n_con_group_involved == 1: # one-tailed test
+                    p_vals_spatial = scipy.stats.norm.sf(z_stats_spatial) # shape: (1, n_voxels)
+                else: # two-tailed test
+                    p_vals_spatial = scipy.stats.norm.sf(abs(z_stats_spatial))*2 # shape: (1, n_voxels)
+            else: # GLH tests (with multiple contrasts)
+                cov_log_intensity = np.empty(shape=(0, n_brain_voxel))
+                for k in range(n_con_group_involved):
+                    for s in range(n_con_group_involved):
+                        cov_beta_ks = cov_spatial_coef[
+                            k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
+                            s * spatial_coef_dim : (s + 1) * spatial_coef_dim,
+                        ]
+                        cov_group_log_intensity = (X.dot(cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
+                        cov_log_intensity = np.concatenate(
+                            (cov_log_intensity, cov_group_log_intensity), axis=0
+                        )  # (m^2, n_voxels)
+                # GLH on log_intensity (eta)
+                chi_sq_spatial = self._chi_square_log_intensity(
+                    m,
+                    n_brain_voxel,
+                    n_con_group_involved,
+                    simp_con_group,
+                    cov_log_intensity,
+                    contrast_log_intensity,
+                )
+                p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
+                # convert p-values to z-scores for visualization
+                if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
+                    z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
+                    z_stats_spatial[z_stats_spatial < 0] = 0
+                else:
+                    z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial / 2)
+                    if con_group.shape[0] == 1:  # GLH one test: Z statistics are signed
+                        z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
+                z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
+            #  save results 
             if self.t_con_groups_name:
-                self.result.maps[
-                    f"chiSquare_group-{self.t_con_groups_name[con_group_count]}"
-                ] = chi_sq_spatial
+                if m > 1: # GLH tests (with multiple contrasts)
+                    self.result.maps[
+                        f"chiSquare_group-{self.t_con_groups_name[con_group_count]}"
+                    ] = chi_sq_spatial
                 self.result.maps[
                     f"p_group-{self.t_con_groups_name[con_group_count]}"
                 ] = p_vals_spatial
@@ -807,10 +819,108 @@ class CBMRInference(object):
                     f"z_group-{self.t_con_groups_name[con_group_count]}"
                 ] = z_stats_spatial
             else:
-                self.result.maps[f"chiSquare_GLH_groups_{con_group_count}"] = chi_sq_spatial
+                if m > 1: # GLH tests (with multiple contrasts)
+                    self.result.maps[f"chiSquare_GLH_groups_{con_group_count}"] = chi_sq_spatial
                 self.result.maps[f"p_GLH_groups_{con_group_count}"] = p_vals_spatial
                 self.result.maps[f"z_GLH_groups_{con_group_count}"] = z_stats_spatial
             con_group_count += 1
+            
+        
+                        
+            # if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
+            #     involved_log_intensity_per_voxel = list()
+            #     for group in con_group_involved:
+            #         group_foci_per_voxel = self.estimator.inputs_["foci_per_voxel"][group]
+            #         group_foci_per_study = self.estimator.inputs_["foci_per_study"][group]
+            #         n_voxels, n_study = (
+            #             group_foci_per_voxel.shape[0],
+            #             group_foci_per_study.shape[0],
+            #         )
+            #         group_null_log_spatial_intensity = np.log(
+            #             np.sum(group_foci_per_voxel) / (n_voxels * n_study)
+            #         )
+            #         group_log_intensity_per_voxel = np.log(
+            #             self.result.maps["spatialIntensity_group-" + group]
+            #         )
+            #         group_log_intensity_per_voxel = (
+            #             group_log_intensity_per_voxel - group_null_log_spatial_intensity
+            #         )
+            #         involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
+            #     involved_log_intensity_per_voxel = np.stack(
+            #         involved_log_intensity_per_voxel, axis=0
+            #     )
+            # else:  # GLH: group comparison
+            #     involved_log_intensity_per_voxel = list()
+            #     for group in con_group_involved:
+            #         group_log_intensity_per_voxel = np.log(
+            #             self.result.maps["spatialIntensity_group-" + group]
+            #         )
+            #         involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
+            #     involved_log_intensity_per_voxel = np.stack(
+            #         involved_log_intensity_per_voxel, axis=0
+            #     )
+            # contrast_log_intensity = np.matmul(simp_con_group, involved_log_intensity_per_voxel)
+            # m, n_brain_voxel = contrast_log_intensity.shape
+            # # Correlation of involved group-wise spatial coef
+            # moderators_by_group = (
+            #     self.estimator.inputs_["moderators_by_group"] if self.moderators else None
+            # )
+            # f_spatial_coef = self.estimator.model.fisher_info_multiple_group_spatial(
+            #     con_group_involved,
+            #     self.estimator.inputs_["coef_spline_bases"],
+            #     moderators_by_group,
+            #     self.estimator.inputs_["foci_per_voxel"],
+            #     self.estimator.inputs_["foci_per_study"],
+            # )
+            # cov_spatial_coef = np.linalg.inv(f_spatial_coef)
+            # spatial_coef_dim = self.result.tables["spatial_regression_coef"].to_numpy().shape[1]
+            # cov_log_intensity = np.empty(shape=(0, n_brain_voxel))
+            
+            # for k in range(n_con_group_involved):
+            #     for s in range(n_con_group_involved):
+            #         cov_beta_ks = cov_spatial_coef[
+            #             k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
+            #             s * spatial_coef_dim : (s + 1) * spatial_coef_dim,
+            #         ]
+            #         X = self.estimator.inputs_["coef_spline_bases"]
+            #         cov_group_log_intensity = (X.dot(cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
+            #         cov_log_intensity = np.concatenate(
+            #             (cov_log_intensity, cov_group_log_intensity), axis=0
+            #         )  # (m^2, n_voxels)
+            # # GLH on log_intensity (eta)
+            # chi_sq_spatial = self._chi_square_log_intensity(
+            #     m,
+            #     n_brain_voxel,
+            #     n_con_group_involved,
+            #     simp_con_group,
+            #     cov_log_intensity,
+            #     contrast_log_intensity,
+            # )
+            # p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
+            # # convert p-values to z-scores for visualization
+            # if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
+            #     z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
+            #     z_stats_spatial[z_stats_spatial < 0] = 0
+            # else:
+            #     z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial / 2)
+            #     if con_group.shape[0] == 1:  # GLH one test: Z statistics are signed
+            #         z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
+            # z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
+            # if self.t_con_groups_name:
+            #     self.result.maps[
+            #         f"chiSquare_group-{self.t_con_groups_name[con_group_count]}"
+            #     ] = chi_sq_spatial
+            #     self.result.maps[
+            #         f"p_group-{self.t_con_groups_name[con_group_count]}"
+            #     ] = p_vals_spatial
+            #     self.result.maps[
+            #         f"z_group-{self.t_con_groups_name[con_group_count]}"
+            #     ] = z_stats_spatial
+            # else:
+            #     self.result.maps[f"chiSquare_GLH_groups_{con_group_count}"] = chi_sq_spatial
+            #     self.result.maps[f"p_GLH_groups_{con_group_count}"] = p_vals_spatial
+            #     self.result.maps[f"z_GLH_groups_{con_group_count}"] = z_stats_spatial
+            # con_group_count += 1
 
     def _chi_square_log_intensity(
         self,
@@ -891,24 +1001,42 @@ class CBMRInference(object):
             )
 
             cov_moderator_coef = np.linalg.inv(f_moderator_coef)
-            chi_sq_moderator = (
-                contrast_moderator_coef.T
-                @ np.linalg.inv(con_moderator @ cov_moderator_coef @ con_moderator.T)
-                @ contrast_moderator_coef
-            )
-            p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
+            if m_con_moderator == 1: # a single contrast vector, use Wald test
+                var_moderator_coef = np.diag(cov_moderator_coef)
+                involved_var_moderator_coef = con_moderator**2 @ var_moderator_coef
+                involved_std_moderator_coef = np.sqrt(involved_var_moderator_coef)
+                # Conduct Wald test (Z test)
+                z_stats_moderator = contrast_moderator_coef / involved_std_moderator_coef
+                p_vals_moderator = scipy.stats.norm.sf(abs(z_stats_moderator))*2 # two-tailed test
+            else: # GLH test (multiple contrast vectors)
+                chi_sq_moderator = (
+                    contrast_moderator_coef.T
+                    @ np.linalg.inv(con_moderator @ cov_moderator_coef @ con_moderator.T)
+                    @ contrast_moderator_coef
+                )
+                p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
+                z_stats_moderator = scipy.stats.norm.isf(p_vals_moderator / 2)
+                
             if self.t_con_moderators_name:  # None?
-                self.result.tables[
-                    f"chi_square_{self.t_con_moderators_name[con_moderator_count]}"
-                ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
+                if m_con_moderator > 1:
+                    self.result.tables[
+                        f"chi_square_{self.t_con_moderators_name[con_moderator_count]}"
+                    ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
                 self.result.tables[
                     f"p_{self.t_con_moderators_name[con_moderator_count]}"
                 ] = pd.DataFrame(data=np.array(p_vals_moderator), columns=["p"])
-            else:
                 self.result.tables[
-                    f"chi_square_GLH_moderators_{con_moderator_count}"
-                ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
+                    f"z_{self.t_con_moderators_name[con_moderator_count]}"
+                ] = pd.DataFrame(data=np.array(z_stats_moderator), columns=["z"])
+            else:
+                if m_con_moderator > 1:
+                    self.result.tables[
+                        f"chi_square_GLH_moderators_{con_moderator_count}"
+                    ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
                 self.result.tables[f"p_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
                     data=np.array(p_vals_moderator), columns=["p"]
+                )
+                self.result.tables[f"z_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
+                    data=np.array(z_stats_moderator), columns=["z"]
                 )
             con_moderator_count += 1

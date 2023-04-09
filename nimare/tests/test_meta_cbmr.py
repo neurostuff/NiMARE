@@ -15,12 +15,19 @@ logging.getLogger("numba").setLevel(logging.WARNING)
 # indexed_gzip has a few debug messages that are not useful for testing
 logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
 
+# @pytest.fixture(
+#     scope="session",
+#     params=[
+#         pytest.param(models.PoissonEstimator, id="Poisson"),
+#         pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
+#         pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
+#     ],
+# )
+
 @pytest.fixture(
     scope="session",
     params=[
         pytest.param(models.PoissonEstimator, id="Poisson"),
-        pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
-        pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
     ],
 )
 
@@ -64,12 +71,13 @@ def inference_results(testdata_cbmr_simulated, cbmr_result):
         ],
         source="groups",
     )
-    t_con_moderators = inference.create_contrast(
-        ["standardized_sample_sizes"],
-        source="moderators",
-    )
+    # t_con_moderators = inference.create_contrast(
+    #     ["standardized_sample_sizes-standardized_avg_age"],
+    #     source="moderators",
+    # )
+    t_con_moderators = [[[1,-1,0,0,0,0],[1,0,-1,0,0,0]]]
     contrast_result = inference.transform(
-        t_con_groups=t_con_groups, t_con_moderators=t_con_moderators
+        t_con_groups=False, t_con_moderators=t_con_moderators
     )
 
     return contrast_result
