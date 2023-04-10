@@ -633,6 +633,7 @@ class CBMRInference(object):
 
     @_check_fit
     def _preprocess_t_con_regressor(self, source):
+        
         """Preprocess contrast vector/matrix for GLH testing.
         With the following steps:
         (1) Remove groups not involved in contrast;
@@ -710,6 +711,7 @@ class CBMRInference(object):
 
     @_check_fit
     def _glh_con_group(self):
+        
         """Conduct Generalized linear hypothesis (GLH) testing for
         group-wise spatial intensity estimation.
 
@@ -843,6 +845,7 @@ class CBMRInference(object):
         cov_log_intensity,
         contrast_log_intensity,
     ):
+        
         """
         Calculate chi-square statistics for GLH on group-wise log intensity function,
         as an intermediate steps for GLH testings.
@@ -888,6 +891,7 @@ class CBMRInference(object):
 
     @_check_fit
     def _glh_con_moderator(self):
+        
         """Conduct Generalized linear hypothesis (GLH) testing for
         study-level moderators.
 

@@ -98,6 +98,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
     @abc.abstractmethod
     def forward(self, **kwargs):
+        
         """Define the loss function (nagetive log-likelihood function)
         for each model.
 
@@ -109,6 +110,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_spatial_weights(self):
+        
         """Initialization for spatial regression coefficients.
         Default is uniform distribution between -0.01 and 0.01.
         """
@@ -123,6 +125,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
 
     def init_moderator_weights(self):
+        
         """Initialize the intercept and regression coefficients for moderators.
         Default is uniform distribution between -0.01 and 0.01.
         """
@@ -131,6 +134,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
+        
         """Initialize the regression coefficients for spatial struture
         and study-level moderators."""
         self.groups = groups
@@ -150,6 +154,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_study,
         prev_loss,
     ):
+        
         """One iteration in optimization with L-BFGS.
 
         Adjust learning rate based on the number of iteration (with learning rate decay parameter
@@ -232,6 +237,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return loss
 
     def _optimizer(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
+        
         """
         Optimize the loss (negative log-likelihood) function with L-BFGS.
 
@@ -493,6 +499,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_voxel,
         foci_per_study,
     ):
+        
         """Estimate the Fisher information matrix of spatial regression
         coeffcients for multiple groups.
 
@@ -710,6 +717,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
 
 class OverdispersionModelEstimator(GeneralLinearModelEstimator):
+    
     """Base class for CBMR models with over-dispersion parameter."""
 
     def __init__(self, **kwargs):
@@ -739,6 +747,7 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
     def inference_outcome(
         self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study
     ):
+        
         """Summarize inference outcome into `maps` and `tables`.
         Add optimized overdispersion parameter to the tables.
         """
@@ -845,6 +854,7 @@ class PoissonEstimator(GeneralLinearModelEstimator):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
+        
         """Define the loss function (nagetive log-likelihood function) for Poisson model.
         Model refactorization is applied to reduce the dimensionality of variables.
 
@@ -1028,6 +1038,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
+        
         """Define the loss function (nagetive log-likelihood function) for Negative
         Binomial (NB) model. Model refactorization is applied to reduce the dimensionality
         of variables.
@@ -1183,6 +1194,7 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
+        
         """Define the loss function (nagetive log-likelihood function) for Clustered
         Negative Binomial (Clustered NB) model.
         Model refactorization is applied to reduce the dimensionality of variables.
