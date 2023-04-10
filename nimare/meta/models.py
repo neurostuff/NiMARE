@@ -108,7 +108,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_spatial_weights(self):
-        """Initialization for spatial regression coefficients,
+        """Initialize spatial regression coefficients.
 
         Default is uniform distribution between -0.01 and 0.01.
         """
@@ -132,7 +132,8 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
-        """Initialize the regression coefficients for spatial struture and study-level moderators."""
+        """Initialize the regression coefficients for spatial struture and study-level
+        moderators."""
         self.groups = groups
         self.moderators = moderators
         self.spatial_coef_dim = spatial_coef_dim
@@ -493,7 +494,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_voxel,
         foci_per_study,
     ):
-        """Estimate the Fisher information matrix of spatial regression coeffcients for multiple groups,
+        """Estimate the Fisher information matrix of spatial regression coeffcients.
 
         Fisher information matrix is estimated by negative Hessian of the log-likelihood.
 
@@ -1030,7 +1031,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        """Define the loss function (nagetive log-likelihood function) for NB model,
+        """Define the loss function (nagetive log-likelihood function) for NB model.
 
         Model refactorization is applied to reduce the dimensionality of variables.
 
@@ -1185,7 +1186,7 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        """Define the loss function (nagetive log-likelihood function) for Clustered NB model,
+        """Define the loss function (nagetive log-likelihood function) for Clustered NB model.
 
         Model refactorization is applied to reduce the dimensionality of variables.
 
