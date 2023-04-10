@@ -1185,7 +1185,8 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
         """Define the loss function (nagetive log-likelihood function) for Clustered
-        Negative Binomial (Clustered NB) model.
+        Negative Binomial (Clustered NB) model;
+        
         Model refactorization is applied to reduce the dimensionality of variables.
 
         Returns
