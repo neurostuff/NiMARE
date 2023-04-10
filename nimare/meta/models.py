@@ -108,8 +108,8 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_spatial_weights(self):
-        """Initialization for spatial regression coefficients.
-        
+        """Initialization for spatial regression coefficients,
+
         Default is uniform distribution between -0.01 and 0.01.
         """
         # initialization for spatial regression coefficients
@@ -124,7 +124,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
     def init_moderator_weights(self):
         """Initialize the intercept and regression coefficients for moderators.
-        
+
         Default is uniform distribution between -0.01 and 0.01.
         """
         self.moderators_linear = torch.nn.Linear(self.moderators_coef_dim, 1, bias=False).double()
@@ -132,9 +132,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
-        """Initialize the regression coefficients for spatial struture and study-level
-        
-        moderators."""
+        """Initialize the regression coefficients for spatial struture and study-level moderators."""
         self.groups = groups
         self.moderators = moderators
         self.spatial_coef_dim = spatial_coef_dim
@@ -495,8 +493,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_voxel,
         foci_per_study,
     ):
-        """Estimate the Fisher information matrix of spatial regression coeffcients for multiple
-        groups,
+        """Estimate the Fisher information matrix of spatial regression coeffcients for multiple groups,
 
         Fisher information matrix is estimated by negative Hessian of the log-likelihood.
 
@@ -720,7 +717,7 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
 
     def init_overdispersion_weights(self):
         """Initialize weights for overdispersion parameters.
-        
+
         Default is 1e-2.
         """
         overdispersion = dict()
@@ -743,7 +740,7 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
         self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study
     ):
         """Summarize inference outcome into `maps` and `tables`.
-        
+
         Add optimized overdispersion parameter to the tables.
         """
         maps, tables = super().inference_outcome(
@@ -850,7 +847,7 @@ class PoissonEstimator(GeneralLinearModelEstimator):
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
         """Define the loss function (nagetive log-likelihood function) for Poisson model.
-        
+
         Model refactorization is applied to reduce the dimensionality of variables.
 
         Returns
@@ -1033,9 +1030,8 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        """Define the loss function (nagetive log-likelihood function) for Negative
-        Binomial (NB) model,
-        
+        """Define the loss function (nagetive log-likelihood function) for NB model,
+
         Model refactorization is applied to reduce the dimensionality of variables.
 
         Returns
@@ -1189,9 +1185,8 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        """Define the loss function (nagetive log-likelihood function) for Clustered
-        Negative Binomial (Clustered NB) model,
-        
+        """Define the loss function (nagetive log-likelihood function) for Clustered NB model,
+
         Model refactorization is applied to reduce the dimensionality of variables.
 
         Returns
