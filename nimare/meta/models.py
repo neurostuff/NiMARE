@@ -132,8 +132,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
-        """Initialize the regression coefficients for spatial struture and study-level
-        moderators."""
+        """Initialize regression coefficients of spatial struture and study-level moderators."""
         self.groups = groups
         self.moderators = moderators
         self.spatial_coef_dim = spatial_coef_dim
