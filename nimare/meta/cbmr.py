@@ -846,7 +846,7 @@ class CBMRInference(object):
     ):
         """
         Calculate chi-square statistics for GLH on group-wise log intensity function.
-        
+
         It is an intermediate steps for GLH testings.
 
         Parameters
