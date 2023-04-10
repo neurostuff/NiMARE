@@ -13,7 +13,7 @@ LGR = logging.getLogger(__name__)
 
 class GeneralLinearModelEstimator(torch.nn.Module):
     """Base class for GLM estimators.
-    
+
     Parameters
     ----------
     spatial_coef_dim : :obj:`int`
@@ -77,7 +77,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
     @abc.abstractmethod
     def _log_likelihood_single_group(self, **kwargs):
         """Log-likelihood of a single group.
-        
+
         Returns
         -------
         torch.Tensor
@@ -88,7 +88,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
     @abc.abstractmethod
     def _log_likelihood_mult_group(self, **kwargs):
         """Total log-likelihood of all groups in the dataset.
-        
+
         Returns
         -------
         torch.Tensor
@@ -100,7 +100,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
     def forward(self, **kwargs):
         """Define the loss function (nagetive log-likelihood function)
         for each model.
-        
+
         Returns
         -------
         torch.Tensor
@@ -131,8 +131,8 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return
 
     def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
-        """Initialize the regression coefficients for spatial struture and study-level moderators.
-        """
+        """Initialize the regression coefficients for spatial struture
+        and study-level moderators."""
         self.groups = groups
         self.moderators = moderators
         self.spatial_coef_dim = spatial_coef_dim
@@ -155,7 +155,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         Adjust learning rate based on the number of iteration (with learning rate decay parameter
         `lr_decay`, default value is 0.999). Reset L-BFGS optimizer (as params in the previous
         iteration) if NaN occurs.
-        
+
         Parameters
         ----------
         optimizer : :obj:`torch.optim.lbfgs.LBFGS`
@@ -170,7 +170,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             Dictionary of group-wise number of foci per study.
         prev_loss : :obj:`torch.Tensor`
             Value of the loss function of the previous iteration.
-        
+
         Returns
         -------
         torch.Tensor
@@ -234,7 +234,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
     def _optimizer(self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study):
         """
         Optimize the loss (negative log-likelihood) function with L-BFGS.
-        
+
         Parameters
         ----------
         coef_spline_bases : :obj:`numpy.ndarray`
@@ -246,7 +246,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_study : :obj:`dict`
             Dictionary of group-wise number of foci per study.
         """
-        torch.manual_seed(100) 
+        torch.manual_seed(100)
         optimizer = torch.optim.LBFGS(self.parameters(), self.lr)
         # load dataset info to torch.tensor
         coef_spline_bases = torch.tensor(
@@ -341,7 +341,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study
     ):
         """Estimate standard error of estimates.
-        
+
         For spatial regression coefficients, we estimate its covariance matrix using Fisher
         Information Matrix and then take the square root of the diagonal elements.
         For log spatial intensity, we use the delta method to estimate its standard error.
@@ -440,10 +440,10 @@ class GeneralLinearModelEstimator(torch.nn.Module):
 
     def summary(self):
         """Summarize the main results of the fitted model.
-        
+
         Summarize optimized regression coefficients from model and store in `tables`,
-        summarize standard error of regression coefficient and (Log-)spatial intensity 
-        and store in `results`. 
+        summarize standard error of regression coefficient and (Log-)spatial intensity
+        and store in `results`.
         """
         params = (
             self.spatial_regression_coef,
@@ -493,11 +493,11 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_voxel,
         foci_per_study,
     ):
-        """ Estimate the Fisher information matrix of spatial regression
+        """Estimate the Fisher information matrix of spatial regression
         coeffcients for multiple groups.
-        
+
         Fisher information matrix is estimated by negative Hessian of the log-likelihood.
-        
+
         Parameters
         ----------
         involved_groups : :obj:`list`
@@ -510,7 +510,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             Dictionary of group-wise number of foci per voxel.
         foci_per_study : :obj:`dict`
             Dictionary of group-wise number of foci per study.
-        
+
         Returns
         -------
         numpy.ndarray
@@ -570,9 +570,9 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self, coef_spline_bases, moderators_by_group, foci_per_voxel, foci_per_study
     ):
         """Estimate the Fisher information matrix of regression coefficients of moderators.
-        
+
         Fisher information matrix is estimated by negative Hessian of the log-likelihood.
-        
+
         Parameters
         ----------
         coef_spline_bases : :obj:`numpy.ndarray`
@@ -583,7 +583,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             Dictionary of group-wise number of foci per voxel.
         foci_per_study : :obj:`dict`
             Dictionary of group-wise number of foci per study.
-        
+
         Returns
         -------
         numpy.ndarray
@@ -647,7 +647,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         overdispersion=False,
     ):
         """Compute Firth's penalized log-likelihood.
-        
+
         Parameters
         ----------
         foci_per_voxel : :obj:`dict`
@@ -660,7 +660,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             Coefficient of B-spline bases evaluated at each voxel.
         overdispersion : :obj:`bool`
             Whether the model contains overdispersion parameter. Default is False.
-        
+
         Returns
         -------
         torch.Tensor
@@ -732,8 +732,7 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
         self.overdispersion = torch.nn.ParameterDict(overdispersion)
 
     def init_weights(self, groups, moderators, spatial_coef_dim, moderators_coef_dim):
-        """Initialize weights for spatial and study-level moderator coefficients.
-        """
+        """Initialize weights for spatial and study-level moderator coefficients."""
         super().init_weights(groups, moderators, spatial_coef_dim, moderators_coef_dim)
         self.init_overdispersion_weights()
 
@@ -760,7 +759,7 @@ class OverdispersionModelEstimator(GeneralLinearModelEstimator):
 
 class PoissonEstimator(GeneralLinearModelEstimator):
     """CBMR framework with Poisson model.
-    
+
     Poisson model is the most basic model for Coordinate-based Meta-regression (CBMR).
     It's based on the assumption that foci arise from a realisation of a (continues)
     inhomogeneous Poisson process, so that the (discrete) voxel-wise foci counts will
@@ -848,7 +847,7 @@ class PoissonEstimator(GeneralLinearModelEstimator):
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
         """Define the loss function (nagetive log-likelihood function) for Poisson model.
         Model refactorization is applied to reduce the dimensionality of variables.
-        
+
         Returns
         -------
         torch.Tensor
@@ -888,17 +887,17 @@ class PoissonEstimator(GeneralLinearModelEstimator):
 
 class NegativeBinomialEstimator(OverdispersionModelEstimator):
     """CBMR framework with Negative Binomial (NB) model.
-    
+
     Negative Binomial (NB) model is a generalized Poisson model with overdispersion.
-    It's a more flexible model, but more difficult to estimate. In practice, foci 
-    counts often display over-dispersion (the variance of response variable 
+    It's a more flexible model, but more difficult to estimate. In practice, foci
+    counts often display over-dispersion (the variance of response variable
     substantially exceeeds the mean), which is not captured by Poisson model.
     """
 
     def __init__(self, **kwargs):
         kwargs["square_root"] = True
         super().__init__(**kwargs)
-    
+
     def _three_term(self, y, r):
         max_foci = torch.max(y).to(dtype=torch.int64, device=self.device)
         sum_three_term = 0
@@ -914,7 +913,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
             )
 
         return sum_three_term
-    
+
     def _log_likelihood_single_group(
         self,
         group_overdispersion,
@@ -926,7 +925,6 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         group_foci_per_study,
         device="cpu",
     ):
-        v = 1 / group_overdispersion
         log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
         mu_spatial = torch.exp(log_mu_spatial)
         if moderators_coef is not None:
@@ -939,11 +937,25 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
             ).reshape((-1, 1))
             mu_moderators = torch.exp(log_mu_moderators)
         # parameter of a NB variable to approximate a sum of NB variables
-        r = 1/group_overdispersion * torch.sum(mu_moderators)**2 / torch.sum(mu_moderators**2)
-        p = 1 / (1 + torch.sum(mu_moderators) / (group_overdispersion * mu_spatial * torch.sum(mu_moderators**2)))
+        r = (
+            1
+            / group_overdispersion
+            * torch.sum(mu_moderators) ** 2
+            / torch.sum(mu_moderators**2)
+        )
+        p = 1 / (
+            1
+            + torch.sum(mu_moderators)
+            / (group_overdispersion * mu_spatial * torch.sum(mu_moderators**2))
+        )
         # log-likelihood (moment matching approach)
-        log_l = torch.sum(torch.lgamma(group_foci_per_voxel+r) - torch.lgamma(group_foci_per_voxel+1) \
-                          - torch.lgamma(r) + r*torch.log(1-p) + group_foci_per_voxel*torch.log(p))
+        log_l = torch.sum(
+            torch.lgamma(group_foci_per_voxel + r)
+            - torch.lgamma(group_foci_per_voxel + 1)
+            - torch.lgamma(r)
+            + r * torch.log(1 - p)
+            + group_foci_per_voxel * torch.log(p)
+        )
 
         return log_l
 
@@ -958,7 +970,6 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         moderators=None,
         device="cpu",
     ):
-        v = [1 / overdispersion_params for overdispersion_params in overdispersion_coef]
         n_groups = len(foci_per_voxel)
         log_spatial_intensity = [
             torch.matmul(coef_spline_bases, spatial_coef[i, :, :]) for i in range(n_groups)
@@ -989,22 +1000,38 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         # After similification, we have:
         # r' = 1/alpha * sum(mu^Z_i)^2 / sum((mu^Z_i)^2)
         # p'_j = 1 / (1 + sum(mu^Z_i) / (alpha * mu^X_j * sum((mu^Z_i)^2)
-        r = [1/overdispersion_coef[i] * torch.sum(moderator_effect[i])**2 / torch.sum(moderator_effect[i]**2) for i in range(n_groups)] 
-        p_frac = [torch.sum(moderator_effect[i]) / (overdispersion_coef[i] * spatial_intensity[i] * torch.sum(moderator_effect[i]**2)) for i in range(n_groups)]
+        r = [
+            1
+            / overdispersion_coef[i]
+            * torch.sum(moderator_effect[i]) ** 2
+            / torch.sum(moderator_effect[i] ** 2)
+            for i in range(n_groups)
+        ]
+        p_frac = [
+            torch.sum(moderator_effect[i])
+            / (overdispersion_coef[i] * spatial_intensity[i] * torch.sum(moderator_effect[i] ** 2))
+            for i in range(n_groups)
+        ]
         p = [1 / (1 + p_frac[i]) for i in range(n_groups)]
 
         log_l = 0
         for i in range(n_groups):
-            group_log_l = torch.sum(torch.lgamma(foci_per_voxel[i]+r[i]) - torch.lgamma(foci_per_voxel[i]+1) - torch.lgamma(r[i]) + r[i]*torch.log(1-p[i]) + foci_per_voxel[i]*torch.log(p[i]))
+            group_log_l = torch.sum(
+                torch.lgamma(foci_per_voxel[i] + r[i])
+                - torch.lgamma(foci_per_voxel[i] + 1)
+                - torch.lgamma(r[i])
+                + r[i] * torch.log(1 - p[i])
+                + foci_per_voxel[i] * torch.log(p[i])
+            )
             log_l += group_log_l
-            
+
         return log_l
 
     def forward(self, coef_spline_bases, moderators, foci_per_voxel, foci_per_study):
-        """Define the loss function (nagetive log-likelihood function) for Negative 
+        """Define the loss function (nagetive log-likelihood function) for Negative
         Binomial (NB) model. Model refactorization is applied to reduce the dimensionality
         of variables.
-        
+
         Returns
         -------
         torch.Tensor
@@ -1048,8 +1075,8 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
 
 class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
     """CBMR framework with Clustered Negative Binomial (Clustered NB) model.
-    
-    Clustered NB model can also accommodate over-dispersion in foci counts. 
+
+    Clustered NB model can also accommodate over-dispersion in foci counts.
     In NB model, the latent Gamma random variable introduces indepdentent variation
     at each voxel. While in Clustered NB model, we assert the random effects are not
     independent voxelwise effects, but rather latent characteristics of each study,
@@ -1159,7 +1186,7 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
         """Define the loss function (nagetive log-likelihood function) for Clustered
         Negative Binomial (Clustered NB) model.
         Model refactorization is applied to reduce the dimensionality of variables.
-        
+
         Returns
         -------
         torch.Tensor

@@ -18,6 +18,7 @@ from nimare.utils import b_spline_bases, dummy_encoding_moderators, get_masker, 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
+
 class CBMREstimator(Estimator):
     """Coordinate-based meta-regression with a spatial model.
 
@@ -150,7 +151,7 @@ class CBMREstimator(Estimator):
             Description of the Estimator instance.
         """
         description = """CBMR is a meta-regression framework that can explicitly model
-                    group-wise spatial intensity function, and consider the effect of 
+                    group-wise spatial intensity function, and consider the effect of
                     study-level moderators. It consists of two components: (1) a spatial
                     model that makes use of a spline parameterization to induce a smooth
                     response; (2) a generalized linear model (Poisson, Negative Binomial
@@ -158,7 +159,8 @@ class CBMREstimator(Estimator):
                     CBMR is fitted via maximizing the log-likelihood function with L-BFGS
                     algorithm."""
         if self.moderators:
-            moderators_str = f"""and accommodate the following study-level moderators: {', '.join(self.moderators)}"""
+            moderators_str = f"""and accommodate the following study-level moderators:
+                            {', '.join(self.moderators)}"""
         else:
             moderators_str = ""
         if self.model.penalty:
@@ -167,44 +169,48 @@ class CBMREstimator(Estimator):
             penalty_str = ""
 
         if type(self.model).__name__ == "PoissonEstimator":
-            model_str = (" Here, Poisson model \\citep{eisenberg1966general} is the most basic CBMR model. "
-                        "It's based on the assumption that foci arise from a realisation of a (continues) "
-                        "inhomogeneous Poisson process, so that the (discrete) voxel-wise foci counts will "
-                        "be independently distributed as Poisson random variables, with rate equal to the "
-                        "integral of the (true, unobserved, continous) intensity function over each voxels."
+            model_str = (
+                " Here, Poisson model \\citep{eisenberg1966general} is the most basic CBMR model. "
+                "It's based on the assumption that foci arise from a realisation of a (continues) "
+                "inhomogeneous Poisson process, so that the (discrete) voxel-wise foci counts will"
+                " be independently distributed as Poisson random variables, with rate equal to the"
+                " integral of (true, unobserved, continous) intensity function over each voxels"
             )
         elif type(self.model).__name__ == "NegativeBinomialEstimator":
-            model_str = (" Negative Binomial (NB) model \\citep{barndorff1969negative} is a generalized "
-                         "Poisson model with over-dispersion. "
-                        "It's a more flexible model, but more difficult to estimate. In practice, foci" 
-                        "counts often display over-dispersion (the variance of response variable" 
-                        "substantially exceeeds the mean), which is not captured by Poisson model."       
+            model_str = (
+                " Negative Binomial (NB) model \\citep{barndorff1969negative} is a generalized "
+                "Poisson model with over-dispersion. "
+                "It's a more flexible model, but more difficult to estimate. In practice, foci"
+                "counts often display over-dispersion (the variance of response variable"
+                "substantially exceeeds the mean), which is not captured by Poisson model."
             )
         elif type(self.model).__name__ == "ClusteredNegativeBinomialEstimator":
             model_str = (
-                " Clustered NB model \\citep{geoffroy2001poisson} can also accommodate " 
+                " Clustered NB model \\citep{geoffroy2001poisson} can also accommodate "
                 "over-dispersion in foci counts. "
                 "In NB model, the latent random variable introduces indepdentent variation"
                 "at each voxel. While in Clustered NB model, we assert the random effects are not "
                 "independent voxelwise effects, but rather latent characteristics of each study, "
                 "and represent a shared effect over the entire brain for a given study."
             )
-        
+
         model_description = (
             f"CBMR is a meta-regression framework that was performed with NiMARE {__version__}. "
             f"{type(self.model).__name__} model was used to model group-wise spatial intensity "
             f"functions {moderators_str}." + model_str
         )
-        
+
         optimization_description = (
-            "CBMR is fitted via maximizing the log-likelihood function with L-BFGS algorithm, with "
-            f"learning rate {self.lr}, learning rate decay {self.lr_decay} and tolerance {self.tol}."
-            + penalty_str + f" The optimization is run on {self.device}."
+            "CBMR is fitted via maximizing the log-likelihood function with L-BFGS algorithm, with"
+            f" learning rate {self.lr}, learning rate decay {self.lr_decay} and "
+            + "tolerance {self.tol}."
+            + penalty_str
+            + f" The optimization is run on {self.device}."
             f" The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
             f"{len(self.inputs_['id'])} experiments."
         )
-        
-        description = model_description + "\n" + optimization_description      
+
+        description = model_description + "\n" + optimization_description
         return description
 
     def _preprocess_input(self, dataset):
@@ -636,11 +642,11 @@ class CBMRInference(object):
         ----------
         source : :obj:`~string`
             Source of contrast matrix, either "groups" or "moderators".
-            
+
         Returns
         -------
         t_con_regressor : :obj:`~list`
-            Preprocessed contrast vector/matrix for inference on 
+            Preprocessed contrast vector/matrix for inference on
             spatial intensity or study-level moderators.
         t_con_regressor_name : :obj:`~list`
             Name of contrast vector/matrix for spatial intensity
@@ -706,9 +712,9 @@ class CBMRInference(object):
     def _glh_con_group(self):
         """Conduct Generalized linear hypothesis (GLH) testing for
         group-wise spatial intensity estimation.
-        
-        GLH testing allows flexible hypothesis testings on spatial 
-        intensity, including group-wise spatial homogeneity test and 
+
+        GLH testing allows flexible hypothesis testings on spatial
+        intensity, including group-wise spatial homogeneity test and
         group comparison test.
         """
         X = self.estimator.inputs_["coef_spline_bases"]
@@ -738,7 +744,7 @@ class CBMRInference(object):
                 group_log_intensity_per_voxel = np.log(
                     self.result.maps["spatialIntensity_group-" + group]
                 )
-                if np.all(np.count_nonzero(con_group, axis=1) == 1):# GLH: homogeneity test
+                if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
                     group_foci_per_voxel = self.estimator.inputs_["foci_per_voxel"][group]
                     group_foci_per_study = self.estimator.inputs_["foci_per_study"][group]
                     n_voxels, n_study = (
@@ -750,14 +756,13 @@ class CBMRInference(object):
                     )
                     group_log_intensity_per_voxel -= group_null_log_spatial_intensity
                 involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
-            involved_log_intensity_per_voxel = np.stack(
-                involved_log_intensity_per_voxel, axis=0
-            )
+            involved_log_intensity_per_voxel = np.stack(involved_log_intensity_per_voxel, axis=0)
             contrast_log_intensity = np.matmul(simp_con_group, involved_log_intensity_per_voxel)
-                
-            # check if a single hypothesis is tested or GLH tests (with multiple contrasts) are conducted
+
+            # check if a single hypothesis is tested or GLH tests
+            # (with multiple contrasts) are conducted
             m, _ = con_group.shape
-            if m == 1: # a single contrast vector, use Wald test
+            if m == 1:  # a single contrast vector, use Wald test
                 var_log_intensity = []
                 for k in range(n_con_group_involved):
                     cov_spatial_coef_k = cov_spatial_coef[
@@ -771,11 +776,13 @@ class CBMRInference(object):
                 involved_std_log_intensity = np.sqrt(involved_var_log_intensity)
                 # Conduct Wald test (Z test)
                 z_stats_spatial = contrast_log_intensity / involved_std_log_intensity
-                if n_con_group_involved == 1: # one-tailed test
-                    p_vals_spatial = scipy.stats.norm.sf(z_stats_spatial) # shape: (1, n_voxels)
-                else: # two-tailed test
-                    p_vals_spatial = scipy.stats.norm.sf(abs(z_stats_spatial))*2 # shape: (1, n_voxels)
-            else: # GLH tests (with multiple contrasts)
+                if n_con_group_involved == 1:  # one-tailed test
+                    p_vals_spatial = scipy.stats.norm.sf(z_stats_spatial)  # shape: (1, n_voxels)
+                else:  # two-tailed test
+                    p_vals_spatial = (
+                        scipy.stats.norm.sf(abs(z_stats_spatial)) * 2
+                    )  # shape: (1, n_voxels)
+            else:  # GLH tests (with multiple contrasts)
                 cov_log_intensity = np.empty(shape=(0, n_brain_voxel))
                 for k in range(n_con_group_involved):
                     for s in range(n_con_group_involved):
@@ -783,7 +790,9 @@ class CBMRInference(object):
                             k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
                             s * spatial_coef_dim : (s + 1) * spatial_coef_dim,
                         ]
-                        cov_group_log_intensity = (X.dot(cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
+                        cov_group_log_intensity = (
+                            (X.dot(cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
+                        )
                         cov_log_intensity = np.concatenate(
                             (cov_log_intensity, cov_group_log_intensity), axis=0
                         )  # (m^2, n_voxels)
@@ -806,9 +815,9 @@ class CBMRInference(object):
                     if con_group.shape[0] == 1:  # GLH one test: Z statistics are signed
                         z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
                 z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
-            #  save results 
+            #  save results
             if self.t_con_groups_name:
-                if m > 1: # GLH tests (with multiple contrasts)
+                if m > 1:  # GLH tests (with multiple contrasts)
                     self.result.maps[
                         f"chiSquare_group-{self.t_con_groups_name[con_group_count]}"
                     ] = chi_sq_spatial
@@ -819,108 +828,11 @@ class CBMRInference(object):
                     f"z_group-{self.t_con_groups_name[con_group_count]}"
                 ] = z_stats_spatial
             else:
-                if m > 1: # GLH tests (with multiple contrasts)
+                if m > 1:  # GLH tests (with multiple contrasts)
                     self.result.maps[f"chiSquare_GLH_groups_{con_group_count}"] = chi_sq_spatial
                 self.result.maps[f"p_GLH_groups_{con_group_count}"] = p_vals_spatial
                 self.result.maps[f"z_GLH_groups_{con_group_count}"] = z_stats_spatial
             con_group_count += 1
-            
-        
-                        
-            # if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
-            #     involved_log_intensity_per_voxel = list()
-            #     for group in con_group_involved:
-            #         group_foci_per_voxel = self.estimator.inputs_["foci_per_voxel"][group]
-            #         group_foci_per_study = self.estimator.inputs_["foci_per_study"][group]
-            #         n_voxels, n_study = (
-            #             group_foci_per_voxel.shape[0],
-            #             group_foci_per_study.shape[0],
-            #         )
-            #         group_null_log_spatial_intensity = np.log(
-            #             np.sum(group_foci_per_voxel) / (n_voxels * n_study)
-            #         )
-            #         group_log_intensity_per_voxel = np.log(
-            #             self.result.maps["spatialIntensity_group-" + group]
-            #         )
-            #         group_log_intensity_per_voxel = (
-            #             group_log_intensity_per_voxel - group_null_log_spatial_intensity
-            #         )
-            #         involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
-            #     involved_log_intensity_per_voxel = np.stack(
-            #         involved_log_intensity_per_voxel, axis=0
-            #     )
-            # else:  # GLH: group comparison
-            #     involved_log_intensity_per_voxel = list()
-            #     for group in con_group_involved:
-            #         group_log_intensity_per_voxel = np.log(
-            #             self.result.maps["spatialIntensity_group-" + group]
-            #         )
-            #         involved_log_intensity_per_voxel.append(group_log_intensity_per_voxel)
-            #     involved_log_intensity_per_voxel = np.stack(
-            #         involved_log_intensity_per_voxel, axis=0
-            #     )
-            # contrast_log_intensity = np.matmul(simp_con_group, involved_log_intensity_per_voxel)
-            # m, n_brain_voxel = contrast_log_intensity.shape
-            # # Correlation of involved group-wise spatial coef
-            # moderators_by_group = (
-            #     self.estimator.inputs_["moderators_by_group"] if self.moderators else None
-            # )
-            # f_spatial_coef = self.estimator.model.fisher_info_multiple_group_spatial(
-            #     con_group_involved,
-            #     self.estimator.inputs_["coef_spline_bases"],
-            #     moderators_by_group,
-            #     self.estimator.inputs_["foci_per_voxel"],
-            #     self.estimator.inputs_["foci_per_study"],
-            # )
-            # cov_spatial_coef = np.linalg.inv(f_spatial_coef)
-            # spatial_coef_dim = self.result.tables["spatial_regression_coef"].to_numpy().shape[1]
-            # cov_log_intensity = np.empty(shape=(0, n_brain_voxel))
-            
-            # for k in range(n_con_group_involved):
-            #     for s in range(n_con_group_involved):
-            #         cov_beta_ks = cov_spatial_coef[
-            #             k * spatial_coef_dim : (k + 1) * spatial_coef_dim,
-            #             s * spatial_coef_dim : (s + 1) * spatial_coef_dim,
-            #         ]
-            #         X = self.estimator.inputs_["coef_spline_bases"]
-            #         cov_group_log_intensity = (X.dot(cov_beta_ks) * X).sum(axis=1).reshape((1, -1))
-            #         cov_log_intensity = np.concatenate(
-            #             (cov_log_intensity, cov_group_log_intensity), axis=0
-            #         )  # (m^2, n_voxels)
-            # # GLH on log_intensity (eta)
-            # chi_sq_spatial = self._chi_square_log_intensity(
-            #     m,
-            #     n_brain_voxel,
-            #     n_con_group_involved,
-            #     simp_con_group,
-            #     cov_log_intensity,
-            #     contrast_log_intensity,
-            # )
-            # p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
-            # # convert p-values to z-scores for visualization
-            # if np.all(np.count_nonzero(con_group, axis=1) == 1):  # GLH: homogeneity test
-            #     z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
-            #     z_stats_spatial[z_stats_spatial < 0] = 0
-            # else:
-            #     z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial / 2)
-            #     if con_group.shape[0] == 1:  # GLH one test: Z statistics are signed
-            #         z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
-            # z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
-            # if self.t_con_groups_name:
-            #     self.result.maps[
-            #         f"chiSquare_group-{self.t_con_groups_name[con_group_count]}"
-            #     ] = chi_sq_spatial
-            #     self.result.maps[
-            #         f"p_group-{self.t_con_groups_name[con_group_count]}"
-            #     ] = p_vals_spatial
-            #     self.result.maps[
-            #         f"z_group-{self.t_con_groups_name[con_group_count]}"
-            #     ] = z_stats_spatial
-            # else:
-            #     self.result.maps[f"chiSquare_GLH_groups_{con_group_count}"] = chi_sq_spatial
-            #     self.result.maps[f"p_GLH_groups_{con_group_count}"] = p_vals_spatial
-            #     self.result.maps[f"z_GLH_groups_{con_group_count}"] = z_stats_spatial
-            # con_group_count += 1
 
     def _chi_square_log_intensity(
         self,
@@ -930,11 +842,11 @@ class CBMRInference(object):
         simp_con_group,
         cov_log_intensity,
         contrast_log_intensity,
-        ):
+    ):
         """
         Calculate chi-square statistics for GLH on group-wise log intensity function,
-        as an intermediate steps for GLH testings. 
-        
+        as an intermediate steps for GLH testings.
+
         Parameters
         ----------
         m : :obj:`int`
@@ -949,11 +861,11 @@ class CBMRInference(object):
             Covariance matrix of log intensity estimation.
         contrast_log_intensity : :obj:`numpy.ndarray`
             The product of contrast matrix and log intensity estimation.
-        
+
         Returns
         -------
         chi_sq_spatial : :obj:`numpy.ndarray`
-            Voxel-wise chi-square statistics for GLH tests on group-wise spatial 
+            Voxel-wise chi-square statistics for GLH tests on group-wise spatial
             intensity estimations.
         """
         chi_sq_spatial = np.empty(shape=(0,))
@@ -978,7 +890,7 @@ class CBMRInference(object):
     def _glh_con_moderator(self):
         """Conduct Generalized linear hypothesis (GLH) testing for
         study-level moderators.
-        
+
         GLH testing allows flexible hypothesis testings on regression
         coefficients of study-level moderators, including testing for
         the existence of moderator effects and difference in moderator
@@ -1001,14 +913,16 @@ class CBMRInference(object):
             )
 
             cov_moderator_coef = np.linalg.inv(f_moderator_coef)
-            if m_con_moderator == 1: # a single contrast vector, use Wald test
+            if m_con_moderator == 1:  # a single contrast vector, use Wald test
                 var_moderator_coef = np.diag(cov_moderator_coef)
                 involved_var_moderator_coef = con_moderator**2 @ var_moderator_coef
                 involved_std_moderator_coef = np.sqrt(involved_var_moderator_coef)
                 # Conduct Wald test (Z test)
                 z_stats_moderator = contrast_moderator_coef / involved_std_moderator_coef
-                p_vals_moderator = scipy.stats.norm.sf(abs(z_stats_moderator))*2 # two-tailed test
-            else: # GLH test (multiple contrast vectors)
+                p_vals_moderator = (
+                    scipy.stats.norm.sf(abs(z_stats_moderator)) * 2
+                )  # two-tailed test
+            else:  # GLH test (multiple contrast vectors)
                 chi_sq_moderator = (
                     contrast_moderator_coef.T
                     @ np.linalg.inv(con_moderator @ cov_moderator_coef @ con_moderator.T)
@@ -1016,7 +930,7 @@ class CBMRInference(object):
                 )
                 p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
                 z_stats_moderator = scipy.stats.norm.isf(p_vals_moderator / 2)
-                
+
             if self.t_con_moderators_name:  # None?
                 if m_con_moderator > 1:
                     self.result.tables[

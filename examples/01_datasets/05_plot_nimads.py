@@ -25,12 +25,8 @@ def download_file(url):
     return response.json()
 
 
-nimads_studyset = download_file(
-    "https://neurostore.org/api/studysets/Cv2LLUqG76W9?nested=true"
-)
-nimads_annotation = download_file(
-    "https://neurostore.org/api/annotations/76PyNqoTNEsE"
-)
+nimads_studyset = download_file("https://neurostore.org/api/studysets/Cv2LLUqG76W9?nested=true")
+nimads_annotation = download_file("https://neurostore.org/api/annotations/76PyNqoTNEsE")
 
 
 ###############################################################################

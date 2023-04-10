@@ -15,6 +15,7 @@ logging.getLogger("numba").setLevel(logging.WARNING)
 # indexed_gzip has a few debug messages that are not useful for testing
 logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
 
+
 @pytest.fixture(
     scope="session",
     params=[
@@ -23,7 +24,6 @@ logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
         pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
     ],
 )
-
 def model(request):
     """CBMR models."""
     return request.param
@@ -49,7 +49,7 @@ def cbmr_result(testdata_cbmr_simulated, model):
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
     assert isinstance(res.description_, str)
-    
+
     return res
 
 
@@ -125,32 +125,29 @@ def test_firth_penalty(testdata_cbmr_simulated):
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
-    testdata_cbmr_simulated = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
+    testdata_cbmr_simulated = StandardizeField(
+        fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]
+    ).transform(testdata_cbmr_simulated)
     cbmr = CBMREstimator(
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
-        model=models.PoissonEstimator, 
-        lr=1e-4)
+        model=models.PoissonEstimator,
+        lr=1e-4,
+    )
 
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)
     cbmr._preprocess_input(testdata_cbmr_simulated)
-    
+
     # fit the model
     init_weight_kwargs = {
-            "groups": cbmr.groups,
-            "moderators": cbmr.moderators,
-            "spatial_coef_dim": cbmr.inputs_["coef_spline_bases"].shape[1],
-            "moderators_coef_dim": len(cbmr.moderators) if cbmr.moderators else None}
-    
+        "groups": cbmr.groups,
+        "moderators": cbmr.moderators,
+        "spatial_coef_dim": cbmr.inputs_["coef_spline_bases"].shape[1],
+        "moderators_coef_dim": len(cbmr.moderators) if cbmr.moderators else None,
+    }
+
     cbmr.model.init_weights(**init_weight_kwargs)
-        
-    moderators_by_group = cbmr.inputs_["moderators_by_group"] if cbmr.moderators else None
-    # cbmr.model._optimizer(cbmr.inputs_["coef_spline_bases"], moderators_by_group, cbmr.inputs_["foci_per_voxel"], cbmr.inputs_["foci_per_study"])
     optimizer = torch.optim.LBFGS(cbmr.model.parameters(), cbmr.lr)
-    
     # load dataset info to torch.tensor
-    # _ = torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device)
     if cbmr.moderators:
         moderators_by_group_tensor = dict()
         for group in cbmr.model.groups:
@@ -172,7 +169,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         )
         foci_per_voxel_tensor[group] = group_foci_per_voxel_tensor
         foci_per_study_tensor[group] = group_foci_per_study_tensor
-   
+
     if cbmr.iter == 0:
         prev_loss = torch.tensor(float("inf"))  # initialization loss difference
 
@@ -182,7 +179,8 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         moderators_by_group_tensor,
         foci_per_voxel_tensor,
         foci_per_study_tensor,
-        prev_loss)
+        prev_loss,
+    )
     # deliberately set the first spatial coefficient to nan
     for group in cbmr.model.groups:
         nan_coef = torch.tensor(cbmr.model.spatial_coef_linears[group].weight)
@@ -193,10 +191,11 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
     with pytest.raises(ValueError):
         cbmr.model._update(
             optimizer,
-            torch.tensor(cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device),
+            torch.tensor(
+                cbmr.inputs_["coef_spline_bases"], dtype=torch.float64, device=cbmr.device
+            ),
             moderators_by_group_tensor,
             foci_per_voxel_tensor,
             foci_per_study_tensor,
             prev_loss,
         )
-

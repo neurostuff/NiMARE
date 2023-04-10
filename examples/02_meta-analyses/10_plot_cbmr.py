@@ -332,7 +332,9 @@ print(
     )
 )
 print(
-    "P-value of moderator effects `avg_age` is {}".format(contrast_result.tables["p_standardized_avg_age"])
+    "P-value of moderator effects `avg_age` is {}".format(
+        contrast_result.tables["p_standardized_avg_age"]
+    )
 )
 
 ###############################################################################

@@ -1940,16 +1940,17 @@ def b_spline_bases(masker_voxels, spacing, margin=10):
 
     return X
 
+
 def dummy_encoding_moderators(dataset_annotations, moderators):
     """Convert categorical moderators to dummy encoded variables.
-    
+
     Parameters
     ----------
     dataset_annotations : :obj:`pandas.DataFrame`
         Annotations of the dataset.
     moderators : :obj:`list`
         Study-level moderators to be considered into CBMR framework.
-    
+
     Returns
     -------
     dataset_annotations : :obj:`pandas.DataFrame`
