@@ -53,6 +53,7 @@ extensions = [
     "sphinx.ext.napoleon",  # alternative to numpydoc
     "sphinx_copybutton",  # for copying code snippets
     "sphinx_gallery.gen_gallery",  # example gallery
+    "jupyterlite_sphinx",  # for embedding jupyter notebooks
     "sphinxarg.ext",  # argparse
     "sphinxcontrib.bibtex",  # for foot-citations
     "recommonmark",  # markdown parser
@@ -201,6 +202,9 @@ sphinx_gallery_conf = {
     "within_subsection_order": FileNameSortKey,
     "default_thumb_file": "_static/nimare_favicon.png",
     "remove_config_comments": True,
+    "jupyterlite": {
+        "use_jupyter_lab": True,
+    },
 }
 
 # Generate the plots for the gallery
