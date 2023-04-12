@@ -1,0 +1,2 @@
+nimare[doc]==0.0.14
+jupytext
