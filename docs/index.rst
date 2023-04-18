@@ -32,8 +32,8 @@ To install NiMARE check out our `installation guide`_.
    :target: https://github.com/neurostuff/NiMARE/actions/workflows/testing.yml
    :alt: Test Status
 
-.. image:: https://readthedocs.org/projects/nimare/badge/?version=latest
-   :target: http://nimare.readthedocs.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/nimare/badge/?version=stable
+   :target: http://nimare.readthedocs.io/en/stable/?badge=stable
    :alt: Documentation Status
 
 .. image:: https://codecov.io/gh/neurostuff/NiMARE/branch/main/graph/badge.svg
