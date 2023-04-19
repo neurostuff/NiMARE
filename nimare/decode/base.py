@@ -92,12 +92,6 @@ class Decoder(NiMAREBase):
             Whether to automatically ignore any studies without the required data or not.
             Default is True.
 
-
-        Returns
-        -------
-        :obj:`~nimare.results.MetaResult`
-            Results of Decoder fitting.
-
         Notes
         -----
         The `fit` method is a light wrapper that runs input validation and
@@ -118,4 +112,3 @@ class Decoder(NiMAREBase):
 
         Must return a DataFrame, with one row for each feature.
         """
-        pass
