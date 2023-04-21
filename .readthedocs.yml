@@ -17,3 +17,6 @@ python:
       extra_requirements:
         - doc
   system_packages: true
+
+conda:
+  environment: docs/environment.yml

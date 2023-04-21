@@ -211,6 +211,7 @@ def notebook_modification_function(notebook_content, notebook_filename):
     add_markdown_cell(dummy_notebook_content, markdown)
 
     code_lines = []
+    code_lines.extend("%pip install nimare")
     if "fetch_" in notebook_content_str:
         code_lines.extend(
             [
@@ -251,7 +252,7 @@ sphinx_gallery_conf = {
         "nimare": None
     },
     "jupyterlite": {
-        'use_jupyter_lab': True,
+        "use_jupyter_lab": True,
         "notebook_modification_function": notebook_modification_function,
     },
     "within_subsection_order": FileNameSortKey,
