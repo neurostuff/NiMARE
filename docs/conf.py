@@ -250,7 +250,10 @@ sphinx_gallery_conf = {
         # The module you locally document uses None
         "nimare": None
     },
-    "jupyterlite": {"notebook_modification_function": notebook_modification_function},
+    "jupyterlite": {
+        'use_jupyter_lab': True,
+        "notebook_modification_function": notebook_modification_function,
+    },
     "within_subsection_order": FileNameSortKey,
     "default_thumb_file": "_static/nimare_favicon.png",
     "remove_config_comments": True,
