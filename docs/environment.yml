@@ -7,8 +7,7 @@ channels:
 dependencies:
   - nodejs >=18,<19
   - python=3.8
-  # build
-  cognitiveatlas  # nimare.annotate.cogat
+  - cognitiveatlas  # nimare.annotate.cogat
   - fuzzywuzzy  # nimare.annotate
   - indexed_gzip>=1.4.0  # working with gzipped niftis
   - joblib  # parallelization
