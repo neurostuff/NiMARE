@@ -5,7 +5,7 @@ channels:
 
 dependencies:
   - python=3.8
-  - m2r=0.2.1
+  - m2r
   - matplotlib
   - mistune<2
   - pillow
@@ -18,9 +18,7 @@ dependencies:
   - sphinx_rtd_theme
   - sphinxcontrib-bibtex
   - jupyterlite-sphinx
+  - jupyterlite-pyodide-kernel
   - pip
   - pip:
     - ..
-    - jupyterlite-core
-    - jupyterlite-pyodide-kernel
-
