@@ -17,10 +17,10 @@ dependencies:
   - sphinx-gallery
   - sphinx_rtd_theme
   - sphinxcontrib-bibtex
+  - jupyterlite-sphinx
   - pip
   - pip:
     - ..
     - jupyterlite-core
-    - jupyterlite-sphinx
     - jupyterlite-pyodide-kernel
 
