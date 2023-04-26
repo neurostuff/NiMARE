@@ -4,6 +4,7 @@ channels:
   - conda-forge
 
 dependencies:
+  - python=3.8
   - m2r
   - matplotlib
   - mistune<2  # just temporary until m2r addresses this issue
