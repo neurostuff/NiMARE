@@ -1,5 +1,4 @@
-name: nimare-lite
-# this is a conda environment for building the JupyterLite documentation
+name: nimare_env
 
 channels:
   - conda-forge
