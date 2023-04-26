@@ -16,7 +16,6 @@ sphinx:
 #      path: .
 
 build:
-  version: 3.8
   os: "ubuntu-20.04"
   tools:
     python: "mambaforge-4.10"
