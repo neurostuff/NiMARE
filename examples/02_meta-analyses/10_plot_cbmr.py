@@ -6,11 +6,21 @@
 Coordinate-based meta-regression algorithms
 ===========================================
 
-A tour of CBMR algorithms in NiMARE
+A tour of Coordinate-based meta-regression (CBMR) algorithms in NiMARE
+
+CBMR is a generative framework to approximate smooth activation intensity function
+and investigate the effect of study-level moderators (e.g., year of pubilication,
+sample size, subtype of stimuli). CBMR considers three stochastic models (Poisson,
+Negative Binomial (NB) and Clustered NB) for modeling the random variation in foci,
+and allows flexible statistical inference for either spatial homogeneity tests or
+group comparison tests. It is a computationally efficient approach with
+good statistical interpretability to model the locations of activation foci.
 
 This tutorial is intended to provide a brief description and example of the CBMR
-algorithm implemented in NiMARE. For a more detailed introduction to the elements
-of a coordinate-based meta-regression, see other stuff.
+algorithm implemented in NiMARE.
+
+For a more detailed introduction to the elements of a coordinate-based meta-regression, 
+see other stuff.
 """
 import numpy as np
 import scipy
@@ -23,6 +33,11 @@ from nimare.transforms import StandardizeField
 ###############################################################################
 # Load Dataset
 # -----------------------------------------------------------------------------
+# Here, we're going to simulate a dataset (using `nimare.generate.create_coordinate_dataset`)
+# that includes 100 studies, each with 10 reported foci and sample size varying between
+# 20 and 40. We separate them into four groups according to diagnosis (schizophrenia or depression)
+# and drug status (Yes or No). We also add two continuous study-level moderators (sample size and 
+# average age) and a categorical study-level moderator (schizophrenia subtype).
 
 # data simulation
 ground_truth_foci, dset = create_coordinate_dataset(foci=10, sample_size=(20, 40), n_studies=1000)
@@ -50,24 +65,19 @@ dset.annotations["schizophrenia_subtype"] = (
 ###############################################################################
 # Estimation of group-specific spatial intensity functions
 # -----------------------------------------------------------------------------
-# Unlike kernel-based CBMR methods (e.g. ALE, MKDA and SDM), CBMR provides a
-# generative regression model that estimates a smooth intensity function and
-# can have study-level moderators. It's developed with a spatial model to
-# induce a smooth response and model the entire image jointly, and fitted with
-# different variants of statistical distributions (Poisson, Negative Binomial
-# (NB) or Clustered NB model) to find the most accurate but parsimonious model.
-#
-# CBMR framework can generate estimation of group-specific spatial internsity
+# CBMR can generate estimation of group-specific spatial internsity
 # functions for multiple groups simultaneously, with different group-specific
 # spatial regression coefficients.
 #
-# CBMR framework can also consider the effects of study-level moderators
+# CBMR can also consider the effects of study-level moderators
 # (e.g. sample size, year of publication) by estimating regression coefficients
-# of moderators (shared by all groups). Note that moderators can only have global
-# effects instead of localized effects within CBMR framework. In the scenario
-# that there're multiple subgroups within a group, while one or more of them don't
-# have enough number of studies to be inferred as a separate group, CBMR can
-# interpret them as categorical study-level moderators.
+# of moderators (shared by all groups).
+#
+# Note that study-level moderators can only have global effects instead of localized
+# effects within CBMR framework. In the scenario that there're multiple subgroups
+# within a group, while one or more of them don't have enough number of studies to be
+# inferred as a separate group, CBMR can interpret them as categorical study-level moderators.
+
 from nimare.meta.cbmr import CBMREstimator
 
 dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(dset)
@@ -79,12 +89,12 @@ cbmr = CBMREstimator(
         "standardized_avg_age",
         "schizophrenia_subtype:reference=type1",
     ],
-    spline_spacing=100,  # a reasonable choice is 10, 100 is for speed
+    spline_spacing=100,  # a reasonable choice is 10 or 5, 100 is for speed
     model=models.PoissonEstimator,
     penalty=False,
     lr=1e-1,
-    tol=1e3,
-    device="cpu",
+    tol=1e3, # a reasonable choice is 1e-1 or 1e-2, 1e3 is for speed
+    device="cpu", # "cuda" if you have GPU
 )
 results = cbmr.fit(dataset=dset)
 plot_stat_map(
