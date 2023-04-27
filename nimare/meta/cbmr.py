@@ -1,4 +1,4 @@
-"""Document This."""
+"""Coordinate-based meta-regression (CBMR) framework for estimation and statistcial inference."""
 import logging
 import re
 from functools import wraps
