@@ -1,0 +1,26 @@
+name: Build nimare WASM
+
+on:
+  push:
+    branches:
+      - "main"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: jobovy/pyodide-buildpackage-action@v1
+      with:
+        package-name: nimare
+        build-url: https://github.com/neurostuff/NiMARE/archive/main.tar.gz
+        pyodide-tag: main
+        build-deps: False
+    - uses: actions/upload-artifact@v2-preview
+      with:
+        name: nimare-wheel-pyodide
+        path: wheelhouse/*.whl
+    - uses: actions/upload-artifact@v2-preview
+      with:
+        name: nimare-wheels-pyodide
+        path: wheelhouse-all/*.whl
