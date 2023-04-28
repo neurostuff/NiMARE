@@ -21,21 +21,21 @@ jobs:
       EMSCRIPTEN_VERSION: 3.1.32
       NODE_VERSION: 18
       
-      steps:
-        - name: Checkout nimare
-          uses: actions/checkout@v3
+    steps:
+      - name: Checkout nimare
+        uses: actions/checkout@v3
         
-        - name: Set up python
-          uses: actions/setup-python@v4
-          with:
-            python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
       
-        - uses: mymindstorm/setup-emsdk@v12
-          with:
-            version: ${{ env.EMSCRIPTEN_VERSION }}
+      - uses: mymindstorm/setup-emsdk@v12
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
 
-        - name: Install pyodide-build
-          run: pip install pyodide-build==$PYODIDE_VERSION
+      - name: Install pyodide-build
+        run: pip install pyodide-build==$PYODIDE_VERSION
 
-        - name: Build
-          run: CFLAGS=-g2 LDFLAGS=-g2 pyodide build
+      - name: Build
+        run: CFLAGS=-g2 LDFLAGS=-g2 pyodide build
