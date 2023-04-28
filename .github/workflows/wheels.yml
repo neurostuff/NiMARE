@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - "main"
-  pull_request:
-    branches:
-      - '*'
+
 # Alternatively, to publish when a (published) GitHub Release is created, use the following:
 # on:
 #   push:

@@ -4,23 +4,38 @@ on:
   push:
     branches:
       - "main"
+  pull_request:
+    branches:
+      - '*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: jobovy/pyodide-buildpackage-action@v1
-      with:
-        package-name: nimare
-        build-url: https://github.com/neurostuff/NiMARE/archive/main.tar.gz
-        pyodide-tag: main
-        build-deps: False
-    - uses: actions/upload-artifact@v2-preview
-      with:
-        name: nimare-wheel-pyodide
-        path: wheelhouse/*.whl
-    - uses: actions/upload-artifact@v2-preview
-      with:
-        name: nimare-wheels-pyodide
-        path: wheelhouse-all/*.whl
+    env:
+      PYODIDE_VERSION: 0.23.1
+      # PYTHON_VERSION and EMSCRIPTEN_VERSION are determined by PYODIDE_VERSION.
+      # The appropriate versions can be found in the Pyodide repodata.json
+      # "info" field, or in Makefile.envs:
+      # https://github.com/pyodide/pyodide/blob/main/Makefile.envs#L2
+      PYTHON_VERSION: 3.8
+      EMSCRIPTEN_VERSION: 3.1.32
+      NODE_VERSION: 18
+      
+      steps:
+        - name: Checkout nimare
+          uses: actions/checkout@v3
+        
+        - name: Set up python
+          uses: actions/setup-python@v4
+          with:
+            python-version: ${{ env.PYTHON_VERSION }}
+      
+        - uses: mymindstorm/setup-emsdk@v12
+           with:
+             version: ${{ env.EMSCRIPTEN_VERSION }}
+
+        - name: Install pyodide-build
+          run: pip install pyodide-build==$PYODIDE_VERSION
+
+        - name: Build
+          run: CFLAGS=-g2 LDFLAGS=-g2 pyodide build
