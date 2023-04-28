@@ -31,8 +31,8 @@ jobs:
             python-version: ${{ env.PYTHON_VERSION }}
       
         - uses: mymindstorm/setup-emsdk@v12
-           with:
-             version: ${{ env.EMSCRIPTEN_VERSION }}
+          with:
+            version: ${{ env.EMSCRIPTEN_VERSION }}
 
         - name: Install pyodide-build
           run: pip install pyodide-build==$PYODIDE_VERSION
