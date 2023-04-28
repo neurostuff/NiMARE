@@ -17,9 +17,8 @@ jobs:
       # The appropriate versions can be found in the Pyodide repodata.json
       # "info" field, or in Makefile.envs:
       # https://github.com/pyodide/pyodide/blob/main/Makefile.envs#L2
-      PYTHON_VERSION: 3.8
+      PYTHON_VERSION: 3.10
       EMSCRIPTEN_VERSION: 3.1.32
-      NODE_VERSION: 18
       
     steps:
       - name: Checkout nimare
@@ -39,3 +38,16 @@ jobs:
 
       - name: Build
         run: CFLAGS=-g2 LDFLAGS=-g2 pyodide build
+
+      - name: Set up Pyodide virtual environment
+        run: |
+          pyodide venv .venv-pyodide
+          source .venv-pyodide/bin/activate
+          pip install dist/*.whl
+          pip install -e .[tests,peaks2maps-cpu]
+      
+      - name: 'Run tests'
+        run: |
+          source .venv-pyodide/bin/activate
+          cd ..
+          make unittest
