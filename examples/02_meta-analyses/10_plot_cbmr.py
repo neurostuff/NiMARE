@@ -19,8 +19,9 @@ good statistical interpretability to model the locations of activation foci.
 This tutorial is intended to provide a brief description and example of the CBMR
 algorithm implemented in NiMARE.
 
-For a more detailed introduction to the elements of a coordinate-based meta-regression, 
-see other stuff.
+For a more detailed introduction to the elements of a coordinate-based meta-regression,
+see the [online course](https://www.coursera.org/lecture/functional-mri-2/module-3-meta-analysis-Vd4zz)
+or a [brief overview](https://libguides.princeton.edu/neuroimaging_meta).
 """
 import numpy as np
 import scipy
@@ -33,7 +34,8 @@ from nimare.transforms import StandardizeField
 ###############################################################################
 # Load Dataset
 # -----------------------------------------------------------------------------
-# Here, we're going to simulate a dataset (using `nimare.generate.create_coordinate_dataset`)
+# Here, we're going to simulate a dataset 
+# (using [nimare.generate.create_coordinate_dataset](https://nimare.readthedocs.io/en/latest/generated/nimare.generate.create_coordinate_dataset.html))
 # that includes 100 studies, each with 10 reported foci and sample size varying between
 # 20 and 40. We separate them into four groups according to diagnosis (schizophrenia or depression)
 # and drug status (Yes or No). We also add two continuous study-level moderators (sample size and 
@@ -75,8 +77,11 @@ dset.annotations["schizophrenia_subtype"] = (
 #
 # Note that study-level moderators can only have global effects instead of localized
 # effects within CBMR framework. In the scenario that there're multiple subgroups
-# within a group, while one or more of them don't have enough number of studies to be
-# inferred as a separate group, CBMR can interpret them as categorical study-level moderators.
+# within a group (e.g., indexed as subgroup-1 to subgroup-n, but one or more of them
+# don't have enough number of studies to be inferred as a separate group). Using
+# categorical encoding, CBMR can interpret the subgroups as categorical moderators
+# for each study (either 0 or 1), and estimate the global activation intensity 
+# associated with each subgroup (comparing to the average).
 
 from nimare.meta.cbmr import CBMREstimator
 
@@ -93,10 +98,14 @@ cbmr = CBMREstimator(
     model=models.PoissonEstimator,
     penalty=False,
     lr=1e-1,
-    tol=1e3, # a reasonable choice is 1e-1 or 1e-2, 1e3 is for speed
+    tol=1e3, # a reasonable choice is 1e-2, 1e3 is for speed
     device="cpu", # "cuda" if you have GPU
 )
 results = cbmr.fit(dataset=dset)
+
+###############################################################################
+# Now that we have fitted the model, we can plot the spatial intensity maps.
+
 plot_stat_map(
     results.get_map("spatialIntensity_group-SchizophreniaYes"),
     cut_coords=[0, 0, -8],
@@ -104,6 +113,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Schizophrenia with drug treatment",
     threshold=1e-4,
+    vmax=1e-3,
 )
 plot_stat_map(
     results.get_map("spatialIntensity_group-SchizophreniaNo"),
@@ -112,6 +122,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Schizophrenia without drug treatment",
     threshold=1e-4,
+    vmax=1e-3,
 )
 plot_stat_map(
     results.get_map("spatialIntensity_group-DepressionYes"),
@@ -120,6 +131,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Depression with drug treatment",
     threshold=1e-4,
+    vmax=1e-3,
 )
 plot_stat_map(
     results.get_map("spatialIntensity_group-DepressionNo"),
@@ -128,6 +140,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Depression without drug treatment",
     threshold=1e-4,
+    vmax=1e-3,
 )
 
 ###############################################################################
@@ -149,6 +162,9 @@ t_con_groups = inference.create_contrast(
 )
 contrast_result = inference.transform(t_con_groups=t_con_groups)
 
+###############################################################################
+# Now that we have done spatial homogeneity tests, we can plot the z-score maps.
+
 # generate z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
     contrast_result.get_map("z_group-SchizophreniaYes"),
@@ -157,6 +173,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="SchizophreniaYes",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 plot_stat_map(
@@ -166,6 +183,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="SchizophreniaNo",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 plot_stat_map(
@@ -175,6 +193,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="DepressionYes",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 plot_stat_map(
@@ -184,6 +203,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="DepressionNo",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 ###############################################################################
@@ -203,6 +223,10 @@ from nimare.correct import FDRCorrector
 corr = FDRCorrector(method="indep", alpha=0.05)
 cres = corr.transform(contrast_result)
 
+###############################################################################
+# Now that we have applied the FDR correction methods,
+# we can plot the FDR corrected z-score maps.
+
 # generate FDR corrected z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
     cres.get_map("z_group-SchizophreniaYes_corr-FDR_method-indep"),
@@ -211,6 +235,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Schizophrenia with drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 plot_stat_map(
@@ -220,6 +245,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Schizophrenia without drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 plot_stat_map(
@@ -229,6 +255,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Depression with drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 plot_stat_map(
@@ -238,6 +265,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Depression without drug treatment (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
 )
 
 ###############################################################################
@@ -260,6 +288,10 @@ t_con_groups = inference.create_contrast(
 )
 contrast_result = inference.transform(t_con_groups=t_con_groups, t_con_moderators=False)
 
+###############################################################################
+# Now that we have done group comparison tests,
+# we can plot the z-score maps indicating difference in spatial intensity between two groups.
+
 # generate z-statistics maps for each group
 plot_stat_map(
     contrast_result.get_map("z_group-SchizophreniaYes-SchizophreniaNo"),
@@ -268,6 +300,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Drug Treatment Effect for Schizophrenia",
     threshold=scipy.stats.norm.isf(0.4),
+    vmax=2,
 )
 
 plot_stat_map(
@@ -277,6 +310,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Untreated Schizophrenia vs. Untreated Depression",
     threshold=scipy.stats.norm.isf(0.4),
+    vmax=2,
 )
 
 plot_stat_map(
@@ -286,6 +320,7 @@ plot_stat_map(
     cmap="RdBu_r",
     title="Drug Treatment Effect for Depression",
     threshold=scipy.stats.norm.isf(0.4),
+    vmax=2,
 )
 ###############################################################################
 # Four figures (displayed as z-statistics map) correspond to group comparison
@@ -317,6 +352,12 @@ plot_stat_map(
 contrast_result = inference.transform(
     t_con_groups=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]], t_con_moderators=False
 )
+
+###############################################################################
+# Now that we have done group comparison tests with the specified contrast matrix,
+# we can plot the z-score maps indicating consistency in activation regions among
+# all four groups.
+
 plot_stat_map(
     contrast_result.get_map("z_GLH_groups_0"),
     cut_coords=[0, 0, -8],

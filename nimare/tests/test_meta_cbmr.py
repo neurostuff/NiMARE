@@ -200,6 +200,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
             prev_loss,
         )
 
+
 def test_StandardizeField(testdata_cbmr_simulated):
     """Unit test for StandardizeField."""
     dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(
