@@ -1,4 +1,4 @@
-"""Coordinate-based meta-regression (CBMR) framework for estimation and statistcial inference."""
+"""Coordinate Based Meta Regression Methods."""
 import logging
 import re
 from functools import wraps

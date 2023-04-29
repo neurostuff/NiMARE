@@ -83,7 +83,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         torch.Tensor
             Value of the log-likelihood of a single group.
         """
-        return
+        pass
 
     @abc.abstractmethod
     def _log_likelihood_mult_group(self, **kwargs):
@@ -94,7 +94,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         torch.Tensor
             Value of total log-likelihood of all groups in the dataset.
         """
-        return
+        pass
 
     @abc.abstractmethod
     def forward(self, **kwargs):
@@ -105,7 +105,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         torch.Tensor
             Value of the log-likelihood of a single group.
         """
-        return
+        pass
 
     def init_spatial_weights(self):
         """Initialize spatial regression coefficients.
