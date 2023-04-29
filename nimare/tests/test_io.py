@@ -13,10 +13,14 @@ from nimare.utils import get_template
 def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):
     """Conversion of nimads JSON to nimare dataset."""
     studyset = Studyset(example_nimads_studyset)
+    dset1 = io.convert_nimads_to_dataset(studyset)
     studyset.annotations = example_nimads_annotation
-    dset = io.convert_nimads_to_dataset(studyset)
+    dset2 = io.convert_nimads_to_dataset(studyset)
 
-    assert isinstance(dset, nimare.dataset.Dataset)
+    assert isinstance(dset1, nimare.dataset.Dataset)
+    assert isinstance(dset2, nimare.dataset.Dataset)
+
+    # remove sample_size metadata
 
 
 def test_convert_sleuth_to_dataset_smoke():
