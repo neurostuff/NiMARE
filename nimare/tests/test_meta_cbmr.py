@@ -199,3 +199,16 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
             foci_per_study_tensor,
             prev_loss,
         )
+
+def test_StandardizeField(testdata_cbmr_simulated):
+    """Unit test for StandardizeField."""
+    dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(
+        testdata_cbmr_simulated
+    )
+    assert isinstance(dset, nimare.dataset.Dataset)
+    assert "standardized_sample_sizes" in dset.annotations
+    assert "standardized_avg_age" in dset.annotations
+    assert dset.annotations["standardized_sample_sizes"].mean() == pytest.approx(0.0, abs=1e-3)
+    assert dset.annotations["standardized_sample_sizes"].std() == pytest.approx(1.0, abs=1e-3)
+    assert dset.annotations["standardized_avg_age"].mean() == pytest.approx(0.0, abs=1e-3)
+    assert dset.annotations["standardized_avg_age"].std() == pytest.approx(1.0, abs=1e-3)
