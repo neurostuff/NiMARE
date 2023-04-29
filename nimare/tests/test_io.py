@@ -20,8 +20,6 @@ def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annot
     assert isinstance(dset1, nimare.dataset.Dataset)
     assert isinstance(dset2, nimare.dataset.Dataset)
 
-    # remove sample_size metadata
-
 
 def test_convert_sleuth_to_dataset_smoke():
     """Smoke test for Sleuth text file conversion."""
