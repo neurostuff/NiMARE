@@ -213,4 +213,3 @@ def test_StandardizeField(testdata_cbmr_simulated):
     assert dset.annotations["standardized_sample_sizes"].std() == pytest.approx(1.0, abs=1e-3)
     assert dset.annotations["standardized_avg_age"].mean() == pytest.approx(0.0, abs=1e-3)
     assert dset.annotations["standardized_avg_age"].std() == pytest.approx(1.0, abs=1e-3)
-    
