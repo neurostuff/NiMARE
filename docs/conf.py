@@ -211,9 +211,7 @@ def notebook_modification_function(notebook_content, notebook_filename):
     add_markdown_cell(dummy_notebook_content, markdown)
 
     code_lines = []
-    code_lines.extend(["%pip install nimare"])
-    if "nilearn" in notebook_content_str:
-        code_lines.extend(["%pip install nilearn"])
+    code_lines.extend(["import micropip", 'await micropip.install("nimare", keep_going=True)'])
     if "fetch_" in notebook_content_str:
         code_lines.extend(
             [

@@ -41,7 +41,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install setuptools wheel twine
 
       - name: Install pyodide-build
         run: pip install pyodide-build==$PYODIDE_VERSION
@@ -61,10 +60,3 @@ jobs:
           source .venv-pyodide/bin/activate
           cd ..
           make unittest
-      
-      - name: Publish
-        env:
-          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: |
-          twine upload dist/*
