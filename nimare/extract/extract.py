@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from nimare.dataset import Dataset
+from nimare.extract.cognitiveatlas import _get_concept, _get_disorder, _get_task
 from nimare.extract.utils import (
     _download_zipped_file,
     _expand_df,
@@ -321,17 +322,15 @@ def download_cognitive_atlas(data_dir=None, overwrite=False):
         The 'relationships' file contains associations between CogAt items,
         with three columns: input, output, and rel_type (relationship type).
     """
-    from cognitiveatlas.api import get_concept, get_disorder, get_task
-
     dataset_name = "cognitive_atlas"
     data_dir = _get_dataset_dir(dataset_name, data_dir=data_dir)
 
     ids_file = op.join(data_dir, "cogat_aliases.csv")
     rels_file = op.join(data_dir, "cogat_relationships.csv")
     if overwrite or not all([op.isfile(f) for f in [ids_file, rels_file]]):
-        concepts = get_concept(silent=True).pandas
-        tasks = get_task(silent=True).pandas
-        disorders = get_disorder(silent=True).pandas
+        concepts = _get_concept(silent=True).pandas
+        tasks = _get_task(silent=True).pandas
+        disorders = _get_disorder(silent=True).pandas
 
         # Identifiers and aliases
         long_concepts = _longify(concepts)
@@ -356,7 +355,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False):
                 time.sleep(5)
             row = [id_, id_, "isSelf"]
             relationship_list.append(row)
-            concept = get_concept(id=id_, silent=True).json
+            concept = _get_concept(id=id_, silent=True).json
             for rel in concept["relationships"]:
                 reltype = _get_concept_reltype(rel["relationship"], rel["direction"])
                 if reltype is not None:
@@ -368,7 +367,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False):
                 time.sleep(5)
             row = [id_, id_, "isSelf"]
             relationship_list.append(row)
-            task = get_task(id=id_, silent=True).json
+            task = _get_task(id=id_, silent=True).json
             for rel in task["concepts"]:
                 row = [id_, rel["concept_id"], "measures"]
                 relationship_list.append(row)
@@ -380,7 +379,7 @@ def download_cognitive_atlas(data_dir=None, overwrite=False):
                 time.sleep(5)
             row = [id_, id_, "isSelf"]
             relationship_list.append(row)
-            disorder = get_disorder(id=id_, silent=True).json
+            disorder = _get_disorder(id=id_, silent=True).json
             for rel in disorder["disorders"]:
                 if rel["relationship"] == "ISA":
                     rel_type = "isA"
