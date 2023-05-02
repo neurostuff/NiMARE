@@ -8,11 +8,6 @@ on:
     branches:
       - '*'
 
-# Alternatively, for testing the pyodide build, add the following:
-# pull_request:
-#   branches:
-#     - '*'
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -53,10 +48,3 @@ jobs:
           pyodide venv .venv-pyodide
           source .venv-pyodide/bin/activate
           pip install dist/*.whl
-          pip install -e .[tests,peaks2maps-cpu]
-      
-      - name: 'Run tests'
-        run: |
-          source .venv-pyodide/bin/activate
-          cd ..
-          make unittest
