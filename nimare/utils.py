@@ -8,26 +8,14 @@ import multiprocessing as mp
 import os
 import os.path as op
 import re
-import warnings
 from functools import wraps
-from string import ascii_lowercase
 from tempfile import mkstemp
 
 import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn._utils import check_niimg_3d
-from nilearn._utils.niimg import _safe_get_data
-from nilearn.image import new_img_like, resampling, threshold_img
 from nilearn.input_data import NiftiMasker
-from scipy.ndimage import (
-    center_of_mass,
-    generate_binary_structure,
-    label,
-    maximum_filter,
-    minimum_filter,
-)
 
 LGR = logging.getLogger(__name__)
 
