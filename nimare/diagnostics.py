@@ -7,17 +7,12 @@ import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from nilearn import input_data
+from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
-from nimare.utils import (
-    _check_ncores,
-    _get_clusters_table,
-    get_masker,
-    mm2vox,
-    tqdm_joblib,
-)
+from nimare.utils import _check_ncores, get_masker, mm2vox, tqdm_joblib
 
 LGR = logging.getLogger(__name__)
 
@@ -124,7 +119,7 @@ class Diagnostics(NiMAREBase):
         # Get clusters table and label maps
         stat_threshold = self.voxel_thresh or 0
         two_sided = (target_img.get_fdata() < 0).any()
-        clusters_table, label_maps = _get_clusters_table(
+        clusters_table, label_maps = get_clusters_table(
             target_img,
             stat_threshold,
             self.cluster_threshold,
