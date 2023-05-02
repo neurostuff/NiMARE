@@ -12,7 +12,7 @@ def _get_json(url):
 
 
 def _get_df(myjson):
-    """Convert json to pandas data frame"""
+    """Convert json to pandas data frame."""
     try:
         df = pd.DataFrame(myjson)
     except:
@@ -27,7 +27,7 @@ def _parse_json(myjson):
 
 # Data Json Object (from URL)
 class _DataJson:
-    """DataJson: internal class for storing json, accessed by NeuroVault Object"""
+    """DataJson: internal class for storing json, accessed by NeuroVault Object."""
 
     def __init__(self, url, silent=False):
         if silent is False:
@@ -44,7 +44,7 @@ class _DataJson:
 
 
 def _get_concept(id=None, name=None, contrast_id=None, silent=False):
-    """get_concept return one or more concepts
+    """get_concept return one or more concepts.
 
     :param id: Return the specified Concept.
     :param name name: Return the specified Concept.
@@ -66,7 +66,7 @@ def _get_concept(id=None, name=None, contrast_id=None, silent=False):
 
 
 def _get_task(id=None, name=None, silent=False):
-    """get_task return one or more tasks
+    """get_task return one or more tasks.
 
     :param id: Return the specified Task.
     :param name name: Return the specified Task.
@@ -87,7 +87,7 @@ def _get_task(id=None, name=None, silent=False):
 
 
 def _get_disorder(id=None, name=None, silent=False):
-    """get_disorder return one or more disorders
+    """get_disorder return one or more disorders.
 
     :param id: Return the specified Disorder.
     :param name name: Return the specified Disorder.
@@ -104,7 +104,7 @@ def _get_disorder(id=None, name=None, silent=False):
 
 
 def _generate_url(base_url, parameters):
-    """Generate a complete url from a base and list of parameters
+    """Generate a complete url from a base and list of parameters.
 
     :param base_url: the base url (string)
     :param parameters: a dictionary with the keys being the parameter, values being the values of
