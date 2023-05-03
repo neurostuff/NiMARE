@@ -47,4 +47,5 @@ jobs:
         run: |
           pyodide venv .venv-pyodide
           source .venv-pyodide/bin/activate
+          python -m pip install --upgrade pip
           pip install dist/*.whl
