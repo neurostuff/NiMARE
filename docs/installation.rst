@@ -19,8 +19,8 @@ NiMARE requires Python ``>=3.8`` and a number of packages.
 For a complete list, please see ``nimare/setup.cfg``.
 
 .. note::
-    We only support Python versions that are part of the Python release cycle (i.e., 3.8, 3.9, and
-    3.10). For more information, see `Python Supported Versions`_.
+    We only support Python versions that are part of the Python release cycle (i.e., 3.8, 3.9, 
+    3.10, and 3.11). For more information, see `Python Supported Versions`_.
 
 What Next?
 ----------
