@@ -1,7 +1,14 @@
 """Test nimare.workflows."""
 import os.path as op
 
+import pytest
+
+import nimare
 from nimare import cli, workflows
+from nimare.correct import FWECorrector
+from nimare.diagnostics import FocusCounter, Jackknife
+from nimare.meta.cbma import ALE, MKDAChi2
+from nimare.meta.ibma import Fishers
 from nimare.tests.utils import get_test_data_path
 
 
@@ -81,3 +88,71 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
         ]
     )
     assert op.isfile(op.join(tmpdir, f"{prefix}_group2_input_coordinates.txt"))
+
+
+@pytest.mark.parametrize(
+    "estimator,corrector,diagnostics",
+    [
+        (ALE, FWECorrector(method="montecarlo", n_iters=10), [Jackknife]),
+        ("ales", "bonferroni", Jackknife),
+        ("ale", "bonferroni", [Jackknife, FocusCounter]),
+        ("kda", "fdr", Jackknife),
+        ("mkdadensity", "fdr", "focuscounter"),
+        (MKDAChi2, "montecarlo", None),
+        (Fishers, "montecarlo", "jackknife"),
+    ],
+)
+def test_cbma_workflow_function_smoke(
+    tmp_path_factory, testdata_cbma_full, estimator, corrector, diagnostics
+):
+    """Run smoke test for CBMA workflow."""
+    tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_function_smoke")
+
+    if estimator == MKDAChi2:
+        with pytest.raises(AttributeError):
+            workflows.cbma_workflow(
+                testdata_cbma_full,
+                estimator=estimator,
+                corrector=corrector,
+                diagnostics=diagnostics,
+            )
+    elif estimator == Fishers:
+        with pytest.raises((AttributeError, ValueError)):
+            workflows.cbma_workflow(
+                testdata_cbma_full,
+                estimator=estimator,
+                corrector=corrector,
+                diagnostics=diagnostics,
+            )
+    elif estimator == "ales":
+        with pytest.raises(ValueError):
+            workflows.cbma_workflow(
+                testdata_cbma_full,
+                estimator=estimator,
+                corrector=corrector,
+                diagnostics=diagnostics,
+            )
+    else:
+        cres = workflows.cbma_workflow(
+            testdata_cbma_full,
+            estimator=estimator,
+            corrector=corrector,
+            diagnostics=diagnostics,
+            output_dir=tmpdir,
+        )
+
+        assert isinstance(cres, nimare.results.MetaResult)
+        assert op.isfile(op.join(tmpdir, "boilerplate.txt"))
+        assert op.isfile(op.join(tmpdir, "references.bib"))
+
+        for imgtype in cres.maps.keys():
+            filename = imgtype + ".nii.gz"
+            outpath = op.join(tmpdir, filename)
+            assert op.isfile(outpath)
+
+        for tabletype in cres.tables.keys():
+            filename = tabletype + ".tsv"
+            outpath = op.join(tmpdir, filename)
+            # For estimator == ALE, tables are None
+            if estimator != ALE:
+                assert op.isfile(outpath)

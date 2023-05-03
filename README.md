@@ -7,7 +7,7 @@ A Python library for coordinate- and image-based meta-analysis.
 [![DOI](https://zenodo.org/badge/117724523.svg)](https://zenodo.org/badge/latestdoi/117724523)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Test Status](https://github.com/neurostuff/NiMARE/actions/workflows/testing.yml/badge.svg)](https://github.com/neurostuff/NiMARE/actions/workflows/testing.yml)
-[![Documentation Status](https://readthedocs.org/projects/nimare/badge/?version=latest)](http://nimare.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/nimare/badge/?version=stable)](http://nimare.readthedocs.io/en/stable/?badge=stable)
 [![Codecov](https://codecov.io/gh/neurostuff/NiMARE/branch/main/graph/badge.svg)](https://codecov.io/gh/neurostuff/nimare)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Join the chat at https://mattermost.brainhack.org/brainhack/channels/nimare](https://img.shields.io/badge/mattermost-join_chat%20%E2%86%92-brightgreen.svg)](https://mattermost.brainhack.org/brainhack/channels/nimare)
@@ -18,7 +18,7 @@ Currently, NiMARE implements a range of image- and coordinate-based meta-analyti
 
 ## Installation
 
-Please see our [installation instructions](https://nimare.readthedocs.io/en/latest/installation.html)
+Please see our [installation instructions](https://nimare.readthedocs.io/en/stable/installation.html)
 for information on how to install NiMARE.
 
 ### Installation with pip

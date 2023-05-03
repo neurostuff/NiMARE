@@ -68,6 +68,8 @@
 
 .. _PyMARE: https://pymare.readthedocs.io/en/latest/
 
+.. _Python Supported Versions: https://devguide.python.org/versions/#supported-versions
+
 .. _scikit-learn: https://scikit-learn.org/stable/developers/index.html
 
 .. _Scribe: https://brainmap.org/scribe/

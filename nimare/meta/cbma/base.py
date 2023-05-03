@@ -75,7 +75,7 @@ class CBMAEstimator(Estimator):
         # Flag any extraneous kwargs
         other_kwargs = dict(set(kwargs.items()) - set(kernel_args.items()))
         if other_kwargs:
-            LGR.warn(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
+            LGR.warning(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
 
         # Get kernel transformer
         kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
