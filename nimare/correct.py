@@ -80,8 +80,13 @@ class Corrector(metaclass=ABCMeta):
                 f"\tAvailable native methods: {', '.join(corr_methods)}\n"
                 f"\tAvailable estimator methods: {', '.join(est_methods)}"
             )
-
         # Check required maps
+        # for cbmr approach, we have customized name for groupwise p maps
+        p_map_cbmr = tuple(
+            [m for m in result.maps.keys() if m.startswith("p_") and "_corr-" not in m]
+        )
+        if len(p_map_cbmr) > 0:
+            self._required_maps = p_map_cbmr
         for rm in self._required_maps:
             if result.maps.get(rm) is None:
                 raise ValueError(
@@ -89,15 +94,19 @@ class Corrector(metaclass=ABCMeta):
                     "but none were found."
                 )
 
-    def _generate_secondary_maps(self, result, corr_maps):
+    def _generate_secondary_maps(self, result, corr_maps, rm):
         """Generate corrected version of z and log-p maps if they exist."""
-        p = corr_maps["p"]
+        p = corr_maps[rm]
 
-        if "z" in result.maps:
-            corr_maps["z"] = p_to_z(p) * np.sign(result.maps["z"])
+        if rm == "p":
+            z_map_name, logp_map_name = "z", "logp"
+        else:
+            z_map_name, logp_map_name = rm.replace("p_", "z_"), rm.replace("p_", "logp_")
+        if z_map_name in result.maps:
+            corr_maps[z_map_name] = p_to_z(p) * np.sign(result.maps[z_map_name])
 
-        if "logp" in result.maps:
-            corr_maps["logp"] = -np.log10(p)
+        if logp_map_name in result.maps:
+            corr_maps[logp_map_name] = -np.log10(p)
 
         return corr_maps
 
@@ -220,22 +229,26 @@ class Corrector(metaclass=ABCMeta):
         description_ : :obj:`str`
             A description of the correction procedure.
         """
-        p = result.maps["p"]
-
-        # Find NaNs in the p value map, and mask them out
-        nonnan_mask = ~np.isnan(p)
-        p_corr = np.empty_like(p)
-        p_no_nans = p[nonnan_mask]
-
-        # Call the correction method
-        p_corr_no_nans, tables, description = getattr(self, method)(p_no_nans)
-
-        # Unmask the corrected p values based on the NaN mask
-        p_corr[nonnan_mask] = p_corr_no_nans
-
         # Create a dictionary of the corrected results
-        corr_maps = {"p": p_corr}
-        self._generate_secondary_maps(result, corr_maps)
+        corr_maps = {}
+        for rm in self._required_maps:
+            p = result.maps[rm]
+
+            # Find NaNs in the p value map, and mask them out
+            nonnan_mask = ~np.isnan(p)
+            p_corr = np.empty_like(p)
+            p_no_nans = p[nonnan_mask]
+
+            # Call the correction method
+            p_corr_no_nans, tables, description = getattr(self, method)(p_no_nans)
+
+            # Unmask the corrected p values based on the NaN mask
+            p_corr[nonnan_mask] = p_corr_no_nans
+
+            # Create a dictionary of the corrected results
+            corr_maps[rm] = p_corr
+            self._generate_secondary_maps(result, corr_maps, rm)
+
         return corr_maps, tables, description
 
 

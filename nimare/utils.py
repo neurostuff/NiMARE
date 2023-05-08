@@ -15,6 +15,7 @@ import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from nilearn.input_data import NiftiMasker
 
 LGR = logging.getLogger(__name__)
@@ -1001,7 +1002,7 @@ def unique_rows(ar, return_counts=False):
     ...                [1, 0, 1]], np.uint8)
     >>> unique_rows(ar)
     array([[0, 1, 0],
-           [1, 0, 1]], dtype=uint8)
+        [1, 0, 1]], dtype=uint8)
 
     License
     -------
@@ -1231,3 +1232,152 @@ def load_nimads(studyset, annotation=None):
     if annotation:
         studyset.annotations = annotation
     return studyset
+
+
+def coef_spline_bases(axis_coords, spacing, margin):
+    """
+    Coefficient of cubic B-spline bases in any x/y/z direction.
+
+    Parameters
+    ----------
+    axis_coords : value range in x/y/z direction
+    spacing: (equally spaced) knots spacing in x/y/z direction,
+    margin: extend the region where B-splines are constructed (min-margin, max_margin)
+            to avoid weakly-supported B-spline on the edge
+    Returns
+    -------
+    coef_spline : 2-D ndarray (n_points x n_spline_bases)
+    """
+    import patsy
+
+    # create B-spline basis for x/y/z coordinate
+    wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
+    knots = np.arange(  # noqa: F841
+        np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing
+    )
+    design_matrix = patsy.dmatrix(
+        "bs(x, knots=knots, degree=3,include_intercept=False)",
+        data={"x": wider_axis_coords},
+        return_type="matrix",
+    )
+    design_array = np.array(design_matrix)[:, 1:]  # remove the first column (every element is 1)
+    coef_spline = design_array[margin : -margin + 1, :]
+    # remove the basis with no/weakly support from the square
+    supported_basis = np.sum(coef_spline, axis=0) != 0
+    coef_spline = coef_spline[:, supported_basis]
+
+    return coef_spline
+
+
+def b_spline_bases(masker_voxels, spacing, margin=10):
+    """Cubic B-spline bases for spatial intensity.
+
+    The whole coefficient matrix is constructed by taking tensor product of
+    all B-spline bases coefficient matrix in three direction.
+
+    Parameters
+    ----------
+    masker_voxels : :obj:`numpy.ndarray`
+        matrix with element either 0 or 1, indicating if it's within brain mask,
+    spacing : :obj:`int`
+        (equally spaced) knots spacing in x/y/z direction,
+    margin : :obj:`int`
+        extend the region where B-splines are constructed (min-margin, max_margin)
+        to avoid weakly-supported B-spline on the edge
+    Returns
+    -------
+    X : :obj:`numpy.ndarray`
+        2-D ndarray (n_voxel x n_spline_bases) only keeps with within-brain voxels
+    """
+    # dim_mask = masker_voxels.shape
+    # n_brain_voxel = np.sum(masker_voxels)
+    # remove the blank space around the brain mask
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+
+    x_spline = coef_spline_bases(xx, spacing, margin)
+    y_spline = coef_spline_bases(yy, spacing, margin)
+    z_spline = coef_spline_bases(zz, spacing, margin)
+    x_spline_coords = x_spline.nonzero()
+    y_spline_coords = y_spline.nonzero()
+    z_spline_coords = z_spline.nonzero()
+    x_spline_sparse = sparse.COO(x_spline_coords, x_spline[x_spline_coords])
+    y_spline_sparse = sparse.COO(y_spline_coords, y_spline[y_spline_coords])
+    z_spline_sparse = sparse.COO(z_spline_coords, z_spline[z_spline_coords])
+
+    # create spatial design matrix by tensor product of spline bases in 3 dimesion
+    # Row sums of X are all 1=> There is no need to re-normalise X
+    X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)
+    # remove the voxels outside brain mask
+    axis_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
+    brain_voxels_index = [
+        (z - np.min(zz))
+        + axis_dim[2] * (y - np.min(yy))
+        + axis_dim[1] * axis_dim[2] * (x - np.min(xx))
+        for x in xx
+        for y in yy
+        for z in zz
+        if masker_voxels[x, y, z] == 1
+    ]
+    X = X[brain_voxels_index, :].todense()
+    # remove tensor product basis that have no support in the brain
+    x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
+    support_basis = []
+    # find and remove weakly supported B-spline bases
+    for bx in range(x_df):
+        for by in range(y_df):
+            for bz in range(z_df):
+                basis_index = bz + z_df * by + z_df * y_df * bx
+                basis_coef = X[:, basis_index]
+                if np.max(basis_coef) >= 0.1:
+                    support_basis.append(basis_index)
+    X = X[:, support_basis]
+
+    return X
+
+
+def dummy_encoding_moderators(dataset_annotations, moderators):
+    """Convert categorical moderators to dummy encoded variables.
+
+    Parameters
+    ----------
+    dataset_annotations : :obj:`pandas.DataFrame`
+        Annotations of the dataset.
+    moderators : :obj:`list`
+        Study-level moderators to be considered into CBMR framework.
+
+    Returns
+    -------
+    dataset_annotations : :obj:`pandas.DataFrame`
+        Annotations of the dataset with dummy encoded moderator columns.
+    new_moderators : :obj:`list`
+        List of study-level moderators after dummy encoding.
+    """
+    new_moderators = []
+    for moderator in moderators.copy():
+        if len(moderator.split(":reference=")) == 2:
+            moderator, reference_subtype = moderator.split(":reference=")
+        if np.array_equal(
+            dataset_annotations[moderator], dataset_annotations[moderator].astype(str)
+        ):
+            categories_unique = dataset_annotations[moderator].unique().tolist()
+            # sort categories alphabetically
+            categories_unique = sorted(categories_unique, key=str.lower)
+            if "reference_subtype" in locals():
+                # remove reference subgroup from list and add it to the first position
+                categories_unique.remove(reference_subtype)
+                categories_unique.insert(0, reference_subtype)
+            for category in categories_unique:
+                dataset_annotations[category] = (
+                    dataset_annotations[moderator] == category
+                ).astype(int)
+            # remove last categorical moderator column as it encoded
+            # as the other dummy encoded columns being zero
+            dataset_annotations = dataset_annotations.drop([categories_unique[0]], axis=1)
+            new_moderators.extend(
+                categories_unique[1:]
+            )  # add dummy encoded moderators (except from the reference subgroup)
+        else:
+            new_moderators.append(moderator)
+    return dataset_annotations, new_moderators

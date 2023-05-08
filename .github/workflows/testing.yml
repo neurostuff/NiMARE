@@ -51,7 +51,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests]
       - name: 'Run tests'
         shell: bash {0}
         run: make unittest
@@ -83,7 +83,7 @@ jobs:
             python-version: 3.8
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[minimum,tests,peaks2maps-cpu]
+        run: pip install -e .[minimum,tests]
       - name: 'Run tests'
         shell: bash {0}
         run: make unittest
@@ -115,7 +115,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_estimators
@@ -147,7 +147,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_correctors
@@ -179,7 +179,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_smoke

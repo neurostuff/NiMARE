@@ -1,4 +1,5 @@
 """Utility functions for testing nimare."""
+import logging
 import os.path as op
 from contextlib import ExitStack as does_not_raise
 
@@ -11,6 +12,8 @@ from nimare.meta.utils import compute_kda_ma
 # set significance levels used for testing.
 # duplicated in test_estimator_performance
 ALPHA = 0.05
+
+LGR = logging.getLogger(__name__)
 
 
 def get_test_data_path():

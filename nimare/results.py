@@ -76,6 +76,7 @@ class MetaResult(NiMAREBase):
 
         self.maps = maps
         self.tables = tables
+        self.metadata = {}
         self.description_ = description
 
     @property

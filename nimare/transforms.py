@@ -475,6 +475,45 @@ class ImagesToCoordinates(NiMAREBase):
         return new_dataset
 
 
+class StandardizeField(NiMAREBase):
+    """Standardize metadata fields."""
+
+    def __init__(self, fields):
+        self.fields = fields  # the fields to be standardized
+
+    def transform(self, dataset):
+        """Standardize metadata fields."""
+        # update a copy of the dataset
+        dataset = dataset.copy()
+
+        categorical_metadata, numerical_metadata = [], []
+        for metadata_name in self.fields:
+            if np.array_equal(
+                dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(str)
+            ):
+                categorical_metadata.append(metadata_name)
+            elif np.array_equal(
+                dataset.annotations[metadata_name],
+                dataset.annotations[metadata_name].astype(float),
+            ):
+                numerical_metadata.append(metadata_name)
+        if len(categorical_metadata) > 0:
+            LGR.warning(f"Categorical metadata {categorical_metadata} can't be standardized.")
+        if len(numerical_metadata) == 0:
+            raise ValueError("No numerical metadata found.")
+
+        moderators = dataset.annotations[numerical_metadata]
+        standardize_moderators = moderators - np.mean(moderators, axis=0)
+        standardize_moderators /= np.std(standardize_moderators, axis=0)
+        if isinstance(self.fields, str):
+            column_name = "standardized_" + self.fields
+        elif isinstance(self.fields, list):
+            column_name = ["standardized_" + moderator for moderator in numerical_metadata]
+        dataset.annotations[column_name] = standardize_moderators
+
+        return dataset
+
+
 def sample_sizes_to_dof(sample_sizes):
     """Calculate degrees of freedom from a list of sample sizes using a simple heuristic.
 

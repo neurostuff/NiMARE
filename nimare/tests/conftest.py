@@ -10,6 +10,7 @@ from nilearn.image import resample_img
 from requests import request
 
 import nimare
+from nimare.generate import create_coordinate_dataset
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_resource_path
 
@@ -67,6 +68,39 @@ def testdata_cbma_full():
     """
     dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
     dset = nimare.dataset.Dataset(dset_file)
+    return dset
+
+
+@pytest.fixture(scope="session")
+def testdata_cbmr_simulated():
+    """Simulate coordinate-based dataset for tests."""
+    # simulate
+    ground_truth_foci, dset = create_coordinate_dataset(
+        foci=10, sample_size=(20, 40), n_studies=1000, seed=100
+    )
+    # set up group columns: diagnosis & drug_status
+    n_rows = dset.annotations.shape[0]
+    dset.annotations["diagnosis"] = [
+        "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
+    ]
+    dset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+    dset.annotations["drug_status"] = (
+        dset.annotations["drug_status"].sample(frac=1).reset_index(drop=True)
+    )  # random shuffle drug_status column
+    # set up moderators: sample sizes & avg_age
+    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)]
+    dset.annotations["avg_age"] = np.arange(n_rows)
+    dset.annotations["schizophrenia_subtype"] = [
+        "type1",
+        "type2",
+        "type3",
+        "type4",
+        "type5",
+    ] * int(n_rows / 5)
+    dset.annotations["schizophrenia_subtype"] = (
+        dset.annotations["schizophrenia_subtype"].sample(frac=1).reset_index(drop=True)
+    )  # random shuffle drug_status column
+
     return dset
 
 
