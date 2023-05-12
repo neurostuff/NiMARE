@@ -1,0 +1,56 @@
+# STATEMENT OF CHANGES: This file is derived from sources licensed under the Apache-2.0 terms,
+# and this file has been changed.
+# The original file this work derives from is found at:
+# https://github.com/nipreps/niworkflows/blob/9905f90110879ed4123ea291f512b0a60d7ba207/niworkflows/reports/default.yml
+#
+# [May 2023] CHANGES:
+#    * Replace BIDSlayout with code that uses the nimare Dataset and MetaResult class.
+#
+# ORIGINAL WORK'S ATTRIBUTION NOTICE:
+#
+#     Copyright 2021 The NiPreps Developers <nipreps@gmail.com>
+#
+#     Licensed under the Apache License, Version 2.0 (the "License");
+#     you may not use this file except in compliance with the License.
+#     You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.
+package: nimare
+sections:
+- name: Summary
+  reportlets:
+  - bids: {value: preliminary, suffix: summary}
+- name: Meta-Analysis
+  reportlets:
+  - bids: {value: estimator, suffix: summary}
+    title: Estimator
+    description: Parameter use to fit the meta-analytic estimator.
+  - bids: {value: z, corr: FDR, method: indep, suffix: figure}
+  - bids: {value: z, level: cluster, corr: fwe, method: fdr, suffix: figure}
+    title: This is the Title.
+    subtitle: This is the Sub-title.
+    caption: This is the Caption.
+    description: This is the description.
+    static: false
+- name: Diagnostics
+  reportlets:
+  - bids: {value: diagnostics, suffix: summary}
+    title: DiagnosticsName
+    description: Parameter use to fit the Diagnostics.
+  - bids: {value: z, corr: FDR, method: indep, suffix: FocusCounter}
+  - bids: {value: z, level: cluster, corr: fwe, method: fdr, suffix: figure}
+    title: This is the Title.
+    subtitle: This is the Sub-title.
+    caption: This is the Caption.
+    description: This is the description.
+    static: false
+    
+- name: About
+  reportlets:
+  - bids: {value: figures, suffix: T1w}
