@@ -69,7 +69,7 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
 def plot_static_brain(img, out_filename):
     """Plot static brain."""
     template = datasets.load_mni152_template(resolution=1)
-    plot_stat_map(
+    fig = plot_stat_map(
         img,
         bg_img=template,
         black_bg=False,
@@ -77,8 +77,8 @@ def plot_static_brain(img, out_filename):
         threshold=2,
         vmax=4,
         display_mode="mosaic",
-        output_file=out_filename,
     )
+    fig.savefig(out_filename, dpi=1000)
 
 
 def plot_coordinates(results, out_filename):
@@ -87,8 +87,8 @@ def plot_coordinates(results, out_filename):
     n_coords = len(node_coords)
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
-    plot_connectome(adjacency_matrix, node_coords, output_file=out_filename)
-    # plt.savefig(out_filename, bbox_inches="tight", dpi=1000)
+    fig = plot_connectome(adjacency_matrix, node_coords)
+    fig.savefig(out_filename, dpi=1000)
 
 
 def plot_dynamic_brain(img, out_filename):
