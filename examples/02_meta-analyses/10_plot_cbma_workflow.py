@@ -28,6 +28,7 @@ from nimare.workflows import cbma_workflow
 
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
+print(get_resource_path())
 
 ###############################################################################
 # Run CBMA Workflow
@@ -81,11 +82,14 @@ result.tables["z_corr-FDR_method-indep_Jackknife"]
 # Finally, a NiMARE report is generated from the MetaResult.
 print(os.getcwd())
 root_dir = Path(os.getcwd()).parents[1]
-html_dir = root_dir / "auto_examples" / "02_meta-analyses"
+# auto_examples
+html_dir = root_dir / "examples" / "02_meta-analyses"
 html_dir.mkdir(parents=True, exist_ok=True)
 print(html_dir)
 print(root_dir)
 run_reports(result, html_dir)
+
+print(os.listdir(html_dir))
 
 ####################################
 # .. raw:: html
