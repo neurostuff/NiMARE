@@ -29,12 +29,7 @@ from pathlib import Path
 import jinja2
 from pkg_resources import resource_filename as pkgrf
 
-from nimare.reports.figures import (
-    gen_table,
-    plot_dynamic_brain,
-    plot_heatmap,
-    plot_static_brain,
-)
+from nimare.reports.figures import plot_dynamic_brain, plot_heatmap
 
 SVG_SNIPPET = [
     """\
@@ -159,7 +154,7 @@ def gen_figures(results, fig_dir):
 
 
 class Element(object):
-    """Just a basic component of a report"""
+    """Just a basic component of a report."""
 
     def __init__(self, name, title=None):
         self.name = name
@@ -284,7 +279,7 @@ class Report:
                 self.sections.append(sub_report)
 
     def generate_report(self):
-        """Once the Report has been indexed, the final HTML can be generated"""
+        """Once the Report has been indexed, the final HTML can be generated."""
         boilerplate = []
         boiler_idx = 0
 
