@@ -78,8 +78,8 @@ def plot_coordinates(results, out_filename):
     n_coords = len(node_coords)
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
-    plot_connectome(adjacency_matrix, node_coords)
-    plt.savefig(out_filename, bbox_inches="tight", dpi=1000)
+    plot_connectome(adjacency_matrix, node_coords, output_file=out_filename)
+    # plt.savefig(out_filename, bbox_inches="tight", dpi=1000)
 
 
 def plot_dynamic_brain(img, out_filename):
