@@ -90,6 +90,7 @@ print(root_dir)
 run_reports(result, html_dir)
 
 print(os.listdir(html_dir))
+print(os.listdir(root_dir))
 
 ####################################
 # .. raw:: html
