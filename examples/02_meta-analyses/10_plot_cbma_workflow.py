@@ -79,7 +79,9 @@ result.tables["z_corr-FDR_method-indep_Jackknife"]
 # Report
 # -----------------------------------------------------------------------------
 # Finally, a NiMARE report is generated from the MetaResult.
+print(os.getcwd())
 root_dir = Path(os.getcwd()).parents[1]
+print(root_dir)
 html_dir = root_dir / "docs" / "_build" / "html" / "auto_examples" / "02_meta-analyses"
 html_dir.mkdir(parents=True, exist_ok=True)
 
