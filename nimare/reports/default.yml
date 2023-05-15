@@ -43,6 +43,7 @@ sections:
   - bids: {value: diagnostics, suffix: summary}
     title: DiagnosticsName
     description: Parameter use to fit the Diagnostics.
+  - bids: {value: z, corr: FDR, method: indep, suffix: Jackknife}
   - bids: {value: z, corr: FDR, method: indep, suffix: FocusCounter}
   - bids: {value: z, level: cluster, corr: fwe, method: fdr, suffix: figure}
     title: This is the Title.
