@@ -29,7 +29,7 @@ from pathlib import Path
 import jinja2
 from pkg_resources import resource_filename as pkgrf
 
-from nimare.reports.figures import plot_dynamic_brain, plot_heatmap
+from nimare.reports.figures import plot_coordinates, plot_dynamic_brain, plot_heatmap
 
 SVG_SNIPPET = [
     """\
@@ -62,6 +62,7 @@ SUMMARY_TEMPLATE = """\
 \t<ul class="elem-desc">
 \t\t<li>Number of studies: {n_exps:d}</li>
 \t\t<li>Number of studies included: {n_exps_sel:d}</li>
+\t\t<li>Number of foci: {n_foci:d} </li>
 \t\t<li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>
 \t</ul>
 """
@@ -117,6 +118,7 @@ def gen_summary(results, out_filename):
     summary_text = SUMMARY_TEMPLATE.format(
         n_exps=n_exps,
         n_exps_sel=n_exps_sel,
+        n_foci=n_foci,
         n_foci_nonbrain=n_foci_nonbrain,
     )
     (out_filename).write_text(summary_text, encoding="UTF-8")
@@ -124,6 +126,8 @@ def gen_summary(results, out_filename):
 
 def gen_figures(results, fig_dir):
     """Generate html and jpeg objects for the report."""
+    plot_coordinates(results, fig_dir / "preliminary_figure.png")
+
     img_keys = [
         img_key
         for img_key in results.maps.keys()

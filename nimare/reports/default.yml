@@ -26,6 +26,7 @@ sections:
 - name: Summary
   reportlets:
   - bids: {value: preliminary, suffix: summary}
+  - bids: {value: preliminary, suffix: figure}
 - name: Meta-Analysis
   reportlets:
   - bids: {value: estimator, suffix: summary}

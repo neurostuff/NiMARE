@@ -2,7 +2,9 @@
 import numpy as np
 import pandas as pd
 import plotly.express as px
+from matplotlib import pyplot as plt
 from nilearn import datasets, plotting
+from nilearn.plotting import plot_connectome
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
 
@@ -68,6 +70,16 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
 def plot_static_brain():
     """Plot static brain."""
     pass
+
+
+def plot_coordinates(results, out_filename):
+    """Plot static brain."""
+    node_coords = results.estimator.dataset.coordinates[["x", "y", "z"]].to_numpy()
+    n_coords = len(node_coords)
+    adjacency_matrix = np.zeros((n_coords, n_coords))
+
+    plot_connectome(adjacency_matrix, node_coords)
+    plt.savefig(out_filename, bbox_inches="tight", dpi=1000)
 
 
 def plot_dynamic_brain(img, out_filename):
