@@ -91,4 +91,4 @@ run_reports(result, html_dir)
 ####################################
 # .. raw:: html
 #
-#     <iframe src="../../docs/_reports/report.html" width="100%" height="1000px"></iframe>
+#     <iframe src="../../_reports/report.html" width="100%" height="1000px"></iframe>
