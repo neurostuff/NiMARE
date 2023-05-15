@@ -32,7 +32,8 @@ sections:
   - bids: {value: estimator, suffix: summary}
     title: Estimator
     description: Parameter use to fit the meta-analytic estimator.
-  - bids: {value: z, corr: FDR, method: indep, suffix: figure}
+  - bids: {value: z, corr: FDR, method: indep, suffix: figure-static}
+  - bids: {value: z, corr: FDR, method: indep, suffix: figure-dynamic}
   - bids: {value: z, level: cluster, corr: fwe, method: fdr, suffix: figure}
     title: This is the Title.
     subtitle: This is the Sub-title.

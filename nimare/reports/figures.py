@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from nilearn import datasets, plotting
-from nilearn.plotting import plot_connectome
+from nilearn.plotting import plot_connectome, plot_stat_map
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
 
@@ -66,9 +66,19 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
     return mat, row_labels, col_labels
 
 
-def plot_static_brain():
+def plot_static_brain(img, out_filename):
     """Plot static brain."""
-    pass
+    template = datasets.load_mni152_template(resolution=1)
+    plot_stat_map(
+        img,
+        bg_img=template,
+        black_bg=False,
+        draw_cross=False,
+        threshold=2,
+        vmax=4,
+        display_mode="mosaic",
+        output_file=out_filename,
+    )
 
 
 def plot_coordinates(results, out_filename):

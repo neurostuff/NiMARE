@@ -29,7 +29,12 @@ from pathlib import Path
 import jinja2
 from pkg_resources import resource_filename as pkgrf
 
-from nimare.reports.figures import plot_coordinates, plot_dynamic_brain, plot_heatmap
+from nimare.reports.figures import (
+    plot_coordinates,
+    plot_dynamic_brain,
+    plot_heatmap,
+    plot_static_brain,
+)
 
 SVG_SNIPPET = [
     """\
@@ -141,8 +146,8 @@ def gen_figures(results, fig_dir):
     for img_key in img_keys:
         # Plot brain images
         img = results.get_map(img_key)
-        plot_dynamic_brain(img, fig_dir / f"{img_key}_figure.html")
-        # plot_static_brain(img, out_dir)
+        plot_dynamic_brain(img, fig_dir / f"{img_key}_figure-dynamic.html")
+        plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png")
 
         # Plot clusters table
         # cluster_table = results.tables[f"{img_key}_clust"]
