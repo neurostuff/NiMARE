@@ -79,6 +79,7 @@ def plot_static_brain(img, out_filename):
         display_mode="mosaic",
     )
     fig.savefig(out_filename, dpi=1000)
+    fig.close()
 
 
 def plot_coordinates(results, out_filename):
@@ -89,6 +90,7 @@ def plot_coordinates(results, out_filename):
 
     fig = plot_connectome(adjacency_matrix, node_coords)
     fig.savefig(out_filename, dpi=1000)
+    fig.close()
 
 
 def plot_dynamic_brain(img, out_filename):
