@@ -2,7 +2,6 @@
 import numpy as np
 import pandas as pd
 import plotly.express as px
-from matplotlib import pyplot as plt
 from nilearn import datasets, plotting
 from nilearn.plotting import plot_connectome
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
