@@ -126,7 +126,7 @@ class ALE(CBMAEstimator):
         kernel_transformer=ALEKernel,
         null_method="approximate",
         n_iters=None,
-        n_cores=None,
+        n_cores=1,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -140,7 +140,7 @@ class ALE(CBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
         self.n_iters = None if null_method == "approximate" else n_iters or 10000
-        self.n_cores = None if null_method == "approximate" else _check_ncores(n_cores) or 1
+        self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
     def _generate_description(self):
