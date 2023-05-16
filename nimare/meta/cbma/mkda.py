@@ -125,8 +125,8 @@ class MKDADensity(CBMAEstimator):
         self,
         kernel_transformer=MKDAKernel,
         null_method="approximate",
-        n_iters=10000,
-        n_cores=1,
+        n_iters=None,
+        n_cores=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
@@ -139,8 +139,8 @@ class MKDADensity(CBMAEstimator):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
-        self.n_iters = n_iters
-        self.n_cores = _check_ncores(n_cores)
+        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_cores = None if null_method == "approximate" else _check_ncores(n_cores) or 1
         self.dataset = None
 
     def _generate_description(self):
@@ -1112,8 +1112,8 @@ class KDA(CBMAEstimator):
         self,
         kernel_transformer=KDAKernel,
         null_method="approximate",
-        n_iters=10000,
-        n_cores=1,
+        n_iters=None,
+        n_cores=None,
         **kwargs,
     ):
         LGR.warning(
@@ -1132,8 +1132,8 @@ class KDA(CBMAEstimator):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
-        self.n_iters = n_iters
-        self.n_cores = _check_ncores(n_cores)
+        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_cores = None if null_method == "approximate" else _check_ncores(n_cores) or 1
         self.dataset = None
 
     def _generate_description(self):
