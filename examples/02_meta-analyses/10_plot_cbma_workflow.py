@@ -80,13 +80,10 @@ result.tables["z_corr-FDR_method-indep_Jackknife"]
 # -----------------------------------------------------------------------------
 # Finally, a NiMARE report is generated from the MetaResult.
 root_dir = Path(os.getcwd()).parents[1]
-# Use the follofing path to test locally:
+# Use the following path to test locally:
 # html_dir = root_dir / "docs" / "_build" / "html" / "auto_examples" / "02_meta-analyses"
-# html_dir = root_dir / "docs" / "auto_examples" / "02_meta-analyses"
 html_dir = root_dir / "_readthedocs" / "html" / "auto_examples" / "02_meta-analyses"
 html_dir.mkdir(parents=True, exist_ok=True)
-print(os.listdir(root_dir / "_readthedocs" / "html"))
-print(os.listdir(html_dir))
 
 run_reports(result, html_dir)
 
