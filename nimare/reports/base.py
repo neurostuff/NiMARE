@@ -71,6 +71,10 @@ SUMMARY_TEMPLATE = """\
 \t\t<li>Number of foci: {n_foci:d} </li>
 \t\t<li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>
 \t</ul>
+<details>
+<summary>Studies excluded</summary><br />
+<p>{exc_ids}</p>
+</details>
 """
 
 ESTIMATOR_TEMPLATE = """\
@@ -120,12 +124,15 @@ def gen_summary(results, out_filename):
 
     n_exps = len(dset.ids)
     n_exps_sel = len(sel_dset.ids)
+    exc_ids = list(set(dset.ids) - set(sel_dset.ids))
+    exc_ids_str = ", ".join(exc_ids)
 
     summary_text = SUMMARY_TEMPLATE.format(
         n_exps=n_exps,
         n_exps_sel=n_exps_sel,
         n_foci=n_foci,
         n_foci_nonbrain=n_foci_nonbrain,
+        exc_ids=exc_ids_str,
     )
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
@@ -153,7 +160,7 @@ def gen_figures(results, fig_dir):
         # Plot clusters table
         cluster_table = results.tables[f"{img_key}_clust"]
         gen_table(cluster_table, fig_dir / f"{img_key}_clust.html")
-        # plot_static_brain(img, fig_dir / f"{img_key}_clust.png")
+        # plot_clusters(img, fig_dir / f"{img_key}_clust.png")
 
         # Plot diganosics results
         for diag_name in diag_names:
