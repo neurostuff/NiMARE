@@ -78,7 +78,7 @@ def plot_static_brain(img, out_filename):
         vmax=4,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=1000)
+    fig.savefig(out_filename, dpi=300)
     fig.close()
 
 
@@ -89,7 +89,7 @@ def plot_coordinates(results, out_filename):
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
     fig = plot_connectome(adjacency_matrix, node_coords)
-    fig.savefig(out_filename, dpi=1000)
+    fig.savefig(out_filename, dpi=300)
     fig.close()
 
 
@@ -122,4 +122,9 @@ def plot_heatmap(contribution_table, out_filename):
 
 def gen_table(clusters_table, out_filename):
     """Generate table."""
-    pass
+    clusters_table.to_html(
+        out_filename,
+        na_rep="",
+        border=1,
+        justify="center",
+    )

@@ -30,6 +30,7 @@ import jinja2
 from pkg_resources import resource_filename as pkgrf
 
 from nimare.reports.figures import (
+    gen_table,
     plot_coordinates,
     plot_dynamic_brain,
     plot_heatmap,
@@ -150,8 +151,9 @@ def gen_figures(results, fig_dir):
         plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png")
 
         # Plot clusters table
-        # cluster_table = results.tables[f"{img_key}_clust"]
-        # gen_table(cluster_table, out_dir)
+        cluster_table = results.tables[f"{img_key}_clust"]
+        gen_table(cluster_table, fig_dir / f"{img_key}_clust.html")
+        # plot_static_brain(img, fig_dir / f"{img_key}_clust.png")
 
         # Plot diganosics results
         for diag_name in diag_names:
