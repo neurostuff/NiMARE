@@ -117,6 +117,11 @@ def plot_heatmap(contribution_table, out_filename):
     new_df = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
     fig = px.imshow(new_df, color_continuous_scale="Reds")
+    fig.update_layout(
+        autosize=False,
+        width=800,
+        height=800,
+    )
     fig.write_html(out_filename)
 
 
