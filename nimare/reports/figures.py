@@ -6,6 +6,20 @@ from nilearn import datasets, plotting
 from nilearn.plotting import plot_connectome, plot_stat_map
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
+TABLE_STYLE = [
+    dict(
+        selector="th, td",
+        props=[
+            ("text-align", "center"),
+            ("font-family", "monospace"),
+            ("font-size", "15px"),
+            ("padding", "5px 3px"),
+            ("margin", "0px 3px"),
+            ("border", "1px solid #ddd"),
+        ],
+    ),
+]
+
 
 def _reorder_matrix(mat, row_labels, col_labels, reorder):
     """Reorder a matrix.
@@ -127,9 +141,15 @@ def plot_heatmap(contribution_table, out_filename):
 
 def gen_table(clusters_table, out_filename):
     """Generate table."""
-    clusters_table.to_html(
-        out_filename,
-        na_rep="",
-        border=1,
-        justify="center",
-    )
+    clust_ids = clusters_table["Cluster ID"].to_list()
+    clusters_table = clusters_table.drop(columns=["Cluster ID"])
+
+    tail = [c_id.split(" ")[0].split("Tail")[0] for c_id in clust_ids]
+    ids = [c_id.split(" ")[1] for c_id in clust_ids]
+    tuples = list(zip(*[tail, ids]))
+    row = pd.MultiIndex.from_tuples(tuples)
+    clusters_table.index = row
+    clusters_table.index = clusters_table.index.rename(["Tail", "Cluster ID"])
+
+    styled_df = clusters_table.style.format(precision=2).set_table_styles(TABLE_STYLE)
+    styled_df.to_html(out_filename)
