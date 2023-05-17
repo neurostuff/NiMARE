@@ -125,7 +125,7 @@ class ALE(CBMAEstimator):
         self,
         kernel_transformer=ALEKernel,
         null_method="approximate",
-        n_iters=10000,
+        n_iters=None,
         n_cores=1,
         **kwargs,
     ):
@@ -139,7 +139,7 @@ class ALE(CBMAEstimator):
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
         self.null_method = null_method
-        self.n_iters = n_iters
+        self.n_iters = None if null_method == "approximate" else n_iters or 10000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
