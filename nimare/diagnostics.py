@@ -20,6 +20,10 @@ LGR = logging.getLogger(__name__)
 class Diagnostics(NiMAREBase):
     """Base class for diagnostic methods.
 
+    .. versionchanged:: 0.1.0
+
+        - Transform now returns a MetaResult object.
+
     .. versionadded:: 0.0.14
 
     Parameters
