@@ -15,7 +15,7 @@ Here is the basic naming convention for statistical maps:
 
 .. code-block:: Text
 
-   <value>[_desc-<label>][_level-<cluster|voxel>][_corr-<FWE|FDR>][_method-<label>].nii.gz
+   <value>[_desc-<label>][_level-<cluster|voxel>][_corr-<FWE|FDR>][_method-<label>][_diag-<Jackknife|FocusCounter>].nii.gz
 
 
 First, the ``value`` represents type of data in the map (e.g., z-statistic, t-statistic).
@@ -44,6 +44,7 @@ Next, a series of key/value pairs describe the methods applied to generate the m
 - ``level``: Level of multiple comparisons correction. Either ``cluster`` or ``voxel``.
 - ``corr``: Type of multiple comparisons correction. Either ``FWE`` (familywise error rate) or ``FDR`` (false discovery rate).
 - ``method``: Name of the method used for multiple comparisons correction (e.g., "montecarlo" for a Monte Carlo procedure).
+- ``diag``: Type of diagnostic. Either ``Jackknife`` (jackknife analysis) or ``FocusCounter`` (focus-count analysis).
 
 File contents
 -------------

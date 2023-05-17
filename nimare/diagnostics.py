@@ -96,6 +96,9 @@ class Diagnostics(NiMAREBase):
             correspond to positive and negative tails.
             If no clusters are found, this list will be empty.
         """
+        masker = result.estimator.masker
+        diag_name = self.__class__.__name__
+
         none_contribution_table = False
         if not hasattr(result.estimator, "dataset"):
             LGR.warning(
@@ -143,7 +146,12 @@ class Diagnostics(NiMAREBase):
             ]
 
         if (n_clusters == 0) or none_contribution_table:
-            return None, clusters_table, label_maps
+            result.tables[f"{self.target_image}_clust"] = clusters_table
+            result.tables[f"{self.target_image}_diag-{diag_name}_counts"] = None
+            result.maps[f"{self.target_image}_PositiveTail"] = None
+
+            result.diagnostics.append(self)
+            return result
 
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
@@ -151,13 +159,12 @@ class Diagnostics(NiMAREBase):
         rows = list(meta_ids)
 
         contribution_tables = []
-        signs = [1, -1] if len(label_maps) == 2 else [1]
+        signs = ["PositiveTail", "NegativeTail"] if len(label_maps) == 2 else ["PositiveTail"]
         for sign, label_map in zip(signs, label_maps):
             cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
 
             # Create contribution table
-            col_name = "PositiveTail" if sign == 1 else "NegativeTail"
-            cols = [f"{col_name} {int(c_id)}" for c_id in cluster_ids]
+            cols = [f"{sign} {int(c_id)}" for c_id in cluster_ids]
             contribution_table = pd.DataFrame(index=rows, columns=cols)
             contribution_table.index.name = "id"
 
@@ -175,7 +182,22 @@ class Diagnostics(NiMAREBase):
         # Concat PositiveTail and NegativeTail tables
         contribution_table = pd.concat(contribution_tables, ignore_index=True, sort=False)
 
-        return contribution_table, clusters_table, label_maps
+        # Save tables and maps to result
+        diag_tables_dict = {
+            f"{self.target_image}_clust": clusters_table,
+            f"{self.target_image}_diag-{diag_name}_counts": contribution_table,
+        }
+        diag_maps_dict = {
+            f"{self.target_image}_{sign}": masker.transform(label_map)
+            for sign, label_map in zip(signs, label_maps)
+        }
+
+        result.tables.update(diag_tables_dict)
+        result.maps.update(diag_maps_dict)
+
+        # Add diagnostics class to result, since more than one can be run
+        result.diagnostics.append(self)
+        return result
 
 
 class Jackknife(Diagnostics):

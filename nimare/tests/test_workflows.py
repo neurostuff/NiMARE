@@ -148,7 +148,9 @@ def test_cbma_workflow_function_smoke(
         for imgtype in cres.maps.keys():
             filename = imgtype + ".nii.gz"
             outpath = op.join(tmpdir, filename)
-            assert op.isfile(outpath)
+            # For estimator == ALE, maps are None
+            if estimator != ALE:
+                assert op.isfile(outpath)
 
         for tabletype in cres.tables.keys():
             filename = tabletype + ".tsv"

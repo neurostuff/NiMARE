@@ -43,15 +43,19 @@ def test_jackknife_smoke(
         res = meta.fit(testdata)
 
     jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=1.65)
-    contribution_table, clusters_table, label_maps = jackknife.transform(res)
+    results = jackknife.transform(res)
 
+    contribution_table = results.tables[f"{target_image}_diag-Jackknife_counts"]
+    clusters_table = results.tables[f"{target_image}_clust"]
+    label_maps = results.maps[f"{target_image}_PositiveTail"]
     if n_samples == "twosample":
         assert contribution_table is None
         assert not clusters_table.empty
-        assert len(label_maps) > 0
+        assert label_maps is None
     else:
         assert contribution_table.shape[0] == len(meta.inputs_["id"])
         assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
+        assert len(label_maps) > 0
 
 
 def test_jackknife_with_zero_clusters(testdata_cbma_full):
@@ -60,8 +64,11 @@ def test_jackknife_with_zero_clusters(testdata_cbma_full):
     res = meta.fit(testdata_cbma_full)
 
     jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=10)
-    contribution_table, clusters_table, label_maps = jackknife.transform(res)
+    results = jackknife.transform(res)
 
+    contribution_table = results.tables["z_diag-Jackknife_counts"]
+    clusters_table = results.tables["z_clust"]
+    label_maps = results.maps["z_PositiveTail"]
     assert contribution_table is None
     assert clusters_table.empty
     assert not label_maps
@@ -80,7 +87,8 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
     res = meta.fit(testdata_ibma)
 
     jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=0.5)
-    contribution_table, _, _ = jackknife.transform(res)
+    results = jackknife.transform(res)
+    contribution_table = results.tables["z_diag-Jackknife_counts"]
     assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
     # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
@@ -115,15 +123,19 @@ def test_focuscounter_smoke(
         res = meta.fit(testdata)
 
     counter = diagnostics.FocusCounter(target_image=target_image, voxel_thresh=1.65)
-    contribution_table, clusters_table, label_maps = counter.transform(res)
+    results = counter.transform(res)
 
+    contribution_table = results.tables[f"{target_image}_diag-FocusCounter_counts"]
+    clusters_table = results.tables[f"{target_image}_clust"]
+    label_maps = results.maps[f"{target_image}_PositiveTail"]
     if n_samples == "twosample":
         assert contribution_table is None
         assert not clusters_table.empty
-        assert len(label_maps) > 0
+        assert label_maps is None
     else:
         assert contribution_table.shape[0] == len(meta.inputs_["id"])
         assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
+        assert len(label_maps) > 0
 
 
 def test_focusfilter(testdata_laird):

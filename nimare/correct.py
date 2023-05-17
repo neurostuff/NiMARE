@@ -199,6 +199,9 @@ class Corrector(metaclass=ABCMeta):
         # Update the estimator as well, in order to retain updated null distributions
         result.estimator = est
 
+        # Save the corrected maps
+        result.corrector = self
+
         return result
 
     def _transform(self, result, method):

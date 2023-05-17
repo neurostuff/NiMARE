@@ -72,7 +72,7 @@ result.tables["z_corr-FDR_method-indep_clust"]
 ###############################################################################
 # Contribution table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FDR_method-indep_Jackknife"]
+result.tables["z_corr-FDR_method-indep_diag-Jackknife_counts"]
 
 ###############################################################################
 # Methods

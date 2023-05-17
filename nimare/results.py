@@ -16,13 +16,22 @@ LGR = logging.getLogger(__name__)
 class MetaResult(NiMAREBase):
     """Base class for meta-analytic results.
 
+    .. versionchanged:: 0.1.0
+
+        - Added corrector and diagnostics attributes.
+
     .. versionchanged:: 0.0.12
+
         - Added the description attribute.
 
     Parameters
     ----------
     estimator : :class:`~nimare.base.Estimator`
         The Estimator used to generate the maps in the MetaResult.
+    corrector : :class:`~nimare.correct.Corrector`
+        The Corrector used to correct the maps in the MetaResult.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
+        List of diagnostic classes.
     mask : Niimg-like or `nilearn.input_data.base_masker.BaseMasker`
         Mask for converting maps between arrays and images.
     maps : None or :obj:`dict` of :obj:`numpy.ndarray`, optional
@@ -36,6 +45,10 @@ class MetaResult(NiMAREBase):
     ----------
     estimator : :class:`~nimare.base.Estimator`
         The Estimator used to generate the maps in the MetaResult.
+    corrector : :class:`~nimare.correct.Corrector`
+        The Corrector used to correct the maps in the MetaResult.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
+        List of diagnostic classes.
     masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object.
     maps : :obj:`dict`
@@ -55,8 +68,20 @@ class MetaResult(NiMAREBase):
         BibTeX file without issue.
     """
 
-    def __init__(self, estimator, mask, maps=None, tables=None, description=""):
+    def __init__(
+        self,
+        estimator,
+        corrector=None,
+        diagnostics=None,
+        mask=None,
+        maps=None,
+        tables=None,
+        description="",
+    ):
         self.estimator = copy.deepcopy(estimator)
+        self.corrector = copy.deepcopy(corrector)
+        diagnostics = diagnostics or []
+        self.diagnostics = [copy.deepcopy(diagnostic) for diagnostic in diagnostics]
         self.masker = get_masker(mask)
 
         maps = maps or {}
@@ -140,7 +165,7 @@ class MetaResult(NiMAREBase):
             os.makedirs(output_dir)
 
         names = names or list(self.maps.keys())
-        maps = {k: self.get_map(k) for k in names}
+        maps = {k: self.get_map(k) for k in names if self.maps[k] is not None}
 
         for imgtype, img in maps.items():
             filename = prefix + imgtype + ".nii.gz"
@@ -188,7 +213,9 @@ class MetaResult(NiMAREBase):
     def copy(self):
         """Return copy of result object."""
         new = MetaResult(
-            self.estimator,
+            estimator=self.estimator,
+            corrector=self.corrector,
+            diagnostics=self.diagnostics,
             mask=self.masker,
             maps=copy.deepcopy(self.maps),
             tables=copy.deepcopy(self.tables),
