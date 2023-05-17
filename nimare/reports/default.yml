@@ -26,7 +26,10 @@ sections:
 - name: Summary
   reportlets:
   - bids: {value: preliminary, suffix: summary}
-  - bids: {value: preliminary, suffix: figure}
+  - bids: {value: preliminary, suffix: figure-static}
+    title: Peak coordinates
+  - bids: {value: preliminary, suffix: figure-dynamic}
+    title: Explorer
 - name: Meta-Analysis
   reportlets:
   - bids: {value: estimator, suffix: summary}

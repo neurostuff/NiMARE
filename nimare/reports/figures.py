@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from nilearn import datasets, plotting
-from nilearn.plotting import plot_connectome, plot_stat_map
+from nilearn.plotting import plot_connectome, plot_stat_map, view_connectome
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
 TABLE_STYLE = [
@@ -96,8 +96,8 @@ def plot_static_brain(img, out_filename):
     fig.close()
 
 
-def plot_coordinates(results, out_filename):
-    """Plot static brain."""
+def plot_static_coords(results, out_filename):
+    """Plot static coordinates."""
     node_coords = results.estimator.dataset.coordinates[["x", "y", "z"]].to_numpy()
     n_coords = len(node_coords)
     adjacency_matrix = np.zeros((n_coords, n_coords))
@@ -105,6 +105,18 @@ def plot_coordinates(results, out_filename):
     fig = plot_connectome(adjacency_matrix, node_coords)
     fig.savefig(out_filename, dpi=300)
     fig.close()
+
+
+def plot_dynamic_coords(results, out_filename):
+    """Plot dynamic coordinates."""
+    node_coords = results.estimator.dataset.coordinates[["x", "y", "z"]].to_numpy()
+    n_coords = len(node_coords)
+    adjacency_matrix = np.zeros((n_coords, n_coords))
+
+    html_view = plotting.view_connectome(
+        adjacency_matrix, node_coords, node_size=10, colorbar=False
+    )
+    html_view.save_as_html(out_filename)
 
 
 def plot_dynamic_brain(img, out_filename):
