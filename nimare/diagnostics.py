@@ -149,10 +149,22 @@ class Diagnostics(NiMAREBase):
                 for _, row in clusters_table.iterrows()
             ]
 
+        # Define bids-like names for tables and maps
+        image_name = "_".join(self.target_image.split("_")[1:])
+        image_name = "_" + image_name if image_name else image_name
+        clusters_table_name = f"{self.target_image}_tab-clust"
+        contribution_table_name = f"{self.target_image}_diag-{diag_name}_tab-counts"
+        label_map_names = (
+            [f"label{image_name}_tail-positive", f"label{image_name}_tail-negative"]
+            if len(label_maps) == 2
+            else [f"label{image_name}_tail-positive"]
+        )
+
+        # Check number of clusters
         if (n_clusters == 0) or none_contribution_table:
-            result.tables[f"{self.target_image}_clust"] = clusters_table
-            result.tables[f"{self.target_image}_diag-{diag_name}_counts"] = None
-            result.maps[f"{self.target_image}_PositiveTail"] = None
+            result.tables[clusters_table_name] = clusters_table
+            result.tables[contribution_table_name] = None
+            result.maps[label_map_names[0]] = None
 
             result.diagnostics.append(self)
             return result
@@ -188,12 +200,12 @@ class Diagnostics(NiMAREBase):
 
         # Save tables and maps to result
         diag_tables_dict = {
-            f"{self.target_image}_clust": clusters_table,
-            f"{self.target_image}_diag-{diag_name}_counts": contribution_table,
+            clusters_table_name: clusters_table,
+            contribution_table_name: contribution_table,
         }
         diag_maps_dict = {
-            f"{self.target_image}_{sign}": masker.transform(label_map)
-            for sign, label_map in zip(signs, label_maps)
+            label_map_name: np.squeeze(masker.transform(label_map))
+            for label_map_name, label_map in zip(label_map_names, label_maps)
         }
 
         result.tables.update(diag_tables_dict)

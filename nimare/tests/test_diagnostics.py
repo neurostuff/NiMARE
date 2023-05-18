@@ -45,9 +45,11 @@ def test_jackknife_smoke(
     jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=1.65)
     results = jackknife.transform(res)
 
-    contribution_table = results.tables[f"{target_image}_diag-Jackknife_counts"]
-    clusters_table = results.tables[f"{target_image}_clust"]
-    label_maps = results.maps[f"{target_image}_PositiveTail"]
+    image_name = "_".join(target_image.split("_")[1:])
+    image_name = "_" + image_name if image_name else image_name
+    contribution_table = results.tables[f"{target_image}_diag-Jackknife_tab-counts"]
+    clusters_table = results.tables[f"{target_image}_tab-clust"]
+    label_maps = results.maps[f"label{image_name}_tail-positive"]
     if n_samples == "twosample":
         assert contribution_table is None
         assert not clusters_table.empty
@@ -66,9 +68,9 @@ def test_jackknife_with_zero_clusters(testdata_cbma_full):
     jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=10)
     results = jackknife.transform(res)
 
-    contribution_table = results.tables["z_diag-Jackknife_counts"]
-    clusters_table = results.tables["z_clust"]
-    label_maps = results.maps["z_PositiveTail"]
+    contribution_table = results.tables["z_diag-Jackknife_tab-counts"]
+    clusters_table = results.tables["z_tab-clust"]
+    label_maps = results.maps["label_tail-positive"]
     assert contribution_table is None
     assert clusters_table.empty
     assert not label_maps
@@ -88,7 +90,7 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
 
     jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=0.5)
     results = jackknife.transform(res)
-    contribution_table = results.tables["z_diag-Jackknife_counts"]
+    contribution_table = results.tables["z_diag-Jackknife_tab-counts"]
     assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
     # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
@@ -125,9 +127,11 @@ def test_focuscounter_smoke(
     counter = diagnostics.FocusCounter(target_image=target_image, voxel_thresh=1.65)
     results = counter.transform(res)
 
-    contribution_table = results.tables[f"{target_image}_diag-FocusCounter_counts"]
-    clusters_table = results.tables[f"{target_image}_clust"]
-    label_maps = results.maps[f"{target_image}_PositiveTail"]
+    image_name = "_".join(target_image.split("_")[1:])
+    image_name = "_" + image_name if image_name else image_name
+    contribution_table = results.tables[f"{target_image}_diag-FocusCounter_tab-counts"]
+    clusters_table = results.tables[f"{target_image}_tab-clust"]
+    label_maps = results.maps[f"label{image_name}_tail-positive"]
     if n_samples == "twosample":
         assert contribution_table is None
         assert not clusters_table.empty

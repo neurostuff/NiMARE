@@ -67,12 +67,12 @@ plt.show()
 ###############################################################################
 # Clusters table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FDR_method-indep_clust"]
+result.tables["z_corr-FDR_method-indep_tab-clust"]
 
 ###############################################################################
 # Contribution table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FDR_method-indep_diag-Jackknife_counts"]
+result.tables["z_corr-FDR_method-indep_diag-Jackknife_tab-counts"]
 
 ###############################################################################
 # Methods
