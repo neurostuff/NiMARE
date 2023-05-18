@@ -31,11 +31,10 @@ from pkg_resources import resource_filename as pkgrf
 
 from nimare.reports.figures import (
     gen_table,
+    plot_coordinates,
     plot_dynamic_brain,
-    plot_dynamic_coords,
     plot_heatmap,
     plot_static_brain,
-    plot_static_coords,
 )
 
 SVG_SNIPPET = [
@@ -140,8 +139,12 @@ def gen_summary(results, out_filename):
 
 def gen_figures(results, fig_dir):
     """Generate html and jpeg objects for the report."""
-    plot_static_coords(results, fig_dir / "preliminary_figure-static.png")
-    plot_dynamic_coords(results, fig_dir / "preliminary_figure-dynamic.html")
+    plot_coordinates(
+        results,
+        fig_dir / "preliminary_figure-static.png",
+        fig_dir / "preliminary_figure-dynamic.html",
+        fig_dir / "preliminary_figure-legend.png",
+    )
 
     img_keys = [
         img_key

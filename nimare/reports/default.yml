@@ -28,6 +28,7 @@ sections:
   - bids: {value: preliminary, suffix: summary}
   - bids: {value: preliminary, suffix: figure-static}
     title: Peak coordinates
+  - bids: {value: preliminary, suffix: figure-legend}
   - bids: {value: preliminary, suffix: figure-dynamic}
     title: Explorer
 - name: Meta-Analysis

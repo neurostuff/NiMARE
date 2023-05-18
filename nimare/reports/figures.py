@@ -1,4 +1,7 @@
 """Plot figures for report."""
+import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -96,27 +99,54 @@ def plot_static_brain(img, out_filename):
     fig.close()
 
 
-def plot_static_coords(results, out_filename):
-    """Plot static coordinates."""
+def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_legend_filename):
+    """Plot static and dynamic coordinates."""
     node_coords = results.estimator.dataset.coordinates[["x", "y", "z"]].to_numpy()
     n_coords = len(node_coords)
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
-    fig = plot_connectome(adjacency_matrix, node_coords)
-    fig.savefig(out_filename, dpi=300)
+    # Generate dictionary of colors for each unique ID
+    ids = results.estimator.dataset.coordinates["id"].to_list()
+    unq_ids = np.unique(ids)
+    n_unq_ids = len(unq_ids)
+    cmap = plt.cm.get_cmap("tab20", n_unq_ids)
+    colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
+
+    colors = [colors_dict[id_] for id_ in ids]
+
+    fig = plot_connectome(adjacency_matrix, node_coords, node_color=colors)
+    fig.savefig(out_static_filename, dpi=300)
     fig.close()
 
+    # Generate legend
+    patches_lst = [
+        mpatches.Patch(color=color, label=label) for label, color in colors_dict.items()
+    ]
 
-def plot_dynamic_coords(results, out_filename):
-    """Plot dynamic coordinates."""
-    node_coords = results.estimator.dataset.coordinates[["x", "y", "z"]].to_numpy()
-    n_coords = len(node_coords)
-    adjacency_matrix = np.zeros((n_coords, n_coords))
-
-    html_view = plotting.view_connectome(
-        adjacency_matrix, node_coords, node_size=10, colorbar=False
+    # Plot legeng
+    ncol = 5
+    labl_fig, ax = plt.subplots(1, 1)
+    labl_fig.set_size_inches(ncol, len(patches_lst) / (ncol**2))
+    labl_fig.legend(
+        handles=patches_lst,
+        ncol=ncol,
+        fontsize=10,
+        loc="center",
     )
-    html_view.save_as_html(out_filename)
+    ax.axis("off")
+    labl_fig.tight_layout()
+    labl_fig.savefig(out_legend_filename, bbox_inches="tight", dpi=300)
+    plt.close()
+
+    # Plot dynamic connectome
+    html_view = plotting.view_connectome(
+        adjacency_matrix,
+        node_coords,
+        node_size=10,
+        colorbar=False,
+        node_color=colors,
+    )
+    html_view.save_as_html(out_dynamic_filename)
 
 
 def plot_dynamic_brain(img, out_filename):
