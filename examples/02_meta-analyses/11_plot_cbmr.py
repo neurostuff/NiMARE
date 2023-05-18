@@ -20,8 +20,9 @@ This tutorial is intended to provide a brief description and example of the CBMR
 algorithm implemented in NiMARE.
 
 For a more detailed introduction to the elements of a coordinate-based meta-regression,
-see the [online course](https://www.coursera.org/lecture/functional-mri-2/module-3-meta-analysis-Vd4zz)
-or a [brief overview](https://libguides.princeton.edu/neuroimaging_meta).
+see the
+`online course <https://www.coursera.org/lecture/functional-mri-2/module-3-meta-analysis-Vd4zz>`_
+or a `brief overview <https://libguides.princeton.edu/neuroimaging_meta>`_.
 """
 import numpy as np
 import scipy
@@ -34,11 +35,12 @@ from nimare.transforms import StandardizeField
 ###############################################################################
 # Load Dataset
 # -----------------------------------------------------------------------------
-# Here, we're going to simulate a dataset 
-# (using [nimare.generate.create_coordinate_dataset](https://nimare.readthedocs.io/en/latest/generated/nimare.generate.create_coordinate_dataset.html))
+# Here, we're going to simulate a dataset
+# (using `nimare.generate.create_coordinate_dataset
+# <https://nimare.readthedocs.io/en/latest/generated/nimare.generate.create_coordinate_dataset.html>`_
 # that includes 100 studies, each with 10 reported foci and sample size varying between
 # 20 and 40. We separate them into four groups according to diagnosis (schizophrenia or depression)
-# and drug status (Yes or No). We also add two continuous study-level moderators (sample size and 
+# and drug status (Yes or No). We also add two continuous study-level moderators (sample size and
 # average age) and a categorical study-level moderator (schizophrenia subtype).
 
 # data simulation
@@ -80,7 +82,7 @@ dset.annotations["schizophrenia_subtype"] = (
 # within a group (e.g., indexed as subgroup-1 to subgroup-n, but one or more of them
 # don't have enough number of studies to be inferred as a separate group). Using
 # categorical encoding, CBMR can interpret the subgroups as categorical moderators
-# for each study (either 0 or 1), and estimate the global activation intensity 
+# for each study (either 0 or 1), and estimate the global activation intensity
 # associated with each subgroup (comparing to the average).
 
 from nimare.meta.cbmr import CBMREstimator
@@ -98,8 +100,8 @@ cbmr = CBMREstimator(
     model=models.PoissonEstimator,
     penalty=False,
     lr=1e-1,
-    tol=1e3, # a reasonable choice is 1e-2, 1e3 is for speed
-    device="cpu", # "cuda" if you have GPU
+    tol=1e3,   # a reasonable choice is 1e-2, 1e3 is for speed
+    device="cpu",  # "cuda" if you have GPU
 )
 results = cbmr.fit(dataset=dset)
 
@@ -210,9 +212,9 @@ plot_stat_map(
 # Four figures (displayed as z-statistics map) correspond to homogeneity test of
 # group-specific spatial intensity for four groups. The null hypothesis assumes
 # homogeneous spatial intensity over the whole brain,
-# $H_0: \mu_j = \mu_0 = sum(n_{\text{foci}})/N$, $j=1, \cdots, N$, where $N$ is
-# the number of voxels within brain mask, $j$ is the index of voxel. Areas with
-# significant p-values are highlighted (under significance level $0.05$).
+# :math:`H_0: \mu_j = \mu_0 = sum(n_{\text{foci}})/N`, :math:`j=1, \cdots, N`, where
+# :math:`N` is the number of voxels within brain mask, :math:`j` is the index of voxel.
+# Areas with significant p-values are highlighted (under significance level :math:`0.05`).
 
 ###############################################################################
 # Perform fasle discovery rate (FDR) correction on spatial homogeneity test
@@ -326,10 +328,10 @@ plot_stat_map(
 # Four figures (displayed as z-statistics map) correspond to group comparison
 # test of spatial intensity for any two groups. The null hypothesis assumes
 # spatial intensity estimations of two groups are equal at voxel level,
-# $H_0: \mu_{1j}=\mu_{2j}$, $j=1, \cdots, N$, where $N$ is the number of voxels
-# within brain mask, $j$ is the index of voxel. Areas with significant p-values
+# :math:`H_0: \mu_{1j}=\mu_{2j}`, :math:`j=1, \cdots, N`, where :math:`N` is number
+# of voxels within brain mask, :math:`j` is the index of voxel. Areas with significant p-values
 # (significant difference in spatial intensity estimation between two groups)
-# are highlighted (under significance level $0.05$).
+# are highlighted (under significance level :math:`0.05`).
 
 
 ###############################################################################
@@ -346,8 +348,8 @@ plot_stat_map(
 # Only if all of null hypotheses are rejected at voxel level, p-values are significant.
 # For example, `t_con_group=[[1,-1,0,0], [1,0,-1,0], [0,0,1,-1]]` is used for testing
 # the equality of spatial intensity estimation among all of four groups (finding the
-# consistent activation regions). Note that only $n-1$ contrast vectors are necessary
-# for testing the equality of $n$ groups.
+# consistent activation regions). Note that only :math:`n-1` contrast vectors are necessary
+# for testing the equality of :math:`n` groups.
 
 contrast_result = inference.transform(
     t_con_groups=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]], t_con_moderators=False
@@ -392,8 +394,8 @@ print(
 # This table shows the regression coefficients of study-level moderators, here,
 # `sample_sizes` and `avg_age` are standardized in the preprocessing steps.
 # Moderator effects of both `sample_size` and `avg_age` are not significant under
-# significance level $0.05$. With reference to spatial intensity estimation of
-# a chosen subtype, spatial intensity estimations of the other $4$ subtypes of
+# significance level :math:`0.05`. With reference to spatial intensity estimation of
+# a chosen subtype, spatial intensity estimations of the other :math:`4` subtypes of
 # schizophrenia are moderatored globally.
 
 t_con_moderators = inference.create_contrast(
