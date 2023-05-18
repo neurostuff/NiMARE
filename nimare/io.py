@@ -53,7 +53,6 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 "authors": study.name,
                 "journal": study.publication,
                 "title": study.name,
-                "sample_sizes": [study.metadata.get("sample_size")],
             },
             "coords": {
                 "space": analysis.points[0].space,
@@ -62,7 +61,9 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 "z": [p.z for p in analysis.points],
             },
         }
-
+        sample_size = study.metadata.get("sample_size")
+        if sample_size:
+            result["metadata"]["sample_sizes"] = [sample_size]
         if analysis.annotations:
             result["labels"] = {}
             for annotation in analysis.annotations.values():
