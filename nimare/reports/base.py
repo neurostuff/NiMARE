@@ -168,17 +168,20 @@ def gen_figures(results, fig_dir):
         plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png")
 
         # Plot clusters table
-        cluster_table = results.tables[f"{img_key}_clust"]
-        gen_table(cluster_table, fig_dir / f"{img_key}_clust.html")
+        cluster_table = results.tables[f"{img_key}_tab-clust"]
+        gen_table(cluster_table, fig_dir / f"{img_key}_tab-clust_table.html")
         # plot_clusters(img, fig_dir / f"{img_key}_clust.png")
 
         # Plot diganosics results
         for diag_name in diag_names:
-            if f"{img_key}_{diag_name}" in results.tables:
-                contribution_table = results.tables[f"{img_key}_{diag_name}"]
+            if f"{img_key}_diag-{diag_name}_tab-counts" in results.tables:
+                contribution_table = results.tables[f"{img_key}_diag-{diag_name}_tab-counts"]
                 contribution_table = contribution_table.set_index("id")
 
-                plot_heatmap(contribution_table, fig_dir / f"{img_key}_{diag_name}.html")
+                plot_heatmap(
+                    contribution_table,
+                    fig_dir / f"{img_key}_diag-{diag_name}_tab-counts_figure.html",
+                )
 
 
 class Element(object):

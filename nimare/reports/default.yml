@@ -36,6 +36,9 @@ sections:
   - bids: {value: estimator, suffix: summary}
     title: Estimator
     description: Parameter use to fit the meta-analytic estimator.
+  - bids: {value: corrector, suffix: summary}
+    title: Corrector
+    description: Parameter use to fit the corrector.
   - bids: {value: z, corr: FDR, method: indep, suffix: figure-dynamic}
     title: Explorer
     description: The following figure provides an interactive window to explore 
@@ -54,9 +57,9 @@ sections:
   - bids: {value: diagnostics, suffix: summary}
     title: DiagnosticsName
     description: Parameter use to fit the Diagnostics.
-  - bids: {value: z, corr: FDR, method: indep, suffix: clust}
+  - bids: {value: z, corr: FDR, method: indep, tab: clust, suffix: table}
     title: Significant clusters
-  - bids: {value: z, corr: FDR, method: indep, suffix: Jackknife}
+  - bids: {value: z, corr: FDR, method: indep, diag: Jackknife, tab: counts, suffix: figure}
     title: Jackknife
     caption: The heatmap presents the relative contributions of each experiment to 
       each cluster in the thresholded map. There is one row for each experiment, and 
@@ -70,7 +73,7 @@ sections:
       by the summary statistics from the original meta-analysis, and finally averaging 
       the resulting proportion values across all voxels in each cluster.
     iframe: True
-  - bids: {value: z, corr: FDR, method: indep, suffix: FocusCounter}
+  - bids: {value: z, corr: FDR, method: indep, diag: FocusCounter, tab: counts, suffix: figure}
     title: FocusCounter
     caption: The heatmap presents the relative contributions of each experiment to 
       each cluster in the thresholded map. There is one row for each experiment, and 
