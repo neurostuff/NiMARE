@@ -56,6 +56,11 @@ SVG_SNIPPET = [
     """,
 ]
 
+IFRAME_SNIPPET = """\
+    <iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
+    src="{0}" height="800" width="100%"></iframe>
+"""
+
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
     "kernel_transformer__sample_size": "Sample size",
@@ -217,10 +222,11 @@ class Reportlet(Element):
             src = Path(file)
             ext = "".join(src.suffixes)
             desc_text = config.get("caption")
+            iframe = config.get("iframe", False)
 
             contents = None
             if ext == ".html":
-                contents = src.read_text().strip()
+                contents = IFRAME_SNIPPET.format(file) if iframe else src.read_text().strip()
             elif ext == ".png":
                 html_anchor = src.relative_to(out_dir)
                 contents = SVG_SNIPPET[config.get("static", True)].format(html_anchor)

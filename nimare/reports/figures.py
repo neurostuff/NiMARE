@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
-from nilearn import datasets, plotting
-from nilearn.plotting import plot_connectome, plot_stat_map, view_connectome
+from nilearn import datasets
+from nilearn.plotting import plot_connectome, plot_stat_map, view_connectome, view_img
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
 TABLE_STYLE = [
@@ -105,13 +105,11 @@ def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_leg
     n_coords = len(node_coords)
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
-    # Generate dictionary of colors for each unique ID
+    # Generate dictionary and array of colors for each unique ID
     ids = results.estimator.dataset.coordinates["id"].to_list()
     unq_ids = np.unique(ids)
-    n_unq_ids = len(unq_ids)
-    cmap = plt.cm.get_cmap("tab20", n_unq_ids)
+    cmap = plt.cm.get_cmap("tab20", len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
-
     colors = [colors_dict[id_] for id_ in ids]
 
     fig = plot_connectome(adjacency_matrix, node_coords, node_color=colors)
@@ -124,9 +122,9 @@ def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_leg
     ]
 
     # Plot legeng
-    ncol = 5
+    ncol = 10
     labl_fig, ax = plt.subplots(1, 1)
-    labl_fig.set_size_inches(ncol, len(patches_lst) / (ncol**2))
+    labl_fig.set_size_inches(ncol, len(patches_lst) / ncol**2)
     labl_fig.legend(
         handles=patches_lst,
         ncol=ncol,
@@ -134,12 +132,11 @@ def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_leg
         loc="center",
     )
     ax.axis("off")
-    labl_fig.tight_layout()
     labl_fig.savefig(out_legend_filename, bbox_inches="tight", dpi=300)
     plt.close()
 
     # Plot dynamic connectome
-    html_view = plotting.view_connectome(
+    html_view = view_connectome(
         adjacency_matrix,
         node_coords,
         node_size=10,
@@ -152,7 +149,7 @@ def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_leg
 def plot_dynamic_brain(img, out_filename):
     """Plot dynamic brain."""
     template = datasets.load_mni152_template(resolution=1)
-    html_view = plotting.view_img(img, bg_img=template, black_bg=False, threshold=2, vmax=4)
+    html_view = view_img(img, bg_img=template, black_bg=False, threshold=2, vmax=4)
     html_view.save_as_html(out_filename)
 
 
@@ -178,7 +175,7 @@ def plot_heatmap(contribution_table, out_filename):
         width=800,
         height=800,
     )
-    fig.write_html(out_filename)
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
 def gen_table(clusters_table, out_filename):
