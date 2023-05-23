@@ -204,7 +204,7 @@ class Study:
         self.name = source["name"] or ""
         self.authors = source["authors"] or ""
         self.publication = source["publication"] or ""
-        self.metadata = source.get("metadata", {})
+        self.metadata = source.get("metadata", {}) or {}
         self.analyses = [Analysis(a) for a in source["analyses"]]
 
     def __repr__(self):

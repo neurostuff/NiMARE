@@ -161,11 +161,7 @@ def cbma_workflow(
     ]
     for img_key, diagnostic in itertools.product(img_keys, diagnostics):
         diagnostic.target_image = img_key
-        contribution_table, clusters_table, _ = diagnostic.transform(corr_results)
-
-        diag_name = diagnostic.__class__.__name__
-        corr_results.tables[f"{img_key}_clust"] = clusters_table
-        corr_results.tables[f"{img_key}_{diag_name}"] = contribution_table
+        corr_results = diagnostic.transform(corr_results)
 
     if output_dir is not None:
         LGR.info(f"Saving meta-analytic maps, tables and boilerplate to {output_dir}...")
