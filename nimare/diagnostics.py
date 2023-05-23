@@ -20,6 +20,10 @@ LGR = logging.getLogger(__name__)
 class Diagnostics(NiMAREBase):
     """Base class for diagnostic methods.
 
+    .. versionchanged:: 0.1.0
+
+        - Transform now returns a MetaResult object.
+
     .. versionadded:: 0.0.14
 
     Parameters
@@ -96,6 +100,9 @@ class Diagnostics(NiMAREBase):
             correspond to positive and negative tails.
             If no clusters are found, this list will be empty.
         """
+        masker = result.estimator.masker
+        diag_name = self.__class__.__name__
+
         none_contribution_table = False
         if not hasattr(result.estimator, "dataset"):
             LGR.warning(
@@ -142,8 +149,25 @@ class Diagnostics(NiMAREBase):
                 for _, row in clusters_table.iterrows()
             ]
 
+        # Define bids-like names for tables and maps
+        image_name = "_".join(self.target_image.split("_")[1:])
+        image_name = "_" + image_name if image_name else image_name
+        clusters_table_name = f"{self.target_image}_tab-clust"
+        contribution_table_name = f"{self.target_image}_diag-{diag_name}_tab-counts"
+        label_map_names = (
+            [f"label{image_name}_tail-positive", f"label{image_name}_tail-negative"]
+            if len(label_maps) == 2
+            else [f"label{image_name}_tail-positive"]
+        )
+
+        # Check number of clusters
         if (n_clusters == 0) or none_contribution_table:
-            return None, clusters_table, label_maps
+            result.tables[clusters_table_name] = clusters_table
+            result.tables[contribution_table_name] = None
+            result.maps[label_map_names[0]] = None
+
+            result.diagnostics.append(self)
+            return result
 
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
@@ -151,13 +175,12 @@ class Diagnostics(NiMAREBase):
         rows = list(meta_ids)
 
         contribution_tables = []
-        signs = [1, -1] if len(label_maps) == 2 else [1]
+        signs = ["PositiveTail", "NegativeTail"] if len(label_maps) == 2 else ["PositiveTail"]
         for sign, label_map in zip(signs, label_maps):
             cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
 
             # Create contribution table
-            col_name = "PositiveTail" if sign == 1 else "NegativeTail"
-            cols = [f"{col_name} {int(c_id)}" for c_id in cluster_ids]
+            cols = [f"{sign} {int(c_id)}" for c_id in cluster_ids]
             contribution_table = pd.DataFrame(index=rows, columns=cols)
             contribution_table.index.name = "id"
 
@@ -175,7 +198,22 @@ class Diagnostics(NiMAREBase):
         # Concat PositiveTail and NegativeTail tables
         contribution_table = pd.concat(contribution_tables, ignore_index=True, sort=False)
 
-        return contribution_table, clusters_table, label_maps
+        # Save tables and maps to result
+        diag_tables_dict = {
+            clusters_table_name: clusters_table,
+            contribution_table_name: contribution_table,
+        }
+        diag_maps_dict = {
+            label_map_name: np.squeeze(masker.transform(label_map))
+            for label_map_name, label_map in zip(label_map_names, label_maps)
+        }
+
+        result.tables.update(diag_tables_dict)
+        result.maps.update(diag_maps_dict)
+
+        # Add diagnostics class to result, since more than one can be run
+        result.diagnostics.append(self)
+        return result
 
 
 class Jackknife(Diagnostics):
