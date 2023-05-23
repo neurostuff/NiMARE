@@ -21,6 +21,20 @@
 #     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
+define: &heatmap_text "The heatmap presents the relative contributions of each experiment to 
+      each cluster in the thresholded map. There is one row for each experiment, and 
+      one column for each cluster, with column names being 
+      <em>PostiveTail</em>/<em>NegativeTail</em> indicating 
+      the sign (+/-) of the cluster's statistical values"
+define: &focuscounter_text "The FocusCounter analysis characterizes the relative contribution 
+      of each experiment in a meta-analysis to the resulting clusters by counting the number 
+      of peaks from each experiment that fall within each significant cluster."
+define: &jackknife_text "The Jackknife analysis characterizes the relative contribution of each 
+      experiment in a meta-analysis to the resulting clusters by looping through 
+      experiments, calculating the Estimator's summary statistic for all experiments 
+      <b>except</b> the target experiment, dividing the resulting test summary statistics 
+      by the summary statistics from the original meta-analysis, and finally averaging 
+      the resulting proportion values across all voxels in each cluster."
 package: nimare
 sections:
 - name: Summary
@@ -29,7 +43,7 @@ sections:
   - bids: {value: preliminary, suffix: figure-static}
     title: Peak coordinates
   - bids: {value: preliminary, suffix: figure-legend}
-  - bids: {value: preliminary, suffix: figure-dynamic}
+  - bids: {value: preliminary, suffix: figure-interactive}
     title: Explorer
 - name: Meta-Analysis
   reportlets:
@@ -39,58 +53,25 @@ sections:
   - bids: {value: corrector, suffix: summary}
     title: Corrector
     description: Parameter use to fit the corrector.
-  - bids: {value: z, corr: FDR, method: indep, suffix: figure-dynamic}
+  - bids: {value: z, corr: FDR, method: indep, suffix: figure-interactive}
     title: Explorer
     description: The following figure provides an interactive window to explore 
       the meta-analytic map in detail. 
   - bids: {value: z, corr: FDR, method: indep, suffix: figure-static}
     title: Meta-analytic maps
     description: This panel shows the the corrrected meta-analytic map.
-  - bids: {value: z, level: cluster, corr: fwe, method: fdr, suffix: figure}
-    title: This is the Title.
-    subtitle: This is the Sub-title.
-    caption: This is the Caption.
-    description: This is the description.
-    static: false
 - name: Diagnostics
   reportlets:
-  - bids: {value: diagnostics, suffix: summary}
-    title: DiagnosticsName
-    description: Parameter use to fit the Diagnostics.
+  - bids: {value: z, corr: FDR, method: indep, diag: FocusCounter, suffix: summary}
   - bids: {value: z, corr: FDR, method: indep, tab: clust, suffix: table}
-    title: Significant clusters
-  - bids: {value: z, corr: FDR, method: indep, diag: Jackknife, tab: counts, suffix: figure}
-    title: Jackknife
-    caption: The heatmap presents the relative contributions of each experiment to 
-      each cluster in the thresholded map. There is one row for each experiment, and 
-      one column for each cluster, with column names being 
-      <em>PostiveTail</em>/<em>NegativeTail</em> indicating 
-      the sign (+/-) of the cluster's statistical values.
-    description: The Jackknife analysis characterizes the relative contribution of each 
-      experiment in a meta-analysis to the resulting clusters by looping through 
-      experiments, calculating the Estimator's summary statistic for all experiments 
-      <b>except</b> the target experiment, dividing the resulting test summary statistics 
-      by the summary statistics from the original meta-analysis, and finally averaging 
-      the resulting proportion values across all voxels in each cluster.
-    iframe: True
+    subtitle: Significant clusters
   - bids: {value: z, corr: FDR, method: indep, diag: FocusCounter, tab: counts, suffix: figure}
-    title: FocusCounter
-    caption: The heatmap presents the relative contributions of each experiment to 
-      each cluster in the thresholded map. There is one row for each experiment, and 
-      one column for each cluster, with column names being 
-      <em>PostiveTail</em>/<em>NegativeTail</em> indicating 
-      the sign (+/-) of the cluster's statistical values.
-    description: The FocusCounter analysis characterizes the relative contribution of each 
-      experiment in a meta-analysis to the resulting clusters by counting the number 
-      of peaks from each experiment that fall within each significant cluster.
+    subtitle: FocusCounter
+    caption: *heatmap_text
+    description: *focuscounter_text
     iframe: True
-  - bids: {value: z, level: cluster, corr: fwe, method: fdr, suffix: figure}
-    title: This is the Title
-    subtitle: This is the Sub-title
-    caption: This is the Caption.
-    description: This is the description.
-    static: false
-    
-- name: About
-  reportlets:
-  - bids: {value: figures, suffix: T1w}
+  - bids: {value: z, corr: FDR, method: indep, diag: Jackknife, tab: counts, suffix: figure}
+    subtitle: Jackknife
+    caption: *heatmap_text
+    description: *jackknife_text
+    iframe: True

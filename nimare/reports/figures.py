@@ -99,14 +99,14 @@ def plot_static_brain(img, out_filename):
     fig.close()
 
 
-def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_legend_filename):
-    """Plot static and dynamic coordinates."""
-    node_coords = results.estimator.dataset.coordinates[["x", "y", "z"]].to_numpy()
+def plot_coordinates(dataset, out_static_filename, out_interactive_filename, out_legend_filename):
+    """Plot static and interactive coordinates."""
+    node_coords = dataset.coordinates[["x", "y", "z"]].to_numpy()
     n_coords = len(node_coords)
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
     # Generate dictionary and array of colors for each unique ID
-    ids = results.estimator.dataset.coordinates["id"].to_list()
+    ids = dataset.coordinates["id"].to_list()
     unq_ids = np.unique(ids)
     cmap = plt.cm.get_cmap("tab20", len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
@@ -135,7 +135,7 @@ def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_leg
     labl_fig.savefig(out_legend_filename, bbox_inches="tight", dpi=300)
     plt.close()
 
-    # Plot dynamic connectome
+    # Plot interactive connectome
     html_view = view_connectome(
         adjacency_matrix,
         node_coords,
@@ -143,11 +143,11 @@ def plot_coordinates(results, out_static_filename, out_dynamic_filename, out_leg
         colorbar=False,
         node_color=colors,
     )
-    html_view.save_as_html(out_dynamic_filename)
+    html_view.save_as_html(out_interactive_filename)
 
 
-def plot_dynamic_brain(img, out_filename):
-    """Plot dynamic brain."""
+def plot_interactive_brain(img, out_filename):
+    """Plot interactive brain."""
     template = datasets.load_mni152_template(resolution=1)
     html_view = view_img(img, bg_img=template, black_bg=False, threshold=2, vmax=4)
     html_view.save_as_html(out_filename)

@@ -32,8 +32,8 @@ from pkg_resources import resource_filename as pkgrf
 from nimare.reports.figures import (
     gen_table,
     plot_coordinates,
-    plot_dynamic_brain,
     plot_heatmap,
+    plot_interactive_brain,
     plot_static_brain,
 )
 
@@ -58,7 +58,7 @@ SVG_SNIPPET = [
 
 IFRAME_SNIPPET = """\
     <iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
-    src="{0}" height="800" width="100%"></iframe>
+    src="./{0}" height="800" width="100%"></iframe>
 """
 
 PARAMETERS_DICT = {
@@ -70,12 +70,12 @@ PARAMETERS_DICT = {
 }
 
 SUMMARY_TEMPLATE = """\
-\t<ul class="elem-desc">
-\t\t<li>Number of studies: {n_exps:d}</li>
-\t\t<li>Number of studies included: {n_exps_sel:d}</li>
-\t\t<li>Number of foci: {n_foci:d} </li>
-\t\t<li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>
-\t</ul>
+<ul class="elem-desc">
+<li>Number of studies: {n_exps:d}</li>
+<li>Number of studies included: {n_exps_sel:d}</li>
+<li>Number of foci: {n_foci:d} </li>
+<li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>
+</ul>
 <details>
 <summary>Studies excluded</summary><br />
 <p>{exc_ids}</p>
@@ -89,9 +89,24 @@ ESTIMATOR_TEMPLATE = """\
     </ul>
 """
 
+CORRECTOR_TEMPLATE = """\
+    <ul class="elem-desc">
+    {cor_params_text}
+    </ul>
+"""
 
-def gen_param_summary(obj, out_filename):
-    """Generate html with parameter use in obj (e.g., estimator, corrector, diagnostics)."""
+DIAGNOSTIC_TEMPLATE = """\
+<h2 class="sub-report-group">Target image: {target_image}</h2>
+<ul class="elem-desc">
+<li>Voxel-level threshold: {voxel_thresh}</li>
+<li>Cluster size threshold: {cluster_threshold}</li>
+<li>Number of cores: {n_cores}</li>
+</ul>
+"""
+
+
+def gen_est_summary(obj, out_filename):
+    """Generate html with parameter use in obj (e.g., estimator)."""
     params_dict = obj.get_params()
     est_params = {k: v for k, v in params_dict.items() if not k.startswith("kernel_transformer")}
     ker_params = {k: v for k, v in params_dict.items() if k.startswith("kernel_transformer__")}
@@ -112,6 +127,19 @@ def gen_param_summary(obj, out_filename):
         ker_params_text=ker_params_text,
         est_params_text=est_params_text,
     )
+    (out_filename).write_text(summary_text, encoding="UTF-8")
+
+
+def gen_cor_summary(obj, out_filename):
+    """Generate html with parameter use in obj (e.g., estimator, corrector, diagnostics)."""
+    pass
+
+
+def gen_diag_summary(obj, out_filename):
+    """Generate html with parameter use in obj (e.g., estimator, corrector, diagnostics)."""
+    params_dict = obj.get_params()
+
+    summary_text = DIAGNOSTIC_TEMPLATE.format(**params_dict)
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
@@ -142,46 +170,26 @@ def gen_summary(results, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def gen_figures(results, fig_dir):
+def gen_figures(results, img_key, diag_name, fig_dir):
     """Generate html and jpeg objects for the report."""
-    plot_coordinates(
-        results,
-        fig_dir / "preliminary_figure-static.png",
-        fig_dir / "preliminary_figure-dynamic.html",
-        fig_dir / "preliminary_figure-legend.png",
-    )
+    # Plot brain images
+    img = results.get_map(img_key)
+    plot_interactive_brain(img, fig_dir / f"{img_key}_figure-interactive.html")
+    plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png")
 
-    img_keys = [
-        img_key
-        for img_key in results.maps.keys()
-        if img_key.startswith("z_") and ("_corr-" in img_key)
-    ]
+    # Plot clusters table
+    cluster_table = results.tables[f"{img_key}_tab-clust"]
+    gen_table(cluster_table, fig_dir / f"{img_key}_tab-clust_table.html")
+    # plot_clusters(img, fig_dir / f"{img_key}_clust.png")
 
-    # Get diagnostics names. This is a temporary solution until we have access to diagnostics
-    # in the metaresult object.
-    # diag_name = results.diagnostics.diagnostic.__class__.__name__
-    diag_names = ["FocusCounter", "Jackknife"]
-    for img_key in img_keys:
-        # Plot brain images
-        img = results.get_map(img_key)
-        plot_dynamic_brain(img, fig_dir / f"{img_key}_figure-dynamic.html")
-        plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png")
+    if f"{img_key}_diag-{diag_name}_tab-counts" in results.tables:
+        contribution_table = results.tables[f"{img_key}_diag-{diag_name}_tab-counts"]
+        contribution_table = contribution_table.set_index("id")
 
-        # Plot clusters table
-        cluster_table = results.tables[f"{img_key}_tab-clust"]
-        gen_table(cluster_table, fig_dir / f"{img_key}_tab-clust_table.html")
-        # plot_clusters(img, fig_dir / f"{img_key}_clust.png")
-
-        # Plot diganosics results
-        for diag_name in diag_names:
-            if f"{img_key}_diag-{diag_name}_tab-counts" in results.tables:
-                contribution_table = results.tables[f"{img_key}_diag-{diag_name}_tab-counts"]
-                contribution_table = contribution_table.set_index("id")
-
-                plot_heatmap(
-                    contribution_table,
-                    fig_dir / f"{img_key}_diag-{diag_name}_tab-counts_figure.html",
-                )
+        plot_heatmap(
+            contribution_table,
+            fig_dir / f"{img_key}_diag-{diag_name}_tab-counts_figure.html",
+        )
 
 
 class Element(object):
@@ -228,10 +236,10 @@ class Reportlet(Element):
             iframe = config.get("iframe", False)
 
             contents = None
+            html_anchor = src.relative_to(out_dir)
             if ext == ".html":
-                contents = IFRAME_SNIPPET.format(file) if iframe else src.read_text().strip()
+                contents = IFRAME_SNIPPET.format(html_anchor) if iframe else src.read_text()
             elif ext == ".png":
-                html_anchor = src.relative_to(out_dir)
                 contents = SVG_SNIPPET[config.get("static", True)].format(html_anchor)
 
             if contents:
@@ -266,7 +274,6 @@ class Report:
 
         # Initialize structuring elements
         self.sections = []
-        # self.root = Path(out_dir)
         self.out_dir = Path(out_dir)
         self.out_filename = out_filename
 
@@ -275,8 +282,22 @@ class Report:
 
         # Generate summary text and figures
         gen_summary(self.results, self.fig_dir / "preliminary_summary.html")
-        gen_param_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
-        gen_figures(self.results, self.fig_dir)
+
+        # Plot coordinates
+        plot_coordinates(
+            results.estimator.dataset,
+            self.fig_dir / "preliminary_figure-static.png",
+            self.fig_dir / "preliminary_figure-interactive.html",
+            self.fig_dir / "preliminary_figure-legend.png",
+        )
+
+        gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
+        gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
+        for diagnostic in self.results.diagnostics:
+            img_key = diagnostic.target_image
+            diag_name = diagnostic.__class__.__name__
+            gen_diag_summary(diagnostic, self.fig_dir / f"{img_key}_diag-{diag_name}_summary.html")
+            gen_figures(self.results, img_key, diag_name, self.fig_dir)
 
         # Default template from nimare
         self.template_path = Path(pkgrf("nimare", "reports/report.tpl"))
