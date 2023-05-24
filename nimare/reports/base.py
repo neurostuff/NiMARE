@@ -67,6 +67,9 @@ PARAMETERS_DICT = {
     "null_method": "Null method",
     "n_iters": "Number of iterations",
     "n_cores": "Number of cores",
+    "fwe": "Family-wise error rate (FWE) correction",
+    "fdr": "False discovery rate (FDR) correction",
+    "method": "Method",
 }
 
 SUMMARY_TEMPLATE = """\
@@ -90,9 +93,11 @@ ESTIMATOR_TEMPLATE = """\
 """
 
 CORRECTOR_TEMPLATE = """\
-    <ul class="elem-desc">
-    {cor_params_text}
-    </ul>
+<ul class="elem-desc">
+<li> Correction Method: {correction_method}</li>
+{cor_params_text}
+<li>Parameters: {ext_params_text}</li>
+</ul>
 """
 
 DIAGNOSTIC_TEMPLATE = """\
@@ -132,14 +137,56 @@ def gen_est_summary(obj, out_filename):
 
 def gen_cor_summary(obj, out_filename):
     """Generate html with parameter use in obj (e.g., estimator, corrector, diagnostics)."""
-    pass
+    params_dict = obj.get_params()
+
+    cor_params_text = []
+    for k, v in params_dict.items():
+        cor_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    cor_params_text = "".join(cor_params_text)
+
+    ext_params_text = ["<ul>"]
+    for k, v in obj.parameters.items():
+        ext_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    ext_params_text.append("</ul>")
+    ext_params_text = "".join(ext_params_text)
+
+    summary_text = CORRECTOR_TEMPLATE.format(
+        correction_method=PARAMETERS_DICT[obj._correction_method],
+        cor_params_text=cor_params_text,
+        ext_params_text=ext_params_text,
+    )
+    (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
 def gen_diag_summary(obj, out_filename):
     """Generate html with parameter use in obj (e.g., estimator, corrector, diagnostics)."""
-    params_dict = obj.get_params()
+    diag_dict = obj.get_params()
 
-    summary_text = DIAGNOSTIC_TEMPLATE.format(**params_dict)
+    summary_text = DIAGNOSTIC_TEMPLATE.format(**diag_dict)
+    (out_filename).write_text(summary_text, encoding="UTF-8")
+
+
+def _no_clusts_found(out_filename):
+    """Generate html with single text."""
+    null_text = '<h4 style="color:#A30000">No significant clusters found</h4>'
+    (out_filename).write_text(null_text, encoding="UTF-8")
+
+
+def _no_maps_found(threshold, out_filename):
+    """Generate html with single text."""
+    null_text = """\
+    <h4 style="color:#A30000">No significant voxels were found above the threshold</h4>
+    """
+    (out_filename).write_text(null_text, encoding="UTF-8")
+
+
+def _gen_fig_summary(img_key, threshold, out_filename):
+    summary_text = f"""\
+    <h2 class="sub-report-group">Corrected meta-analytic map: {img_key}</h2>
+    <ul class="elem-desc">
+    <li>Voxel-level threshold: {threshold}</li>
+    </ul>
+    """
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
@@ -170,26 +217,33 @@ def gen_summary(results, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def gen_figures(results, img_key, diag_name, fig_dir):
+def gen_figures(results, img_key, diag_name, threshold, fig_dir):
     """Generate html and jpeg objects for the report."""
-    # Plot brain images
-    img = results.get_map(img_key)
-    plot_interactive_brain(img, fig_dir / f"{img_key}_figure-interactive.html")
-    plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png")
+    # Plot brain images if not empty
+    if (results.maps[img_key] > threshold).any():
+        img = results.get_map(img_key)
+        plot_interactive_brain(img, threshold, fig_dir / f"{img_key}_figure-interactive.html")
+        plot_static_brain(img, threshold, fig_dir / f"{img_key}_figure-static.png")
+    else:
+        _no_maps_found(threshold, fig_dir / f"{img_key}_figure-non.html")
 
-    # Plot clusters table
+    # Plot clusters table if cluster_table is not empty
     cluster_table = results.tables[f"{img_key}_tab-clust"]
-    gen_table(cluster_table, fig_dir / f"{img_key}_tab-clust_table.html")
-    # plot_clusters(img, fig_dir / f"{img_key}_clust.png")
+    if cluster_table is not None and not cluster_table.empty:
+        gen_table(cluster_table, fig_dir / f"{img_key}_tab-clust_table.html")
+        # plot_clusters(img, fig_dir / f"{img_key}_clust.png")
+    else:
+        _no_clusts_found(fig_dir / f"{img_key}_tab-clust_table.html")
 
+    # Plot heatmap if contribution_table is not empty
     if f"{img_key}_diag-{diag_name}_tab-counts" in results.tables:
         contribution_table = results.tables[f"{img_key}_diag-{diag_name}_tab-counts"]
-        contribution_table = contribution_table.set_index("id")
-
-        plot_heatmap(
-            contribution_table,
-            fig_dir / f"{img_key}_diag-{diag_name}_tab-counts_figure.html",
-        )
+        if contribution_table is not None and not contribution_table.empty:
+            contribution_table = contribution_table.set_index("id")
+            plot_heatmap(
+                contribution_table,
+                fig_dir / f"{img_key}_diag-{diag_name}_tab-counts_figure.html",
+            )
 
 
 class Element(object):
@@ -296,8 +350,11 @@ class Report:
         for diagnostic in self.results.diagnostics:
             img_key = diagnostic.target_image
             diag_name = diagnostic.__class__.__name__
-            gen_diag_summary(diagnostic, self.fig_dir / f"{img_key}_diag-{diag_name}_summary.html")
-            gen_figures(self.results, img_key, diag_name, self.fig_dir)
+            threshold = diagnostic.voxel_thresh
+
+            _gen_fig_summary(img_key, threshold, self.fig_dir / f"{img_key}_fig-summary.html")
+            gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
+            gen_diag_summary(diagnostic, self.fig_dir / f"{img_key}_diag-summary.html")
 
         # Default template from nimare
         self.template_path = Path(pkgrf("nimare", "reports/report.tpl"))
