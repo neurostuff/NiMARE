@@ -70,6 +70,7 @@ PARAMETERS_DICT = {
     "fwe": "Family-wise error rate (FWE) correction",
     "fdr": "False discovery rate (FDR) correction",
     "method": "Method",
+    "alpha": "Alpha",
 }
 
 SUMMARY_TEMPLATE = """\
