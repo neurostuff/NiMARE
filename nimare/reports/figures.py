@@ -83,7 +83,7 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
     return mat, row_labels, col_labels
 
 
-def plot_static_brain(img, out_filename):
+def plot_static_brain(img, threshold, out_filename):
     """Plot static brain."""
     template = datasets.load_mni152_template(resolution=1)
     fig = plot_stat_map(
@@ -91,7 +91,7 @@ def plot_static_brain(img, out_filename):
         bg_img=template,
         black_bg=False,
         draw_cross=False,
-        threshold=2,
+        threshold=threshold,
         vmax=4,
         display_mode="mosaic",
     )
@@ -146,10 +146,10 @@ def plot_coordinates(dataset, out_static_filename, out_interactive_filename, out
     html_view.save_as_html(out_interactive_filename)
 
 
-def plot_interactive_brain(img, out_filename):
+def plot_interactive_brain(img, threshold, out_filename):
     """Plot interactive brain."""
     template = datasets.load_mni152_template(resolution=1)
-    html_view = view_img(img, bg_img=template, black_bg=False, threshold=2, vmax=4)
+    html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold, vmax=4)
     html_view.save_as_html(out_filename)
 
 
