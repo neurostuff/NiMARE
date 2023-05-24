@@ -1,4 +1,5 @@
 """Workflow for running an coordinates-based meta-analysis from a NiMARE database."""
+import copy
 import itertools
 import logging
 import os.path as op
@@ -160,8 +161,10 @@ def cbma_workflow(
         if img_key.startswith("z_") and ("_corr-" in img_key)
     ]
     for img_key, diagnostic in itertools.product(img_keys, diagnostics):
-        diagnostic.target_image = img_key
-        corr_results = diagnostic.transform(corr_results)
+        # Work on copy of diagnostic:
+        diagnostic_cp = copy.deepcopy(diagnostic)
+        diagnostic_cp = diagnostic_cp.set_params(target_image=img_key)
+        corr_results = diagnostic_cp.transform(corr_results)
 
     if output_dir is not None:
         LGR.info(f"Saving meta-analytic maps, tables and boilerplate to {output_dir}...")
