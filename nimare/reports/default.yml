@@ -35,6 +35,8 @@ define: &jackknife_text "The Jackknife analysis characterizes the relative contr
       <b>except</b> the target experiment, dividing the resulting test summary statistics 
       by the summary statistics from the original meta-analysis, and finally averaging 
       the resulting proportion values across all voxels in each cluster."
+define: &explorer_text "The following figure provides an interactive window to explore 
+      the meta-analytic map in detail."
 package: nimare
 sections:
 - name: Summary
@@ -49,20 +51,55 @@ sections:
   reportlets:
   - bids: {value: estimator, suffix: summary}
     title: Estimator
-    description: Parameter use to fit the meta-analytic estimator.
+    description: Parameters use to fit the meta-analytic estimator.
   - bids: {value: corrector, suffix: summary}
     title: Corrector
-    description: Parameter use to fit the corrector.
+    description: Parameters use to fit the corrector.
+  - bids: {value: z, corr: FDR, method: indep, suffix: fig-summary}
+  - bids: {value: z, corr: FDR, method: indep, suffix: figure-non}
   - bids: {value: z, corr: FDR, method: indep, suffix: figure-interactive}
-    title: Explorer
-    description: The following figure provides an interactive window to explore 
-      the meta-analytic map in detail. 
+    subtitle: Explorer
+    description: *explorer_text
   - bids: {value: z, corr: FDR, method: indep, suffix: figure-static}
-    title: Meta-analytic maps
+    description: This panel shows the the corrrected meta-analytic map.
+  - bids: {value: z, corr: FDR, method: negcorr, suffix: fig-summary}
+  - bids: {value: z, corr: FDR, method: negcorr, suffix: figure-non}
+  - bids: {value: z, corr: FDR, method: negcorr, suffix: figure-interactive}
+    subtitle: Explorer
+    description: *explorer_text
+  - bids: {value: z, corr: FDR, method: negcorr, suffix: figure-static}
+    description: This panel shows the the corrrected meta-analytic map.
+  - bids: {value: z, corr: FWE, method: bonferroni, suffix: fig-summary}
+  - bids: {value: z, corr: FWE, method: bonferroni, suffix: figure-non}
+  - bids: {value: z, corr: FWE, method: bonferroni, suffix: figure-interactive}
+    subtitle: Explorer
+    description: *explorer_text
+  - bids: {value: z, corr: FWE, method: bonferroni, suffix: figure-static}
+    description: This panel shows the the corrrected meta-analytic map.
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: fig-summary}
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: figure-non}
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: figure-interactive}
+    subtitle: Explorer
+    description: *explorer_text 
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: figure-static}
+    description: This panel shows the the corrrected meta-analytic map.
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: fig-summary}
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: figure-non}
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: figure-interactive}
+    subtitle: Explorer
+    description: *explorer_text
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: figure-static}
+    description: This panel shows the the corrrected meta-analytic map.
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: fig-summary}
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: figure-non}
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: figure-interactive}
+    subtitle: Explorer
+    description: *explorer_text 
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: figure-static}
     description: This panel shows the the corrrected meta-analytic map.
 - name: Diagnostics
   reportlets:
-  - bids: {value: z, corr: FDR, method: indep, diag: FocusCounter, suffix: summary}
+  - bids: {value: z, corr: FDR, method: indep, suffix: diag-summary}
   - bids: {value: z, corr: FDR, method: indep, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: z, corr: FDR, method: indep, diag: FocusCounter, tab: counts, suffix: figure}
@@ -71,6 +108,71 @@ sections:
     description: *focuscounter_text
     iframe: True
   - bids: {value: z, corr: FDR, method: indep, diag: Jackknife, tab: counts, suffix: figure}
+    subtitle: Jackknife
+    caption: *heatmap_text
+    description: *jackknife_text
+    iframe: True
+  - bids: {value: z, corr: FDR, method: negcorr, suffix: diag-summary}
+  - bids: {value: z, corr: FDR, method: negcorr, tab: clust, suffix: table}
+    subtitle: Significant clusters
+  - bids: {value: z, corr: FDR, method: negcorr, diag: FocusCounter, tab: counts, suffix: figure}
+    subtitle: FocusCounter
+    caption: *heatmap_text
+    description: *focuscounter_text
+    iframe: True
+  - bids: {value: z, corr: FDR, method: negcorr, diag: Jackknife, tab: counts, suffix: figure}
+    subtitle: Jackknife
+    caption: *heatmap_text
+    description: *jackknife_text
+    iframe: True
+  - bids: {value: z, corr: FWE, method: bonferroni, suffix: diag-summary}
+  - bids: {value: z, corr: FWE, method: bonferroni, tab: clust, suffix: table}
+    subtitle: Significant clusters
+  - bids: {value: z, corr: FWE, method: bonferroni, diag: FocusCounter, tab: counts, suffix: figure}
+    subtitle: FocusCounter
+    caption: *heatmap_text
+    description: *focuscounter_text
+    iframe: True
+  - bids: {value: z, corr: FWE, method: bonferroni, diag: Jackknife, tab: counts, suffix: figure}
+    subtitle: Jackknife
+    caption: *heatmap_text
+    description: *jackknife_text
+    iframe: True
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: diag-summary}
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, tab: clust, suffix: table}
+    subtitle: Significant clusters
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
+    subtitle: FocusCounter
+    caption: *heatmap_text
+    description: *focuscounter_text
+    iframe: True
+  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, diag: Jackknife, tab: counts, suffix: figure}
+    subtitle: Jackknife
+    caption: *heatmap_text
+    description: *jackknife_text
+    iframe: True
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: diag-summary}
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, tab: clust, suffix: table}
+    subtitle: Significant clusters
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
+    subtitle: FocusCounter
+    caption: *heatmap_text
+    description: *focuscounter_text
+    iframe: True
+  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, diag: Jackknife, tab: counts, suffix: figure}
+    subtitle: Jackknife
+    caption: *heatmap_text
+    description: *jackknife_text
+    iframe: True
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: diag-summary}
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, tab: clust, suffix: table}
+    subtitle: Significant clusters
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
+    subtitle: FocusCounter
+    caption: *heatmap_text
+    description: *focuscounter_text
+    iframe: True
+  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, diag: Jackknife, tab: counts, suffix: figure}
     subtitle: Jackknife
     caption: *heatmap_text
     description: *jackknife_text
