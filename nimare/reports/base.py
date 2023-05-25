@@ -29,6 +29,7 @@ from pathlib import Path
 import jinja2
 from pkg_resources import resource_filename as pkgrf
 
+from nimare.meta.cbma.base import CBMAEstimator
 from nimare.reports.figures import (
     gen_table,
     plot_clusters,
@@ -66,6 +67,8 @@ src="./{0}" height="800" width="100%"></iframe>
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
     "kernel_transformer__sample_size": "Sample size",
+    "kernel_transformer__r": "Sphere radius (mm)",
+    "kernel_transformer__value": "Value for sphere",
     "null_method": "Null method",
     "n_iters": "Number of iterations",
     "n_cores": "Number of cores",
@@ -356,22 +359,23 @@ class Report:
         self.fig_dir = self.out_dir / "figures"
         self.fig_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate summary text and figures
+        # Generate summary text
         _gen_summary(self.results.estimator.dataset, self.fig_dir / "preliminary_summary.html")
-
-        # Plot coordinates
-        plot_coordinates(
-            self.results.estimator.dataset.coordinates,
-            self.fig_dir / "preliminary_figure-static.png",
-            self.fig_dir / "preliminary_figure-interactive.html",
-            self.fig_dir / "preliminary_figure-legend.png",
-        )
 
         # Plot mask
         plot_mask(
             self.results.estimator.dataset.masker.mask_img,
             self.fig_dir / "preliminary_figure-mask.png",
         )
+
+        if issubclass(type(self.results.estimator), CBMAEstimator):
+            # Plot coordinates for CBMA estimators
+            plot_coordinates(
+                self.results.estimator.dataset.coordinates,
+                self.fig_dir / "preliminary_figure-static.png",
+                self.fig_dir / "preliminary_figure-interactive.html",
+                self.fig_dir / "preliminary_figure-legend.png",
+            )
 
         _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
         _gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
@@ -381,8 +385,8 @@ class Report:
             threshold = diagnostic.voxel_thresh
 
             _gen_fig_summary(img_key, threshold, self.fig_dir / f"{img_key}_fig-summary.html")
-            _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
             _gen_diag_summary(diagnostic, self.fig_dir / f"{img_key}_diag-summary.html")
+            _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
 
         # Default template from nimare
         self.template_path = Path(pkgrf("nimare", "reports/report.tpl"))
