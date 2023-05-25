@@ -103,9 +103,9 @@ sections:
   - bids: {value: z, corr: FDR, method: indep, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: label, corr: FDR, method: indep, tail: positive, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: positive tial"
   - bids: {value: label, corr: FDR, method: indep, tail: negative, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: negative tial"
   - bids: {value: z, corr: FDR, method: indep, diag: FocusCounter, tab: counts, suffix: figure}
     subtitle: FocusCounter
     caption: *heatmap_text
@@ -120,9 +120,9 @@ sections:
   - bids: {value: z, corr: FDR, method: negcorr, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: label, corr: FDR, method: negcorr, tail: positive, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: positive tial"
   - bids: {value: label, corr: FDR, method: negcorr, tail: negative, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: negative tial"
   - bids: {value: z, corr: FDR, method: negcorr, diag: FocusCounter, tab: counts, suffix: figure}
     subtitle: FocusCounter
     caption: *heatmap_text
@@ -137,9 +137,9 @@ sections:
   - bids: {value: z, corr: FWE, method: bonferroni, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: label, corr: FWE, method: bonferroni, tail: positive, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: positive tial"
   - bids: {value: label, corr: FWE, method: bonferroni, tail: negative, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: negative tial"
   - bids: {value: z, corr: FWE, method: bonferroni, diag: FocusCounter, tab: counts, suffix: figure}
     subtitle: FocusCounter
     caption: *heatmap_text
@@ -154,9 +154,9 @@ sections:
   - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: label, level: voxel, corr: FWE, method: montecarlo, tail: positive, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: positive tial"
   - bids: {value: label, level: voxel, corr: FWE, method: montecarlo, tail: negative, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: negative tial"
   - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
     subtitle: FocusCounter
     caption: *heatmap_text
@@ -171,9 +171,9 @@ sections:
   - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: label, desc: size, level: cluster, corr: FWE, method: montecarlo, tail: positive, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: positive tial"
   - bids: {value: label, desc: size, level: cluster, corr: FWE, method: montecarlo, tail: negative, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: negative tial"
   - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
     subtitle: FocusCounter
     caption: *heatmap_text
@@ -188,9 +188,9 @@ sections:
   - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: label, desc: mass, level: cluster, corr: FWE, method: montecarlo, tail: positive, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: positive tial"
   - bids: {value: label, desc: mass, level: cluster, corr: FWE, method: montecarlo, tail: negative, suffix: figure}
-    subtitle: Label map
+    subtitle: "Label map: negative tial"
   - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
     subtitle: FocusCounter
     caption: *heatmap_text
