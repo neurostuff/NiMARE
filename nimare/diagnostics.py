@@ -75,30 +75,39 @@ class Diagnostics(NiMAREBase):
 
         Returns
         -------
-        contribution_table : :obj:`pandas.DataFrame` or None
-            A DataFrame with information about relative contributions of each experiment to each
-            cluster in the thresholded map.
-            There is one row for each experiment.
-            There is one column for each cluster, with column names being
-            ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
-            statistical values, plus an integer indicating the cluster's associated value
-            in the ``label_maps[0]``/``label_maps[1]`` output.
-            If no clusters are found or a pairwise Estimator was used, ``None`` is returned.
-        clusters_table : :obj:`pandas.DataFrame`
-            A DataFrame with information about each cluster.
-            There is one row for each cluster.
-            The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
-            for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
-            ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
-            (the size of the cluster, in cubic millimeters).
-            If no clusters are found, this table will be empty.
-        label_maps : :obj:`list`
-            List of :obj:`nibabel.nifti1.Nifti1Image` objects of cluster label maps.
-            Each cluster in the map has a single value, which corresponds to the cluster number
-            of the column name in ``contribution_table``.
-            If target_image has negative values after thresholding, first and second maps
-            correspond to positive and negative tails.
-            If no clusters are found, this list will be empty.
+        :obj:`~nimare.results.MetaResult`
+            Results of Diagnostics fitting.
+
+        Notes
+        -----
+        This method adds two new keys to ``maps`` and `tables` attributes of the
+        MetaResult object.
+
+            -   ``<target_image>_diag-<Jackknife|FocusCounter>_tab-counts`` :
+                :obj:`pandas.DataFrame` or None.
+                A DataFrame with information about relative contributions of each experiment
+                to each cluster in the thresholded map.
+                There is one row for each experiment.
+                There is one column for each cluster, with column names being
+                ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
+                statistical values, plus an integer indicating the cluster's associated value
+                in the ``label_maps[0]``/``label_maps[1]`` output.
+                If no clusters are found or a pairwise Estimator was used, ``None`` is returned.
+            -   ``<target_image>_tab-clust`` : :obj:`pandas.DataFrame`
+                A DataFrame with information about each cluster.
+                There is one row for each cluster.
+                The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
+                for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
+                ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
+                (the size of the cluster, in cubic millimeters).
+                If no clusters are found, this table will be empty.
+            -   ``label_<target_image>_tail-<positive|negative>`` : :obj:`numpy.ndarray`
+                Label maps.
+                Each cluster in the map has a single value, which corresponds to the cluster number
+                of the column name in ``contribution_table``.
+                If target_image has negative values after thresholding, first and second maps
+                correspond to positive and negative tails.
+                If no clusters are found, this list will be empty.
         """
         masker = result.estimator.masker
         diag_name = self.__class__.__name__

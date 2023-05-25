@@ -103,7 +103,8 @@ def cbma_workflow(
     Returns
     -------
     :obj:`~nimare.results.MetaResult`
-        Results of Estimator and Corrector fitting with cluster and diagnostic tables.
+        Results of Estimator, Corrector, and Diagnostics fitting with label maps,
+        cluster and diagnostic tables.
     """
     n_cores = _check_ncores(n_cores)
 

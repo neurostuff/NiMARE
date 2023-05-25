@@ -113,7 +113,7 @@ DIAGNOSTIC_TEMPLATE = """\
 """
 
 
-def gen_est_summary(obj, out_filename):
+def _gen_est_summary(obj, out_filename):
     """Generate html with parameter use in obj (e.g., estimator)."""
     params_dict = obj.get_params()
     est_params = {k: v for k, v in params_dict.items() if not k.startswith("kernel_transformer")}
@@ -138,8 +138,8 @@ def gen_est_summary(obj, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def gen_cor_summary(obj, out_filename):
-    """Generate html with parameter use in obj (e.g., estimator, corrector, diagnostics)."""
+def _gen_cor_summary(obj, out_filename):
+    """Generate html with parameter use in obj (e.g., corrector)."""
     params_dict = obj.get_params()
 
     cor_params_text = []
@@ -161,8 +161,8 @@ def gen_cor_summary(obj, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def gen_diag_summary(obj, out_filename):
-    """Generate html with parameter use in obj (e.g., estimator, corrector, diagnostics)."""
+def _gen_diag_summary(obj, out_filename):
+    """Generate html with parameter use in obj (e.g., diagnostics)."""
     diag_dict = obj.get_params()
 
     summary_text = DIAGNOSTIC_TEMPLATE.format(**diag_dict)
@@ -175,7 +175,7 @@ def _no_clusts_found(out_filename):
     (out_filename).write_text(null_text, encoding="UTF-8")
 
 
-def _no_maps_found(threshold, out_filename):
+def _no_maps_found(out_filename):
     """Generate html with single text."""
     null_text = """\
     <h4 style="color:#A30000">No significant voxels were found above the threshold</h4>
@@ -193,7 +193,7 @@ def _gen_fig_summary(img_key, threshold, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def gen_summary(dset, out_filename):
+def _gen_summary(dset, out_filename):
     """Generate preliminary checks from dataset for the report."""
     mask = dset.masker.mask_img
     sel_ids = dset.get_studies_by_mask(mask)
@@ -218,15 +218,15 @@ def gen_summary(dset, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def gen_figures(results, img_key, diag_name, threshold, fig_dir):
-    """Generate html and jpeg objects for the report."""
+def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
+    """Generate html and png objects for the report."""
     # Plot brain images if not empty
     if (results.maps[img_key] > threshold).any():
         img = results.get_map(img_key)
-        plot_interactive_brain(img, threshold, fig_dir / f"{img_key}_figure-interactive.html")
-        plot_static_brain(img, threshold, fig_dir / f"{img_key}_figure-static.png")
+        plot_interactive_brain(img, fig_dir / f"{img_key}_figure-interactive.html", threshold)
+        plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png", threshold)
     else:
-        _no_maps_found(threshold, fig_dir / f"{img_key}_figure-non.html")
+        _no_maps_found(fig_dir / f"{img_key}_figure-non.html")
 
     # Plot clusters table if cluster_table is not empty
     cluster_table = results.tables[f"{img_key}_tab-clust"]
@@ -325,13 +325,25 @@ class SubReport(Element):
 
 
 class Report:
-    """The full report object. This object maintains a BIDSLayout to index all reportlets."""
+    """The full report object.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    result : :obj:`~nimare.results.MetaResult`
+        A MetaResult produced by a coordinate- or image-based meta-analysis.
+    out_dir : :obj:`str`
+        Output directory in which to save the report.
+    out_filename : :obj:`str`, optional
+        The name of an html file to export the report to.
+        Default is 'report.html'.
+    """
 
     def __init__(
         self,
         results,
         out_dir,
-        config=None,
         out_filename="report.html",
     ):
         self.results = results
@@ -345,11 +357,11 @@ class Report:
         self.fig_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate summary text and figures
-        gen_summary(self.results.estimator.dataset, self.fig_dir / "preliminary_summary.html")
+        _gen_summary(self.results.estimator.dataset, self.fig_dir / "preliminary_summary.html")
 
         # Plot coordinates
         plot_coordinates(
-            self.results.estimator.dataset,
+            self.results.estimator.dataset.coordinates,
             self.fig_dir / "preliminary_figure-mask.png",
             self.fig_dir / "preliminary_figure-interactive.html",
             self.fig_dir / "preliminary_figure-legend.png",
@@ -361,20 +373,20 @@ class Report:
             self.fig_dir / "preliminary_figure-mask.png",
         )
 
-        gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
-        gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
+        _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
+        _gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
         for diagnostic in self.results.diagnostics:
             img_key = diagnostic.target_image
             diag_name = diagnostic.__class__.__name__
             threshold = diagnostic.voxel_thresh
 
             _gen_fig_summary(img_key, threshold, self.fig_dir / f"{img_key}_fig-summary.html")
-            gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
-            gen_diag_summary(diagnostic, self.fig_dir / f"{img_key}_diag-summary.html")
+            _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
+            _gen_diag_summary(diagnostic, self.fig_dir / f"{img_key}_diag-summary.html")
 
         # Default template from nimare
         self.template_path = Path(pkgrf("nimare", "reports/report.tpl"))
-        self._load_config(Path(config or pkgrf("nimare", "reports/default.yml")))
+        self._load_config(Path(pkgrf("nimare", "reports/default.yml")))
         assert self.template_path.exists()
 
     def _load_config(self, config):
@@ -443,11 +455,19 @@ class Report:
 def run_reports(
     results,
     out_dir,
-    config=None,
 ):
-    """Run the reports."""
+    """Run the reports.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    result : :obj:`~nimare.results.MetaResult`
+        A MetaResult produced by a coordinate- or image-based meta-analysis.
+    out_dir : :obj:`str`
+        Output directory in which to save the report.
+    """
     return Report(
         results,
         out_dir,
-        config=config,
     ).generate_report()

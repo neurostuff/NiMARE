@@ -30,6 +30,14 @@ TABLE_STYLE = [
 ]
 
 
+def _check_extention(filename, exts):
+    if filename.suffix not in exts:
+        raise ValueError(
+            f'The "out_filename" provided has extension {filename.suffix}. '
+            f'Valid extensions are {", ".join(exts)}.'
+        )
+
+
 def _reorder_matrix(mat, row_labels, col_labels, reorder):
     """Reorder a matrix.
 
@@ -89,8 +97,26 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
     return mat, row_labels, col_labels
 
 
-def plot_static_brain(img, threshold, out_filename):
-    """Plot static brain."""
+def plot_static_brain(img, out_filename, threshold=1e-06):
+    """Plot static brain image.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Stat image to plot.
+    out_filename : :obj:`pathlib.Path`
+        The name of an image file to export the plot to.
+        Valid extensions are '.png', '.pdf', '.svg'.
+    threshold: a number, None, or 'auto', optional
+        If None is given, the image is not thresholded. If a number is given, it is
+        used to threshold the image: values below the threshold (in absolute value)
+        are plotted as transparent. If 'auto' is given, the threshold is determined
+        magically by analysis of the image. Default=1e-6.
+    """
+    _check_extention(out_filename, [".png", ".pdf", ".svg"])
+
     template = datasets.load_mni152_template(resolution=1)
     fig = plot_stat_map(
         img,
@@ -106,7 +132,20 @@ def plot_static_brain(img, threshold, out_filename):
 
 
 def plot_mask(mask, out_filename):
-    """Plot mask."""
+    """Plot mask.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Mask image to plot.
+    out_filename : :obj:`pathlib.Path`
+        The name of an image file to export the plot to.
+        Valid extensions are '.png', '.pdf', '.svg'.
+    """
+    _check_extention(out_filename, [".png", ".pdf", ".svg"])
+
     template = datasets.load_mni152_template(resolution=1)
 
     fig = plot_roi(
@@ -122,14 +161,37 @@ def plot_mask(mask, out_filename):
     fig.close()
 
 
-def plot_coordinates(dataset, out_static_filename, out_interactive_filename, out_legend_filename):
-    """Plot static and interactive coordinates."""
-    node_coords = dataset.coordinates[["x", "y", "z"]].to_numpy()
+def plot_coordinates(
+    coordinates_df, out_static_filename, out_interactive_filename, out_legend_filename
+):
+    """Plot static and interactive coordinates.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    coordinates_df : :obj:`pandas.DataFrame`
+        A DataFrame with the coordinates in the dataset.
+    out_static_filename : :obj:`pathlib.Path`
+        The name of an image file to export the static plot to.
+        Valid extensions are '.png', '.pdf', '.svg'.
+    out_interactive_filename : :obj:`pathlib.Path`
+        The name of an image file to export the interactive plot to.
+        Valid extension is '.html'.
+    out_legend_filename : :obj:`pathlib.Path`
+        The name of an image file to export the legend plot to.
+        Valid extensions are '.png', '.pdf', '.svg'.
+    """
+    _check_extention(out_static_filename, [".png", ".pdf", ".svg"])
+    _check_extention(out_interactive_filename, [".html"])
+    _check_extention(out_legend_filename, [".png", ".pdf", ".svg"])
+
+    node_coords = coordinates_df[["x", "y", "z"]].to_numpy()
     n_coords = len(node_coords)
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
     # Generate dictionary and array of colors for each unique ID
-    ids = dataset.coordinates["id"].to_list()
+    ids = coordinates_df["id"].to_list()
     unq_ids = np.unique(ids)
     cmap = plt.cm.get_cmap("tab20", len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
@@ -169,15 +231,46 @@ def plot_coordinates(dataset, out_static_filename, out_interactive_filename, out
     html_view.save_as_html(out_interactive_filename)
 
 
-def plot_interactive_brain(img, threshold, out_filename):
-    """Plot interactive brain."""
+def plot_interactive_brain(img, out_filename, threshold=1e-06):
+    """Plot interactive brain image.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Stat image to plot.
+    out_filename : :obj:`pathlib.Path`
+        The name of an image file to export the plot to. Valid extension is '.html'.
+    threshold: a number, None, or 'auto', optional
+        If None is given, the image is not thresholded. If a number is given, it is
+        used to threshold the image: values below the threshold (in absolute value)
+        are plotted as transparent. If 'auto' is given, the threshold is determined
+        magically by analysis of the image. Default=1e-6.
+    """
+    _check_extention(out_filename, [".html"])
+
     template = datasets.load_mni152_template(resolution=1)
     html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold, vmax=4)
     html_view.save_as_html(out_filename)
 
 
 def plot_heatmap(contribution_table, out_filename):
-    """Plot heatmap."""
+    """Plot heatmap.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    contribution_table : :obj:`pandas.DataFrame`
+        A DataFrame with information about relative contributions of each experiment to each
+        cluster in the thresholded map.
+    out_filename : :obj:`pathlib.Path`
+        The name of an image file to export the plot to.
+        Valid extension is '.html'.
+    """
+    _check_extention(out_filename, [".html"])
+
     mat = contribution_table.to_numpy()
     row_labels, col_labels = (
         contribution_table.index.to_list(),
@@ -202,7 +295,20 @@ def plot_heatmap(contribution_table, out_filename):
 
 
 def gen_table(clusters_table, out_filename):
-    """Generate table."""
+    """Generate table.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    clusters_table : :obj:`pandas.DataFrame`
+        A DataFrame with information about each cluster.
+    out_filename : :obj:`pathlib.Path`
+        The name of an image file to export the plot to.
+        Valid extension is '.html'.
+    """
+    _check_extention(out_filename, [".html"])
+
     clust_ids = clusters_table["Cluster ID"].to_list()
     clusters_table = clusters_table.drop(columns=["Cluster ID"])
 
@@ -218,7 +324,20 @@ def gen_table(clusters_table, out_filename):
 
 
 def plot_clusters(img, out_filename):
-    """Plot clusters."""
+    """Plot clusters.
+
+    .. versionadded:: 0.1.0
+
+    Parameters
+    ----------
+    img : :obj:`~nibabel.nifti1.Nifti1Image`
+        Label image to plot.
+    out_filename : :obj:`pathlib.Path`
+        The name of an image file to export the plot to.
+        Valid extensions are '.png', '.pdf', '.svg'.
+    """
+    _check_extention(out_filename, [".png", ".pdf", ".svg"])
+
     template = datasets.load_mni152_template(resolution=1)
 
     fig = plot_roi(
