@@ -6,7 +6,13 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from nilearn import datasets
-from nilearn.plotting import plot_connectome, plot_stat_map, view_connectome, view_img
+from nilearn.plotting import (
+    plot_connectome,
+    plot_roi,
+    plot_stat_map,
+    view_connectome,
+    view_img,
+)
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
 TABLE_STYLE = [
@@ -192,3 +198,21 @@ def gen_table(clusters_table, out_filename):
 
     styled_df = clusters_table.style.format(precision=2).set_table_styles(TABLE_STYLE)
     styled_df.to_html(out_filename)
+
+
+def plot_clusters(img, out_filename):
+    """Plot clusters."""
+    template = datasets.load_mni152_template(resolution=1)
+
+    fig = plot_roi(
+        img,
+        bg_img=template,
+        black_bg=False,
+        draw_cross=False,
+        cmap="tab20",
+        alpha=0.7,
+        colorbar=True,
+        display_mode="mosaic",
+    )
+    fig.savefig(out_filename, dpi=300)
+    fig.close()

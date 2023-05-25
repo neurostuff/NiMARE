@@ -31,6 +31,7 @@ from pkg_resources import resource_filename as pkgrf
 
 from nimare.reports.figures import (
     gen_table,
+    plot_clusters,
     plot_coordinates,
     plot_heatmap,
     plot_interactive_brain,
@@ -57,8 +58,8 @@ SVG_SNIPPET = [
 ]
 
 IFRAME_SNIPPET = """\
-    <iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
-    src="./{0}" height="800" width="100%"></iframe>
+<iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
+src="./{0}" height="800" width="100%"></iframe>
 """
 
 PARAMETERS_DICT = {
@@ -87,10 +88,10 @@ SUMMARY_TEMPLATE = """\
 """
 
 ESTIMATOR_TEMPLATE = """\
-    <ul class="elem-desc">
-    <li>Kernel Transformer: {kernel_transformer}{ker_params_text}</li>
-    {est_params_text}
-    </ul>
+<ul class="elem-desc">
+<li>Kernel Transformer: {kernel_transformer}{ker_params_text}</li>
+{est_params_text}
+</ul>
 """
 
 CORRECTOR_TEMPLATE = """\
@@ -232,7 +233,16 @@ def gen_figures(results, img_key, diag_name, threshold, fig_dir):
     cluster_table = results.tables[f"{img_key}_tab-clust"]
     if cluster_table is not None and not cluster_table.empty:
         gen_table(cluster_table, fig_dir / f"{img_key}_tab-clust_table.html")
-        # plot_clusters(img, fig_dir / f"{img_key}_clust.png")
+
+        # Get label maps
+        lbl_name = "_".join(img_key.split("_")[1:])
+        lbl_name = "_" + lbl_name if lbl_name else lbl_name
+        lbl_keys = [f"label{lbl_name}_tail-{tail}" for tail in ["positive", "negative"]]
+        for lbl_key in lbl_keys:
+            if lbl_key in results.maps:
+                label_map = results.get_map(lbl_key)
+                plot_clusters(label_map, fig_dir / f"{lbl_key}_figure.png")
+
     else:
         _no_clusts_found(fig_dir / f"{img_key}_tab-clust_table.html")
 
