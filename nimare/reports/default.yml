@@ -42,6 +42,8 @@ sections:
 - name: Summary
   reportlets:
   - bids: {value: preliminary, suffix: summary}
+  - bids: {value: preliminary, suffix: figure-mask}
+    title: Mask
   - bids: {value: preliminary, suffix: figure-static}
     title: Peak coordinates
   - bids: {value: preliminary, suffix: figure-legend}

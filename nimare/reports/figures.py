@@ -105,6 +105,23 @@ def plot_static_brain(img, threshold, out_filename):
     fig.close()
 
 
+def plot_mask(mask, out_filename):
+    """Plot mask."""
+    template = datasets.load_mni152_template(resolution=1)
+
+    fig = plot_roi(
+        mask,
+        bg_img=template,
+        black_bg=False,
+        draw_cross=False,
+        cmap="tab20",
+        alpha=0.7,
+        display_mode="mosaic",
+    )
+    fig.savefig(out_filename, dpi=300)
+    fig.close()
+
+
 def plot_coordinates(dataset, out_static_filename, out_interactive_filename, out_legend_filename):
     """Plot static and interactive coordinates."""
     node_coords = dataset.coordinates[["x", "y", "z"]].to_numpy()
@@ -210,7 +227,7 @@ def plot_clusters(img, out_filename):
         black_bg=False,
         draw_cross=False,
         cmap="tab20",
-        alpha=0.7,
+        alpha=0.8,
         colorbar=True,
         display_mode="mosaic",
     )

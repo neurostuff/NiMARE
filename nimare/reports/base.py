@@ -35,6 +35,7 @@ from nimare.reports.figures import (
     plot_coordinates,
     plot_heatmap,
     plot_interactive_brain,
+    plot_mask,
     plot_static_brain,
 )
 
@@ -192,10 +193,8 @@ def _gen_fig_summary(img_key, threshold, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def gen_summary(results, out_filename):
+def gen_summary(dset, out_filename):
     """Generate preliminary checks from dataset for the report."""
-    dset = results.estimator.dataset
-
     mask = dset.masker.mask_img
     sel_ids = dset.get_studies_by_mask(mask)
     sel_dset = dset.slice(sel_ids)
@@ -346,14 +345,20 @@ class Report:
         self.fig_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate summary text and figures
-        gen_summary(self.results, self.fig_dir / "preliminary_summary.html")
+        gen_summary(self.results.estimator.dataset, self.fig_dir / "preliminary_summary.html")
 
         # Plot coordinates
         plot_coordinates(
-            results.estimator.dataset,
-            self.fig_dir / "preliminary_figure-static.png",
+            self.results.estimator.dataset,
+            self.fig_dir / "preliminary_figure-mask.png",
             self.fig_dir / "preliminary_figure-interactive.html",
             self.fig_dir / "preliminary_figure-legend.png",
+        )
+
+        # Plot mask
+        plot_mask(
+            self.results.estimator.dataset.masker.mask_img,
+            self.fig_dir / "preliminary_figure-mask.png",
         )
 
         gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
