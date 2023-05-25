@@ -103,7 +103,11 @@ def test_ale_workflow_cli_smoke_2(tmp_path_factory):
     ],
 )
 def test_cbma_workflow_function_smoke(
-    tmp_path_factory, testdata_cbma_full, estimator, corrector, diagnostics
+    tmp_path_factory,
+    testdata_cbma_full,
+    estimator,
+    corrector,
+    diagnostics,
 ):
     """Run smoke test for CBMA workflow."""
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_function_smoke")
