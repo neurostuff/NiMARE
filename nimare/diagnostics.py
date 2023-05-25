@@ -80,7 +80,7 @@ class Diagnostics(NiMAREBase):
 
         Notes
         -----
-        This method adds two new keys to ``maps`` and `tables` attributes of the
+        This method adds two new keys to ``maps`` and ``tables`` attributes of the
         MetaResult object.
 
             -   ``<target_image>_diag-<Jackknife|FocusCounter>_tab-counts`` :

@@ -362,7 +362,7 @@ class Report:
         # Plot coordinates
         plot_coordinates(
             self.results.estimator.dataset.coordinates,
-            self.fig_dir / "preliminary_figure-mask.png",
+            self.fig_dir / "preliminary_figure-static.png",
             self.fig_dir / "preliminary_figure-interactive.html",
             self.fig_dir / "preliminary_figure-legend.png",
         )

@@ -15,7 +15,7 @@ Here is the basic naming convention for statistical maps:
 
 .. code-block:: Text
 
-   <value>[_desc-<label>][_level-<cluster|voxel>][_corr-<FWE|FDR>][_method-<label>][_diag-<Jackknife|FocusCounter>].nii.gz
+   <value>[_desc-<label>][_level-<cluster|voxel>][_corr-<FWE|FDR>][_method-<label>][_diag-<Jackknife|FocusCounter>][_tab-<clust|counts>][_tail-<positive|negative>].nii.gz
 
 
 First, the ``value`` represents type of data in the map (e.g., z-statistic, t-statistic).
