@@ -24,8 +24,8 @@
 define: &heatmap_text "The heatmap presents the relative contributions of each experiment to 
       each cluster in the thresholded map. There is one row for each experiment, and 
       one column for each cluster, with column names being 
-      <em>PostiveTail</em>/<em>NegativeTail</em> indicating 
-      the sign (+/-) of the cluster's statistical values"
+      <em>PostiveTail</em>/<em>NegativeTail</em> indicating the sign (+/-) of the cluster's
+      statistical values. The rows and columns were re-ordered to form clusters in the heatmap."
 define: &focuscounter_text "The FocusCounter analysis characterizes the relative contribution 
       of each experiment in a meta-analysis to the resulting clusters by counting the number 
       of peaks from each experiment that fall within each significant cluster."
@@ -57,148 +57,28 @@ sections:
   - bids: {value: corrector, suffix: summary}
     title: Corrector
     description: Parameters use to fit the corrector.
-  - bids: {value: z, corr: FDR, method: indep, suffix: fig-summary}
-  - bids: {value: z, corr: FDR, method: indep, suffix: figure-non}
-  - bids: {value: z, corr: FDR, method: indep, suffix: figure-interactive}
+  - bids: {value: corrector, suffix: fig-summary}
+  - bids: {value: corrector, suffix: figure-non}
+  - bids: {value: corrector, suffix: figure-interactive}
     subtitle: Explorer
     description: *explorer_text
-  - bids: {value: z, corr: FDR, method: indep, suffix: figure-static}
-    description: This panel shows the the corrrected meta-analytic map.
-  - bids: {value: z, corr: FDR, method: negcorr, suffix: fig-summary}
-  - bids: {value: z, corr: FDR, method: negcorr, suffix: figure-non}
-  - bids: {value: z, corr: FDR, method: negcorr, suffix: figure-interactive}
-    subtitle: Explorer
-    description: *explorer_text
-  - bids: {value: z, corr: FDR, method: negcorr, suffix: figure-static}
-    description: This panel shows the the corrrected meta-analytic map.
-  - bids: {value: z, corr: FWE, method: bonferroni, suffix: fig-summary}
-  - bids: {value: z, corr: FWE, method: bonferroni, suffix: figure-non}
-  - bids: {value: z, corr: FWE, method: bonferroni, suffix: figure-interactive}
-    subtitle: Explorer
-    description: *explorer_text
-  - bids: {value: z, corr: FWE, method: bonferroni, suffix: figure-static}
-    description: This panel shows the the corrrected meta-analytic map.
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: fig-summary}
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: figure-non}
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: figure-interactive}
-    subtitle: Explorer
-    description: *explorer_text 
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: figure-static}
-    description: This panel shows the the corrrected meta-analytic map.
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: fig-summary}
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: figure-non}
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: figure-interactive}
-    subtitle: Explorer
-    description: *explorer_text
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: figure-static}
-    description: This panel shows the the corrrected meta-analytic map.
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: fig-summary}
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: figure-non}
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: figure-interactive}
-    subtitle: Explorer
-    description: *explorer_text 
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: figure-static}
+  - bids: {value: corrector, suffix: figure-static}
     description: This panel shows the the corrrected meta-analytic map.
 - name: Diagnostics
   reportlets:
-  - bids: {value: z, corr: FDR, method: indep, suffix: diag-summary}
-  - bids: {value: z, corr: FDR, method: indep, tab: clust, suffix: table}
+  - bids: {value: diagnostics, suffix: diag-summary}
+  - bids: {value: diagnostics, tab: clust, suffix: table}
     subtitle: Significant clusters
-  - bids: {value: label, corr: FDR, method: indep, tail: positive, suffix: figure}
+  - bids: {value: diagnostics, tail: positive, suffix: figure}
     subtitle: "Label map: positive tail"
-  - bids: {value: label, corr: FDR, method: indep, tail: negative, suffix: figure}
+  - bids: {value: diagnostics, tail: negative, suffix: figure}
     subtitle: "Label map: negative tail"
-  - bids: {value: z, corr: FDR, method: indep, diag: FocusCounter, tab: counts, suffix: figure}
+  - bids: {value: diagnostics, diag: FocusCounter, tab: counts, suffix: figure}
     subtitle: FocusCounter
     caption: *heatmap_text
     description: *focuscounter_text
     iframe: True
-  - bids: {value: z, corr: FDR, method: indep, diag: Jackknife, tab: counts, suffix: figure}
-    subtitle: Jackknife
-    caption: *heatmap_text
-    description: *jackknife_text
-    iframe: True
-  - bids: {value: z, corr: FDR, method: negcorr, suffix: diag-summary}
-  - bids: {value: z, corr: FDR, method: negcorr, tab: clust, suffix: table}
-    subtitle: Significant clusters
-  - bids: {value: label, corr: FDR, method: negcorr, tail: positive, suffix: figure}
-    subtitle: "Label map: positive tail"
-  - bids: {value: label, corr: FDR, method: negcorr, tail: negative, suffix: figure}
-    subtitle: "Label map: negative tail"
-  - bids: {value: z, corr: FDR, method: negcorr, diag: FocusCounter, tab: counts, suffix: figure}
-    subtitle: FocusCounter
-    caption: *heatmap_text
-    description: *focuscounter_text
-    iframe: True
-  - bids: {value: z, corr: FDR, method: negcorr, diag: Jackknife, tab: counts, suffix: figure}
-    subtitle: Jackknife
-    caption: *heatmap_text
-    description: *jackknife_text
-    iframe: True
-  - bids: {value: z, corr: FWE, method: bonferroni, suffix: diag-summary}
-  - bids: {value: z, corr: FWE, method: bonferroni, tab: clust, suffix: table}
-    subtitle: Significant clusters
-  - bids: {value: label, corr: FWE, method: bonferroni, tail: positive, suffix: figure}
-    subtitle: "Label map: positive tail"
-  - bids: {value: label, corr: FWE, method: bonferroni, tail: negative, suffix: figure}
-    subtitle: "Label map: negative tail"
-  - bids: {value: z, corr: FWE, method: bonferroni, diag: FocusCounter, tab: counts, suffix: figure}
-    subtitle: FocusCounter
-    caption: *heatmap_text
-    description: *focuscounter_text
-    iframe: True
-  - bids: {value: z, corr: FWE, method: bonferroni, diag: Jackknife, tab: counts, suffix: figure}
-    subtitle: Jackknife
-    caption: *heatmap_text
-    description: *jackknife_text
-    iframe: True
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, suffix: diag-summary}
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, tab: clust, suffix: table}
-    subtitle: Significant clusters
-  - bids: {value: label, level: voxel, corr: FWE, method: montecarlo, tail: positive, suffix: figure}
-    subtitle: "Label map: positive tail"
-  - bids: {value: label, level: voxel, corr: FWE, method: montecarlo, tail: negative, suffix: figure}
-    subtitle: "Label map: negative tail"
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
-    subtitle: FocusCounter
-    caption: *heatmap_text
-    description: *focuscounter_text
-    iframe: True
-  - bids: {value: z, level: voxel, corr: FWE, method: montecarlo, diag: Jackknife, tab: counts, suffix: figure}
-    subtitle: Jackknife
-    caption: *heatmap_text
-    description: *jackknife_text
-    iframe: True
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, suffix: diag-summary}
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, tab: clust, suffix: table}
-    subtitle: Significant clusters
-  - bids: {value: label, desc: size, level: cluster, corr: FWE, method: montecarlo, tail: positive, suffix: figure}
-    subtitle: "Label map: positive tail"
-  - bids: {value: label, desc: size, level: cluster, corr: FWE, method: montecarlo, tail: negative, suffix: figure}
-    subtitle: "Label map: negative tail"
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
-    subtitle: FocusCounter
-    caption: *heatmap_text
-    description: *focuscounter_text
-    iframe: True
-  - bids: {value: z, desc: size, level: cluster, corr: FWE, method: montecarlo, diag: Jackknife, tab: counts, suffix: figure}
-    subtitle: Jackknife
-    caption: *heatmap_text
-    description: *jackknife_text
-    iframe: True
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, suffix: diag-summary}
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, tab: clust, suffix: table}
-    subtitle: Significant clusters
-  - bids: {value: label, desc: mass, level: cluster, corr: FWE, method: montecarlo, tail: positive, suffix: figure}
-    subtitle: "Label map: positive tail"
-  - bids: {value: label, desc: mass, level: cluster, corr: FWE, method: montecarlo, tail: negative, suffix: figure}
-    subtitle: "Label map: negative tail"
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, diag: FocusCounter, tab: counts, suffix: figure}
-    subtitle: FocusCounter
-    caption: *heatmap_text
-    description: *focuscounter_text
-    iframe: True
-  - bids: {value: z, desc: mass, level: cluster, corr: FWE, method: montecarlo, diag: Jackknife, tab: counts, suffix: figure}
+  - bids: {value: diagnostics, diag: Jackknife, tab: counts, suffix: figure}
     subtitle: Jackknife
     caption: *heatmap_text
     description: *jackknife_text

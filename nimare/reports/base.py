@@ -226,27 +226,27 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     # Plot brain images if not empty
     if (results.maps[img_key] > threshold).any():
         img = results.get_map(img_key)
-        plot_interactive_brain(img, fig_dir / f"{img_key}_figure-interactive.html", threshold)
-        plot_static_brain(img, fig_dir / f"{img_key}_figure-static.png", threshold)
+        plot_interactive_brain(img, fig_dir / "corrector_figure-interactive.html", threshold)
+        plot_static_brain(img, fig_dir / "corrector_figure-static.png", threshold)
     else:
-        _no_maps_found(fig_dir / f"{img_key}_figure-non.html")
+        _no_maps_found(fig_dir / "corrector_figure-non.html")
 
     # Plot clusters table if cluster_table is not empty
     cluster_table = results.tables[f"{img_key}_tab-clust"]
     if cluster_table is not None and not cluster_table.empty:
-        gen_table(cluster_table, fig_dir / f"{img_key}_tab-clust_table.html")
+        gen_table(cluster_table, fig_dir / "diagnostics_tab-clust_table.html")
 
         # Get label maps
         lbl_name = "_".join(img_key.split("_")[1:])
         lbl_name = "_" + lbl_name if lbl_name else lbl_name
-        lbl_keys = [f"label{lbl_name}_tail-{tail}" for tail in ["positive", "negative"]]
-        for lbl_key in lbl_keys:
+        for tail in ["positive", "negative"]:
+            lbl_key = f"label{lbl_name}_tail-{tail}"
             if lbl_key in results.maps:
                 label_map = results.get_map(lbl_key)
-                plot_clusters(label_map, fig_dir / f"{lbl_key}_figure.png")
+                plot_clusters(label_map, fig_dir / f"diagnostics_tail-{tail}_figure.png")
 
     else:
-        _no_clusts_found(fig_dir / f"{img_key}_tab-clust_table.html")
+        _no_clusts_found(fig_dir / "diagnostics_tab-clust_table.html")
 
     # Plot heatmap if contribution_table is not empty
     if f"{img_key}_diag-{diag_name}_tab-counts" in results.tables:
@@ -255,7 +255,7 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
             contribution_table = contribution_table.set_index("id")
             plot_heatmap(
                 contribution_table,
-                fig_dir / f"{img_key}_diag-{diag_name}_tab-counts_figure.html",
+                fig_dir / f"diagnostics_diag-{diag_name}_tab-counts_figure.html",
             )
 
 
@@ -384,8 +384,10 @@ class Report:
             diag_name = diagnostic.__class__.__name__
             threshold = diagnostic.voxel_thresh
 
-            _gen_fig_summary(img_key, threshold, self.fig_dir / f"{img_key}_fig-summary.html")
-            _gen_diag_summary(diagnostic, self.fig_dir / f"{img_key}_diag-summary.html")
+            _gen_fig_summary(img_key, threshold, self.fig_dir / "corrector_fig-summary.html")
+            _gen_diag_summary(
+                diagnostic, self.fig_dir / f"diagnostics_diag-{diag_name}_summary.html"
+            )
             _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
 
         # Default template from nimare
