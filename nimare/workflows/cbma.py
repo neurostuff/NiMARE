@@ -1,15 +1,13 @@
 """Workflow for running an coordinates-based meta-analysis from a NiMARE database."""
-import copy
-import itertools
 import logging
-import os.path as op
 
 from nimare.correct import Corrector, FDRCorrector, FWECorrector
 from nimare.dataset import Dataset
 from nimare.diagnostics import Diagnostics, FocusCounter, Jackknife
-from nimare.meta import ALE, KDA, SCALE, MKDADensity
+from nimare.meta import ALE, KDA, SCALE, ALESubtraction, MKDAChi2, MKDADensity
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
-from nimare.utils import _check_ncores, _check_type
+from nimare.utils import _check_type
+from nimare.workflows.base import Workflow
 
 LGR = logging.getLogger(__name__)
 
@@ -21,6 +19,8 @@ def _str_to_class(str_name):
         "scale": SCALE,
         "mkdadensity": MKDADensity,
         "kda": KDA,
+        "mkdachi2": MKDAChi2,
+        "alesubtraction": ALESubtraction,
         "montecarlo": FWECorrector,
         "fdr": FDRCorrector,
         "bonferroni": FWECorrector,
@@ -47,142 +47,146 @@ def _check_input(obj, clss, options, **kwargs):
     return _check_type(obj, clss, **kwargs)
 
 
-def cbma_workflow(
-    dataset,
-    estimator=None,
-    corrector=None,
-    diagnostics=None,
-    voxel_thresh=1.65,
-    cluster_threshold=10,
-    output_dir=None,
-    n_cores=1,
-):
+class CBMAWorkflow(Workflow):
     """Compose a coordinate-based meta-analysis workflow.
+
+    .. versionchanged:: 0.1.1
+
+        - `cbma_workflow` functions was converted to CBMAWorkflow class.
 
     .. versionadded:: 0.0.14
 
     This workflow performs a coordinate-based meta-analysis, multiple comparison corrections,
     and diagnostics analyses on corrected meta-analytic z-score maps.
-
-    Parameters
-    ----------
-    dataset : :obj:`~nimare.dataset.Dataset`
-        Dataset for which to run meta-analyses to generate maps.
-    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', 'mkdadensity', \
-    'kda'}, or optional
-        Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.ale.ALE`.
-    corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
-    'bonferroni'} or optional
-        Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
-    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`, \
-    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focuscounter'}, \
-    or optional
-        List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
-        Default is :class:`~nimare.diagnostics.FocusCounter`.
-    voxel_thresh : :obj:`float` or None, optional
-        An optional voxel-level threshold that may be applied to the ``target_image`` in the
-        :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
-        if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
-        Default is 1.65, which corresponds to p-value = .05, one-tailed.
-    cluster_threshold : :obj:`int` or None, optional
-        Cluster size threshold, in :term:`voxels<voxel>`.
-        If None, then no cluster size threshold will be applied.
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
-        Default is 10.
-    output_dir : :obj:`str`, optional
-        Output directory in which to save results. If the directory doesn't
-        exist, it will be created. Default is None (the results are not saved).
-    n_cores : :obj:`int`, optional
-        Number of cores to use for parallelization.
-        If <=0, defaults to using all available cores.
-        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
-        will be ignored.
-        Default is 1.
-
-    Returns
-    -------
-    :obj:`~nimare.results.MetaResult`
-        Results of Estimator, Corrector, and Diagnostics fitting with label maps,
-        cluster and diagnostic tables.
     """
-    n_cores = _check_ncores(n_cores)
 
-    if not isinstance(diagnostics, list) and diagnostics is not None:
-        diagnostics = [diagnostics]
+    def _preprocess_input(self, estimator, corrector, diagnostics):
+        if not isinstance(diagnostics, list) and diagnostics is not None:
+            diagnostics = [diagnostics]
 
-    # Check dataset type
-    dataset = _check_type(dataset, Dataset)
+        # Options allows for string input
+        estm_options = ("ale", "scale", "mkdadensity", "kda")
+        corr_options = ("montecarlo", "fdr", "bonferroni")
+        diag_options = ("jackknife", "focuscounter")
 
-    # Options allows for string input
-    estm_options = ("ale", "scale", "mkdadensity", "kda")
-    corr_options = ("montecarlo", "fdr", "bonferroni")
-    diag_options = ("jackknife", "focuscounter")
-
-    # Check inputs and set defaults if input is None
-    estimator = (
-        ALE(n_cores=n_cores)
-        if estimator is None
-        else _check_input(estimator, CBMAEstimator, estm_options, n_cores=n_cores)
-    )
-    corrector = (
-        FWECorrector(method="montecarlo", n_cores=n_cores)
-        if corrector is None
-        else _check_input(corrector, Corrector, corr_options, n_cores=n_cores)
-    )
-
-    diag_kwargs = {
-        "voxel_thresh": voxel_thresh,
-        "cluster_threshold": cluster_threshold,
-        "n_cores": n_cores,
-    }
-    if diagnostics is None:
-        diagnostics = [Jackknife(**diag_kwargs)]
-    else:
-        diagnostics = [
-            _check_input(diagnostic, Diagnostics, diag_options, **diag_kwargs)
-            for diagnostic in diagnostics
-        ]
-
-    if isinstance(estimator, PairwiseCBMAEstimator):
-        raise AttributeError(
-            'The "cbma_workflow" function does not currently work with pairwise Estimators.'
+        # Check inputs and set defaults if input is None
+        estimator = (
+            ALE(n_cores=self.n_cores)
+            if estimator is None
+            else _check_input(estimator, CBMAEstimator, estm_options, n_cores=self.n_cores)
+        )
+        corrector = (
+            FWECorrector(method="montecarlo", n_cores=self.n_cores)
+            if corrector is None
+            else _check_input(corrector, Corrector, corr_options, n_cores=self.n_cores)
         )
 
-    LGR.info("Performing meta-analysis...")
-    results = estimator.fit(dataset)
+        diag_kwargs = {
+            "voxel_thresh": self.voxel_thresh,
+            "cluster_threshold": self.cluster_threshold,
+            "n_cores": self.n_cores,
+        }
+        if diagnostics is None:
+            diagnostics = [Jackknife(**diag_kwargs)]
+        else:
+            diagnostics = [
+                _check_input(diagnostic, Diagnostics, diag_options, **diag_kwargs)
+                for diagnostic in diagnostics
+            ]
 
-    LGR.info("Performing correction on meta-analysis...")
-    corr_results = corrector.transform(results)
+        if isinstance(estimator, PairwiseCBMAEstimator):
+            raise AttributeError(
+                'The "CBMAWorkflow" class does not work with pairwise Estimators.'
+            )
 
-    LGR.info("Generating clusters tables and performing diagnostics on corrected meta-analyses...")
-    # Perform diagnostic only on desc-mass when using montecarlo correction
-    corr_method = corr_results.get_params()["corrector__method"]
-    modalities = ["_desc-mass", "_corr-"] if corr_method == "montecarlo" else ["_corr-"]
-    img_keys = [
-        img_key
-        for img_key in corr_results.maps.keys()
-        if img_key.startswith("z_") and all(mod in img_key for mod in modalities)
-    ]
+        self.estimator = estimator
+        self.corrector = corrector
+        self.diagnostics = diagnostics
 
-    for img_key, diagnostic in itertools.product(img_keys, diagnostics):
-        # Work on copy of diagnostic:
-        diagnostic_cp = copy.deepcopy(diagnostic)
-        diagnostic_cp = diagnostic_cp.set_params(target_image=img_key)
-        corr_results = diagnostic_cp.transform(corr_results)
+    def fit(self, dataset, drop_invalid=True):
+        """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
-    if output_dir is not None:
-        LGR.info(f"Saving meta-analytic maps, tables and boilerplate to {output_dir}...")
-        corr_results.save_maps(output_dir=output_dir)
-        corr_results.save_tables(output_dir=output_dir)
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            Dataset to analyze.
 
-        boilerplate = corr_results.description_
-        with open(op.join(output_dir, "boilerplate.txt"), "w") as fo:
-            fo.write(boilerplate)
+        Returns
+        -------
+        :obj:`~nimare.results.MetaResult`
+            Results of Estimator fitting.
+        """
+        # Check dataset type
+        dataset = _check_type(dataset, Dataset)
 
-        bibtex = corr_results.bibtex_
-        with open(op.join(output_dir, "references.bib"), "w") as fo:
-            fo.write(bibtex)
+        LGR.info("Performing meta-analysis...")
+        results = self.estimator.fit(dataset, drop_invalid=drop_invalid)
 
-    LGR.info("Workflow completed.")
-    return corr_results
+        return self._transform(results)
+
+
+class PairwiseCBMAWorkflow(Workflow):
+    """Base class for pairwise coordinate-based meta-analysis workflow methods.
+
+    .. versionadded:: 0.1.1
+    """
+
+    def _preprocess_input(self, estimator, corrector, diagnostics):
+        if not isinstance(diagnostics, list) and diagnostics is not None:
+            diagnostics = [diagnostics]
+
+        # Options allows for string input
+        estm_options = ("alesubtraction", "mkdachi2")
+        corr_options = ("montecarlo", "fdr", "bonferroni")
+        diag_options = "focuscounter"
+
+        # Check inputs and set defaults if input is None
+        estimator = (
+            MKDAChi2(n_cores=self.n_cores)
+            if estimator is None
+            else _check_input(estimator, PairwiseCBMAEstimator, estm_options, n_cores=self.n_cores)
+        )
+        corrector = (
+            FWECorrector(method="montecarlo", n_cores=self.n_cores)
+            if corrector is None
+            else _check_input(corrector, Corrector, corr_options, n_cores=self.n_cores)
+        )
+
+        diag_kwargs = {
+            "voxel_thresh": self.voxel_thresh,
+            "cluster_threshold": self.cluster_threshold,
+            "n_cores": self.n_cores,
+        }
+        if diagnostics is None:
+            diagnostics = [FocusCounter(**diag_kwargs)]
+        else:
+            diagnostics = [
+                _check_input(diagnostic, Diagnostics, diag_options, **diag_kwargs)
+                for diagnostic in diagnostics
+            ]
+
+        self.estimator = estimator
+        self.corrector = corrector
+        self.diagnostics = diagnostics
+
+    def fit(self, dataset1, dataset2, drop_invalid=True):
+        """Fit Estimator to two Datasets.
+
+        Parameters
+        ----------
+        dataset1/dataset2 : :obj:`~nimare.dataset.Dataset`
+            Dataset objects to analyze.
+
+        Returns
+        -------
+        :obj:`~nimare.results.MetaResult`
+            Results of Estimator fitting.
+        """
+        # Check dataset type
+        dataset1 = _check_type(dataset1, Dataset)
+        dataset2 = _check_type(dataset2, Dataset)
+
+        LGR.info("Performing meta-analysis...")
+        results = self.estimator.fit(dataset1, dataset2, drop_invalid=drop_invalid)
+
+        return self._transform(results)
