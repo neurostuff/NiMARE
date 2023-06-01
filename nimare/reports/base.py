@@ -29,7 +29,7 @@ from pathlib import Path
 import jinja2
 from pkg_resources import resource_filename as pkgrf
 
-from nimare.meta.cbma.base import CBMAEstimator
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.reports.figures import (
     gen_table,
     plot_clusters,
@@ -76,6 +76,7 @@ PARAMETERS_DICT = {
     "fdr": "False discovery rate (FDR) correction",
     "method": "Method",
     "alpha": "Alpha",
+    "prior": "Prior",
 }
 
 SUMMARY_TEMPLATE = """\
@@ -93,6 +94,7 @@ SUMMARY_TEMPLATE = """\
 
 ESTIMATOR_TEMPLATE = """\
 <ul class="elem-desc">
+<li>Estimator: {est_name}</li>
 <li>Kernel Transformer: {kernel_transformer}{ker_params_text}</li>
 {est_params_text}
 </ul>
@@ -133,7 +135,10 @@ def _gen_est_summary(obj, out_filename):
         est_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
     est_params_text = "".join(est_params_text)
 
+    est_name = obj.__class__.__name__
+
     summary_text = ESTIMATOR_TEMPLATE.format(
+        est_name=est_name,
         kernel_transformer=str(params_dict["kernel_transformer"]),
         ker_params_text=ker_params_text,
         est_params_text=est_params_text,
@@ -359,19 +364,25 @@ class Report:
         self.fig_dir = self.out_dir / "figures"
         self.fig_dir.mkdir(parents=True, exist_ok=True)
 
+        dataset = (
+            self.results.estimator.dataset1
+            if issubclass(type(self.results.estimator), PairwiseCBMAEstimator)
+            else self.results.estimator.dataset
+        )
+
         # Generate summary text
-        _gen_summary(self.results.estimator.dataset, self.fig_dir / "preliminary_summary.html")
+        _gen_summary(dataset, self.fig_dir / "preliminary_summary.html")
 
         # Plot mask
         plot_mask(
-            self.results.estimator.dataset.masker.mask_img,
+            dataset.masker.mask_img,
             self.fig_dir / "preliminary_figure-mask.png",
         )
 
         if issubclass(type(self.results.estimator), CBMAEstimator):
             # Plot coordinates for CBMA estimators
             plot_coordinates(
-                self.results.estimator.dataset.coordinates,
+                dataset.coordinates,
                 self.fig_dir / "preliminary_figure-static.png",
                 self.fig_dir / "preliminary_figure-interactive.html",
                 self.fig_dir / "preliminary_figure-legend.png",

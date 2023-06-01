@@ -81,7 +81,7 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
 
     # Order columns
     col_linkage_matrix = linkage(mat.T, method=reorder)
-    col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat)
+    col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat.T)
     col_index = leaves_list(col_ordered_linkage)
 
     # Make sure labels is an ndarray and copy it
@@ -124,7 +124,6 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
         black_bg=False,
         draw_cross=False,
         threshold=threshold,
-        vmax=4,
         display_mode="mosaic",
     )
     fig.savefig(out_filename, dpi=300)
@@ -251,7 +250,7 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
     _check_extention(out_filename, [".html"])
 
     template = datasets.load_mni152_template(resolution=1)
-    html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold, vmax=4)
+    html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold)
     html_view.save_as_html(out_filename)
 
 

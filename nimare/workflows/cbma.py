@@ -138,7 +138,7 @@ class PairwiseCBMAWorkflow(Workflow):
         # Options allows for string input
         estm_options = ("alesubtraction", "mkdachi2")
         corr_options = ("montecarlo", "fdr", "bonferroni")
-        diag_options = "focuscounter"
+        diag_options = ("jackknife", "focuscounter")
 
         # Check inputs and set defaults if input is None
         estimator = (

@@ -7,7 +7,7 @@ import nimare
 from nimare import cli, workflows
 from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
-from nimare.meta.cbma import ALE, MKDAChi2
+from nimare.meta.cbma import ALE, ALESubtraction, MKDAChi2
 from nimare.meta.ibma import Fishers
 from nimare.tests.utils import get_test_data_path
 from nimare.workflows import CBMAWorkflow, PairwiseCBMAWorkflow
@@ -155,8 +155,8 @@ def test_cbma_workflow_smoke(
     [
         (MKDAChi2, FWECorrector(method="montecarlo", n_iters=10), [FocusCounter]),
         ("mkdachi", "bonferroni", FocusCounter),
-        ("mkdachi2", "bonferroni", "focuscounter"),
-        ("alesubtraction", "fdr", FocusCounter),
+        ("mkdachi2", "bonferroni", "jackknife"),
+        (ALESubtraction(n_iters=10), "fdr", Jackknife),
         (ALE, "montecarlo", None),
         (Fishers, "montecarlo", "jackknife"),
     ],
@@ -172,7 +172,7 @@ def test_pairwise_cbma_workflow_smoke(
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_function_smoke")
 
     if estimator == ALE:
-        with pytest.raises(AttributeError):
+        with pytest.raises(ValueError):
             PairwiseCBMAWorkflow(estimator=estimator, corrector=corrector, diagnostics=diagnostics)
     elif estimator == Fishers:
         with pytest.raises((AttributeError, ValueError)):
@@ -196,11 +196,12 @@ def test_pairwise_cbma_workflow_smoke(
         for imgtype in cres.maps.keys():
             filename = imgtype + ".nii.gz"
             outpath = op.join(tmpdir, filename)
-            assert op.isfile(outpath)
+            if not cres.maps[imgtype] is None:
+                assert op.isfile(outpath)
 
         for tabletype in cres.tables.keys():
             filename = tabletype + ".tsv"
             outpath = op.join(tmpdir, filename)
-            # For estimator == ALE, tables are None
-            # if estimator != ALE:
-            assert op.isfile(outpath)
+            # For estimator == mkdachi2, tables are None
+            if estimator != "mkdachi2":
+                assert op.isfile(outpath)

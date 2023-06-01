@@ -6,6 +6,7 @@ import os.path as op
 from abc import abstractmethod
 
 from nimare.base import NiMAREBase
+from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.utils import _check_ncores
 
 LGR = logging.getLogger(__name__)
@@ -95,7 +96,16 @@ class Workflow(NiMAREBase):
         LGR.info("Performing diagnostics on corrected meta-analyses...")
         # Perform diagnostic only on desc-mass when using montecarlo correction
         corr_method = corr_result.get_params()["corrector__method"]
-        modalities = ["_desc-mass", "_corr-"] if corr_method == "montecarlo" else ["_corr-"]
+
+        if issubclass(type(result.estimator), PairwiseCBMAEstimator):
+            modalities = (
+                ["_desc-specificityMass", "_corr-"]
+                if corr_method == "montecarlo"
+                else ["_desc-", "_corr-"]
+            )
+        else:
+            modalities = ["_desc-mass", "_corr-"] if corr_method == "montecarlo" else ["_corr-"]
+
         img_keys = [
             img_key
             for img_key in corr_result.maps.keys()

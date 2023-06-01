@@ -50,14 +50,11 @@ def test_jackknife_smoke(
     contribution_table = results.tables[f"{target_image}_diag-Jackknife_tab-counts"]
     clusters_table = results.tables[f"{target_image}_tab-clust"]
     label_maps = results.maps[f"label{image_name}_tail-positive"]
-    if n_samples == "twosample":
-        assert contribution_table is None
-        assert not clusters_table.empty
-        assert label_maps is None
-    else:
-        assert contribution_table.shape[0] == len(meta.inputs_["id"])
-        assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
-        assert len(label_maps) > 0
+    ids_ = meta.inputs_["id"] if n_samples == "onesample" else meta.inputs_["id1"]
+
+    assert contribution_table.shape[0] == len(ids_)
+    assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
+    assert len(label_maps) > 0
 
 
 def test_jackknife_with_zero_clusters(testdata_cbma_full):
@@ -132,14 +129,11 @@ def test_focuscounter_smoke(
     contribution_table = results.tables[f"{target_image}_diag-FocusCounter_tab-counts"]
     clusters_table = results.tables[f"{target_image}_tab-clust"]
     label_maps = results.maps[f"label{image_name}_tail-positive"]
-    if n_samples == "twosample":
-        assert contribution_table is None
-        assert not clusters_table.empty
-        assert label_maps is None
-    else:
-        assert contribution_table.shape[0] == len(meta.inputs_["id"])
-        assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
-        assert len(label_maps) > 0
+    ids_ = meta.inputs_["id"] if n_samples == "onesample" else meta.inputs_["id1"]
+
+    assert contribution_table.shape[0] == len(ids_)
+    assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
+    assert len(label_maps) > 0
 
 
 def test_focusfilter(testdata_laird):
