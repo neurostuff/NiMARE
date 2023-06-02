@@ -80,7 +80,7 @@ class Studyset:
         return cls(nimads)
 
     def combine_analyses(self):
-        """Combine analyses from an Studyset."""
+        """Combine analyses in Studyset."""
         for study in self.studies:
             if len(study.analyses) > 1:
                 source_lst = [analysis.to_dict() for analysis in study.analyses]
