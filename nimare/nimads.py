@@ -79,6 +79,27 @@ class Studyset:
 
         return cls(nimads)
 
+    def combine_analyses(self):
+        """Combine analyses from an Studyset."""
+        for study in self.studies:
+            if len(study.analyses) > 1:
+                source_lst = [analysis.to_dict() for analysis in study.analyses]
+                ids, names, conditions, images, points, weights = [
+                    [source[key] for source in source_lst] for key in source_lst[0]
+                ]
+
+                new_source = {
+                    "id": "_".join(ids),
+                    "name": "; ".join(names),
+                    "conditions": [cond for c_list in conditions for cond in c_list],
+                    "images": [image for i_list in images for image in i_list],
+                    "points": [point for p_list in points for point in p_list],
+                    "weights": [weight for w_list in weights for weight in w_list],
+                }
+                study.analyses = [Analysis(new_source)]
+
+        return self
+
     def to_nimads(self, filename):
         """Write the Studyset to a NIMADS JSON file."""
         with open(filename, "w+") as fn:
