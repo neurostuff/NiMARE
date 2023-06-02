@@ -52,12 +52,46 @@ class CBMAWorkflow(Workflow):
 
     .. versionchanged:: 0.1.1
 
-        - `cbma_workflow` functions was converted to CBMAWorkflow class.
+        - `cbma_workflow` function was converted to CBMAWorkflow class.
 
     .. versionadded:: 0.0.14
 
     This workflow performs a coordinate-based meta-analysis, multiple comparison corrections,
     and diagnostics analyses on corrected meta-analytic z-score maps.
+
+    Parameters
+    ----------
+    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', 'mkdadensity', \
+    'kda'}, or optional
+        Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.ale.ALE`.
+    corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
+    'bonferroni'} or optional
+        Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`, \
+    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focuscounter'}, \
+    or optional
+        List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
+        Default is :class:`~nimare.diagnostics.FocusCounter`.
+    voxel_thresh : :obj:`float` or None, optional
+        An optional voxel-level threshold that may be applied to the ``target_image`` in the
+        :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
+        if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
+        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        Default is 1.65, which corresponds to p-value = .05, one-tailed.
+    cluster_threshold : :obj:`int` or None, optional
+        Cluster size threshold, in :term:`voxels<voxel>`.
+        If None, then no cluster size threshold will be applied.
+        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        Default is 10.
+    output_dir : :obj:`str`, optional
+        Output directory in which to save results. If the directory doesn't
+        exist, it will be created. Default is None (the results are not saved).
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores.
+        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
+        will be ignored.
+        Default is 1.
     """
 
     def _preprocess_input(self, estimator, corrector, diagnostics):
@@ -104,7 +138,7 @@ class CBMAWorkflow(Workflow):
         self.diagnostics = diagnostics
 
     def fit(self, dataset, drop_invalid=True):
-        """Perform specific coactivation likelihood estimation meta-analysis on dataset.
+        """Fit Workflow to a Dataset.
 
         Parameters
         ----------
@@ -129,6 +163,39 @@ class PairwiseCBMAWorkflow(Workflow):
     """Base class for pairwise coordinate-based meta-analysis workflow methods.
 
     .. versionadded:: 0.1.1
+    Parameters
+    ----------
+    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'alesubtraction', 'mkdachi2', \
+    or optional
+        Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.kda.MKDAChi2`.
+    corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
+    'bonferroni'} or optional
+        Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`, \
+    :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focuscounter'}, \
+    or optional
+        List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
+        Default is :class:`~nimare.diagnostics.FocusCounter`.
+    voxel_thresh : :obj:`float` or None, optional
+        An optional voxel-level threshold that may be applied to the ``target_image`` in the
+        :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
+        if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
+        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        Default is 1.65, which corresponds to p-value = .05, one-tailed.
+    cluster_threshold : :obj:`int` or None, optional
+        Cluster size threshold, in :term:`voxels<voxel>`.
+        If None, then no cluster size threshold will be applied.
+        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        Default is 10.
+    output_dir : :obj:`str`, optional
+        Output directory in which to save results. If the directory doesn't
+        exist, it will be created. Default is None (the results are not saved).
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores.
+        If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
+        will be ignored.
+        Default is 1.
     """
 
     def _preprocess_input(self, estimator, corrector, diagnostics):
@@ -170,7 +237,7 @@ class PairwiseCBMAWorkflow(Workflow):
         self.diagnostics = diagnostics
 
     def fit(self, dataset1, dataset2, drop_invalid=True):
-        """Fit Estimator to two Datasets.
+        """Fit Workflow to two Datasets.
 
         Parameters
         ----------
