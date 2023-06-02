@@ -10,17 +10,17 @@ from nimare.tests.utils import get_test_data_path
 
 
 @pytest.mark.parametrize(
-    "estimator,meta_type,n_samples,target_image",
+    "estimator,meta_type,n_samples,target_image,voxel_thresh",
     [
-        (cbma.ALE, "cbma", "onesample", "z"),
-        (cbma.MKDADensity, "cbma", "onesample", "z"),
-        (cbma.KDA, "cbma", "onesample", "z"),
-        (cbma.MKDAChi2, "cbma", "twosample", "z_desc-consistency"),
-        (ibma.Fishers, "ibma", "onesample", "z"),
-        (ibma.Stouffers, "ibma", "onesample", "z"),
-        (ibma.WeightedLeastSquares, "ibma", "onesample", "z"),
-        (ibma.DerSimonianLaird, "ibma", "onesample", "z"),
-        (ibma.Hedges, "ibma", "onesample", "z"),
+        (cbma.ALE, "cbma", "onesample", "z", 1.65),
+        (cbma.MKDADensity, "cbma", "onesample", "z", 1.65),
+        (cbma.KDA, "cbma", "onesample", "z", 1.65),
+        (cbma.MKDAChi2, "cbma", "twosample", "z_desc-consistency", 1.65),
+        (ibma.Fishers, "ibma", "onesample", "z", 0.1),
+        (ibma.Stouffers, "ibma", "onesample", "z", 0.1),
+        (ibma.WeightedLeastSquares, "ibma", "onesample", "z", 0.1),
+        (ibma.DerSimonianLaird, "ibma", "onesample", "z", 0.1),
+        (ibma.Hedges, "ibma", "onesample", "z", 0.1),
         # (ibma.SampleSizeBasedLikelihood, "ibma", "onesample", "z"),
         # (ibma.VarianceBasedLikelihood, "ibma", "onesample", "z"),
         # (ibma.PermutedOLS, "ibma", "onesample", "z"),
@@ -33,6 +33,7 @@ def test_jackknife_smoke(
     meta_type,
     n_samples,
     target_image,
+    voxel_thresh,
 ):
     """Smoke test the Jackknife method."""
     meta = estimator()
@@ -42,11 +43,12 @@ def test_jackknife_smoke(
     else:
         res = meta.fit(testdata)
 
-    jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=1.65)
+    jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=voxel_thresh)
     results = jackknife.transform(res)
 
     image_name = "_".join(target_image.split("_")[1:])
-    image_name = "_" + image_name if image_name else image_name
+    image_name = f"_{image_name}" if image_name else image_name
+
     contribution_table = results.tables[f"{target_image}_diag-Jackknife_tab-counts"]
     clusters_table = results.tables[f"{target_image}_tab-clust"]
     label_maps = results.maps[f"label{image_name}_tail-positive"]
@@ -103,6 +105,7 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
         (cbma.MKDADensity, "cbma", "onesample", "z"),
         (cbma.KDA, "cbma", "onesample", "z"),
         (cbma.MKDAChi2, "cbma", "twosample", "z_desc-consistency"),
+        (ibma.Stouffers, "ibma", "onesample", "z"),
     ],
 )
 def test_focuscounter_smoke(
@@ -116,24 +119,26 @@ def test_focuscounter_smoke(
     """Smoke test the FocusCounter method."""
     meta = estimator()
     testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
-    if n_samples == "twosample":
-        res = meta.fit(testdata, testdata)
-    else:
-        res = meta.fit(testdata)
+    res = meta.fit(testdata, testdata) if n_samples == "twosample" else meta.fit(testdata)
 
     counter = diagnostics.FocusCounter(target_image=target_image, voxel_thresh=1.65)
-    results = counter.transform(res)
+    if meta_type == "ibma":
+        with pytest.raises(ValueError):
+            counter.transform(res)
+    else:
+        results = counter.transform(res)
 
-    image_name = "_".join(target_image.split("_")[1:])
-    image_name = "_" + image_name if image_name else image_name
-    contribution_table = results.tables[f"{target_image}_diag-FocusCounter_tab-counts"]
-    clusters_table = results.tables[f"{target_image}_tab-clust"]
-    label_maps = results.maps[f"label{image_name}_tail-positive"]
-    ids_ = meta.inputs_["id"] if n_samples == "onesample" else meta.inputs_["id1"]
+        image_name = "_".join(target_image.split("_")[1:])
+        image_name = f"_{image_name}" if image_name else image_name
 
-    assert contribution_table.shape[0] == len(ids_)
-    assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
-    assert len(label_maps) > 0
+        contribution_table = results.tables[f"{target_image}_diag-FocusCounter_tab-counts"]
+        clusters_table = results.tables[f"{target_image}_tab-clust"]
+        label_maps = results.maps[f"label{image_name}_tail-positive"]
+        ids_ = meta.inputs_["id"] if n_samples == "onesample" else meta.inputs_["id1"]
+
+        assert contribution_table.shape[0] == len(ids_)
+        assert clusters_table.shape[0] >= contribution_table.shape[1] - 1
+        assert len(label_maps) > 0
 
 
 def test_focusfilter(testdata_laird):

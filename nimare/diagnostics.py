@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
+from nimare.meta.ibma import IBMAEstimator
 from nimare.utils import _check_ncores, get_masker, mm2vox, tqdm_joblib
 
 LGR = logging.getLogger(__name__)
@@ -253,11 +254,6 @@ class Jackknife(Diagnostics):
     statistic for all experiments *except* the target experiment, dividing the resulting test
     summary statistics by the summary statistics from the original meta-analysis, and finally
     averaging the resulting proportion values across all voxels in each cluster.
-
-    Warnings
-    --------
-    Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
-    method.
     """
 
     def _transform(self, expid, label_map, result):
@@ -354,9 +350,6 @@ class FocusCounter(Diagnostics):
     Warnings
     --------
     This method only works for coordinate-based meta-analyses.
-
-    Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
-    method.
     """
 
     def _transform(self, expid, label_map, result):
@@ -376,6 +369,9 @@ class FocusCounter(Diagnostics):
         stat_prop_values : 1D :obj:`numpy.ndarray`
             1D array with the contribution of `expid` in each cluster of `label_map`.
         """
+        if issubclass(type(result.estimator), IBMAEstimator):
+            raise ValueError("This method only works for coordinate-based meta-analyses.")
+
         affine = label_map.affine
         label_arr = label_map.get_fdata()
         clust_ids = sorted(list(np.unique(label_arr)[1:]))
