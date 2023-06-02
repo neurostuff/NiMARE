@@ -136,17 +136,17 @@ def test_cbma_workflow_smoke(
         assert op.isfile(op.join(tmpdir, "references.bib"))
 
         for imgtype in cres.maps.keys():
-            filename = imgtype + ".nii.gz"
+            filename = f"{imgtype}.nii.gz"
             outpath = op.join(tmpdir, filename)
-            # For estimator == ALE, maps are None
-            if estimator != ALE:
+            # For ALE maps are None
+            if not cres.maps[imgtype] is None:
                 assert op.isfile(outpath)
 
         for tabletype in cres.tables.keys():
-            filename = tabletype + ".tsv"
+            filename = f"{tabletype}.tsv"
             outpath = op.join(tmpdir, filename)
-            # For estimator == ALE, tables are None
-            if estimator != ALE:
+            # For ALE tables are None
+            if not cres.tables[tabletype] is None:
                 assert op.isfile(outpath)
 
 
@@ -170,7 +170,6 @@ def test_pairwise_cbma_workflow_smoke(
 ):
     """Run smoke test for CBMA workflow."""
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_function_smoke")
-
     if estimator == ALE:
         with pytest.raises(ValueError):
             PairwiseCBMAWorkflow(estimator=estimator, corrector=corrector, diagnostics=diagnostics)
@@ -196,12 +195,13 @@ def test_pairwise_cbma_workflow_smoke(
         for imgtype in cres.maps.keys():
             filename = imgtype + ".nii.gz"
             outpath = op.join(tmpdir, filename)
+            # For MKDAChi2 maps are None
             if not cres.maps[imgtype] is None:
                 assert op.isfile(outpath)
 
         for tabletype in cres.tables.keys():
             filename = tabletype + ".tsv"
             outpath = op.join(tmpdir, filename)
-            # For estimator == mkdachi2, tables are None
-            if estimator != "mkdachi2":
+            # For MKDAChi2 tables are None
+            if not cres.tables[tabletype] is None:
                 assert op.isfile(outpath)
