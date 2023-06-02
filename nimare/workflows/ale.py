@@ -25,6 +25,11 @@ def ale_sleuth_workflow(
     n_cores=1,
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
+    LGR.warning(
+        "The ale_sleuth_workflow function is deprecated and will be removed in release 0.1.2. "
+        "Use CBMAWorkflow or PairwiseCBMAWorkflow instead."
+    )
+
     LGR.info("Loading coordinates...")
 
     if not sleuth_file2:
