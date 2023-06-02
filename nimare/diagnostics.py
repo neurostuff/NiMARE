@@ -152,7 +152,7 @@ class Diagnostics(NiMAREBase):
 
         # Define bids-like names for tables and maps
         image_name = "_".join(self.target_image.split("_")[1:])
-        image_name = "_" + image_name if image_name else image_name
+        image_name = f"_{image_name}" if image_name else image_name
         clusters_table_name = f"{self.target_image}_tab-clust"
         contribution_table_name = f"{self.target_image}_diag-{diag_name}_tab-counts"
         label_map_names = (
@@ -172,7 +172,7 @@ class Diagnostics(NiMAREBase):
 
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
-
+        # Use only id1 for pairwise estimators.
         meta_ids = (
             result.estimator.inputs_["id1"]
             if pairwaise_estimators
@@ -202,6 +202,7 @@ class Diagnostics(NiMAREBase):
             contribution_tables.append(contribution_table.reset_index())
 
         if pairwaise_estimators or len(label_maps) == 1:
+            # Only export PositiveTail table for pairwise estimators
             contribution_table = contribution_tables[0]
         else:
             # Merge PositiveTail and NegativeTail tables
@@ -229,6 +230,10 @@ class Diagnostics(NiMAREBase):
 
 class Jackknife(Diagnostics):
     """Run a jackknife analysis on a meta-analysis result.
+
+    .. versionchanged:: 0.1.1
+
+        * Support for pairwise meta-analyses.
 
     .. versionchanged:: 0.0.14
 
@@ -324,6 +329,10 @@ class Jackknife(Diagnostics):
 
 class FocusCounter(Diagnostics):
     """Run a focus-count analysis on a coordinate-based meta-analysis result.
+
+    .. versionchanged:: 0.1.1
+
+        * Support for pairwise meta-analyses.
 
     .. versionchanged:: 0.0.14
 
