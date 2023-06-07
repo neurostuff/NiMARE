@@ -197,3 +197,16 @@ def example_nimads_annotation():
     with open(out_file, "r") as f:
         annotation = json.load(f)
     return annotation
+
+
+@pytest.fixture(scope="session")
+def simulated_pairwise_datasets():
+    """Simulate two datasets for pairwise meta-analysis."""
+    _, dset1 = create_coordinate_dataset(
+        foci=[(0, 20, 46)], sample_size=(20, 40), n_studies=100, n_noise_foci=20, seed=100
+    )
+    _, dset2 = create_coordinate_dataset(
+        foci=[(-28, 22, 0)], sample_size=(20, 40), n_studies=100, n_noise_foci=20, seed=100
+    )
+
+    return dset1, dset2

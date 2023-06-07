@@ -231,3 +231,10 @@ def test_KDA_approximate_montecarlo_convergence(testdata_cbma_full):
     # Correlation must be near unity and mean difference should be tiny
     assert np.corrcoef(p_approximate, p_montecarlo)[0, 1] > 0.98
     assert (p_approximate - p_montecarlo).mean() < 1e-3
+
+
+def test_MKDAChi2_simulated_data(simulated_pairwise_datasets):
+    """Test MKDAChi2 with simulated data."""
+    dset1, dset2 = simulated_pairwise_datasets
+    meta = MKDAChi2()
+    results = meta.fit(dset1, dset2)
