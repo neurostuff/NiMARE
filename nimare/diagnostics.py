@@ -291,8 +291,8 @@ class Jackknife(Diagnostics):
             target_value_map = "est"
         elif "stat" in result.maps:
             target_value_map = "stat"
-        elif "z_desc-consistency" in result.maps:
-            target_value_map = "z_desc-consistency"
+        elif "z_desc-specificity" in result.maps:
+            target_value_map = "z_desc-specificity"
         else:
             target_value_map = "z"
 
