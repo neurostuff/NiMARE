@@ -1,50 +1,11 @@
 """Workflow for running an coordinates-based meta-analysis from a NiMARE database."""
 import logging
 
-from nimare.correct import Corrector, FDRCorrector, FWECorrector
 from nimare.dataset import Dataset
-from nimare.diagnostics import Diagnostics, FocusCounter, Jackknife
-from nimare.meta import ALE, KDA, SCALE, ALESubtraction, MKDAChi2, MKDADensity
-from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.utils import _check_type
 from nimare.workflows.base import Workflow
 
 LGR = logging.getLogger(__name__)
-
-
-def _str_to_class(str_name):
-    """Match a string to a class name without initializing the class."""
-    classes = {
-        "ale": ALE,
-        "scale": SCALE,
-        "mkdadensity": MKDADensity,
-        "kda": KDA,
-        "mkdachi2": MKDAChi2,
-        "alesubtraction": ALESubtraction,
-        "montecarlo": FWECorrector,
-        "fdr": FDRCorrector,
-        "bonferroni": FWECorrector,
-        "jackknife": Jackknife,
-        "focuscounter": FocusCounter,
-    }
-    return classes[str_name]
-
-
-def _check_input(obj, clss, options, **kwargs):
-    """Check input for workflow functions."""
-    if isinstance(obj, str):
-        if obj not in options:
-            raise ValueError(f'"{obj}" of kind string must be {", ".join(options)}')
-
-        # Get the class from the string
-        obj_str = obj
-        obj = _str_to_class(obj_str)
-
-        # Add the method to the kwargs if it's a FWECorrector
-        if obj == FWECorrector:
-            kwargs["method"] = obj_str
-
-    return _check_type(obj, clss, **kwargs)
 
 
 class CBMAWorkflow(Workflow):
@@ -94,48 +55,10 @@ class CBMAWorkflow(Workflow):
         Default is 1.
     """
 
-    def _preprocess_input(self, estimator, corrector, diagnostics):
-        if not isinstance(diagnostics, list) and diagnostics is not None:
-            diagnostics = [diagnostics]
-
-        # Options allows for string input
-        estm_options = ("ale", "scale", "mkdadensity", "kda")
-        corr_options = ("montecarlo", "fdr", "bonferroni")
-        diag_options = ("jackknife", "focuscounter")
-
-        # Check inputs and set defaults if input is None
-        estimator = (
-            ALE(n_cores=self.n_cores)
-            if estimator is None
-            else _check_input(estimator, CBMAEstimator, estm_options, n_cores=self.n_cores)
-        )
-        corrector = (
-            FWECorrector(method="montecarlo", n_cores=self.n_cores)
-            if corrector is None
-            else _check_input(corrector, Corrector, corr_options, n_cores=self.n_cores)
-        )
-
-        diag_kwargs = {
-            "voxel_thresh": self.voxel_thresh,
-            "cluster_threshold": self.cluster_threshold,
-            "n_cores": self.n_cores,
-        }
-        if diagnostics is None:
-            diagnostics = [Jackknife(**diag_kwargs)]
-        else:
-            diagnostics = [
-                _check_input(diagnostic, Diagnostics, diag_options, **diag_kwargs)
-                for diagnostic in diagnostics
-            ]
-
-        if isinstance(estimator, PairwiseCBMAEstimator):
-            raise AttributeError(
-                'The "CBMAWorkflow" class does not work with pairwise Estimators.'
-            )
-
-        self.estimator = estimator
-        self.corrector = corrector
-        self.diagnostics = diagnostics
+    # Options allows for string input
+    _estm_options = ("ale", "scale", "mkdadensity", "kda")
+    _corr_options = ("montecarlo", "fdr", "bonferroni")
+    _diag_options = ("jackknife", "focuscounter")
 
     def fit(self, dataset, drop_invalid=True):
         """Fit Workflow to a Dataset.
@@ -198,43 +121,10 @@ class PairwiseCBMAWorkflow(Workflow):
         Default is 1.
     """
 
-    def _preprocess_input(self, estimator, corrector, diagnostics):
-        if not isinstance(diagnostics, list) and diagnostics is not None:
-            diagnostics = [diagnostics]
-
-        # Options allows for string input
-        estm_options = ("alesubtraction", "mkdachi2")
-        corr_options = ("montecarlo", "fdr", "bonferroni")
-        diag_options = ("jackknife", "focuscounter")
-
-        # Check inputs and set defaults if input is None
-        estimator = (
-            MKDAChi2(n_cores=self.n_cores)
-            if estimator is None
-            else _check_input(estimator, PairwiseCBMAEstimator, estm_options, n_cores=self.n_cores)
-        )
-        corrector = (
-            FWECorrector(method="montecarlo", n_cores=self.n_cores)
-            if corrector is None
-            else _check_input(corrector, Corrector, corr_options, n_cores=self.n_cores)
-        )
-
-        diag_kwargs = {
-            "voxel_thresh": self.voxel_thresh,
-            "cluster_threshold": self.cluster_threshold,
-            "n_cores": self.n_cores,
-        }
-        if diagnostics is None:
-            diagnostics = [FocusCounter(**diag_kwargs)]
-        else:
-            diagnostics = [
-                _check_input(diagnostic, Diagnostics, diag_options, **diag_kwargs)
-                for diagnostic in diagnostics
-            ]
-
-        self.estimator = estimator
-        self.corrector = corrector
-        self.diagnostics = diagnostics
+    # Options allows for string input
+    _estm_options = ("alesubtraction", "mkdachi2")
+    _corr_options = ("montecarlo", "fdr", "bonferroni")
+    _diag_options = ("jackknife", "focuscounter")
 
     def fit(self, dataset1, dataset2, drop_invalid=True):
         """Fit Workflow to two Datasets.

@@ -6,10 +6,48 @@ import os.path as op
 from abc import abstractmethod
 
 from nimare.base import NiMAREBase
-from nimare.meta.cbma.base import PairwiseCBMAEstimator
-from nimare.utils import _check_ncores
+from nimare.correct import Corrector, FDRCorrector, FWECorrector
+from nimare.diagnostics import Diagnostics, FocusCounter, Jackknife
+from nimare.meta import ALE, KDA, SCALE, ALESubtraction, MKDAChi2, MKDADensity
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.utils import _check_ncores, _check_type
 
 LGR = logging.getLogger(__name__)
+
+
+def _str_to_class(str_name):
+    """Match a string to a class name without initializing the class."""
+    classes = {
+        "ale": ALE,
+        "scale": SCALE,
+        "mkdadensity": MKDADensity,
+        "kda": KDA,
+        "mkdachi2": MKDAChi2,
+        "alesubtraction": ALESubtraction,
+        "montecarlo": FWECorrector,
+        "fdr": FDRCorrector,
+        "bonferroni": FWECorrector,
+        "jackknife": Jackknife,
+        "focuscounter": FocusCounter,
+    }
+    return classes[str_name]
+
+
+def _check_input(obj, clss, options, **kwargs):
+    """Check input for workflow functions."""
+    if isinstance(obj, str):
+        if obj not in options:
+            raise ValueError(f'"{obj}" of kind string must be {", ".join(options)}')
+
+        # Get the class from the string
+        obj_str = obj
+        obj = _str_to_class(obj_str)
+
+        # Add the method to the kwargs if it's a FWECorrector
+        if obj == FWECorrector:
+            kwargs["method"] = obj_str
+
+    return _check_type(obj, clss, **kwargs)
 
 
 class Workflow(NiMAREBase):
@@ -34,13 +72,52 @@ class Workflow(NiMAREBase):
         self.n_cores = _check_ncores(n_cores)
         self._preprocess_input(estimator, corrector, diagnostics)
 
+    def _preprocess_input(self, estimator, corrector, diagnostics):
+        pairwaise_workflow = self.__class__.__name__ == "PairwiseCBMAWorkflow"
+        estm_base = PairwiseCBMAEstimator if pairwaise_workflow else CBMAEstimator
+
+        if not isinstance(diagnostics, list) and diagnostics is not None:
+            diagnostics = [diagnostics]
+
+        # Check inputs and set defaults if input is None
+        default_esimator = (
+            MKDAChi2(n_cores=self.n_cores) if pairwaise_workflow else ALE(n_cores=self.n_cores)
+        )
+        estimator = (
+            default_esimator
+            if estimator is None
+            else _check_input(estimator, estm_base, self._estm_options, n_cores=self.n_cores)
+        )
+
+        corrector = (
+            FWECorrector(method="montecarlo", n_cores=self.n_cores)
+            if corrector is None
+            else _check_input(corrector, Corrector, self._corr_options, n_cores=self.n_cores)
+        )
+
+        diag_kwargs = {
+            "voxel_thresh": self.voxel_thresh,
+            "cluster_threshold": self.cluster_threshold,
+            "n_cores": self.n_cores,
+        }
+        if diagnostics is None:
+            diagnostics = [FocusCounter(**diag_kwargs)]
+        else:
+            diagnostics = [
+                _check_input(diagnostic, Diagnostics, self._diag_options, **diag_kwargs)
+                for diagnostic in diagnostics
+            ]
+
+        if (not pairwaise_workflow) and isinstance(estimator, PairwiseCBMAEstimator):
+            raise AttributeError('"CBMAWorkflow" does not work with pairwise Estimators.')
+
+        self.estimator = estimator
+        self.corrector = corrector
+        self.diagnostics = diagnostics
+
     @abstractmethod
     def fit(self, dataset):
         """Apply estimation to dataset and output results."""
-
-    @abstractmethod
-    def _preprocess_input(self, estimator, corrector, diagnostics):
-        """Check estimator, corrector, diagnostics classes."""
 
     def _transform(self, result):
         """Implement the correction procedure and perform diagnostics.
