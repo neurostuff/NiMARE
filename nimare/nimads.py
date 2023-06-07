@@ -81,7 +81,8 @@ class Studyset:
 
     def combine_analyses(self):
         """Combine analyses in Studyset."""
-        for study in self.studies:
+        studyset = self.copy()
+        for study in studyset.studies:
             if len(study.analyses) > 1:
                 source_lst = [analysis.to_dict() for analysis in study.analyses]
                 ids, names, conditions, images, points, weights = [
@@ -98,7 +99,7 @@ class Studyset:
                 }
                 study.analyses = [Analysis(new_source)]
 
-        return self
+        return studyset
 
     def to_nimads(self, filename):
         """Write the Studyset to a NIMADS JSON file."""
