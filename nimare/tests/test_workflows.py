@@ -156,7 +156,7 @@ def test_cbma_workflow_smoke(
         (MKDAChi2, FWECorrector(method="montecarlo", n_iters=10), [FocusCounter]),
         ("mkdachi", "bonferroni", FocusCounter),
         ("mkdachi2", "bonferroni", "jackknife"),
-        (ALESubtraction(n_iters=10), "fdr", None),
+        (ALESubtraction(n_iters=10), "fdr", "focuscounter"),
         (ALE, "montecarlo", None),
         (Fishers, "montecarlo", "jackknife"),
     ],
