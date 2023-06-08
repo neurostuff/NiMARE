@@ -20,6 +20,7 @@ A common project workflow with two meta-analytic samples involves the following:
 6. Compare the two within-sample meta-analyses with a conjunction analysis.
 """
 import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
@@ -138,20 +139,37 @@ related_jackknife_table.head(10)
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 10000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
+# Similarly here we use a voxel-level z-threshold of 0.01, but in practice one would
+# use a more stringent threshold (e.g., 1.65).
 from nimare.meta.cbma import ALESubtraction
+from nimare.reports.base import run_reports
+from nimare.workflows import PairwiseCBMAWorkflow
 
-sub = ALESubtraction(n_iters=100, n_cores=1)
-res_sub = sub.fit(knowledge_dset, related_dset)
-img_sub = res_sub.get_map("z_desc-group1MinusGroup2")
-
-plot_stat_map(
-    img_sub,
-    cut_coords=4,
-    display_mode="z",
-    title="Subtraction",
-    cmap="RdBu_r",
-    vmax=4,
+workflow = PairwiseCBMAWorkflow(
+    estimator=ALESubtraction(n_iters=100, n_cores=1),
+    corrector="fdr",
+    diagnostics="jackknife",
+    voxel_thresh=0.01,
 )
+res_sub = workflow.fit(knowledge_dset, related_dset)
+
+###############################################################################
+# Report
+# -----------------------------------------------------------------------------
+# Finally, a NiMARE report is generated from the MetaResult.
+# root_dir = Path(os.getcwd()).parents[1] / "docs" / "_build"
+# Use the previous root to run the documentation locally.
+root_dir = Path(os.getcwd()).parents[1] / "_readthedocs"
+html_dir = root_dir / "html" / "auto_examples" / "02_meta-analyses" / "08_subtraction"
+html_dir.mkdir(parents=True, exist_ok=True)
+
+run_reports(res_sub, html_dir)
+
+####################################
+# .. raw:: html
+#
+#     <iframe src="./08_subtraction/report.html" style="border:none;" seamless="seamless" width="100%"\
+#        height="1000px"></iframe>
 
 ###############################################################################
 # Conjunction analysis

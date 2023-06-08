@@ -80,10 +80,10 @@ result.tables["z_corr-FDR_method-indep_diag-Jackknife_tab-counts"]
 # Report
 # -----------------------------------------------------------------------------
 # Finally, a NiMARE report is generated from the MetaResult.
-root_dir = Path(os.getcwd()).parents[1]
-# Use the following path to run the documentation locally:
-# html_dir = root_dir / "docs" / "_build" / "html" / "auto_examples" / "02_meta-analyses"
-html_dir = root_dir / "_readthedocs" / "html" / "auto_examples" / "02_meta-analyses"
+# root_dir = Path(os.getcwd()).parents[1] / "docs" / "_build"
+# Use the previous root to run the documentation locally.
+root_dir = Path(os.getcwd()).parents[1] / "_readthedocs"
+html_dir = root_dir / "html" / "auto_examples" / "02_meta-analyses" / "10_plot_cbma_workflow"
 html_dir.mkdir(parents=True, exist_ok=True)
 
 run_reports(result, html_dir)
@@ -91,5 +91,5 @@ run_reports(result, html_dir)
 ####################################
 # .. raw:: html
 #
-#     <iframe src="./report.html" style="border:none;" seamless="seamless" width="100%"\
+#     <iframe src="./10_plot_cbma_workflow/report.html" style="border:none;" seamless="seamless" width="100%"\
 #        height="1000px"></iframe>
