@@ -334,7 +334,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
 
    workflows.ale_sleuth_workflow
    workflows.macm_workflow
-   workflows.base.Workflow
    workflows.cbma.CBMAWorkflow
    workflows.cbma.PairwiseCBMAWorkflow
 
