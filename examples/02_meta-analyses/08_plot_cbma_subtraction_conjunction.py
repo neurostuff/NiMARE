@@ -146,7 +146,7 @@ from nimare.reports.base import run_reports
 from nimare.workflows import PairwiseCBMAWorkflow
 
 workflow = PairwiseCBMAWorkflow(
-    estimator=ALESubtraction(n_iters=100, n_cores=1),
+    estimator=ALESubtraction(n_iters=10, n_cores=1),
     corrector="fdr",
     diagnostics="jackknife",
     voxel_thresh=0.01,
