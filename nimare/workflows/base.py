@@ -101,7 +101,7 @@ class Workflow(NiMAREBase):
             "n_cores": self.n_cores,
         }
         if diagnostics is None:
-            diagnostics = [FocusCounter(**diag_kwargs)]
+            diagnostics = [Jackknife(**diag_kwargs)]
         else:
             diagnostics = [
                 _check_input(diagnostic, Diagnostics, self._diag_options, **diag_kwargs)

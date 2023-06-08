@@ -291,6 +291,8 @@ class Jackknife(Diagnostics):
             target_value_map = "est"
         elif "stat" in result.maps:
             target_value_map = "stat"
+        elif "stat_desc-group1MinusGroup2" in result.maps:
+            target_value_map = "stat_desc-group1MinusGroup2"
         elif "z_desc-specificity" in result.maps:
             target_value_map = "z_desc-specificity"
         else:
