@@ -11,7 +11,7 @@ LGR = logging.getLogger(__name__)
 class CBMAWorkflow(Workflow):
     """Compose a coordinate-based meta-analysis workflow.
 
-    .. versionchanged:: 0.1.1
+    .. versionchanged:: 0.1.2
 
         - `cbma_workflow` function was converted to CBMAWorkflow class.
 
@@ -85,7 +85,8 @@ class CBMAWorkflow(Workflow):
 class PairwiseCBMAWorkflow(Workflow):
     """Base class for pairwise coordinate-based meta-analysis workflow methods.
 
-    .. versionadded:: 0.1.1
+    .. versionadded:: 0.1.2
+
     Parameters
     ----------
     estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'alesubtraction', 'mkdachi2', \

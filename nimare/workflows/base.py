@@ -53,7 +53,7 @@ def _check_input(obj, clss, options, **kwargs):
 class Workflow(NiMAREBase):
     """Base class for workflow methods.
 
-    .. versionadded:: 0.1.1
+    .. versionadded:: 0.1.2
     """
 
     def __init__(
