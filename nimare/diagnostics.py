@@ -179,26 +179,28 @@ class Diagnostics(NiMAREBase):
 
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
-        # Use only id1 for pairwise estimators.
+        # For pairwise estimators, use id1 for positive tail and id2 for negative tail.
+        # Run diagnostics with id2 for pairwise estimators and display_second_group=True.
         if self._is_pairwaise_estimator:
             if self.display_second_group and len(label_maps) == 2:
-                # Run diagnostics with id2 for pairwise estimators and display_second_group
                 meta_ids_lst = [result.estimator.inputs_["id1"], result.estimator.inputs_["id2"]]
                 signs = ["PositiveTail", "NegativeTail"]
             else:
                 meta_ids_lst = [result.estimator.inputs_["id1"]]
                 signs = ["PositiveTail"]
         elif len(label_maps) == 2:
+            # Non pairwise estimator with two tails (IBMA estimators)
             meta_ids_lst = [result.estimator.inputs_["id"], result.estimator.inputs_["id"]]
             signs = ["PositiveTail", "NegativeTail"]
         else:
+            # Non pairwise estimator with one tail (CBMA estimators)
             meta_ids_lst = [result.estimator.inputs_["id"]]
             signs = ["PositiveTail"]
 
         contribution_tables = []
         for sign, label_map, meta_ids in zip(signs, label_maps, meta_ids_lst):
-            rows = list(meta_ids)
             cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
+            rows = list(meta_ids)
 
             # Create contribution table
             cols = [f"{sign} {int(c_id)}" for c_id in cluster_ids]
@@ -222,7 +224,6 @@ class Diagnostics(NiMAREBase):
                 contribution_tables[0].merge(contribution_tables[1], how="outer").fillna(0)
             )
         else:
-            # Only export PositiveTail table for pairwise estimators
             contribution_table = contribution_tables[0]
 
         # Save tables and maps to result
