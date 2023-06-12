@@ -22,9 +22,13 @@ LGR = logging.getLogger(__name__)
 class Diagnostics(NiMAREBase):
     """Base class for diagnostic methods.
 
+    .. versionchanged:: 0.1.2
+
+        * New parameter display_second_group, which controls whether the second group is displayed.
+
     .. versionchanged:: 0.1.0
 
-        - Transform now returns a MetaResult object.
+        * Transform now returns a MetaResult object.
 
     .. versionadded:: 0.0.14
 
@@ -53,11 +57,13 @@ class Diagnostics(NiMAREBase):
         target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
         voxel_thresh=None,
         cluster_threshold=None,
+        display_second_group=False,
         n_cores=1,
     ):
         self.target_image = target_image
         self.voxel_thresh = voxel_thresh
         self.cluster_threshold = cluster_threshold
+        self.display_second_group = display_second_group
         self.n_cores = _check_ncores(n_cores)
 
     @abstractmethod
@@ -111,7 +117,7 @@ class Diagnostics(NiMAREBase):
                 correspond to positive and negative tails.
                 If no clusters are found, this list will be empty.
         """
-        pairwaise_estimators = issubclass(type(result.estimator), PairwiseCBMAEstimator)
+        self._is_pairwaise_estimator = issubclass(type(result.estimator), PairwiseCBMAEstimator)
         masker = result.estimator.masker
         diag_name = self.__class__.__name__
 
@@ -174,16 +180,24 @@ class Diagnostics(NiMAREBase):
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
         # Use only id1 for pairwise estimators.
-        meta_ids = (
-            result.estimator.inputs_["id1"]
-            if pairwaise_estimators
-            else result.estimator.inputs_["id"]
-        )
-        rows = list(meta_ids)
+        if self._is_pairwaise_estimator:
+            if self.display_second_group and len(label_maps) == 2:
+                # Run diagnostics with id2 for pairwise estimators and display_second_group
+                meta_ids_lst = [result.estimator.inputs_["id1"], result.estimator.inputs_["id2"]]
+                signs = ["PositiveTail", "NegativeTail"]
+            else:
+                meta_ids_lst = [result.estimator.inputs_["id1"]]
+                signs = ["PositiveTail"]
+        elif len(label_maps) == 2:
+            meta_ids_lst = [result.estimator.inputs_["id"], result.estimator.inputs_["id"]]
+            signs = ["PositiveTail", "NegativeTail"]
+        else:
+            meta_ids_lst = [result.estimator.inputs_["id"]]
+            signs = ["PositiveTail"]
 
         contribution_tables = []
-        signs = ["PositiveTail", "NegativeTail"] if len(label_maps) == 2 else ["PositiveTail"]
-        for sign, label_map in zip(signs, label_maps):
+        for sign, label_map, meta_ids in zip(signs, label_maps, meta_ids_lst):
+            rows = list(meta_ids)
             cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
 
             # Create contribution table
@@ -193,7 +207,7 @@ class Diagnostics(NiMAREBase):
 
             with tqdm_joblib(tqdm(total=len(meta_ids))):
                 contributions = Parallel(n_jobs=self.n_cores)(
-                    delayed(self._transform)(expid, label_map, result) for expid in meta_ids
+                    delayed(self._transform)(expid, label_map, sign, result) for expid in meta_ids
                 )
 
             # Add results to table
@@ -202,14 +216,14 @@ class Diagnostics(NiMAREBase):
 
             contribution_tables.append(contribution_table.reset_index())
 
-        if pairwaise_estimators or len(label_maps) == 1:
+        if len(contribution_tables) == 2:
+            # Merge PositiveTail and NegativeTail tables
+            contribution_table = (
+                contribution_tables[0].merge(contribution_tables[1], how="outer").fillna(0)
+            )
+        else:
             # Only export PositiveTail table for pairwise estimators
             contribution_table = contribution_tables[0]
-        else:
-            # Merge PositiveTail and NegativeTail tables
-            contribution_table = pd.merge(
-                contribution_tables[0], contribution_tables[1], on="id", sort=False
-            )
 
         # Save tables and maps to result
         diag_tables_dict = {
@@ -232,7 +246,7 @@ class Diagnostics(NiMAREBase):
 class Jackknife(Diagnostics):
     """Run a jackknife analysis on a meta-analysis result.
 
-    .. versionchanged:: 0.1.1
+    .. versionchanged:: 0.1.2
 
         * Support for pairwise meta-analyses.
 
@@ -256,7 +270,7 @@ class Jackknife(Diagnostics):
     averaging the resulting proportion values across all voxels in each cluster.
     """
 
-    def _transform(self, expid, label_map, result):
+    def _transform(self, expid, label_map, sign, result):
         """Apply transform to study ID and label map.
 
         Parameters
@@ -265,6 +279,8 @@ class Jackknife(Diagnostics):
             Study ID.
         label_map : :class:`nibabel.Nifti1Image`
             The cluster label map image.
+        sign : :obj:`str`
+            The sign of the label map.
         result : :obj:`~nimare.results.MetaResult`
             A MetaResult produced by a coordinate- or image-based meta-analysis.
 
@@ -275,10 +291,13 @@ class Jackknife(Diagnostics):
         """
         # We need to copy the estimator because it will otherwise overwrite the original version
         # with one missing a study in its inputs.
-        pairwaise_estimators = issubclass(type(result.estimator), PairwiseCBMAEstimator)
         estimator = copy.deepcopy(result.estimator)
 
-        all_ids = estimator.inputs_["id1"] if pairwaise_estimators else estimator.inputs_["id"]
+        if self._is_pairwaise_estimator:
+            all_ids = estimator.inputs_["id1"]
+        else:
+            all_ids = estimator.inputs_["id"]
+
         original_masker = estimator.masker
 
         # Mask using a labels masker, so that we can easily get the mean value for each cluster
@@ -302,8 +321,12 @@ class Jackknife(Diagnostics):
 
         # Fit Estimator to all studies except the target study
         other_ids = [id_ for id_ in all_ids if id_ != expid]
-        if pairwaise_estimators:
-            temp_dset = estimator.dataset1.slice(other_ids)
+        if self._is_pairwaise_estimator:
+            temp_dset = (
+                estimator.dataset1.slice(other_ids)
+                if sign == "PositiveTail"
+                else estimator.dataset2.slice(other_ids)
+            )
             temp_result = estimator.fit(temp_dset, estimator.dataset2)
         else:
             temp_dset = estimator.dataset.slice(other_ids)
@@ -328,7 +351,7 @@ class Jackknife(Diagnostics):
 class FocusCounter(Diagnostics):
     """Run a focus-count analysis on a coordinate-based meta-analysis result.
 
-    .. versionchanged:: 0.1.1
+    .. versionchanged:: 0.1.2
 
         * Support for pairwise meta-analyses.
 
@@ -354,7 +377,7 @@ class FocusCounter(Diagnostics):
     This method only works for coordinate-based meta-analyses.
     """
 
-    def _transform(self, expid, label_map, result):
+    def _transform(self, expid, label_map, sign, result):
         """Apply transform to study ID and label map.
 
         Parameters
@@ -363,6 +386,8 @@ class FocusCounter(Diagnostics):
             Study ID.
         label_map : :class:`nibabel.Nifti1Image`
             The cluster label map image.
+        sign : :obj:`str`
+            The sign of the label map.
         result : :obj:`~nimare.results.MetaResult`
             A MetaResult produced by a coordinate- or image-based meta-analysis.
 
@@ -378,11 +403,15 @@ class FocusCounter(Diagnostics):
         label_arr = label_map.get_fdata()
         clust_ids = sorted(list(np.unique(label_arr)[1:]))
 
-        coordinates_df = (
-            result.estimator.inputs_["coordinates1"]
-            if issubclass(type(result.estimator), PairwiseCBMAEstimator)
-            else result.estimator.inputs_["coordinates"]
-        )
+        if self._is_pairwaise_estimator:
+            coordinates_df = (
+                result.estimator.inputs_["coordinates1"]
+                if sign == "PositiveTail"
+                else result.estimator.inputs_["coordinates2"]
+            )
+        else:
+            coordinates_df = result.estimator.inputs_["coordinates"]
+
         coords = coordinates_df.loc[coordinates_df["id"] == expid]
         ijk = mm2vox(coords[["x", "y", "z"]], affine)
 
