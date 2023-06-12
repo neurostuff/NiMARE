@@ -270,21 +270,22 @@ def plot_heatmap(contribution_table, out_filename):
     """
     _check_extention(out_filename, [".html"])
 
-    mat = contribution_table.to_numpy()
-    row_labels, col_labels = (
-        contribution_table.index.to_list(),
-        contribution_table.columns.to_list(),
-    )
+    if (contribution_table.shape[0] > 2) and (contribution_table.shape[1] > 2):
+        # Reorder matrix only if more than 1 cluster/experiment
+        mat = contribution_table.to_numpy()
+        row_labels, col_labels = (
+            contribution_table.index.to_list(),
+            contribution_table.columns.to_list(),
+        )
+        new_mat, new_row_labels, new_col_labels = _reorder_matrix(
+            mat,
+            row_labels,
+            col_labels,
+            "single",
+        )
+        contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
-    new_mat, new_row_labels, new_col_labels = _reorder_matrix(
-        mat,
-        row_labels,
-        col_labels,
-        "single",
-    )
-    new_df = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
-
-    fig = px.imshow(new_df, color_continuous_scale="Reds")
+    fig = px.imshow(contribution_table, color_continuous_scale="Reds")
     fig.update_layout(
         autosize=False,
         width=800,
