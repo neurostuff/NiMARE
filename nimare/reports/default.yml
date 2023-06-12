@@ -41,14 +41,26 @@ package: nimare
 sections:
 - name: Summary
   reportlets:
-  - bids: {value: preliminary, suffix: summary}
-  - bids: {value: preliminary, suffix: figure-mask}
+  - bids: {value: preliminary, dset: 1, suffix: summary}
+    title: Dataset 1
+  - bids: {value: preliminary, dset: 1, suffix: figure-mask}
     title: Mask
-  - bids: {value: preliminary, suffix: figure-static}
+  - bids: {value: preliminary, dset: 1, suffix: figure-static}
     title: Peak coordinates
-  - bids: {value: preliminary, suffix: figure-legend}
-  - bids: {value: preliminary, suffix: figure-interactive}
+  - bids: {value: preliminary, dset: 1, suffix: figure-legend}
+  - bids: {value: preliminary, dset: 1, suffix: figure-interactive}
     title: Explorer
+    iframe: True
+  - bids: {value: preliminary, dset: 2, suffix: summary}
+    title: Dataset 2
+  - bids: {value: preliminary, dset: 2, suffix: figure-mask}
+    title: Mask
+  - bids: {value: preliminary, dset: 2, suffix: figure-static}
+    title: Peak coordinates
+  - bids: {value: preliminary, dset: 2, suffix: figure-legend}
+  - bids: {value: preliminary, dset: 2, suffix: figure-interactive}
+    title: Explorer
+    iframe: True
 - name: Meta-Analysis
   reportlets:
   - bids: {value: estimator, suffix: summary}

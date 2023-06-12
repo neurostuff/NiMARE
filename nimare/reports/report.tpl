@@ -28,7 +28,7 @@ div.elem-image {
   page-break-before:always;
 }
 
-.elem-image object.svg-reportlet {
+.elem-image object.png-reportlet {
     width: 100%;
     padding-bottom: 5px;
 }

@@ -30,6 +30,7 @@ import jinja2
 from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.ibma import IBMAEstimator
 from nimare.reports.figures import (
     gen_table,
     plot_clusters,
@@ -39,30 +40,6 @@ from nimare.reports.figures import (
     plot_mask,
     plot_static_brain,
 )
-
-SVG_SNIPPET = [
-    """\
-    <object class="svg-reportlet" type="image/svg+xml" data="./{0}">
-    Problem loading figure {0}. If the link below works, please try \
-    reloading the report in your browser.</object>
-    </div>
-    <div class="elem-filename">
-        Get figure file: <a href="./{0}" target="_blank">{0}</a>
-    </div>
-    """,
-    """\
-    <img class="svg-reportlet" src="./{0}" style="width: 100%" />
-    </div>
-    <div class="elem-filename">
-        Get figure file: <a href="./{0}" target="_blank">{0}</a>
-    </div>
-    """,
-]
-
-IFRAME_SNIPPET = """\
-<iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
-src="./{0}" height="800" width="100%"></iframe>
-"""
 
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
@@ -78,6 +55,18 @@ PARAMETERS_DICT = {
     "alpha": "Alpha",
     "prior": "Prior",
 }
+
+PNG_SNIPPET = """\
+<img class="png-reportlet" src="./{0}" style="width: 100%" /></div>
+<div class="elem-filename">
+    Get figure file: <a href="./{0}" target="_blank">{0}</a>
+</div>
+"""
+
+IFRAME_SNIPPET = """\
+<iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
+src="./{0}" height="800" width="100%"></iframe>
+"""
 
 SUMMARY_TEMPLATE = """\
 <ul class="elem-desc">
@@ -125,14 +114,11 @@ def _gen_est_summary(obj, out_filename):
     ker_params = {k: v for k, v in params_dict.items() if k.startswith("kernel_transformer__")}
 
     ker_params_text = ["<ul>"]
-    for k, v in ker_params.items():
-        ker_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    ker_params_text.extend(f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in ker_params.items())
     ker_params_text.append("</ul>")
     ker_params_text = "".join(ker_params_text)
 
-    est_params_text = []
-    for k, v in est_params.items():
-        est_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    est_params_text = [f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in est_params.items()]
     est_params_text = "".join(est_params_text)
 
     est_name = obj.__class__.__name__
@@ -150,14 +136,13 @@ def _gen_cor_summary(obj, out_filename):
     """Generate html with parameter use in obj (e.g., corrector)."""
     params_dict = obj.get_params()
 
-    cor_params_text = []
-    for k, v in params_dict.items():
-        cor_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    cor_params_text = [f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in params_dict.items()]
     cor_params_text = "".join(cor_params_text)
 
     ext_params_text = ["<ul>"]
-    for k, v in obj.parameters.items():
-        ext_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    ext_params_text.extend(
+        f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in obj.parameters.items()
+    )
     ext_params_text.append("</ul>")
     ext_params_text = "".join(ext_params_text)
 
@@ -243,7 +228,7 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
 
         # Get label maps
         lbl_name = "_".join(img_key.split("_")[1:])
-        lbl_name = "_" + lbl_name if lbl_name else lbl_name
+        lbl_name = f"_{lbl_name}" if lbl_name else lbl_name
         for tail in ["positive", "negative"]:
             lbl_key = f"label{lbl_name}_tail-{tail}"
             if lbl_key in results.maps:
@@ -312,7 +297,7 @@ class Reportlet(Element):
             if ext == ".html":
                 contents = IFRAME_SNIPPET.format(html_anchor) if iframe else src.read_text()
             elif ext == ".png":
-                contents = SVG_SNIPPET[config.get("static", True)].format(html_anchor)
+                contents = PNG_SNIPPET.format(html_anchor)
 
             if contents:
                 self.components.append((contents, desc_text))
@@ -364,29 +349,31 @@ class Report:
         self.fig_dir = self.out_dir / "figures"
         self.fig_dir.mkdir(parents=True, exist_ok=True)
 
-        dataset = (
-            self.results.estimator.dataset1
+        datasets = (
+            [self.results.estimator.dataset1, self.results.estimator.dataset2]
             if issubclass(type(self.results.estimator), PairwiseCBMAEstimator)
-            else self.results.estimator.dataset
+            else [self.results.estimator.dataset]
         )
+        for dset_i, dataset in enumerate(datasets):
+            # Generate summary text
+            _gen_summary(dataset, self.fig_dir / f"preliminary_dset-{dset_i+1}_summary.html")
 
-        # Generate summary text
-        _gen_summary(dataset, self.fig_dir / "preliminary_summary.html")
-
-        # Plot mask
-        plot_mask(
-            dataset.masker.mask_img,
-            self.fig_dir / "preliminary_figure-mask.png",
-        )
-
-        if issubclass(type(self.results.estimator), CBMAEstimator):
-            # Plot coordinates for CBMA estimators
-            plot_coordinates(
-                dataset.coordinates,
-                self.fig_dir / "preliminary_figure-static.png",
-                self.fig_dir / "preliminary_figure-interactive.html",
-                self.fig_dir / "preliminary_figure-legend.png",
+            # Plot mask
+            plot_mask(
+                dataset.masker.mask_img,
+                self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-mask.png",
             )
+
+            if issubclass(type(self.results.estimator), CBMAEstimator):
+                # Plot coordinates for CBMA estimators
+                plot_coordinates(
+                    dataset.coordinates,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-static.png",
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-interactive.html",
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-legend.png",
+                )
+            elif issubclass(type(self.results.estimator), IBMAEstimator):
+                raise NotImplementedError
 
         _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
         _gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
@@ -422,9 +409,7 @@ class Report:
         for subrep_cfg in config:
             reportlets = [Reportlet(self.out_dir, config=cfg) for cfg in subrep_cfg["reportlets"]]
 
-            # Filter out empty reportlets
-            reportlets = [r for r in reportlets if not r.is_empty()]
-            if reportlets:
+            if reportlets := [r for r in reportlets if not r.is_empty()]:
                 sub_report = SubReport(
                     subrep_cfg["name"],
                     isnested=False,

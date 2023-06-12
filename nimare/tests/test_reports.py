@@ -4,6 +4,7 @@ import os.path as op
 import pytest
 
 from nimare.correct import FWECorrector
+from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALESubtraction
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.reports.base import run_reports
@@ -11,12 +12,20 @@ from nimare.workflows import CBMAWorkflow, PairwiseCBMAWorkflow
 
 
 @pytest.mark.parametrize(
-    "estimator,corrector,diagnostics,voxel_thresh",
+    "estimator,corrector,diagnostics",
     [
-        ("ale", FWECorrector(method="montecarlo", n_iters=10), "jackknife", 1.65),
-        ("kda", "fdr", "focuscounter", 1.65),
-        ("mkdachi2", FWECorrector(method="montecarlo", n_iters=10), "jackknife", 0.1),
-        (ALESubtraction(n_iters=10), "bonferroni", "focuscounter", 0.1),
+        ("ale", FWECorrector(method="montecarlo", n_iters=10), "jackknife"),
+        ("kda", "fdr", "focuscounter"),
+        (
+            "mkdachi2",
+            FWECorrector(method="montecarlo", n_iters=10),
+            Jackknife(voxel_thresh=0.1),
+        ),
+        (
+            ALESubtraction(n_iters=10),
+            "fdr",
+            FocusCounter(voxel_thresh=0.01, display_second_group=True),
+        ),
     ],
 )
 def test_reports_function_smoke(
@@ -25,7 +34,6 @@ def test_reports_function_smoke(
     estimator,
     corrector,
     diagnostics,
-    voxel_thresh,
 ):
     """Run smoke test for CBMA workflow."""
     tmpdir = tmp_path_factory.mktemp("test_reports_function_smoke")
@@ -37,7 +45,6 @@ def test_reports_function_smoke(
             estimator=estimator,
             corrector=corrector,
             diagnostics=diagnostics,
-            voxel_thresh=voxel_thresh,
             output_dir=tmpdir,
         )
         results = workflow.fit(dset1, dset2)
