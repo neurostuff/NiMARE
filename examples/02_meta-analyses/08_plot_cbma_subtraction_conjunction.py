@@ -168,8 +168,8 @@ run_reports(res_sub, html_dir)
 ####################################
 # .. raw:: html
 #
-#     <iframe src="./08_subtraction/report.html" style="border:none;" seamless="seamless" width="100%"\
-#        height="1000px"></iframe>
+#     <iframe src="./08_subtraction/report.html" style="border:none;" seamless="seamless" \
+#        width="100%" height="1000px"></iframe>
 
 ###############################################################################
 # Conjunction analysis
