@@ -286,8 +286,8 @@ def plot_heatmap(contribution_table, out_filename):
         contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
     pxs_per_sqr = 50  # Number of pixels per square in the heatmap
-    plot2bar_space = 3  # Number of pixels between the heatmap and the barplot
-    width, height = len(row_labels) * pxs_per_sqr, (len(col_labels) + plot2bar_space) * pxs_per_sqr
+    plot2bar_space = 2  # Number of squares between the heatmap and the barplot
+    width, height = (len(col_labels) + plot2bar_space) * pxs_per_sqr, len(row_labels) * pxs_per_sqr
 
     fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="auto")
     fig.update_layout(autosize=False, width=width, height=height)

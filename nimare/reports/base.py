@@ -299,6 +299,7 @@ class Reportlet(Element):
         self.name = config.get("name", bids_name)
         self.title = config.get("title")
         self.subtitle = config.get("subtitle")
+        self.subsubtitle = config.get("subsubtitle")
         self.description = config.get("description")
 
         files = glob(str(out_dir / "figures" / f"{self.name}.*"))

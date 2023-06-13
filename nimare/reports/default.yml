@@ -95,11 +95,15 @@ sections:
     description: *jackknife_text
   - bids: {value: diagnostics, diag: FocusCounter, tab: counts, tail: positive, suffix: figure}
     subtitle: FocusCounter
+    subsubtitle: "Heatmap: positive tail"
     caption: *heatmap_text
     description: *focuscounter_text
   - bids: {value: diagnostics, diag: FocusCounter, tab: counts, tail: negative, suffix: figure}
+    subsubtitle: "Heatmap: negative tail"
   - bids: {value: diagnostics, diag: Jackknife, tab: counts, tail: positive, suffix: figure}
     subtitle: Jackknife
+    subsubtitle: "Heatmap: positive tail"
     caption: *heatmap_text
     description: *jackknife_text
   - bids: {value: diagnostics, diag: Jackknife, tab: counts, tail: negative, suffix: figure}
+    subsubtitle: "Heatmap: negative tail"
