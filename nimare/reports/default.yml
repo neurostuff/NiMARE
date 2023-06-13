@@ -89,9 +89,7 @@ sections:
     subtitle: FocusCounter
     caption: *heatmap_text
     description: *focuscounter_text
-    iframe: True
   - bids: {value: diagnostics, diag: Jackknife, tab: counts, suffix: figure}
     subtitle: Jackknife
     caption: *heatmap_text
     description: *jackknife_text
-    iframe: True
