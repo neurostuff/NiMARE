@@ -117,7 +117,8 @@ knowledge_clusters_table.head(10)
 ###############################################################################
 # Contribution table. Here ``PostiveTail`` refers to clusters with positive statistics.
 knowledge_count_table = knowledge_corrected_results.tables[
-    "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter_tab-counts"
+    "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter"
+    "_tab-counts_tail-positive"
 ]
 knowledge_count_table.head(10)
 
@@ -130,7 +131,7 @@ jackknife = Jackknife(
 )
 related_corrected_results = jackknife.transform(related_corrected_results)
 related_jackknife_table = related_corrected_results.tables[
-    "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-Jackknife_tab-counts"
+    "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-Jackknife_tab-counts_tail-positive"
 ]
 related_jackknife_table.head(10)
 

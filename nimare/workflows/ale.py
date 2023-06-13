@@ -55,7 +55,8 @@ def ale_sleuth_workflow(
         )
         cres = fcounter.transform(cres)
         count_df = cres.tables[
-            "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter_tab-counts"
+            "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter"
+            "_tab-counts_tail-positive"
         ]
         boilerplate = cres.description_
         bibtex = cres.bibtex_
@@ -90,7 +91,8 @@ def ale_sleuth_workflow(
         )
         cres1 = fcounter.transform(cres1)
         count_df1 = cres1.tables[
-            "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter_tab-counts"
+            "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter"
+            "_tab-counts_tail-positive"
         ]
 
         cres2 = corr.transform(res2)
@@ -98,7 +100,8 @@ def ale_sleuth_workflow(
 
         cres2 = fcounter.transform(cres2)
         count_df2 = cres2.tables[
-            "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter_tab-counts"
+            "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter"
+            "_tab-counts_tail-positive"
         ]
 
         sub = ALESubtraction(n_iters=n_iters, kernel__fwhm=fwhm)

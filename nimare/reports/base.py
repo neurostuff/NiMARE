@@ -227,7 +227,9 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     if cluster_table is not None and not cluster_table.empty:
         gen_table(cluster_table, fig_dir / "diagnostics_tab-clust_table.html")
 
-        # Get label maps
+        # Get label maps and contribution_table
+        contribution_tables = []
+        heatmap_names = []
         lbl_name = "_".join(img_key.split("_")[1:])
         lbl_name = f"_{lbl_name}" if lbl_name else lbl_name
         for tail in ["positive", "negative"]:
@@ -236,18 +238,33 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
                 label_map = results.get_map(lbl_key)
                 plot_clusters(label_map, fig_dir / f"diagnostics_tail-{tail}_figure.png")
 
+            contribution_table_name = f"{img_key}_diag-{diag_name}_tab-counts_tail-{tail}"
+            if contribution_table_name in results.tables:
+                contribution_table = results.tables[contribution_table_name]
+                if contribution_table is not None and not contribution_table.empty:
+                    contribution_table = contribution_table.set_index("id")
+                    contribution_tables.append(contribution_table)
+                    heatmap_names.append(
+                        f"diagnostics_diag-{diag_name}_tab-counts_tail-{tail}_figure.html"
+                    )
+
+        # For IBMA plot only one heatmap with both positive and negative tails
+        contribution_table_name = f"{img_key}_diag-{diag_name}_tab-counts"
+        if contribution_table_name in results.tables:
+            contribution_table = results.tables[contribution_table_name]
+            if contribution_table is not None and not contribution_table.empty:
+                contribution_table = contribution_table.set_index("id")
+                contribution_tables.append(contribution_table)
+                heatmap_names.append(f"diagnostics_diag-{diag_name}_tab-counts_figure.html")
+
+        # Plot heatmaps
+        [
+            plot_heatmap(contribution_table, fig_dir / heatmap_name)
+            for heatmap_name, contribution_table in zip(heatmap_names, contribution_tables)
+        ]
+
     else:
         _no_clusts_found(fig_dir / "diagnostics_tab-clust_table.html")
-
-    # Plot heatmap if contribution_table is not empty
-    if f"{img_key}_diag-{diag_name}_tab-counts" in results.tables:
-        contribution_table = results.tables[f"{img_key}_diag-{diag_name}_tab-counts"]
-        if contribution_table is not None and not contribution_table.empty:
-            contribution_table = contribution_table.set_index("id")
-            plot_heatmap(
-                contribution_table,
-                fig_dir / f"diagnostics_diag-{diag_name}_tab-counts_figure.html",
-            )
 
 
 class Element(object):
@@ -341,6 +358,9 @@ class Report:
         out_filename="report.html",
     ):
         self.results = results
+        self._is_pairwise_estimator = issubclass(
+            type(self.results.estimator), PairwiseCBMAEstimator
+        )
 
         # Initialize structuring elements
         self.sections = []
@@ -352,7 +372,7 @@ class Report:
 
         datasets = (
             [self.results.estimator.dataset1, self.results.estimator.dataset2]
-            if issubclass(type(self.results.estimator), PairwiseCBMAEstimator)
+            if self._is_pairwise_estimator
             else [self.results.estimator.dataset]
         )
         for dset_i, dataset in enumerate(datasets):

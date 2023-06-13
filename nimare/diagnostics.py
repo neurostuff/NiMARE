@@ -177,6 +177,12 @@ class Diagnostics(NiMAREBase):
             result.diagnostics.append(self)
             return result
 
+        tables_dict = {clusters_table_name: clusters_table}
+        maps_dict = {
+            label_map_name: np.squeeze(masker.transform(label_map))
+            for label_map_name, label_map in zip(label_map_names, label_maps)
+        }
+
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
         # For pairwise estimators, use id1 for positive tail and id2 for negative tail.
@@ -218,26 +224,21 @@ class Diagnostics(NiMAREBase):
 
             contribution_tables.append(contribution_table.reset_index())
 
-        if len(contribution_tables) == 2:
-            # Merge PositiveTail and NegativeTail tables
+        tails = ["positive", "negative"] if len(contribution_tables) == 2 else ["positive"]
+        if not self._is_pairwaise_estimator and len(contribution_tables) == 2:
+            # Merge PositiveTail and NegativeTail tables for IBMA
             contribution_table = (
                 contribution_tables[0].merge(contribution_tables[1], how="outer").fillna(0)
             )
+            tables_dict[contribution_table_name] = contribution_table
         else:
-            contribution_table = contribution_tables[0]
+            # Plot separate tables for CBMA
+            for tail, contribution_table in zip(tails, contribution_tables):
+                tables_dict[f"{contribution_table_name}_tail-{tail}"] = contribution_table
 
         # Save tables and maps to result
-        diag_tables_dict = {
-            clusters_table_name: clusters_table,
-            contribution_table_name: contribution_table,
-        }
-        diag_maps_dict = {
-            label_map_name: np.squeeze(masker.transform(label_map))
-            for label_map_name, label_map in zip(label_map_names, label_maps)
-        }
-
-        result.tables.update(diag_tables_dict)
-        result.maps.update(diag_maps_dict)
+        result.tables.update(tables_dict)
+        result.maps.update(maps_dict)
 
         # Add diagnostics class to result, since more than one can be run
         result.diagnostics.append(self)

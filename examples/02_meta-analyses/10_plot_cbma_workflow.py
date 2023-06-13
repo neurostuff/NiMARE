@@ -74,7 +74,7 @@ result.tables["z_corr-FDR_method-indep_tab-clust"]
 ###############################################################################
 # Contribution table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FDR_method-indep_diag-Jackknife_tab-counts"]
+result.tables["z_corr-FDR_method-indep_diag-Jackknife_tab-counts_tail-positive"]
 
 ###############################################################################
 # Report
@@ -91,5 +91,5 @@ run_reports(result, html_dir)
 ####################################
 # .. raw:: html
 #
-#     <iframe src="./10_plot_cbma_workflow/report.html" style="border:none;" seamless="seamless" width="100%"\
-#        height="1000px"></iframe>
+#     <iframe src="./10_plot_cbma_workflow/report.html" style="border:none;" seamless="seamless"\
+#        width="100%" height="1000px"></iframe>

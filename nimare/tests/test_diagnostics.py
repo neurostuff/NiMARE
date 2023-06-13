@@ -38,10 +38,7 @@ def test_jackknife_smoke(
     """Smoke test the Jackknife method."""
     meta = estimator()
     testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
-    if n_samples == "twosample":
-        res = meta.fit(testdata, testdata)
-    else:
-        res = meta.fit(testdata)
+    res = meta.fit(testdata, testdata) if n_samples == "twosample" else meta.fit(testdata)
 
     jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=voxel_thresh)
     results = jackknife.transform(res)
@@ -49,7 +46,13 @@ def test_jackknife_smoke(
     image_name = "_".join(target_image.split("_")[1:])
     image_name = f"_{image_name}" if image_name else image_name
 
-    contribution_table = results.tables[f"{target_image}_diag-Jackknife_tab-counts"]
+    # For ibma.WeightedLeastSquares we have both positive and negative tail combined.
+    contribution_table = (
+        results.tables[f"{target_image}_diag-Jackknife_tab-counts"]
+        if estimator == ibma.WeightedLeastSquares
+        else results.tables[f"{target_image}_diag-Jackknife_tab-counts_tail-positive"]
+    )
+
     clusters_table = results.tables[f"{target_image}_tab-clust"]
     label_maps = results.maps[f"label{image_name}_tail-positive"]
     ids_ = meta.inputs_["id"] if n_samples == "onesample" else meta.inputs_["id1"]
@@ -89,7 +92,7 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
 
     jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=0.5)
     results = jackknife.transform(res)
-    contribution_table = results.tables["z_diag-Jackknife_tab-counts"]
+    contribution_table = results.tables["z_diag-Jackknife_tab-counts_tail-positive"]
     assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
     # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
@@ -131,7 +134,9 @@ def test_focuscounter_smoke(
         image_name = "_".join(target_image.split("_")[1:])
         image_name = f"_{image_name}" if image_name else image_name
 
-        contribution_table = results.tables[f"{target_image}_diag-FocusCounter_tab-counts"]
+        contribution_table = results.tables[
+            f"{target_image}_diag-FocusCounter_tab-counts_tail-positive"
+        ]
         clusters_table = results.tables[f"{target_image}_tab-clust"]
         label_maps = results.maps[f"label{image_name}_tail-positive"]
         ids_ = meta.inputs_["id"] if n_samples == "onesample" else meta.inputs_["id1"]
