@@ -148,8 +148,7 @@ from nimare.workflows import PairwiseCBMAWorkflow
 workflow = PairwiseCBMAWorkflow(
     estimator=ALESubtraction(n_iters=10, n_cores=1),
     corrector="fdr",
-    diagnostics="focuscounter",
-    voxel_thresh=0.01,
+    diagnostics=FocusCounter(voxel_thresh=0.01, display_second_group=True),
 )
 res_sub = workflow.fit(knowledge_dset, related_dset)
 
