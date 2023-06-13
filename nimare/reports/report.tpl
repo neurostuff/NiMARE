@@ -36,6 +36,23 @@ body {
     padding: 65px 10px 10px;
 }
 
+.igraph-container {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  padding-top: 50%;
+}
+.igraph {
+  position: absolute;
+  border: none;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .boiler-html {
     font-family: "Bitstream Charter", "Georgia", Times;
     margin: 20px 25px;
