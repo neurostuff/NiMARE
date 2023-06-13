@@ -285,12 +285,8 @@ def plot_heatmap(contribution_table, out_filename):
         )
         contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
-    fig = px.imshow(contribution_table, color_continuous_scale="Reds")
-    fig.update_layout(
-        autosize=False,
-        width=800,
-        height=800,
-    )
+    fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="auto")
+    fig.update_layout(autosize=False)
     fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
