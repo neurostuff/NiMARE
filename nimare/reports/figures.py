@@ -290,6 +290,7 @@ def plot_heatmap(contribution_table, out_filename):
     width, height = (len(col_labels) + plot2bar_space) * pxs_per_sqr, len(row_labels) * pxs_per_sqr
 
     fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="auto")
+
     fig.update_layout(autosize=False, width=width, height=height)
     fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
