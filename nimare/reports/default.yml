@@ -49,6 +49,7 @@ sections:
   - bids: {value: preliminary, suffix: figure-legend}
   - bids: {value: preliminary, suffix: figure-interactive}
     title: Explorer
+    iframe: True
 - name: Meta-Analysis
   reportlets:
   - bids: {value: estimator, suffix: summary}
@@ -77,9 +78,7 @@ sections:
     subtitle: FocusCounter
     caption: *heatmap_text
     description: *focuscounter_text
-    iframe: True
   - bids: {value: diagnostics, diag: Jackknife, tab: counts, suffix: figure}
     subtitle: Jackknife
     caption: *heatmap_text
     description: *jackknife_text
-    iframe: True

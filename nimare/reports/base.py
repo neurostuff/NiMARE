@@ -60,8 +60,9 @@ SVG_SNIPPET = [
 ]
 
 IFRAME_SNIPPET = """\
-<iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
-src="./{0}" height="800" width="100%"></iframe>
+<div class="igraph-container">
+    <iframe class="igraph" src="./{0}"></iframe>
+</div>
 """
 
 PARAMETERS_DICT = {
