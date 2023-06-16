@@ -156,7 +156,7 @@ def test_cbma_workflow_smoke(
         (MKDAChi2, FWECorrector(method="montecarlo", n_iters=10), [FocusCounter]),
         ("mkdachi", "bonferroni", FocusCounter),
         ("mkdachi2", "bonferroni", "jackknife"),
-        (ALESubtraction(n_iters=10), "fdr", "focuscounter"),
+        (ALESubtraction(n_iters=10), "fdr", Jackknife(voxel_thresh=0.01)),
         (ALE, "montecarlo", None),
         (Fishers, "montecarlo", "jackknife"),
     ],
@@ -170,14 +170,14 @@ def test_pairwise_cbma_workflow_smoke(
 ):
     """Run smoke test for CBMA workflow."""
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_function_smoke")
-    if estimator == ALE:
+
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+    if estimator in [ALE, "mkdachi"]:
         with pytest.raises(ValueError):
             PairwiseCBMAWorkflow(estimator=estimator, corrector=corrector, diagnostics=diagnostics)
     elif estimator == Fishers:
         with pytest.raises((AttributeError, ValueError)):
-            PairwiseCBMAWorkflow(estimator=estimator, corrector=corrector, diagnostics=diagnostics)
-    elif estimator == "mkdachi":
-        with pytest.raises(ValueError):
             PairwiseCBMAWorkflow(estimator=estimator, corrector=corrector, diagnostics=diagnostics)
     else:
         workflow = PairwiseCBMAWorkflow(
@@ -186,22 +186,22 @@ def test_pairwise_cbma_workflow_smoke(
             diagnostics=diagnostics,
             output_dir=tmpdir,
         )
-        cres = workflow.fit(testdata_cbma_full, testdata_cbma_full)
+        cres = workflow.fit(dset1, dset2)
 
         assert isinstance(cres, nimare.results.MetaResult)
         assert op.isfile(op.join(tmpdir, "boilerplate.txt"))
         assert op.isfile(op.join(tmpdir, "references.bib"))
 
         for imgtype in cres.maps.keys():
-            filename = imgtype + ".nii.gz"
+            filename = f"{imgtype}.nii.gz"
             outpath = op.join(tmpdir, filename)
             # For MKDAChi2 maps are None
-            if not cres.maps[imgtype] is None:
+            if cres.maps[imgtype] is not None:
                 assert op.isfile(outpath)
 
         for tabletype in cres.tables.keys():
-            filename = tabletype + ".tsv"
+            filename = f"{tabletype}.tsv"
             outpath = op.join(tmpdir, filename)
             # For MKDAChi2 tables are None
-            if not cres.tables[tabletype] is None:
+            if cres.tables[tabletype] is not None:
                 assert op.isfile(outpath)

@@ -296,7 +296,9 @@ class Jackknife(Diagnostics):
         estimator = copy.deepcopy(result.estimator)
 
         if self._is_pairwaise_estimator:
-            all_ids = estimator.inputs_["id1"]
+            all_ids = (
+                estimator.inputs_["id1"] if sign == "PositiveTail" else estimator.inputs_["id2"]
+            )
         else:
             all_ids = estimator.inputs_["id"]
 
@@ -306,30 +308,25 @@ class Jackknife(Diagnostics):
         cluster_masker = input_data.NiftiLabelsMasker(label_map)
         cluster_masker.fit(label_map)
 
-        # CBMAs have "stat" maps, while most IBMAs have "est" maps.
+        # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has
+        # stat_desc-group1MinusGroup2" maps, while MKDAChi2 has "z_desc-specificity" maps.
         # Fisher's and Stouffer's only have "z" maps though.
-        if "est" in result.maps:
-            target_value_map = "est"
-        elif "stat" in result.maps:
-            target_value_map = "stat"
-        elif "stat_desc-group1MinusGroup2" in result.maps:
-            target_value_map = "stat_desc-group1MinusGroup2"
-        elif "z_desc-specificity" in result.maps:
-            target_value_map = "z_desc-specificity"
-        else:
-            target_value_map = "z"
+        target_value_keys = {"stat", "est", "stat_desc-group1MinusGroup2", "z_desc-specificity"}
+        avail_value_keys = set(result.maps.keys())
+        union_value_keys = list(target_value_keys & avail_value_keys)
+        target_value_map = union_value_keys[0] if union_value_keys else "z"
 
         stat_values = result.get_map(target_value_map, return_type="array")
 
         # Fit Estimator to all studies except the target study
         other_ids = [id_ for id_ in all_ids if id_ != expid]
         if self._is_pairwaise_estimator:
-            temp_dset = (
-                estimator.dataset1.slice(other_ids)
-                if sign == "PositiveTail"
-                else estimator.dataset2.slice(other_ids)
-            )
-            temp_result = estimator.fit(temp_dset, estimator.dataset2)
+            if sign == "PositiveTail":
+                temp_dset = estimator.dataset1.slice(other_ids)
+                temp_result = estimator.fit(temp_dset, estimator.dataset2)
+            else:
+                temp_dset = estimator.dataset2.slice(other_ids)
+                temp_result = estimator.fit(estimator.dataset1, temp_dset)
         else:
             temp_dset = estimator.dataset.slice(other_ids)
             temp_result = estimator.fit(temp_dset)
