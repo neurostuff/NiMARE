@@ -36,9 +36,12 @@ def test_jackknife_smoke(
     voxel_thresh,
 ):
     """Smoke test the Jackknife method."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+
     meta = estimator()
     testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
-    res = meta.fit(testdata, testdata) if n_samples == "twosample" else meta.fit(testdata)
+    res = meta.fit(dset1, dset2) if n_samples == "twosample" else meta.fit(testdata)
 
     jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=voxel_thresh)
     results = jackknife.transform(res)
@@ -120,9 +123,12 @@ def test_focuscounter_smoke(
     target_image,
 ):
     """Smoke test the FocusCounter method."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+
     meta = estimator()
     testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
-    res = meta.fit(testdata, testdata) if n_samples == "twosample" else meta.fit(testdata)
+    res = meta.fit(dset1, dset2) if n_samples == "twosample" else meta.fit(testdata)
 
     counter = diagnostics.FocusCounter(target_image=target_image, voxel_thresh=1.65)
     if meta_type == "ibma":
