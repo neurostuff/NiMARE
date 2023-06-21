@@ -69,7 +69,7 @@ sections:
   - bids: {value: corrector, suffix: summary}
     title: Corrector
     description: Parameters use to fit the corrector.
-  - bids: {value: corrector, suffix: fig-summary}
+  - bids: {value: corrector, suffix: figure-summary}
   - bids: {value: corrector, suffix: figure-non}
   - bids: {value: corrector, suffix: figure-interactive}
     subtitle: Explorer
@@ -78,7 +78,7 @@ sections:
     description: This panel shows the the corrrected meta-analytic map.
 - name: Diagnostics
   reportlets:
-  - bids: {value: diagnostics, suffix: diag-summary}
+  - bids: {value: diagnostics, suffix: summary}
   - bids: {value: diagnostics, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: diagnostics, tail: positive, suffix: figure}

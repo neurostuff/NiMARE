@@ -407,10 +407,8 @@ class Report:
             diag_name = diagnostic.__class__.__name__
             threshold = diagnostic.voxel_thresh
 
-            _gen_fig_summary(img_key, threshold, self.fig_dir / "corrector_fig-summary.html")
-            _gen_diag_summary(
-                diagnostic, self.fig_dir / f"diagnostics_diag-{diag_name}_summary.html"
-            )
+            _gen_fig_summary(img_key, threshold, self.fig_dir / "corrector_figure-summary.html")
+            _gen_diag_summary(diagnostic, self.fig_dir / "diagnostics_summary.html")
             _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
 
         # Default template from nimare
