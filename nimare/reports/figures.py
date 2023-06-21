@@ -270,7 +270,8 @@ def plot_heatmap(contribution_table, out_filename):
     """
     _check_extention(out_filename, [".html"])
 
-    if (contribution_table.shape[0] > 2) and (contribution_table.shape[1] > 2):
+    n_studies, n_clusters = contribution_table.shape
+    if (n_studies > 2) and (n_clusters > 2):
         # Reorder matrix only if more than 1 cluster/experiment
         mat = contribution_table.to_numpy()
         row_labels, col_labels = (
@@ -285,9 +286,12 @@ def plot_heatmap(contribution_table, out_filename):
         )
         contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
+    n_lxb = 5  # number of letter per box
     pxs_per_sqr = 50  # Number of pixels per square in the heatmap
     plot2bar_space = 2  # Number of squares between the heatmap and the barplot
-    width, height = (len(col_labels) + plot2bar_space) * pxs_per_sqr, len(row_labels) * pxs_per_sqr
+    labels_len = max(len(label) for label in contribution_table.columns.to_list()) / n_lxb
+    width = (n_clusters + labels_len + plot2bar_space) * pxs_per_sqr
+    height = n_studies * pxs_per_sqr
 
     fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="auto")
 
