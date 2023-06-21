@@ -341,12 +341,16 @@ def plot_clusters(img, out_filename):
 
     template = datasets.load_mni152_template(resolution=1)
 
+    # Define cmap depending on the number of clusters
+    clust_ids = list(np.unique(img.get_fdata())[1:])
+    cmap = plt.cm.get_cmap("tab20", len(clust_ids))
+
     fig = plot_roi(
         img,
         bg_img=template,
         black_bg=False,
         draw_cross=False,
-        cmap="tab20",
+        cmap=cmap,
         alpha=0.8,
         colorbar=True,
         display_mode="mosaic",
