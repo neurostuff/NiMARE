@@ -206,9 +206,10 @@ def plot_coordinates(
     ]
 
     # Plot legeng
-    ncol = 10
+    max_len_per_page = 100
+    max_legend_len = max(len(id_) for id_ in unq_ids)
+    ncol = 1 if max_legend_len > max_len_per_page else int(max_len_per_page / max_legend_len)
     labl_fig, ax = plt.subplots(1, 1)
-    labl_fig.set_size_inches(ncol, len(patches_lst) / ncol**2)
     labl_fig.legend(
         handles=patches_lst,
         ncol=ncol,
@@ -286,16 +287,11 @@ def plot_heatmap(contribution_table, out_filename):
         )
         contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
-    n_lxb = 5  # number of letter per box
+    fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="equal")
+
     pxs_per_sqr = 50  # Number of pixels per square in the heatmap
-    plot2bar_space = 2  # Number of squares between the heatmap and the barplot
-    labels_len = max(len(label) for label in contribution_table.columns.to_list()) / n_lxb
-    width = (n_clusters + labels_len + plot2bar_space) * pxs_per_sqr
     height = n_studies * pxs_per_sqr
-
-    fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="auto")
-
-    fig.update_layout(autosize=False, width=width, height=height)
+    fig.update_layout(autosize=True, height=height)
     fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
