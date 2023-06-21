@@ -18,8 +18,8 @@ from nimare.utils import _check_ncores, get_masker, mm2vox, tqdm_joblib
 
 LGR = logging.getLogger(__name__)
 
-POSTAIL_LBL = "PositiveTail"  # Label assign to positive tail clusters
-NEGTAIL_LBL = "NegativeTail"  # Label assign to negative tail clusters
+POSTAIL_LBL = "PositiveTail"  # Label assigned to positive tail clusters
+NEGTAIL_LBL = "NegativeTail"  # Label assigned to negative tail clusters
 
 
 class Diagnostics(NiMAREBase):
