@@ -190,7 +190,7 @@ def plot_coordinates(
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
     # Generate dictionary and array of colors for each unique ID
-    ids = coordinates_df["id"].to_list()
+    ids = coordinates_df["study_id"].to_list()
     unq_ids = np.unique(ids)
     cmap = plt.cm.get_cmap("tab20", len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
@@ -206,7 +206,7 @@ def plot_coordinates(
     ]
 
     # Plot legeng
-    max_len_per_page = 100
+    max_len_per_page = 200
     max_legend_len = max(len(id_) for id_ in unq_ids)
     ncol = 1 if max_legend_len > max_len_per_page else int(max_len_per_page / max_legend_len)
     labl_fig, ax = plt.subplots(1, 1)

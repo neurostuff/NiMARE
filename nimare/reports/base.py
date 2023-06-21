@@ -71,13 +71,14 @@ IFRAME_SNIPPET = """\
 
 SUMMARY_TEMPLATE = """\
 <ul class="elem-desc">
-<li>Number of studies: {n_exps:d}</li>
-<li>Number of studies included: {n_exps_sel:d}</li>
+<li>Number of studies: {n_studies:d}</li>
+<li>Number of experiments: {n_exps:d}</li>
+<li>Number of experiments included: {n_exps_sel:d}</li>
 <li>Number of foci: {n_foci:d} </li>
 <li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>
 </ul>
 <details>
-<summary>Studies excluded</summary><br />
+<summary>Experiments excluded</summary><br />
 <p>{exc_ids}</p>
 </details>
 """
@@ -190,6 +191,7 @@ def _gen_fig_summary(img_key, threshold, out_filename):
 def _gen_summary(dset, out_filename):
     """Generate preliminary checks from dataset for the report."""
     mask = dset.masker.mask_img
+    n_studies = len(dset.coordinates["study_id"].unique())
     sel_ids = dset.get_studies_by_mask(mask)
     sel_dset = dset.slice(sel_ids)
 
@@ -203,6 +205,7 @@ def _gen_summary(dset, out_filename):
     exc_ids_str = ", ".join(exc_ids)
 
     summary_text = SUMMARY_TEMPLATE.format(
+        n_studies=n_studies,
         n_exps=n_exps,
         n_exps_sel=n_exps_sel,
         n_foci=n_foci,
