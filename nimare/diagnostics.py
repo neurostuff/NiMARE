@@ -18,6 +18,9 @@ from nimare.utils import _check_ncores, get_masker, mm2vox, tqdm_joblib
 
 LGR = logging.getLogger(__name__)
 
+POSTAIL_LBL = "PositiveTail"  # Label assign to positive tail clusters
+NEGTAIL_LBL = "NegativeTail"  # Label assign to negative tail clusters
+
 
 class Diagnostics(NiMAREBase):
     """Base class for diagnostic methods.
@@ -151,9 +154,9 @@ class Diagnostics(NiMAREBase):
             clusters_table = clusters_table.astype({"Cluster ID": "str"})
             # Rename the clusters_table cluster IDs to match the contribution table columns
             clusters_table["Cluster ID"] = [
-                f"PositiveTail {row['Cluster ID']}"
+                f"{POSTAIL_LBL} {row['Cluster ID']}"
                 if row["Peak Stat"] > 0
-                else f"NegativeTail {row['Cluster ID']}"
+                else f"{NEGTAIL_LBL} {row['Cluster ID']}"
                 for _, row in clusters_table.iterrows()
             ]
 
@@ -190,18 +193,18 @@ class Diagnostics(NiMAREBase):
         if self._is_pairwaise_estimator:
             if self.display_second_group and len(label_maps) == 2:
                 meta_ids_lst = [result.estimator.inputs_["id1"], result.estimator.inputs_["id2"]]
-                signs = ["PositiveTail", "NegativeTail"]
+                signs = [POSTAIL_LBL, NEGTAIL_LBL]
             else:
                 meta_ids_lst = [result.estimator.inputs_["id1"]]
-                signs = ["PositiveTail"]
+                signs = [POSTAIL_LBL]
         elif len(label_maps) == 2:
             # Non pairwise estimator with two tails (IBMA estimators)
             meta_ids_lst = [result.estimator.inputs_["id"], result.estimator.inputs_["id"]]
-            signs = ["PositiveTail", "NegativeTail"]
+            signs = [POSTAIL_LBL, NEGTAIL_LBL]
         else:
             # Non pairwise estimator with one tail (CBMA estimators)
             meta_ids_lst = [result.estimator.inputs_["id"]]
-            signs = ["PositiveTail"]
+            signs = [POSTAIL_LBL]
 
         contribution_tables = []
         for sign, label_map, meta_ids in zip(signs, label_maps, meta_ids_lst):
@@ -226,7 +229,7 @@ class Diagnostics(NiMAREBase):
 
         tails = ["positive", "negative"] if len(contribution_tables) == 2 else ["positive"]
         if not self._is_pairwaise_estimator and len(contribution_tables) == 2:
-            # Merge PositiveTail and NegativeTail tables for IBMA
+            # Merge POSTAIL_LBL and NEGTAIL_LBL tables for IBMA
             contribution_table = (
                 contribution_tables[0].merge(contribution_tables[1], how="outer").fillna(0)
             )
@@ -296,9 +299,7 @@ class Jackknife(Diagnostics):
         estimator = copy.deepcopy(result.estimator)
 
         if self._is_pairwaise_estimator:
-            all_ids = (
-                estimator.inputs_["id1"] if sign == "PositiveTail" else estimator.inputs_["id2"]
-            )
+            all_ids = estimator.inputs_["id1"] if sign == POSTAIL_LBL else estimator.inputs_["id2"]
         else:
             all_ids = estimator.inputs_["id"]
 
@@ -321,7 +322,7 @@ class Jackknife(Diagnostics):
         # Fit Estimator to all studies except the target study
         other_ids = [id_ for id_ in all_ids if id_ != expid]
         if self._is_pairwaise_estimator:
-            if sign == "PositiveTail":
+            if sign == POSTAIL_LBL:
                 temp_dset = estimator.dataset1.slice(other_ids)
                 temp_result = estimator.fit(temp_dset, estimator.dataset2)
             else:
@@ -405,7 +406,7 @@ class FocusCounter(Diagnostics):
         if self._is_pairwaise_estimator:
             coordinates_df = (
                 result.estimator.inputs_["coordinates1"]
-                if sign == "PositiveTail"
+                if sign == POSTAIL_LBL
                 else result.estimator.inputs_["coordinates2"]
             )
         else:
