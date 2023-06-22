@@ -20,7 +20,7 @@ from nilearn.plotting import plot_stat_map
 from nimare.dataset import Dataset
 from nimare.reports.base import run_reports
 from nimare.utils import get_resource_path
-from nimare.workflows import cbma_workflow
+from nimare.workflows.cbma import CBMAWorkflow
 
 ###############################################################################
 # Load Dataset
@@ -32,25 +32,26 @@ dset = Dataset(dset_file)
 ###############################################################################
 # Run CBMA Workflow
 # -----------------------------------------------------------------------------
-# The CBMA workflow function runs the following steps:
+# The fit method of a CBMA workflow class runs the following steps:
 #
 # 1. Runs a meta-analysis using the specified method (default: ALE)
 # 2. Applies a corrector to the meta-analysis results (default: FWECorrector, montecarlo)
 # 3. Generates cluster tables and runs diagnostics on the corrected results (default: Jackknife)
 #
-# All in one function call!
+# All in one call!
 #
-# result = cbma_workflow(dset)
+# result = CBMAWorkflow().fit(dset)
 #
 # For this example, we use an FDR correction because the default corrector (FWE correction with
 # Monte Carlo simulation) takes a long time to run due to the high number of iterations that
 # are required
-result = cbma_workflow(dset, corrector="fdr")
+workflow = CBMAWorkflow(corrector="fdr")
+result = workflow.fit(dset)
 
 ###############################################################################
 # Plot Results
 # -----------------------------------------------------------------------------
-# The CBMA workflow function returns a :class:`~nimare.results.MetaResult` object,
+# The fit method of the CBMA workflow class returns a :class:`~nimare.results.MetaResult` object,
 # where you can access the corrected results of the meta-analysis and diagnostics tables.
 #
 # Corrected map:
@@ -73,16 +74,16 @@ result.tables["z_corr-FDR_method-indep_tab-clust"]
 ###############################################################################
 # Contribution table
 # ``````````````````````````````````````````````````````````````````````````````
-result.tables["z_corr-FDR_method-indep_diag-Jackknife_tab-counts"]
+result.tables["z_corr-FDR_method-indep_diag-Jackknife_tab-counts_tail-positive"]
 
 ###############################################################################
 # Report
 # -----------------------------------------------------------------------------
 # Finally, a NiMARE report is generated from the MetaResult.
-root_dir = Path(os.getcwd()).parents[1]
-# Use the following path to run the documentation locally:
-# html_dir = root_dir / "docs" / "_build" / "html" / "auto_examples" / "02_meta-analyses"
-html_dir = root_dir / "_readthedocs" / "html" / "auto_examples" / "02_meta-analyses"
+# root_dir = Path(os.getcwd()).parents[1] / "docs" / "_build"
+# Use the previous root to run the documentation locally.
+root_dir = Path(os.getcwd()).parents[1] / "_readthedocs"
+html_dir = root_dir / "html" / "auto_examples" / "02_meta-analyses" / "10_plot_cbma_workflow"
 html_dir.mkdir(parents=True, exist_ok=True)
 
 run_reports(result, html_dir)
@@ -90,5 +91,5 @@ run_reports(result, html_dir)
 ####################################
 # .. raw:: html
 #
-#     <iframe src="./report.html" style="border:none;" seamless="seamless" width="100%"\
-#        height="1000px"></iframe>
+#     <iframe src="./10_plot_cbma_workflow/report.html" style="border:none;" seamless="seamless"\
+#        width="100%" height="1000px"></iframe>
