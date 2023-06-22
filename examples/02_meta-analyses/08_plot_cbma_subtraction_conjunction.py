@@ -105,18 +105,18 @@ counter = FocusCounter(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
-knowledge_corrected_results = counter.transform(knowledge_corrected_results)
+knowledge_diagnostic_results = counter.transform(knowledge_corrected_results)
 
 ###############################################################################
 # Clusters table.
-knowledge_clusters_table = knowledge_corrected_results.tables[
+knowledge_clusters_table = knowledge_diagnostic_results.tables[
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo_tab-clust"
 ]
 knowledge_clusters_table.head(10)
 
 ###############################################################################
 # Contribution table. Here ``PostiveTail`` refers to clusters with positive statistics.
-knowledge_count_table = knowledge_corrected_results.tables[
+knowledge_count_table = knowledge_diagnostic_results.tables[
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-FocusCounter"
     "_tab-counts_tail-positive"
 ]
@@ -129,8 +129,8 @@ jackknife = Jackknife(
     target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
     voxel_thresh=None,
 )
-related_corrected_results = jackknife.transform(related_corrected_results)
-related_jackknife_table = related_corrected_results.tables[
+related_diagnostic_results = jackknife.transform(related_corrected_results)
+related_jackknife_table = related_diagnostic_results.tables[
     "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-Jackknife_tab-counts_tail-positive"
 ]
 related_jackknife_table.head(10)
