@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import seaborn as sns
 from nilearn import datasets
 from nilearn.plotting import (
     plot_connectome,
@@ -357,3 +358,60 @@ def plot_clusters(img, out_filename):
     )
     fig.savefig(out_filename, dpi=300)
     fig.close()
+
+
+def plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
+    """Plot histograms of the images.
+
+    .. versionadded:: 0.2.1
+
+    Base on: https://seaborn.pydata.org/examples/kde_ridgeplot.html
+    """
+    # Create dataframe for seaborn
+    values = []
+    group = []
+    for img_i, img_map in enumerate(list(maps_arr)):
+        values.append(img_map)
+        group.append([ids_[img_i]] * len(img_map))
+
+    data = {x_label: np.hstack(values), "exp_id": np.hstack(group)}
+    df = pd.DataFrame(data)
+
+    sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+
+    # Initialize the FacetGrid object
+    pal = sns.cubehelix_palette(10, rot=-0.25, light=0.7)
+    g = sns.FacetGrid(df, row="exp_id", hue="exp_id", aspect=15, height=0.5, palette=pal)
+
+    # Draw the densities in a few steps
+    g.map(sns.kdeplot, x_label, bw_adjust=0.5, clip_on=False, fill=True, alpha=1, linewidth=1.5)
+    g.map(sns.kdeplot, x_label, clip_on=False, color="w", lw=2, bw_adjust=0.5)
+
+    # passing color=None to refline() uses the hue mapping
+    g.refline(y=0, linewidth=2, linestyle="-", color=None, clip_on=False)
+
+    # Define and use a simple function to label the plot in axes coordinates
+    def label(values, color, label):
+        ax = plt.gca()
+        ax.text(
+            0,
+            0.2,
+            label,
+            fontweight="bold",
+            color=color,
+            ha="left",
+            va="center",
+            transform=ax.transAxes,
+        )
+
+    g.map(label, x_label)
+
+    # Set the subplots to overlap
+    g.figure.subplots_adjust(hspace=-0.25)
+
+    # Remove axes details that don't play well with overlap
+    g.set_titles("")
+    g.set(yticks=[], ylabel="")
+    g.despine(bottom=True, left=True)
+    g.savefig(out_filename, dpi=300)
+    plt.close()

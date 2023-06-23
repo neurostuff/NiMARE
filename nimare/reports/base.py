@@ -37,6 +37,7 @@ from nimare.reports.figures import (
     plot_heatmap,
     plot_interactive_brain,
     plot_mask,
+    plot_ridgeplot,
     plot_static_brain,
 )
 
@@ -416,7 +417,17 @@ class Report:
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-legend.png",
                 )
             elif meta_type == "IBMA":
-                continue
+                # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
+                key_maps = "z_maps" if "z_maps" in self.results.estimator.inputs_ else "beta_maps"
+                maps_arr = self.results.estimator.inputs_[key_maps]
+                ids_ = self.results.estimator.inputs_["id"]
+                x_label = "Z" if key_maps == "z_maps" else "Beta"
+                plot_ridgeplot(
+                    maps_arr,
+                    ids_,
+                    x_label,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.png",
+                )
 
         _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
         _gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")

@@ -55,8 +55,8 @@ dset = xformer.transform(dset)
 # -----------------------------------------------------------------------------
 # The fit method of a IBMA workflow class runs the following steps:
 #
-# 1. Runs a meta-analysis using the specified method (default: ALE)
-# 2. Applies a corrector to the meta-analysis results (default: FWECorrector, montecarlo)
+# 1. Runs a meta-analysis using the specified method (default: Stouffers)
+# 2. Applies a corrector to the meta-analysis results (default: FDRCorrector, indep)
 # 3. Generates cluster tables and runs diagnostics on the corrected results (default: Jackknife)
 #
 # All in one call!
