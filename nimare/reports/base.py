@@ -30,7 +30,6 @@ import jinja2
 from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
-from nimare.meta.ibma import IBMAEstimator
 from nimare.reports.figures import (
     gen_table,
     plot_clusters,
@@ -54,6 +53,7 @@ PARAMETERS_DICT = {
     "method": "Method",
     "alpha": "Alpha",
     "prior": "Prior",
+    "use_sample_size": "Use sample size for weights",
 }
 
 PNG_SNIPPET = """\
@@ -72,10 +72,7 @@ IFRAME_SNIPPET = """\
 SUMMARY_TEMPLATE = """\
 <ul class="elem-desc">
 <li>Number of studies: {n_studies:d}</li>
-<li>Number of experiments: {n_exps:d}</li>
-<li>Number of experiments included: {n_exps_sel:d}</li>
-<li>Number of foci: {n_foci:d} </li>
-<li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>
+{cbma_text}
 </ul>
 <details>
 <summary>Experiments excluded</summary><br />
@@ -86,7 +83,7 @@ SUMMARY_TEMPLATE = """\
 ESTIMATOR_TEMPLATE = """\
 <ul class="elem-desc">
 <li>Estimator: {est_name}</li>
-<li>Kernel Transformer: {kernel_transformer}{ker_params_text}</li>
+{ker_text}
 {est_params_text}
 </ul>
 """
@@ -109,17 +106,63 @@ DIAGNOSTIC_TEMPLATE = """\
 """
 
 
-def _gen_est_summary(obj, out_filename):
-    """Generate html with parameter use in obj (e.g., estimator)."""
-    params_dict = obj.get_params()
-    est_params = {k: v for k, v in params_dict.items() if not k.startswith("kernel_transformer")}
-    ker_params = {k: v for k, v in params_dict.items() if k.startswith("kernel_transformer__")}
+def _get_cbma_summary(dset, sel_dset):
+    n_foci = dset.coordinates.shape[0]
+    n_foci_sel = sel_dset.coordinates.shape[0]
+    n_foci_nonbrain = n_foci - n_foci_sel
 
+    n_exps = len(dset.ids)
+    n_exps_sel = len(sel_dset.ids)
+
+    cbma_text = [
+        f"<li>Number of experiments: {n_exps:d}</li>",
+        f"<li>Number of experiments included: {n_exps_sel:d}</li>",
+        f"<li>Number of foci: {n_foci:d} </li>",
+        f"<li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>",
+    ]
+
+    return " ".join(cbma_text)
+
+
+def _gen_summary(dset, meta_type, out_filename):
+    """Generate preliminary checks from dataset for the report."""
+    mask = dset.masker.mask_img
+    n_studies = len(dset.coordinates["study_id"].unique())
+    sel_ids = dset.get_studies_by_mask(mask)
+    sel_dset = dset.slice(sel_ids)
+
+    cbma_text = _get_kernel_summary(dset, sel_dset) if meta_type == "CBMA" else ""
+
+    exc_ids = list(set(dset.ids) - set(sel_dset.ids))
+    exc_ids_str = ", ".join(exc_ids)
+
+    summary_text = SUMMARY_TEMPLATE.format(
+        n_studies=n_studies,
+        cbma_text=cbma_text,
+        exc_ids=exc_ids_str,
+    )
+    (out_filename).write_text(summary_text, encoding="UTF-8")
+
+
+def _get_kernel_summary(params_dict):
+    kernel_transformer = str(params_dict["kernel_transformer"])
+    ker_params = {k: v for k, v in params_dict.items() if k.startswith("kernel_transformer__")}
     ker_params_text = ["<ul>"]
     ker_params_text.extend(f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in ker_params.items())
     ker_params_text.append("</ul>")
     ker_params_text = "".join(ker_params_text)
 
+    return f"<li>Kernel Transformer: {kernel_transformer}{ker_params_text}</li>"
+
+
+def _gen_est_summary(obj, out_filename):
+    """Generate html with parameter use in obj (e.g., estimator)."""
+    params_dict = obj.get_params()
+
+    # Add kernel transformer parameters to summary if obj is a CBMAEstimator
+    ker_text = _get_kernel_summary(params_dict) if isinstance(obj, CBMAEstimator) else ""
+
+    est_params = {k: v for k, v in params_dict.items() if not k.startswith("kernel_transformer")}
     est_params_text = [f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in est_params.items()]
     est_params_text = "".join(est_params_text)
 
@@ -127,8 +170,7 @@ def _gen_est_summary(obj, out_filename):
 
     summary_text = ESTIMATOR_TEMPLATE.format(
         est_name=est_name,
-        kernel_transformer=str(params_dict["kernel_transformer"]),
-        ker_params_text=ker_params_text,
+        ker_text=ker_text,
         est_params_text=est_params_text,
     )
     (out_filename).write_text(summary_text, encoding="UTF-8")
@@ -185,33 +227,6 @@ def _gen_fig_summary(img_key, threshold, out_filename):
     <li>Voxel-level threshold: {threshold}</li>
     </ul>
     """
-    (out_filename).write_text(summary_text, encoding="UTF-8")
-
-
-def _gen_summary(dset, out_filename):
-    """Generate preliminary checks from dataset for the report."""
-    mask = dset.masker.mask_img
-    n_studies = len(dset.coordinates["study_id"].unique())
-    sel_ids = dset.get_studies_by_mask(mask)
-    sel_dset = dset.slice(sel_ids)
-
-    n_foci = dset.coordinates.shape[0]
-    n_foci_sel = sel_dset.coordinates.shape[0]
-    n_foci_nonbrain = n_foci - n_foci_sel
-
-    n_exps = len(dset.ids)
-    n_exps_sel = len(sel_dset.ids)
-    exc_ids = list(set(dset.ids) - set(sel_dset.ids))
-    exc_ids_str = ", ".join(exc_ids)
-
-    summary_text = SUMMARY_TEMPLATE.format(
-        n_studies=n_studies,
-        n_exps=n_exps,
-        n_exps_sel=n_exps_sel,
-        n_foci=n_foci,
-        n_foci_nonbrain=n_foci_nonbrain,
-        exc_ids=exc_ids_str,
-    )
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
@@ -362,6 +377,7 @@ class Report:
         out_filename="report.html",
     ):
         self.results = results
+        meta_type = "CBMA" if issubclass(type(self.results.estimator), CBMAEstimator) else "IBMA"
         self._is_pairwise_estimator = issubclass(
             type(self.results.estimator), PairwiseCBMAEstimator
         )
@@ -381,7 +397,9 @@ class Report:
         )
         for dset_i, dataset in enumerate(datasets):
             # Generate summary text
-            _gen_summary(dataset, self.fig_dir / f"preliminary_dset-{dset_i+1}_summary.html")
+            _gen_summary(
+                dataset, meta_type, self.fig_dir / f"preliminary_dset-{dset_i+1}_summary.html"
+            )
 
             # Plot mask
             plot_mask(
@@ -389,7 +407,7 @@ class Report:
                 self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-mask.png",
             )
 
-            if issubclass(type(self.results.estimator), CBMAEstimator):
+            if meta_type == "CBMA":
                 # Plot coordinates for CBMA estimators
                 plot_coordinates(
                     dataset.coordinates,
@@ -397,8 +415,8 @@ class Report:
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-interactive.html",
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-legend.png",
                 )
-            elif issubclass(type(self.results.estimator), IBMAEstimator):
-                raise NotImplementedError
+            elif meta_type == "IBMA":
+                continue
 
         _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
         _gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
