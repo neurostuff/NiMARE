@@ -131,7 +131,7 @@ def _gen_summary(dset, meta_type, out_filename):
     sel_ids = dset.get_studies_by_mask(mask)
     sel_dset = dset.slice(sel_ids)
 
-    cbma_text = _get_kernel_summary(dset, sel_dset) if meta_type == "CBMA" else ""
+    cbma_text = _get_cbma_summary(dset, sel_dset) if meta_type == "CBMA" else ""
 
     exc_ids = list(set(dset.ids) - set(sel_dset.ids))
     exc_ids_str = ", ".join(exc_ids)
