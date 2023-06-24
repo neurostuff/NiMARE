@@ -6,7 +6,6 @@ import pytest
 from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALESubtraction
-from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.reports.base import run_reports
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
 
