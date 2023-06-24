@@ -107,7 +107,11 @@ DIAGNOSTIC_TEMPLATE = """\
 """
 
 
-def _get_cbma_summary(dset, sel_dset):
+def _get_cbma_summary(dset):
+    mask = dset.masker.mask_img
+    sel_ids = dset.get_studies_by_mask(mask)
+    sel_dset = dset.slice(sel_ids)
+
     n_foci = dset.coordinates.shape[0]
     n_foci_sel = sel_dset.coordinates.shape[0]
     n_foci_nonbrain = n_foci - n_foci_sel
@@ -125,16 +129,13 @@ def _get_cbma_summary(dset, sel_dset):
     return " ".join(cbma_text)
 
 
-def _gen_summary(dset, meta_type, out_filename):
+def _gen_summary(dset, sel_ids, meta_type, out_filename):
     """Generate preliminary checks from dataset for the report."""
-    mask = dset.masker.mask_img
     n_studies = len(dset.coordinates["study_id"].unique())
-    sel_ids = dset.get_studies_by_mask(mask)
-    sel_dset = dset.slice(sel_ids)
 
-    cbma_text = _get_cbma_summary(dset, sel_dset) if meta_type == "CBMA" else ""
+    cbma_text = _get_cbma_summary(dset) if meta_type == "CBMA" else ""
 
-    exc_ids = list(set(dset.ids) - set(sel_dset.ids))
+    exc_ids = list(set(dset.ids) - set(sel_ids))
     exc_ids_str = ", ".join(exc_ids)
 
     summary_text = SUMMARY_TEMPLATE.format(
@@ -391,15 +392,23 @@ class Report:
         self.fig_dir = self.out_dir / "figures"
         self.fig_dir.mkdir(parents=True, exist_ok=True)
 
-        datasets = (
-            [self.results.estimator.dataset1, self.results.estimator.dataset2]
-            if self._is_pairwise_estimator
-            else [self.results.estimator.dataset]
-        )
-        for dset_i, dataset in enumerate(datasets):
+        if self._is_pairwise_estimator:
+            datasets = [self.results.estimator.dataset1, self.results.estimator.dataset2]
+            sel_ids = [
+                self.results.estimator.inputs_["id1"],
+                self.results.estimator.inputs_["id2"],
+            ]
+        else:
+            datasets = [self.results.estimator.dataset]
+            sel_ids = [self.results.estimator.inputs_["id"]]
+
+        for dset_i, (dataset, sel_id) in enumerate(zip(datasets, sel_ids)):
             # Generate summary text
             _gen_summary(
-                dataset, meta_type, self.fig_dir / f"preliminary_dset-{dset_i+1}_summary.html"
+                dataset,
+                sel_id,
+                meta_type,
+                self.fig_dir / f"preliminary_dset-{dset_i+1}_summary.html",
             )
 
             # Plot mask
