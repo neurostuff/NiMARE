@@ -55,6 +55,11 @@ PARAMETERS_DICT = {
     "alpha": "Alpha",
     "prior": "Prior",
     "use_sample_size": "Use sample size for weights",
+    "beta": "Parameter estimate",
+    "se": "Standard error of the parameter estimate",
+    "varcope": "Variance of the parameter estimate",
+    "t": "T-statistic",
+    "z": "Z-statistic",
 }
 
 PNG_SNIPPET = """\
@@ -72,8 +77,7 @@ IFRAME_SNIPPET = """\
 
 SUMMARY_TEMPLATE = """\
 <ul class="elem-desc">
-<li>Number of studies: {n_studies:d}</li>
-{cbma_text}
+{meta_text}
 </ul>
 <details>
 <summary>Experiments excluded</summary><br />
@@ -107,7 +111,9 @@ DIAGNOSTIC_TEMPLATE = """\
 """
 
 
-def _get_cbma_summary(dset):
+def _get_cbma_summary(dset, sel_ids):
+    n_studies = len(dset.coordinates["study_id"].unique())
+
     mask = dset.masker.mask_img
     sel_ids = dset.get_studies_by_mask(mask)
     sel_dset = dset.slice(sel_ids)
@@ -117,9 +123,10 @@ def _get_cbma_summary(dset):
     n_foci_nonbrain = n_foci - n_foci_sel
 
     n_exps = len(dset.ids)
-    n_exps_sel = len(sel_dset.ids)
+    n_exps_sel = len(sel_ids)
 
     cbma_text = [
+        f"<li>Number of studies: {n_studies:d}</li>",
         f"<li>Number of experiments: {n_exps:d}</li>",
         f"<li>Number of experiments included: {n_exps_sel:d}</li>",
         f"<li>Number of foci: {n_foci:d} </li>",
@@ -129,18 +136,43 @@ def _get_cbma_summary(dset):
     return " ".join(cbma_text)
 
 
+def _get_ibma_summary(dset, sel_ids):
+    img_df = dset.images
+    n_studies = len(img_df["study_id"].unique())
+
+    ignore_columns = ["id", "study_id", "contrast_id"]
+    map_type = [c for c in img_df if not c.endswith("__relative") and c not in ignore_columns]
+
+    n_imgs = len(dset.ids)
+    n_sel_ids = len(sel_ids)
+
+    ibma_text = [
+        f"<li>Number of studies: {n_studies:d}</li>",
+        f"<li>Number of images: {n_imgs:d}</li>",
+        f"<li>Number of images included: {n_sel_ids:d}</li>",
+    ]
+
+    maptype_text = ["<li>Available maps: ", "<ul>"]
+    maptype_text.extend(f"<li>{PARAMETERS_DICT[m]} ({m})</li>" for m in map_type)
+    maptype_text.extend(["</ul>", "</li>"])
+
+    ibma_text.extend(maptype_text)
+    return " ".join(ibma_text)
+
+
 def _gen_summary(dset, sel_ids, meta_type, out_filename):
     """Generate preliminary checks from dataset for the report."""
-    n_studies = len(dset.coordinates["study_id"].unique())
-
-    cbma_text = _get_cbma_summary(dset) if meta_type == "CBMA" else ""
-
     exc_ids = list(set(dset.ids) - set(sel_ids))
     exc_ids_str = ", ".join(exc_ids)
 
+    meta_text = (
+        _get_cbma_summary(dset, sel_ids)
+        if meta_type == "CBMA"
+        else _get_ibma_summary(dset, sel_ids)
+    )
+
     summary_text = SUMMARY_TEMPLATE.format(
-        n_studies=n_studies,
-        cbma_text=cbma_text,
+        meta_text=meta_text,
         exc_ids=exc_ids_str,
     )
     (out_filename).write_text(summary_text, encoding="UTF-8")
