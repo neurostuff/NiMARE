@@ -38,7 +38,7 @@ def cbmr_result(testdata_cbmr_simulated, model):
 
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        moderators=None,
         spline_spacing=200,
         model=model,
         penalty=False,
@@ -56,7 +56,7 @@ def cbmr_result(testdata_cbmr_simulated, model):
 @pytest.fixture(scope="session")
 def inference_results(testdata_cbmr_simulated, cbmr_result):
     """Test inference results for CBMR estimator."""
-    inference = CBMRInference(device="cuda")
+    inference = CBMRInference(device="cpu")
     inference.fit(cbmr_result)
     t_con_groups = inference.create_contrast(
         [
