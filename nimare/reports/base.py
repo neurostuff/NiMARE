@@ -29,7 +29,8 @@ from pathlib import Path
 import jinja2
 from pkg_resources import resource_filename as pkgrf
 
-from nimare.meta.cbma.base import CBMAEstimator
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.ibma import IBMAEstimator
 from nimare.reports.figures import (
     gen_table,
     plot_clusters,
@@ -39,30 +40,6 @@ from nimare.reports.figures import (
     plot_mask,
     plot_static_brain,
 )
-
-SVG_SNIPPET = [
-    """\
-    <object class="svg-reportlet" type="image/svg+xml" data="./{0}">
-    Problem loading figure {0}. If the link below works, please try \
-    reloading the report in your browser.</object>
-    </div>
-    <div class="elem-filename">
-        Get figure file: <a href="./{0}" target="_blank">{0}</a>
-    </div>
-    """,
-    """\
-    <img class="svg-reportlet" src="./{0}" style="width: 100%" />
-    </div>
-    <div class="elem-filename">
-        Get figure file: <a href="./{0}" target="_blank">{0}</a>
-    </div>
-    """,
-]
-
-IFRAME_SNIPPET = """\
-<iframe id="igraph" scrolling="no" style="border:none;" seamless="seamless" \
-src="./{0}" height="800" width="100%"></iframe>
-"""
 
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
@@ -76,23 +53,39 @@ PARAMETERS_DICT = {
     "fdr": "False discovery rate (FDR) correction",
     "method": "Method",
     "alpha": "Alpha",
+    "prior": "Prior",
 }
+
+PNG_SNIPPET = """\
+<img class="png-reportlet" src="./{0}" style="width: 100%" /></div>
+<div class="elem-filename">
+    Get figure file: <a href="./{0}" target="_blank">{0}</a>
+</div>
+"""
+
+IFRAME_SNIPPET = """\
+<div class="igraph-container">
+    <iframe class="igraph" src="./{0}"></iframe>
+</div>
+"""
 
 SUMMARY_TEMPLATE = """\
 <ul class="elem-desc">
-<li>Number of studies: {n_exps:d}</li>
-<li>Number of studies included: {n_exps_sel:d}</li>
+<li>Number of studies: {n_studies:d}</li>
+<li>Number of experiments: {n_exps:d}</li>
+<li>Number of experiments included: {n_exps_sel:d}</li>
 <li>Number of foci: {n_foci:d} </li>
 <li>Number of foci outside the mask: {n_foci_nonbrain:d} </li>
 </ul>
 <details>
-<summary>Studies excluded</summary><br />
+<summary>Experiments excluded</summary><br />
 <p>{exc_ids}</p>
 </details>
 """
 
 ESTIMATOR_TEMPLATE = """\
 <ul class="elem-desc">
+<li>Estimator: {est_name}</li>
 <li>Kernel Transformer: {kernel_transformer}{ker_params_text}</li>
 {est_params_text}
 </ul>
@@ -123,17 +116,17 @@ def _gen_est_summary(obj, out_filename):
     ker_params = {k: v for k, v in params_dict.items() if k.startswith("kernel_transformer__")}
 
     ker_params_text = ["<ul>"]
-    for k, v in ker_params.items():
-        ker_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    ker_params_text.extend(f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in ker_params.items())
     ker_params_text.append("</ul>")
     ker_params_text = "".join(ker_params_text)
 
-    est_params_text = []
-    for k, v in est_params.items():
-        est_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    est_params_text = [f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in est_params.items()]
     est_params_text = "".join(est_params_text)
 
+    est_name = obj.__class__.__name__
+
     summary_text = ESTIMATOR_TEMPLATE.format(
+        est_name=est_name,
         kernel_transformer=str(params_dict["kernel_transformer"]),
         ker_params_text=ker_params_text,
         est_params_text=est_params_text,
@@ -145,14 +138,13 @@ def _gen_cor_summary(obj, out_filename):
     """Generate html with parameter use in obj (e.g., corrector)."""
     params_dict = obj.get_params()
 
-    cor_params_text = []
-    for k, v in params_dict.items():
-        cor_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    cor_params_text = [f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in params_dict.items()]
     cor_params_text = "".join(cor_params_text)
 
     ext_params_text = ["<ul>"]
-    for k, v in obj.parameters.items():
-        ext_params_text.append(f"<li>{PARAMETERS_DICT[k]}: {v}</li>")
+    ext_params_text.extend(
+        f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in obj.parameters.items()
+    )
     ext_params_text.append("</ul>")
     ext_params_text = "".join(ext_params_text)
 
@@ -199,6 +191,7 @@ def _gen_fig_summary(img_key, threshold, out_filename):
 def _gen_summary(dset, out_filename):
     """Generate preliminary checks from dataset for the report."""
     mask = dset.masker.mask_img
+    n_studies = len(dset.coordinates["study_id"].unique())
     sel_ids = dset.get_studies_by_mask(mask)
     sel_dset = dset.slice(sel_ids)
 
@@ -212,6 +205,7 @@ def _gen_summary(dset, out_filename):
     exc_ids_str = ", ".join(exc_ids)
 
     summary_text = SUMMARY_TEMPLATE.format(
+        n_studies=n_studies,
         n_exps=n_exps,
         n_exps_sel=n_exps_sel,
         n_foci=n_foci,
@@ -236,27 +230,44 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     if cluster_table is not None and not cluster_table.empty:
         gen_table(cluster_table, fig_dir / "diagnostics_tab-clust_table.html")
 
-        # Get label maps
+        # Get label maps and contribution_table
+        contribution_tables = []
+        heatmap_names = []
         lbl_name = "_".join(img_key.split("_")[1:])
-        lbl_name = "_" + lbl_name if lbl_name else lbl_name
+        lbl_name = f"_{lbl_name}" if lbl_name else lbl_name
         for tail in ["positive", "negative"]:
             lbl_key = f"label{lbl_name}_tail-{tail}"
             if lbl_key in results.maps:
                 label_map = results.get_map(lbl_key)
                 plot_clusters(label_map, fig_dir / f"diagnostics_tail-{tail}_figure.png")
 
+            contribution_table_name = f"{img_key}_diag-{diag_name}_tab-counts_tail-{tail}"
+            if contribution_table_name in results.tables:
+                contribution_table = results.tables[contribution_table_name]
+                if contribution_table is not None and not contribution_table.empty:
+                    contribution_table = contribution_table.set_index("id")
+                    contribution_tables.append(contribution_table)
+                    heatmap_names.append(
+                        f"diagnostics_diag-{diag_name}_tab-counts_tail-{tail}_figure.html"
+                    )
+
+        # For IBMA plot only one heatmap with both positive and negative tails
+        contribution_table_name = f"{img_key}_diag-{diag_name}_tab-counts"
+        if contribution_table_name in results.tables:
+            contribution_table = results.tables[contribution_table_name]
+            if contribution_table is not None and not contribution_table.empty:
+                contribution_table = contribution_table.set_index("id")
+                contribution_tables.append(contribution_table)
+                heatmap_names.append(f"diagnostics_diag-{diag_name}_tab-counts_figure.html")
+
+        # Plot heatmaps
+        [
+            plot_heatmap(contribution_table, fig_dir / heatmap_name)
+            for heatmap_name, contribution_table in zip(heatmap_names, contribution_tables)
+        ]
+
     else:
         _no_clusts_found(fig_dir / "diagnostics_tab-clust_table.html")
-
-    # Plot heatmap if contribution_table is not empty
-    if f"{img_key}_diag-{diag_name}_tab-counts" in results.tables:
-        contribution_table = results.tables[f"{img_key}_diag-{diag_name}_tab-counts"]
-        if contribution_table is not None and not contribution_table.empty:
-            contribution_table = contribution_table.set_index("id")
-            plot_heatmap(
-                contribution_table,
-                fig_dir / f"diagnostics_diag-{diag_name}_tab-counts_figure.html",
-            )
 
 
 class Element(object):
@@ -291,6 +302,7 @@ class Reportlet(Element):
         self.name = config.get("name", bids_name)
         self.title = config.get("title")
         self.subtitle = config.get("subtitle")
+        self.subsubtitle = config.get("subsubtitle")
         self.description = config.get("description")
 
         files = glob(str(out_dir / "figures" / f"{self.name}.*"))
@@ -307,7 +319,7 @@ class Reportlet(Element):
             if ext == ".html":
                 contents = IFRAME_SNIPPET.format(html_anchor) if iframe else src.read_text()
             elif ext == ".png":
-                contents = SVG_SNIPPET[config.get("static", True)].format(html_anchor)
+                contents = PNG_SNIPPET.format(html_anchor)
 
             if contents:
                 self.components.append((contents, desc_text))
@@ -350,6 +362,9 @@ class Report:
         out_filename="report.html",
     ):
         self.results = results
+        self._is_pairwise_estimator = issubclass(
+            type(self.results.estimator), PairwiseCBMAEstimator
+        )
 
         # Initialize structuring elements
         self.sections = []
@@ -359,23 +374,31 @@ class Report:
         self.fig_dir = self.out_dir / "figures"
         self.fig_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate summary text
-        _gen_summary(self.results.estimator.dataset, self.fig_dir / "preliminary_summary.html")
-
-        # Plot mask
-        plot_mask(
-            self.results.estimator.dataset.masker.mask_img,
-            self.fig_dir / "preliminary_figure-mask.png",
+        datasets = (
+            [self.results.estimator.dataset1, self.results.estimator.dataset2]
+            if self._is_pairwise_estimator
+            else [self.results.estimator.dataset]
         )
+        for dset_i, dataset in enumerate(datasets):
+            # Generate summary text
+            _gen_summary(dataset, self.fig_dir / f"preliminary_dset-{dset_i+1}_summary.html")
 
-        if issubclass(type(self.results.estimator), CBMAEstimator):
-            # Plot coordinates for CBMA estimators
-            plot_coordinates(
-                self.results.estimator.dataset.coordinates,
-                self.fig_dir / "preliminary_figure-static.png",
-                self.fig_dir / "preliminary_figure-interactive.html",
-                self.fig_dir / "preliminary_figure-legend.png",
+            # Plot mask
+            plot_mask(
+                dataset.masker.mask_img,
+                self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-mask.png",
             )
+
+            if issubclass(type(self.results.estimator), CBMAEstimator):
+                # Plot coordinates for CBMA estimators
+                plot_coordinates(
+                    dataset.coordinates,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-static.png",
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-interactive.html",
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-legend.png",
+                )
+            elif issubclass(type(self.results.estimator), IBMAEstimator):
+                raise NotImplementedError
 
         _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
         _gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
@@ -384,10 +407,8 @@ class Report:
             diag_name = diagnostic.__class__.__name__
             threshold = diagnostic.voxel_thresh
 
-            _gen_fig_summary(img_key, threshold, self.fig_dir / "corrector_fig-summary.html")
-            _gen_diag_summary(
-                diagnostic, self.fig_dir / f"diagnostics_diag-{diag_name}_summary.html"
-            )
+            _gen_fig_summary(img_key, threshold, self.fig_dir / "corrector_figure-summary.html")
+            _gen_diag_summary(diagnostic, self.fig_dir / "diagnostics_summary.html")
             _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
 
         # Default template from nimare
@@ -411,9 +432,7 @@ class Report:
         for subrep_cfg in config:
             reportlets = [Reportlet(self.out_dir, config=cfg) for cfg in subrep_cfg["reportlets"]]
 
-            # Filter out empty reportlets
-            reportlets = [r for r in reportlets if not r.is_empty()]
-            if reportlets:
+            if reportlets := [r for r in reportlets if not r.is_empty()]:
                 sub_report = SubReport(
                     subrep_cfg["name"],
                     isnested=False,

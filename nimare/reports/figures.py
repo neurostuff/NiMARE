@@ -81,7 +81,7 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
 
     # Order columns
     col_linkage_matrix = linkage(mat.T, method=reorder)
-    col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat)
+    col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat.T)
     col_index = leaves_list(col_ordered_linkage)
 
     # Make sure labels is an ndarray and copy it
@@ -124,7 +124,6 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
         black_bg=False,
         draw_cross=False,
         threshold=threshold,
-        vmax=4,
         display_mode="mosaic",
     )
     fig.savefig(out_filename, dpi=300)
@@ -191,7 +190,7 @@ def plot_coordinates(
     adjacency_matrix = np.zeros((n_coords, n_coords))
 
     # Generate dictionary and array of colors for each unique ID
-    ids = coordinates_df["id"].to_list()
+    ids = coordinates_df["study_id"].to_list()
     unq_ids = np.unique(ids)
     cmap = plt.cm.get_cmap("tab20", len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
@@ -207,9 +206,10 @@ def plot_coordinates(
     ]
 
     # Plot legeng
-    ncol = 10
+    max_len_per_page = 200
+    max_legend_len = max(len(id_) for id_ in unq_ids)
+    ncol = 1 if max_legend_len > max_len_per_page else int(max_len_per_page / max_legend_len)
     labl_fig, ax = plt.subplots(1, 1)
-    labl_fig.set_size_inches(ncol, len(patches_lst) / ncol**2)
     labl_fig.legend(
         handles=patches_lst,
         ncol=ncol,
@@ -251,7 +251,7 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
     _check_extention(out_filename, [".html"])
 
     template = datasets.load_mni152_template(resolution=1)
-    html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold, vmax=4)
+    html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold)
     html_view.save_as_html(out_filename)
 
 
@@ -271,26 +271,27 @@ def plot_heatmap(contribution_table, out_filename):
     """
     _check_extention(out_filename, [".html"])
 
-    mat = contribution_table.to_numpy()
-    row_labels, col_labels = (
-        contribution_table.index.to_list(),
-        contribution_table.columns.to_list(),
-    )
+    n_studies, n_clusters = contribution_table.shape
+    if (n_studies > 2) and (n_clusters > 2):
+        # Reorder matrix only if more than 1 cluster/experiment
+        mat = contribution_table.to_numpy()
+        row_labels, col_labels = (
+            contribution_table.index.to_list(),
+            contribution_table.columns.to_list(),
+        )
+        new_mat, new_row_labels, new_col_labels = _reorder_matrix(
+            mat,
+            row_labels,
+            col_labels,
+            "single",
+        )
+        contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
-    new_mat, new_row_labels, new_col_labels = _reorder_matrix(
-        mat,
-        row_labels,
-        col_labels,
-        "single",
-    )
-    new_df = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
+    fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="equal")
 
-    fig = px.imshow(new_df, color_continuous_scale="Reds")
-    fig.update_layout(
-        autosize=False,
-        width=800,
-        height=800,
-    )
+    pxs_per_sqr = 50  # Number of pixels per square in the heatmap
+    height = n_studies * pxs_per_sqr
+    fig.update_layout(autosize=True, height=height)
     fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
@@ -340,12 +341,16 @@ def plot_clusters(img, out_filename):
 
     template = datasets.load_mni152_template(resolution=1)
 
+    # Define cmap depending on the number of clusters
+    clust_ids = list(np.unique(img.get_fdata())[1:])
+    cmap = plt.cm.get_cmap("tab20", len(clust_ids))
+
     fig = plot_roi(
         img,
         bg_img=template,
         black_bg=False,
         draw_cross=False,
-        cmap="tab20",
+        cmap=cmap,
         alpha=0.8,
         colorbar=True,
         display_mode="mosaic",

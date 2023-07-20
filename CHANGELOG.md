@@ -2,7 +2,24 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.1.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.1.1...HEAD)
+
+## [0.1.1](https://github.com/neurostuff/NiMARE/compare/0.1.0...0.1.1) - 2023-06-12
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+Main change is to include `default.yml` and `default.tpl` in the python package distribution
+
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+- Combine analyses in Studyset by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/810
+
+#### Other Changes
+
+- [FIX] include default.yml as part of nimare package by @jdkent in https://github.com/neurostuff/NiMARE/pull/812
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.1.0...0.1.1
 
 ## [0.1.0](https://github.com/neurostuff/NiMARE/compare/0.0.14...0.1.0) - 2023-06-02
 

@@ -41,14 +41,26 @@ package: nimare
 sections:
 - name: Summary
   reportlets:
-  - bids: {value: preliminary, suffix: summary}
-  - bids: {value: preliminary, suffix: figure-mask}
+  - bids: {value: preliminary, dset: 1, suffix: summary}
+    title: Dataset 1
+  - bids: {value: preliminary, dset: 1, suffix: figure-mask}
     title: Mask
-  - bids: {value: preliminary, suffix: figure-static}
+  - bids: {value: preliminary, dset: 1, suffix: figure-static}
     title: Peak coordinates
-  - bids: {value: preliminary, suffix: figure-legend}
-  - bids: {value: preliminary, suffix: figure-interactive}
+  - bids: {value: preliminary, dset: 1, suffix: figure-legend}
+  - bids: {value: preliminary, dset: 1, suffix: figure-interactive}
     title: Explorer
+    iframe: True
+  - bids: {value: preliminary, dset: 2, suffix: summary}
+    title: Dataset 2
+  - bids: {value: preliminary, dset: 2, suffix: figure-mask}
+    title: Mask
+  - bids: {value: preliminary, dset: 2, suffix: figure-static}
+    title: Peak coordinates
+  - bids: {value: preliminary, dset: 2, suffix: figure-legend}
+  - bids: {value: preliminary, dset: 2, suffix: figure-interactive}
+    title: Explorer
+    iframe: True
 - name: Meta-Analysis
   reportlets:
   - bids: {value: estimator, suffix: summary}
@@ -57,7 +69,7 @@ sections:
   - bids: {value: corrector, suffix: summary}
     title: Corrector
     description: Parameters use to fit the corrector.
-  - bids: {value: corrector, suffix: fig-summary}
+  - bids: {value: corrector, suffix: figure-summary}
   - bids: {value: corrector, suffix: figure-non}
   - bids: {value: corrector, suffix: figure-interactive}
     subtitle: Explorer
@@ -66,7 +78,7 @@ sections:
     description: This panel shows the the corrrected meta-analytic map.
 - name: Diagnostics
   reportlets:
-  - bids: {value: diagnostics, suffix: diag-summary}
+  - bids: {value: diagnostics, suffix: summary}
   - bids: {value: diagnostics, tab: clust, suffix: table}
     subtitle: Significant clusters
   - bids: {value: diagnostics, tail: positive, suffix: figure}
@@ -77,9 +89,21 @@ sections:
     subtitle: FocusCounter
     caption: *heatmap_text
     description: *focuscounter_text
-    iframe: True
   - bids: {value: diagnostics, diag: Jackknife, tab: counts, suffix: figure}
     subtitle: Jackknife
     caption: *heatmap_text
     description: *jackknife_text
-    iframe: True
+  - bids: {value: diagnostics, diag: FocusCounter, tab: counts, tail: positive, suffix: figure}
+    subtitle: FocusCounter
+    subsubtitle: "Heatmap: positive tail"
+    caption: *heatmap_text
+    description: *focuscounter_text
+  - bids: {value: diagnostics, diag: FocusCounter, tab: counts, tail: negative, suffix: figure}
+    subsubtitle: "Heatmap: negative tail"
+  - bids: {value: diagnostics, diag: Jackknife, tab: counts, tail: positive, suffix: figure}
+    subtitle: Jackknife
+    subsubtitle: "Heatmap: positive tail"
+    caption: *heatmap_text
+    description: *jackknife_text
+  - bids: {value: diagnostics, diag: Jackknife, tab: counts, tail: negative, suffix: figure}
+    subsubtitle: "Heatmap: negative tail"

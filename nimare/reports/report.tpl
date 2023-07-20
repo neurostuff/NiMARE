@@ -10,7 +10,8 @@
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
 <style type="text/css">
 .sub-report-title {}
-.run-title {}
+.sub-title {}
+.sub-sub-title {}
 
 h1 { padding-top: 35px; }
 h2 { padding-top: 20px; }
@@ -28,12 +29,30 @@ div.elem-image {
   page-break-before:always;
 }
 
-.elem-image object.svg-reportlet {
+.elem-image object.png-reportlet {
     width: 100%;
     padding-bottom: 5px;
 }
 body {
     padding: 65px 10px 10px;
+}
+
+.igraph-container {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  padding-top: 50%;
+}
+
+.igraph {
+  position: absolute;
+  border: none;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .boiler-html {
@@ -91,11 +110,12 @@ div#boilerplate pre {
     {% for run_report in sub_report.reportlets %}
         <div id="{{run_report.name}}">
             {% if run_report.title %}<h2 class="sub-report-group">{{ run_report.title }}</h2>{% endif %}
-            {% if run_report.subtitle %}<h3 class="run-title">{{ run_report.subtitle }}</h3>{% endif %}
+            {% if run_report.subtitle %}<h3 class="sub-title">{{ run_report.subtitle }}</h3>{% endif %}
             {% if run_report.description %}<p class="elem-desc">{{ run_report.description }}</p>{% endif %}
             {% for elem in run_report.components %}
                 {% if elem[0] %}
                     {% if elem[1] %}<p class="elem-caption">{{ elem[1] }}</p>{% endif %}
+                    {% if run_report.subsubtitle %}<h4 class="sub-sub-title">{{ run_report.subsubtitle }}</h4>{% endif %}
                     {{ elem[0] }}
                 {% endif %}
             {% endfor %}
