@@ -121,8 +121,8 @@ def test_firth_penalty(testdata_cbmr_simulated):
     )
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
-    
-    
+
+
 def test_moderators_none(testdata_cbmr_simulated):
     """Unit test for Firth penalty."""
     dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
@@ -149,11 +149,10 @@ def test_moderators_none(testdata_cbmr_simulated):
         ],
         source="groups",
     )
-    inference_results = inference.transform(
-        t_con_groups=t_con_groups
-    )
-    
+    inference_results = inference.transform(t_con_groups=t_con_groups)
+
     assert isinstance(inference_results, nimare.results.MetaResult)
+
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
