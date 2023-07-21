@@ -513,11 +513,14 @@ class CBMRInference(object):
         operator = "(\\ ?(?P<operator>[+-]?)\\ ??)"
         for attr in ["groups", "moderators"]:
             groups = getattr(self, attr)
-            first_group, second_group = [
-                f"(?P<{order}>{'|'.join([re.escape(g) for g in groups])})"
-                for order in ["first", "second"]
-            ]
-            reg_expr = re.compile(first_group + "(" + operator + second_group + "?)")
+            if groups:
+                first_group, second_group = [
+                    f"(?P<{order}>{'|'.join([re.escape(g) for g in groups])})"
+                    for order in ["first", "second"]
+                ]
+                reg_expr = re.compile(first_group + "(" + operator + second_group + "?)")
+            else:
+                reg_expr = None
 
             setattr(self, "{}_regular_expression".format(attr), reg_expr)
 
