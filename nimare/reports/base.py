@@ -57,7 +57,7 @@ PARAMETERS_DICT = {
 }
 
 PNG_SNIPPET = """\
-<img class="png-reportlet" src="./{0}" style="width: 100%" /></div>
+<img class="png-reportlet" src="./{0}" styles="width: 100%" /></div>
 <div class="elem-filename">
     Get figure file: <a href="./{0}" target="_blank">{0}</a>
 </div>
@@ -166,14 +166,14 @@ def _gen_diag_summary(obj, out_filename):
 
 def _no_clusts_found(out_filename):
     """Generate html with single text."""
-    null_text = '<h4 style="color:#A30000">No significant clusters found</h4>'
+    null_text = '<h4 styles="color:#A30000">No significant clusters found</h4>'
     (out_filename).write_text(null_text, encoding="UTF-8")
 
 
 def _no_maps_found(out_filename):
     """Generate html with single text."""
     null_text = """\
-    <h4 style="color:#A30000">No significant voxels were found above the threshold</h4>
+    <h4 styles="color:#A30000">No significant voxels were found above the threshold</h4>
     """
     (out_filename).write_text(null_text, encoding="UTF-8")
 
