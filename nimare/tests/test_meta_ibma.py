@@ -180,23 +180,15 @@ def test_ibma_with_custom_masker(testdata_ibma, caplog, estimator, expectation, 
 
 
 @pytest.mark.parametrize(
-    "resample,resample_kwargs,expectation",
+    "resample_kwargs",
     [
-        (False, {}, pytest.raises(ValueError)),
-        (None, {}, pytest.raises(ValueError)),
-        (True, {}, does_not_raise()),
-        (
-            True,
-            {"resample__clip": False, "resample__interpolation": "continuous"},
-            does_not_raise(),
-        ),
+        {},
+        {"resample__clip": False, "resample__interpolation": "continuous"},
     ],
 )
-def test_ibma_resampling(testdata_ibma_resample, resample, resample_kwargs, expectation):
+def test_ibma_resampling(testdata_ibma_resample, resample_kwargs):
     """Test image-based resampling performance."""
-    meta = ibma.Fishers(resample=resample, **resample_kwargs)
-    with expectation:
-        results = meta.fit(testdata_ibma_resample)
+    meta = ibma.Fishers(**resample_kwargs)
+    results = meta.fit(testdata_ibma_resample)
 
-    if isinstance(expectation, does_not_raise):
-        assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results, nimare.results.MetaResult)
