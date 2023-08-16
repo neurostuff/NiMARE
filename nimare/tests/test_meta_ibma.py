@@ -1,6 +1,7 @@
 """Test nimare.meta.ibma (image-based meta-analytic estimators)."""
 import logging
 import os.path as op
+from contextlib import ExitStack as does_not_raise
 
 import numpy as np
 import pytest
