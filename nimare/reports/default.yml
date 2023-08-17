@@ -51,6 +51,8 @@ sections:
   - bids: {value: preliminary, dset: 1, suffix: figure-interactive}
     title: Explorer
     iframe: True
+  - bids: {value: preliminary, dset: 1, suffix: figure-relcov}
+    title: Relative Coverage Map
   - bids: {value: preliminary, dset: 1, suffix: figure-ridgeplot}
     title: Ridge Plot
   - bids: {value: preliminary, dset: 2, suffix: summary}

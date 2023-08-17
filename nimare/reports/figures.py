@@ -16,6 +16,8 @@ from nilearn.plotting import (
 )
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
+from nimare.utils import _boolean_unmask
+
 TABLE_STYLE = [
     dict(
         selector="th, td",
@@ -415,3 +417,33 @@ def plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     g.despine(bottom=True, left=True)
     g.savefig(out_filename, dpi=300)
     plt.close()
+
+
+def plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename, threshold=1e-06):
+    """Plot relative coverage map.
+
+    .. versionadded:: 0.2.0
+
+    """
+    _check_extention(out_filename, [".png", ".pdf", ".svg"])
+
+    # Binaries maps and create relative coverage map
+    binary_maps_arr = np.where(maps_arr != 0, 1, 0)
+    coverage_arr = np.sum(binary_maps_arr, axis=0) / binary_maps_arr.shape[0]
+
+    # Add bad voxels back to the arr to transform it back to an image
+    coverage_arr = _boolean_unmask(coverage_arr, aggressive_mask)
+    coverage_img = masker.inverse_transform(coverage_arr)
+
+    # Plot coverage map
+    template = datasets.load_mni152_template(resolution=1)
+    fig = plot_stat_map(
+        coverage_img,
+        bg_img=template,
+        black_bg=False,
+        draw_cross=False,
+        threshold=threshold,
+        display_mode="mosaic",
+    )
+    fig.savefig(out_filename, dpi=300)
+    fig.close()
