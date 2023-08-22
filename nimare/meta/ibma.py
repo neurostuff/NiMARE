@@ -24,6 +24,11 @@ __version__ = _version.get_versions()["version"]
 class IBMAEstimator(Estimator):
     """Base class for meta-analysis methods in :mod:`~nimare.meta`.
 
+    .. versionchanged:: 0.2.0
+
+        * Remove `resample` and `memory_limit` arguments. Resampling is now
+          performed only if shape/affines are different.
+
     .. versionadded:: 0.0.12
 
         * IBMA-specific elements of ``Estimator`` excised and used to create ``IBMAEstimator``.
@@ -32,12 +37,10 @@ class IBMAEstimator(Estimator):
 
     """
 
-    def __init__(self, *, mask=None, resample=False, memory_limit=None, **kwargs):
+    def __init__(self, *, mask=None, **kwargs):
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
-        self.resample = resample
-        self.memory_limit = memory_limit
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {"clip": True, "interpolation": "linear"}
@@ -74,18 +77,13 @@ class IBMAEstimator(Estimator):
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
-                # If no resampling is requested, check if resampling is required
-                if not self.resample:
-                    check_imgs = {img: nib.load(img) for img in self.inputs_[name]}
-                    _check_same_fov(**check_imgs, reference_masker=mask_img, raise_error=True)
-                    imgs = list(check_imgs.values())
-                else:
-                    # resampling will only occur if shape/affines are different
-                    # making this harmless if all img shapes/affines are the same as the reference
-                    imgs = [
-                        resample_to_img(nib.load(img), mask_img, **self._resample_kwargs)
-                        for img in self.inputs_[name]
-                    ]
+                # Resampling will only occur if shape/affines are different
+                imgs = [
+                    nib.load(img)
+                    if _check_same_fov(nib.load(img), reference_masker=mask_img)
+                    else resample_to_img(nib.load(img), mask_img, **self._resample_kwargs)
+                    for img in self.inputs_[name]
+                ]
 
                 # input to NiFtiLabelsMasker must be 4d
                 img4d = concat_imgs(imgs, ensure_ndim=4)
