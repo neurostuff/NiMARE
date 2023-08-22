@@ -31,14 +31,14 @@ from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.reports.figures import (
+    _plot_relcov_map,
+    _plot_ridgeplot,
     gen_table,
     plot_clusters,
     plot_coordinates,
     plot_heatmap,
     plot_interactive_brain,
     plot_mask,
-    plot_relcov_map,
-    plot_ridgeplot,
     plot_static_brain,
 )
 
@@ -561,6 +561,10 @@ def run_reports(
     out_dir,
 ):
     """Run the reports.
+
+    .. versionchanged:: 0.2.0
+
+        * Support for image-based meta-analyses.
 
     .. versionadded:: 0.1.0
 

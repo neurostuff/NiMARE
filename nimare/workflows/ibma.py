@@ -14,7 +14,7 @@ LGR = logging.getLogger(__name__)
 class IBMAWorkflow(Workflow):
     """Compose a coordinate-based meta-analysis workflow.
 
-    .. versionadded:: 0.2.1
+    .. versionadded:: 0.2.0
 
     This workflow performs a coordinate-based meta-analysis, multiple comparison corrections,
     and diagnostics analyses on corrected meta-analytic z-score maps.

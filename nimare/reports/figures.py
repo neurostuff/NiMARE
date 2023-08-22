@@ -362,10 +362,10 @@ def plot_clusters(img, out_filename):
     fig.close()
 
 
-def plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
+def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     """Plot histograms of the images.
 
-    .. versionadded:: 0.2.1
+    .. versionadded:: 0.2.0
 
     Base on: https://seaborn.pydata.org/examples/kde_ridgeplot.html
     """
@@ -419,7 +419,7 @@ def plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     plt.close()
 
 
-def plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename, threshold=1e-06):
+def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
     """Plot relative coverage map.
 
     .. versionadded:: 0.2.0
@@ -427,8 +427,10 @@ def plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename, threshold=1
     """
     _check_extention(out_filename, [".png", ".pdf", ".svg"])
 
+    epsilon = 1e-05
+
     # Binaries maps and create relative coverage map
-    binary_maps_arr = np.where(maps_arr != 0, 1, 0)
+    binary_maps_arr = np.where(-epsilon >= maps_arr >= epsilon, 1, 0)
     coverage_arr = np.sum(binary_maps_arr, axis=0) / binary_maps_arr.shape[0]
 
     # Add bad voxels back to the arr to transform it back to an image
@@ -442,7 +444,7 @@ def plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename, threshold=1
         bg_img=template,
         black_bg=False,
         draw_cross=False,
-        threshold=threshold,
+        threshold=epsilon,
         display_mode="mosaic",
     )
     fig.savefig(out_filename, dpi=300)
