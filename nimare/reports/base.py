@@ -465,14 +465,14 @@ class Report:
                 ids_ = self.results.estimator.inputs_["id"]
                 x_label = "Z" if key_maps == "z_maps" else "Beta"
 
-                plot_relcov_map(
+                _plot_relcov_map(
                     maps_arr,
                     self.results.estimator.masker,
                     self.results.estimator.inputs_["aggressive_mask"],
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-relcov.png",
                 )
 
-                plot_ridgeplot(
+                _plot_ridgeplot(
                     maps_arr,
                     ids_,
                     x_label,
