@@ -52,7 +52,7 @@ To install NiMARE check out our `installation guide`_.
    :target: https://scicrunch.org/scicrunch/Resources/record/nlx_144509-1/SCR_017398/resolver?q=nimare&l=nimare
    :alt: RRID:SCR_017398
 
-.. image:: http://neurolibre.herokuapp.com/papers/10.55458/neurolibre.00007/status.svg
+.. image:: https://neurolibre.org/papers/10.55458/neurolibre.00007/status.svg
    :target: https://doi.org/10.55458/neurolibre.00007
    :alt: NeuroLibre preprint
 
