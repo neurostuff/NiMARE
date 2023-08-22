@@ -430,7 +430,7 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
     epsilon = 1e-05
 
     # Binaries maps and create relative coverage map
-    binary_maps_arr = np.where(-epsilon >= maps_arr >= epsilon, 1, 0)
+    binary_maps_arr = np.where((-epsilon > maps_arr) | (maps_arr > epsilon), 1, 0)
     coverage_arr = np.sum(binary_maps_arr, axis=0) / binary_maps_arr.shape[0]
 
     # Add bad voxels back to the arr to transform it back to an image
