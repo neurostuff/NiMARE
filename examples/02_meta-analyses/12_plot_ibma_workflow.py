@@ -39,13 +39,6 @@ dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 dset.update_path(dset_dir)
 
-# Resample images
-imgs = dset.get({"z_maps": ("image", "z")})["z_maps"]
-mask_img = dset.masker.mask_img
-for img in imgs:
-    res_img = resample_to_img(nib.load(img), mask_img, clip=True, interpolation="linear")
-    res_img.to_filename(img)
-
 # Calculate missing images
 xformer = ImageTransformer(target=["varcope", "z"])
 dset = xformer.transform(dset)
