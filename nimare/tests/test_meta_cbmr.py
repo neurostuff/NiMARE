@@ -121,39 +121,7 @@ def test_firth_penalty(testdata_cbmr_simulated):
     )
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
-    
-    
-def test_moderators_none(testdata_cbmr_simulated):
-    """Unit test for Firth penalty."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
-    cbmr = CBMREstimator(
-        group_categories=["diagnosis", "drug_status"],
-        moderators=None,
-        spline_spacing=100,
-        model=models.PoissonEstimator,
-        penalty=False,
-        lr=1e-2,
-        tol=1e7,
-        device="cpu",
-    )
-    res = cbmr.fit(dataset=dset)
-    assert isinstance(res, nimare.results.MetaResult)
-    inference = CBMRInference(device="cpu")
-    inference.fit(res)
 
-    t_con_groups = inference.create_contrast(
-        [
-            "DepressionYes",
-        ],
-        source="groups",
-    )
-    inference_results = inference.transform(
-        t_con_groups=t_con_groups
-    )
-    
-    assert isinstance(inference_results, nimare.results.MetaResult)
 
 def test_moderators_none(testdata_cbmr_simulated):
     """Unit test for Firth penalty."""
