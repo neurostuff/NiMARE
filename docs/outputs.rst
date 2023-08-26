@@ -11,11 +11,13 @@ File names
 
 NiMARE-generated files, especially ones made by meta-analyses, follow a naming convention somewhat based on BIDS.
 
-Here is the basic naming convention for statistical maps:
+Here is the basic naming convention for statistical maps and tables:
 
 .. code-block:: Text
 
-   <value>[_desc-<label>][_level-<cluster|voxel>][_corr-<FWE|FDR>][_method-<label>].nii.gz
+   <value>[_desc-<label>][_level-<cluster|voxel>][_corr-<FWE|FDR>][_method-<label>][_diag-<Jackknife|FocusCounter>][_tail-<positive|negative>].nii.gz
+
+   <value>[_desc-<label>][_level-<cluster|voxel>][_corr-<FWE|FDR>][_method-<label>]_tab-<clust|counts>.tsv
 
 
 First, the ``value`` represents type of data in the map (e.g., z-statistic, t-statistic).
@@ -32,6 +34,7 @@ Some of the values found in NiMARE include:
 - ``se``: Standard error of the parameter estimate (IBMA only)
 - ``tau2``: Estimated between-study variance (IBMA only)
 - ``sigma2``: Estimated within-study variance (IBMA only)
+- ``label``: Label map
 
 .. note::
     For one-sided tests, p-values > 0.5 will have negative z-statistics. These values should not 
@@ -44,6 +47,9 @@ Next, a series of key/value pairs describe the methods applied to generate the m
 - ``level``: Level of multiple comparisons correction. Either ``cluster`` or ``voxel``.
 - ``corr``: Type of multiple comparisons correction. Either ``FWE`` (familywise error rate) or ``FDR`` (false discovery rate).
 - ``method``: Name of the method used for multiple comparisons correction (e.g., "montecarlo" for a Monte Carlo procedure).
+- ``diag``: Type of diagnostic. Either ``Jackknife`` (jackknife analysis) or ``FocusCounter`` (focus-count analysis).
+- ``tab``: Type of table. Either ``clust`` (clusters table) or ``counts`` (contribution table).
+- ``tail``: Sign of the tail for label maps. Either ``positive`` or ``negative``.
 
 File contents
 -------------

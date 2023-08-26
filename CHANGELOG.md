@@ -2,7 +2,64 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.0.14...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.1.1...HEAD)
+
+## [0.1.1](https://github.com/neurostuff/NiMARE/compare/0.1.0...0.1.1) - 2023-06-12
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+Main change is to include `default.yml` and `default.tpl` in the python package distribution
+
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+- Combine analyses in Studyset by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/810
+
+#### Other Changes
+
+- [FIX] include default.yml as part of nimare package by @jdkent in https://github.com/neurostuff/NiMARE/pull/812
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.1.0...0.1.1
+
+## [0.1.0](https://github.com/neurostuff/NiMARE/compare/0.0.14...0.1.0) - 2023-06-02
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+This is a big release, there are several large items we added:
+
+- Coordinate Based Meta Regression! This is a great alternative to the kernel-based methods to detect convergence with more sensitivity and more flexibly compare between groups.
+- Reports Module: now you can generate an html report for the simple kernel based methods, more estimators will be supported in upcoming releases
+
+#### 🎉 Exciting New Features
+
+- [ENH] Support pre-generated maps in `CorrelationDecoder` by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/782
+- [ENH] add Coordinate Based Meta Regression by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/721
+- [ENH] Add Corrector and Diagnostics attributes to MetaResult object by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/804
+- [ENH] Add NiMAREBase features to the Corrector base class by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/807
+- [ENH] Add `reports` module by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/802
+
+#### 🐛 Bug Fixes
+
+- [FIX] Set `n_iters` defaults only for estimators with `null_method="montecarlo"` by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/803
+- [FIX] handle case of no sample size being reported by @jdkent in https://github.com/neurostuff/NiMARE/pull/792
+- [FIX] math display by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/805
+- [FIX] allow analysis to have null points when converting from nimads to dataset by @jdkent in https://github.com/neurostuff/NiMARE/pull/808
+
+#### Other Changes
+
+- [MAINT] Drop support for Python 3.6 and 3.7 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/780
+- [MAINT] remove codecov by @jdkent in https://github.com/neurostuff/NiMARE/pull/788
+- [DOC] change readthedocs badge from latest to stable by @jdkent in https://github.com/neurostuff/NiMARE/pull/786
+- [DOC] Add neurolibre link by @jdkent in https://github.com/neurostuff/NiMARE/pull/789
+- [MAINT] make indexed_gzip install optional by @jdkent in https://github.com/neurostuff/NiMARE/pull/791
+- [MAINT] Remove RC versions from Changelog by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/790
+- [MAINT] Unpin numpy version by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/794
+- [REF] Replace `_get_clusters_table` with nilearn's `get_clusters_table` by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/793
+- [MAINT] Support Python 3.11 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/796
+- [MAINT] fix readthedocs by @jdkent in https://github.com/neurostuff/NiMARE/pull/797
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.14...0.1.0
 
 ## [0.0.14](https://github.com/neurostuff/NiMARE/compare/0.0.13...0.0.14) - 2023-03-31
 
@@ -33,7 +90,6 @@ All notable changes to NiMARE releases are documented in this page.
 - [ENH] rudimentary support for nimads by @jdkent in https://github.com/neurostuff/NiMARE/pull/763
 - Major refactoring of Diagnostics module by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/776
 - [DOC] add proper documentation to nimads module by @jdkent in https://github.com/neurostuff/NiMARE/pull/778
-
 
 **Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.0.13...0.0.14
 

@@ -1,18 +1,19 @@
 """Multiple comparisons correction methods."""
 import inspect
 import logging
-from abc import ABCMeta, abstractproperty
+from abc import abstractproperty
 
 import numpy as np
 from pymare.stats import bonferroni, fdr
 
+from nimare.base import NiMAREBase
 from nimare.results import MetaResult
 from nimare.transforms import p_to_z
 
 LGR = logging.getLogger(__name__)
 
 
-class Corrector(metaclass=ABCMeta):
+class Corrector(NiMAREBase):
     """Base class for multiple comparison correction methods in :mod:`~nimare.correct`.
 
     .. versionadded:: 0.0.3
@@ -198,6 +199,9 @@ class Corrector(metaclass=ABCMeta):
 
         # Update the estimator as well, in order to retain updated null distributions
         result.estimator = est
+
+        # Save the corrected maps
+        result.corrector = self
 
         return result
 

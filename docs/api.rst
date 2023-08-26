@@ -334,8 +334,23 @@ For more information about fetching data from the internet, see :ref:`fetching t
 
    workflows.ale_sleuth_workflow
    workflows.macm_workflow
-   workflows.cbma_workflow
+   workflows.cbma.CBMAWorkflow
+   workflows.cbma.PairwiseCBMAWorkflow
 
+:mod:`nimare.reports`: NiMARE report
+--------------------------------------------------
+
+.. automodule:: nimare.reports
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   reports.run_reports
 
 .. _api_base_ref:
 

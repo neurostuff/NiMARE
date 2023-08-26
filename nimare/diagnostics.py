@@ -12,13 +12,26 @@ from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
+from nimare.meta.cbma.base import PairwiseCBMAEstimator
+from nimare.meta.ibma import IBMAEstimator
 from nimare.utils import _check_ncores, get_masker, mm2vox, tqdm_joblib
 
 LGR = logging.getLogger(__name__)
 
+POSTAIL_LBL = "PositiveTail"  # Label assigned to positive tail clusters
+NEGTAIL_LBL = "NegativeTail"  # Label assigned to negative tail clusters
+
 
 class Diagnostics(NiMAREBase):
     """Base class for diagnostic methods.
+
+    .. versionchanged:: 0.1.2
+
+        * New parameter display_second_group, which controls whether the second group is displayed.
+
+    .. versionchanged:: 0.1.0
+
+        * Transform now returns a MetaResult object.
 
     .. versionadded:: 0.0.14
 
@@ -47,11 +60,13 @@ class Diagnostics(NiMAREBase):
         target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
         voxel_thresh=None,
         cluster_threshold=None,
+        display_second_group=False,
         n_cores=1,
     ):
         self.target_image = target_image
         self.voxel_thresh = voxel_thresh
         self.cluster_threshold = cluster_threshold
+        self.display_second_group = display_second_group
         self.n_cores = _check_ncores(n_cores)
 
     @abstractmethod
@@ -71,40 +86,43 @@ class Diagnostics(NiMAREBase):
 
         Returns
         -------
-        contribution_table : :obj:`pandas.DataFrame` or None
-            A DataFrame with information about relative contributions of each experiment to each
-            cluster in the thresholded map.
-            There is one row for each experiment.
-            There is one column for each cluster, with column names being
-            ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
-            statistical values, plus an integer indicating the cluster's associated value
-            in the ``label_maps[0]``/``label_maps[1]`` output.
-            If no clusters are found or a pairwise Estimator was used, ``None`` is returned.
-        clusters_table : :obj:`pandas.DataFrame`
-            A DataFrame with information about each cluster.
-            There is one row for each cluster.
-            The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
-            for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
-            ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
-            (the size of the cluster, in cubic millimeters).
-            If no clusters are found, this table will be empty.
-        label_maps : :obj:`list`
-            List of :obj:`nibabel.nifti1.Nifti1Image` objects of cluster label maps.
-            Each cluster in the map has a single value, which corresponds to the cluster number
-            of the column name in ``contribution_table``.
-            If target_image has negative values after thresholding, first and second maps
-            correspond to positive and negative tails.
-            If no clusters are found, this list will be empty.
+        :obj:`~nimare.results.MetaResult`
+            Results of Diagnostics fitting.
+
+        Notes
+        -----
+        This method adds two new keys to ``maps`` and ``tables`` attributes of the
+        MetaResult object.
+
+            -   ``<target_image>_diag-<Jackknife|FocusCounter>_tab-counts`` :
+                :obj:`pandas.DataFrame` or None.
+                A DataFrame with information about relative contributions of each experiment
+                to each cluster in the thresholded map.
+                There is one row for each experiment.
+                There is one column for each cluster, with column names being
+                ``PostiveTail``/``NegativeTail`` indicating the sign (+/-) of the cluster's
+                statistical values, plus an integer indicating the cluster's associated value
+                in the ``label_maps[0]``/``label_maps[1]`` output.
+                If no clusters are found or a pairwise Estimator was used, ``None`` is returned.
+            -   ``<target_image>_tab-clust`` : :obj:`pandas.DataFrame`
+                A DataFrame with information about each cluster.
+                There is one row for each cluster.
+                The columns in this table include: ``Cluster ID`` (the cluster id, plus a letter
+                for subpeaks only), ``X``/``Y``/``Z`` (coordinate for the center of mass),
+                ``Max Stat`` (statistical value of the peak), and ``Cluster Size (mm3)``
+                (the size of the cluster, in cubic millimeters).
+                If no clusters are found, this table will be empty.
+            -   ``label_<target_image>_tail-<positive|negative>`` : :obj:`numpy.ndarray`
+                Label maps.
+                Each cluster in the map has a single value, which corresponds to the cluster number
+                of the column name in ``contribution_table``.
+                If target_image has negative values after thresholding, first and second maps
+                correspond to positive and negative tails.
+                If no clusters are found, this list will be empty.
         """
-        none_contribution_table = False
-        if not hasattr(result.estimator, "dataset"):
-            LGR.warning(
-                "MetaResult was not generated by an Estimator with a `dataset` attribute. "
-                "This may be because the Estimator was a pairwise Estimator. The "
-                "Jackknife/FocusCounter method does not currently work with pairwise Estimators. "
-                "The ``contribution_table`` will be returned as ``None``."
-            )
-            none_contribution_table = True
+        self._is_pairwaise_estimator = issubclass(type(result.estimator), PairwiseCBMAEstimator)
+        masker = result.estimator.masker
+        diag_name = self.__class__.__name__
 
         # Collect the thresholded cluster map
         if self.target_image in result.maps:
@@ -136,34 +154,71 @@ class Diagnostics(NiMAREBase):
             clusters_table = clusters_table.astype({"Cluster ID": "str"})
             # Rename the clusters_table cluster IDs to match the contribution table columns
             clusters_table["Cluster ID"] = [
-                f"PositiveTail {row['Cluster ID']}"
+                f"{POSTAIL_LBL} {row['Cluster ID']}"
                 if row["Peak Stat"] > 0
-                else f"NegativeTail {row['Cluster ID']}"
+                else f"{NEGTAIL_LBL} {row['Cluster ID']}"
                 for _, row in clusters_table.iterrows()
             ]
 
-        if (n_clusters == 0) or none_contribution_table:
-            return None, clusters_table, label_maps
+        # Define bids-like names for tables and maps
+        image_name = "_".join(self.target_image.split("_")[1:])
+        image_name = f"_{image_name}" if image_name else image_name
+        clusters_table_name = f"{self.target_image}_tab-clust"
+        contribution_table_name = f"{self.target_image}_diag-{diag_name}_tab-counts"
+        label_map_names = (
+            [f"label{image_name}_tail-positive", f"label{image_name}_tail-negative"]
+            if len(label_maps) == 2
+            else [f"label{image_name}_tail-positive"]
+        )
+
+        # Check number of clusters
+        if n_clusters == 0:
+            result.tables[clusters_table_name] = clusters_table
+            result.tables[contribution_table_name] = None
+            result.maps[label_map_names[0]] = None
+
+            result.diagnostics.append(self)
+            return result
+
+        tables_dict = {clusters_table_name: clusters_table}
+        maps_dict = {
+            label_map_name: np.squeeze(masker.transform(label_map))
+            for label_map_name, label_map in zip(label_map_names, label_maps)
+        }
 
         # Use study IDs in inputs_ instead of dataset, because we don't want to try fitting the
         # estimator to a study that might have been filtered out by the estimator's criteria.
-        meta_ids = result.estimator.inputs_["id"]
-        rows = list(meta_ids)
+        # For pairwise estimators, use id1 for positive tail and id2 for negative tail.
+        # Run diagnostics with id2 for pairwise estimators and display_second_group=True.
+        if self._is_pairwaise_estimator:
+            if self.display_second_group and len(label_maps) == 2:
+                meta_ids_lst = [result.estimator.inputs_["id1"], result.estimator.inputs_["id2"]]
+                signs = [POSTAIL_LBL, NEGTAIL_LBL]
+            else:
+                meta_ids_lst = [result.estimator.inputs_["id1"]]
+                signs = [POSTAIL_LBL]
+        elif len(label_maps) == 2:
+            # Non pairwise estimator with two tails (IBMA estimators)
+            meta_ids_lst = [result.estimator.inputs_["id"], result.estimator.inputs_["id"]]
+            signs = [POSTAIL_LBL, NEGTAIL_LBL]
+        else:
+            # Non pairwise estimator with one tail (CBMA estimators)
+            meta_ids_lst = [result.estimator.inputs_["id"]]
+            signs = [POSTAIL_LBL]
 
         contribution_tables = []
-        signs = [1, -1] if len(label_maps) == 2 else [1]
-        for sign, label_map in zip(signs, label_maps):
+        for sign, label_map, meta_ids in zip(signs, label_maps, meta_ids_lst):
             cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
+            rows = list(meta_ids)
 
             # Create contribution table
-            col_name = "PositiveTail" if sign == 1 else "NegativeTail"
-            cols = [f"{col_name} {int(c_id)}" for c_id in cluster_ids]
+            cols = [f"{sign} {int(c_id)}" for c_id in cluster_ids]
             contribution_table = pd.DataFrame(index=rows, columns=cols)
             contribution_table.index.name = "id"
 
             with tqdm_joblib(tqdm(total=len(meta_ids))):
                 contributions = Parallel(n_jobs=self.n_cores)(
-                    delayed(self._transform)(expid, label_map, result) for expid in meta_ids
+                    delayed(self._transform)(expid, label_map, sign, result) for expid in meta_ids
                 )
 
             # Add results to table
@@ -172,14 +227,33 @@ class Diagnostics(NiMAREBase):
 
             contribution_tables.append(contribution_table.reset_index())
 
-        # Concat PositiveTail and NegativeTail tables
-        contribution_table = pd.concat(contribution_tables, ignore_index=True, sort=False)
+        tails = ["positive", "negative"] if len(contribution_tables) == 2 else ["positive"]
+        if not self._is_pairwaise_estimator and len(contribution_tables) == 2:
+            # Merge POSTAIL_LBL and NEGTAIL_LBL tables for IBMA
+            contribution_table = (
+                contribution_tables[0].merge(contribution_tables[1], how="outer").fillna(0)
+            )
+            tables_dict[contribution_table_name] = contribution_table
+        else:
+            # Plot separate tables for CBMA
+            for tail, contribution_table in zip(tails, contribution_tables):
+                tables_dict[f"{contribution_table_name}_tail-{tail}"] = contribution_table
 
-        return contribution_table, clusters_table, label_maps
+        # Save tables and maps to result
+        result.tables.update(tables_dict)
+        result.maps.update(maps_dict)
+
+        # Add diagnostics class to result, since more than one can be run
+        result.diagnostics.append(self)
+        return result
 
 
 class Jackknife(Diagnostics):
     """Run a jackknife analysis on a meta-analysis result.
+
+    .. versionchanged:: 0.1.2
+
+        * Support for pairwise meta-analyses.
 
     .. versionchanged:: 0.0.14
 
@@ -188,7 +262,7 @@ class Jackknife(Diagnostics):
 
     .. versionchanged:: 0.0.13
 
-        Change cluster neighborhood from faces+edges to faces, to match Nilearn.
+        * Change cluster neighborhood from faces+edges to faces, to match Nilearn.
 
     .. versionadded:: 0.0.11
 
@@ -199,14 +273,9 @@ class Jackknife(Diagnostics):
     statistic for all experiments *except* the target experiment, dividing the resulting test
     summary statistics by the summary statistics from the original meta-analysis, and finally
     averaging the resulting proportion values across all voxels in each cluster.
-
-    Warnings
-    --------
-    Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
-    method.
     """
 
-    def _transform(self, expid, label_map, result):
+    def _transform(self, expid, label_map, sign, result):
         """Apply transform to study ID and label map.
 
         Parameters
@@ -215,6 +284,8 @@ class Jackknife(Diagnostics):
             Study ID.
         label_map : :class:`nibabel.Nifti1Image`
             The cluster label map image.
+        sign : :obj:`str`
+            The sign of the label map.
         result : :obj:`~nimare.results.MetaResult`
             A MetaResult produced by a coordinate- or image-based meta-analysis.
 
@@ -227,29 +298,39 @@ class Jackknife(Diagnostics):
         # with one missing a study in its inputs.
         estimator = copy.deepcopy(result.estimator)
 
-        dset = estimator.dataset
+        if self._is_pairwaise_estimator:
+            all_ids = estimator.inputs_["id1"] if sign == POSTAIL_LBL else estimator.inputs_["id2"]
+        else:
+            all_ids = estimator.inputs_["id"]
+
         original_masker = estimator.masker
-        all_ids = estimator.inputs_["id"]
 
         # Mask using a labels masker, so that we can easily get the mean value for each cluster
         cluster_masker = input_data.NiftiLabelsMasker(label_map)
         cluster_masker.fit(label_map)
 
-        # CBMAs have "stat" maps, while most IBMAs have "est" maps.
+        # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has
+        # stat_desc-group1MinusGroup2" maps, while MKDAChi2 has "z_desc-specificity" maps.
         # Fisher's and Stouffer's only have "z" maps though.
-        if "est" in result.maps:
-            target_value_map = "est"
-        elif "stat" in result.maps:
-            target_value_map = "stat"
-        else:
-            target_value_map = "z"
+        target_value_keys = {"stat", "est", "stat_desc-group1MinusGroup2", "z_desc-specificity"}
+        avail_value_keys = set(result.maps.keys())
+        union_value_keys = list(target_value_keys & avail_value_keys)
+        target_value_map = union_value_keys[0] if union_value_keys else "z"
 
         stat_values = result.get_map(target_value_map, return_type="array")
 
         # Fit Estimator to all studies except the target study
         other_ids = [id_ for id_ in all_ids if id_ != expid]
-        temp_dset = dset.slice(other_ids)
-        temp_result = estimator.fit(temp_dset)
+        if self._is_pairwaise_estimator:
+            if sign == POSTAIL_LBL:
+                temp_dset = estimator.dataset1.slice(other_ids)
+                temp_result = estimator.fit(temp_dset, estimator.dataset2)
+            else:
+                temp_dset = estimator.dataset2.slice(other_ids)
+                temp_result = estimator.fit(estimator.dataset1, temp_dset)
+        else:
+            temp_dset = estimator.dataset.slice(other_ids)
+            temp_result = estimator.fit(temp_dset)
 
         # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
         temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
@@ -269,6 +350,10 @@ class Jackknife(Diagnostics):
 
 class FocusCounter(Diagnostics):
     """Run a focus-count analysis on a coordinate-based meta-analysis result.
+
+    .. versionchanged:: 0.1.2
+
+        * Support for pairwise meta-analyses.
 
     .. versionchanged:: 0.0.14
 
@@ -290,12 +375,9 @@ class FocusCounter(Diagnostics):
     Warnings
     --------
     This method only works for coordinate-based meta-analyses.
-
-    Pairwise meta-analyses, like ALESubtraction and MKDAChi2, are not yet supported in this
-    method.
     """
 
-    def _transform(self, expid, label_map, result):
+    def _transform(self, expid, label_map, sign, result):
         """Apply transform to study ID and label map.
 
         Parameters
@@ -304,6 +386,8 @@ class FocusCounter(Diagnostics):
             Study ID.
         label_map : :class:`nibabel.Nifti1Image`
             The cluster label map image.
+        sign : :obj:`str`
+            The sign of the label map.
         result : :obj:`~nimare.results.MetaResult`
             A MetaResult produced by a coordinate- or image-based meta-analysis.
 
@@ -312,11 +396,22 @@ class FocusCounter(Diagnostics):
         stat_prop_values : 1D :obj:`numpy.ndarray`
             1D array with the contribution of `expid` in each cluster of `label_map`.
         """
+        if issubclass(type(result.estimator), IBMAEstimator):
+            raise ValueError("This method only works for coordinate-based meta-analyses.")
+
         affine = label_map.affine
         label_arr = label_map.get_fdata()
         clust_ids = sorted(list(np.unique(label_arr)[1:]))
 
-        coordinates_df = result.estimator.inputs_["coordinates"]
+        if self._is_pairwaise_estimator:
+            coordinates_df = (
+                result.estimator.inputs_["coordinates1"]
+                if sign == POSTAIL_LBL
+                else result.estimator.inputs_["coordinates2"]
+            )
+        else:
+            coordinates_df = result.estimator.inputs_["coordinates"]
+
         coords = coordinates_df.loc[coordinates_df["id"] == expid]
         ijk = mm2vox(coords[["x", "y", "z"]], affine)
 

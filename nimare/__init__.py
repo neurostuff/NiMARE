@@ -16,6 +16,7 @@ with warnings.catch_warnings(record=True) as w:
         decode,
         io,
         meta,
+        reports,
         resources,
         stats,
         utils,
@@ -35,6 +36,7 @@ with warnings.catch_warnings(record=True) as w:
         "io",
         "stats",
         "utils",
+        "reports",
         "workflows",
         "__version__",
     ]

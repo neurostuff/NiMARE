@@ -328,7 +328,7 @@ plot_stat_map(
 # Four figures (displayed as z-statistics map) correspond to group comparison
 # test of spatial intensity for any two groups. The null hypothesis assumes
 # spatial intensity estimations of two groups are equal at voxel level,
-# :math:`H_0: \mu_{1j}=\mu_{2j}`, :math:`j=1, \cdots, N`, where :math:`N` is the number
+# :math:`H_0: \mu_{1j}=\mu_{2j}`, :math:`j=1, \cdots, N`, where :math:`N` is number
 # of voxels within brain mask, :math:`j` is the index of voxel. Areas with significant p-values
 # (significant difference in spatial intensity estimation between two groups)
 # are highlighted (under significance level :math:`0.05`).

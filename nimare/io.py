@@ -55,10 +55,10 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 "title": study.name,
             },
             "coords": {
-                "space": analysis.points[0].space,
-                "x": [p.x for p in analysis.points],
-                "y": [p.y for p in analysis.points],
-                "z": [p.z for p in analysis.points],
+                "space": analysis.points[0].space if analysis.points else "UNKNOWN",
+                "x": [p.x for p in analysis.points] or [None],
+                "y": [p.y for p in analysis.points] or [None],
+                "z": [p.z for p in analysis.points] or [None],
             },
         }
         sample_size = study.metadata.get("sample_size")

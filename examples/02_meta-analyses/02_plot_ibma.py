@@ -48,7 +48,7 @@ dset = xformer.transform(dset)
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import Stouffers
 
-meta = Stouffers(use_sample_size=False, resample=True)
+meta = Stouffers(use_sample_size=False)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -66,7 +66,7 @@ pprint(results.bibtex_)
 ###############################################################################
 # Stouffer's with weighting by sample size
 # -----------------------------------------------------------------------------
-meta = Stouffers(use_sample_size=True, resample=True)
+meta = Stouffers(use_sample_size=True)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -107,7 +107,7 @@ pprint(results.bibtex_)
 from nimare.correct import FWECorrector
 from nimare.meta.ibma import PermutedOLS
 
-meta = PermutedOLS(two_sided=True, resample=True)
+meta = PermutedOLS(two_sided=True)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -137,7 +137,7 @@ pprint(cresult.bibtex_)
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import WeightedLeastSquares
 
-meta = WeightedLeastSquares(tau2=0, resample=True)
+meta = WeightedLeastSquares(tau2=0)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -157,7 +157,7 @@ pprint(results.bibtex_)
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import DerSimonianLaird
 
-meta = DerSimonianLaird(resample=True)
+meta = DerSimonianLaird()
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -177,7 +177,7 @@ pprint(results.bibtex_)
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import Hedges
 
-meta = Hedges(resample=True)
+meta = Hedges()
 results = meta.fit(dset)
 
 plot_stat_map(

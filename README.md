@@ -12,7 +12,7 @@ A Python library for coordinate- and image-based meta-analysis.
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Join the chat at https://mattermost.brainhack.org/brainhack/channels/nimare](https://img.shields.io/badge/mattermost-join_chat%20%E2%86%92-brightgreen.svg)](https://mattermost.brainhack.org/brainhack/channels/nimare)
 [![RRID:SCR_017398](https://img.shields.io/badge/RRID-SCR__017398-blue.svg)](https://scicrunch.org/scicrunch/Resources/record/nlx_144509-1/SCR_017398/resolver?q=nimare&l=nimare)
-[![DOI](http://neurolibre.herokuapp.com/papers/10.55458/neurolibre.00007/status.svg)](https://doi.org/10.55458/neurolibre.00007)
+[![DOI](https://neurolibre.org/papers/10.55458/neurolibre.00007/status.svg)](https://doi.org/10.55458/neurolibre.00007)
 
 Currently, NiMARE implements a range of image- and coordinate-based meta-analytic algorithms, as well as several methods for advanced meta-analytic methods, like automated annotation and functional decoding.
 
