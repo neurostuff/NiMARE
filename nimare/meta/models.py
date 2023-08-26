@@ -3,7 +3,6 @@ import abc
 import copy
 import logging
 
-import functorch
 import numpy as np
 import pandas as pd
 import torch
@@ -389,7 +388,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
                     **ll_single_group_kwargs,
                 )
 
-            f_spatial_coef = functorch.hessian(nll_spatial_coef)(group_spatial_coef)
+            f_spatial_coef = torch.func.hessian(nll_spatial_coef)(group_spatial_coef)
             f_spatial_coef = f_spatial_coef.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
             cov_spatial_coef = np.linalg.inv(f_spatial_coef.detach().numpy())
             var_spatial_coef = np.diag(cov_spatial_coef)
@@ -423,7 +422,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
                     **ll_single_group_kwargs,
                 )
 
-            f_moderators_coef = functorch.hessian(nll_moderators_coef)(moderators_coef)
+            f_moderators_coef = torch.func.hessian(nll_moderators_coef)(moderators_coef)
             f_moderators_coef = f_moderators_coef.reshape(
                 (self.moderators_coef_dim, self.moderators_coef_dim)
             )
@@ -560,7 +559,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
                 **ll_mult_group_kwargs,
             )
 
-        h = functorch.hessian(nll_spatial_coef)(spatial_coef)
+        h = torch.func.hessian(nll_spatial_coef)(spatial_coef)
         h = h.view(n_involved_groups * self.spatial_coef_dim, -1)
 
         return h.detach().cpu().numpy()
@@ -632,7 +631,7 @@ class GeneralLinearModelEstimator(torch.nn.Module):
                 **ll_mult_group_kwargs,
             )
 
-        h = functorch.hessian(nll_moderator_coef)(moderator_coef)
+        h = torch.func.hessian(nll_moderator_coef)(moderator_coef)
         h = h.view(self.moderators_coef_dim, self.moderators_coef_dim)
 
         return h.detach().cpu().numpy()
