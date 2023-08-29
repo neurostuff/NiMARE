@@ -9,6 +9,7 @@ import seaborn as sns
 from nilearn import datasets
 from nilearn.plotting import (
     plot_connectome,
+    plot_img,
     plot_roi,
     plot_stat_map,
     view_connectome,
@@ -155,7 +156,9 @@ def plot_mask(mask, out_filename):
         bg_img=template,
         black_bg=False,
         draw_cross=False,
-        cmap="tab20",
+        cmap="Blues",
+        vmin=0,
+        vmax=1,
         alpha=0.7,
         display_mode="mosaic",
     )
@@ -443,7 +446,7 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
 
     # Plot coverage map
     template = datasets.load_mni152_template(resolution=1)
-    fig = plot_roi(
+    fig = plot_img(
         coverage_img,
         bg_img=template,
         black_bg=False,
