@@ -164,7 +164,10 @@ def plot_mask(mask, out_filename):
 
 
 def plot_coordinates(
-    coordinates_df, out_static_filename, out_interactive_filename, out_legend_filename
+    coordinates_df,
+    out_static_filename,
+    out_interactive_filename,
+    out_legend_filename,
 ):
     """Plot static and interactive coordinates.
 
@@ -398,9 +401,10 @@ def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
         ax.text(
             0,
             0.2,
-            label,
+            label[:20],  # Limit the number of characters in the label
             fontweight="bold",
             color=color,
+            fontsize=8,
             ha="left",
             va="center",
             transform=ax.transAxes,
@@ -439,12 +443,17 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
 
     # Plot coverage map
     template = datasets.load_mni152_template(resolution=1)
-    fig = plot_stat_map(
+    fig = plot_roi(
         coverage_img,
         bg_img=template,
         black_bg=False,
         draw_cross=False,
         threshold=epsilon,
+        alpha=0.7,
+        cmap="Blues",
+        colorbar=True,
+        vmin=0,
+        vmax=1,
         display_mode="mosaic",
     )
     fig.savefig(out_filename, dpi=300)
