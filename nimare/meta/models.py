@@ -244,12 +244,8 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         if self.iter == 0:
             prev_loss = torch.tensor(float("inf"))  # initialization loss difference
 
-        loss = self._update(optimizer,
-                            coef_spline_bases,
-                            moderators_by_group_tensor,
-                            foci_per_voxel_tensor,
-                            foci_per_study_tensor,
-                            prev_loss)
+        self._update(optimizer, coef_spline_bases, moderators_by_group_tensor,
+                     foci_per_voxel_tensor, foci_per_study_tensor, prev_loss)
 
         return
 
