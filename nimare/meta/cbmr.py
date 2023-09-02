@@ -110,10 +110,10 @@ class CBMREstimator(Estimator):
         spline_spacing=10,
         model=models.PoissonEstimator,
         penalty=False,
-        n_iter=1000,
-        lr=1e-2,
+        n_iter=2000,
+        lr=1,
         lr_decay=0.999,
-        tol=1e-2,
+        tol=1e-9,
         device="cpu",
         **kwargs,
     ):

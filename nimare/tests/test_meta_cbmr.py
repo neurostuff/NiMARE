@@ -42,8 +42,9 @@ def cbmr_result(testdata_cbmr_simulated, model):
         spline_spacing=100,
         model=model,
         penalty=False,
-        lr=1e-2,
-        tol=1e7,
+        n_iter=1000,
+        lr=1,
+        tol=1e4,
         device="cpu",
     )
     res = cbmr.fit(dataset=dset)
@@ -113,10 +114,10 @@ def test_firth_penalty(testdata_cbmr_simulated):
         group_categories=["diagnosis", "drug_status"],
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         spline_spacing=100,
-        model=models.ClusteredNegativeBinomialEstimator,
+        model=models.PoissonEstimator,
         penalty=True,
-        lr=1e-1,
-        tol=1e7,
+        lr=1,
+        tol=1e4,
         device="cpu",
     )
     res = cbmr.fit(dataset=dset)
@@ -134,8 +135,8 @@ def test_moderators_none(testdata_cbmr_simulated):
         spline_spacing=100,
         model=models.PoissonEstimator,
         penalty=False,
-        lr=1e-2,
-        tol=1e7,
+        lr=1,
+        tol=1e4,
         device="cpu",
     )
     res = cbmr.fit(dataset=dset)
@@ -162,7 +163,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
     cbmr = CBMREstimator(
         moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
         model=models.PoissonEstimator,
-        lr=1e-4,
+        lr=1,
     )
 
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)

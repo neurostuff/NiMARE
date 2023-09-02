@@ -1,6 +1,5 @@
 """CBMR Models."""
 import abc
-import copy
 import logging
 
 import numpy as np
@@ -44,10 +43,10 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         spatial_coef_dim=None,
         moderators_coef_dim=None,
         penalty=False,
-        lr=0.1,
+        lr=1,
         lr_decay=0.999,
-        n_iter=1000,
-        tol=1e-2,
+        n_iter=2000,
+        tol=1e-9,
         device="cpu",
     ):
         super().__init__()
@@ -186,47 +185,17 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             loss.backward()
             return loss
 
-        loss = optimizer.step(closure)
+        optimizer.step(closure)
         scheduler.step()
+        # recalculate the loss function
+        loss = self(coef_spline_bases, moderators, foci_per_voxel, foci_per_study)
+
         if torch.isnan(loss):
             raise ValueError(
                 f"""The current learing rate {str(self.lr)} or choice of model gives rise to
                 NaN log-likelihood, please try Poisson model or adjust learning rate to a smaller
                 value."""
             )
-        # reset the L-BFGS params if NaN appears in coefficient of regression
-        if any(
-            [
-                torch.any(torch.isnan(self.spatial_coef_linears[group].weight))
-                for group in self.groups
-            ]
-        ):
-            if self.iter == 1:  # NaN occurs in the first iteration
-                raise ValueError(
-                    """The current learing rate {str(self.lr)} gives rise to NaN values, adjust
-                    to a smaller value."""
-                )
-            spatial_coef_linears, overdispersion = dict(), dict()
-            for group in self.groups:
-                group_spatial_linear = torch.nn.Linear(
-                    self.spatial_coef_dim, 1, bias=False
-                ).double()
-                group_spatial_linear.weight = torch.nn.Parameter(
-                    self.last_state["spatial_coef_linears." + group + ".weight"]
-                )
-                spatial_coef_linears[group] = group_spatial_linear
-
-                if hasattr(self, "overdispersion"):
-                    group_overdispersion = torch.nn.Parameter(
-                        self.last_state["overdispersion." + group]
-                    )
-                    overdispersion[group] = group_overdispersion
-            self.spatial_coef_linears = torch.nn.ModuleDict(spatial_coef_linears)
-            if hasattr(self, "overdispersion"):
-                self.overdispersion = torch.nn.ParameterDict(overdispersion)
-            LGR.debug("Reset L-BFGS optimizer......")
-        else:
-            self.last_state = copy.deepcopy(self.state_dict())
 
         return loss
 
@@ -246,7 +215,8 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             Dictionary of group-wise number of foci per study.
         """
         torch.manual_seed(100)
-        optimizer = torch.optim.LBFGS(self.parameters(), self.lr)
+        optimizer = torch.optim.LBFGS(params=self.parameters(), lr=self.lr, max_iter=self.n_iter,
+                                      tolerance_change=self.tol, line_search_fn='strong_wolfe')
         # load dataset info to torch.tensor
         coef_spline_bases = torch.tensor(
             coef_spline_bases, dtype=torch.float64, device=self.device
@@ -274,20 +244,12 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         if self.iter == 0:
             prev_loss = torch.tensor(float("inf"))  # initialization loss difference
 
-        for i in range(self.n_iter):
-            loss = self._update(
-                optimizer,
-                coef_spline_bases,
-                moderators_by_group_tensor,
-                foci_per_voxel_tensor,
-                foci_per_study_tensor,
-                prev_loss,
-            )
-            loss_diff = loss - prev_loss
-            LGR.debug(f"Iter {self.iter:04d}: log-likelihood {loss:.4f}")
-            if torch.abs(loss_diff) < self.tol:
-                break
-            prev_loss = loss
+        loss = self._update(optimizer,
+                            coef_spline_bases,
+                            moderators_by_group_tensor,
+                            foci_per_voxel_tensor,
+                            foci_per_study_tensor,
+                            prev_loss)
 
         return
 
