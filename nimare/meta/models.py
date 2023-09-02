@@ -215,8 +215,13 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             Dictionary of group-wise number of foci per study.
         """
         torch.manual_seed(100)
-        optimizer = torch.optim.LBFGS(params=self.parameters(), lr=self.lr, max_iter=self.n_iter,
-                                      tolerance_change=self.tol, line_search_fn='strong_wolfe')
+        optimizer = torch.optim.LBFGS(
+            params=self.parameters(),
+            lr=self.lr,
+            max_iter=self.n_iter,
+            tolerance_change=self.tol,
+            line_search_fn="strong_wolfe",
+        )
         # load dataset info to torch.tensor
         coef_spline_bases = torch.tensor(
             coef_spline_bases, dtype=torch.float64, device=self.device
@@ -244,8 +249,14 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         if self.iter == 0:
             prev_loss = torch.tensor(float("inf"))  # initialization loss difference
 
-        self._update(optimizer, coef_spline_bases, moderators_by_group_tensor,
-                     foci_per_voxel_tensor, foci_per_study_tensor, prev_loss)
+        self._update(
+            optimizer,
+            coef_spline_bases,
+            moderators_by_group_tensor,
+            foci_per_voxel_tensor,
+            foci_per_study_tensor,
+            prev_loss,
+        )
 
         return
 
