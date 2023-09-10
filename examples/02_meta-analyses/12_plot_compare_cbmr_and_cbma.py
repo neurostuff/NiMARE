@@ -19,8 +19,8 @@ This tutorial is intended to provide an intuitive comparison of CBMA and MKDA re
 neurosynth dataset.
 
 For more detailed introduction to CBMR implementation in NiMARE, see the `CBMR tutoral
-<https://nimare.readthedocs.io/en/latest/auto_examples/02_meta-analyses/10_plot_cbma_workflow.html#sphx-glr-auto-examples-02-meta-analyses-10-plot-cbma-workflow-py>`_
-and `documatation <https://nimare.readthedocs.io/en/latest/generated/nimare.meta.cbmr.html#module-nimare.meta.cbmr>`_.
+<https://nimare.readthedocs.io/en/latest/auto_examples/02_meta-analyses/11_plot_cbmr.html>`_ and
+`documatation <https://nimare.readthedocs.io/en/latest/generated/nimare.meta.cbmr.html>`_.
 
 """
 import os
@@ -69,12 +69,12 @@ neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pk
 # pain studies and other fMRI studies.
 
 # extract study_id for pain dataset and non-pain dataset
-all_study_id = list(neurosynth_dset.annotations["id"])
+all_study_id = neurosynth_dset.annotations["id"]
 pain_study_id = neurosynth_dset.get_studies_by_label(labels=["terms_abstract_tfidf__pain"])
-non_pain_study_id = list(set(all_study_id) - set(pain_study_id))  # 13855 studies
+non_pain_study_id = list(set(list(all_study_id)) - set(pain_study_id))  # 13855 studies
 # add an additional column for group
-neurosynth_dset.annotations.loc[neurosynth_dset.annotations['id'].isin(pain_study_id), "group"] = "pain"
-neurosynth_dset.annotations.loc[neurosynth_dset.annotations['id'].isin(non_pain_study_id), "group"] = "non_pain"
+neurosynth_dset.annotations.loc[all_study_id.isin(pain_study_id), "group"] = "pain"
+neurosynth_dset.annotations.loc[all_study_id.isin(non_pain_study_id), "group"] = "non_pain"
 
 ###############################################################################
 # Estimation of group-specific spatial intensity functions
