@@ -357,9 +357,7 @@ class CBMREstimator(Estimator):
                     group_foci_per_voxel = masker.transform(group_foci_per_voxel).transpose()
                     # number of foci per voxel/study
                     n_group_study = len(group_study_id)
-                    group_foci_per_study = np.array(
-                        [(group_coordinates["study_id"] == i).sum() for i in group_study_id]
-                    )
+                    group_foci_per_study = group_coordinates.groupby(["study_id"]).size().to_list()
                     group_foci_per_study = group_foci_per_study.reshape((n_group_study, 1))
 
                     foci_per_voxel[group] = group_foci_per_voxel
