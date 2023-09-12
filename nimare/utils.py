@@ -851,7 +851,9 @@ def _add_metadata_to_dataframe(
             columns=[metadata_field],
         )
         # Reduce the metadata (if in list/array format) to single values
-        metadata[target_column] = metadata[metadata_field].apply(filter_func)
+        metadata[target_column] = metadata[metadata_field].apply(
+            lambda x: None if x is None else filter_func(x)
+        )
         # Merge metadata df into coordinates df
         dataframe = dataframe.merge(
             right=metadata,
