@@ -5,6 +5,7 @@ from nimare.correct import FDRCorrector
 from nimare.dataset import Dataset
 from nimare.diagnostics import Jackknife
 from nimare.meta.ibma import IBMAEstimator, Stouffers
+from nimare.transforms import ImageTransformer
 from nimare.utils import _check_type
 from nimare.workflows.base import Workflow
 
@@ -89,6 +90,16 @@ class IBMAWorkflow(Workflow):
         """
         # Check dataset type
         dataset = _check_type(dataset, Dataset)
+
+        # Calculate missing images. Possible targets: {"z", "p", "beta", "varcope"}.
+        # Infer from self.estimator._required_inputs
+        targets = [
+            target
+            for _, (type_, target) in self.estimator._required_inputs.items()
+            if type_ == "image"
+        ]
+        xformer = ImageTransformer(target=targets)
+        dataset = xformer.transform(dataset)
 
         LGR.info("Performing meta-analysis...")
         results = self.estimator.fit(dataset, drop_invalid=drop_invalid)

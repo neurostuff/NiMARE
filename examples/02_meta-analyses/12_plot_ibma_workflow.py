@@ -28,20 +28,12 @@ dset_dir = download_nidm_pain()
 ###############################################################################
 # Load Dataset
 # -----------------------------------------------------------------------------
-import nibabel as nib
-from nilearn.image import resample_to_img
-
 from nimare.dataset import Dataset
-from nimare.transforms import ImageTransformer
 from nimare.utils import get_resource_path
 
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 dset.update_path(dset_dir)
-
-# Calculate missing images
-xformer = ImageTransformer(target=["varcope", "z"])
-dset = xformer.transform(dset)
 
 ###############################################################################
 # Run IBMA Workflow
