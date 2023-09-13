@@ -476,8 +476,11 @@ class FocusFilter(NiMAREBase):
         dset_ijk = mm2vox(dset_xyz, masker.mask_img.affine)
 
         # Only retain coordinates inside the brain mask
-        keep_idx = [i for i, coord in enumerate(dset_ijk)
-                    if masker_array[coord[0], coord[1], coord[2]] == 1]
+        keep_idx = [
+            i
+            for i, coord in enumerate(dset_ijk)
+            if masker_array[coord[0], coord[1], coord[2]] == 1
+        ]
 
         LGR.info(
             f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
