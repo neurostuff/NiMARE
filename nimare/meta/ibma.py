@@ -167,7 +167,7 @@ class Fishers(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}) on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}) on "
             f"{len(self.inputs_['id'])} z-statistic images using the Fisher "
             "combined probability method \\citep{fisher1946statistical}."
         )
@@ -252,7 +252,7 @@ class Stouffers(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}) on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}) on "
             f"{len(self.inputs_['id'])} z-statistic images using the Stouffer "
             "method \\citep{stouffer1949american}"
         )
@@ -367,7 +367,7 @@ class WeightedLeastSquares(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}), on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), on "
             f"{len(self.inputs_['id'])} beta images using the Weighted Least Squares approach "
             "\\citep{brockwell2001comparison}, "
             f"with an a priori tau-squared value of {self.tau2} defined across all voxels."
@@ -460,7 +460,7 @@ class DerSimonianLaird(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}), on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), on "
             f"{len(self.inputs_['id'])} beta and variance images using the "
             "DerSimonian-Laird method \\citep{dersimonian1986meta}, in which tau-squared is "
             "estimated on a voxel-wise basis using the method-of-moments approach "
@@ -552,7 +552,7 @@ class Hedges(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}), on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), on "
             f"{len(self.inputs_['id'])} beta and variance images using the Hedges "
             "method \\citep{hedges2014statistical}, in which tau-squared is estimated on a "
             "voxel-wise basis."
@@ -660,7 +660,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}), on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), on "
             f"{len(self.inputs_['id'])} beta images using sample size-based "
             "maximum likelihood estimation, in which tau-squared and sigma-squared are estimated "
             "on a voxel-wise basis."
@@ -772,7 +772,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}), on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), on "
             f"{len(self.inputs_['id'])} beta and variance images using "
             "variance-based maximum likelihood estimation, in which tau-squared is estimated on a "
             "voxel-wise basis."
@@ -869,7 +869,7 @@ class PermutedOLS(IBMAEstimator):
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
-            "(RRID:SCR_017398; \\citealt{Salo2022}), on "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), on "
             f"{len(self.inputs_['id'])} beta images using Nilearn's "
             "\\citep{10.3389/fninf.2014.00014} permuted ordinary least squares method."
         )
