@@ -3,10 +3,16 @@ import logging
 
 import pytest
 
+try:
+    import torch
+except ImportError:
+    raise Warning("torch not installed. CBMR tests will be skipped.")
+else:
+    from nimare.meta import models
+    from nimare.meta.cbmr import CBMREstimator, CBMRInference
+
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
-from nimare.meta import models
-from nimare.meta.cbmr import CBMREstimator, CBMRInference
 from nimare.transforms import StandardizeField
 
 # numba has a lot of debug messages that are not useful for testing
@@ -156,8 +162,6 @@ def test_moderators_none(testdata_cbmr_simulated):
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
-    import torch
-
     testdata_cbmr_simulated = StandardizeField(
         fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]
     ).transform(testdata_cbmr_simulated)
