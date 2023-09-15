@@ -24,20 +24,24 @@ logging.getLogger("numba").setLevel(logging.WARNING)
 logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
 
 
-@pytest.mark.skipif(
-    not TORCH_INSTALLED, reason=("Torch is not installed; required for this test.")
-)
-@pytest.fixture(
-    scope="session",
-    params=[
-        pytest.param(models.PoissonEstimator, id="Poisson"),
-        pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
-        pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
-    ],
-)
-def model(request):
-    """CBMR models."""
-    return request.param
+if TORCH_INSTALLED:
+
+    @pytest.fixture(
+        scope="session",
+        params=[
+            pytest.param(models.PoissonEstimator, id="Poisson"),
+            pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
+            pytest.param(
+                models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"
+            ),
+        ],
+    )
+    def model(request):
+        """CBMR models."""
+        return request.param
+
+else:
+    model = None
 
 
 @pytest.fixture(scope="session")
