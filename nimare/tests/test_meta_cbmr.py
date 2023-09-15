@@ -1,12 +1,13 @@
 """Tests for CBMR meta-analytic methods."""
 import logging
+import warnings
 
 import pytest
 
 try:
     import torch
 except ImportError:
-    raise Warning("torch not installed. CBMR tests will be skipped.")
+    warnings.warn("torch not installed. CBMR tests will be skipped.")
 else:
     from nimare.meta import models
     from nimare.meta.cbmr import CBMREstimator, CBMRInference
