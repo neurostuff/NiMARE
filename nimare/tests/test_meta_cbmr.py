@@ -2,7 +2,6 @@
 import logging
 
 import pytest
-import torch
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -157,6 +156,8 @@ def test_moderators_none(testdata_cbmr_simulated):
 
 def test_CBMREstimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
+    import torch
+
     testdata_cbmr_simulated = StandardizeField(
         fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]
     ).transform(testdata_cbmr_simulated)
@@ -251,5 +252,9 @@ def test_cbmr_importerror():
     with pytest.raises(ImportError):
         from nimare.meta.cbmr import CBMREstimator
 
+        CBMREstimator()
+
     with pytest.raises(ImportError):
         from nimare.meta.cbmr import CBMRInference
+
+        CBMRInference()
