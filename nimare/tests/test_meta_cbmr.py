@@ -272,3 +272,23 @@ def test_cbmr_importerror():
         from nimare.meta.cbmr import CBMRInference
 
         CBMRInference()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import GeneralLinearModelEstimator
+
+        GeneralLinearModelEstimator()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import PoissonEstimator
+
+        PoissonEstimator()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import NegativeBinomialEstimator
+
+        NegativeBinomialEstimator()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import ClusteredNegativeBinomialEstimator
+
+        ClusteredNegativeBinomialEstimator()
