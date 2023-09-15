@@ -466,9 +466,8 @@ class FocusFilter(NiMAREBase):
             The filtered Dataset.
         """
         masker = self.masker or dataset.masker
-
-        # Get matrix indices for in-brain voxels in the mask
-        mask_ijk = np.vstack(np.where(masker.mask_img.get_fdata())).T
+        # use 0 or 1 to indicate if voxels are in the mask
+        masker_array = masker.mask_img_.dataobj
 
         # Get matrix indices for Dataset coordinates
         dset_xyz = dataset.coordinates[["x", "y", "z"]].values
@@ -476,13 +475,13 @@ class FocusFilter(NiMAREBase):
         # mm2vox automatically rounds the coordinates
         dset_ijk = mm2vox(dset_xyz, masker.mask_img.affine)
 
-        # Check if each coordinate in Dataset is within the mask
-        # If it is, log that coordinate in keep_idx
+        # Only retain coordinates inside the brain mask
         keep_idx = [
             i
             for i, coord in enumerate(dset_ijk)
-            if len(np.where((mask_ijk == coord).all(axis=1))[0])
+            if masker_array[coord[0], coord[1], coord[2]] == 1
         ]
+
         LGR.info(
             f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
             "the mask. Removing them."

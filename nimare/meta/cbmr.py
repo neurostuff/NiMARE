@@ -110,10 +110,10 @@ class CBMREstimator(Estimator):
         spline_spacing=10,
         model=models.PoissonEstimator,
         penalty=False,
-        n_iter=1000,
-        lr=1e-2,
+        n_iter=2000,
+        lr=1,
         lr_decay=0.999,
-        tol=1e-2,
+        tol=1e-9,
         device="cpu",
         **kwargs,
     ):
@@ -356,11 +356,10 @@ class CBMREstimator(Estimator):
                     )
                     group_foci_per_voxel = masker.transform(group_foci_per_voxel).transpose()
                     # number of foci per voxel/study
-                    n_group_study = len(group_study_id)
-                    group_foci_per_study = np.array(
-                        [(group_coordinates["study_id"] == i).sum() for i in group_study_id]
-                    )
-                    group_foci_per_study = group_foci_per_study.reshape((n_group_study, 1))
+                    # n_group_study = len(group_study_id)
+                    group_foci_per_study = group_coordinates.groupby(["study_id"]).size()
+                    group_foci_per_study = group_foci_per_study.to_numpy()
+                    group_foci_per_study = group_foci_per_study.reshape((-1, 1))
 
                     foci_per_voxel[group] = group_foci_per_voxel
                     foci_per_study[group] = group_foci_per_study
