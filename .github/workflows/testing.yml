@@ -115,7 +115,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests]
+        run: pip install -e .[tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_estimators
@@ -147,7 +147,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests]
+        run: pip install -e .[tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_correctors
@@ -179,7 +179,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests]
+        run: pip install -e .[tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_smoke
