@@ -13,7 +13,7 @@ try:
     import torch
 except ImportError as e:
     raise ImportError(
-        "torch is required to use `CBMR` classes. Install with `pip install 'nimare[cbmr]'`."
+        "Torch is required to use `CBMR` classes. Install with `pip install 'nimare[cbmr]'`."
     ) from e
 
 from nimare import _version

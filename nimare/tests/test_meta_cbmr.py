@@ -7,8 +7,10 @@ import pytest
 try:
     import torch
 except ImportError:
-    warnings.warn("torch not installed. CBMR tests will be skipped.")
+    warnings.warn("Torch not installed. CBMR tests will be skipped.")
+    TORCH_INSTALLED = False
 else:
+    TORCH_INSTALLED = True
     from nimare.meta import models
     from nimare.meta.cbmr import CBMREstimator, CBMRInference
 
@@ -22,6 +24,9 @@ logging.getLogger("numba").setLevel(logging.WARNING)
 logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
 
 
+@pytest.mark.skipif(
+    not TORCH_INSTALLED, reason=("Torch is not installed; required for this test.")
+)
 @pytest.fixture(
     scope="session",
     params=[

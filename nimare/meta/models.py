@@ -9,7 +9,7 @@ try:
     import torch
 except ImportError as e:
     raise ImportError(
-        "torch is required to use `CBMR` models. Install with `pip install 'nimare[cbmr]'`."
+        "Torch is required to use `CBMR` models. Install with `pip install 'nimare[cbmr]'`."
     ) from e
 
 LGR = logging.getLogger(__name__)
