@@ -28,6 +28,7 @@ markers = [
     "performance_smoke: mark smoke tests that measure performance",
     "performance_estimators: mark tests that measure estimator performance",
     "performance_correctors: mark tests that measure corrector performance",
+    "cbmr_importerror: mark tests that should fail due to missing torch dependencies",
 ]
 
 [tool.isort]

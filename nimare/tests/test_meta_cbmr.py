@@ -1,13 +1,21 @@
 """Tests for CBMR meta-analytic methods."""
 import logging
+import warnings
 
 import pytest
-import torch
+
+try:
+    import torch
+except ImportError:
+    warnings.warn("Torch not installed. CBMR tests will be skipped.")
+    TORCH_INSTALLED = False
+else:
+    TORCH_INSTALLED = True
+    from nimare.meta import models
+    from nimare.meta.cbmr import CBMREstimator, CBMRInference
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
-from nimare.meta import models
-from nimare.meta.cbmr import CBMREstimator, CBMRInference
 from nimare.transforms import StandardizeField
 
 # numba has a lot of debug messages that are not useful for testing
@@ -16,17 +24,24 @@ logging.getLogger("numba").setLevel(logging.WARNING)
 logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
 
 
-@pytest.fixture(
-    scope="session",
-    params=[
-        pytest.param(models.PoissonEstimator, id="Poisson"),
-        pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
-        pytest.param(models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"),
-    ],
-)
-def model(request):
-    """CBMR models."""
-    return request.param
+if TORCH_INSTALLED:
+
+    @pytest.fixture(
+        scope="session",
+        params=[
+            pytest.param(models.PoissonEstimator, id="Poisson"),
+            pytest.param(models.NegativeBinomialEstimator, id="NegativeBinomial"),
+            pytest.param(
+                models.ClusteredNegativeBinomialEstimator, id="ClusteredNegativeBinomial"
+            ),
+        ],
+    )
+    def model(request):
+        """CBMR models."""
+        return request.param
+
+else:
+    model = None
 
 
 @pytest.fixture(scope="session")
@@ -243,3 +258,37 @@ def test_StandardizeField(testdata_cbmr_simulated):
     assert dset.annotations["standardized_sample_sizes"].std() == pytest.approx(1.0, abs=1e-3)
     assert dset.annotations["standardized_avg_age"].mean() == pytest.approx(0.0, abs=1e-3)
     assert dset.annotations["standardized_avg_age"].std() == pytest.approx(1.0, abs=1e-3)
+
+
+@pytest.mark.cbmr_importerror
+def test_cbmr_importerror():
+    """Test that ImportErrors are raised when torch is not installed."""
+    with pytest.raises(ImportError):
+        from nimare.meta.cbmr import CBMREstimator
+
+        CBMREstimator()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.cbmr import CBMRInference
+
+        CBMRInference()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import GeneralLinearModelEstimator
+
+        GeneralLinearModelEstimator()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import PoissonEstimator
+
+        PoissonEstimator()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import NegativeBinomialEstimator
+
+        NegativeBinomialEstimator()
+
+    with pytest.raises(ImportError):
+        from nimare.meta.models import ClusteredNegativeBinomialEstimator
+
+        ClusteredNegativeBinomialEstimator()

@@ -1,4 +1,5 @@
 """Coordinate Based Meta Regression Methods."""
+
 import logging
 import re
 from functools import wraps
@@ -7,7 +8,13 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
-import torch
+
+try:
+    import torch
+except ImportError as e:
+    raise ImportError(
+        "Torch is required to use `CBMR` classes. Install with `pip install 'nimare[cbmr]'`."
+    ) from e
 
 from nimare import _version
 from nimare.diagnostics import FocusFilter
@@ -21,6 +28,8 @@ __version__ = _version.get_versions()["version"]
 
 class CBMREstimator(Estimator):
     """Coordinate-based meta-regression with a spatial model.
+
+    .. versionadded:: 0.1.0
 
     Parameters
     ----------
@@ -407,6 +416,8 @@ class CBMREstimator(Estimator):
 
 class CBMRInference(object):
     """Statistical inference on outcomes of CBMR.
+
+    .. versionadded:: 0.1.0
 
     (intensity estimation and study-level moderator regressors)
 
