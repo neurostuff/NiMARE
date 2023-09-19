@@ -10,7 +10,7 @@ A comparison between coordinate-based meta-regression (CBMR) and
 coordinate-based meta-analysis (CBMA) in NiMARE
 
 CBMR is a generative framework to approximate smooth activation intensity function and investigate
-the effect of study-level moderators (e.g., year of pubilication, sample size, subtype of stimuli).
+the effect of study-level moderators (e.g., year of publication, sample size, subtype of stimuli).
 It allows flexible statistical inference for either spatial homogeneity tests or group comparison
 tests. Additionally, it's a computationally efficient approach with good statistical
 interpretability to model the locations of activation foci.
@@ -191,16 +191,16 @@ plot_stat_map(
 # of spatial intensity between pain studies and non-pain studies in Neurosynth.
 # The null hypothesis assumes spatial intensity estimations of two groups are equal
 # at voxel level, $H_0: \mu_{1j}=\mu_{2j}, j=1,\cdots,N$, where $N$ is number of
-# voxels within brain mask, $j$ is the index of voxel. Areas with significant p-vaules
-# (siginificant difference in spatial intensity estimation between two groups) are
+# voxels within brain mask, $j$ is the index of voxel. Areas with significant p-values
+# (significant difference in spatial intensity estimation between two groups) are
 # highlighted. We found that estimated activation level are significantly different
-# in ... between pain group and non-pain group.
+# in ... between the pain group and non-pain group.
 
 ###############################################################################
 # Run MKDA on Neurosynth dataset
 # -----------------------------------------------------------------------------
 # For the purpose of justifying the validity of CBMR framework, we compare the estimated
-# spatial covergence of activation regions between pain studies and non-pain fMRI studies
+# spatial convergence of activation regions between pain studies and non-pain fMRI studies
 # with MKDA.
 
 from nimare.meta.cbma.mkda import MKDAChi2
@@ -221,6 +221,6 @@ plot_stat_map(
 )
 
 ###############################################################################
-# This figure (displayed as z-statistics map) shows MKDA spatial covergence of
+# This figure (displayed as a z-statistics map) shows MKDA spatial covergence of
 # activation between pain studies and non-pain fMRI studies. We found the results are
 # very consistent with CBMR approach, with higher specificity but lower sensitivity.
