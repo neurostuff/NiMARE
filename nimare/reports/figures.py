@@ -5,15 +5,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import seaborn as sns
 from nilearn import datasets
 from nilearn.plotting import (
     plot_connectome,
+    plot_img,
     plot_roi,
     plot_stat_map,
     view_connectome,
     view_img,
 )
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
+
+from nimare.utils import _boolean_unmask
 
 TABLE_STYLE = [
     dict(
@@ -152,7 +156,9 @@ def plot_mask(mask, out_filename):
         bg_img=template,
         black_bg=False,
         draw_cross=False,
-        cmap="tab20",
+        cmap="Blues",
+        vmin=0,
+        vmax=1,
         alpha=0.7,
         display_mode="mosaic",
     )
@@ -161,7 +167,10 @@ def plot_mask(mask, out_filename):
 
 
 def plot_coordinates(
-    coordinates_df, out_static_filename, out_interactive_filename, out_legend_filename
+    coordinates_df,
+    out_static_filename,
+    out_interactive_filename,
+    out_legend_filename,
 ):
     """Plot static and interactive coordinates.
 
@@ -353,6 +362,101 @@ def plot_clusters(img, out_filename):
         cmap=cmap,
         alpha=0.8,
         colorbar=True,
+        display_mode="mosaic",
+    )
+    fig.savefig(out_filename, dpi=300)
+    fig.close()
+
+
+def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
+    """Plot histograms of the images.
+
+    .. versionadded:: 0.2.0
+
+    Base on: https://seaborn.pydata.org/examples/kde_ridgeplot.html
+    """
+    # Create dataframe for seaborn
+    values = []
+    group = []
+    for img_i, img_map in enumerate(list(maps_arr)):
+        values.append(img_map)
+        group.append([ids_[img_i]] * len(img_map))
+
+    data = {x_label: np.hstack(values), "exp_id": np.hstack(group)}
+    df = pd.DataFrame(data)
+
+    sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+
+    # Initialize the FacetGrid object
+    pal = sns.cubehelix_palette(10, rot=-0.25, light=0.7)
+    g = sns.FacetGrid(df, row="exp_id", hue="exp_id", aspect=15, height=0.5, palette=pal)
+
+    # Draw the densities in a few steps
+    g.map(sns.kdeplot, x_label, bw_adjust=0.5, clip_on=False, fill=True, alpha=1, linewidth=1.5)
+    g.map(sns.kdeplot, x_label, clip_on=False, color="w", lw=2, bw_adjust=0.5)
+
+    # passing color=None to refline() uses the hue mapping
+    g.refline(y=0, linewidth=2, linestyle="-", color=None, clip_on=False)
+
+    # Define and use a simple function to label the plot in axes coordinates
+    def label(values, color, label):
+        ax = plt.gca()
+        ax.text(
+            0,
+            0.2,
+            label[:20],  # Limit the number of characters in the label
+            fontweight="bold",
+            color=color,
+            fontsize=8,
+            ha="left",
+            va="center",
+            transform=ax.transAxes,
+        )
+
+    g.map(label, x_label)
+
+    # Set the subplots to overlap
+    g.figure.subplots_adjust(hspace=-0.25)
+
+    # Remove axes details that don't play well with overlap
+    g.set_titles("")
+    g.set(yticks=[], ylabel="")
+    g.despine(bottom=True, left=True)
+    g.savefig(out_filename, dpi=300)
+    plt.close()
+
+
+def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
+    """Plot relative coverage map.
+
+    .. versionadded:: 0.2.0
+
+    """
+    _check_extention(out_filename, [".png", ".pdf", ".svg"])
+
+    epsilon = 1e-05
+
+    # Binaries maps and create relative coverage map
+    binary_maps_arr = np.where((-epsilon > maps_arr) | (maps_arr > epsilon), 1, 0)
+    coverage_arr = np.sum(binary_maps_arr, axis=0) / binary_maps_arr.shape[0]
+
+    # Add bad voxels back to the arr to transform it back to an image
+    coverage_arr = _boolean_unmask(coverage_arr, aggressive_mask)
+    coverage_img = masker.inverse_transform(coverage_arr)
+
+    # Plot coverage map
+    template = datasets.load_mni152_template(resolution=1)
+    fig = plot_img(
+        coverage_img,
+        bg_img=template,
+        black_bg=False,
+        draw_cross=False,
+        threshold=epsilon,
+        alpha=0.7,
+        colorbar=True,
+        cmap="Blues",
+        vmin=0,
+        vmax=1,
         display_mode="mosaic",
     )
     fig.savefig(out_filename, dpi=300)

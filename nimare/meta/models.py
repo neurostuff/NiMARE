@@ -4,7 +4,13 @@ import logging
 
 import numpy as np
 import pandas as pd
-import torch
+
+try:
+    import torch
+except ImportError as e:
+    raise ImportError(
+        "Torch is required to use `CBMR` models. Install with `pip install 'nimare[cbmr]'`."
+    ) from e
 
 LGR = logging.getLogger(__name__)
 

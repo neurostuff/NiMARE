@@ -1,7 +1,11 @@
 """Workflow for running an coordinates-based meta-analysis from a NiMARE database."""
 import logging
 
+from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
+from nimare.diagnostics import Jackknife
+from nimare.meta import ALE, MKDAChi2
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.utils import _check_type
 from nimare.workflows.base import Workflow
 
@@ -22,8 +26,8 @@ class CBMAWorkflow(Workflow):
 
     Parameters
     ----------
-    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', 'mkdadensity', \
-    'kda'}, or optional
+    estimator : :class:`~nimare.meta.cbma.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', \
+    'mkdadensity', 'kda'}, or optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.ale.ALE`.
     corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
     'bonferroni'} or optional
@@ -56,9 +60,14 @@ class CBMAWorkflow(Workflow):
     """
 
     # Options allows for string input
+    _estm_base = CBMAEstimator
     _estm_options = ("ale", "scale", "mkdadensity", "kda")
     _corr_options = ("montecarlo", "fdr", "bonferroni")
     _diag_options = ("jackknife", "focuscounter")
+    _mcc_method = "montecarlo"
+    _estm_default = ALE
+    _corr_default = FWECorrector
+    _diag_default = Jackknife
 
     def fit(self, dataset, drop_invalid=True):
         """Fit Workflow to a Dataset.
@@ -89,8 +98,8 @@ class PairwiseCBMAWorkflow(Workflow):
 
     Parameters
     ----------
-    estimator : :class:`~nimare.base.CBMAEstimator`, :obj:`str` {'alesubtraction', 'mkdachi2', \
-    or optional
+    estimator : :class:`~nimare.meta.cbma.base.PairwiseCBMAEstimator`, :obj:`str` \
+    {'alesubtraction', 'mkdachi2'}, or optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.kda.MKDAChi2`.
     corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
     'bonferroni'} or optional
@@ -123,9 +132,14 @@ class PairwiseCBMAWorkflow(Workflow):
     """
 
     # Options allows for string input
+    _estm_base = PairwiseCBMAEstimator
     _estm_options = ("alesubtraction", "mkdachi2")
     _corr_options = ("montecarlo", "fdr", "bonferroni")
     _diag_options = ("jackknife", "focuscounter")
+    _mcc_method = "montecarlo"
+    _estm_default = MKDAChi2
+    _corr_default = FWECorrector
+    _diag_default = Jackknife
 
     def fit(self, dataset1, dataset2, drop_invalid=True):
         """Fit Workflow to two Datasets.
