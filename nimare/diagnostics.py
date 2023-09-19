@@ -482,11 +482,7 @@ class FocusFilter(NiMAREBase):
             except IndexError:
                 return False
 
-        keep_idx = [
-            i
-            for i, coord in enumerate(dset_ijk)
-            if check_coord(coord)
-        ]
+        keep_idx = [i for i, coord in enumerate(dset_ijk) if check_coord(coord)]
 
         LGR.info(
             f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
