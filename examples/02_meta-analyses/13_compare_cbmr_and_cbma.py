@@ -83,6 +83,7 @@ neurosynth_dset.annotations.loc[all_study_id.isin(non_pain_study_id), "group"] =
 # spatial intensity functions for both pain studies and non-pain fMRI studies.
 
 from nimare.meta.cbmr import CBMREstimator
+
 cbmr = CBMREstimator(
     group_categories="group",
     moderators=None,
@@ -90,7 +91,7 @@ cbmr = CBMREstimator(
     model=models.PoissonEstimator,
     penalty=False,
     lr=1e-1,
-    tol=1e-2,   # a reasonable choice is 1e-2, 1e3 is for speed
+    tol=1e-2,  # a reasonable choice is 1e-2, 1e3 is for speed
     device="cpu",  # "cuda" if you have GPU
 )
 results = cbmr.fit(dataset=neurosynth_dset)
@@ -131,9 +132,7 @@ from nimare.meta.cbmr import CBMRInference
 
 inference = CBMRInference(device="cpu")
 inference.fit(result=results)
-t_con_groups = inference.create_contrast(
-    ["Pain", "Non_pain"], source="groups"
-)
+t_con_groups = inference.create_contrast(["Pain", "Non_pain"], source="groups")
 contrast_result = inference.transform(t_con_groups=t_con_groups)
 
 ###############################################################################
@@ -168,9 +167,7 @@ plot_stat_map(
 
 inference = CBMRInference(device="cpu")
 inference.fit(result=results)
-t_con_groups = inference.create_contrast(
-    ["Pain-Non_pain"], source="groups"
-)
+t_con_groups = inference.create_contrast(["Pain-Non_pain"], source="groups")
 contrast_result = inference.transform(t_con_groups=t_con_groups)
 
 ###############################################################################
