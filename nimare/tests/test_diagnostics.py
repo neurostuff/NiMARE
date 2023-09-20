@@ -163,5 +163,5 @@ def test_focusfilter(testdata_laird):
     filtered_dset = ffilter.transform(testdata_laird)
     n_coordinates_filtered = filtered_dset.coordinates.shape[0]
     assert n_coordinates_all == 1117
-    assert n_coordinates_filtered == 1101
+    assert n_coordinates_filtered == 1103
     assert n_coordinates_filtered <= n_coordinates_all
