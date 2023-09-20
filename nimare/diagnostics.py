@@ -478,7 +478,8 @@ class FocusFilter(NiMAREBase):
         # Only retain coordinates inside the brain mask
         def check_coord(coord):
             try:
-                return masker_array[coord[0], coord[1], coord[2]] == 1
+                # index starts from 0, while coordinates start from 1
+                return masker_array[coord[0] - 1, coord[1] - 1, coord[2] - 1] == 1
             except IndexError:
                 return False
 
