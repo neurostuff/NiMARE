@@ -203,7 +203,7 @@ plot_stat_map(
 from nimare.meta.cbma.mkda import MKDAChi2
 
 pain_dset = neurosynth_dset.slice(ids=pain_study_id)
-non_pain_dset = neurosynth_dset.slice(ids=pain_study_id)
+non_pain_dset = neurosynth_dset.slice(ids=non_pain_study_id)
 
 meta = MKDAChi2()
 results = meta.fit(pain_dset, non_pain_dset)
