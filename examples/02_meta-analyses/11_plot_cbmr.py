@@ -99,8 +99,7 @@ cbmr = CBMREstimator(
     spline_spacing=100,  # a reasonable choice is 10 or 5, 100 is for speed
     model=models.PoissonEstimator,
     penalty=False,
-    lr=1e-1,
-    tol=1e3,   # a reasonable choice is 1e-2, 1e3 is for speed
+    tol=1e2,   # a reasonable choice is 1e-2, 1 is for speed
     device="cpu",  # "cuda" if you have GPU
 )
 results = cbmr.fit(dataset=dset)
