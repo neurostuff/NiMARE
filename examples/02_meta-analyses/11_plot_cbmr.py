@@ -96,10 +96,10 @@ cbmr = CBMREstimator(
         "standardized_avg_age",
         "schizophrenia_subtype:reference=type1",
     ],
-    spline_spacing=20,  # a reasonable choice is 10 or 5, 100 is for speed
+    spline_spacing=100,  # a reasonable choice is 10 or 5, 100 is for speed
     model=models.PoissonEstimator,
     penalty=False,
-    tol=1,   # a reasonable choice is 1e-2, 1 is for speed
+    tol=1e2,   # a reasonable choice is 1e-2, 1 is for speed
     device="cpu",  # "cuda" if you have GPU
 )
 results = cbmr.fit(dataset=dset)
