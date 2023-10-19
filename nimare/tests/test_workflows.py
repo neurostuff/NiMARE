@@ -256,6 +256,7 @@ def test_ibma_workflow_smoke(
 
 
 def test_conjunction_analysis_smoke():
+    """Run smoke test for conjunction analysis workflow."""
     # Create two 3D arrays with random values
     arr1 = np.random.rand(10, 10, 10)
     arr2 = np.random.rand(10, 10, 10)

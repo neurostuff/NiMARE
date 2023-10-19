@@ -22,7 +22,7 @@ def conjunction_analysis(imgs):
         If a list of strings is provided, it is assumed to be paths to NIfTI images.
 
     Returns
-    ----------
+    -------
     :obj:`~nibabel.nifti1.Nifti1Image`
         Conjunction image.
 
