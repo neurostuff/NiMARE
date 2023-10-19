@@ -26,7 +26,7 @@ def ale_sleuth_workflow(
 ):
     """Perform ALE meta-analysis from Sleuth text file."""
     LGR.warning(
-        "The ale_sleuth_workflow function is deprecated and will be removed in release 0.1.3. "
+        "The ale_sleuth_workflow function is deprecated and will be removed after release 0.2.0. "
         "Use CBMAWorkflow or PairwiseCBMAWorkflow instead."
     )
 
