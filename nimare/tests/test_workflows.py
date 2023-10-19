@@ -255,7 +255,7 @@ def test_ibma_workflow_smoke(
         assert op.isfile(outpath)
 
 
-def test_conjunction_analysis_smoke():
+def test_conjunction_analysis_smoke(tmp_path_factory):
     """Run smoke test for conjunction analysis workflow."""
     # Create two 3D arrays with random values
     arr1 = np.random.rand(10, 10, 10)
@@ -277,3 +277,24 @@ def test_conjunction_analysis_smoke():
     # Check that the output has the correct values
     expected_output = np.minimum.reduce([arr1, arr2])
     np.testing.assert_array_equal(conj_img.get_fdata(), expected_output)
+
+    # Test passing in a list of strings
+    tmpdir = tmp_path_factory.mktemp("test_conjunction_analysis_smoke")
+    img1_fn = op.join(tmpdir, "image1.nii.gz")
+    img2_fn = op.join(tmpdir, "image2.nii.gz")
+    img1.to_filename(img1_fn)
+    img2.to_filename(img2_fn)
+
+    # Perform conjunction analysis on the two images from nifti files
+    conj_img_fromstr = conjunction_analysis([img1_fn, img2_fn])
+
+    # Check that the output has the correct values
+    np.testing.assert_array_equal(conj_img.get_fdata(), conj_img_fromstr.get_fdata())
+
+    # Raise error if only one image is provided
+    with pytest.raises(ValueError):
+        conjunction_analysis([img1])
+
+    # Raise error if invalid image type is provided
+    with pytest.raises(ValueError):
+        conjunction_analysis([1, 2])
