@@ -337,6 +337,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    workflows.cbma.CBMAWorkflow
    workflows.cbma.PairwiseCBMAWorkflow
    workflows.ibma.IBMAWorkflow
+   workflows.misc.conjunction_analysis
 
 :mod:`nimare.reports`: NiMARE report
 --------------------------------------------------

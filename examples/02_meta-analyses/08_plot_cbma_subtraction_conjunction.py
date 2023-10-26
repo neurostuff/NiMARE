@@ -178,13 +178,9 @@ run_reports(res_sub, html_dir)
 # can be computed by (a) identifying voxels that were statistically significant
 # in *both* individual group maps and (b) selecting, for each of these voxels,
 # the smaller of the two group-specific *z* values :footcite:t:`nichols2005valid`.
-# Since this is simple arithmetic on images, conjunction is not implemented as
-# a separate method in :code:`NiMARE` but can easily be achieved with
-# :func:`nilearn.image.math_img`.
-from nilearn.image import math_img
+from nimare.workflows.misc import conjunction_analysis
 
-formula = "np.where(img1 * img2 > 0, np.minimum(img1, img2), 0)"
-img_conj = math_img(formula, img1=knowledge_img, img2=related_img)
+img_conj = conjunction_analysis([knowledge_img, related_img])
 
 plot_stat_map(
     img_conj,

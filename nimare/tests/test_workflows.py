@@ -1,6 +1,8 @@
 """Test nimare.workflows."""
 import os.path as op
 
+import nibabel as nib
+import numpy as np
 import pytest
 
 import nimare
@@ -10,7 +12,12 @@ from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALE, ALESubtraction, MKDAChi2
 from nimare.meta.ibma import Fishers, PermutedOLS, Stouffers
 from nimare.tests.utils import get_test_data_path
-from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
+from nimare.workflows import (
+    CBMAWorkflow,
+    IBMAWorkflow,
+    PairwiseCBMAWorkflow,
+    conjunction_analysis,
+)
 
 
 def test_ale_workflow_function_smoke(tmp_path_factory):
@@ -246,3 +253,48 @@ def test_ibma_workflow_smoke(
         filename = f"{tabletype}.tsv"
         outpath = op.join(tmpdir, filename)
         assert op.isfile(outpath)
+
+
+def test_conjunction_analysis_smoke(tmp_path_factory):
+    """Run smoke test for conjunction analysis workflow."""
+    # Create two 3D arrays with random values
+    arr1 = np.random.rand(10, 10, 10)
+    arr2 = np.random.rand(10, 10, 10)
+
+    # Create two Nifti1Image objects from the arrays
+    img1 = nib.Nifti1Image(arr1, np.eye(4))
+    img2 = nib.Nifti1Image(arr2, np.eye(4))
+
+    # Perform conjunction analysis on the two images
+    conj_img = conjunction_analysis([img1, img2])
+
+    # Check that the output is a Nifti1Image object
+    assert isinstance(conj_img, nib.Nifti1Image)
+
+    # Check that the output has the same shape as the input images
+    assert conj_img.shape == img1.shape
+
+    # Check that the output has the correct values
+    expected_output = np.minimum.reduce([arr1, arr2])
+    np.testing.assert_array_equal(conj_img.get_fdata(), expected_output)
+
+    # Test passing in a list of strings
+    tmpdir = tmp_path_factory.mktemp("test_conjunction_analysis_smoke")
+    img1_fn = op.join(tmpdir, "image1.nii.gz")
+    img2_fn = op.join(tmpdir, "image2.nii.gz")
+    img1.to_filename(img1_fn)
+    img2.to_filename(img2_fn)
+
+    # Perform conjunction analysis on the two images from nifti files
+    conj_img_fromstr = conjunction_analysis([img1_fn, img2_fn])
+
+    # Check that the output has the correct values
+    np.testing.assert_array_equal(conj_img.get_fdata(), conj_img_fromstr.get_fdata())
+
+    # Raise error if only one image is provided
+    with pytest.raises(ValueError):
+        conjunction_analysis([img1])
+
+    # Raise error if invalid image type is provided
+    with pytest.raises(ValueError):
+        conjunction_analysis([1, 2])
