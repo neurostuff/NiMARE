@@ -108,7 +108,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to new images added.
     """
-    images_df = images_df.copy()
+    new_images_df = images_df.copy()  # Work on a copy of the images_df
 
     valid_targets = {"z", "p", "beta", "varcope"}
     if target not in valid_targets:
@@ -127,7 +127,6 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     else:
         target_ids = images_df.loc[images_df[target].isnull(), "id"]
 
-    new_images_df = images_df.copy()  # Work on a copy of the images_df
     for id_ in target_ids:
         row = images_df.loc[images_df["id"] == id_].iloc[0]
 
