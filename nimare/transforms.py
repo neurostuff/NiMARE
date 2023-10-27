@@ -127,6 +127,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     else:
         target_ids = images_df.loc[images_df[target].isnull(), "id"]
 
+    new_images_df = images_df.copy()  # Work on a copy of the images_df
     for id_ in target_ids:
         row = images_df.loc[images_df["id"] == id_].iloc[0]
 
@@ -155,10 +156,10 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
             else:
                 LGR.debug("Image already exists. Not overwriting.")
 
-            images_df.loc[images_df["id"] == id_, target] = new_file
+            new_images_df.loc[new_images_df["id"] == id_, target] = new_file
         else:
-            images_df.loc[images_df["id"] == id_, target] = None
-    return images_df
+            new_images_df.loc[new_images_df["id"] == id_, target] = None
+    return new_images_df
 
 
 def resolve_transforms(target, available_data, masker):
