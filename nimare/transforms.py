@@ -108,7 +108,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to new images added.
     """
-    images_df = images_df.copy()
+    new_images_df = images_df.copy()  # Work on a copy of the images_df
 
     valid_targets = {"z", "p", "beta", "varcope"}
     if target not in valid_targets:
@@ -155,10 +155,10 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
             else:
                 LGR.debug("Image already exists. Not overwriting.")
 
-            images_df.loc[images_df["id"] == id_, target] = new_file
+            new_images_df.loc[new_images_df["id"] == id_, target] = new_file
         else:
-            images_df.loc[images_df["id"] == id_, target] = None
-    return images_df
+            new_images_df.loc[new_images_df["id"] == id_, target] = None
+    return new_images_df
 
 
 def resolve_transforms(target, available_data, masker):
