@@ -2,7 +2,37 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.1.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.2.0...HEAD)
+
+## [0.2.0](https://github.com/neurostuff/NiMARE/compare/0.1.1...0.2.0) - 2023-11-02
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+- Add Workflow and CBMAWorkflow classes. Support pairwise CBMA workflows by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/809
+- Remove `resample` argument from IBMA estimators by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/823
+- Add IBMAWorkflow by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/817
+- Make `torch` optional by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/836
+- Add Conjunction Analysis Workflow by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/841
+
+#### 🐛 Bug Fixes
+
+- Fix the aspect ratio and size of the heatmap in Reports by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/815
+- Addresses new RTD configuration file requirements by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/829
+- Fix compatibility of ImageTransformer with Pandas 2.1.2 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/843
+- [FIX] handle index errors by @jdkent in https://github.com/neurostuff/NiMARE/pull/839
+- [FIX] regular expression for no moderators by @jdkent in https://github.com/neurostuff/NiMARE/pull/821
+- Fix the NeuroLibre badge by @tsalo in https://github.com/neurostuff/NiMARE/pull/824
+- [FIX] handle null values in metadata by @jdkent in https://github.com/neurostuff/NiMARE/pull/831
+
+#### Other Changes
+
+- Add badges and citations for Aperture Neuro article by @tsalo in https://github.com/neurostuff/NiMARE/pull/834
+- Remove pytorch warning message by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/828
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.1.1...0.2.0
 
 ## [0.1.1](https://github.com/neurostuff/NiMARE/compare/0.1.0...0.1.1) - 2023-06-12
 
