@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import pymare
+from joblib import Memory
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 from nilearn.input_data import NiftiMasker
@@ -37,10 +38,19 @@ class IBMAEstimator(Estimator):
 
     """
 
-    def __init__(self, *, mask=None, **kwargs):
+    def __init__(
+        self,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        *,
+        mask=None,
+        **kwargs,
+    ):
         if mask is not None:
-            mask = get_masker(mask)
+            mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
+
+        super().__init__(memory=memory, memory_level=memory_level)
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {"clip": True, "interpolation": "linear"}

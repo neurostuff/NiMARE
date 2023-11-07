@@ -6,7 +6,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
@@ -52,6 +52,12 @@ class CBMAEstimator(Estimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -64,9 +70,17 @@ class CBMAEstimator(Estimator):
     # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, kernel_transformer, *, mask=None, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        *,
+        mask=None,
+        **kwargs,
+    ):
         if mask is not None:
-            mask = get_masker(mask)
+            mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
 
         # Identify any kwargs
@@ -79,8 +93,12 @@ class CBMAEstimator(Estimator):
 
         # Get kernel transformer
         kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
+        if "memory" not in kernel_args.keys() and "memory_level" not in kernel_args.keys():
+            kernel_args.update(memory=memory, memory_level=memory_level)
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
+
+        super().__init__(memory=memory, memory_level=memory_level)
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
@@ -845,6 +863,12 @@ class PairwiseCBMAEstimator(CBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -903,7 +927,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps, tables, description = self._fit(dataset1, dataset2)
+        maps, tables, description = self._cache(self._fit)(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker

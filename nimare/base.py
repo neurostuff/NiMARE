@@ -6,10 +6,12 @@ import pickle
 from abc import ABCMeta
 from collections import defaultdict
 
+from nilearn._utils import CacheMixin
+
 LGR = logging.getLogger(__name__)
 
 
-class NiMAREBase(metaclass=ABCMeta):
+class NiMAREBase(CacheMixin, metaclass=ABCMeta):
     """Base class for NiMARE.
 
     This class contains a few features that are useful throughout the library:
