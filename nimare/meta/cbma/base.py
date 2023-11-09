@@ -927,7 +927,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)
+        maps, tables, description = self._cache(self._fit, func_memory_level=3)(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker

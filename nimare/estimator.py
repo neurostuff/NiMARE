@@ -128,7 +128,7 @@ class Estimator(NiMAREBase):
         """
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
-        maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
+        maps, tables, description = self._cache(self._fit, func_memory_level=3)(dataset)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker

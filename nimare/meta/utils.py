@@ -154,7 +154,7 @@ def compute_kda_ma(
         coords_i, data_i = cache(
             _get_ma_map,
             memory,
-            func_memory_level=3,
+            func_memory_level=1,
             memory_level=memory_level,
         )(
             kernel,
@@ -330,7 +330,7 @@ def compute_ale_ma(
         coords_i, data_i = cache(
             _get_ma_map,
             memory,
-            func_memory_level=3,
+            func_memory_level=1,
             memory_level=memory_level,
         )(
             kernel,
