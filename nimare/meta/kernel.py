@@ -169,7 +169,7 @@ class KernelTransformer(NiMAREBase):
             mask_data = mask.get_fdata().astype(dtype)
 
         # Generate the MA maps
-        transformed_maps = self._cache(self._transform)(mask, coordinates)
+        transformed_maps = self._cache(self._transform, func_memory_level=2)(mask, coordinates)
 
         if return_type == "sparse":
             return transformed_maps[0]
