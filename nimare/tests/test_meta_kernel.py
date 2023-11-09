@@ -172,7 +172,7 @@ def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
 
     coord = testdata_cbma.coordinates.copy()
 
-    kern_cached = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=1)
+    kern_cached = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=2)
     ma_maps_cached = kern_cached.transform(coord, masker=testdata_cbma.masker, return_type="array")
 
     kern = kernel.ALEKernel(sample_size=20, memory=None)
@@ -184,7 +184,7 @@ def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
     assert np.array_equal(ma_maps_cached, ma_maps)
 
     # Test that memory is actually used
-    kern_cached_fast = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=1)
+    kern_cached_fast = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=2)
     start_chached = time.time()
     ma_maps_cached_fast = kern_cached_fast.transform(
         coord, masker=testdata_cbma.masker, return_type="array"
