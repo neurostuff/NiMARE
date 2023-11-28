@@ -3,8 +3,6 @@ import warnings
 
 import numpy as np
 import sparse
-from joblib import Memory
-from nilearn._utils.cache_mixin import cache
 from scipy import ndimage
 
 from nimare.utils import unique_rows
@@ -17,8 +15,6 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
-    memory=Memory(location=None, verbose=0),
-    memory_level=0,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
@@ -52,12 +48,6 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
-    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
-        Used to cache the output of a function. By default, no caching is done.
-        If a :obj:`str` is given, it is the path to the caching directory.
-    memory_level : :obj:`int`, default=0
-        Rough estimator of the amount of memory used by caching.
-        Higher value means more memory for caching. Zero means no caching.
 
     Returns
     -------
@@ -111,7 +101,15 @@ def compute_kda_ma(
 
         return sphere_coords
 
-    def _get_ma_map(kernel, peaks, mask_data, shape, value, sum_overlap):
+    all_coords = []
+    all_exp = []
+    all_data = []
+    # Loop over experiments
+    for i_exp, _ in enumerate(exp_idx_uniq):
+        # Index peaks by experiment
+        curr_exp_idx = exp_idx == i_exp
+        peaks = ijks[curr_exp_idx]
+
         all_spheres = _convolve_sphere(kernel, peaks)
 
         if sum_overlap:
@@ -136,38 +134,9 @@ def compute_kda_ma(
         else:
             nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
 
-        coords = np.vstack(nonzero_idx)
-        data = nonzero_to_append
-
-        return coords, data
-
-    all_coords = []
-    all_exp = []
-    all_data = []
-    # Loop over experiments
-    # TODO: Parallelize this loop
-    for i_exp, _ in enumerate(exp_idx_uniq):
-        # Index peaks by experiment
-        curr_exp_idx = exp_idx == i_exp
-        peaks = ijks[curr_exp_idx]
-
-        coords_i, data_i = cache(
-            _get_ma_map,
-            memory,
-            func_memory_level=3,
-            memory_level=memory_level,
-        )(
-            kernel,
-            peaks,
-            mask_data,
-            shape,
-            value,
-            sum_overlap,
-        )
-
-        all_exp.append(np.full(data_i.shape[0], i_exp))
-        all_coords.append(coords_i)
-        all_data.append(data_i)
+        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+        all_coords.append(np.vstack(nonzero_idx))
+        all_data.append(nonzero_to_append)
 
     exp = np.hstack(all_exp)
     coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
@@ -178,16 +147,7 @@ def compute_kda_ma(
     return kernel_data
 
 
-def compute_ale_ma(
-    mask,
-    ijks,
-    kernel=None,
-    exp_idx=None,
-    sample_sizes=None,
-    use_dict=False,
-    memory=Memory(location=None, verbose=0),
-    memory_level=0,
-):
+def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use_dict=False):
     """Generate ALE modeled activation (MA) maps.
 
     Replaces the values around each focus in ijk with the contrast-specific
@@ -224,12 +184,6 @@ def compute_ale_ma(
         If True, empty kernels dictionary is used to retain the kernel for each element of
         sample_sizes. If False and sample_sizes is int, the ale kernel is calculated for
         sample_sizes. If False and sample_sizes is None, the unique kernels is used.
-    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
-        Used to cache the output of a function. By default, no caching is done.
-        If a :obj:`str` is given, it is the path to the caching directory.
-    memory_level : :obj:`int`, default=0
-        Rough estimator of the amount of memory used by caching.
-        Higher value means more memory for caching. Zero means no caching.
 
     Returns
     -------
@@ -262,8 +216,14 @@ def compute_ale_ma(
     n_studies = len(exp_idx_uniq)
 
     kernel_shape = (n_studies,) + shape
+    all_exp = []
+    all_coords = []
+    all_data = []
+    for i_exp, _ in enumerate(exp_idx_uniq):
+        # Index peaks by experiment
+        curr_exp_idx = exp_idx == i_exp
+        ijk = ijks[curr_exp_idx]
 
-    def _get_ma_map(kernel, ijk, mask_data, shape):
         if use_dict:
             # Get sample_size from input
             sample_size = sample_sizes[curr_exp_idx][0]
@@ -314,35 +274,9 @@ def compute_ale_ma(
         ma_values[~mask_data] = 0
         nonzero_idx = np.where(ma_values > 0)
 
-        coords = np.vstack(nonzero_idx)
-        data = ma_values[nonzero_idx]
-
-        return coords, data
-
-    all_exp = []
-    all_coords = []
-    all_data = []
-    for i_exp, _ in enumerate(exp_idx_uniq):
-        # Index peaks by experiment
-        curr_exp_idx = exp_idx == i_exp
-        ijk = ijks[curr_exp_idx]
-
-        coords_i, data_i = cache(
-            _get_ma_map,
-            memory,
-            func_memory_level=3,
-            memory_level=memory_level,
-        )(
-            kernel,
-            ijk,
-            mask_data,
-            shape,
-        )
-
-        # np.full(nonzero_idx[0].shape[0], i_exp)
-        all_exp.append(np.full(data_i.shape[0], i_exp))
-        all_coords.append(coords_i)
-        all_data.append(data_i)
+        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
+        all_coords.append(np.vstack(nonzero_idx))
+        all_data.append(ma_values[nonzero_idx])
 
     exp = np.hstack(all_exp)
     coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
