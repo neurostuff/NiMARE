@@ -303,8 +303,6 @@ class ALEKernel(KernelTransformer):
             exp_idx=exp_idx,
             sample_sizes=sample_sizes,
             use_dict=use_dict,
-            memory=self.memory,
-            memory_level=self.memory_level,
         )
 
         exp_ids = np.unique(exp_idx)
@@ -395,8 +393,6 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            memory=self.memory,
-            memory_level=self.memory_level,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
