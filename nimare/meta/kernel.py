@@ -25,7 +25,7 @@ class KernelTransformer(NiMAREBase):
 
     .. versionchanged:: 0.0.13
 
-            - Remove "dataset" `return_type` option.
+        - Remove "dataset" `return_type` option.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -229,13 +229,13 @@ class ALEKernel(KernelTransformer):
     will be determined on a study-wise basis based on the sample sizes available in the input,
     via the method described in :footcite:t:`eickhoff2012activation`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.13
 
-            - Add new parameter ``memory`` to cache modeled activation (MA) maps.
-
-    .. versionchanged:: 0.0.13
-
-            - Remove "dataset" `return_type` option.
+        - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 
@@ -348,11 +348,11 @@ class KDAKernel(KernelTransformer):
 
     .. versionchanged:: 0.0.13
 
-            - Add new parameter ``memory`` to cache modeled activation (MA) maps.
+        - Add new parameter ``memory`` to cache modeled activation (MA) maps.
 
     .. versionchanged:: 0.0.13
 
-            - Remove "dataset" `return_type` option.
+        - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 
@@ -422,9 +422,13 @@ class KDAKernel(KernelTransformer):
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.13
 
-            - Remove "dataset" `return_type` option.
+        - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 

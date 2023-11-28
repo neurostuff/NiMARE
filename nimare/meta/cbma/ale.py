@@ -21,6 +21,10 @@ __version__ = _version.get_versions()["version"]
 class ALE(CBMAEstimator):
     """Activation likelihood estimation.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use a 4D sparse array for modeled activation maps.
@@ -320,6 +324,10 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     """ALE subtraction analysis.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
@@ -618,6 +626,10 @@ class SCALE(CBMAEstimator):
     r"""Specific coactivation likelihood estimation.
 
     This method was originally introduced in :footcite:t:`langner2014meta`.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 

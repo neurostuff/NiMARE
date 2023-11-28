@@ -27,6 +27,10 @@ class MKDADensity(CBMAEstimator):
 
     The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use a 4D sparse array for modeled activation maps.
@@ -295,6 +299,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
     r"""Multilevel kernel density analysis- Chi-square analysis.
 
     The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -1038,6 +1046,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
 class KDA(CBMAEstimator):
     r"""Kernel density analysis.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 

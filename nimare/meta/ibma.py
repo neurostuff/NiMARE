@@ -25,6 +25,10 @@ __version__ = _version.get_versions()["version"]
 class IBMAEstimator(Estimator):
     """Base class for meta-analysis methods in :mod:`~nimare.meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.2.0
 
         * Remove `resample` and `memory_limit` arguments. Resampling is now
