@@ -187,6 +187,7 @@ def test_mm2vox():
 
 
 def test_apply_liberal_mask():
+    """Test _apply_liberal_mask."""
     data = np.array([[1, 2, np.nan, np.nan], [4, np.nan, 6, 5], [0, 8, 9, 3]])
     true_data = [np.array([[1], [4]]), np.array([[2], [8]]), np.array([[6, 5], [9, 3]])]
 
