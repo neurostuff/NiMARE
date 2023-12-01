@@ -192,7 +192,7 @@ def test_apply_liberal_mask():
 
     pred_data, _, _ = _apply_liberal_mask(data)
 
-    assert len(pred_val) == len(true_data)
+    assert len(pred_data) == len(true_data)
 
     for pred_val, true_val in zip(pred_data, true_data):
         assert np.array_equal(pred_val, true_val)
