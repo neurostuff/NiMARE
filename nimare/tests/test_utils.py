@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from nimare import utils
+from nimare.meta.utils import _apply_liberal_mask
 
 
 def test_find_stem():
@@ -183,3 +184,15 @@ def test_mm2vox():
     img = utils.get_template(space="mni152_2mm", mask=None)
     aff = img.affine
     assert np.array_equal(utils.mm2vox(test, aff), true)
+
+
+def test_apply_liberal_mask():
+    data = np.array([[1, 2, np.nan, np.nan], [4, np.nan, 6, 5], [0, 8, 9, 3]])
+    true_data = [np.array([[1], [4]]), np.array([[2], [8]]), np.array([[6, 5], [9, 3]])]
+
+    pred_data, _, _ = _apply_liberal_mask(data)
+
+    assert len(pred_val) == len(true_data)
+
+    for pred_val, true_val in zip(pred_data, true_data):
+        assert np.array_equal(pred_val, true_val)
