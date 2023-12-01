@@ -1062,29 +1062,62 @@ class PermutedOLS(IBMAEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        # Use intercept as explanatory variable
-        self.parameters_["tested_vars"] = np.ones((self.inputs_["beta_maps"].shape[0], 1))
-        self.parameters_["confounding_vars"] = None
 
-        _, t_map, _ = permuted_ols(
-            self.parameters_["tested_vars"],
-            self.inputs_["beta_maps"],
-            confounding_vars=self.parameters_["confounding_vars"],
-            model_intercept=False,  # modeled by tested_vars
-            n_perm=0,
-            two_sided_test=self.two_sided,
-            random_state=42,
-            n_jobs=1,
-            verbose=0,
-        )
+        if self.aggressive_mask:
+            # Use intercept as explanatory variable
+            self.parameters_["tested_vars"] = np.ones((self.inputs_["beta_maps"].shape[0], 1))
+            self.parameters_["confounding_vars"] = None
 
-        # Convert t to z, preserving signs
-        dof = self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
-        z_map = t_to_z(t_map, dof)
-        maps = {
-            "t": _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"]),
-            "z": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
-        }
+            _, t_map, _ = permuted_ols(
+                self.parameters_["tested_vars"],
+                self.inputs_["beta_maps"],
+                confounding_vars=self.parameters_["confounding_vars"],
+                model_intercept=False,  # modeled by tested_vars
+                n_perm=0,
+                two_sided_test=self.two_sided,
+                random_state=42,
+                n_jobs=1,
+                verbose=0,
+            )
+
+            # Convert t to z, preserving signs
+            dof = (
+                self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
+            )
+            z_map = t_to_z(t_map, dof)
+
+            t_map = _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"])
+            z_map = _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"])
+
+        else:
+            n_total_voxels = self.inputs_["beta_maps"].shape[1]
+            t_map = np.zeros(n_total_voxels)
+            z_map = np.zeros(n_total_voxels)
+            for bag in self.inputs_["data_bags"]["beta_maps"]:
+                # Use intercept as explanatory variable
+                bag["tested_vars"] = np.ones((bag["values"].shape[0], 1))
+                bag["confounding_vars"] = None
+
+                _, t_map_tmp, _ = permuted_ols(
+                    bag["tested_vars"],
+                    bag["values"],
+                    confounding_vars=bag["confounding_vars"],
+                    model_intercept=False,  # modeled by tested_vars
+                    n_perm=0,
+                    two_sided_test=self.two_sided,
+                    random_state=42,
+                    n_jobs=1,
+                    verbose=0,
+                )
+
+                # Convert t to z, preserving signs
+                dof = bag["tested_vars"].shape[0] - bag["tested_vars"].shape[1]
+                z_map_tmp = t_to_z(t_map_tmp, dof)
+
+                t_map[bag["voxel_mask"]] = t_map_tmp.squeeze()
+                z_map[bag["voxel_mask"]] = z_map_tmp.squeeze()
+
+        maps = {"t": t_map, "z": z_map}
         description = self._generate_description()
 
         return maps, {}, description
@@ -1133,32 +1166,59 @@ class PermutedOLS(IBMAEstimator):
         """
         n_cores = _check_ncores(n_cores)
 
-        log_p_map, t_map, _ = permuted_ols(
-            self.parameters_["tested_vars"],
-            self.inputs_["beta_maps"],
-            confounding_vars=self.parameters_["confounding_vars"],
-            model_intercept=False,  # modeled by tested_vars
-            n_perm=n_iters,
-            two_sided_test=self.two_sided,
-            random_state=42,
-            n_jobs=n_cores,
-            verbose=0,
-        )
+        if self.aggressive_mask:
+            log_p_map, t_map, _ = permuted_ols(
+                self.parameters_["tested_vars"],
+                self.inputs_["beta_maps"],
+                confounding_vars=self.parameters_["confounding_vars"],
+                model_intercept=False,  # modeled by tested_vars
+                n_perm=n_iters,
+                two_sided_test=self.two_sided,
+                random_state=42,
+                n_jobs=n_cores,
+                verbose=0,
+            )
 
-        # Fill complete maps
-        p_map = np.power(10.0, -log_p_map)
+            # Fill complete maps
+            p_map = np.power(10.0, -log_p_map)
 
-        # Convert p to z, preserving signs
-        sign = np.sign(t_map)
-        sign[sign == 0] = 1
-        z_map = p_to_z(p_map, tail="two") * sign
-        maps = {
-            "logp_level-voxel": _boolean_unmask(
-                log_p_map.squeeze(), self.inputs_["aggressive_mask"]
-            ),
-            "z_level-voxel": _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"]),
-        }
+            # Convert p to z, preserving signs
+            sign = np.sign(t_map)
+            sign[sign == 0] = 1
+            z_map = p_to_z(p_map, tail="two") * sign
 
+            log_p_map = _boolean_unmask(log_p_map.squeeze(), self.inputs_["aggressive_mask"])
+            z_map = _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"])
+
+        else:
+            n_total_voxels = self.inputs_["beta_maps"].shape[1]
+            log_p_map = np.zeros(n_total_voxels)
+            z_map = np.zeros(n_total_voxels)
+            for bag in self.inputs_["data_bags"]["beta_maps"]:
+                log_p_map_tmp, t_map_tmp, _ = permuted_ols(
+                    bag["tested_vars"],
+                    bag["values"],
+                    confounding_vars=bag["confounding_vars"],
+                    model_intercept=False,  # modeled by tested_vars
+                    n_perm=n_iters,
+                    two_sided_test=self.two_sided,
+                    random_state=42,
+                    n_jobs=n_cores,
+                    verbose=0,
+                )
+
+                # Fill complete maps
+                p_map_tmp = np.power(10.0, -log_p_map_tmp)
+
+                # Convert p to z, preserving signs
+                sign = np.sign(t_map_tmp)
+                sign[sign == 0] = 1
+                z_map_tmp = p_to_z(p_map_tmp, tail="two") * sign
+
+                log_p_map[bag["voxel_mask"]] = log_p_map_tmp.squeeze()
+                z_map[bag["voxel_mask"]] = z_map_tmp.squeeze()
+
+        maps = {"logp_level-voxel": log_p_map, "z_level-voxel": z_map}
         description = (
             "Family-wise error rate correction was performed using Nilearn's "
             "\\citep{10.3389/fninf.2014.00014} permuted OLS method, in which null distributions "
