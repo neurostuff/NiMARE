@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 import sparse
+from numba import jit
 from scipy import ndimage
 
 from nimare.utils import unique_rows
@@ -387,3 +388,49 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         max_size = 0
 
     return max_size, max_mass
+
+
+@jit(nopython=True, cache=True)  # nopython=True
+def _apply_liberal_mask(data):
+    n_voxels = data.shape[1]
+    # Get indices of non-nan and zero value of studies for each voxel
+    mask = ~np.isnan(data) & (data != 0)
+    study_by_voxels_idxs = [np.where(mask[:, i])[0] for i in range(n_voxels)]
+
+    # Group studies by the same number of non-nan voxels
+    matches = []
+    all_indices = []
+    for col_i in range(n_voxels):
+        if col_i in all_indices:
+            continue
+
+        vox_match = [col_i]
+        all_indices.append(col_i)
+        for col_j in range(col_i + 1, n_voxels):
+            if (
+                len(study_by_voxels_idxs[col_i]) == len(study_by_voxels_idxs[col_j])
+                and np.array_equal(study_by_voxels_idxs[col_i], study_by_voxels_idxs[col_j])
+                and col_j not in all_indices
+            ):
+                vox_match.append(col_j)
+                all_indices.append(col_j)
+
+        matches.append(np.array(vox_match))
+
+    values_lst, voxel_mask_lst, study_mask_lst = [], [], []
+    for voxel_mask in matches:
+        n_masked_voxels = len(voxel_mask)
+        # This is the same for all voxels in the match
+        # TODO: If study_mask contain only one study, we can skip it
+        study_mask = study_by_voxels_idxs[voxel_mask[0]]
+
+        values = np.zeros((len(study_mask), n_masked_voxels))
+        for vox_i, vox in enumerate(voxel_mask):
+            for std_i, study in enumerate(study_mask):
+                values[std_i, vox_i] = data[study, vox]
+
+        values_lst.append(values)
+        voxel_mask_lst.append(voxel_mask)
+        study_mask_lst.append(study_mask)
+
+    return values_lst, voxel_mask_lst, study_mask_lst
