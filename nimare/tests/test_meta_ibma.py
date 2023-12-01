@@ -13,10 +13,20 @@ from nimare.tests.utils import get_test_data_path
 
 
 @pytest.mark.parametrize(
-    "meta,meta_kwargs,corrector,corrector_kwargs,maps",
+    "meta,aggressive_mask,meta_kwargs,corrector,corrector_kwargs,maps",
     [
         pytest.param(
             ibma.Fishers,
+            True,
+            {},
+            FDRCorrector,
+            {"method": "indep", "alpha": 0.001},
+            ("z", "p"),
+            id="Fishers",
+        ),
+        pytest.param(
+            ibma.Fishers,
+            False,
             {},
             FDRCorrector,
             {"method": "indep", "alpha": 0.001},
@@ -25,6 +35,7 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
+            True,
             {"use_sample_size": False},
             None,
             {},
@@ -33,6 +44,25 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
+            False,
+            {"use_sample_size": False},
+            None,
+            {},
+            ("z", "p"),
+            id="Stouffers",
+        ),
+        pytest.param(
+            ibma.Stouffers,
+            True,
+            {"use_sample_size": True},
+            None,
+            {},
+            ("z", "p"),
+            id="Stouffers_weighted",
+        ),
+        pytest.param(
+            ibma.Stouffers,
+            False,
             {"use_sample_size": True},
             None,
             {},
@@ -41,6 +71,16 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.WeightedLeastSquares,
+            True,
+            {"tau2": 0},
+            None,
+            {},
+            ("z", "p", "est", "se"),
+            id="WeightedLeastSquares",
+        ),
+        pytest.param(
+            ibma.WeightedLeastSquares,
+            False,
             {"tau2": 0},
             None,
             {},
@@ -49,6 +89,16 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.DerSimonianLaird,
+            True,
+            {},
+            None,
+            {},
+            ("z", "p", "est", "se", "tau2"),
+            id="DerSimonianLaird",
+        ),
+        pytest.param(
+            ibma.DerSimonianLaird,
+            False,
             {},
             None,
             {},
@@ -57,6 +107,16 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Hedges,
+            True,
+            {},
+            None,
+            {},
+            ("z", "p", "est", "se", "tau2"),
+            id="Hedges",
+        ),
+        pytest.param(
+            ibma.Hedges,
+            False,
             {},
             None,
             {},
@@ -65,6 +125,7 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.SampleSizeBasedLikelihood,
+            True,
             {"method": "ml"},
             None,
             {},
@@ -73,6 +134,25 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.SampleSizeBasedLikelihood,
+            False,
+            {"method": "ml"},
+            None,
+            {},
+            ("z", "p", "est", "se", "tau2", "sigma2"),
+            id="SampleSizeBasedLikelihood_ml",
+        ),
+        pytest.param(
+            ibma.SampleSizeBasedLikelihood,
+            True,
+            {"method": "reml"},
+            None,
+            {},
+            ("z", "p", "est", "se", "tau2", "sigma2"),
+            id="SampleSizeBasedLikelihood_reml",
+        ),
+        pytest.param(
+            ibma.SampleSizeBasedLikelihood,
+            False,
             {"method": "reml"},
             None,
             {},
@@ -81,6 +161,7 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.VarianceBasedLikelihood,
+            True,
             {"method": "ml"},
             None,
             {},
@@ -89,6 +170,25 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.VarianceBasedLikelihood,
+            False,
+            {"method": "ml"},
+            None,
+            {},
+            ("z", "p", "est", "se", "tau2"),
+            id="VarianceBasedLikelihood_ml",
+        ),
+        pytest.param(
+            ibma.VarianceBasedLikelihood,
+            True,
+            {"method": "reml"},
+            None,
+            {},
+            ("z", "p", "est", "se", "tau2"),
+            id="VarianceBasedLikelihood_reml",
+        ),
+        pytest.param(
+            ibma.VarianceBasedLikelihood,
+            False,
             {"method": "reml"},
             None,
             {},
@@ -97,6 +197,16 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.PermutedOLS,
+            True,
+            {"two_sided": True},
+            FWECorrector,
+            {"method": "montecarlo", "n_iters": 100, "n_cores": 1},
+            ("t", "z"),
+            id="PermutedOLS",
+        ),
+        pytest.param(
+            ibma.PermutedOLS,
+            False,
             {"two_sided": True},
             FWECorrector,
             {"method": "montecarlo", "n_iters": 100, "n_cores": 1},
@@ -105,9 +215,17 @@ from nimare.tests.utils import get_test_data_path
         ),
     ],
 )
-def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwargs, maps):
+def test_ibma_smoke(
+    testdata_ibma,
+    meta,
+    aggressive_mask,
+    meta_kwargs,
+    corrector,
+    corrector_kwargs,
+    maps,
+):
     """Smoke test for IBMA estimators."""
-    meta = meta(**meta_kwargs)
+    meta = meta(aggressive_mask=aggressive_mask, **meta_kwargs)
     results = meta.fit(testdata_ibma)
     for expected_map in maps:
         assert expected_map in results.maps.keys()

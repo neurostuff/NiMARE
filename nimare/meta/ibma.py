@@ -37,7 +37,9 @@ class IBMAEstimator(Estimator):
 
     """
 
-    def __init__(self, *, mask=None, **kwargs):
+    def __init__(self, aggressive_mask=True, *, mask=None, **kwargs):
+        self.aggressive_mask = aggressive_mask
+
         if mask is not None:
             mask = get_masker(mask)
         self.masker = mask
@@ -57,6 +59,41 @@ class IBMAEstimator(Estimator):
         resample_kwargs = {k.split("resample__")[1]: v for k, v in resample_kwargs.items()}
         self._resample_kwargs.update(resample_kwargs)
 
+    def _apply_liberal_mask(self, data):
+        n_voxels = data.shape[1]
+        # Get indices of non-nan and zero value of studies for each voxel
+        mask = ~np.isnan(data) & (data != 0)
+        study_by_voxels_idxs = [np.where(mask[:, i])[0] for i in range(n_voxels)]
+
+        # Group studies by the same number of non-nan voxels
+        matches = []
+        for col_i in range(n_voxels):
+            if col_i != 0 and col_i in np.concatenate(matches):
+                continue
+
+            vox_match = [col_i]
+            for col_j in range(col_i + 1, n_voxels):
+                if (
+                    len(study_by_voxels_idxs[col_i]) == len(study_by_voxels_idxs[col_j])
+                    and np.all(study_by_voxels_idxs[col_i] == study_by_voxels_idxs[col_j])
+                    and not any(col_j in sublist for sublist in matches)
+                ):
+                    vox_match.append(col_j)
+
+            matches.append(np.array(vox_match))
+
+        study_bags = []
+        for voxel_mask in matches:
+            study_mask = study_by_voxels_idxs[0]  # This is the same for all voxels in the match
+            ext_study_mask = np.tile(study_mask, (len(voxel_mask), 1))
+            values = data[ext_study_mask, voxel_mask[:, None]].T
+
+            study_bags.append(
+                {"values": values, "voxel_mask": voxel_mask, "study_mask": study_mask}
+            )
+
+        return study_bags
+
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed."""
         masker = self.masker or dataset.masker
@@ -65,16 +102,21 @@ class IBMAEstimator(Estimator):
         if isinstance(mask_img, str):
             mask_img = nib.load(mask_img)
 
-        # Ensure that protected values are not included among _required_inputs
-        assert "aggressive_mask" not in self._required_inputs.keys(), "This is a protected name."
+        if self.aggressive_mask:
+            # Ensure that protected values are not included among _required_inputs
+            assert (
+                "aggressive_mask" not in self._required_inputs.keys()
+            ), "This is a protected name."
 
-        if "aggressive_mask" in self.inputs_.keys():
-            LGR.warning("Removing existing 'aggressive_mask' from Estimator.")
-            self.inputs_.pop("aggressive_mask")
+            if "aggressive_mask" in self.inputs_.keys():
+                LGR.warning("Removing existing 'aggressive_mask' from Estimator.")
+                self.inputs_.pop("aggressive_mask")
+        else:
+            # A dictionary to collect data, to be further reduced by the liberal mask.
+            self.inputs_["data_bags"] = {}
 
         # A dictionary to collect masked image data, to be further reduced by the aggressive mask.
         temp_image_inputs = {}
-
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
                 # Resampling will only occur if shape/affines are different
@@ -91,23 +133,26 @@ class IBMAEstimator(Estimator):
                 # Mask required input images using either the dataset's mask or the estimator's.
                 temp_arr = masker.transform(img4d)
 
-                # An intermediate step to mask out bad voxels.
-                # Can be dropped once PyMARE is able to handle masked arrays or missing data.
-                nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
-                nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
-                good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
-
                 data = masker.transform(img4d)
-
                 temp_image_inputs[name] = data
-                if "aggressive_mask" not in self.inputs_.keys():
-                    self.inputs_["aggressive_mask"] = good_voxels_bool
+                if self.aggressive_mask:
+                    # An intermediate step to mask out bad voxels.
+                    # Can be dropped once PyMARE is able to handle masked arrays or missing data.
+                    nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
+                    nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
+                    good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
+
+                    if "aggressive_mask" not in self.inputs_.keys():
+                        self.inputs_["aggressive_mask"] = good_voxels_bool
+                    else:
+                        # Remove any voxels that are bad in any image-based inputs
+                        self.inputs_["aggressive_mask"] = np.logical_or(
+                            self.inputs_["aggressive_mask"],
+                            good_voxels_bool,
+                        )
                 else:
-                    # Remove any voxels that are bad in any image-based inputs
-                    self.inputs_["aggressive_mask"] = np.logical_or(
-                        self.inputs_["aggressive_mask"],
-                        good_voxels_bool,
-                    )
+                    self.inputs_[name] = data  # This data is saved only to use in Reports
+                    self.inputs_["data_bags"][name] = self._apply_liberal_mask(data)
 
         # Further reduce image-based inputs to remove "bad" voxels
         # (voxels with zeros or NaNs in any studies)
@@ -184,14 +229,27 @@ class Fishers(IBMAEstimator):
                 "will produce invalid results."
             )
 
-        pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
-        est = pymare.estimators.FisherCombinationTest()
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
-        maps = {
-            "z": _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"]),
-            "p": _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"]),
-        }
+        if self.aggressive_mask:
+            pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
+            est = pymare.estimators.FisherCombinationTest()
+            est.fit_dataset(pymare_dset)
+            est_summary = est.summary()
+            z_map = _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"])
+            p_map = _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"])
+
+        else:
+            n_total_voxels = self.inputs_["z_maps"].shape[1]
+            z_map = np.zeros(n_total_voxels)
+            p_map = np.zeros(n_total_voxels)
+            for bag in self.inputs_["data_bags"]["z_maps"]:
+                pymare_dset = pymare.Dataset(y=bag["values"])
+                est = pymare.estimators.FisherCombinationTest()
+                est.fit_dataset(pymare_dset)
+                est_summary = est.summary()
+                z_map[bag["voxel_mask"]] = est_summary.z.squeeze()
+                p_map[bag["voxel_mask"]] = est_summary.p.squeeze()
+
+        maps = {"z": z_map, "p": p_map}
         description = self._generate_description()
 
         return maps, {}, description
