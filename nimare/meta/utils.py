@@ -390,7 +390,7 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
     return max_size, max_mass
 
 
-@jit(nopython=True, cache=True)  # nopython=True
+@jit(nopython=True, cache=True)
 def _apply_liberal_mask(data):
     n_voxels = data.shape[1]
     # Get indices of non-nan and zero value of studies for each voxel
