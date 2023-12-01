@@ -203,13 +203,17 @@ class Fishers(IBMAEstimator):
             est = pymare.estimators.FisherCombinationTest()
             est.fit_dataset(pymare_dset)
             est_summary = est.summary()
+
             z_map = _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"])
             p_map = _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"])
+            dof_map = np.tile(self.inputs_["z_maps"].shape[0] - 1, self.inputs_["z_maps"].shape[1])
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
             n_total_voxels = self.inputs_["z_maps"].shape[1]
             z_map = np.zeros(n_total_voxels)
             p_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             for bag in self.inputs_["data_bags"]["z_maps"]:
                 pymare_dset = pymare.Dataset(y=bag["values"])
                 est = pymare.estimators.FisherCombinationTest()
@@ -217,8 +221,9 @@ class Fishers(IBMAEstimator):
                 est_summary = est.summary()
                 z_map[bag["voxel_mask"]] = est_summary.z.squeeze()
                 p_map[bag["voxel_mask"]] = est_summary.p.squeeze()
+                dof_map[bag["voxel_mask"]] = bag["values"].shape[0] - 1
 
-        maps = {"z": z_map, "p": p_map}
+        maps = {"z": z_map, "p": p_map, "dof": dof_map}
         description = self._generate_description()
 
         return maps, {}, description
@@ -321,11 +326,14 @@ class Stouffers(IBMAEstimator):
 
             z_map = _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"])
             p_map = _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"])
+            dof_map = np.tile(self.inputs_["z_maps"].shape[0] - 1, self.inputs_["z_maps"].shape[1])
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
             n_total_voxels = self.inputs_["z_maps"].shape[1]
             z_map = np.zeros(n_total_voxels)
             p_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             for bag in self.inputs_["data_bags"]["z_maps"]:
                 est = pymare.estimators.StoufferCombinationTest()
 
@@ -343,8 +351,9 @@ class Stouffers(IBMAEstimator):
                 est_summary = est.summary()
                 z_map[bag["voxel_mask"]] = est_summary.z.squeeze()
                 p_map[bag["voxel_mask"]] = est_summary.p.squeeze()
+                dof_map[bag["voxel_mask"]] = bag["values"].shape[0] - 1
 
-        maps = {"z": z_map, "p": p_map}
+        maps = {"z": z_map, "p": p_map, "dof": dof_map}
         description = self._generate_description()
 
         return maps, {}, description
@@ -447,6 +456,10 @@ class WeightedLeastSquares(IBMAEstimator):
             p_map = _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"])
             est_map = _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"])
             se_map = _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"])
+            dof_map = np.tile(
+                self.inputs_["beta_maps"].shape[0] - 1, self.inputs_["beta_maps"].shape[1]
+            )
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
             n_total_voxels = self.inputs_["beta_maps"].shape[1]
@@ -454,6 +467,7 @@ class WeightedLeastSquares(IBMAEstimator):
             p_map = np.zeros(n_total_voxels)
             est_map = np.zeros(n_total_voxels)
             se_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
             for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
@@ -467,12 +481,13 @@ class WeightedLeastSquares(IBMAEstimator):
                 p_map[beta_bag["voxel_mask"]] = fe_stats["p"].squeeze()
                 est_map[beta_bag["voxel_mask"]] = fe_stats["est"].squeeze()
                 se_map[beta_bag["voxel_mask"]] = fe_stats["se"].squeeze()
+                dof_map[beta_bag["voxel_mask"]] = beta_bag["values"].shape[0] - 1
 
         # tau2 is a float, not a map, so it can't go into the results dictionary
         tables = {
             "level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2]),
         }
-        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map}
+        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "dof": dof_map}
         description = self._generate_description()
 
         return maps, tables, description
@@ -565,6 +580,10 @@ class DerSimonianLaird(IBMAEstimator):
             est_map = _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"])
             se_map = _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"])
             tau2_map = _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"])
+            dof_map = np.tile(
+                self.inputs_["beta_maps"].shape[0] - 1, self.inputs_["beta_maps"].shape[1]
+            )
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
             n_total_voxels = self.inputs_["beta_maps"].shape[1]
@@ -573,6 +592,7 @@ class DerSimonianLaird(IBMAEstimator):
             est_map = np.zeros(n_total_voxels)
             se_map = np.zeros(n_total_voxels)
             tau2_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
             for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
@@ -587,8 +607,16 @@ class DerSimonianLaird(IBMAEstimator):
                 est_map[beta_bag["voxel_mask"]] = fe_stats["est"].squeeze()
                 se_map[beta_bag["voxel_mask"]] = fe_stats["se"].squeeze()
                 tau2_map[beta_bag["voxel_mask"]] = est_summary.tau2.squeeze()
+                dof_map[beta_bag["voxel_mask"]] = beta_bag["values"].shape[0] - 1
 
-        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "tau2": tau2_map}
+        maps = {
+            "z": z_map,
+            "p": p_map,
+            "est": est_map,
+            "se": se_map,
+            "tau2": tau2_map,
+            "dof": dof_map,
+        }
         description = self._generate_description()
 
         return maps, {}, description
@@ -680,6 +708,10 @@ class Hedges(IBMAEstimator):
             est_map = _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"])
             se_map = _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"])
             tau2_map = _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"])
+            dof_map = np.tile(
+                self.inputs_["beta_maps"].shape[0] - 1, self.inputs_["beta_maps"].shape[1]
+            )
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
             n_total_voxels = self.inputs_["beta_maps"].shape[1]
@@ -688,6 +720,7 @@ class Hedges(IBMAEstimator):
             est_map = np.zeros(n_total_voxels)
             se_map = np.zeros(n_total_voxels)
             tau2_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
             for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
@@ -702,8 +735,16 @@ class Hedges(IBMAEstimator):
                 est_map[beta_bag["voxel_mask"]] = fe_stats["est"].squeeze()
                 se_map[beta_bag["voxel_mask"]] = fe_stats["se"].squeeze()
                 tau2_map[beta_bag["voxel_mask"]] = est_summary.tau2.squeeze()
+                dof_map[beta_bag["voxel_mask"]] = beta_bag["values"].shape[0] - 1
 
-        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "tau2": tau2_map}
+        maps = {
+            "z": z_map,
+            "p": p_map,
+            "est": est_map,
+            "se": se_map,
+            "tau2": tau2_map,
+            "dof": dof_map,
+        }
         description = self._generate_description()
 
         return maps, {}, description
@@ -812,6 +853,10 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
             sigma2_map = _boolean_unmask(
                 est.params_["sigma2"].squeeze(), self.inputs_["aggressive_mask"]
             )
+            dof_map = np.tile(
+                self.inputs_["beta_maps"].shape[0] - 1, self.inputs_["beta_maps"].shape[1]
+            )
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
             n_total_voxels = self.inputs_["beta_maps"].shape[1]
@@ -821,6 +866,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
             se_map = np.zeros(n_total_voxels)
             tau2_map = np.zeros(n_total_voxels)
             sigma2_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             for bag in self.inputs_["data_bags"]["beta_maps"]:
                 study_mask = bag["study_mask"]
                 sample_sizes_ex = [self.inputs_["sample_sizes"][study] for study in study_mask]
@@ -839,6 +885,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
                 se_map[bag["voxel_mask"]] = fe_stats["se"].squeeze()
                 tau2_map[bag["voxel_mask"]] = est_summary.tau2.squeeze()
                 sigma2_map[bag["voxel_mask"]] = est.params_["sigma2"].squeeze()
+                dof_map[bag["voxel_mask"]] = bag["values"].shape[0] - 1
 
         maps = {
             "z": z_map,
@@ -847,6 +894,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
             "se": se_map,
             "tau2": tau2_map,
             "sigma2": sigma2_map,
+            "dof": dof_map,
         }
         description = self._generate_description()
 
@@ -964,6 +1012,10 @@ class VarianceBasedLikelihood(IBMAEstimator):
             est_map = _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"])
             se_map = _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"])
             tau2_map = _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"])
+            dof_map = np.tile(
+                self.inputs_["beta_maps"].shape[0] - 1, self.inputs_["beta_maps"].shape[1]
+            )
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
         else:
             n_total_voxels = self.inputs_["beta_maps"].shape[1]
             z_map = np.zeros(n_total_voxels)
@@ -971,6 +1023,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
             est_map = np.zeros(n_total_voxels)
             se_map = np.zeros(n_total_voxels)
             tau2_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
             for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
@@ -986,8 +1039,16 @@ class VarianceBasedLikelihood(IBMAEstimator):
                 est_map[beta_bag["voxel_mask"]] = fe_stats["est"].squeeze()
                 se_map[beta_bag["voxel_mask"]] = fe_stats["se"].squeeze()
                 tau2_map[beta_bag["voxel_mask"]] = est_summary.tau2.squeeze()
+                dof_map[beta_bag["voxel_mask"]] = beta_bag["values"].shape[0] - 1
 
-        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "tau2": tau2_map}
+        maps = {
+            "z": z_map,
+            "p": p_map,
+            "est": est_map,
+            "se": se_map,
+            "tau2": tau2_map,
+            "dof": dof_map,
+        }
         description = self._generate_description()
 
         return maps, {}, description
@@ -1088,11 +1149,14 @@ class PermutedOLS(IBMAEstimator):
 
             t_map = _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"])
             z_map = _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"])
+            dof_map = np.tile(dof, self.inputs_["beta_maps"].shape[1])
+            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
             n_total_voxels = self.inputs_["beta_maps"].shape[1]
             t_map = np.zeros(n_total_voxels)
             z_map = np.zeros(n_total_voxels)
+            dof_map = np.zeros(n_total_voxels)
             for bag in self.inputs_["data_bags"]["beta_maps"]:
                 # Use intercept as explanatory variable
                 bag["tested_vars"] = np.ones((bag["values"].shape[0], 1))
@@ -1116,8 +1180,9 @@ class PermutedOLS(IBMAEstimator):
 
                 t_map[bag["voxel_mask"]] = t_map_tmp.squeeze()
                 z_map[bag["voxel_mask"]] = z_map_tmp.squeeze()
+                dof_map[bag["voxel_mask"]] = dof
 
-        maps = {"t": t_map, "z": z_map}
+        maps = {"t": t_map, "z": z_map, "dof": dof_map}
         description = self._generate_description()
 
         return maps, {}, description
