@@ -146,6 +146,19 @@ class Fishers(IBMAEstimator):
 
     This method is described in :footcite:t:`fisher1946statistical`.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
+    Parameters
+    ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
+
     Notes
     -----
     Requires ``z`` images.
@@ -155,6 +168,7 @@ class Fishers(IBMAEstimator):
     ============== ===============================================================================
     "z"            Z-statistic map from one-sample test.
     "p"            P-value map from one-sample test.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     Warnings
@@ -162,9 +176,11 @@ class Fishers(IBMAEstimator):
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     References
     ----------
@@ -239,8 +255,18 @@ class Stouffers(IBMAEstimator):
 
     This method is described in :footcite:t:`stouffer1949american`.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
     Parameters
     ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
     use_sample_size : :obj:`bool`, optional
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
         as described in :footcite:t:`zaykin2011optimally`.
@@ -255,6 +281,7 @@ class Stouffers(IBMAEstimator):
     ============== ===============================================================================
     "z"            Z-statistic map from one-sample test.
     "p"            P-value map from one-sample test.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     Warnings
@@ -262,9 +289,11 @@ class Stouffers(IBMAEstimator):
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     References
     ----------
@@ -367,6 +396,10 @@ class Stouffers(IBMAEstimator):
 class WeightedLeastSquares(IBMAEstimator):
     """Weighted least-squares meta-regression.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
     .. versionchanged:: 0.0.12
 
         * Add "se" to outputs.
@@ -386,6 +419,12 @@ class WeightedLeastSquares(IBMAEstimator):
 
     Parameters
     ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
     tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
         Assumed/known value of tau^2. Must be >= 0. Default is 0.
 
@@ -400,6 +439,7 @@ class WeightedLeastSquares(IBMAEstimator):
     "p"            P-value map from one-sample test.
     "est"          Fixed effects estimate for intercept test.
     "se"           Standard error of fixed effects estimate.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     Warnings
@@ -408,9 +448,11 @@ class WeightedLeastSquares(IBMAEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     References
     ----------
@@ -501,6 +543,10 @@ class WeightedLeastSquares(IBMAEstimator):
 class DerSimonianLaird(IBMAEstimator):
     """DerSimonian-Laird meta-regression estimator.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
     .. versionchanged:: 0.0.12
 
         * Add "se" to outputs.
@@ -514,6 +560,15 @@ class DerSimonianLaird(IBMAEstimator):
     Estimates the between-subject variance tau^2 using the :footcite:t:`dersimonian1986meta`
     method-of-moments approach :footcite:p:`dersimonian1986meta,kosmidis2017improving`.
 
+    Parameters
+    ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
+
     Notes
     -----
     Requires :term:`beta` and :term:`varcope` images.
@@ -526,6 +581,7 @@ class DerSimonianLaird(IBMAEstimator):
     "est"          Fixed effects estimate for intercept test.
     "se"           Standard error of fixed effects estimate.
     "tau2"         Estimated between-study variance.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     Warnings
@@ -534,9 +590,11 @@ class DerSimonianLaird(IBMAEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     References
     ----------
@@ -630,6 +688,10 @@ class DerSimonianLaird(IBMAEstimator):
 class Hedges(IBMAEstimator):
     """Hedges meta-regression estimator.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
     .. versionchanged:: 0.0.12
 
         * Add "se" to outputs.
@@ -643,6 +705,15 @@ class Hedges(IBMAEstimator):
     Estimates the between-subject variance tau^2 using the :footcite:t:`hedges2014statistical`
     approach.
 
+    Parameters
+    ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
+
     Notes
     -----
     Requires :term:`beta` and :term:`varcope` images.
@@ -655,6 +726,7 @@ class Hedges(IBMAEstimator):
     "est"          Fixed effects estimate for intercept test.
     "se"           Standard error of fixed effects estimate.
     "tau2"         Estimated between-study variance.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     Warnings
@@ -663,9 +735,11 @@ class Hedges(IBMAEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     References
     ----------
@@ -758,6 +832,10 @@ class Hedges(IBMAEstimator):
 class SampleSizeBasedLikelihood(IBMAEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
     .. versionchanged:: 0.0.12
 
         * Add "se" and "sigma2" to outputs.
@@ -773,6 +851,12 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
 
     Parameters
     ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
     method : {'ml', 'reml'}, optional
         The estimation method to use. The available options are
 
@@ -794,6 +878,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
     "se"           Standard error of fixed effects estimate.
     "tau2"         Estimated between-study variance.
     "sigma2"       Estimated within-study variance. Assumed to be the same for all studies.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     Homogeneity of sigma^2 across studies is assumed.
@@ -807,9 +892,11 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
 
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     See Also
     --------
@@ -909,6 +996,10 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
 class VarianceBasedLikelihood(IBMAEstimator):
     """A likelihood-based meta-analysis method for estimates with known variances.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
     .. versionchanged:: 0.0.12
 
         Add "se" output.
@@ -925,6 +1016,12 @@ class VarianceBasedLikelihood(IBMAEstimator):
 
     Parameters
     ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
     method : {'ml', 'reml'}, optional
         The estimation method to use. The available options are
 
@@ -945,6 +1042,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
     "est"          Fixed effects estimate for intercept test.
     "se"           Standard error of fixed effects estimate.
     "tau2"         Estimated between-study variance.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     The ML and REML solutions are obtained via SciPy's scalar function
@@ -961,9 +1059,11 @@ class VarianceBasedLikelihood(IBMAEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     References
     ----------
@@ -1062,6 +1162,10 @@ class VarianceBasedLikelihood(IBMAEstimator):
 class PermutedOLS(IBMAEstimator):
     r"""An analysis with permuted ordinary least squares (OLS), using nilearn.
 
+    .. versionchanged:: 0.2.1
+
+        * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
+
     .. versionchanged:: 0.0.12
 
         * Use beta maps instead of z maps.
@@ -1076,6 +1180,12 @@ class PermutedOLS(IBMAEstimator):
 
     Parameters
     ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
     two_sided : :obj:`bool`, optional
         If True, performs an unsigned t-test. Both positive and negative effects are considered;
         the null hypothesis is that the effect is zero. If False, only positive effects are
@@ -1091,15 +1201,18 @@ class PermutedOLS(IBMAEstimator):
     ============== ===============================================================================
     "t"            T-statistic map from one-sample test.
     "z"            Z-statistic map from one-sample test.
+    "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
     Available correction methods: :func:`PermutedOLS.correct_fwe_montecarlo`
 
     Warnings
     --------
-    All image-based meta-analysis estimators adopt an aggressive masking
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis.
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
 
     References
     ----------
