@@ -58,8 +58,7 @@ plot_stat_map(
 ###############################################################################
 # DerSimonian-Laird (IBMA)
 # -----------------------------------------------------------------------------
-# We must resample the image data to the same MNI template as the Dataset.
-meta_ibma = DerSimonianLaird(resample=True)
+meta_ibma = DerSimonianLaird()
 ibma_results = meta_ibma.fit(dset)
 plot_stat_map(
     ibma_results.get_map("z"),
