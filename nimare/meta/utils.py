@@ -447,9 +447,10 @@ def _apply_liberal_mask(data):
         study_mask = study_by_voxels_idxs[voxel_mask[0]]
 
         if len(study_mask) < 2:
-            warnings.warn(
-                f"Removing voxels: {voxel_mask} from the analysis. Not present in 2+ studies."
-            )
+            # TODO: Figure out how raise a warning in numba
+            # warnings.warn(
+            #     f"Removing voxels: {voxel_mask} from the analysis. Not present in 2+ studies."
+            # )
             continue
 
         values = np.zeros((len(study_mask), n_masked_voxels))
