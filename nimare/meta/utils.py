@@ -392,6 +392,29 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
 
 @jit(nopython=True, cache=True)
 def _apply_liberal_mask(data):
+    """Separate input image data in bags of voxels that have a valid value across the same studies.
+
+    Parameters
+    ----------
+    data : (S x V) :class:`numpy.ndarray`
+        2D numpy array (S x V) of images, where S is study and V is voxel.
+
+    Returns
+    -------
+    values_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 2D numpy arrays (s x v) of images, where the voxel v have a valid
+        value in study s.
+    voxel_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (v) of voxel indices for the corresponding bag.
+    study_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (s) of study indices for the corresponding bag.
+
+    Notes
+    -----
+    Parts of the function are implemented with nested for loops to
+    improve the speed with the numba compiler.
+
+    """
     n_voxels = data.shape[1]
     # Get indices of non-nan and zero value of studies for each voxel
     mask = ~np.isnan(data) & (data != 0)
@@ -421,8 +444,13 @@ def _apply_liberal_mask(data):
     for voxel_mask in matches:
         n_masked_voxels = len(voxel_mask)
         # This is the same for all voxels in the match
-        # TODO: If study_mask contain only one study, we can skip it
         study_mask = study_by_voxels_idxs[voxel_mask[0]]
+
+        if len(study_mask) < 2:
+            LGR.warn(
+                f"Removing voxels: {voxel_mask} from the analysis. Not present in 2+ studies."
+            )
+            continue
 
         values = np.zeros((len(study_mask), n_masked_voxels))
         for vox_i, vox in enumerate(voxel_mask):
