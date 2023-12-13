@@ -1,6 +1,8 @@
 """Base class for estimators."""
 from abc import abstractmethod
 
+from joblib import Memory
+
 from nimare.base import NiMAREBase
 from nimare.results import MetaResult
 
@@ -19,6 +21,10 @@ class Estimator(NiMAREBase):
     # Inputs that must be available in input Dataset. Keys are names of
     # attributes to set; values are strings indicating location in Dataset.
     _required_inputs = {}
+
+    def __init__(self, memory=Memory(location=None, verbose=0), memory_level=0):
+        self.memory = memory
+        self.memory_level = memory_level
 
     def _collect_inputs(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary.
@@ -122,7 +128,7 @@ class Estimator(NiMAREBase):
         """
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
-        maps, tables, description = self._fit(dataset)
+        maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker

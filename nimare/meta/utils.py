@@ -1,5 +1,4 @@
 """Utilities for coordinate-based meta-analysis estimators."""
-import logging
 import warnings
 
 import numpy as np
@@ -7,8 +6,6 @@ import sparse
 from scipy import ndimage
 
 from nimare.utils import unique_rows
-
-LGR = logging.getLogger(__name__)
 
 
 def compute_kda_ma(

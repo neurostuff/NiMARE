@@ -4,7 +4,7 @@ import logging
 import nibabel as nib
 import numpy as np
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from pymare.stats import fdr
 from scipy import ndimage
 from scipy.stats import chi2
@@ -16,7 +16,7 @@ from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
+from nimare.utils import _check_ncores, tqdm_joblib, vox2mm
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -26,6 +26,10 @@ class MKDADensity(CBMAEstimator):
     r"""Multilevel kernel density analysis- Density analysis.
 
     The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -58,6 +62,12 @@ class MKDADensity(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
@@ -126,6 +136,8 @@ class MKDADensity(CBMAEstimator):
         kernel_transformer=MKDAKernel,
         null_method="approximate",
         n_iters=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -137,7 +149,12 @@ class MKDADensity(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
         self.n_iters = None if null_method == "approximate" else n_iters or 10000
         self.n_cores = _check_ncores(n_cores)
@@ -283,6 +300,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use a 4D sparse array for modeled activation maps.
@@ -299,6 +320,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -354,7 +381,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
-    def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer=MKDAKernel,
+        prior=0.5,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        **kwargs,
+    ):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -363,7 +397,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
 
         self.prior = prior
 
@@ -387,7 +426,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         return description
 
-    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
@@ -1009,6 +1047,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
 class KDA(CBMAEstimator):
     r"""Kernel density analysis.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use a 4D sparse array for modeled activation maps.
@@ -1040,6 +1082,12 @@ class KDA(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
@@ -1113,6 +1161,8 @@ class KDA(CBMAEstimator):
         kernel_transformer=KDAKernel,
         null_method="approximate",
         n_iters=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -1130,7 +1180,12 @@ class KDA(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
         self.n_iters = None if null_method == "approximate" else n_iters or 10000
         self.n_cores = _check_ncores(n_cores)
