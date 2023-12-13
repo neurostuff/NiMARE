@@ -53,7 +53,7 @@ class IBMAEstimator(Estimator):
         **kwargs,
     ):
         self.aggressive_mask = aggressive_mask
-        
+
         if mask is not None:
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
