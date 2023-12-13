@@ -42,7 +42,7 @@ def _check_extention(filename, exts):
         )
 
 
-def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="average"):
+def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="single"):
     """Reorder a matrix.
 
     This function reorders the provided matrix. It was adaptes from
@@ -274,7 +274,7 @@ def plot_heatmap(
     data_df,
     out_filename,
     symmetric=False,
-    reorder="average",
+    reorder="single",
     cmap="Reds",
     zmin=None,
     zmax=None,
@@ -314,7 +314,6 @@ def plot_heatmap(
             data_df.index.to_list(),
             data_df.columns.to_list(),
         )
-        reorder = "average" if symmetric else "single"
         new_mat, new_row_labels, new_col_labels = _reorder_matrix(
             mat,
             row_labels,

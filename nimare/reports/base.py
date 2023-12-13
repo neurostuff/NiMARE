@@ -321,7 +321,7 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
 
         # Plot heatmaps
         [
-            plot_heatmap(contribution_table, fig_dir / heatmap_name, reorder="single", zmin=0)
+            plot_heatmap(contribution_table, fig_dir / heatmap_name, zmin=0)
             for heatmap_name, contribution_table in zip(heatmap_names, contribution_tables)
         ]
 
