@@ -415,6 +415,8 @@ def _apply_liberal_mask(data):
     improve the speed with the numba compiler.
 
     """
+    MIN_STUDY_THRESH = 2
+
     n_voxels = data.shape[1]
     # Get indices of non-nan and zero value of studies for each voxel
     mask = ~np.isnan(data) & (data != 0)
@@ -446,7 +448,7 @@ def _apply_liberal_mask(data):
         # This is the same for all voxels in the match
         study_mask = study_by_voxels_idxs[voxel_mask[0]]
 
-        if len(study_mask) < 2:
+        if len(study_mask) < MIN_STUDY_THRESH:
             # TODO: Figure out how raise a warning in numba
             # warnings.warn(
             #     f"Removing voxels: {voxel_mask} from the analysis. Not present in 2+ studies."
