@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import pymare
+from joblib import Memory
 from nilearn._utils.niimg_conversions import _check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 from nilearn.input_data import NiftiMasker
@@ -25,6 +26,10 @@ __version__ = _version.get_versions()["version"]
 class IBMAEstimator(Estimator):
     """Base class for meta-analysis methods in :mod:`~nimare.meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.2.0
 
         * Remove `resample` and `memory_limit` arguments. Resampling is now
@@ -38,12 +43,22 @@ class IBMAEstimator(Estimator):
 
     """
 
-    def __init__(self, aggressive_mask=True, *, mask=None, **kwargs):
+    def __init__(
+        self,
+        aggressive_mask=True,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        *,
+        mask=None,
+        **kwargs,
+    ):
         self.aggressive_mask = aggressive_mask
-
+        
         if mask is not None:
-            mask = get_masker(mask)
+            mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
+
+        super().__init__(memory=memory, memory_level=memory_level)
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {"clip": True, "interpolation": "linear"}

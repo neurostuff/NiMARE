@@ -11,6 +11,7 @@ import logging
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from joblib import Memory
 
 from nimare.base import NiMAREBase
 from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
@@ -24,7 +25,7 @@ class KernelTransformer(NiMAREBase):
 
     .. versionchanged:: 0.0.13
 
-            - Remove "dataset" `return_type` option.
+        - Remove "dataset" `return_type` option.
 
     Coordinate-based meta-analyses leverage coordinates reported in
     neuroimaging papers to simulate the thresholded statistical maps from the
@@ -32,12 +33,25 @@ class KernelTransformer(NiMAREBase):
     a kernel (typically a Gaussian or binary sphere) that may be weighted based
     on some additional measure, such as statistic value or sample size.
 
+    Parameters
+    ----------
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+
     Notes
     -----
     All extra (non-ijk) parameters for a given kernel should be overrideable as
     parameters to __init__, so we can access them with get_params() and also
     apply them to datasets with missing data.
     """
+
+    def __init__(self, memory=Memory(location=None, verbose=0), memory_level=0):
+        self.memory = memory
+        self.memory_level = memory_level
 
     def _infer_names(self, **kwargs):
         """Determine filename pattern and image type.
@@ -155,7 +169,7 @@ class KernelTransformer(NiMAREBase):
             mask_data = mask.get_fdata().astype(dtype)
 
         # Generate the MA maps
-        transformed_maps = self._transform(mask, coordinates)
+        transformed_maps = self._cache(self._transform, func_memory_level=2)(mask, coordinates)
 
         if return_type == "sparse":
             return transformed_maps[0]
@@ -215,9 +229,13 @@ class ALEKernel(KernelTransformer):
     will be determined on a study-wise basis based on the sample sizes available in the input,
     via the method described in :footcite:t:`eickhoff2012activation`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.13
 
-            - Remove "dataset" `return_type` option.
+        - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 
@@ -234,17 +252,30 @@ class ALEKernel(KernelTransformer):
         formulae from Eickhoff et al. (2012). This sample size overwrites
         the Contrast-specific sample sizes in the dataset, in order to hold
         kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
 
     References
     ----------
     .. footbibliography::
     """
 
-    def __init__(self, fwhm=None, sample_size=None):
+    def __init__(
+        self,
+        fwhm=None,
+        sample_size=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+    ):
         if fwhm is not None and sample_size is not None:
             raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
         self.fwhm = fwhm
         self.sample_size = sample_size
+        super().__init__(memory=memory, memory_level=memory_level)
 
     def _transform(self, mask, coordinates):
         ijks = coordinates[["i", "j", "k"]].values
@@ -315,7 +346,11 @@ class KDAKernel(KernelTransformer):
 
     .. versionchanged:: 0.0.13
 
-            - Remove "dataset" `return_type` option.
+        - Add new parameter ``memory`` to cache modeled activation (MA) maps.
+
+    .. versionchanged:: 0.0.13
+
+        - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 
@@ -327,13 +362,26 @@ class KDAKernel(KernelTransformer):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     """
 
     _sum_overlap = True
 
-    def __init__(self, r=10, value=1):
+    def __init__(
+        self,
+        r=10,
+        value=1,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+    ):
         self.r = float(r)
         self.value = value
+        super().__init__(memory=memory, memory_level=memory_level)
 
     def _transform(self, mask, coordinates):
         ijks = coordinates[["i", "j", "k"]].values
@@ -370,9 +418,13 @@ class KDAKernel(KernelTransformer):
 class MKDAKernel(KDAKernel):
     """Generate MKDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.13
 
-            - Remove "dataset" `return_type` option.
+        - Remove "dataset" `return_type` option.
 
     .. versionchanged:: 0.0.12
 
@@ -384,6 +436,12 @@ class MKDAKernel(KDAKernel):
         Sphere radius, in mm.
     value : :obj:`int`, optional
         Value for sphere.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     """
 
     _sum_overlap = False

@@ -114,12 +114,18 @@ def get_template(space="mni152_2mm", mask=None):
     return img
 
 
-def get_masker(mask):
+def get_masker(mask, memory=joblib.Memory(location=None, verbose=0), memory_level=1):
     """Get an initialized, fitted nilearn Masker instance from passed argument.
 
     Parameters
     ----------
     mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=1
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
 
     Returns
     -------
@@ -133,7 +139,7 @@ def get_masker(mask):
         # Coerce to array-image
         mask = nib.Nifti1Image(mask.get_fdata(), affine=mask.affine, header=mask.header)
 
-        mask = NiftiMasker(mask)
+        mask = NiftiMasker(mask, memory=memory, memory_level=memory_level)
 
     if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
         raise ValueError(

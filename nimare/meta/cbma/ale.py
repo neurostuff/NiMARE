@@ -4,7 +4,7 @@ import logging
 import numpy as np
 import pandas as pd
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from tqdm.auto import tqdm
 
 from nimare import _version
@@ -20,6 +20,10 @@ __version__ = _version.get_versions()["version"]
 
 class ALE(CBMAEstimator):
     """Activation likelihood estimation.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -54,6 +58,12 @@ class ALE(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
@@ -126,6 +136,8 @@ class ALE(CBMAEstimator):
         kernel_transformer=ALEKernel,
         null_method="approximate",
         n_iters=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -137,7 +149,12 @@ class ALE(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
         self.n_iters = None if null_method == "approximate" else n_iters or 10000
         self.n_cores = _check_ncores(n_cores)
@@ -307,6 +324,10 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     """ALE subtraction analysis.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
@@ -329,6 +350,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of processes to use for meta-analysis. If -1, use all available cores.
         Default is 1.
@@ -373,7 +400,15 @@ class ALESubtraction(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
-    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer=ALEKernel,
+        n_iters=10000,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        n_cores=1,
+        **kwargs,
+    ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -382,7 +417,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
 
         self.dataset1 = None
         self.dataset2 = None
@@ -587,6 +627,10 @@ class SCALE(CBMAEstimator):
 
     This method was originally introduced in :footcite:t:`langner2014meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
@@ -616,6 +660,12 @@ class SCALE(CBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix '\kernel__' in the variable name.
@@ -651,6 +701,8 @@ class SCALE(CBMAEstimator):
         n_iters=10000,
         n_cores=1,
         kernel_transformer=ALEKernel,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -661,7 +713,12 @@ class SCALE(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
 
         if not isinstance(xyz, np.ndarray):
             raise TypeError(f"Parameter 'xyz' must be a numpy.ndarray, not a {type(xyz)}")
