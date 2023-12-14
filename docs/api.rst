@@ -332,7 +332,6 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :toctree: generated/
    :template: function.rst
 
-   workflows.ale_sleuth_workflow
    workflows.macm_workflow
    workflows.cbma.CBMAWorkflow
    workflows.cbma.PairwiseCBMAWorkflow
