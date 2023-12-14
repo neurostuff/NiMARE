@@ -55,6 +55,8 @@ sections:
     title: Relative Coverage Map
   - bids: {value: preliminary, dset: 1, suffix: figure-ridgeplot}
     title: Ridge Plot
+  - bids: {value: preliminary, dset: 1, suffix: figure-similarity}
+    title: Similarity of Input Maps
   - bids: {value: preliminary, dset: 2, suffix: summary}
     title: Dataset 2
   - bids: {value: preliminary, dset: 2, suffix: figure-mask}

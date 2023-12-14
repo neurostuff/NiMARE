@@ -42,7 +42,7 @@ def _check_extention(filename, exts):
         )
 
 
-def _reorder_matrix(mat, row_labels, col_labels, reorder):
+def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="single"):
     """Reorder a matrix.
 
     This function reorders the provided matrix. It was adaptes from
@@ -83,14 +83,20 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
     row_ordered_linkage = optimal_leaf_ordering(row_linkage_matrix, mat)
     row_index = leaves_list(row_ordered_linkage)
 
-    # Order columns
-    col_linkage_matrix = linkage(mat.T, method=reorder)
-    col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat.T)
-    col_index = leaves_list(col_ordered_linkage)
-
     # Make sure labels is an ndarray and copy it
     row_labels = np.array(row_labels).copy()
-    col_labels = np.array(col_labels).copy()
+
+    if not symmetric:
+        # Order columns
+        col_linkage_matrix = linkage(mat.T, method=reorder)
+        col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat.T)
+        col_index = leaves_list(col_ordered_linkage)
+
+        col_labels = np.array(col_labels).copy()
+    else:
+        col_index = row_index
+        col_labels = row_labels
+
     mat = mat.copy()
 
     # and reorder labels and matrix
@@ -264,39 +270,60 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
     html_view.save_as_html(out_filename)
 
 
-def plot_heatmap(contribution_table, out_filename):
+def plot_heatmap(
+    data_df,
+    out_filename,
+    symmetric=False,
+    reorder="single",
+    cmap="Reds",
+    zmin=None,
+    zmax=None,
+):
     """Plot heatmap.
 
     .. versionadded:: 0.1.0
 
     Parameters
     ----------
-    contribution_table : :obj:`pandas.DataFrame`
-        A DataFrame with information about relative contributions of each experiment to each
-        cluster in the thresholded map.
+    data_df : :obj:`pandas.DataFrame`
+        A DataFrame with the data for the heatmap. It could be a correlation matrix or
+        a contribution matrix with information about the relative contributions of
+        each experiment to each cluster in the thresholded map.
     out_filename : :obj:`pathlib.Path`
         The name of an image file to export the plot to.
         Valid extension is '.html'.
+    symmetric : :obj:`bool`, optional
+        Whether to reorder the matrix symmetrically. Use True if using a correlation matrix.
+        Default is False.
+    reorder : :obj:`str`, optional
+        The method to use for reordering the matrix. Default is 'average'.
+    cmap : :obj:`str`, optional
+        The colormap to use. Default is 'Reds'.
+    zmin : :obj:`float`, optional
+        The minimum value to use for the colormap. Default is None.
+    zmax : :obj:`float`, optional
+        The maximum value to use for the colormap. Default is None.
     """
     _check_extention(out_filename, [".html"])
 
-    n_studies, n_clusters = contribution_table.shape
+    n_studies, n_clusters = data_df.shape
     if (n_studies > 2) and (n_clusters > 2):
         # Reorder matrix only if more than 1 cluster/experiment
-        mat = contribution_table.to_numpy()
+        mat = data_df.to_numpy()
         row_labels, col_labels = (
-            contribution_table.index.to_list(),
-            contribution_table.columns.to_list(),
+            data_df.index.to_list(),
+            data_df.columns.to_list(),
         )
         new_mat, new_row_labels, new_col_labels = _reorder_matrix(
             mat,
             row_labels,
             col_labels,
-            "single",
+            symmetric=symmetric,
+            reorder=reorder,
         )
-        contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
+        data_df = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
-    fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="equal")
+    fig = px.imshow(data_df, color_continuous_scale=cmap, zmin=zmin, zmax=zmax, aspect="equal")
 
     pxs_per_sqr = 50  # Number of pixels per square in the heatmap
     height = n_studies * pxs_per_sqr

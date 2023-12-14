@@ -27,6 +27,7 @@ from glob import glob
 from pathlib import Path
 
 import jinja2
+import pandas as pd
 from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
@@ -41,6 +42,7 @@ from nimare.reports.figures import (
     plot_mask,
     plot_static_brain,
 )
+from nimare.stats import pearson
 
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
@@ -269,6 +271,13 @@ def _gen_fig_summary(img_key, threshold, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
+def _compute_similarities(maps_arr, ids_):
+    """Compute the similarity between maps."""
+    corrs = [pearson(img_map, maps_arr) for img_map in list(maps_arr)]
+
+    return pd.DataFrame(index=ids_, columns=ids_, data=corrs)
+
+
 def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     """Generate html and png objects for the report."""
     # Plot brain images if not empty
@@ -316,7 +325,7 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
 
         # Plot heatmaps
         [
-            plot_heatmap(contribution_table, fig_dir / heatmap_name)
+            plot_heatmap(contribution_table, fig_dir / heatmap_name, zmin=0)
             for heatmap_name, contribution_table in zip(heatmap_names, contribution_tables)
         ]
 
@@ -483,6 +492,17 @@ class Report:
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.png",
                 )
 
+                similarity_table = _compute_similarities(maps_arr, ids_)
+
+                plot_heatmap(
+                    similarity_table,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-similarity.html",
+                    symmetric=True,
+                    cmap="RdBu_r",
+                    zmin=-1,
+                    zmax=1,
+                )
+
         _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
         _gen_cor_summary(self.results.corrector, self.fig_dir / "corrector_summary.html")
         for diagnostic in self.results.diagnostics:
@@ -565,6 +585,10 @@ def run_reports(
     out_dir,
 ):
     """Run the reports.
+
+    .. versionchanged:: 0.2.1
+
+        * Add similarity matrix to summary for image-based meta-analyses.
 
     .. versionchanged:: 0.2.0
 
