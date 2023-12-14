@@ -3,6 +3,7 @@ import warnings
 
 import numpy as np
 import sparse
+from numba import jit
 from scipy import ndimage
 
 from nimare.utils import unique_rows
@@ -384,3 +385,80 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         max_size = 0
 
     return max_size, max_mass
+
+
+@jit(nopython=True, cache=True)
+def _apply_liberal_mask(data):
+    """Separate input image data in bags of voxels that have a valid value across the same studies.
+
+    Parameters
+    ----------
+    data : (S x V) :class:`numpy.ndarray`
+        2D numpy array (S x V) of images, where S is study and V is voxel.
+
+    Returns
+    -------
+    values_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 2D numpy arrays (s x v) of images, where the voxel v have a valid
+        value in study s.
+    voxel_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (v) of voxel indices for the corresponding bag.
+    study_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (s) of study indices for the corresponding bag.
+
+    Notes
+    -----
+    Parts of the function are implemented with nested for loops to
+    improve the speed with the numba compiler.
+
+    """
+    MIN_STUDY_THRESH = 2
+
+    n_voxels = data.shape[1]
+    # Get indices of non-nan and zero value of studies for each voxel
+    mask = ~np.isnan(data) & (data != 0)
+    study_by_voxels_idxs = [np.where(mask[:, i])[0] for i in range(n_voxels)]
+
+    # Group studies by the same number of non-nan voxels
+    matches = []
+    all_indices = []
+    for col_i in range(n_voxels):
+        if col_i in all_indices:
+            continue
+
+        vox_match = [col_i]
+        all_indices.append(col_i)
+        for col_j in range(col_i + 1, n_voxels):
+            if (
+                len(study_by_voxels_idxs[col_i]) == len(study_by_voxels_idxs[col_j])
+                and np.array_equal(study_by_voxels_idxs[col_i], study_by_voxels_idxs[col_j])
+                and col_j not in all_indices
+            ):
+                vox_match.append(col_j)
+                all_indices.append(col_j)
+
+        matches.append(np.array(vox_match))
+
+    values_lst, voxel_mask_lst, study_mask_lst = [], [], []
+    for voxel_mask in matches:
+        n_masked_voxels = len(voxel_mask)
+        # This is the same for all voxels in the match
+        study_mask = study_by_voxels_idxs[voxel_mask[0]]
+
+        if len(study_mask) < MIN_STUDY_THRESH:
+            # TODO: Figure out how raise a warning in numba
+            # warnings.warn(
+            #     f"Removing voxels: {voxel_mask} from the analysis. Not present in 2+ studies."
+            # )
+            continue
+
+        values = np.zeros((len(study_mask), n_masked_voxels))
+        for vox_i, vox in enumerate(voxel_mask):
+            for std_i, study in enumerate(study_mask):
+                values[std_i, vox_i] = data[study, vox]
+
+        values_lst.append(values)
+        voxel_mask_lst.append(voxel_mask)
+        study_mask_lst.append(study_mask)
+
+    return values_lst, voxel_mask_lst, study_mask_lst

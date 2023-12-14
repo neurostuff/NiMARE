@@ -20,7 +20,7 @@ from nimare.tests.utils import get_test_data_path
             {},
             FDRCorrector,
             {"method": "indep", "alpha": 0.001},
-            ("z", "p"),
+            ("z", "p", "dof"),
             id="Fishers",
         ),
         pytest.param(
@@ -28,7 +28,7 @@ from nimare.tests.utils import get_test_data_path
             {"use_sample_size": False},
             None,
             {},
-            ("z", "p"),
+            ("z", "p", "dof"),
             id="Stouffers",
         ),
         pytest.param(
@@ -36,7 +36,7 @@ from nimare.tests.utils import get_test_data_path
             {"use_sample_size": True},
             None,
             {},
-            ("z", "p"),
+            ("z", "p", "dof"),
             id="Stouffers_weighted",
         ),
         pytest.param(
@@ -44,7 +44,7 @@ from nimare.tests.utils import get_test_data_path
             {"tau2": 0},
             None,
             {},
-            ("z", "p", "est", "se"),
+            ("z", "p", "est", "se", "dof"),
             id="WeightedLeastSquares",
         ),
         pytest.param(
@@ -52,7 +52,7 @@ from nimare.tests.utils import get_test_data_path
             {},
             None,
             {},
-            ("z", "p", "est", "se", "tau2"),
+            ("z", "p", "est", "se", "tau2", "dof"),
             id="DerSimonianLaird",
         ),
         pytest.param(
@@ -60,7 +60,7 @@ from nimare.tests.utils import get_test_data_path
             {},
             None,
             {},
-            ("z", "p", "est", "se", "tau2"),
+            ("z", "p", "est", "se", "tau2", "dof"),
             id="Hedges",
         ),
         pytest.param(
@@ -68,7 +68,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "ml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "sigma2"),
+            ("z", "p", "est", "se", "tau2", "sigma2", "dof"),
             id="SampleSizeBasedLikelihood_ml",
         ),
         pytest.param(
@@ -76,7 +76,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "reml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "sigma2"),
+            ("z", "p", "est", "se", "tau2", "sigma2", "dof"),
             id="SampleSizeBasedLikelihood_reml",
         ),
         pytest.param(
@@ -84,7 +84,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "ml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2"),
+            ("z", "p", "est", "se", "tau2", "dof"),
             id="VarianceBasedLikelihood_ml",
         ),
         pytest.param(
@@ -92,7 +92,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "reml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2"),
+            ("z", "p", "est", "se", "tau2", "dof"),
             id="VarianceBasedLikelihood_reml",
         ),
         pytest.param(
@@ -100,14 +100,23 @@ from nimare.tests.utils import get_test_data_path
             {"two_sided": True},
             FWECorrector,
             {"method": "montecarlo", "n_iters": 100, "n_cores": 1},
-            ("t", "z"),
+            ("t", "z", "dof"),
             id="PermutedOLS",
         ),
     ],
 )
-def test_ibma_smoke(testdata_ibma, meta, meta_kwargs, corrector, corrector_kwargs, maps):
+@pytest.mark.parametrize("aggressive_mask", [True, False], ids=["aggressive", "liberal"])
+def test_ibma_smoke(
+    testdata_ibma,
+    meta,
+    aggressive_mask,
+    meta_kwargs,
+    corrector,
+    corrector_kwargs,
+    maps,
+):
     """Smoke test for IBMA estimators."""
-    meta = meta(**meta_kwargs)
+    meta = meta(aggressive_mask=aggressive_mask, **meta_kwargs)
     results = meta.fit(testdata_ibma)
     for expected_map in maps:
         assert expected_map in results.maps.keys()

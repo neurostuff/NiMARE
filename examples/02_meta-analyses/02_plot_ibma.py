@@ -86,7 +86,7 @@ pprint(results.bibtex_)
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import Fishers
 
-meta = Fishers(resample=True)
+meta = Fishers()
 results = meta.fit(dset)
 
 plot_stat_map(
