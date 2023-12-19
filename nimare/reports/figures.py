@@ -488,3 +488,31 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
     )
     fig.savefig(out_filename, dpi=300)
     fig.close()
+
+
+def _plot_dof_map(dof_map, out_filename):
+    """Plot DoF map.
+
+    .. versionadded:: 0.2.0
+
+    """
+    _check_extention(out_filename, [".png", ".pdf", ".svg"])
+
+    epsilon = 1e-05
+
+    # Plot coverage map
+    template = datasets.load_mni152_template(resolution=1)
+    fig = plot_img(
+        dof_map,
+        bg_img=template,
+        black_bg=False,
+        draw_cross=False,
+        threshold=epsilon,
+        alpha=0.7,
+        colorbar=True,
+        cmap="YlOrRd",
+        vmin=0,
+        display_mode="mosaic",
+    )
+    fig.savefig(out_filename, dpi=300)
+    fig.close()

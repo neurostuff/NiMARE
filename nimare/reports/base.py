@@ -32,6 +32,7 @@ from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.reports.figures import (
+    _plot_dof_map,
     _plot_relcov_map,
     _plot_ridgeplot,
     gen_table,
@@ -478,12 +479,19 @@ class Report:
                 ids_ = self.results.estimator.inputs_["id"]
                 x_label = "Z" if key_maps == "z_maps" else "Beta"
 
-                _plot_relcov_map(
-                    maps_arr,
-                    self.results.estimator.masker,
-                    self.results.estimator.inputs_["aggressive_mask"],
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-relcov.png",
-                )
+                if self.results.estimator.aggressive_mask:
+                    _plot_relcov_map(
+                        maps_arr,
+                        self.results.estimator.masker,
+                        self.results.estimator.inputs_["aggressive_mask"],
+                        self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-relcov.png",
+                    )
+                else:
+                    dof_map = self.results.get_map("dof")
+                    _plot_dof_map(
+                        dof_map,
+                        self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-dof.png",
+                    )
 
                 _plot_ridgeplot(
                     maps_arr,
