@@ -493,7 +493,7 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
 def _plot_dof_map(dof_map, out_filename):
     """Plot DoF map.
 
-    .. versionadded:: 0.2.0
+    .. versionadded:: 0.2.1
 
     """
     _check_extention(out_filename, [".png", ".pdf", ".svg"])
