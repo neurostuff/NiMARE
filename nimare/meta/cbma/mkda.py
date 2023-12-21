@@ -251,6 +251,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - Add `compute_probabilities` parameter to control whether conditional probabilities are
+            calculated. This is useful because probability maps are difficult to interpret and 
+            for speeding up the algorithm when only the chi-squared values are needed, 
+        - Rename ``consistency`` to ``uniformity`` and ``specificity`` to ``association`` to match
+          Neurosynth's terminology
+
     .. versionchanged:: 0.0.12
 
         - Use a 4D sparse array for modeled activation maps.
@@ -322,7 +330,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
-    def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
+    def __init__(self, kernel_transformer=MKDAKernel, compute_probabilities=False, prior=0.5, **kwargs):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -334,6 +342,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         super().__init__(kernel_transformer=kernel_transformer, **kwargs)
 
         self.prior = prior
+        self.compute_probabilities = compute_probabilities
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset1, dataset2):
@@ -375,29 +384,29 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         n_mappables = n_selected + n_unselected
 
-        # Nomenclature for variables below: p = probability,
-        # F = feature present, g = given, U = unselected, A = activation.
-        # So, e.g., pAgF = p(A|F) = probability of activation
-        # in a voxel if we know that the feature is present in a study.
-        pF = n_selected / n_mappables
-        pA = np.array(
-            (n_selected_active_voxels + n_unselected_active_voxels) / n_mappables
-        ).squeeze()
+        if self.compute_probabilities:
+            # Nomenclature for variables below: p = probability,
+            # F = feature present, g = given, U = unselected, A = activation.
+            # So, e.g., pAgF = p(A|F) = probability of activation
+            # in a voxel if we know that the feature is present in a study.
+            pF = n_selected / n_mappables
+            pA = np.array(
+                (n_selected_active_voxels + n_unselected_active_voxels) / n_mappables
+            ).squeeze()
 
-        del n_mappables
+            del n_mappables
 
-        # Conditional probabilities
-        pAgF = n_selected_active_voxels / n_selected
-        pAgU = n_unselected_active_voxels / n_unselected
-        pFgA = pAgF * pF / pA
+            pAgF = n_selected_active_voxels / n_selected
+            pAgU = n_unselected_active_voxels / n_unselected
+            pFgA = pAgF * pF / pA
 
-        del pF
+            del pF
 
-        # Recompute conditionals with uniform prior
-        pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
-        pFgA_prior = pAgF * self.prior / pAgF_prior
+            # Recompute conditionals with uniform prior
+            pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
+            pFgA_prior = pAgF * self.prior / pAgF_prior
 
-        # One-way chi-square test for consistency of activation
+        # One-way chi-square test for uniformity of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
         pAgF_p_vals = chi2.sf(pAgF_chi2_vals, 1)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
@@ -405,7 +414,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del pAgF_sign
 
-        # Two-way chi-square for specificity of activation
+        # Two-way chi-square for association of activation
         cells = np.squeeze(
             np.array(
                 [
@@ -433,18 +442,25 @@ class MKDAChi2(PairwiseCBMAEstimator):
         del pFgA_sign, pAgU
 
         maps = {
-            "prob_desc-A": pA,
-            "prob_desc-AgF": pAgF,
-            "prob_desc-FgA": pFgA,
-            ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
-            ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior,
-            "z_desc-consistency": pAgF_z,
-            "z_desc-specificity": pFgA_z,
-            "chi2_desc-consistency": pAgF_chi2_vals,
-            "chi2_desc-specificity": pFgA_chi2_vals,
-            "p_desc-consistency": pAgF_p_vals,
-            "p_desc-specificity": pFgA_p_vals,
+            "z_desc-uniformity": pAgF_z,
+            "z_desc-association": pFgA_z,
+            "chi2_desc-uniformity": pAgF_chi2_vals,
+            "chi2_desc-association": pFgA_chi2_vals,
+            "p_desc-uniformity": pAgF_p_vals,
+            "p_desc-association": pFgA_p_vals,
         }
+
+        if self.compute_probabilities:
+            maps.update(
+                {
+                "prob_desc-A": pA,
+                "prob_desc-AgF": pAgF,
+                "prob_desc-FgA": pFgA,
+                ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
+                ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior,
+                }
+            )
+
         return maps, {}
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
@@ -520,7 +536,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # pAgF = n_selected_active_voxels / n_selected
         # pAgU = n_unselected_active_voxels / n_unselected
 
-        # One-way chi-square test for consistency of activation
+        # One-way chi-square test for uniformity of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
 
         # Voxel-level inference
@@ -532,7 +548,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgF_chi2_map, voxel_thresh, conn, tail="two"
         )
 
-        # Two-way chi-square for specificity of activation
+        # Two-way chi-square for association of activation
         cells = np.squeeze(
             np.array(
                 [
@@ -677,42 +693,42 @@ class MKDAChi2(PairwiseCBMAEstimator):
             the correction procedure. The following arrays are generated by
             this method:
 
-            -   ``p_desc-consistency_level-voxel``: Voxel-level FWE-corrected p-values from the
-                consistency/forward inference analysis.
-            -   ``z_desc-consistency_level-voxel``: Voxel-level FWE-corrected z-values from the
-                consistency/forward inference analysis.
-            -   ``logp_desc-consistency_level-voxel``: Voxel-level FWE-corrected -log10 p-values
-                from the consistency/forward inference analysis.
-            -   ``p_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected p-values
-                from the consistency/forward inference analysis, using cluster mass.
-            -   ``z_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected z-values
-                from the consistency/forward inference analysis, using cluster mass.
-            -   ``logp_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the consistency/forward inference analysis, using cluster mass.
-            -   ``p_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected p-values
-                from the consistency/forward inference analysis, using cluster size.
-            -   ``z_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected z-values
-                from the consistency/forward inference analysis, using cluster size.
-            -   ``logp_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the consistency/forward inference analysis, using cluster size.
-            -   ``p_desc-specificity_level-voxel``: Voxel-level FWE-corrected p-values from the
-                specificity/reverse inference analysis.
-            -   ``z_desc-specificity_level-voxel``: Voxel-level FWE-corrected z-values from the
-                specificity/reverse inference analysis.
-            -   ``logp_desc-specificity_level-voxel``: Voxel-level FWE-corrected -log10 p-values
-                from the specificity/reverse inference analysis.
-            -   ``p_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected p-values
-                from the specificity/reverse inference analysis, using cluster mass.
-            -   ``z_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected z-values
-                from the specificity/reverse inference analysis, using cluster mass.
-            -   ``logp_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the specificity/reverse inference analysis, using cluster mass.
-            -   ``p_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected p-values
-                from the specificity/reverse inference analysis, using cluster size.
-            -   ``z_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected z-values
-                from the specificity/reverse inference analysis, using cluster size.
-            -   ``logp_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the specificity/reverse inference analysis, using cluster size.
+            -   ``p_desc-uniformity_level-voxel``: Voxel-level FWE-corrected p-values from the
+                uniformity/forward inference analysis.
+            -   ``z_desc-uniformity_level-voxel``: Voxel-level FWE-corrected z-values from the
+                uniformity/forward inference analysis.
+            -   ``logp_desc-uniformity_level-voxel``: Voxel-level FWE-corrected -log10 p-values
+                from the uniformity/forward inference analysis.
+            -   ``p_desc-uniformityMass_level-cluster``: Cluster-level FWE-corrected p-values
+                from the uniformity/forward inference analysis, using cluster mass.
+            -   ``z_desc-uniformityMass_level-cluster``: Cluster-level FWE-corrected z-values
+                from the uniformity/forward inference analysis, using cluster mass.
+            -   ``logp_desc-uniformityMass_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the uniformity/forward inference analysis, using cluster mass.
+            -   ``p_desc-uniformitySize_level-cluster``: Cluster-level FWE-corrected p-values
+                from the uniformity/forward inference analysis, using cluster size.
+            -   ``z_desc-uniformitySize_level-cluster``: Cluster-level FWE-corrected z-values
+                from the uniformity/forward inference analysis, using cluster size.
+            -   ``logp_desc-uniformitySize_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the uniformity/forward inference analysis, using cluster size.
+            -   ``p_desc-association_level-voxel``: Voxel-level FWE-corrected p-values from the
+                association/reverse inference analysis.
+            -   ``z_desc-association_level-voxel``: Voxel-level FWE-corrected z-values from the
+                association/reverse inference analysis.
+            -   ``logp_desc-association_level-voxel``: Voxel-level FWE-corrected -log10 p-values
+                from the association/reverse inference analysis.
+            -   ``p_desc-associationMass_level-cluster``: Cluster-level FWE-corrected p-values
+                from the association/reverse inference analysis, using cluster mass.
+            -   ``z_desc-associationMass_level-cluster``: Cluster-level FWE-corrected z-values
+                from the association/reverse inference analysis, using cluster mass.
+            -   ``logp_desc-associationMass_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the association/reverse inference analysis, using cluster mass.
+            -   ``p_desc-associationSize_level-cluster``: Cluster-level FWE-corrected p-values
+                from the association/reverse inference analysis, using cluster size.
+            -   ``z_desc-associationSize_level-cluster``: Cluster-level FWE-corrected z-values
+                from the association/reverse inference analysis, using cluster size.
+            -   ``logp_desc-associationSize_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the association/reverse inference analysis, using cluster size.
 
         Notes
         -----
@@ -752,10 +768,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
             self.masker.mask_img.affine,
         )
-        pAgF_chi2_vals = result.get_map("chi2_desc-consistency", return_type="array")
-        pFgA_chi2_vals = result.get_map("chi2_desc-specificity", return_type="array")
-        pAgF_z_vals = result.get_map("z_desc-consistency", return_type="array")
-        pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
+        pAgF_chi2_vals = result.get_map("chi2_desc-uniformity", return_type="array")
+        pFgA_chi2_vals = result.get_map("chi2_desc-association", return_type="array")
+        pAgF_z_vals = result.get_map("z_desc-uniformity", return_type="array")
+        pFgA_z_vals = result.get_map("z_desc-association", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
@@ -870,26 +886,26 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_logp_csfwe_vals[np.isinf(pFgA_logp_csfwe_vals)] = -np.log10(eps)
 
         maps = {
-            # Consistency analysis
-            "p_desc-consistency_level-voxel": pAgF_p_vfwe_vals,
-            "z_desc-consistency_level-voxel": pAgF_z_vfwe_vals,
-            "logp_desc-consistency_level-voxel": pAgF_logp_vfwe_vals,
-            "p_desc-consistencyMass_level-cluster": pAgF_p_cmfwe_vals,
-            "z_desc-consistencyMass_level-cluster": pAgF_z_cmfwe_vals,
-            "logp_desc-consistencyMass_level-cluster": pAgF_logp_cmfwe_vals,
-            "p_desc-consistencySize_level-cluster": pAgF_p_csfwe_vals,
-            "z_desc-consistencySize_level-cluster": pAgF_z_csfwe_vals,
-            "logp_desc-consistencySize_level-cluster": pAgF_logp_csfwe_vals,
-            # Specificity analysis
-            "p_desc-specificity_level-voxel": pFgA_p_vfwe_vals,
-            "z_desc-specificity_level-voxel": pFgA_z_vfwe_vals,
-            "logp_desc-specificity_level-voxel": pFgA_logp_vfwe_vals,
-            "p_desc-specificityMass_level-cluster": pFgA_p_cmfwe_vals,
-            "z_desc-specificityMass_level-cluster": pFgA_z_cmfwe_vals,
-            "logp_desc-specificityMass_level-cluster": pFgA_logp_cmfwe_vals,
-            "p_desc-specificitySize_level-cluster": pFgA_p_csfwe_vals,
-            "z_desc-specificitySize_level-cluster": pFgA_z_csfwe_vals,
-            "logp_desc-specificitySize_level-cluster": pFgA_logp_csfwe_vals,
+            # uniformity analysis
+            "p_desc-uniformity_level-voxel": pAgF_p_vfwe_vals,
+            "z_desc-uniformity_level-voxel": pAgF_z_vfwe_vals,
+            "logp_desc-uniformity_level-voxel": pAgF_logp_vfwe_vals,
+            "p_desc-uniformityMass_level-cluster": pAgF_p_cmfwe_vals,
+            "z_desc-uniformityMass_level-cluster": pAgF_z_cmfwe_vals,
+            "logp_desc-uniformityMass_level-cluster": pAgF_logp_cmfwe_vals,
+            "p_desc-uniformitySize_level-cluster": pAgF_p_csfwe_vals,
+            "z_desc-uniformitySize_level-cluster": pAgF_z_csfwe_vals,
+            "logp_desc-uniformitySize_level-cluster": pAgF_logp_csfwe_vals,
+            # association analysis
+            "p_desc-association_level-voxel": pFgA_p_vfwe_vals,
+            "z_desc-association_level-voxel": pFgA_z_vfwe_vals,
+            "logp_desc-association_level-voxel": pFgA_logp_vfwe_vals,
+            "p_desc-associationMass_level-cluster": pFgA_p_cmfwe_vals,
+            "z_desc-associationMass_level-cluster": pFgA_z_cmfwe_vals,
+            "logp_desc-associationMass_level-cluster": pFgA_logp_cmfwe_vals,
+            "p_desc-associationSize_level-cluster": pFgA_p_csfwe_vals,
+            "z_desc-associationSize_level-cluster": pFgA_z_csfwe_vals,
+            "logp_desc-associationSize_level-cluster": pFgA_logp_csfwe_vals,
         }
         return maps, {}
 
@@ -914,7 +930,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         maps : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked maps generated by
             the correction procedure. The following arrays are generated by
-            this method: 'z_desc-consistency_level-voxel' and 'z_desc-specificity_level-voxel'.
+            this method: 'z_desc-uniformity_level-voxel' and 'z_desc-association_level-voxel'.
 
         See Also
         --------
@@ -927,10 +943,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> corrector = FDRCorrector(method='indep', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
-        pAgF_p_vals = result.get_map("p_desc-consistency", return_type="array")
-        pFgA_p_vals = result.get_map("p_desc-specificity", return_type="array")
-        pAgF_z_vals = result.get_map("z_desc-consistency", return_type="array")
-        pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
+        pAgF_p_vals = result.get_map("p_desc-uniformity", return_type="array")
+        pFgA_p_vals = result.get_map("p_desc-association", return_type="array")
+        pAgF_z_vals = result.get_map("z_desc-uniformity", return_type="array")
+        pFgA_z_vals = result.get_map("z_desc-association", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
         pAgF_p_FDR = fdr(pAgF_p_vals, q=alpha, method="bh")
@@ -940,8 +956,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
         maps = {
-            "z_desc-consistency_level-voxel": pAgF_z_FDR,
-            "z_desc-specificity_level-voxel": pFgA_z_FDR,
+            "z_desc-uniformity_level-voxel": pAgF_z_FDR,
+            "z_desc-association_level-voxel": pFgA_z_FDR,
         }
         return maps, {}
 
