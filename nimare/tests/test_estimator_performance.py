@@ -24,6 +24,7 @@ else:
 # PRECOMPUTED FIXTURES
 # --------------------
 
+
 ##########################################
 # random state
 ##########################################
@@ -255,14 +256,14 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
         good_specificity = True
     elif (
         isinstance(meta_res.estimator, ale.ALE)
-        and type(meta_res.estimator.kernel_transformer) == kernel.KDAKernel
+        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
         and "montecarlo" in meta_res.estimator.get_params().get("null_method")
     ):
         good_sensitivity = False
         good_specificity = True
     elif (
         isinstance(meta_res.estimator, ale.ALE)
-        and type(meta_res.estimator.kernel_transformer) == kernel.KDAKernel
+        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
         and meta_res.estimator.get_params().get("null_method") == "approximate"
     ):
         good_sensitivity = True
@@ -340,7 +341,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         good_specificity = True
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
-        and type(meta_cres.estimator.kernel_transformer) == kernel.KDAKernel
+        and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and (
             "montecarlo" in meta_cres.estimator.get_params().get("null_method")
             or (
@@ -353,7 +354,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         good_specificity = True
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
-        and type(meta_cres.estimator.kernel_transformer) == kernel.KDAKernel
+        and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and meta_cres.estimator.get_params().get("null_method") == "approximate"
     ):
         good_sensitivity = True

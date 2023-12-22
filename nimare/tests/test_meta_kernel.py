@@ -1,4 +1,6 @@
 """Test nimare.meta.kernel (CBMA kernel estimators)."""
+import time
+
 import nibabel as nib
 import numpy as np
 import pytest
@@ -11,8 +13,6 @@ from nimare.utils import get_masker, get_template, mm2vox
 @pytest.mark.parametrize(
     "kern, res, param, return_type, kwargs",
     [
-        (kernel.ALEKernel, 1, "dataset", "dataset", {"sample_size": 20}),
-        (kernel.ALEKernel, 2, "dataset", "dataset", {"sample_size": 20}),
         (kernel.ALEKernel, 1, "dataset", "image", {"sample_size": 20}),
         (kernel.ALEKernel, 2, "dataset", "image", {"sample_size": 20}),
         (kernel.ALEKernel, 1, "dataframe", "image", {"sample_size": 20}),
@@ -37,7 +37,6 @@ def test_kernel_peaks(testdata_cbma, tmp_path_factory, kern, res, param, return_
     Notes
     -----
     Remember that dataframe --> dataset won't work.
-    Only testing dataset --> dataset with ALEKernel because it takes a while.
     Test on multiple template resolutions.
     """
     tmpdir = tmp_path_factory.mktemp("test_kernel_peaks")
@@ -88,12 +87,12 @@ def test_kernel_peaks(testdata_cbma, tmp_path_factory, kern, res, param, return_
         (kernel.KDAKernel, {"r": 4, "value": 1}),
     ],
 )
-def test_kernel_transform_attributes(testdata_cbma, kern, kwargs):
+def test_kernel_transform_attributes(kern, kwargs):
     """Check that attributes are added at transform."""
     kern_instance = kern(**kwargs)
     assert not hasattr(kern_instance, "filename_pattern")
     assert not hasattr(kern_instance, "image_type")
-    _ = kern_instance.transform(testdata_cbma, return_type="image")
+    kern_instance._infer_names()
     assert hasattr(kern_instance, "filename_pattern")
     assert hasattr(kern_instance, "image_type")
 
@@ -165,3 +164,33 @@ def test_ALEKernel_sample_size(testdata_cbma):
     max_idx = np.array(np.where(kern_data == np.max(kern_data))).T
     max_ijk = np.squeeze(max_idx)
     assert np.array_equal(ijk, max_ijk)
+
+
+def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
+    """Test ALEKernel with memory caching enable."""
+    cachedir = tmp_path_factory.mktemp("test_ALE_memory")
+
+    coord = testdata_cbma.coordinates.copy()
+
+    kern_cached = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=2)
+    ma_maps_cached = kern_cached.transform(coord, masker=testdata_cbma.masker, return_type="array")
+
+    kern = kernel.ALEKernel(sample_size=20, memory=None)
+    start = time.time()
+    ma_maps = kern.transform(coord, masker=testdata_cbma.masker, return_type="array")
+    done = time.time()
+    elapsed = done - start
+
+    assert np.array_equal(ma_maps_cached, ma_maps)
+
+    # Test that memory is actually used
+    kern_cached_fast = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=2)
+    start_chached = time.time()
+    ma_maps_cached_fast = kern_cached_fast.transform(
+        coord, masker=testdata_cbma.masker, return_type="array"
+    )
+    done_cached = time.time()
+    elapsed_cached = done_cached - start_chached
+
+    assert np.array_equal(ma_maps_cached_fast, ma_maps)
+    assert elapsed_cached < elapsed

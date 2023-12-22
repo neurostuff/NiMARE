@@ -38,7 +38,8 @@ jobs:
         fail-fast: false
         matrix:
             os: ["ubuntu-latest", "macos-latest"]
-            python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+            python-version: ["3.8", "3.9", "3.10", "3.11"]
+
     defaults:
       run:
         shell: bash
@@ -50,7 +51,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make unittest
@@ -70,7 +71,7 @@ jobs:
         fail-fast: false
         matrix:
             os: ["ubuntu-latest"]
-            python-version: ["3.6"]
+            python-version: ["3.8"]
     defaults:
       run:
         shell: bash
@@ -79,10 +80,10 @@ jobs:
       - name: 'Set up python'
         uses: actions/setup-python@v2
         with:
-            python-version: 3.6
+            python-version: 3.8
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[minimum,tests,peaks2maps-cpu]
+        run: pip install -e .[minimum,tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make unittest
@@ -102,7 +103,7 @@ jobs:
         fail-fast: false
         matrix:
             os: ["ubuntu-latest"]
-            python-version: ["3.7"]
+            python-version: ["3.8"]
     defaults:
       run:
         shell: bash
@@ -114,7 +115,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_estimators
@@ -134,7 +135,7 @@ jobs:
         fail-fast: false
         matrix:
             os: ["ubuntu-latest"]
-            python-version: ["3.7"]
+            python-version: ["3.8"]
     defaults:
       run:
         shell: bash
@@ -146,7 +147,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_correctors
@@ -166,7 +167,7 @@ jobs:
         fail-fast: false
         matrix:
             os: ["ubuntu-latest"]
-            python-version: ["3.7"]
+            python-version: ["3.8"]
     defaults:
       run:
         shell: bash
@@ -178,7 +179,7 @@ jobs:
             python-version: ${{ matrix.python-version }}
       - name: 'Install NiMARE'
         shell: bash {0}
-        run: pip install -e .[tests,peaks2maps-cpu]
+        run: pip install -e .[tests,cbmr]
       - name: 'Run tests'
         shell: bash {0}
         run: make test_performance_smoke
@@ -189,9 +190,41 @@ jobs:
           path: coverage.xml
         if: success()
 
+  test_cbmr_importerror:
+    name: CBMR ImportError tests
+    needs: check_skip
+    if: ${{ needs.check_skip.outputs.skip == 'false' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+        fail-fast: false
+        matrix:
+            os: ["ubuntu-latest"]
+            python-version: ["3.8"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v2
+      - name: 'Set up python'
+        uses: actions/setup-python@v2
+        with:
+            python-version: ${{ matrix.python-version }}
+      - name: 'Install NiMARE'
+        shell: bash {0}
+        run: pip install -e .[tests]
+      - name: 'Run tests'
+        shell: bash {0}
+        run: make test_cbmr_importerror
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cbmr_importerror
+          path: coverage.xml
+        if: success()
+
   upload_to_codecov:
     name: Upload coverage
-    needs: [run_unit_tests,run_unit_tests_with_minimum_dependencies,test_performance_estimators,test_performance_correctors,test_performance_smoke]
+    needs: [run_unit_tests,run_unit_tests_with_minimum_dependencies,test_performance_estimators,test_performance_correctors,test_performance_smoke,test_cbmr_importerror]
     runs-on: "ubuntu-latest"
     steps:
       - name: Checkout

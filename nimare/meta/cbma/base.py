@@ -1,18 +1,17 @@
 """CBMA methods from the ALE and MKDA families."""
 import logging
 from abc import abstractmethod
-from hashlib import md5
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
 
-from nimare.base import Estimator
+from nimare.estimator import Estimator
 from nimare.meta.kernel import KernelTransformer
 from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
 from nimare.results import MetaResult
@@ -37,7 +36,7 @@ class CBMAEstimator(Estimator):
     .. versionchanged:: 0.0.12
 
         * Remove *low_memory* option
-        * CBMA-specific elements of ``MetaEstimator`` excised and moved into ``CBMAEstimator``.
+        * CBMA-specific elements of ``Estimator`` excised and moved into ``CBMAEstimator``.
         * Generic kwargs and args converted to named kwargs. All remaining kwargs are for kernels.
         * Use a 4D sparse array for modeled activation maps.
 
@@ -53,11 +52,17 @@ class CBMAEstimator(Estimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     *args
-        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.Estimator`
         __init__ (called automatically).
     """
 
@@ -65,9 +70,17 @@ class CBMAEstimator(Estimator):
     # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, kernel_transformer, *, mask=None, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        *,
+        mask=None,
+        **kwargs,
+    ):
         if mask is not None:
-            mask = get_masker(mask)
+            mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
 
         # Identify any kwargs
@@ -76,12 +89,16 @@ class CBMAEstimator(Estimator):
         # Flag any extraneous kwargs
         other_kwargs = dict(set(kwargs.items()) - set(kernel_args.items()))
         if other_kwargs:
-            LGR.warn(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
+            LGR.warning(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
 
         # Get kernel transformer
         kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
+        if "memory" not in kernel_args.keys() and "memory_level" not in kernel_args.keys():
+            kernel_args.update(memory=memory, memory_level=memory_level)
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
+
+        super().__init__(memory=memory, memory_level=memory_level)
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
@@ -92,8 +109,7 @@ class CBMAEstimator(Estimator):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             In this method, the Dataset is used to (1) select the appropriate mask image,
-            (2) identify any pre-generated MA maps stored in its images attribute,
-            and (3) extract sample size metadata and place it into the coordinates input.
+            and (2) extract sample size metadata and place it into the coordinates input.
 
         Attributes
         ----------
@@ -111,17 +127,6 @@ class CBMAEstimator(Estimator):
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":
-                # Try to load existing MA maps
-                if hasattr(self, "kernel_transformer"):
-                    self.kernel_transformer._infer_names(affine=md5(mask_img.affine).hexdigest())
-                    if self.kernel_transformer.image_type in dataset.images.columns:
-                        files = dataset.get_images(
-                            ids=self.inputs_["id"],
-                            imtype=self.kernel_transformer.image_type,
-                        )
-                        if all(f is not None for f in files):
-                            self.inputs_["ma_maps"] = files
-
                 # Calculate IJK matrix indices for target mask
                 # Mask space is assumed to be the same as the Dataset's space
                 # These indices are used directly by any KernelTransformer
@@ -187,8 +192,9 @@ class CBMAEstimator(Estimator):
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        images = {"stat": stat_values, "p": p_values, "z": z_values}
-        return images, {}
+        maps = {"stat": stat_values, "p": p_values, "z": z_values}
+        description = self._generate_description()
+        return maps, {}, description
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
@@ -220,37 +226,13 @@ class CBMAEstimator(Estimator):
             Return a 4D sparse array of shape
             (n_studies, mask.shape) with MA maps.
         """
-        if maps_key in self.inputs_.keys():
-            LGR.debug(f"Loading pre-generated MA maps ({maps_key}).")
-            all_exp = []
-            all_coords = []
-            all_data = []
-            for i_exp, img in enumerate(self.inputs_[maps_key]):
-                img_data = nib.load(img).get_fdata()
-                nonzero_idx = np.where(img_data != 0)
+        LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
 
-                all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
-                all_coords.append(np.vstack(nonzero_idx))
-                all_data.append(img_data[nonzero_idx])
-
-            n_studies = len(self.inputs_[maps_key])
-            shape = img_data.shape
-            kernel_shape = (n_studies,) + shape
-
-            exp = np.hstack(all_exp)
-            coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
-            data = np.hstack(all_data).flatten()
-
-            ma_maps = sparse.COO(coords, data, shape=kernel_shape)
-
-        else:
-            LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
-
-            ma_maps = self.kernel_transformer.transform(
-                self.inputs_[coords_key],
-                masker=self.masker,
-                return_type="sparse",
-            )
+        ma_maps = self.kernel_transformer.transform(
+            self.inputs_[coords_key],
+            masker=self.masker,
+            return_type="sparse",
+        )
 
         return ma_maps
 
@@ -665,6 +647,8 @@ class CBMAEstimator(Estimator):
                 Voxel-level correction is generally more conservative than cluster-level
                 correction, so it is only recommended for very large meta-analyses
                 (i.e., hundreds of studies), per :footcite:t:`eickhoff2016behavior`.
+        description_ : :obj:`str`
+            A text description of the correction procedure.
 
         Notes
         -----
@@ -835,7 +819,30 @@ class CBMAEstimator(Estimator):
                 "z_desc-mass_level-cluster": z_cmfwe_values,
             }
 
-        return maps, {}
+        if vfwe_only:
+            description = (
+                "Family-wise error correction was performed using a voxel-level Monte Carlo "
+                "procedure. "
+                "In this procedure, null datasets are generated in which dataset coordinates are "
+                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
+                "the maximum summary statistic is retained. "
+                f"This procedure was repeated {n_iters} times to build a null distribution of "
+                "summary statistics."
+            )
+        else:
+            description = (
+                "Family-wise error rate correction was performed using a Monte Carlo procedure. "
+                "In this procedure, null datasets are generated in which dataset coordinates are "
+                "substituted with coordinates randomly drawn from the meta-analysis mask, and "
+                "maximum values are retained. "
+                f"This procedure was repeated {n_iters} times to build null distributions of "
+                "summary statistics, cluster sizes, and cluster masses. "
+                "Clusters for cluster-level correction were defined using edge-wise connectivity "
+                f"and a voxel-level threshold of p < {voxel_thresh} from the uncorrected null "
+                "distribution."
+            )
+
+        return maps, {}, description
 
 
 class PairwiseCBMAEstimator(CBMAEstimator):
@@ -856,11 +863,17 @@ class PairwiseCBMAEstimator(CBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     *args
-        Optional arguments to the :obj:`~nimare.base.MetaEstimator` __init__
+        Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
     **kwargs
-        Optional keyword arguments to the :obj:`~nimare.base.MetaEstimator`
+        Optional keyword arguments to the :obj:`~nimare.base.Estimator`
         __init__ (called automatically).
     """
 
@@ -900,6 +913,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             # Grab pre-generated MA maps
             self.inputs_["ma_maps1"] = self.inputs_.pop("ma_maps")
 
+        self.inputs_["id1"] = self.inputs_.pop("id")
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
 
         # Reproduce fit() for dataset2 to collect and process inputs.
@@ -909,14 +923,15 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             # Grab pre-generated MA maps
             self.inputs_["ma_maps2"] = self.inputs_.pop("ma_maps")
 
+        self.inputs_["id2"] = self.inputs_.pop("id")
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps, tables = self._fit(dataset1, dataset2)
+        maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
         else:
             masker = dataset1.masker
 
-        return MetaResult(self, mask=masker, maps=maps, tables=tables)
+        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)

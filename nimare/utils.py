@@ -2,6 +2,7 @@
 import contextlib
 import datetime
 import inspect
+import json
 import logging
 import multiprocessing as mp
 import os
@@ -14,8 +15,8 @@ import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import sparse
 from nilearn.input_data import NiftiMasker
-from scipy import ndimage
 
 LGR = logging.getLogger(__name__)
 
@@ -113,12 +114,18 @@ def get_template(space="mni152_2mm", mask=None):
     return img
 
 
-def get_masker(mask):
+def get_masker(mask, memory=joblib.Memory(location=None, verbose=0), memory_level=1):
     """Get an initialized, fitted nilearn Masker instance from passed argument.
 
     Parameters
     ----------
     mask : str, :class:`nibabel.nifti1.Nifti1Image`, or any nilearn Masker
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=1
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
 
     Returns
     -------
@@ -132,7 +139,7 @@ def get_masker(mask):
         # Coerce to array-image
         mask = nib.Nifti1Image(mask.get_fdata(), affine=mask.affine, header=mask.header)
 
-        mask = NiftiMasker(mask)
+        mask = NiftiMasker(mask, memory=memory, memory_level=memory_level)
 
     if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
         raise ValueError(
@@ -850,7 +857,9 @@ def _add_metadata_to_dataframe(
             columns=[metadata_field],
         )
         # Reduce the metadata (if in list/array format) to single values
-        metadata[target_column] = metadata[metadata_field].apply(filter_func)
+        metadata[target_column] = metadata[metadata_field].apply(
+            lambda x: None if x is None else filter_func(x)
+        )
         # Merge metadata df into coordinates df
         dataframe = dataframe.merge(
             right=metadata,
@@ -1001,7 +1010,7 @@ def unique_rows(ar, return_counts=False):
     ...                [1, 0, 1]], np.uint8)
     >>> unique_rows(ar)
     array([[0, 1, 0],
-           [1, 0, 1]], dtype=uint8)
+        [1, 0, 1]], dtype=uint8)
 
     License
     -------
@@ -1028,133 +1037,355 @@ def unique_rows(ar, return_counts=False):
         return ar[unique_row_indices]
 
 
-def _cluster_nearest_neighbor(ijk, labels_index, labeled):
-    """Find the nearest neighbor for given points in the corresponding cluster.
+def find_braces(string):
+    """Search a string for matched braces.
+
+    This is used to identify pairs of braces in BibTeX files.
+    The outside-most pairs should correspond to BibTeX entries.
 
     Parameters
     ----------
-    ijk : :obj:`numpy.ndarray`
-        (n_pts, 3) array of query points.
-    labels_index : :obj:`numpy.ndarray`
-        (n_pts,) array of corresponding cluster indices.
-    labeled : :obj:`numpy.ndarray`
-        3D array with voxels labeled according to cluster index.
+    string : :obj:`str`
+        A long string to search for paired braces.
 
     Returns
     -------
-    nbrs : :obj:`numpy.ndarray`
-        (n_pts, 3) nearest neighbor points.
-
-    This function is partially derived from Nilearn's code.
-
-    License
-    -------
-    New BSD License
-
-    Copyright (c) 2007 - 2022 The nilearn developers.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-
-    a. Redistributions of source code must retain the above copyright notice,
-        this list of conditions and the following disclaimer.
-    b. Redistributions in binary form must reproduce the above copyright
-        notice, this list of conditions and the following disclaimer in the
-        documentation and/or other materials provided with the distribution.
-    c. Neither the name of the nilearn developers nor the names of
-        its contributors may be used to endorse or promote products
-        derived from this software without specific prior written
-        permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-    ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR
-    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-    DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-    DAMAGE.
+    :obj:`list` of :obj:`tuple` of :obj:`int`
+        A list of two-element tuples of indices of matched braces.
     """
-    labels = labeled[labeled > 0]
-    clusters_ijk = np.array(labeled.nonzero()).T
-    nbrs = np.zeros_like(ijk)
-    for ii, (lab, point) in enumerate(zip(labels_index, ijk)):
-        lab_ijk = clusters_ijk[labels == lab]
-        dist = np.linalg.norm(lab_ijk - point, axis=1)
-        nbrs[ii] = lab_ijk[np.argmin(dist)]
+    toret = {}
+    pstack = []
 
-    return nbrs
+    for idx, char in enumerate(string):
+        if char == "{":
+            pstack.append(idx)
+        elif char == "}":
+            if len(pstack) == 0:
+                raise IndexError(f"No matching closing parens at: {idx}")
+
+            toret[pstack.pop()] = idx
+
+    if len(pstack) > 0:
+        raise IndexError(f"No matching opening parens at: {pstack.pop()}")
+
+    toret = list(toret.items())
+    return toret
 
 
-def _get_cluster_coms(labeled_cluster_arr):
-    """Get the center of mass of each cluster in a labeled array.
+def reduce_idx(idx_list):
+    """Identify outermost brace indices in list of indices.
 
-    This function is partially derived from Nilearn's code.
+    The purpose here is to find the brace pairs that correspond to BibTeX entries,
+    while discarding brace pairs that appear within the entries
+    (e.g., braces around article titles).
 
-    License
+    Parameters
+    ----------
+    idx_list : :obj:`list` of :obj:`tuple` of :obj:`int`
+        A list of two-element tuples of indices of matched braces.
+
+    Returns
     -------
-    New BSD License
-
-    Copyright (c) 2007 - 2022 The nilearn developers.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-
-    a. Redistributions of source code must retain the above copyright notice,
-        this list of conditions and the following disclaimer.
-    b. Redistributions in binary form must reproduce the above copyright
-        notice, this list of conditions and the following disclaimer in the
-        documentation and/or other materials provided with the distribution.
-    c. Neither the name of the nilearn developers nor the names of
-        its contributors may be used to endorse or promote products
-        derived from this software without specific prior written
-        permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-    ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR
-    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-    DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-    DAMAGE.
+    reduced_idx_list : :obj:`list` of :obj:`tuple` of :obj:`int`
+        A list of two-element tuples of indices of matched braces corresponding to BibTeX entries.
     """
-    cluster_ids = np.unique(labeled_cluster_arr)[1:]
-    n_clusters = cluster_ids.size
+    idx_list2 = [idx_item[0] for idx_item in idx_list]
+    idx = np.argsort(idx_list2)
+    idx_list = [idx_list[i] for i in idx]
 
-    # Identify center of mass for each cluster
-    # This COM may fall outside the cluster, but it is a useful heuristic for identifying them
-    cluster_ids = np.arange(1, n_clusters + 1, dtype=int)
-    cluster_coms = ndimage.center_of_mass(labeled_cluster_arr, labeled_cluster_arr, cluster_ids)
-    cluster_coms = np.array(cluster_coms).astype(int)
+    df = pd.DataFrame(data=idx_list, columns=["start", "end"])
 
-    # NOTE: The following comes from Nilearn
-    # Determine if all subpeaks are within the cluster
-    # They may not be if the cluster is binary and has a shape where the COM is
-    # outside the cluster, like a donut.
-    coms_outside_clusters = (
-        labeled_cluster_arr[cluster_coms[:, 0], cluster_coms[:, 1], cluster_coms[:, 2]]
-        != cluster_ids
+    good_idx = []
+    df["within"] = False
+    for i, row in df.iterrows():
+        df["within"] = df["within"] | ((df["start"] > row["start"]) & (df["end"] < row["end"]))
+        if not df.iloc[i]["within"]:
+            good_idx.append(i)
+
+    idx_list = [idx_list[i] for i in good_idx]
+    return idx_list
+
+
+def index_bibtex_identifiers(string, idx_list):
+    """Identify the BibTeX entry identifier before each entry.
+
+    The purpose of this function is to take the raw BibTeX string and a list of indices of entries,
+    starting and ending with the braces of each entry, and then extract the identifier before each.
+
+    Parameters
+    ----------
+    string : :obj:`str`
+        The full BibTeX file, as a string.
+    idx_list : :obj:`list` of :obj:`tuple` of :obj:`int`
+        A list of two-element tuples of indices of matched braces corresponding to BibTeX entries.
+
+    Returns
+    -------
+    idx_list : :obj:`list` of :obj:`tuple` of :obj:`int`
+        A list of two-element tuples of indices of BibTeX entries,
+        from the starting @ to the final }.
+    """
+    at_idx = [(a.start(), a.end() - 1) for a in re.finditer("@[a-zA-Z0-9]+{", string)]
+    df = pd.DataFrame(at_idx, columns=["real_start", "false_start"])
+    df2 = pd.DataFrame(idx_list, columns=["false_start", "end"])
+    df = pd.merge(left=df, right=df2, left_on="false_start", right_on="false_start")
+    new_idx_list = list(zip(df.real_start, df.end))
+    return new_idx_list
+
+
+def find_citations(description):
+    r"""Find citations in a text description.
+
+    It looks for cases of \\citep{} and \\cite{} in a string.
+
+    Parameters
+    ----------
+    description_ : :obj:`str`
+        Description of a method, optionally with citations.
+
+    Returns
+    -------
+    all_citations : :obj:`list` of :obj:`str`
+        A list of all identifiers for citations.
+    """
+    paren_citations = re.findall(r"\\citep{([a-zA-Z0-9,/\.]+)}", description)
+    intext_citations = re.findall(r"\\cite{([a-zA-Z0-9,/\.]+)}", description)
+    inparen_citations = re.findall(r"\\citealt{([a-zA-Z0-9,/\.]+)}", description)
+    all_citations = ",".join(paren_citations + intext_citations + inparen_citations)
+    all_citations = all_citations.split(",")
+    all_citations = sorted(list(set(all_citations)))
+    return all_citations
+
+
+def reduce_references(citations, reference_list):
+    """Reduce the list of references to only include ones associated with requested citations.
+
+    Parameters
+    ----------
+    citations : :obj:`list` of :obj:`str`
+        A list of all identifiers for citations.
+    reference_list : :obj:`list` of :obj:`str`
+        List of all available BibTeX entries.
+
+    Returns
+    -------
+    reduced_reference_list : :obj:`list` of :obj:`str`
+        List of BibTeX entries for citations only.
+    """
+    reduced_reference_list = []
+    for citation in citations:
+        citation_found = False
+        for reference in reference_list:
+            check_string = "@[a-zA-Z]+{" + citation + ","
+            if re.match(check_string, reference):
+                reduced_reference_list.append(reference)
+                citation_found = True
+                continue
+
+        if not citation_found:
+            LGR.warning(f"Citation {citation} not found.")
+
+    return reduced_reference_list
+
+
+def get_description_references(description):
+    """Find BibTeX references for citations in a methods description.
+
+    Parameters
+    ----------
+    description_ : :obj:`str`
+        Description of a method, optionally with citations.
+
+    Returns
+    -------
+    bibtex_string : :obj:`str`
+        A string containing BibTeX entries, limited only to the citations in the description.
+    """
+    bibtex_file = op.join(get_resource_path(), "references.bib")
+    with open(bibtex_file, "r") as fo:
+        bibtex_string = fo.read()
+
+    braces_idx = find_braces(bibtex_string)
+    red_braces_idx = reduce_idx(braces_idx)
+    bibtex_idx = index_bibtex_identifiers(bibtex_string, red_braces_idx)
+    citations = find_citations(description)
+    reference_list = [bibtex_string[start : end + 1] for start, end in bibtex_idx]
+    reduced_reference_list = reduce_references(citations, reference_list)
+
+    bibtex_string = "\n".join(reduced_reference_list)
+    return bibtex_string
+
+
+def _create_name(resource):
+    """Take study/analysis object and try to create dataframe friendly/readable name."""
+    return "_".join(resource.name.split()) if resource.name else resource.id
+
+
+def load_nimads(studyset, annotation=None):
+    """Load a studyset object from a dictionary, json file, or studyset object."""
+    from nimare.nimads import Studyset
+
+    if isinstance(studyset, dict):
+        studyset = Studyset(studyset)
+    elif isinstance(studyset, str):
+        with open(studyset, "r") as f:
+            studyset = Studyset(json.load(f))
+    elif isinstance(studyset, Studyset):
+        pass
+    else:
+        raise ValueError(
+            "studyset must be: a dictionary, a path to a json file, or studyset object"
+        )
+
+    if annotation:
+        studyset.annotations = annotation
+    return studyset
+
+
+def coef_spline_bases(axis_coords, spacing, margin):
+    """
+    Coefficient of cubic B-spline bases in any x/y/z direction.
+
+    Parameters
+    ----------
+    axis_coords : value range in x/y/z direction
+    spacing: (equally spaced) knots spacing in x/y/z direction,
+    margin: extend the region where B-splines are constructed (min-margin, max_margin)
+            to avoid weakly-supported B-spline on the edge
+    Returns
+    -------
+    coef_spline : 2-D ndarray (n_points x n_spline_bases)
+    """
+    import patsy
+
+    # create B-spline basis for x/y/z coordinate
+    wider_axis_coords = np.arange(np.min(axis_coords) - margin, np.max(axis_coords) + margin)
+    knots = np.arange(  # noqa: F841
+        np.min(axis_coords) - margin, np.max(axis_coords) + margin, step=spacing
     )
-    if np.any(coms_outside_clusters):
-        LGR.warning(
-            "Attention: At least one of the centers of mass falls outside of the cluster body. "
-            "Identifying the nearest in-cluster voxel."
-        )
+    design_matrix = patsy.dmatrix(
+        "bs(x, knots=knots, degree=3,include_intercept=False)",
+        data={"x": wider_axis_coords},
+        return_type="matrix",
+    )
+    design_array = np.array(design_matrix)[:, 1:]  # remove the first column (every element is 1)
+    coef_spline = design_array[margin : -margin + 1, :]
+    # remove the basis with no/weakly support from the square
+    supported_basis = np.sum(coef_spline, axis=0) != 0
+    coef_spline = coef_spline[:, supported_basis]
 
-        # Replace centers of mass with their nearest neighbor points in the
-        # corresponding clusters. Note this is also equivalent to computing the
-        # centers of mass constrained to points within the cluster.
-        cluster_coms[coms_outside_clusters, :] = _cluster_nearest_neighbor(
-            cluster_coms[coms_outside_clusters, :],
-            cluster_ids[coms_outside_clusters],
-            labeled_cluster_arr,
-        )
+    return coef_spline
 
-    return cluster_coms
+
+def b_spline_bases(masker_voxels, spacing, margin=10):
+    """Cubic B-spline bases for spatial intensity.
+
+    The whole coefficient matrix is constructed by taking tensor product of
+    all B-spline bases coefficient matrix in three direction.
+
+    Parameters
+    ----------
+    masker_voxels : :obj:`numpy.ndarray`
+        matrix with element either 0 or 1, indicating if it's within brain mask,
+    spacing : :obj:`int`
+        (equally spaced) knots spacing in x/y/z direction,
+    margin : :obj:`int`
+        extend the region where B-splines are constructed (min-margin, max_margin)
+        to avoid weakly-supported B-spline on the edge
+    Returns
+    -------
+    X : :obj:`numpy.ndarray`
+        2-D ndarray (n_voxel x n_spline_bases) only keeps with within-brain voxels
+    """
+    # dim_mask = masker_voxels.shape
+    # n_brain_voxel = np.sum(masker_voxels)
+    # remove the blank space around the brain mask
+    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
+    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
+    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+
+    x_spline = coef_spline_bases(xx, spacing, margin)
+    y_spline = coef_spline_bases(yy, spacing, margin)
+    z_spline = coef_spline_bases(zz, spacing, margin)
+    x_spline_coords = x_spline.nonzero()
+    y_spline_coords = y_spline.nonzero()
+    z_spline_coords = z_spline.nonzero()
+    x_spline_sparse = sparse.COO(x_spline_coords, x_spline[x_spline_coords])
+    y_spline_sparse = sparse.COO(y_spline_coords, y_spline[y_spline_coords])
+    z_spline_sparse = sparse.COO(z_spline_coords, z_spline[z_spline_coords])
+
+    # create spatial design matrix by tensor product of spline bases in 3 dimesion
+    # Row sums of X are all 1=> There is no need to re-normalise X
+    X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)
+    # remove the voxels outside brain mask
+    axis_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
+    brain_voxels_index = [
+        (z - np.min(zz))
+        + axis_dim[2] * (y - np.min(yy))
+        + axis_dim[1] * axis_dim[2] * (x - np.min(xx))
+        for x in xx
+        for y in yy
+        for z in zz
+        if masker_voxels[x, y, z] == 1
+    ]
+    X = X[brain_voxels_index, :].todense()
+    # remove tensor product basis that have no support in the brain
+    x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
+    support_basis = []
+    # find and remove weakly supported B-spline bases
+    for bx in range(x_df):
+        for by in range(y_df):
+            for bz in range(z_df):
+                basis_index = bz + z_df * by + z_df * y_df * bx
+                basis_coef = X[:, basis_index]
+                if np.max(basis_coef) >= 0.1:
+                    support_basis.append(basis_index)
+    X = X[:, support_basis]
+
+    return X
+
+
+def dummy_encoding_moderators(dataset_annotations, moderators):
+    """Convert categorical moderators to dummy encoded variables.
+
+    Parameters
+    ----------
+    dataset_annotations : :obj:`pandas.DataFrame`
+        Annotations of the dataset.
+    moderators : :obj:`list`
+        Study-level moderators to be considered into CBMR framework.
+
+    Returns
+    -------
+    dataset_annotations : :obj:`pandas.DataFrame`
+        Annotations of the dataset with dummy encoded moderator columns.
+    new_moderators : :obj:`list`
+        List of study-level moderators after dummy encoding.
+    """
+    new_moderators = []
+    for moderator in moderators.copy():
+        if len(moderator.split(":reference=")) == 2:
+            moderator, reference_subtype = moderator.split(":reference=")
+        if np.array_equal(
+            dataset_annotations[moderator], dataset_annotations[moderator].astype(str)
+        ):
+            categories_unique = dataset_annotations[moderator].unique().tolist()
+            # sort categories alphabetically
+            categories_unique = sorted(categories_unique, key=str.lower)
+            if "reference_subtype" in locals():
+                # remove reference subgroup from list and add it to the first position
+                categories_unique.remove(reference_subtype)
+                categories_unique.insert(0, reference_subtype)
+            for category in categories_unique:
+                dataset_annotations[category] = (
+                    dataset_annotations[moderator] == category
+                ).astype(int)
+            # remove last categorical moderator column as it encoded
+            # as the other dummy encoded columns being zero
+            dataset_annotations = dataset_annotations.drop([categories_unique[0]], axis=1)
+            new_moderators.extend(
+                categories_unique[1:]
+            )  # add dummy encoded moderators (except from the reference subgroup)
+        else:
+            new_moderators.append(moderator)
+    return dataset_annotations, new_moderators

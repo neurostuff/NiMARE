@@ -4,26 +4,32 @@ import logging
 import nibabel as nib
 import numpy as np
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from pymare.stats import fdr
 from scipy import ndimage
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 
+from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
+from nimare.utils import _check_ncores, tqdm_joblib, vox2mm
 
 LGR = logging.getLogger(__name__)
+__version__ = _version.get_versions()["version"]
 
 
 class MKDADensity(CBMAEstimator):
     r"""Multilevel kernel density analysis- Density analysis.
 
     The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -56,6 +62,12 @@ class MKDADensity(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
@@ -123,7 +135,9 @@ class MKDADensity(CBMAEstimator):
         self,
         kernel_transformer=MKDAKernel,
         null_method="approximate",
-        n_iters=10000,
+        n_iters=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -135,11 +149,46 @@ class MKDADensity(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
-        self.n_iters = n_iters
+        self.n_iters = None if null_method == "approximate" else n_iters or 10000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.n_iters} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution"
+
+        description = (
+            "A multilevel kernel density (MKDA) meta-analysis \\citep{wager2007meta} was "
+            "performed was performed with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), using a(n) "
+            f"{self.kernel_transformer.__class__.__name__.replace('Kernel', '')} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments."
+        )
+        return description
 
     def _compute_weights(self, ma_values):
         """Determine experiment-wise weights per the conventional MKDA approach."""
@@ -258,6 +307,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             maps are difficult to interpret and for speeding up the algorithm.
         - Rename ``consistency`` to ``uniformity`` and ``specificity`` to ``association`` to match
           Neurosynth's terminology
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -275,6 +325,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
     prior : float, optional
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -330,7 +386,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
-    def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer=MKDAKernel,
+        prior=0.5,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        **kwargs,
+    ):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -339,12 +402,36 @@ class MKDAChi2(PairwiseCBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
 
         self.prior = prior
         self.compute_probabilities = compute_probabilities
 
-    @use_memmap(LGR, n_files=2)
+    def _generate_description(self):
+        description = (
+            "A multilevel kernel density chi-squared analysis \\citep{wager2007meta} was "
+            "performed according to the same procedure as implemented in Neurosynth with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), "
+            f"using a(n) {self.kernel_transformer.__class__.__name__.replace('Kernel', '')} "
+            "kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            "This analysis calculated several measures. "
+            "The first dataset was evaluated for consistency of activation via a one-way "
+            "chi-square test. "
+            f"The first input dataset included {self.inputs_['coordinates1'].shape[0]} foci from "
+            f"{len(self.inputs_['id1'])} experiments. "
+            f"The second input dataset included {self.inputs_['coordinates2'].shape[0]} foci from "
+            f"{len(self.inputs_['id2'])} experiments."
+        )
+
+        return description
+
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
@@ -449,18 +536,17 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-uniformity": pAgF_p_vals,
             "p_desc-association": pFgA_p_vals,=
             "prob_desc-A": pA,
-            "prob_desc-AgF": pAgF
+            "prob_desc-AgF": pAgF,
+            "prob_desc-FgA": pFgA,
+            ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
+            ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior,
+            "z_desc-consistency": pAgF_z,
+            "z_desc-specificity": pFgA_z,
+            "chi2_desc-consistency": pAgF_chi2_vals,
+            "chi2_desc-specificity": pFgA_chi2_vals,
+            "p_desc-consistency": pAgF_p_vals,
+            "p_desc-specificity": pFgA_p_vals,
         }
-
-        if self.prior is not None:
-            maps.update(
-                {
-                    "prob_desc-FgA": pFgA,
-                    ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
-                    ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior
-                }
-            )
-
         return maps, {}
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
@@ -907,7 +993,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "z_desc-associationSize_level-cluster": pFgA_z_csfwe_vals,
             "logp_desc-associationSize_level-cluster": pFgA_logp_csfwe_vals,
         }
-        return maps, {}
+
+        description = ""
+
+        return maps, {}, description
 
     def correct_fdr_indep(self, result, alpha=0.05):
         """Perform FDR correction using the Benjamini-Hochberg method.
@@ -959,11 +1048,18 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "z_desc-uniformity_level-voxel": pAgF_z_FDR,
             "z_desc-association_level-voxel": pFgA_z_FDR,
         }
-        return maps, {}
+
+        description = ""
+
+        return maps, {}, description
 
 
 class KDA(CBMAEstimator):
     r"""Kernel density analysis.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -996,6 +1092,12 @@ class KDA(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
@@ -1068,7 +1170,9 @@ class KDA(CBMAEstimator):
         self,
         kernel_transformer=KDAKernel,
         null_method="approximate",
-        n_iters=10000,
+        n_iters=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -1086,11 +1190,47 @@ class KDA(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
-        self.n_iters = n_iters
+        self.n_iters = None if null_method == "approximate" else n_iters or 10000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.n_iters} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution"
+
+        description = (
+            "A kernel density (KDA) meta-analysis \\citep{wager2007meta} was "
+            "performed was performed with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), "
+            f"using a(n) {self.kernel_transformer.__class__.__name__.replace('Kernel', '')} "
+            "kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            f"Summary statistics (OF values) were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments."
+        )
+        return description
 
     def _compute_summarystat_est(self, ma_values):
         """Compute OF scores from data.
@@ -1227,7 +1367,6 @@ class KDA(CBMAEstimator):
         stat_hist = ma_hists[0, :].copy()
 
         for i_exp in range(1, ma_hists.shape[0]):
-
             exp_hist = ma_hists[i_exp, :]
 
             # Find histogram bins with nonzero values for each histogram.

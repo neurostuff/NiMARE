@@ -7,39 +7,81 @@ import numpy as np
 import pandas as pd
 from nibabel.funcs import squeeze_image
 
-from nimare.utils import get_masker
+from nimare.base import NiMAREBase
+from nimare.utils import get_description_references, get_masker
 
 LGR = logging.getLogger(__name__)
 
 
-class MetaResult(object):
+class MetaResult(NiMAREBase):
     """Base class for meta-analytic results.
+
+    .. versionchanged:: 0.1.0
+
+        - Added corrector and diagnostics attributes.
+
+    .. versionchanged:: 0.0.12
+
+        - Added the description attribute.
 
     Parameters
     ----------
     estimator : :class:`~nimare.base.Estimator`
         The Estimator used to generate the maps in the MetaResult.
+    corrector : :class:`~nimare.correct.Corrector`
+        The Corrector used to correct the maps in the MetaResult.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
+        List of diagnostic classes.
     mask : Niimg-like or `nilearn.input_data.base_masker.BaseMasker`
         Mask for converting maps between arrays and images.
     maps : None or :obj:`dict` of :obj:`numpy.ndarray`, optional
         Maps to store in the object. The maps must be provided as 1D numpy arrays. Default is None.
     tables : None or :obj:`dict` of :obj:`pandas.DataFrame`, optional
         Pandas DataFrames to store in the object. Default is None.
+    description_ : :obj:`str`, optional
+        Description of the method that generated the result. Default is "".
 
     Attributes
     ----------
     estimator : :class:`~nimare.base.Estimator`
         The Estimator used to generate the maps in the MetaResult.
+    corrector : :class:`~nimare.correct.Corrector`
+        The Corrector used to correct the maps in the MetaResult.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
+        List of diagnostic classes.
     masker : :class:`~nilearn.input_data.NiftiMasker` or similar
         Masker object.
     maps : :obj:`dict`
         Keys are map names and values are 1D arrays.
     tables : :obj:`dict`
         Keys are table levels and values are pandas DataFrames.
+    description_ : :obj:`str`
+        A textual description of the method that generated the result.
+
+        Citations in this description are formatted according to ``natbib``'s LaTeX format.
+    bibtex_ : :obj:`str`
+        The BibTeX entries for any citations in ``description``.
+        These entries are extracted from NiMARE's references.bib file and filtered based on the
+        description automatically.
+
+        Users should be able to copy the contents of the ``bibtex`` attribute into their own
+        BibTeX file without issue.
     """
 
-    def __init__(self, estimator, mask, maps=None, tables=None):
+    def __init__(
+        self,
+        estimator,
+        corrector=None,
+        diagnostics=None,
+        mask=None,
+        maps=None,
+        tables=None,
+        description="",
+    ):
         self.estimator = copy.deepcopy(estimator)
+        self.corrector = copy.deepcopy(corrector)
+        diagnostics = diagnostics or []
+        self.diagnostics = [copy.deepcopy(diagnostic) for diagnostic in diagnostics]
         self.masker = get_masker(mask)
 
         maps = maps or {}
@@ -59,6 +101,19 @@ class MetaResult(object):
 
         self.maps = maps
         self.tables = tables
+        self.metadata = {}
+        self.description_ = description
+
+    @property
+    def description_(self):
+        """:obj:`str`: A textual description of the method that generated the result."""
+        return self.__description
+
+    @description_.setter
+    def description_(self, desc):
+        """Automatically extract references when the description is set."""
+        self.__description = desc
+        self.bibtex_ = get_description_references(desc)
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.
@@ -110,7 +165,7 @@ class MetaResult(object):
             os.makedirs(output_dir)
 
         names = names or list(self.maps.keys())
-        maps = {k: self.get_map(k) for k in names}
+        maps = {k: self.get_map(k) for k in names if self.maps[k] is not None}
 
         for imgtype, img in maps.items():
             filename = prefix + imgtype + ".nii.gz"
@@ -148,16 +203,22 @@ class MetaResult(object):
         tables = {k: self.tables[k] for k in names}
 
         for tabletype, table in tables.items():
-            filename = prefix + tables + ".tsv"
+            filename = prefix + tabletype + ".tsv"
             outpath = os.path.join(output_dir, filename)
-            table.to_csv(outpath, sep="\t", index=False)
+            if table is not None:
+                table.to_csv(outpath, sep="\t", index=False)
+            else:
+                LGR.warning(f"Table {tabletype} is None. Not saving.")
 
     def copy(self):
         """Return copy of result object."""
         new = MetaResult(
-            self.estimator,
+            estimator=self.estimator,
+            corrector=self.corrector,
+            diagnostics=self.diagnostics,
             mask=self.masker,
             maps=copy.deepcopy(self.maps),
             tables=copy.deepcopy(self.tables),
+            description=self.description_,
         )
         return new

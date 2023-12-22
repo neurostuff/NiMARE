@@ -26,6 +26,7 @@ API
 
 For more information about the components of coordinate-based meta-analysis in NiMARE, see :doc:`cbma`.
 
+
 .. automodule:: nimare.meta
    :no-members:
    :no-inherited-members:
@@ -41,6 +42,7 @@ For more information about the components of coordinate-based meta-analysis in N
    meta.cbma.mkda
    meta.cbma.base
    meta.kernel
+   meta.cbmr
 
 .. _api_results_ref:
 
@@ -165,6 +167,29 @@ For more information about functional characterization analysis, see :doc:`decod
    io.convert_sleuth_to_json
    io.convert_sleuth_to_dataset
    io.convert_neurovault_to_dataset
+
+
+.. _api_nimads_ref:
+
+:mod:`nimare.nimads`: NeuroImaging Meta-Analysis Data Structure
+---------------------------------------------------------------
+.. automodule:: nimare.nimads
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   nimads.Studyset
+   nimads.Annotation
+   nimads.Study
+   nimads.Analysis
+   nimads.Condition
+   nimads.Image
+   nimads.Point
 
 
 .. _api_transforms_ref:
@@ -307,9 +332,26 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :toctree: generated/
    :template: function.rst
 
-   workflows.ale_sleuth_workflow
    workflows.macm_workflow
+   workflows.cbma.CBMAWorkflow
+   workflows.cbma.PairwiseCBMAWorkflow
+   workflows.ibma.IBMAWorkflow
+   workflows.misc.conjunction_analysis
 
+:mod:`nimare.reports`: NiMARE report
+--------------------------------------------------
+
+.. automodule:: nimare.reports
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   reports.run_reports
 
 .. _api_base_ref:
 
@@ -326,4 +368,4 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :template: class.rst
 
    base.NiMAREBase
-   base.Estimator
+   estimator.Estimator

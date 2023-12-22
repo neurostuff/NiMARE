@@ -1,4 +1,5 @@
 """Utility functions for testing nimare."""
+import logging
 import os.path as op
 from contextlib import ExitStack as does_not_raise
 
@@ -11,6 +12,8 @@ from nimare.meta.utils import compute_kda_ma
 # set significance levels used for testing.
 # duplicated in test_estimator_performance
 ALPHA = 0.05
+
+LGR = logging.getLogger(__name__)
 
 
 def get_test_data_path():
@@ -51,8 +54,8 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
     )
     nonsig_prob_map = nonsig_prob_map[0].todense()
 
-    sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(int), affine=mask.affine)
-    nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(int), affine=mask.affine)
+    sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(np.int32), affine=mask.affine)
+    nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(np.int32), affine=mask.affine)
     return sig_map, nonsig_map
 
 

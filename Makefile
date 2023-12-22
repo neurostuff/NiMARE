@@ -9,12 +9,13 @@ help:
 	@echo "  test_performance_estimators	to run performance tests on meta estimators"
 	@echo "  test_performance_correctors	to run performance tests on correctors"
 	@echo "  test_performance_smoke			to run performance smoke tests"
+	@echo "  test_cbmr_importerror			to run cbmr importerror tests"
 
 lint:
 	@flake8 nimare
 
 unittest:
-	@py.test -m "not performance_estimators and not performance_correctors and not performance_smoke" --cov-append --cov-report=xml --cov=nimare nimare
+	@py.test -m "not performance_estimators and not performance_correctors and not performance_smoke and not cbmr_importerror" --cov-append --cov-report=xml --cov=nimare nimare
 
 test_performance_estimators:
 	@py.test -m "performance_estimators" --cov-append --cov-report=xml --cov=nimare nimare
@@ -24,3 +25,6 @@ test_performance_correctors:
 
 test_performance_smoke:
 	@py.test -m "performance_smoke" --cov-append --cov-report=xml --cov=nimare nimare
+
+test_cbmr_importerror:
+	@py.test -m "cbmr_importerror" --cov-append --cov-report=xml --cov=nimare nimare

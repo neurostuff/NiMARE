@@ -25,6 +25,7 @@ meta-analysis, see other stuff.
 #   NIDM-Results-compliant, so the nidmresults library could not be used to
 #   facilitate data extraction.
 import os
+from pprint import pprint
 
 from nilearn.plotting import plot_stat_map
 
@@ -66,6 +67,11 @@ plot_stat_map(
     threshold=0.1,
 )
 
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
+
 ###############################################################################
 # MKDA Chi-Squared
 # -----------------------------------------------------------------------------
@@ -89,6 +95,11 @@ plot_stat_map(
     cmap="RdBu_r",
     threshold=0.1,
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Kernel Density Analysis
@@ -116,6 +127,11 @@ plot_stat_map(
     threshold=0.1,
 )
 
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
+
 ###############################################################################
 # Activation Likelihood Estimation
 # -----------------------------------------------------------------------------
@@ -141,6 +157,11 @@ plot_stat_map(
     cmap="RdBu_r",
     threshold=0.1,
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Specific Co-Activation Likelihood Estimation
@@ -181,3 +202,8 @@ plot_stat_map(
     cmap="RdBu_r",
     threshold=0.1,
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)

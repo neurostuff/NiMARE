@@ -108,7 +108,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to new images added.
     """
-    images_df = images_df.copy()
+    new_images_df = images_df.copy()  # Work on a copy of the images_df
 
     valid_targets = {"z", "p", "beta", "varcope"}
     if target not in valid_targets:
@@ -155,10 +155,10 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
             else:
                 LGR.debug("Image already exists. Not overwriting.")
 
-            images_df.loc[images_df["id"] == id_, target] = new_file
+            new_images_df.loc[new_images_df["id"] == id_, target] = new_file
         else:
-            images_df.loc[images_df["id"] == id_, target] = None
-    return images_df
+            new_images_df.loc[new_images_df["id"] == id_, target] = None
+    return new_images_df
 
 
 def resolve_transforms(target, available_data, masker):
@@ -368,7 +368,6 @@ class ImagesToCoordinates(NiMAREBase):
 
         coordinates_dict = {}
         for _, row in images_df.iterrows():
-
             if row["id"] in list(dataset.coordinates["id"]) and self.merge_strategy == "fill":
                 continue
 
@@ -449,7 +448,7 @@ class ImagesToCoordinates(NiMAREBase):
         if self.merge_strategy != "demolish":
             original_idxs = ~dataset.coordinates["id"].isin(coordinates_df["id"])
             old_coordinates_df = dataset.coordinates[original_idxs]
-            coordinates_df = coordinates_df.append(old_coordinates_df, ignore_index=True)
+            coordinates_df = pd.concat([coordinates_df, old_coordinates_df], ignore_index=True)
 
             # specify original coordinates
             original_ids = set(old_coordinates_df["id"])
@@ -474,6 +473,45 @@ class ImagesToCoordinates(NiMAREBase):
         new_dataset.metadata = metadata
 
         return new_dataset
+
+
+class StandardizeField(NiMAREBase):
+    """Standardize metadata fields."""
+
+    def __init__(self, fields):
+        self.fields = fields  # the fields to be standardized
+
+    def transform(self, dataset):
+        """Standardize metadata fields."""
+        # update a copy of the dataset
+        dataset = dataset.copy()
+
+        categorical_metadata, numerical_metadata = [], []
+        for metadata_name in self.fields:
+            if np.array_equal(
+                dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(str)
+            ):
+                categorical_metadata.append(metadata_name)
+            elif np.array_equal(
+                dataset.annotations[metadata_name],
+                dataset.annotations[metadata_name].astype(float),
+            ):
+                numerical_metadata.append(metadata_name)
+        if len(categorical_metadata) > 0:
+            LGR.warning(f"Categorical metadata {categorical_metadata} can't be standardized.")
+        if len(numerical_metadata) == 0:
+            raise ValueError("No numerical metadata found.")
+
+        moderators = dataset.annotations[numerical_metadata]
+        standardize_moderators = moderators - np.mean(moderators, axis=0)
+        standardize_moderators /= np.std(standardize_moderators, axis=0)
+        if isinstance(self.fields, str):
+            column_name = "standardized_" + self.fields
+        elif isinstance(self.fields, list):
+            column_name = ["standardized_" + moderator for moderator in numerical_metadata]
+        dataset.annotations[column_name] = standardize_moderators
+
+        return dataset
 
 
 def sample_sizes_to_dof(sample_sizes):

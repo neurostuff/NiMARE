@@ -174,7 +174,7 @@ intersphinx_mapping = {
     "matplotlib": ("https://matplotlib.org/", (None, "https://matplotlib.org/objects.inv")),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
     "nibabel": ("https://nipy.org/nibabel/", None),
-    "nilearn": ("http://nilearn.github.io/", None),
+    "nilearn": ("http://nilearn.github.io/stable/", None),
     "pymare": ("https://pymare.readthedocs.io/en/latest/", None),
     "skimage": ("https://scikit-image.org/docs/stable/", None),
 }
@@ -209,7 +209,7 @@ plot_gallery = True
 # -----------------------------------------------------------------------------
 # sphinxcontrib-bibtex
 # -----------------------------------------------------------------------------
-bibtex_bibfiles = ["./references.bib"]
+bibtex_bibfiles = ["../nimare/resources/references.bib"]
 bibtex_style = "unsrt"
 bibtex_reference_style = "author_year"
 bibtex_footbibliography_header = ""

@@ -14,6 +14,7 @@ from scipy import sparse
 
 from nimare.dataset import Dataset
 from nimare.extract.utils import _get_dataset_dir
+from nimare.utils import _create_name, load_nimads
 
 LGR = logging.getLogger(__name__)
 
@@ -24,6 +25,65 @@ DEFAULT_MAP_TYPE_CONVERSION = {
     "Z map": "z",
     "p map": "p",
 }
+
+
+def convert_nimads_to_dataset(studyset, annotation=None):
+    """Convert nimads studyset to a dataset.
+
+    .. versionadded:: 0.0.14
+
+    Parameters
+    ----------
+    studyset : :obj:`str`, :obj:`dict`, :obj:`nimare.nimads.StudySet`
+        Path to a JSON file containing a nimads studyset, a dictionary containing a nimads
+        studyset, or a nimads studyset object.
+    annotation : :obj:`str`, :obj:`dict`, :obj:`nimare.nimads.Annotation`, optional
+        Optional path to a JSON file containing a nimads annotation, a dictionary containing a
+        nimads annotation, or a nimads annotation object.
+
+    Returns
+    -------
+    dset : :obj:`nimare.dataset.Dataset`
+        NiMARE Dataset object containing experiment information from nimads studyset.
+    """
+
+    def _analysis_to_dict(study, analysis):
+        result = {
+            "metadata": {
+                "authors": study.name,
+                "journal": study.publication,
+                "title": study.name,
+            },
+            "coords": {
+                "space": analysis.points[0].space if analysis.points else "UNKNOWN",
+                "x": [p.x for p in analysis.points] or [None],
+                "y": [p.y for p in analysis.points] or [None],
+                "z": [p.z for p in analysis.points] or [None],
+            },
+        }
+        sample_size = study.metadata.get("sample_size")
+        if sample_size:
+            result["metadata"]["sample_sizes"] = [sample_size]
+        if analysis.annotations:
+            result["labels"] = {}
+            for annotation in analysis.annotations.values():
+                result["labels"].update(annotation)
+
+        return result
+
+    def _study_to_dict(study):
+        return {
+            "metadata": {
+                "authors": study.authors,
+                "journal": study.publication,
+                "title": study.name,
+            },
+            "contrasts": {_create_name(a): _analysis_to_dict(study, a) for a in study.analyses},
+        }
+
+    # load nimads studyset
+    studyset = load_nimads(studyset, annotation)
+    return Dataset({_create_name(s): _study_to_dict(s) for s in list(studyset.studies)})
 
 
 def convert_neurosynth_to_dict(
@@ -487,7 +547,6 @@ def convert_neurovault_to_dataset(
 
     dataset_dict = {}
     for coll_name, nv_coll in collection_ids.items():
-
         nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
         images = requests.get(nv_url).json()
         if "Not found" in images.get("detail", ""):

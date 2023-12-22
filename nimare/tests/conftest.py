@@ -1,4 +1,5 @@
 """Generate fixtures for tests."""
+import json
 import os
 from shutil import copyfile
 
@@ -6,8 +7,10 @@ import nibabel as nib
 import numpy as np
 import pytest
 from nilearn.image import resample_img
+from requests import request
 
 import nimare
+from nimare.generate import create_coordinate_dataset
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_resource_path
 
@@ -65,6 +68,39 @@ def testdata_cbma_full():
     """
     dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
     dset = nimare.dataset.Dataset(dset_file)
+    return dset
+
+
+@pytest.fixture(scope="session")
+def testdata_cbmr_simulated():
+    """Simulate coordinate-based dataset for tests."""
+    # simulate
+    ground_truth_foci, dset = create_coordinate_dataset(
+        foci=10, sample_size=(20, 40), n_studies=1000, seed=100
+    )
+    # set up group columns: diagnosis & drug_status
+    n_rows = dset.annotations.shape[0]
+    dset.annotations["diagnosis"] = [
+        "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
+    ]
+    dset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+    dset.annotations["drug_status"] = (
+        dset.annotations["drug_status"].sample(frac=1).reset_index(drop=True)
+    )  # random shuffle drug_status column
+    # set up moderators: sample sizes & avg_age
+    dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)]
+    dset.annotations["avg_age"] = np.arange(n_rows)
+    dset.annotations["schizophrenia_subtype"] = [
+        "type1",
+        "type2",
+        "type3",
+        "type4",
+        "type5",
+    ] * int(n_rows / 5)
+    dset.annotations["schizophrenia_subtype"] = (
+        dset.annotations["schizophrenia_subtype"].sample(frac=1).reset_index(drop=True)
+    )  # random shuffle drug_status column
+
     return dset
 
 
@@ -133,3 +169,31 @@ def testdata_ibma_resample(tmp_path_factory):
             nib.save(img, new_f)
     dset.update_path(tmpdir)
     return dset
+
+
+@pytest.fixture(scope="session")
+def example_nimads_studyset():
+    """Download/lookup example NiMADS studyset."""
+    out_file = os.path.join(get_test_data_path(), "nimads_studyset.json")
+    if not os.path.isfile(out_file):
+        url = "https://neurostore.org/api/studysets/Cv2LLUqG76W9?nested=true"
+        response = request("GET", url)
+        with open(out_file, "wb") as f:
+            f.write(response.content)
+    with open(out_file, "r") as f:
+        studyset = json.load(f)
+    return studyset
+
+
+@pytest.fixture(scope="session")
+def example_nimads_annotation():
+    """Download/lookup example NiMADS annotation."""
+    out_file = os.path.join(get_test_data_path(), "nimads_annotation.json")
+    if not os.path.isfile(out_file):
+        url = "https://neurostore.org/api/annotations/76PyNqoTNEsE"
+        response = request("GET", url)
+        with open(out_file, "wb") as f:
+            f.write(response.content)
+    with open(out_file, "r") as f:
+        annotation = json.load(f)
+    return annotation

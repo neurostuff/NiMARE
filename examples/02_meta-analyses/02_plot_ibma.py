@@ -29,6 +29,7 @@ dset_dir = download_nidm_pain()
 # Load Dataset
 # -----------------------------------------------------------------------------
 import os
+from pprint import pprint
 
 from nimare.dataset import Dataset
 from nimare.transforms import ImageTransformer
@@ -47,7 +48,7 @@ dset = xformer.transform(dset)
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import Stouffers
 
-meta = Stouffers(use_sample_size=False, resample=True)
+meta = Stouffers(use_sample_size=False)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -56,11 +57,16 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Stouffer's with weighting by sample size
 # -----------------------------------------------------------------------------
-meta = Stouffers(use_sample_size=True, resample=True)
+meta = Stouffers(use_sample_size=True)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -69,13 +75,18 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Fisher's
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import Fishers
 
-meta = Fishers(resample=True)
+meta = Fishers()
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -84,6 +95,11 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Permuted OLS
@@ -91,7 +107,7 @@ plot_stat_map(
 from nimare.correct import FWECorrector
 from nimare.meta.ibma import PermutedOLS
 
-meta = PermutedOLS(two_sided=True, resample=True)
+meta = PermutedOLS(two_sided=True)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -111,12 +127,17 @@ plot_stat_map(
     cmap="RdBu_r",
 )
 
+print("Description:")
+pprint(cresult.description_)
+print("References:")
+pprint(cresult.bibtex_)
+
 ###############################################################################
 # Weighted Least Squares
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import WeightedLeastSquares
 
-meta = WeightedLeastSquares(tau2=0, resample=True)
+meta = WeightedLeastSquares(tau2=0)
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -125,13 +146,18 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # DerSimonian-Laird
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import DerSimonianLaird
 
-meta = DerSimonianLaird(resample=True)
+meta = DerSimonianLaird()
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -140,13 +166,18 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
 
 ###############################################################################
 # Hedges
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import Hedges
 
-meta = Hedges(resample=True)
+meta = Hedges()
 results = meta.fit(dset)
 
 plot_stat_map(
@@ -155,3 +186,8 @@ plot_stat_map(
     draw_cross=False,
     cmap="RdBu_r",
 )
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)

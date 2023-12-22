@@ -4,9 +4,10 @@ import logging
 import numpy as np
 import pandas as pd
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from tqdm.auto import tqdm
 
+from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
 from nimare.stats import null_to_p, nullhist_to_p
@@ -14,10 +15,15 @@ from nimare.transforms import p_to_z
 from nimare.utils import _check_ncores, tqdm_joblib, use_memmap
 
 LGR = logging.getLogger(__name__)
+__version__ = _version.get_versions()["version"]
 
 
 class ALE(CBMAEstimator):
     """Activation likelihood estimation.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -34,9 +40,11 @@ class ALE(CBMAEstimator):
         ======================= =================================================================
         "approximate" (default) Build a histogram of summary-statistic values and their
                                 expected frequencies under the assumption of random spatial
-                                associated between studies, via a weighted convolution.
+                                associated between studies, via a weighted convolution, as
+                                described in :footcite:t:`eickhoff2012activation`.
 
-                                This method is much faster, but slightly less accurate.
+                                This method is much faster, but slightly less accurate, than the
+                                "montecarlo" option.
         "montecarlo"            Perform a large number of permutations, in which the coordinates
                                 in the studies are randomly drawn from the Estimator's brain mask
                                 and the full set of resulting summary-statistic values are
@@ -50,6 +58,12 @@ class ALE(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
@@ -121,7 +135,9 @@ class ALE(CBMAEstimator):
         self,
         kernel_transformer=ALEKernel,
         null_method="approximate",
-        n_iters=10000,
+        n_iters=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -133,11 +149,59 @@ class ALE(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
-        self.n_iters = n_iters
+        self.n_iters = None if null_method == "approximate" else n_iters or 10000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.n_iters} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution \\citep{eickhoff2012activation}"
+
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str = ""
+
+        description = (
+            "An activation likelihood estimation (ALE) meta-analysis "
+            "\\citep{turkeltaub2002meta,turkeltaub2012minimizing,eickhoff2012activation} was "
+            f"performed with NiMARE {__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), using a(n) "
+            f"{self.kernel_transformer.__class__.__name__.replace('Kernel', '')} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            f"ALE values were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
+        )
+        return description
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -235,7 +299,6 @@ class ALE(CBMAEstimator):
         ale_hist = ma_hists[0, :].copy()
 
         for i_exp in range(1, ma_hists.shape[0]):
-
             exp_hist = ma_hists[i_exp, :]
 
             # Find histogram bins with nonzero values for each histogram.
@@ -261,6 +324,10 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     """ALE subtraction analysis.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
@@ -283,6 +350,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Default is ALEKernel.
     n_iters : :obj:`int`, optional
         Default is 10000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of processes to use for meta-analysis. If -1, use all available cores.
         Default is 1.
@@ -327,7 +400,15 @@ class ALESubtraction(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
-    def __init__(self, kernel_transformer=ALEKernel, n_iters=10000, n_cores=1, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer=ALEKernel,
+        n_iters=10000,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        n_cores=1,
+        **kwargs,
+    ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -336,7 +417,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
 
         self.dataset1 = None
         self.dataset2 = None
@@ -345,6 +431,55 @@ class ALESubtraction(PairwiseCBMAEstimator):
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
+
+    def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates1"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str1 = f", with a total of {int(n_subjects)} participants"
+            n_subjects = (
+                self.inputs_["coordinates2"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str2 = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str1 = ""
+            sample_size_str2 = ""
+
+        description = (
+            "An activation likelihood estimation (ALE) subtraction analysis "
+            "\\citep{laird2005ale,eickhoff2012activation} was performed with NiMARE "
+            f"v{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), "
+            f"using a(n) {self.kernel_transformer.__class__.__name__.replace('Kernel', '')} "
+            "kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2023} "
+            "approach, which differs from the original version. "
+            "In this version, ALE-difference scores are calculated between the two datasets, "
+            "for all voxels in the mask, rather than for voxels significant in the main effects "
+            "analyses of the two datasets. "
+            "Next, voxel-wise null distributions of ALE-difference scores were generated via a "
+            "randomized group assignment procedure, in which the studies in the two datasets were "
+            "randomly reassigned and ALE-difference scores were calculated for the randomized "
+            "datasets. "
+            f"This randomization procedure was repeated {self.n_iters} times to build the null "
+            "distributions. "
+            "The significance of the original ALE-difference scores was assessed using a "
+            "two-sided statistical test. "
+            "The null distributions were assumed to be asymmetric, as ALE-difference scores will "
+            "be skewed based on the sample sizes of the two datasets. "
+            f"The first input dataset (group1) included {self.inputs_['coordinates1'].shape[0]} "
+            f"foci from {len(self.inputs_['id1'])} experiments{sample_size_str1}. "
+            f"The second input dataset (group2) included {self.inputs_['coordinates2'].shape[0]} "
+            f"foci from {len(self.inputs_['id2'])} experiments{sample_size_str2}. "
+        )
+        return description
 
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
@@ -424,7 +559,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "z_desc-group1MinusGroup2": z_arr,
             "logp_desc-group1MinusGroup2": logp_arr,
         }
-        return maps, {}
+        description = self._generate_description()
+
+        return maps, {}, description
 
     def _compute_summarystat_est(self, ma_values):
         stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -490,6 +627,10 @@ class SCALE(CBMAEstimator):
 
     This method was originally introduced in :footcite:t:`langner2014meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
@@ -519,6 +660,12 @@ class SCALE(CBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.ALEKernel`.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix '\kernel__' in the variable name.
@@ -554,6 +701,8 @@ class SCALE(CBMAEstimator):
         n_iters=10000,
         n_cores=1,
         kernel_transformer=ALEKernel,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -564,7 +713,12 @@ class SCALE(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
 
         if not isinstance(xyz, np.ndarray):
             raise TypeError(f"Parameter 'xyz' must be a numpy.ndarray, not a {type(xyz)}")
@@ -579,6 +733,31 @@ class SCALE(CBMAEstimator):
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
+
+    def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str = ""
+
+        description = (
+            "A specific coactivation likelihood estimation (SCALE) meta-analysis "
+            "\\citep{langner2014meta} was performed with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), with "
+            f"{self.n_iters} iterations. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
+        )
+        return description
 
     @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
@@ -640,9 +819,11 @@ class SCALE(CBMAEstimator):
         logp_values = -np.log10(p_values)
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
 
-        # Write out unthresholded value maps
+        # Write out unthresholded value images
         maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
-        return maps, {}
+        description = self._generate_description()
+
+        return maps, {}, description
 
     def _compute_summarystat_est(self, data):
         """Generate ALE-value array and null distribution from a list of contrasts.
