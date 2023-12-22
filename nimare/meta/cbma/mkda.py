@@ -253,9 +253,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     .. versionchanged:: 0.2.1
 
-        - Add `compute_probabilities` parameter to control whether conditional probabilities are
-            calculated. This is useful because probability maps are difficult to interpret and 
-            for speeding up the algorithm when only the chi-squared values are needed, 
+        - Make `prior` parameter default to None, which controls if posterior probabilities
+            pFgA, pAgF_prior and pFgA_prior are calculated. This is useful because probability
+            maps are difficult to interpret and for speeding up the algorithm.
         - Rename ``consistency`` to ``uniformity`` and ``specificity`` to ``association`` to match
           Neurosynth's terminology
 
@@ -330,7 +330,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
-    def __init__(self, kernel_transformer=MKDAKernel, compute_probabilities=False, prior=0.5, **kwargs):
+    def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -384,20 +384,21 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         n_mappables = n_selected + n_unselected
 
-        if self.compute_probabilities:
-            # Nomenclature for variables below: p = probability,
-            # F = feature present, g = given, U = unselected, A = activation.
-            # So, e.g., pAgF = p(A|F) = probability of activation
-            # in a voxel if we know that the feature is present in a study.
-            pF = n_selected / n_mappables
-            pA = np.array(
-                (n_selected_active_voxels + n_unselected_active_voxels) / n_mappables
-            ).squeeze()
+        # Nomenclature for variables below: p = probability,
+        # F = feature present, g = given, U = unselected, A = activation.
+        # So, e.g., pAgF = p(A|F) = probability of activation
+        # in a voxel if we know that the feature is present in a study.
+        pF = n_selected / n_mappables
+        pA = np.array(
+            (n_selected_active_voxels + n_unselected_active_voxels) / n_mappables
+        ).squeeze()
 
-            del n_mappables
+        del n_mappables
 
-            pAgF = n_selected_active_voxels / n_selected
-            pAgU = n_unselected_active_voxels / n_unselected
+        pAgF = n_selected_active_voxels / n_selected
+        pAgU = n_unselected_active_voxels / n_unselected
+
+        if self.prior is not None:
             pFgA = pAgF * pF / pA
 
             del pF
@@ -405,6 +406,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
             # Recompute conditionals with uniform prior
             pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
             pFgA_prior = pAgF * self.prior / pAgF_prior
+
+        del pF
 
         # One-way chi-square test for uniformity of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
@@ -447,17 +450,17 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "chi2_desc-uniformity": pAgF_chi2_vals,
             "chi2_desc-association": pFgA_chi2_vals,
             "p_desc-uniformity": pAgF_p_vals,
-            "p_desc-association": pFgA_p_vals,
+            "p_desc-association": pFgA_p_vals,=
+            "prob_desc-A": pA,
+            "prob_desc-AgF": pAgF
         }
 
-        if self.compute_probabilities:
+        if self.prior is not None:
             maps.update(
                 {
-                "prob_desc-A": pA,
-                "prob_desc-AgF": pAgF,
-                "prob_desc-FgA": pFgA,
-                ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
-                ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior,
+                    "prob_desc-FgA": pFgA,
+                    ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
+                    ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior
                 }
             )
 
