@@ -533,7 +533,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "chi2_desc-uniformity": pAgF_chi2_vals,
             "chi2_desc-association": pFgA_chi2_vals,
             "p_desc-uniformity": pAgF_p_vals,
-            "p_desc-association": pFgA_p_vals,=
+            "p_desc-association": pFgA_p_vals,
             "prob_desc-A": pA,
             "prob_desc-AgF": pAgF,
             "prob_desc-FgA": pFgA,
