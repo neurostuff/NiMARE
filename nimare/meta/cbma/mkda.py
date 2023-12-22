@@ -397,17 +397,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         pAgF = n_selected_active_voxels / n_selected
         pAgU = n_unselected_active_voxels / n_unselected
+        pFgA = pAgF * pF / pA
+
+        del pF
 
         if self.prior is not None:
-            pFgA = pAgF * pF / pA
-
-            del pF
-
             # Recompute conditionals with uniform prior
             pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
             pFgA_prior = pAgF * self.prior / pAgF_prior
-
-        del pF
 
         # One-way chi-square test for uniformity of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
