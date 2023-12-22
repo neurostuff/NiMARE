@@ -410,7 +410,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
         )
 
         self.prior = prior
-        self.compute_probabilities = compute_probabilities
 
     def _generate_description(self):
         description = (
