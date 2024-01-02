@@ -536,16 +536,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-association": pFgA_p_vals,
             "prob_desc-A": pA,
             "prob_desc-AgF": pAgF,
-            "prob_desc-FgA": pFgA,
-            ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
-            ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior,
-            "z_desc-consistency": pAgF_z,
-            "z_desc-specificity": pFgA_z,
-            "chi2_desc-consistency": pAgF_chi2_vals,
-            "chi2_desc-specificity": pFgA_chi2_vals,
-            "p_desc-consistency": pAgF_p_vals,
-            "p_desc-specificity": pFgA_p_vals,
+            "prob_desc-FgA": pFgA
         }
+
+        if self.prior is not None:
+            maps["prob_desc-AgF_prior"] = pAgF_prior
+            maps["prob_desc-FgA_prior"] = pFgA_prior
+            
         description = self._generate_description()
         return maps, {}, description
 
