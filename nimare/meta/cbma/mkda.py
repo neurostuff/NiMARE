@@ -542,7 +542,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         if self.prior is not None:
             maps["prob_desc-AgF_prior"] = pAgF_prior
             maps["prob_desc-FgA_prior"] = pFgA_prior
-            
+
         description = self._generate_description()
         return maps, {}, description
 
