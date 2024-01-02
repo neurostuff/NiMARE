@@ -536,7 +536,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-association": pFgA_p_vals,
             "prob_desc-A": pA,
             "prob_desc-AgF": pAgF,
-            "prob_desc-FgA": pFgA
+            "prob_desc-FgA": pFgA,
         }
 
         if self.prior is not None:
