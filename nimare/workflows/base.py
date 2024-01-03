@@ -152,7 +152,7 @@ class Workflow(NiMAREBase):
 
         if issubclass(type(result.estimator), PairwiseCBMAEstimator):
             modalities = (
-                ["_desc-specificityMass", "_corr-"]
+                ["_desc-associationMass", "_corr-"]
                 if corr_method == "montecarlo"
                 else ["_desc-", "_corr-"]
             )

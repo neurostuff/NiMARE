@@ -372,7 +372,7 @@ class CBMAEstimator(Estimator):
             null_distribution /= np.max(null_distribution)
             null_distribution = np.squeeze(null_distribution)
 
-            # Desired bin is the first one _before_ the target p-value (for consistency
+            # Desired bin is the first one _before_ the target p-value (for uniformity
             # with the montecarlo null).
             ss_idx = np.maximum(0, np.where(null_distribution <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
@@ -382,7 +382,7 @@ class CBMAEstimator(Estimator):
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
 
             hist_weights = self.null_distributions_["histweights_corr-none_method-montecarlo"]
-            # Desired bin is the first one _before_ the target p-value (for consistency
+            # Desired bin is the first one _before_ the target p-value (for uniformity
             # with the montecarlo null).
             ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]

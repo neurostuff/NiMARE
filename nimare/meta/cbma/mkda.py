@@ -421,7 +421,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "kernel. "
             f"{self.kernel_transformer._generate_description()} "
             "This analysis calculated several measures. "
-            "The first dataset was evaluated for consistency of activation via a one-way "
+            "The first dataset was evaluated for uniformity of activation via a one-way "
             "chi-square test. "
             f"The first input dataset included {self.inputs_['coordinates1'].shape[0]} foci from "
             f"{len(self.inputs_['id1'])} experiments. "
