@@ -487,7 +487,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del pF
 
-        if self.prior is not None:
+        if self.prior:
             # Recompute conditionals with uniform prior
             pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
             pFgA_prior = pAgF * self.prior / pAgF_prior
