@@ -65,7 +65,7 @@ results = mkda.fit(dset_sel, dset_unsel)
 corr = FWECorrector(method="montecarlo", n_iters=10000)
 cres = corr.transform(results)
 
-# We want the "specificity" map (2-way chi-square between sel and unsel)
+# We want the "association" map (2-way chi-square between sel and unsel)
 plotting.plot_stat_map(
     cres.get_map("z_desc-uniformity_level-voxel_corr-FWE_method-montecarlo"),
     threshold=3.09,
