@@ -539,7 +539,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "prob_desc-FgA": pFgA,
         }
 
-        if self.prior is not None:
+        if self.prior:
             maps["prob_desc-AgF_prior"] = pAgF_prior
             maps["prob_desc-FgA_prior"] = pFgA_prior
 
