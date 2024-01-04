@@ -8,7 +8,6 @@ from scipy import ndimage
 
 from nimare.utils import unique_rows
 
-
 def compute_kda_ma(
     mask,
     ijks,
@@ -128,19 +127,20 @@ def compute_kda_ma(
 
         sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
         sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :].T
-        nonzero_idx = tuple(sphere_idx_filtered)
 
         if sum_overlap:
             nonzero_to_append = counts[idx][sphere_idx_inside_mask]
         else:
             nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
 
-        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
-        all_coords.append(np.vstack(nonzero_idx))
+        # Combine experiment id with coordinates
+        exp_coords = np.vstack(
+            [np.full(sphere_idx_filtered.shape[1], i_exp), sphere_idx_filtered])
+
+        all_coords.append(exp_coords)
         all_data.append(nonzero_to_append)
 
-    exp = np.hstack(all_exp)
-    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
+    coords = np.vstack(np.hstack(all_coords))
 
     data = np.hstack(all_data).flatten().astype(np.int32)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
@@ -152,7 +152,7 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     """Generate ALE modeled activation (MA) maps.
 
     Replaces the values around each focus in ijk with the contrast-specific
-    kernel. Takes the element-wise maximum when looping through foci, which
+    kernel. Tmask_datakes the element-wise maximum when looping through foci, which
     accounts for foci which are near to one another and may have overlapping
     kernels.
 
