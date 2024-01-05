@@ -8,6 +8,36 @@ from scipy import ndimage
 
 from nimare.utils import unique_rows
 
+@jit(nopython=True, cache=True)
+def _convolve_sphere(sphere_coords, chunk_idx, kernel, peaks):
+    """Convolve peaks with a spherical kernel.
+
+    Parameters
+    ----------
+    sphere_coords : 2D numpy.ndarray
+        All coordinates that fall within any sphere.
+        Coordinates from overlapping spheres will appear twice.
+    chunk_idx : 1D numpy.ndarray
+        Indices of the first coordinate in each sphere.
+    kernel : 2D numpy.ndarray
+        IJK coordinates of a sphere, relative to a central point
+        (not the brain template).
+    peaks : 2D numpy.ndarray
+        The IJK coordinates of peaks to convolve with the kernel.
+
+    Returns
+    -------
+    sphere_coords : 2D numpy.ndarray
+        All coordinates that fall within any sphere.
+        Coordinates from overlapping spheres will appear twice.
+    """
+    for peak in peaks:
+        sphere_coords[chunk_idx, :] = kernel.T + peak
+        chunk_idx = chunk_idx + kernel.shape[1]
+
+    return sphere_coords
+
+
 def compute_kda_ma(
     mask,
     ijks,
@@ -75,32 +105,6 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    def _convolve_sphere(kernel, peaks):
-        """Convolve peaks with a spherical kernel.
-
-        Parameters
-        ----------
-        kernel : 2D numpy.ndarray
-            IJK coordinates of a sphere, relative to a central point
-            (not the brain template).
-        peaks : 2D numpy.ndarray
-            The IJK coordinates of peaks to convolve with the kernel.
-
-        Returns
-        -------
-        sphere_coords : 2D numpy.ndarray
-            All coordinates that fall within any sphere.
-            Coordinates from overlapping spheres will appear twice.
-        """
-        # Convolve spheres
-        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
-        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
-        for peak in peaks:
-            sphere_coords[chunk_idx, :] = kernel.T + peak
-            chunk_idx = chunk_idx + kernel.shape[1]
-
-        return sphere_coords
-
     all_coords = []
     all_data = []
     # Loop over experiments
@@ -109,12 +113,13 @@ def compute_kda_ma(
         curr_exp_idx = exp_idx == i_exp
         peaks = ijks[curr_exp_idx]
 
-        all_spheres = _convolve_sphere(kernel, peaks)
+        # Convolve with sphere
+        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
+        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
 
-        if sum_overlap:
-            all_spheres, counts = unique_rows(all_spheres, return_counts=True)
-            counts = counts * value
-        else:
+        all_spheres = _convolve_sphere(sphere_coords, chunk_idx, kernel, peaks)
+
+        if not sum_overlap:
             all_spheres = unique_rows(all_spheres)
 
         # Mask coordinates beyond space
@@ -127,10 +132,7 @@ def compute_kda_ma(
         sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
         sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :]
 
-        if sum_overlap:
-            nonzero_to_append = counts[idx][sphere_idx_inside_mask]
-        else:
-            nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
+        nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
 
         # Combine experiment id with coordinates
         exp_coords = np.insert(sphere_idx_filtered, 0, i_exp, axis=1)
@@ -139,7 +141,9 @@ def compute_kda_ma(
 
     coords = np.vstack(all_coords).T
     data = np.hstack(all_data).flatten().astype(np.int32)
-    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
+
+    kernel_data = sparse.COO(coords, data,
+                             has_duplicates=sum_overlap, shape=kernel_shape)
 
     return kernel_data
 
