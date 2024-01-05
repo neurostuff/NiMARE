@@ -8,6 +8,7 @@ from scipy import ndimage
 
 from nimare.utils import unique_rows
 
+
 @jit(nopython=True, cache=True)
 def _convolve_sphere(sphere_coords, chunk_idx, kernel, peaks):
     """Convolve peaks with a spherical kernel.
@@ -104,7 +105,9 @@ def compute_kda_ma(
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
-    cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe")
+    cube = np.vstack(
+        [row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe"
+    )
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     all_coords = []
@@ -142,8 +145,7 @@ def compute_kda_ma(
 
     coords = np.vstack(all_coords).T
     data = np.hstack(all_data).flatten()
-    kernel_data = sparse.COO(coords, data,
-                             has_duplicates=sum_overlap, shape=kernel_shape)
+    kernel_data = sparse.COO(coords, data, has_duplicates=sum_overlap, shape=kernel_shape)
 
     return kernel_data
 
