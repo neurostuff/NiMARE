@@ -7,7 +7,7 @@ from numba import jit
 from scipy import ndimage
 
 from nimare.utils import unique_rows
-@profile
+
 def compute_kda_ma(
     mask,
     ijks,
