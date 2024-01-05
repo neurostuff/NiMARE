@@ -1,130 +1,14 @@
 """Utilities for coordinate-based meta-analysis estimators."""
 import warnings
-from numba.typed import List
-from numba import types
 import numpy as np
 import sparse
-from numba.extending import overload, register_jitable
 from numba import jit
 from scipy import ndimage
 
 from nimare.utils import unique_rows
 
-@overload(np.all)
-def np_all(x, axis=None):                                                                               #this function is a way to use np.all within numba accelerated function allowing for axis argument
-
-    # ndarray.all with axis arguments for 2D arrays.
-
-    @register_jitable
-    def _np_all_axis0(arr):
-        out = np.logical_and(arr[0], arr[1])
-        for v in iter(arr[2:]):
-            for idx, v_2 in enumerate(v):
-                out[idx] = np.logical_and(v_2, out[idx])
-        return out
-
-    @register_jitable
-    def _np_all_flat(x):
-        out = x.all()
-        return out
-
-    @register_jitable
-    def _np_all_axis1(arr):
-        out = np.logical_and(arr[:, 0], arr[:, 1])
-        for idx, v in enumerate(arr[:, 2:]):
-            for v_2 in iter(v):
-                out[idx] = np.logical_and(v_2, out[idx])
-        return out
-
-    if isinstance(axis, types.Optional):
-        axis = axis.type
-
-
-    if isinstance(axis, types.NoneType):
-
-        def _np_all_impl(x, axis=None):
-            return _np_all_flat(x)
-
-        return _np_all_impl
-
-    elif x.ndim == 1:
-
-        def _np_all_impl(x, axis=None):
-            return _np_all_flat(x)
-
-        return _np_all_impl
-
-    elif x.ndim == 2:
-
-        def _np_all_impl(x, axis=None):
-            if axis == 0:
-                return _np_all_axis0(x)
-            else:
-                return _np_all_axis1(x)
-
-        return _np_all_impl
-
-    else:
-
-        def _np_all_impl(x, axis=None):
-            return _np_all_flat(x)
-
-        return _np_all_impl
-
-@jit(nopython=True, cache=True)
-def nb_unique(input_data, axis=0):
-    """2D np.unique(a, return_index=True, return_counts=True)
-    
-    Parameters
-    ----------
-    input_data : 2D numeric array
-    axis : int, optional
-        axis along which to identify unique slices, by default 0
-    Returns
-    -------
-    2D array
-        unique rows (or columns) from the input array
-    1D array of ints
-        indices of unique rows (or columns) in input array
-    1D array of ints
-        number of instances of each unique row
-    """
-
-    # don't want to sort original data
-    if axis == 1:
-        data = input_data.T.copy()
-
-    else:
-        data = input_data.copy()
-
-    # so we can remember the original indexes of each row
-    orig_idx = np.array([i for i in range(data.shape[0])])
-
-    # sort our data AND the original indexes
-    for i in range(data.shape[1] - 1, -1, -1):
-        sorter = data[:, i].argsort(kind="mergesort")
-
-        # mergesort to keep associations
-        data = data[sorter]
-        orig_idx = orig_idx[sorter]
-    # get original indexes
-    idx = [0]
-
-    if data.shape[1] > 1:
-        bool_idx = ~np.all((data[:-1] == data[1:]), axis=1)
-        additional_uniques = np.nonzero(bool_idx)[0] + 1
-
-    else:
-        additional_uniques = np.nonzero(~(data[:-1] == data[1:]))[0] + 1
-
-    idx = np.append(idx, additional_uniques)
-    # get counts for each unique row
-    counts = np.append(idx[1:], data.shape[0])
-    counts = counts - idx
-    return data[idx], orig_idx[idx], counts
-
 @jit(nopython=True)
-def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
+def _convolve_sphere(kernel, ijks, exp_idx, shape):
     """Convolve peaks with a spherical kernel.
 
     Parameters
@@ -147,7 +31,6 @@ def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
         for i in range(x.shape[1]):
             out = np.logical_and(out, x[:, i])
         return out
-    shape = np.array(mask_data.shape)
 
     # Convolve with sphere
     sphere_coords = np.zeros((kernel.shape[1] * len(ijks), 3), dtype=np.int32)
@@ -163,15 +46,7 @@ def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
     sphere_coords = sphere_coords[idx, :]
     exp_idx = exp_idx[idx]
 
-    sphere_coords = np.hstack((exp_idx.reshape(exp_idx.shape[0], 1), sphere_coords))
-
-    sphere_coords, unique_indices, counts = nb_unique(sphere_coords)
-
-    return sphere_coords
-
-    # sphere_idx_inside_mask = np.where(mask_data[tuple(sphere_coords.T)])[0]
-    # sphere_coords = sphere_coords[sphere_idx_inside_mask, :]
-    # exp_idx = exp_idx[sphere_idx_inside_mask]
+    return sphere_coords, exp_idx
 
 def compute_kda_ma(
     mask,
@@ -242,10 +117,17 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe")
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    all_spheres = _convolve_sphere(kernel, ijks, exp_idx, mask_data)
+    sphere_coords, exp_idx = _convolve_sphere(kernel, ijks, exp_idx, np.array(shape))
 
-    # if not sum_overlap:
-    #     all_spheres = unique_rows(all_spheres)
+    # Mask coordinates outside mask
+    sphere_idx_inside_mask = np.where(mask_data[tuple(sphere_coords.T)])[0]
+    sphere_coords = sphere_coords[sphere_idx_inside_mask, :]
+    exp_idx = exp_idx[sphere_idx_inside_mask]
+
+    all_spheres = np.insert(sphere_coords, 0, exp_idx, axis=1)
+
+    if not sum_overlap:
+        all_spheres = unique_rows(all_spheres)
 
     data = np.ones((all_spheres.shape[0],), dtype=np.int32) * value
 
