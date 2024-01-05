@@ -431,6 +431,28 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         return description
 
+    def _load_ma_maps(self, ma_maps, chunk_size=4000):
+        """Load the MA maps for analysis."""
+        n_maps = ma_maps.shape[0]
+
+        n_chunks = (n_maps + chunk_size - 1) // chunk_size
+
+        n_active_voxels = sparse.COO(np.zeros(ma_maps.shape[1:]))
+
+        for i in range(n_chunks):
+            start = i * chunk_size
+            end = min((i + 1) * chunk_size, n_maps)
+            chunk_sum = ma_maps[start:end].sum(axis=0)
+            n_active_voxels += chunk_sum
+
+        if isinstance(n_active_voxels, sparse._coo.core.COO):
+            # NOTE: This may not work correctly with a non-NiftiMasker.
+            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+            n_active_voxels = n_active_voxels.todense().reshape(-1)
+            n_active_voxels = n_active_voxels[mask_data.reshape(-1)]
+
+        return n_active_voxels
+
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
@@ -443,15 +465,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             coords_key="coordinates1",
         )
         n_selected = ma_maps1.shape[0]
-        n_selected_active_voxels = ma_maps1.sum(axis=0)
-
-        if isinstance(n_selected_active_voxels, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
-
-            # Indexing the sparse array is slow, perform masking in the dense array
-            n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
-            n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
+        n_selected_active_voxels = self._load_ma_maps(ma_maps1)
 
         del ma_maps1
 
@@ -461,10 +475,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             coords_key="coordinates2",
         )
         n_unselected = ma_maps2.shape[0]
-        n_unselected_active_voxels = ma_maps2.sum(axis=0)
-        if isinstance(n_unselected_active_voxels, sparse._coo.core.COO):
-            n_unselected_active_voxels = n_unselected_active_voxels.todense().reshape(-1)
-            n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
+        n_unselected_active_voxels = self._load_ma_maps(ma_maps2)
 
         del ma_maps2
 
@@ -591,15 +602,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             iter_df1, self.masker, return_type="sparse"
         )
         n_selected = temp_ma_maps1.shape[0]
-        n_selected_active_voxels = temp_ma_maps1.sum(axis=0)
-
-        if isinstance(n_selected_active_voxels, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
-
-            # Indexing the sparse array is slow, perform masking in the dense array
-            n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
-            n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
+        n_selected_active_voxels = self._load_ma_maps(temp_ma_maps1)
 
         del temp_ma_maps1
 
@@ -608,10 +611,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             iter_df2, self.masker, return_type="sparse"
         )
         n_unselected = temp_ma_maps2.shape[0]
-        n_unselected_active_voxels = temp_ma_maps2.sum(axis=0)
-        if isinstance(n_unselected_active_voxels, sparse._coo.core.COO):
-            n_unselected_active_voxels = n_unselected_active_voxels.todense().reshape(-1)
-            n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
+        n_unselected_active_voxels = self._load_ma_maps(temp_ma_maps2)
 
         del temp_ma_maps2
 
