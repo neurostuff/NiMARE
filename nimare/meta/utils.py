@@ -7,7 +7,7 @@ from numba import jit
 from scipy import ndimage
 
 from nimare.utils import unique_rows
-
+@profile
 def compute_kda_ma(
     mask,
     ijks,
@@ -125,7 +125,7 @@ def compute_kda_ma(
         all_spheres = all_spheres[idx, :]
 
         sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-        sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :].T
+        sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :]
 
         if sum_overlap:
             nonzero_to_append = counts[idx][sphere_idx_inside_mask]
@@ -133,13 +133,11 @@ def compute_kda_ma(
             nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
 
         # Combine experiment id with coordinates
-        exp_coords = np.vstack(
-            [np.full(sphere_idx_filtered.shape[1], i_exp), sphere_idx_filtered])
-
+        exp_coords = np.insert(sphere_idx_filtered, 0, i_exp, axis=1)
         all_coords.append(exp_coords)
         all_data.append(nonzero_to_append)
 
-    coords = np.hstack(all_coords)
+    coords = np.vstack(all_coords).T
     data = np.hstack(all_data).flatten().astype(np.int32)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
