@@ -310,9 +310,9 @@ class Jackknife(Diagnostics):
         cluster_masker.fit(label_map)
 
         # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has
-        # stat_desc-group1MinusGroup2" maps, while MKDAChi2 has "z_desc-specificity" maps.
+        # stat_desc-group1MinusGroup2" maps, while MKDAChi2 has "z_desc-association' maps.
         # Fisher's and Stouffer's only have "z" maps though.
-        target_value_keys = {"stat", "est", "stat_desc-group1MinusGroup2", "z_desc-specificity"}
+        target_value_keys = {"stat", "est", "stat_desc-group1MinusGroup2", "z_desc-association"}
         avail_value_keys = set(result.maps.keys())
         union_value_keys = list(target_value_keys & avail_value_keys)
         target_value_map = union_value_keys[0] if union_value_keys else "z"

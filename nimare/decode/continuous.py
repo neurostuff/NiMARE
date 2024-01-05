@@ -171,7 +171,7 @@ class CorrelationDecoder(Decoder):
         features=None,
         frequency_threshold=0.001,
         meta_estimator=None,
-        target_image="z_desc-specificity",
+        target_image="z_desc-association",
         n_cores=1,
     ):
         meta_estimator = (

@@ -357,7 +357,7 @@ contrast_result = inference.transform(
 
 ###############################################################################
 # Now that we have done group comparison tests with the specified contrast matrix,
-# we can plot the z-score maps indicating consistency in activation regions among
+# we can plot the z-score maps indicating uniformity in activation regions among
 # all four groups.
 
 plot_stat_map(

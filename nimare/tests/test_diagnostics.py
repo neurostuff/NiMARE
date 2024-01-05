@@ -15,7 +15,7 @@ from nimare.tests.utils import get_test_data_path
         (cbma.ALE, "cbma", "onesample", "z", 1.65),
         (cbma.MKDADensity, "cbma", "onesample", "z", 1.65),
         (cbma.KDA, "cbma", "onesample", "z", 1.65),
-        (cbma.MKDAChi2, "cbma", "twosample", "z_desc-consistency", 1.65),
+        (cbma.MKDAChi2, "cbma", "twosample", "z_desc-uniformity", 1.65),
         (ibma.Fishers, "ibma", "onesample", "z", 0.1),
         (ibma.Stouffers, "ibma", "onesample", "z", 0.1),
         (ibma.WeightedLeastSquares, "ibma", "onesample", "z", 0.1),
@@ -110,7 +110,7 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
         (cbma.ALE, "cbma", "onesample", "z"),
         (cbma.MKDADensity, "cbma", "onesample", "z"),
         (cbma.KDA, "cbma", "onesample", "z"),
-        (cbma.MKDAChi2, "cbma", "twosample", "z_desc-consistency"),
+        (cbma.MKDAChi2, "cbma", "twosample", "z_desc-uniformity"),
         (ibma.Stouffers, "ibma", "onesample", "z"),
     ],
 )

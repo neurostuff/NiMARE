@@ -70,7 +70,7 @@ The correlation-based decoding is implemented in NiMARE's `CorrelationDecoder` c
    decoder = CorrelationDecoder(
        frequency_threshold=0.001,
        meta_estimator=mkda.MKDAChi2,
-       target_image='z_desc-specificity',
+       target_image='z_desc-association',
    )
    decoder.fit(ns_dset)
    decoding_results = decoder.transform('pain_map.nii.gz')
@@ -140,7 +140,7 @@ of the database in a confusion matrix. For each label in the ontology, studies a
 four groups: selected and label-positive (:math:`S_{s+l+}`), selected and label-negative
 (:math:`S_{s+l-}`), unselected and label-positive (:math:`S_{s-l+}`), and unselected and
 label-negative (:math:`S_{s-l-}`). Each method then compares these groups in order to evaluate
-both consistency and specificity of the relationship between the selection criteria and each label,
+both uniformity and association of the relationship between the selection criteria and each label,
 which are evaluated in terms of both statistical significance and effect size.
 
 
@@ -162,10 +162,10 @@ individual peak, and so weighting based on the number of foci would be inappropr
 
 This decoding method produces four outputs for each label. First, the distribution of studies in
 the sample with the label are compared to the distributions of other labels within the sample.
-This consistency analysis produces both a measure of statistical significance (i.e., a p-value)
+This uniformity analysis produces both a measure of statistical significance (i.e., a p-value)
 and a measure of effect size (i.e., the likelihood of being selected given the presence of the
 label). Next, the studies in the sample are compared to the studies in the rest of the database.
-This specificity analysis produces a p-value and an effect size measure of the posterior
+This association analysis produces a p-value and an effect size measure of the posterior
 probability of having the label given selection into the sample. A detailed algorithm description
 is presented below.
 
@@ -261,17 +261,17 @@ those in a larger database, but, unlike the BrainMap method, does not take foci 
 this reason, the Neurosynth method would likely be more appropriate for selection criteria not
 based on regions of interest (e.g., for characterizing meta-analytic groupings from a
 meta-analytic clustering analysis). However, the Neurosynth method requires user-provided
-information that BrainMap does not. Namely, in order to estimate probabilities for the consistency
-and specificity analyses with Bayes' Theorem, the Neurosynth method requires a prior probability of
+information that BrainMap does not. Namely, in order to estimate probabilities for the uniformity
+and association analyses with Bayes' Theorem, the Neurosynth method requires a prior probability of
 a given label. Typically, a value of 0.5 is used (i.e., the estimated probability that an
 individual is undergoing a given mental process described by a label, barring any evidence from
 neuroimaging data, is predicted to be 50%). This is, admittedly, a poor prediction, which means
 that probabilities estimated based on this prior are not likely to be accurate, though they may
 still serve as useful estimates of effect size for the analysis.
 
-Like the BrainMap method, this method produces four outputs for each label. For the consistency
+Like the BrainMap method, this method produces four outputs for each label. For the uniformity
 analysis, this method produces both a p-value and a conditional probability of selection given the
-presence of the label and the prior probability of having the label. For the specificity analysis,
+presence of the label and the prior probability of having the label. For the association analysis,
 the Neurosynth method produces both a p-value and a posterior probability of presence of the label
 given selection and the prior probability of having the label. A detailed algorithm description is
 presented below.

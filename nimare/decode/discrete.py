@@ -325,7 +325,7 @@ def brainmap_decode(
         n_selected_term - np.mean(n_selected_term)
     ).ravel()  # pylint: disable=no-member
 
-    # Two-way chi-square test for specificity of activation
+    # Two-way chi-square test for association of activation
     cells = np.array(
         [
             [n_selected_term, n_selected_noterm],  # pylint: disable=no-member
@@ -605,14 +605,14 @@ def neurosynth_decode(
         prior = p_term
 
     # Significance testing
-    # One-way chi-square test for consistency of term frequency across terms
+    # One-way chi-square test for uniformity of term frequency across terms
     chi2_fi = one_way(n_selected_term, n_term)
     p_fi = special.chdtrc(1, chi2_fi)
     sign_fi = np.sign(
         n_selected_term - np.mean(n_selected_term)
     ).ravel()  # pylint: disable=no-member
 
-    # Two-way chi-square test for specificity of activation
+    # Two-way chi-square test for association
     cells = np.array(
         [
             [n_selected_term, n_selected_noterm],  # pylint: disable=no-member
