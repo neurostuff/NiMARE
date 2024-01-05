@@ -102,7 +102,6 @@ def compute_kda_ma(
         return sphere_coords
 
     all_coords = []
-    all_exp = []
     all_data = []
     # Loop over experiments
     for i_exp, _ in enumerate(exp_idx_uniq):
@@ -140,8 +139,7 @@ def compute_kda_ma(
         all_coords.append(exp_coords)
         all_data.append(nonzero_to_append)
 
-    coords = np.vstack(np.hstack(all_coords))
-
+    coords = np.hstack(all_coords)
     data = np.hstack(all_data).flatten().astype(np.int32)
     kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
