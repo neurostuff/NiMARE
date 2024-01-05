@@ -8,7 +8,7 @@ from scipy import ndimage
 from nimare.utils import unique_rows
 
 @jit(nopython=True)
-def _convolve_sphere(kernel, ijks, exp_idx, shape):
+def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
     """Convolve peaks with a spherical kernel.
 
     Parameters
@@ -32,6 +32,8 @@ def _convolve_sphere(kernel, ijks, exp_idx, shape):
             out = np.logical_and(out, x[:, i])
         return out
 
+    shape = mask_data.shape
+    
     # Convolve with sphere
     sphere_coords = np.zeros((kernel.shape[1] * len(ijks), 3), dtype=np.int32)
     chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
@@ -117,13 +119,13 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe")
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    sphere_coords, exp_idx = _convolve_sphere(kernel, ijks, exp_idx, np.array(shape))
+    sphere_coords, exp_idx = _convolve_sphere(kernel, ijks, exp_idx, mask_data)
 
     # Mask coordinates outside mask
     sphere_idx_inside_mask = np.where(mask_data[tuple(sphere_coords.T)])[0]
     sphere_coords = sphere_coords[sphere_idx_inside_mask, :]
     exp_idx = exp_idx[sphere_idx_inside_mask]
-
+    
     all_spheres = np.insert(sphere_coords, 0, exp_idx, axis=1)
 
     if not sum_overlap:
