@@ -9,16 +9,11 @@ from scipy import ndimage
 from nimare.utils import unique_rows
 
 @jit(nopython=True, cache=True)
-def _convolve_sphere(sphere_coords, chunk_idx, kernel, peaks):
+def _convolve_sphere(kernel, peaks):
     """Convolve peaks with a spherical kernel.
 
     Parameters
     ----------
-    sphere_coords : 2D numpy.ndarray
-        All coordinates that fall within any sphere.
-        Coordinates from overlapping spheres will appear twice.
-    chunk_idx : 1D numpy.ndarray
-        Indices of the first coordinate in each sphere.
     kernel : 2D numpy.ndarray
         IJK coordinates of a sphere, relative to a central point
         (not the brain template).
@@ -31,6 +26,8 @@ def _convolve_sphere(sphere_coords, chunk_idx, kernel, peaks):
         All coordinates that fall within any sphere.
         Coordinates from overlapping spheres will appear twice.
     """
+    sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
+    chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
     for peak in peaks:
         sphere_coords[chunk_idx, :] = kernel.T + peak
         chunk_idx = chunk_idx + kernel.shape[1]
@@ -116,16 +113,14 @@ def compute_kda_ma(
         peaks = ijks[curr_exp_idx]
 
         # Convolve with sphere
-        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
-        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
-        all_spheres = _convolve_sphere(sphere_coords, chunk_idx, kernel, peaks)
+        all_spheres = _convolve_sphere(kernel, peaks)
 
         if not sum_overlap:
             all_spheres = unique_rows(all_spheres)
 
         # Mask coordinates beyond space
         idx = np.all(
-            np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
+            np.logical_and(all_spheres >= 0, np.less(all_spheres, shape)), axis=1
         )
 
         all_spheres = all_spheres[idx, :]
