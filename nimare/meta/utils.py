@@ -8,8 +8,13 @@ from scipy import ndimage
 
 from nimare.utils import unique_rows
 
+<<<<<<< Updated upstream
 @jit(nopython=True, cache=True)
 def _convolve_sphere(kernel, peaks):
+=======
+@jit(nopython=True)
+def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
+>>>>>>> Stashed changes
     """Convolve peaks with a spherical kernel.
 
     Parameters
@@ -26,14 +31,35 @@ def _convolve_sphere(kernel, peaks):
         All coordinates that fall within any sphere.
         Coordinates from overlapping spheres will appear twice.
     """
-    sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
+    def np_all_axis1(x):
+        """Numba compatible version of np.all(x, axis=1)."""
+        out = np.ones(x.shape[0], dtype=np.bool8)
+        for i in range(x.shape[1]):
+            out = np.logical_and(out, x[:, i])
+        return out
+    shape = np.array(mask_data.shape)
+
+    # Convolve with sphere
+    sphere_coords = np.zeros((kernel.shape[1] * len(ijks), 3), dtype=np.int32)
     chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
-    for peak in peaks:
+    for peak in ijks:
         sphere_coords[chunk_idx, :] = kernel.T + peak
         chunk_idx = chunk_idx + kernel.shape[1]
 
-    return sphere_coords
+    exp_idx = np.repeat(exp_idx, kernel.shape[1])
 
+    # Mask coordinates beyond space
+    idx = np_all_axis1(np.logical_and(sphere_coords >= 0, np.less(sphere_coords, shape)))
+    sphere_coords = sphere_coords[idx, :]
+    exp_idx = exp_idx[idx]
+
+
+
+    return sphere_coords, exp_idx
+
+    # sphere_idx_inside_mask = np.where(mask_data[tuple(sphere_coords.T)])[0]
+    # sphere_coords = sphere_coords[sphere_idx_inside_mask, :]
+    # exp_idx = exp_idx[sphere_idx_inside_mask]
 
 def compute_kda_ma(
     mask,
@@ -104,40 +130,17 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe")
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    all_coords = []
-    all_data = []
-    # Loop over experiments
-    for i_exp, _ in enumerate(exp_idx_uniq):
-        # Index peaks by experiment
-        curr_exp_idx = exp_idx == i_exp
-        peaks = ijks[curr_exp_idx]
+    all_spheres, exp_idx = _convolve_sphere(kernel, ijks, exp_idx, mask_data)
 
-        # Convolve with sphere
-        all_spheres = _convolve_sphere(kernel, peaks)
+    # Add vector IDS in
+    all_spheres = np.insert(all_spheres, 0, exp_idx, axis=1)
 
-        if not sum_overlap:
-            all_spheres = unique_rows(all_spheres)
+    if not sum_overlap:
+        all_spheres = unique_rows(all_spheres)
 
-        # Mask coordinates beyond space
-        idx = np.all(
-            np.logical_and(all_spheres >= 0, np.less(all_spheres, shape)), axis=1
-        )
+    data = np.ones((all_spheres.shape[0],), dtype=np.int32) * value
 
-        all_spheres = all_spheres[idx, :]
-
-        sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-        sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :]
-
-        nonzero_to_append = np.ones((len(sphere_idx_inside_mask),), dtype=np.int32) * value
-
-        # Combine experiment id with coordinates
-        exp_coords = np.insert(sphere_idx_filtered, 0, i_exp, axis=1)
-        all_coords.append(exp_coords)
-        all_data.append(nonzero_to_append)
-
-    coords = np.vstack(all_coords).T
-    data = np.hstack(all_data).flatten()
-    kernel_data = sparse.COO(coords, data,
+    kernel_data = sparse.COO(all_spheres.T, data,
                              has_duplicates=sum_overlap, shape=kernel_shape)
 
     return kernel_data
