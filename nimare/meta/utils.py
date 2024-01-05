@@ -87,6 +87,8 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+    # recast ijks to int32 to reduce memory footprint
+    ijks = ijks.astype(np.int32)
     shape = mask.shape
     vox_dims = mask.header.get_zooms()
 
@@ -102,7 +104,7 @@ def compute_kda_ma(
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
-    cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
+    cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe")
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     all_coords = []
@@ -114,9 +116,8 @@ def compute_kda_ma(
         peaks = ijks[curr_exp_idx]
 
         # Convolve with sphere
-        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
-        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
-
+        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
+        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
         all_spheres = _convolve_sphere(sphere_coords, chunk_idx, kernel, peaks)
 
         if not sum_overlap:
@@ -132,7 +133,7 @@ def compute_kda_ma(
         sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
         sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :]
 
-        nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
+        nonzero_to_append = np.ones((len(sphere_idx_inside_mask),), dtype=np.int32) * value
 
         # Combine experiment id with coordinates
         exp_coords = np.insert(sphere_idx_filtered, 0, i_exp, axis=1)
@@ -140,8 +141,7 @@ def compute_kda_ma(
         all_data.append(nonzero_to_append)
 
     coords = np.vstack(all_coords).T
-    data = np.hstack(all_data).flatten().astype(np.int32)
-
+    data = np.hstack(all_data).flatten()
     kernel_data = sparse.COO(coords, data,
                              has_duplicates=sum_overlap, shape=kernel_shape)
 
