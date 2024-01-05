@@ -78,6 +78,7 @@ def test_reports_ibma_smoke(tmp_path_factory, testdata_ibma, aggressive_mask):
         estimator=Stouffers(aggressive_mask=aggressive_mask),
         corrector="fdr",
         diagnostics="jackknife",
+        voxel_thresh=3.2,
         output_dir=tmpdir,
     )
     results = workflow.fit(testdata_ibma)
