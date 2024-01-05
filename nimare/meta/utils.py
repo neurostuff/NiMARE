@@ -122,9 +122,7 @@ def compute_kda_ma(
             all_spheres = unique_rows(all_spheres)
 
         # Mask coordinates beyond space
-        idx = np.all(
-            np.logical_and(all_spheres >= 0, np.less(all_spheres, shape)), axis=1
-        )
+        idx = np.all(np.logical_and(all_spheres >= 0, np.less(all_spheres, shape)), axis=1)
 
         all_spheres = all_spheres[idx, :]
 
