@@ -8,7 +8,7 @@ from scipy import ndimage
 from nimare.utils import unique_rows
 
 @jit(nopython=True)
-def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
+def _convolve_sphere(kernel, ijks, exp_idx, shape):
     """Convolve peaks with a spherical kernel.
 
     Parameters
@@ -16,8 +16,13 @@ def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
     kernel : 2D numpy.ndarray
         IJK coordinates of a sphere, relative to a central point
         (not the brain template).
-    peaks : 2D numpy.ndarray
-        The IJK coordinates of peaks to convolve with the kernel.
+    ijks : array-like
+        Indices of foci. Each row is a coordinate, with the three columns
+        corresponding to index in each of three dimensions.
+    exp_idx : array_like
+       Indices of experiments.
+    shape : array
+        Shape of space
 
     Returns
     -------
@@ -31,8 +36,6 @@ def _convolve_sphere(kernel, ijks, exp_idx, mask_data):
         for i in range(x.shape[1]):
             out = np.logical_and(out, x[:, i])
         return out
-
-    shape = mask_data.shape
     
     # Convolve with sphere
     sphere_coords = np.zeros((kernel.shape[1] * len(ijks), 3), dtype=np.int32)
@@ -119,7 +122,7 @@ def compute_kda_ma(
     cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe")
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    sphere_coords, exp_idx = _convolve_sphere(kernel, ijks, exp_idx, mask_data)
+    sphere_coords, exp_idx = _convolve_sphere(kernel, ijks, exp_idx, np.array(shape))
 
     # Mask coordinates outside mask
     sphere_idx_inside_mask = np.where(mask_data[tuple(sphere_coords.T)])[0]
@@ -201,7 +204,6 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
 
-    shape = mask.shape
     mask_data = mask.get_fdata().astype(bool)
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
