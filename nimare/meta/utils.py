@@ -208,7 +208,8 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)
-
+    
+    shape = mask.shape
     kernel_shape = (n_studies,) + shape
     all_exp = []
     all_coords = []
