@@ -48,7 +48,6 @@ def _convolve_sphere(kernel, peaks, max_shape):
     
     return sphere_coords[idx, :]
 
-
 def compute_kda_ma(
     mask,
     ijks,
@@ -121,7 +120,6 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     all_coords = []
-    all_data = []
     # Loop over experiments
     for i_exp, _ in enumerate(exp_idx_uniq):
         # Index peaks by experiment
@@ -135,18 +133,19 @@ def compute_kda_ma(
             all_spheres = unique_rows(all_spheres)
 
         sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-        sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :]
-
-        nonzero_to_append = np.ones((len(sphere_idx_inside_mask),), dtype=np.int32) * value
-
+        all_spheres = all_spheres[sphere_idx_inside_mask, :]
+        
         # Combine experiment id with coordinates
-        exp_coords = np.insert(sphere_idx_filtered, 0, i_exp, axis=1)
-        all_coords.append(exp_coords)
-        all_data.append(nonzero_to_append)
+        all_coords.append(all_spheres)
 
-    coords = np.vstack(all_coords).T
-    data = np.hstack(all_data).flatten()
-    kernel_data = sparse.COO(coords, data, has_duplicates=sum_overlap, shape=kernel_shape)
+    # Add exp_idx to coordinates
+    exp_shapes = [coords.shape[0] for coords in all_coords]
+    exp_indicator = np.repeat(np.arange(len(exp_shapes)), exp_shapes)
+
+    all_coords = np.vstack(all_coords).T
+    all_coords = np.insert(all_coords, 0, exp_indicator, axis=0)
+
+    kernel_data = sparse.COO(all_coords, data=1, has_duplicates=sum_overlap, shape=kernel_shape)
 
     return kernel_data
 
