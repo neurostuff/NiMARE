@@ -10,7 +10,7 @@ from nimare.utils import unique_rows
 
 
 @jit(nopython=True, cache=True)
-def _convolve_sphere(kernel, peaks):
+def _convolve_sphere(kernel, peaks, max_shape):
     """Convolve peaks with a spherical kernel.
 
     Parameters
@@ -20,20 +20,33 @@ def _convolve_sphere(kernel, peaks):
         (not the brain template).
     peaks : 2D numpy.ndarray
         The IJK coordinates of peaks to convolve with the kernel.
+    max_shape: 1D numpy.ndarray
+        The maximum shape of the image volume.
 
     Returns
     -------
     sphere_coords : 2D numpy.ndarray
-        All coordinates that fall within any sphere.
+        All coordinates that fall within any sphere.ß∑
         Coordinates from overlapping spheres will appear twice.
     """
+
+    def np_all_axis1(x):
+        """Numba compatible version of np.all(x, axis=1)."""
+        out = np.ones(x.shape[0], dtype=np.bool8)
+        for i in range(x.shape[1]):
+            out = np.logical_and(out, x[:, i])
+        return out
+
     sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
     chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
     for peak in peaks:
         sphere_coords[chunk_idx, :] = kernel.T + peak
         chunk_idx = chunk_idx + kernel.shape[1]
 
-    return sphere_coords
+    # Mask coordinates beyond space
+    idx = np_all_axis1(np.logical_and(sphere_coords >= 0, np.less(sphere_coords, max_shape)))
+    
+    return sphere_coords[idx, :]
 
 
 def compute_kda_ma(
@@ -116,15 +129,10 @@ def compute_kda_ma(
         peaks = ijks[curr_exp_idx]
 
         # Convolve with sphere
-        all_spheres = _convolve_sphere(kernel, peaks)
+        all_spheres = _convolve_sphere(kernel, peaks, np.array(shape))
 
         if not sum_overlap:
             all_spheres = unique_rows(all_spheres)
-
-        # Mask coordinates beyond space
-        idx = np.all(np.logical_and(all_spheres >= 0, np.less(all_spheres, shape)), axis=1)
-
-        all_spheres = all_spheres[idx, :]
 
         sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
         sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :]
