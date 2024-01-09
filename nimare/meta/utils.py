@@ -138,7 +138,7 @@ def compute_kda_ma(
             study_values = np.zeros(shape, dtype=np.int32)
 
             if sum_overlap:
-                sphere_coords = unique_rows(sphere_coords)
+                study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] += value
             else:
                 study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
 
