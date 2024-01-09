@@ -344,6 +344,10 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.2.1
+
+        - Add new parameter ``sum_across_studies`` to sum across studies in KDA.
+
     .. versionchanged:: 0.0.13
 
         - Add new parameter ``memory`` to cache modeled activation (MA) maps.
@@ -371,7 +375,6 @@ class KDAKernel(KernelTransformer):
     """
 
     _sum_overlap = True
-    _sum_across_studies = False
 
     def __init__(
         self,
@@ -379,9 +382,11 @@ class KDAKernel(KernelTransformer):
         value=1,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
+        sum_across_studies=False
     ):
         self.r = float(r)
         self.value = value
+        self.sum_across_studies = sum_across_studies
         super().__init__(memory=memory, memory_level=memory_level)
 
     def _transform(self, mask, coordinates):
@@ -394,7 +399,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            sum_across_studies=self._sum_across_studies,
+            sum_across_studies=self.sum_across_studies,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
@@ -447,7 +452,6 @@ class MKDAKernel(KDAKernel):
     """
 
     _sum_overlap = False
-    _sum_across_studies = True
 
     def _generate_description(self):
         """Generate a description of the fitted KernelTransformer.
