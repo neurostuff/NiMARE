@@ -382,7 +382,7 @@ class KDAKernel(KernelTransformer):
         value=1,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
-        sum_across_studies=False
+        sum_across_studies=False,
     ):
         self.r = float(r)
         self.value = value

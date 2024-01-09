@@ -45,8 +45,9 @@ def _convolve_sphere(kernel, peaks, max_shape):
 
     # Mask coordinates beyond space
     idx = np_all_axis1(np.logical_and(sphere_coords >= 0, np.less(sphere_coords, max_shape)))
-    
+
     return sphere_coords[idx, :]
+
 
 def compute_kda_ma(
     mask,
@@ -143,7 +144,7 @@ def compute_kda_ma(
 
             # Sum across studies
             all_values += study_values
-        
+
         # Set voxel outside the mask to zero.
         all_values[~mask_data] = 0
 
@@ -171,7 +172,7 @@ def compute_kda_ma(
 
             if not sum_overlap:
                 all_spheres = unique_rows(all_spheres)
-            
+
             # Combine experiment id with coordinates
             all_coords.append(all_spheres)
 
@@ -182,7 +183,9 @@ def compute_kda_ma(
         all_coords = np.vstack(all_coords).T
         all_coords = np.insert(all_coords, 0, exp_indicator, axis=0)
 
-        kernel_data = sparse.COO(all_coords, data=value, has_duplicates=sum_overlap, shape=kernel_shape)
+        kernel_data = sparse.COO(
+            all_coords, data=value, has_duplicates=sum_overlap, shape=kernel_shape
+        )
 
     return kernel_data
 
