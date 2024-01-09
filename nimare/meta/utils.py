@@ -134,7 +134,7 @@ def compute_kda_ma(
 
             sphere_coords = _convolve_sphere(kernel, peaks, np.array(shape))
 
-            # Go from sparse to dense
+            # preallocate array for current study
             study_values = np.zeros(shape, dtype=np.int32)
 
             if sum_overlap:
