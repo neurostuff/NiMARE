@@ -96,7 +96,7 @@ class KernelTransformer(NiMAREBase):
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
             If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
             Default is None.
-        return_type : {'sparse', 'array', 'image'}, optional
+        return_type : {'sparse', 'array', 'image', 'summary_array'}, optional
             Whether to return a sparse matrix ('sparse'), a numpy array ('array'),
             or a list of niimgs ('image').
             Default is 'image'.
@@ -110,6 +110,8 @@ class KernelTransformer(NiMAREBase):
             equal to `shape` of the images.
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
+            If return_type is 'summary_array', a 1D numpy array (V,) containing
+            a summary measure for each voxel that has been combined across experiments.
             If return_type is 'image', a list of modeled activation images
             (one for each of the Contrasts in the input dataset).
 
@@ -121,8 +123,10 @@ class KernelTransformer(NiMAREBase):
             Name of the corresponding column in the Dataset.images DataFrame.
             If :meth:`_infer_names` is executed.
         """
-        if return_type not in ("sparse", "array", "image"):
-            raise ValueError('Argument "return_type" must be "image", "array", or "sparse".')
+        if return_type not in ("sparse", "array", "image", "summary_array"):
+            raise ValueError(
+                'Argument "return_type" must be "image", "array", "summary_array", "sparse".'
+            )
 
         if isinstance(dataset, pd.DataFrame):
             assert (
@@ -169,9 +173,14 @@ class KernelTransformer(NiMAREBase):
             mask_data = mask.get_fdata().astype(dtype)
 
         # Generate the MA maps
-        transformed_maps = self._cache(self._transform, func_memory_level=2)(mask, coordinates)
+        if return_type == "summary_array" or return_type == "sparse":
+            args = (mask, coordinates, return_type)
+        else:
+            args = (mask, coordinates)
 
-        if return_type == "sparse":
+        transformed_maps = self._cache(self._transform, func_memory_level=2)(*args)
+
+        if return_type == "sparse" or return_type == "summary_array":
             return transformed_maps[0]
 
         imgs = []
@@ -344,10 +353,6 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
-    .. versionchanged:: 0.2.1
-
-        - Add new parameter ``sum_across_studies`` to sum across studies in KDA.
-
     .. versionchanged:: 0.0.13
 
         - Add new parameter ``memory`` to cache modeled activation (MA) maps.
@@ -382,16 +387,25 @@ class KDAKernel(KernelTransformer):
         value=1,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
-        sum_across_studies=False,
     ):
         self.r = float(r)
         self.value = value
-        self.sum_across_studies = sum_across_studies
         super().__init__(memory=memory, memory_level=memory_level)
 
-    def _transform(self, mask, coordinates):
+    def _transform(self, mask, coordinates, return_type="sparse"):
+        """return type can either be sparse or summary_array"""
+
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
+        if return_type == "sparse":
+            sum_across_studies = False
+        elif return_type == "summary_array":
+            sum_across_studies = True
+        else:
+            raise ValueError(
+                'Argument "return_type" must be "sparse" or "summary_array".'
+            )
+
         transformed = compute_kda_ma(
             mask,
             ijks,
@@ -399,7 +413,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            sum_across_studies=self.sum_across_studies,
+            sum_across_studies=sum_across_studies,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids

@@ -388,7 +388,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     def __init__(
         self,
-        kernel_transformer=MKDAKernel(sum_across_studies=True),
+        kernel_transformer=MKDAKernel(),
         prior=0.5,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
@@ -441,6 +441,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_selected_active_voxels = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
+            return_type="summary_array",
         )
 
         n_selected = self.dataset1.coordinates["id"].unique().shape[0]
@@ -449,6 +450,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_unselected_active_voxels = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
+            return_type="summary_array",
         )
         n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
 
@@ -572,14 +574,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Generate MA maps and calculate count variables for first dataset
         n_selected_active_voxels = self.kernel_transformer.transform(
-            iter_df1, self.masker, return_type="sparse"
+            iter_df1, self.masker, return_type="summary_array"
         )
 
         n_selected = self.dataset1.coordinates["id"].unique().shape[0]
 
         # Generate MA maps and calculate count variables for second dataset
         n_unselected_active_voxels = self.kernel_transformer.transform(
-            iter_df2, self.masker, return_type="sparse"
+            iter_df2, self.masker, return_type="summary_array"
         )
         n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
 
