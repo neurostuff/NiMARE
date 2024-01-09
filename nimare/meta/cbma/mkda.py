@@ -571,22 +571,17 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_df2[["x", "y", "z"]] = iter_xyz2
 
         # Generate MA maps and calculate count variables for first dataset
-        temp_ma_maps1 = self.kernel_transformer.transform(
+        n_selected_active_voxels = self.kernel_transformer.transform(
             iter_df1, self.masker, return_type="sparse"
         )
-        n_selected = temp_ma_maps1.shape[0]
-        n_selected_active_voxels = self._load_ma_maps(temp_ma_maps1)
 
-        del temp_ma_maps1
+        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
 
         # Generate MA maps and calculate count variables for second dataset
-        temp_ma_maps2 = self.kernel_transformer.transform(
+        n_unselected_active_voxels = self.kernel_transformer.transform(
             iter_df2, self.masker, return_type="sparse"
         )
-        n_unselected = temp_ma_maps2.shape[0]
-        n_unselected_active_voxels = self._load_ma_maps(temp_ma_maps2)
-
-        del temp_ma_maps2
+        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
 
         # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels / n_selected
