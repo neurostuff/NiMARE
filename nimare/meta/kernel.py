@@ -23,6 +23,10 @@ LGR = logging.getLogger(__name__)
 class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
+    .. versionchanged:: 0.2.1
+
+        - Add return_type='summary_array' option to transform method.
+
     .. versionchanged:: 0.0.13
 
         - Remove "dataset" `return_type` option.
@@ -44,7 +48,7 @@ class KernelTransformer(NiMAREBase):
 
     Notes
     -----
-    All extra (non-ijk) parameters for a given kernel should be overrideable as
+    All extra (non-ijk) parameters for a given kernel should be overridable as
     parameters to __init__, so we can access them with get_params() and also
     apply them to datasets with missing data.
     """
@@ -96,7 +100,7 @@ class KernelTransformer(NiMAREBase):
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
             If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
             Default is None.
-        return_type : {'sparse', 'array', 'image'}, optional
+        return_type : {'sparse', 'array', 'image', 'summary_array'}, optional
             Whether to return a sparse matrix ('sparse'), a numpy array ('array'),
             or a list of niimgs ('image').
             Default is 'image'.
@@ -110,6 +114,8 @@ class KernelTransformer(NiMAREBase):
             equal to `shape` of the images.
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
+            If return_type is 'summary_array', a 1D numpy array (V,) containing
+            a summary measure for each voxel that has been combined across experiments.
             If return_type is 'image', a list of modeled activation images
             (one for each of the Contrasts in the input dataset).
 
@@ -121,8 +127,10 @@ class KernelTransformer(NiMAREBase):
             Name of the corresponding column in the Dataset.images DataFrame.
             If :meth:`_infer_names` is executed.
         """
-        if return_type not in ("sparse", "array", "image"):
-            raise ValueError('Argument "return_type" must be "image", "array", or "sparse".')
+        if return_type not in ("sparse", "array", "image", "summary_array"):
+            raise ValueError(
+                'Argument "return_type" must be "image", "array", "summary_array", "sparse".'
+            )
 
         if isinstance(dataset, pd.DataFrame):
             assert (
@@ -169,9 +177,14 @@ class KernelTransformer(NiMAREBase):
             mask_data = mask.get_fdata().astype(dtype)
 
         # Generate the MA maps
-        transformed_maps = self._cache(self._transform, func_memory_level=2)(mask, coordinates)
+        if return_type == "summary_array" or return_type == "sparse":
+            args = (mask, coordinates, return_type)
+        else:
+            args = (mask, coordinates)
 
-        if return_type == "sparse":
+        transformed_maps = self._cache(self._transform, func_memory_level=2)(*args)
+
+        if return_type == "sparse" or return_type == "summary_array":
             return transformed_maps[0]
 
         imgs = []
@@ -184,7 +197,7 @@ class KernelTransformer(NiMAREBase):
                 imgs.append(img)
             elif return_type == "image":
                 kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, mask.affine)
+                img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
                 imgs.append(img)
 
         del kernel_data, transformed_maps
@@ -194,7 +207,7 @@ class KernelTransformer(NiMAREBase):
         elif return_type == "image":
             return imgs
 
-    def _transform(self, mask, coordinates):
+    def _transform(self, mask, coordinates, return_type="sparse"):
         """Apply the kernel's unique transformer.
 
         Parameters
@@ -206,18 +219,27 @@ class KernelTransformer(NiMAREBase):
             The DataFrame must have the following columns: "id", "i", "j", "k".
             Additionally, individual kernels may require other columns
             (e.g., "sample_size" for ALE).
+        return_type : {'sparse', 'summary_array'}, optional
+            Whether to return a 4D sparse matrix ('sparse') where each contrast map is
+            saved separately or a 1D numpy array ('summary_array') where the contrast maps
+            are combined.
+            Default is 'sparse'.
 
         Returns
         -------
         transformed_maps : N-length list of (3D array, str) tuples or (4D array, 1D array) tuple
             Transformed data, containing one element for each study.
 
-            -   Case 1: A kernel that is not an (M)KDAKernel, with no memory limit.
+            -   Case 1: A kernel that is not an (M)KDAKernel
                 Each list entry is composed of a 3D array (the MA map) and the study's ID.
 
-            -   Case 2: (M)KDAKernel, with no memory limit.
+            -   Case 2: (M)KDAKernel
                 There is a length-2 tuple with a 4D numpy array of the shape (N, X, Y, Z),
                 containing all of the MA maps, and a numpy array of shape (N,) with the study IDs.
+
+            -  Case 3: A kernel with return_type='summary_array'.
+                The transformed data is a 1D numpy array of shape (X, Y, Z) containing the
+                summary measure for each voxel.
         """
         pass
 
@@ -277,7 +299,7 @@ class ALEKernel(KernelTransformer):
         self.sample_size = sample_size
         super().__init__(memory=memory, memory_level=memory_level)
 
-    def _transform(self, mask, coordinates):
+    def _transform(self, mask, coordinates, return_type="sparse"):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
 
@@ -344,6 +366,10 @@ class ALEKernel(KernelTransformer):
 class KDAKernel(KernelTransformer):
     """Generate KDA modeled activation images from coordinates.
 
+    .. versionchanged:: 0.2.1
+
+        - Add new parameter ``return_type`` to transform method.
+
     .. versionchanged:: 0.0.13
 
         - Add new parameter ``memory`` to cache modeled activation (MA) maps.
@@ -383,9 +409,17 @@ class KDAKernel(KernelTransformer):
         self.value = value
         super().__init__(memory=memory, memory_level=memory_level)
 
-    def _transform(self, mask, coordinates):
+    def _transform(self, mask, coordinates, return_type="sparse"):
+        """Return type can either be sparse or summary_array."""
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
+        if return_type == "sparse":
+            sum_across_studies = False
+        elif return_type == "summary_array":
+            sum_across_studies = True
+        else:
+            raise ValueError('Argument "return_type" must be "sparse" or "summary_array".')
+
         transformed = compute_kda_ma(
             mask,
             ijks,
@@ -393,6 +427,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
+            sum_across_studies=sum_across_studies,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
@@ -421,6 +456,7 @@ class MKDAKernel(KDAKernel):
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
+        - Add new parameter ``return_type`` to transform method.
 
     .. versionchanged:: 0.0.13
 
