@@ -371,7 +371,7 @@ class KDAKernel(KernelTransformer):
     """
 
     _sum_overlap = True
-    _mean_across_studies = False
+    _sum_across_studies = False
 
     def __init__(
         self,
@@ -394,7 +394,7 @@ class KDAKernel(KernelTransformer):
             self.value,
             exp_idx,
             sum_overlap=self._sum_overlap,
-            mean_across_studies=self._mean_across_studies,
+            sum_across_studies=self._sum_across_studies,
         )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
@@ -447,7 +447,7 @@ class MKDAKernel(KDAKernel):
     """
 
     _sum_overlap = False
-    _mean_across_studies = True
+    _sum_across_studies = True
 
     def _generate_description(self):
         """Generate a description of the fitted KernelTransformer.
