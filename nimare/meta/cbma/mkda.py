@@ -431,28 +431,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         return description
 
-    def _load_ma_maps(self, ma_maps, chunk_size=4000):
-        """Load the MA maps for analysis."""
-        n_maps = ma_maps.shape[0]
-
-        n_chunks = (n_maps + chunk_size - 1) // chunk_size
-
-        n_active_voxels = sparse.COO(np.zeros(ma_maps.shape[1:]))
-
-        for i in range(n_chunks):
-            start = i * chunk_size
-            end = min((i + 1) * chunk_size, n_maps)
-            chunk_sum = ma_maps[start:end].sum(axis=0)
-            n_active_voxels += chunk_sum
-
-        if isinstance(n_active_voxels, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
-            n_active_voxels = n_active_voxels.todense().reshape(-1)
-            n_active_voxels = n_active_voxels[mask_data.reshape(-1)]
-
-        return n_active_voxels
-
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
@@ -460,24 +438,19 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.null_distributions_ = {}
 
         # Generate MA maps and calculate count variables for first dataset
-        ma_maps1 = self._collect_ma_maps(
+        n_selected_active_voxels = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
         )
-        n_selected = ma_maps1.shape[0]
-        n_selected_active_voxels = self._load_ma_maps(ma_maps1)
 
-        del ma_maps1
+        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
 
         # Generate MA maps and calculate count variables for second dataset
-        ma_maps2 = self._collect_ma_maps(
+        n_unselected_active_voxels = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
         )
-        n_unselected = ma_maps2.shape[0]
-        n_unselected_active_voxels = self._load_ma_maps(ma_maps2)
-
-        del ma_maps2
+        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
 
         n_mappables = n_selected + n_unselected
 

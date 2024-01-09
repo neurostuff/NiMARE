@@ -145,19 +145,9 @@ def compute_kda_ma(
             # Sum across studies
             all_values += study_values
 
-        # Set voxel outside the mask to zero.
-        all_values[~mask_data] = 0
-
-        # Go from dense to sparse
-        nonzero_idx = np.where(all_values > 0)
-        all_coords = np.vstack(nonzero_idx)
-        value = all_values[nonzero_idx]
-
-        # Add dummy indicator to return 4D sparse array
-        exp_indicator = np.zeros(all_coords.shape[1])
-        all_coords = np.insert(all_coords, 0, exp_indicator, axis=0)
-
-        kernel_data = sparse.COO(all_coords, data=value, has_duplicates=False, shape=kernel_shape)
+        # Only return values within the mask
+        all_values = all_values.reshape(-1)
+        kernel_data = all_values[mask_data.reshape(-1)]
 
     else:
         all_coords = []
