@@ -164,8 +164,11 @@ def compute_kda_ma(
 
             if not sum_overlap:
                 all_spheres = unique_rows(all_spheres)
-        sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-        all_spheres = all_spheres[sphere_idx_inside_mask, :]
+
+            # Apply mask
+            sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
+            all_spheres = all_spheres[sphere_idx_inside_mask, :]
+
             # Combine experiment id with coordinates
             all_coords.append(all_spheres)
 
