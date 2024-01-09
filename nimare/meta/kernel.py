@@ -184,7 +184,7 @@ class KernelTransformer(NiMAREBase):
                 imgs.append(img)
             elif return_type == "image":
                 kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, mask.affine)
+                img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
                 imgs.append(img)
 
         del kernel_data, transformed_maps
