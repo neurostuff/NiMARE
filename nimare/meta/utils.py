@@ -145,7 +145,7 @@ def compute_kda_ma(
     all_coords = np.vstack(all_coords).T
     all_coords = np.insert(all_coords, 0, exp_indicator, axis=0)
 
-    kernel_data = sparse.COO(all_coords, data=1, has_duplicates=sum_overlap, shape=kernel_shape)
+    kernel_data = sparse.COO(all_coords, data=value, has_duplicates=sum_overlap, shape=kernel_shape)
 
     return kernel_data
 
