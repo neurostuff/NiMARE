@@ -49,7 +49,7 @@ def _convolve_sphere(kernel, ijks, index, max_shape):
 
     return sphere_coords[idx, :]
 
-@profile
+
 def compute_kda_ma(
     mask,
     ijks,
