@@ -9,6 +9,47 @@ from scipy import ndimage
 from nimare.utils import unique_rows
 
 
+@jit(nopython=True, cache=True)
+def _convolve_sphere(kernel, ijks, index, max_shape):
+    """Convolve peaks with a spherical kernel.
+
+    Parameters
+    ----------
+    kernel : 2D numpy.ndarray
+        IJK coordinates of a sphere, relative to a central point
+        (not the brain template).
+    peaks : 2D numpy.ndarray
+        The IJK coordinates of peaks to convolve with the kernel.
+    max_shape: 1D numpy.ndarray
+        The maximum shape of the image volume.
+
+    Returns
+    -------
+    sphere_coords : 2D numpy.ndarray
+        All coordinates that fall within any sphere.ß∑
+        Coordinates from overlapping spheres will appear twice.
+    """
+
+    def np_all_axis1(x):
+        """Numba compatible version of np.all(x, axis=1)."""
+        out = np.ones(x.shape[0], dtype=np.bool8)
+        for i in range(x.shape[1]):
+            out = np.logical_and(out, x[:, i])
+        return out
+
+    peaks = ijks[index]
+    sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
+    chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
+    for peak in peaks:
+        sphere_coords[chunk_idx, :] = kernel.T + peak
+        chunk_idx = chunk_idx + kernel.shape[1]
+
+    # Mask coordinates beyond space
+    idx = np_all_axis1(np.logical_and(sphere_coords >= 0, np.less(sphere_coords, max_shape)))
+
+    return sphere_coords[idx, :]
+
+
 def compute_kda_ma(
     mask,
     ijks,
@@ -16,6 +57,7 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
+    sum_across_studies=False,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
@@ -49,6 +91,8 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
+    sum_across_studies : :obj:`bool`
+        Whether to sum voxel values across studies.
 
     Returns
     -------
@@ -58,6 +102,11 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+    if sum_overlap and sum_across_studies:
+        raise NotImplementedError("sum_overlap and sum_across_studies cannot both be True.")
+
+    # recast ijks to int32 to reduce memory footprint
+    ijks = ijks.astype(np.int32)
     shape = mask.shape
     vox_dims = mask.header.get_zooms()
 
@@ -73,77 +122,59 @@ def compute_kda_ma(
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
-    cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
+    cube = np.vstack(
+        [row.ravel() for row in np.mgrid[xx, yy, zz]], dtype=np.int32, casting="unsafe"
+    )
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    def _convolve_sphere(kernel, peaks):
-        """Convolve peaks with a spherical kernel.
+    if sum_across_studies:
+        all_values = np.zeros(shape, dtype=np.int32)
 
-        Parameters
-        ----------
-        kernel : 2D numpy.ndarray
-            IJK coordinates of a sphere, relative to a central point
-            (not the brain template).
-        peaks : 2D numpy.ndarray
-            The IJK coordinates of peaks to convolve with the kernel.
+        # Loop over experiments
+        for i_exp, _ in enumerate(exp_idx_uniq):
+            # Index peaks by experiment
+            curr_exp_idx = exp_idx == i_exp
+            sphere_coords = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
 
-        Returns
-        -------
-        sphere_coords : 2D numpy.ndarray
-            All coordinates that fall within any sphere.
-            Coordinates from overlapping spheres will appear twice.
-        """
-        # Convolve spheres
-        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
-        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
-        for peak in peaks:
-            sphere_coords[chunk_idx, :] = kernel.T + peak
-            chunk_idx = chunk_idx + kernel.shape[1]
+            # preallocate array for current study
+            study_values = np.zeros(shape, dtype=np.int32)
+            study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
 
-        return sphere_coords
+            # Sum across studies
+            all_values += study_values
 
-    all_coords = []
-    all_exp = []
-    all_data = []
-    # Loop over experiments
-    for i_exp, _ in enumerate(exp_idx_uniq):
-        # Index peaks by experiment
-        curr_exp_idx = exp_idx == i_exp
-        peaks = ijks[curr_exp_idx]
+        # Only return values within the mask
+        all_values = all_values.reshape(-1)
+        kernel_data = all_values[mask_data.reshape(-1)]
 
-        all_spheres = _convolve_sphere(kernel, peaks)
+    else:
+        all_coords = []
+        # Loop over experiments
+        for i_exp, _ in enumerate(exp_idx_uniq):
+            curr_exp_idx = exp_idx == i_exp
+            # Convolve with sphere
+            all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
 
-        if sum_overlap:
-            all_spheres, counts = unique_rows(all_spheres, return_counts=True)
-            counts = counts * value
-        else:
-            all_spheres = unique_rows(all_spheres)
+            if not sum_overlap:
+                all_spheres = unique_rows(all_spheres)
 
-        # Mask coordinates beyond space
-        idx = np.all(
-            np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
+            # Apply mask
+            sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
+            all_spheres = all_spheres[sphere_idx_inside_mask, :]
+
+            # Combine experiment id with coordinates
+            all_coords.append(all_spheres)
+
+        # Add exp_idx to coordinates
+        exp_shapes = [coords.shape[0] for coords in all_coords]
+        exp_indicator = np.repeat(np.arange(len(exp_shapes)), exp_shapes)
+
+        all_coords = np.vstack(all_coords).T
+        all_coords = np.insert(all_coords, 0, exp_indicator, axis=0)
+
+        kernel_data = sparse.COO(
+            all_coords, data=value, has_duplicates=sum_overlap, shape=kernel_shape
         )
-
-        all_spheres = all_spheres[idx, :]
-
-        sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-        sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :].T
-        nonzero_idx = tuple(sphere_idx_filtered)
-
-        if sum_overlap:
-            nonzero_to_append = counts[idx][sphere_idx_inside_mask]
-        else:
-            nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
-
-        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
-        all_coords.append(np.vstack(nonzero_idx))
-        all_data.append(nonzero_to_append)
-
-    exp = np.hstack(all_exp)
-    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
-
-    data = np.hstack(all_data).flatten().astype(np.int32)
-    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
 

@@ -52,6 +52,7 @@ PARAMETERS_DICT = {
     "kernel_transformer__value": "Value for sphere",
     "kernel_transformer__memory": "Memory",
     "kernel_transformer__memory_level": "Memory level",
+    "kernel_transformer__sum_across_studies": "Sum Across Studies",
     "memory": "Memory",
     "memory_level": "Memory level",
     "null_method": "Null method",

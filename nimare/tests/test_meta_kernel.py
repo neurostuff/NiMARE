@@ -194,3 +194,24 @@ def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
 
     assert np.array_equal(ma_maps_cached_fast, ma_maps)
     assert elapsed_cached < elapsed
+
+
+def test_MKDA_kernel_sum_across(testdata_cbma):
+    """Test if creating a summary array is equivalent to summing across the sparse array."""
+    kern = kernel.MKDAKernel(r=10, value=1)
+    coordinates = testdata_cbma.coordinates.copy()
+    sparse_ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="sparse")
+    summary_map = kern.transform(
+        coordinates, masker=testdata_cbma.masker, return_type="summary_array"
+    )
+
+    summary_sparse_ma_map = sparse_ma_maps.sum(axis=0)
+    mask_data = testdata_cbma.masker.mask_img.get_fdata().astype(bool)
+
+    # Indexing the sparse array is slow, perform masking in the dense array
+    summary_sparse_ma_map = summary_sparse_ma_map.todense().reshape(-1)
+    summary_sparse_ma_map = summary_sparse_ma_map[mask_data.reshape(-1)]
+
+    assert (
+        np.testing.assert_array_equal(summary_map, summary_sparse_ma_map.astype(np.int32)) is None
+    )
