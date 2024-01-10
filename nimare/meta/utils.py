@@ -103,10 +103,8 @@ def compute_kda_ma(
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
     if sum_overlap and sum_across_studies:
-        raise NotImplementedError(
-            "sum_overlap and sum_across_studies cannot both be True."
-        )
-        
+        raise NotImplementedError("sum_overlap and sum_across_studies cannot both be True.")
+
     # recast ijks to int32 to reduce memory footprint
     ijks = ijks.astype(np.int32)
     shape = mask.shape
