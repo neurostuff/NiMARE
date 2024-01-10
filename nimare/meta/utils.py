@@ -102,6 +102,11 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+    if sum_overlap and sum_across_studies:
+        raise NotImplementedError(
+            "sum_overlap and sum_across_studies cannot both be True."
+        )
+        
     # recast ijks to int32 to reduce memory footprint
     ijks = ijks.astype(np.int32)
     shape = mask.shape
@@ -135,13 +140,7 @@ def compute_kda_ma(
 
             # preallocate array for current study
             study_values = np.zeros(shape, dtype=np.int32)
-
-            if sum_overlap:
-                study_values[
-                    sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]
-                ] += value
-            else:
-                study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
+            study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
 
             # Sum across studies
             all_values += study_values
