@@ -510,10 +510,10 @@ def _validate_images_df(image_df):
         DataFrame with updated paths and columns.
     """
     valid_suffixes = [".brik", ".head", ".nii", ".img", ".hed"]
-
+    id_columns = set(["id", "study_id", "contrast_id"])
     # Find columns in the DataFrame with images
     file_cols = []
-    for col in image_df.columns:
+    for col in set(image_df.columns) - id_columns:
         vals = [v for v in image_df[col].values if isinstance(v, str)]
         fc = any([any([vs in v for vs in valid_suffixes]) for v in vals])
         if fc:
