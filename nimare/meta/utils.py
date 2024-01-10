@@ -153,7 +153,7 @@ def compute_kda_ma(
         all_coords = []
         # Loop over experiments
         for i_exp, _ in enumerate(exp_idx_uniq):
-            # Index peaks by experiment
+            curr_exp_idx = exp_idx == i_exp
             # Convolve with sphere
             all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
 
