@@ -10,7 +10,7 @@ from nimare.utils import unique_rows
 
 
 @jit(nopython=True, cache=True)
-def _convolve_sphere(kernel, peaks, max_shape):
+def _convolve_sphere(kernel, ijks, index, max_shape):
     """Convolve peaks with a spherical kernel.
 
     Parameters
@@ -37,6 +37,7 @@ def _convolve_sphere(kernel, peaks, max_shape):
             out = np.logical_and(out, x[:, i])
         return out
 
+    peaks = ijks[index]
     sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
     chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
     for peak in peaks:
@@ -48,7 +49,7 @@ def _convolve_sphere(kernel, peaks, max_shape):
 
     return sphere_coords[idx, :]
 
-
+@profile
 def compute_kda_ma(
     mask,
     ijks,
@@ -130,9 +131,7 @@ def compute_kda_ma(
         for i_exp, _ in enumerate(exp_idx_uniq):
             # Index peaks by experiment
             curr_exp_idx = exp_idx == i_exp
-            peaks = ijks[curr_exp_idx]
-
-            sphere_coords = _convolve_sphere(kernel, peaks, np.array(shape))
+            sphere_coords = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
 
             # preallocate array for current study
             study_values = np.zeros(shape, dtype=np.int32)
@@ -156,11 +155,8 @@ def compute_kda_ma(
         # Loop over experiments
         for i_exp, _ in enumerate(exp_idx_uniq):
             # Index peaks by experiment
-            curr_exp_idx = exp_idx == i_exp
-            peaks = ijks[curr_exp_idx]
-
             # Convolve with sphere
-            all_spheres = _convolve_sphere(kernel, peaks, np.array(shape))
+            all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
 
             if not sum_overlap:
                 all_spheres = unique_rows(all_spheres)
