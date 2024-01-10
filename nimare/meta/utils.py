@@ -122,9 +122,7 @@ def compute_kda_ma(
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
-    cube = np.vstack(
-        [row.ravel() for row in (np.mgrid[xx, yy, zz]).astype(np.int32)]
-    )
+    cube = np.vstack([row.ravel() for row in (np.mgrid[xx, yy, zz]).astype(np.int32)])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     if sum_across_studies:
