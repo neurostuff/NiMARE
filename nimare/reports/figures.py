@@ -15,6 +15,8 @@ from nilearn.plotting import (
     view_connectome,
     view_img,
 )
+from ridgeplot import ridgeplot
+from scipy import stats
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
 from nimare.utils import _boolean_unmask
@@ -395,6 +397,49 @@ def plot_clusters(img, out_filename):
     fig.close()
 
 
+def _plot_true_voxels(maps_arr, ids_, out_filename):
+    """Plot percentage of true voxels.
+
+    .. versionadded:: 0.2.2
+
+    """
+    n_voxels = maps_arr.shape[1]
+    mask = ~np.isnan(maps_arr) & (maps_arr != 0)
+
+    perc_voxs = mask.sum(axis=1) / n_voxels
+    perc_vals = [f"{perc_vox:.0%}" for perc_vox in perc_voxs]
+
+    valid_df = pd.DataFrame({"ID": ids_, "Voxels Included": perc_vals})
+    valid_sorted_df = valid_df.sort_values("Voxels Included", ascending=True)
+
+    fig = px.strip(
+        valid_sorted_df,
+        y="Voxels Included",
+        color="ID",
+    )
+
+    fig.update_xaxes(showline=True, linewidth=2, linecolor="black", mirror=True)
+    fig.update_yaxes(
+        constrain="domain",
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        mirror=True,
+        title="Percentage of voxels included",
+    )
+    fig.update_layout(
+        height=400,
+        autosize=True,
+        font_size=14,
+        plot_bgcolor="white",
+        xaxis_gridcolor="white",
+        yaxis_gridcolor="white",
+        xaxis_gridwidth=2,
+        showlegend=False,
+    )
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
+
+
 def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     """Plot histograms of the images.
 
@@ -451,6 +496,90 @@ def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     g.despine(bottom=True, left=True)
     g.savefig(out_filename, dpi=300)
     plt.close()
+
+
+def _plot_sumstats(maps_arr, ids_, out_filename):
+    """Plot summary statistics of the images.
+
+    .. versionadded:: 0.2.2
+
+    """
+    n_studies = len(ids_)
+    mask = ~np.isnan(maps_arr) & (maps_arr != 0)
+    maps_lst = [maps_arr[i][mask[i]] for i in range(n_studies)]
+
+    stats_lbls = [
+        "Mean",
+        "STD",
+        "Var",
+        "Median",
+        "Mode",
+        "Min",
+        "Max",
+        "Skew",
+        "Kurtosis",
+        "Range",
+        "Moment",
+        "IQR",
+    ]
+
+    scores, stats_labels, id_lst = [], [], []
+    for id_, map_ in zip(ids_, maps_lst):
+        scores.append(
+            [
+                np.mean(map_),
+                np.std(map_),
+                np.var(map_),
+                np.median(map_),
+                stats.mode(map_)[0],
+                np.min(map_),
+                np.max(map_),
+                stats.skew(map_),
+                stats.kurtosis(map_),
+                np.max(map_) - np.min(map_),
+                stats.moment(map_, moment=4),
+                stats.iqr(map_),
+            ]
+        )
+        stats_labels.extend(stats_lbls)
+        id_lst.extend([id_] * len(stats_lbls))
+
+    data_df = pd.DataFrame(
+        {"ID": np.hstack(id_lst), "Score": np.hstack(scores), "Stat": np.hstack(stats_labels)}
+    )
+
+    fig = px.strip(
+        data_df,
+        y="Score",
+        color="ID",
+        facet_col="Stat",
+        stripmode="group",
+        facet_col_wrap=4,
+        facet_col_spacing=0.08,
+    )
+
+    fig.update_xaxes(showline=True, linewidth=2, linecolor="black", mirror=True)
+    fig.update_yaxes(
+        constrain="domain",
+        matches=None,
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        mirror=True,
+        title=None,
+    )
+    fig.update_layout(
+        height=900,
+        autosize=True,
+        font_size=14,
+        plot_bgcolor="white",
+        xaxis_gridcolor="white",
+        yaxis_gridcolor="white",
+        xaxis_gridwidth=2,
+        showlegend=False,
+    )
+    fig.for_each_yaxis(lambda yaxis: yaxis.update(showticklabels=True))
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
 def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):

@@ -35,6 +35,8 @@ from nimare.reports.figures import (
     _plot_dof_map,
     _plot_relcov_map,
     _plot_ridgeplot,
+    _plot_sumstats,
+    _plot_true_voxels,
     gen_table,
     plot_clusters,
     plot_coordinates,
@@ -494,11 +496,23 @@ class Report:
                         self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-dof.png",
                     )
 
+                _plot_true_voxels(
+                    maps_arr,
+                    ids_,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-truevoxels.html",
+                )
+
                 _plot_ridgeplot(
                     maps_arr,
                     ids_,
                     x_label,
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.png",
+                )
+
+                _plot_sumstats(
+                    maps_arr,
+                    ids_,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-summarystats.html",
                 )
 
                 similarity_table = _compute_similarities(maps_arr, ids_)

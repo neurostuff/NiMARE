@@ -55,8 +55,12 @@ sections:
     title: Relative Coverage Map
   - bids: {value: preliminary, dset: 1, suffix: figure-dof}
     title: DoF Map
+  - bids: {value: preliminary, dset: 1, suffix: figure-truevoxels}
+    title: Percentage of voxels included in the analysis
   - bids: {value: preliminary, dset: 1, suffix: figure-ridgeplot}
     title: Ridge Plot
+  - bids: {value: preliminary, dset: 1, suffix: figure-summarystats}
+    title: Summary Stats
   - bids: {value: preliminary, dset: 1, suffix: figure-similarity}
     title: Similarity of Input Maps
   - bids: {value: preliminary, dset: 2, suffix: summary}
