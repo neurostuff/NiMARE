@@ -407,7 +407,6 @@ def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
 
     .. versionadded:: 0.2.0
 
-    Base on: https://seaborn.pydata.org/examples/kde_ridgeplot.html
     """
     n_studies = len(ids_)
     labels = [id_[:MAX_CHARS] for id_ in ids_]  # Truncate labels to MAX_CHARS characters
