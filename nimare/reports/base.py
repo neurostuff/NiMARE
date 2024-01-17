@@ -506,7 +506,7 @@ class Report:
                     maps_arr,
                     ids_,
                     x_label,
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.png",
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.html",
                 )
 
                 _plot_sumstats(
