@@ -1196,7 +1196,7 @@ class KDA(CBMAEstimator):
             **kwargs,
         )
         self.null_method = null_method
-        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 

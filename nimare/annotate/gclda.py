@@ -353,7 +353,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["total_n_word_tokens_by_topic"][0, topic] += 1
             self.topics["n_word_tokens_doc_by_topic"][doc, topic] += 1
 
-    def fit(self, n_iters=10000, loglikely_freq=10):
+    def fit(self, n_iters=5000, loglikely_freq=10):
         """Run multiple iterations.
 
         .. versionchanged:: 0.0.8
