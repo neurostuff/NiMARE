@@ -153,6 +153,8 @@ class IBMAEstimator(Estimator):
             for name, raw_masked_data in temp_image_inputs.items():
                 self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
 
+        self.inputs_["raw_data"] = temp_image_inputs  # This data is saved only to use in Reports
+
 
 class Fishers(IBMAEstimator):
     """An image-based meta-analytic test using t- or z-statistic images.
