@@ -402,12 +402,12 @@ def plot_clusters(img, out_filename):
 
 
 def _plot_true_voxels(maps_arr, ids_, out_filename):
-    """Plot percentage of true voxels.
+    """Plot percentage of valid voxels.
 
     .. versionadded:: 0.2.2
 
     """
-    n_studies, n_voxels = maps_arr
+    n_studies, n_voxels = maps_arr.shape
     mask = ~np.isnan(maps_arr) & (maps_arr != 0)
 
     x_label, y_label = "Voxels Included", "ID"
