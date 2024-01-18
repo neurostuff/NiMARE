@@ -524,7 +524,7 @@ def _plot_sumstats(maps_arr, ids_, out_filename):
         "IQR",
     ]
 
-    scores, stats_labels, id_lst = [], [], []
+    scores, id_lst = [], []
     for id_, map_ in zip(ids_, maps_lst):
         scores.append(
             [
@@ -542,11 +542,11 @@ def _plot_sumstats(maps_arr, ids_, out_filename):
                 stats.iqr(map_),
             ]
         )
-        stats_labels.extend(stats_lbls)
-        id_lst.extend([id_] * len(stats_lbls))
+        id_lst.append([id_] * len(stats_lbls))
 
+    stats_labels = stats_lbls * n_studies
     data_df = pd.DataFrame(
-        {"ID": np.hstack(id_lst), "Score": np.hstack(scores), "Stat": np.hstack(stats_labels)}
+        {"ID": np.hstack(id_lst), "Score": np.hstack(scores), "Stat": stats_labels}
     )
 
     fig = px.strip(
