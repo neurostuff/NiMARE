@@ -545,9 +545,7 @@ def _plot_sumstats(maps_arr, ids_, out_filename):
         id_lst.extend([id_] * len(stats_lbls))
 
     stats_labels = stats_lbls * n_studies
-    data_df = pd.DataFrame(
-        {"ID": id_lst, "Score": scores, "Stat": stats_labels}
-    )
+    data_df = pd.DataFrame({"ID": id_lst, "Score": scores, "Stat": stats_labels})
 
     fig = px.strip(
         data_df,
