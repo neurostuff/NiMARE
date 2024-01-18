@@ -131,6 +131,7 @@ class IBMAEstimator(Estimator):
                             good_voxels_bool,
                         )
                 else:
+                    self.inputs_[name] = temp_arr
                     data_bags = zip(*_apply_liberal_mask(temp_arr))
 
                     keys = ["values", "voxel_mask", "study_mask"]
