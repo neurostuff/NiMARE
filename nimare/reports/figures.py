@@ -523,7 +523,6 @@ def _plot_sumstats(maps_arr, ids_, out_filename):
         "Moment",
         "IQR",
     ]
-
     scores, id_lst = [], []
     for id_, map_ in zip(ids_, maps_lst):
         scores.extend(
