@@ -380,11 +380,17 @@ class Reportlet(Element):
             ext = "".join(src.suffixes)
             desc_text = config.get("caption")
             iframe = config.get("iframe", False)
+            dropdown = config.get("dropdown", False)
 
             contents = None
             html_anchor = src.relative_to(out_dir)
             if ext == ".html":
                 contents = IFRAME_SNIPPET.format(html_anchor) if iframe else src.read_text()
+                if dropdown:
+                    contents = (
+                        f"<details><summary>Advanced ({self.title})</summary>{contents}</details>"
+                    )
+                    self.title = ""
             elif ext == ".png":
                 contents = PNG_SNIPPET.format(html_anchor)
 
@@ -477,8 +483,12 @@ class Report:
                 )
             elif meta_type == "IBMA":
                 # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
-                key_maps = "z_maps" if "z_maps" in self.results.estimator.inputs_ else "beta_maps"
-                maps_arr = self.results.estimator.inputs_[key_maps]
+                key_maps = (
+                    "z_maps"
+                    if "z_maps" in self.results.estimator.inputs_["raw_data"]
+                    else "beta_maps"
+                )
+                maps_arr = self.results.estimator.inputs_["raw_data"][key_maps]
                 ids_ = self.results.estimator.inputs_["id"]
                 x_label = "Z" if key_maps == "z_maps" else "Beta"
 
@@ -486,7 +496,6 @@ class Report:
                     _plot_relcov_map(
                         maps_arr,
                         self.results.estimator.masker,
-                        self.results.estimator.inputs_["aggressive_mask"],
                         self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-relcov.png",
                     )
                 else:
