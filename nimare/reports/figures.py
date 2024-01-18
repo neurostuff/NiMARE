@@ -18,8 +18,6 @@ from ridgeplot import ridgeplot
 from scipy import stats
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 
-from nimare.utils import _boolean_unmask
-
 TABLE_STYLE = [
     dict(
         selector="th, td",
@@ -409,32 +407,43 @@ def _plot_true_voxels(maps_arr, ids_, out_filename):
     .. versionadded:: 0.2.2
 
     """
-    n_voxels = maps_arr.shape[1]
+    n_studies, n_voxels = maps_arr
     mask = ~np.isnan(maps_arr) & (maps_arr != 0)
 
+    x_label, y_label = "Voxels Included", "ID"
     perc_voxs = mask.sum(axis=1) / n_voxels
-    perc_vals = [f"{perc_vox:.0%}" for perc_vox in perc_voxs]
+    valid_df = pd.DataFrame({y_label: ids_, x_label: perc_voxs})
+    valid_sorted_df = valid_df.sort_values(x_label, ascending=True)
 
-    valid_df = pd.DataFrame({"ID": ids_, "Voxels Included": perc_vals})
-    valid_sorted_df = valid_df.sort_values("Voxels Included", ascending=True)
-
-    fig = px.strip(
+    fig = px.bar(
         valid_sorted_df,
-        y="Voxels Included",
-        color="ID",
+        x=x_label,
+        y=y_label,
+        orientation="h",
+        color=x_label,
+        color_continuous_scale="blues",
+        range_color=(0, 1),
     )
 
-    fig.update_xaxes(showline=True, linewidth=2, linecolor="black", mirror=True)
-    fig.update_yaxes(
-        constrain="domain",
+    fig.update_xaxes(
         showline=True,
         linewidth=2,
         linecolor="black",
-        mirror=True,
-        title="Percentage of voxels included",
+        visible=True,
+        showticklabels=False,
+        title=None,
     )
+    fig.update_yaxes(
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        visible=True,
+        showticklabels=False,
+    )
+
+    height = n_studies * PXS_PER_STD
     fig.update_layout(
-        height=400,
+        height=height,
         autosize=True,
         font_size=14,
         plot_bgcolor="white",
@@ -574,7 +583,7 @@ def _plot_sumstats(maps_arr, ids_, out_filename):
     fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
-def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
+def _plot_relcov_map(maps_arr, masker, out_filename):
     """Plot relative coverage map.
 
     .. versionadded:: 0.2.0
@@ -588,8 +597,6 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
     binary_maps_arr = np.where((-epsilon > maps_arr) | (maps_arr > epsilon), 1, 0)
     coverage_arr = np.sum(binary_maps_arr, axis=0) / binary_maps_arr.shape[0]
 
-    # Add bad voxels back to the arr to transform it back to an image
-    coverage_arr = _boolean_unmask(coverage_arr, aggressive_mask)
     coverage_img = masker.inverse_transform(coverage_arr)
 
     # Plot coverage map
