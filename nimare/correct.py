@@ -269,7 +269,7 @@ class FWECorrector(Corrector):
         Only used if ``method='montecarlo'``. The uncorrected voxel-level threshold to use.
     n_iters : :obj:`int`, optional
         Number of iterations to use for Monte Carlo correction.
-        Default varies by Estimator. 
+        Default varies by Estimator.
         For publication-quality results, 5000 or more iterations are recommended.
     n_cores : :obj:`int`, optional
         Number of cores to use for Monte Carlo correction. Default is 1.
@@ -279,8 +279,9 @@ class FWECorrector(Corrector):
 
     _correction_method = "fwe"
 
-    def __init__(self, method="bonferroni",
-                 voxel_thresh=None, n_iters=None, n_cores=None, **kwargs):
+    def __init__(
+        self, method="bonferroni", voxel_thresh=None, n_iters=None, n_cores=None, **kwargs
+    ):
         if method not in ("bonferroni", "montecarlo"):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
