@@ -590,7 +590,7 @@ class CBMAEstimator(Estimator):
         self,
         result,
         voxel_thresh=0.001,
-        n_iters=1000,
+        n_iters=5000,
         n_cores=1,
         vfwe_only=False,
     ):

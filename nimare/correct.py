@@ -269,7 +269,8 @@ class FWECorrector(Corrector):
         Only used if ``method='montecarlo'``. The uncorrected voxel-level threshold to use.
     n_iters : :obj:`int`, optional
         Number of iterations to use for Monte Carlo correction.
-        Estimator default is 1000, but 5000-10000 iterations are recommended.
+        Default varies by Estimator. 
+        For publication-quality results, 5000 or more iterations are recommended.
     n_cores : :obj:`int`, optional
         Number of cores to use for Monte Carlo correction. Default is 1.
     **kwargs
