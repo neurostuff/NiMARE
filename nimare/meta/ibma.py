@@ -114,8 +114,7 @@ class IBMAEstimator(Estimator):
                 # Mask required input images using either the dataset's mask or the estimator's.
                 temp_arr = masker.transform(img4d)
 
-                data = masker.transform(img4d)
-                temp_image_inputs[name] = data
+                temp_image_inputs[name] = temp_arr
                 if self.aggressive_mask:
                     # An intermediate step to mask out bad voxels.
                     # Can be dropped once PyMARE is able to handle masked arrays or missing data.
@@ -132,8 +131,7 @@ class IBMAEstimator(Estimator):
                             good_voxels_bool,
                         )
                 else:
-                    self.inputs_[name] = data  # This data is saved only to use in Reports
-                    data_bags = zip(*_apply_liberal_mask(data))
+                    data_bags = zip(*_apply_liberal_mask(temp_arr))
 
                     keys = ["values", "voxel_mask", "study_mask"]
                     self.inputs_["data_bags"][name] = [dict(zip(keys, bag)) for bag in data_bags]
