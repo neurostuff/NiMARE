@@ -438,7 +438,7 @@ def _plot_true_voxels(maps_arr, ids_, out_filename):
         linewidth=2,
         linecolor="black",
         visible=True,
-        showticklabels=False,
+        ticktext=valid_sorted_df[y_label].str.slice(0, MAX_CHARS).tolist(),
     )
 
     height = n_studies * PXS_PER_STD
