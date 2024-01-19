@@ -15,9 +15,8 @@ from nilearn.plotting import (
     view_img,
 )
 from ridgeplot import ridgeplot
+from scipy import stats
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
-
-from nimare.utils import _boolean_unmask
 
 TABLE_STYLE = [
     dict(
@@ -402,6 +401,60 @@ def plot_clusters(img, out_filename):
     fig.close()
 
 
+def _plot_true_voxels(maps_arr, ids_, out_filename):
+    """Plot percentage of valid voxels.
+
+    .. versionadded:: 0.2.2
+
+    """
+    n_studies, n_voxels = maps_arr.shape
+    mask = ~np.isnan(maps_arr) & (maps_arr != 0)
+
+    x_label, y_label = "Voxels Included", "ID"
+    perc_voxs = mask.sum(axis=1) / n_voxels
+    valid_df = pd.DataFrame({y_label: ids_, x_label: perc_voxs})
+    valid_sorted_df = valid_df.sort_values(x_label, ascending=True)
+
+    fig = px.bar(
+        valid_sorted_df,
+        x=x_label,
+        y=y_label,
+        orientation="h",
+        color=x_label,
+        color_continuous_scale="blues",
+        range_color=(0, 1),
+    )
+
+    fig.update_xaxes(
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        visible=True,
+        showticklabels=False,
+        title=None,
+    )
+    fig.update_yaxes(
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        visible=True,
+        ticktext=valid_sorted_df[y_label].str.slice(0, MAX_CHARS).tolist(),
+    )
+
+    height = n_studies * PXS_PER_STD
+    fig.update_layout(
+        height=height,
+        autosize=True,
+        font_size=14,
+        plot_bgcolor="white",
+        xaxis_gridcolor="white",
+        yaxis_gridcolor="white",
+        xaxis_gridwidth=2,
+        showlegend=False,
+    )
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
+
+
 def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     """Plot histograms of the images.
 
@@ -446,7 +499,88 @@ def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
-def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
+def _plot_sumstats(maps_arr, ids_, out_filename):
+    """Plot summary statistics of the images.
+
+    .. versionadded:: 0.2.2
+
+    """
+    n_studies = len(ids_)
+    mask = ~np.isnan(maps_arr) & (maps_arr != 0)
+    maps_lst = [maps_arr[i][mask[i]] for i in range(n_studies)]
+
+    stats_lbls = [
+        "Mean",
+        "STD",
+        "Var",
+        "Median",
+        "Mode",
+        "Min",
+        "Max",
+        "Skew",
+        "Kurtosis",
+        "Range",
+        "Moment",
+        "IQR",
+    ]
+    scores, id_lst = [], []
+    for id_, map_ in zip(ids_, maps_lst):
+        scores.extend(
+            [
+                np.mean(map_),
+                np.std(map_),
+                np.var(map_),
+                np.median(map_),
+                stats.mode(map_)[0],
+                np.min(map_),
+                np.max(map_),
+                stats.skew(map_),
+                stats.kurtosis(map_),
+                np.max(map_) - np.min(map_),
+                stats.moment(map_, moment=4),
+                stats.iqr(map_),
+            ]
+        )
+        id_lst.extend([id_] * len(stats_lbls))
+
+    stats_labels = stats_lbls * n_studies
+    data_df = pd.DataFrame({"ID": id_lst, "Score": scores, "Stat": stats_labels})
+
+    fig = px.strip(
+        data_df,
+        y="Score",
+        color="ID",
+        facet_col="Stat",
+        stripmode="group",
+        facet_col_wrap=4,
+        facet_col_spacing=0.08,
+    )
+
+    fig.update_xaxes(showline=True, linewidth=2, linecolor="black", mirror=True)
+    fig.update_yaxes(
+        constrain="domain",
+        matches=None,
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        mirror=True,
+        title=None,
+    )
+    fig.update_layout(
+        height=900,
+        autosize=True,
+        font_size=14,
+        plot_bgcolor="white",
+        xaxis_gridcolor="white",
+        yaxis_gridcolor="white",
+        xaxis_gridwidth=2,
+        showlegend=False,
+    )
+    fig.for_each_yaxis(lambda yaxis: yaxis.update(showticklabels=True))
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
+
+
+def _plot_relcov_map(maps_arr, masker, out_filename):
     """Plot relative coverage map.
 
     .. versionadded:: 0.2.0
@@ -460,8 +594,6 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
     binary_maps_arr = np.where((-epsilon > maps_arr) | (maps_arr > epsilon), 1, 0)
     coverage_arr = np.sum(binary_maps_arr, axis=0) / binary_maps_arr.shape[0]
 
-    # Add bad voxels back to the arr to transform it back to an image
-    coverage_arr = _boolean_unmask(coverage_arr, aggressive_mask)
     coverage_img = masker.inverse_transform(coverage_arr)
 
     # Plot coverage map
