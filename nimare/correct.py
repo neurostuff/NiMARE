@@ -279,9 +279,7 @@ class FWECorrector(Corrector):
 
     _correction_method = "fwe"
 
-    def __init__(
-        self, method="bonferroni", n_iters=None, n_cores=None, **kwargs
-    ):
+    def __init__(self, method="bonferroni", n_iters=None, n_cores=1, **kwargs):
         if method not in ("bonferroni", "montecarlo"):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
