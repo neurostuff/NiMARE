@@ -280,13 +280,13 @@ class FWECorrector(Corrector):
     _correction_method = "fwe"
 
     def __init__(
-        self, method="bonferroni", voxel_thresh=None, n_iters=None, n_cores=None, **kwargs
+        self, method="bonferroni", n_iters=None, n_cores=None, **kwargs
     ):
         if method not in ("bonferroni", "montecarlo"):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
         if method == "montecarlo":
-            kwargs.update({"voxel_thresh": voxel_thresh, "n_iters": n_iters, "n_cores": n_cores})
+            kwargs.update({"n_iters": n_iters, "n_cores": n_cores})
 
         self.method = method
         self.parameters = kwargs
