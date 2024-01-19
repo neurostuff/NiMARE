@@ -261,25 +261,31 @@ class FWECorrector(Corrector):
 
     Parameters
     ----------
-    method : :obj:`str`
-        The FWE correction to use. Available internal methods are 'bonferroni'.
-        Additional methods may be implemented within the provided Estimator.
+    method : {'bonferoni', 'montecarlo'}
+        The FWE correction to use. Note that the 'montecarlo' method is only available for
+        a subset of Estimators. To determine what methods are available for the Estimator you're
+        using, use :meth:`inspect`.
+    voxel_thresh : :obj:`float`, optional
+        Only used if ``method='montecarlo'``. The uncorrected voxel-level threshold to use.
+    n_iters : :obj:`int`, optional
+        Number of iterations to use for Monte Carlo correction.
+        Default varies by Estimator.
+        For publication-quality results, 5000 or more iterations are recommended.
+    n_cores : :obj:`int`, optional
+        Number of cores to use for Monte Carlo correction. Default is 1.
     **kwargs
         Keyword arguments to be used by the FWE correction implementation.
-
-    Notes
-    -----
-    This corrector supports a small number of internal FWE correction methods, but can also use
-    special methods implemented within individual Estimators.
-    To determine what methods are available for the Estimator you're using, use :meth:`inspect`.
-    Estimators have special methods following the naming convention
-    ``correct_[correction-type]_[method]``
-    (e.g., :func:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`).
     """
 
     _correction_method = "fwe"
 
-    def __init__(self, method="bonferroni", **kwargs):
+    def __init__(self, method="bonferroni", n_iters=None, n_cores=1, **kwargs):
+        if method not in ("bonferroni", "montecarlo"):
+            raise ValueError(f"Unsupported FWE correction method '{method}'")
+
+        if method == "montecarlo":
+            kwargs.update({"n_iters": n_iters, "n_cores": n_cores})
+
         self.method = method
         self.parameters = kwargs
 

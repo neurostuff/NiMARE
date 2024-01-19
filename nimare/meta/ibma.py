@@ -1321,7 +1321,7 @@ class PermutedOLS(IBMAEstimator):
 
         return maps, {}, description
 
-    def correct_fwe_montecarlo(self, result, n_iters=10000, n_cores=1):
+    def correct_fwe_montecarlo(self, result, n_iters=1000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         .. versionchanged:: 0.0.8

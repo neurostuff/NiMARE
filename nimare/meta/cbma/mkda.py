@@ -715,7 +715,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         return p_vfwe_values, p_csfwe_values, p_cmfwe_values
 
-    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=1000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -732,6 +732,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
+        voxel_thresh : :obj:`float`, optional
+            Voxel-level threshold. Default is 0.001.
         n_iters : :obj:`int`, optional
             Number of iterations to build the vFWE null distribution.
             Default is 5000.
@@ -1164,7 +1166,7 @@ class KDA(CBMAEstimator):
             **kwargs,
         )
         self.null_method = null_method
-        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 

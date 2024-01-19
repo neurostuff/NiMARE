@@ -156,7 +156,7 @@ class ALE(CBMAEstimator):
             **kwargs,
         )
         self.null_method = null_method
-        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
@@ -403,7 +403,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     def __init__(
         self,
         kernel_transformer=ALEKernel,
-        n_iters=10000,
+        n_iters=5000,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
@@ -698,7 +698,7 @@ class SCALE(CBMAEstimator):
     def __init__(
         self,
         xyz,
-        n_iters=10000,
+        n_iters=5000,
         n_cores=1,
         kernel_transformer=ALEKernel,
         memory=Memory(location=None, verbose=0),
