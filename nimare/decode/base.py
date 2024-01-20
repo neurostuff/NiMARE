@@ -88,7 +88,7 @@ class Decoder(NiMAREBase):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset object to analyze.
-        drop_invalid : :obj:`bool`, optional
+        drop_invalid : :obj:`bool`, default=True
             Whether to automatically ignore any studies without the required data or not.
             Default is True.
 

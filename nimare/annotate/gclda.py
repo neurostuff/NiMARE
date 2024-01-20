@@ -362,8 +362,8 @@ class GCLDAModel(NiMAREBase):
 
         Parameters
         ----------
-        n_iters : :obj:`int`, optional
-            Number of iterations to run. Default is 10000.
+        n_iters : :obj:`int`, default=5000
+            Number of iterations to run. Default is 5000.
         loglikely_freq : :obj:`int`, optional
             The frequency with which log-likelihood is updated. Default value
             is 1 (log-likelihood is updated every iteration).

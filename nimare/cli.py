@@ -61,7 +61,7 @@ def _get_parser():
         dest="n_iters",
         type=int,
         help=("Number of iterations for permutation testing."),
-        default=10000,
+        default=5000,
     )
     macm_parser.add_argument(
         "--v_thr",

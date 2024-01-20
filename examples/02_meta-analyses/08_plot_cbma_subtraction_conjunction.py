@@ -138,7 +138,7 @@ related_jackknife_table.head(10)
 ###############################################################################
 # Subtraction analysis
 # -----------------------------------------------------------------------------
-# Typically, one would use at least 10000 iterations for a subtraction analysis.
+# Typically, one would use at least 5000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
 # Similarly here we use a voxel-level z-threshold of 0.01, but in practice one would
 # use a more stringent threshold (e.g., 1.65).

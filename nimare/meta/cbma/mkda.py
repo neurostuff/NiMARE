@@ -58,10 +58,10 @@ class MKDADensity(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : int, default=5000
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
-        Default is 10000.
+        Default is 5000.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
         If a :obj:`str` is given, it is the path to the caching directory.
@@ -135,7 +135,7 @@ class MKDADensity(CBMAEstimator):
         self,
         kernel_transformer=MKDAKernel,
         null_method="approximate",
-        n_iters=None,
+        n_iters=5000,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
@@ -156,7 +156,7 @@ class MKDADensity(CBMAEstimator):
             **kwargs,
         )
         self.null_method = null_method
-        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
@@ -322,7 +322,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.MKDAKernel`.
-    prior : float, optional
+    prior : float, default=0.5
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
@@ -732,12 +732,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
-        voxel_thresh : :obj:`float`, optional
+        voxel_thresh : :obj:`float`, default=0.001
             Voxel-level threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
+        n_iters : :obj:`int`, default=1000
             Number of iterations to build the vFWE null distribution.
-            Default is 5000.
-        n_cores : :obj:`int`, optional
+            Default is 1000.
+        n_cores : :obj:`int`, default=1
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is 1.
 
@@ -1057,17 +1057,17 @@ class KDA(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : int, default=5000
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
-        Default is 10000.
+        Default is 5000.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
         If a :obj:`str` is given, it is the path to the caching directory.
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
-    n_cores : :obj:`int`, optional
+    n_cores : :obj:`int`, default=1
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
@@ -1139,7 +1139,7 @@ class KDA(CBMAEstimator):
         self,
         kernel_transformer=KDAKernel,
         null_method="approximate",
-        n_iters=None,
+        n_iters=5000,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,

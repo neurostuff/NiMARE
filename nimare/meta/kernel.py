@@ -384,9 +384,9 @@ class KDAKernel(KernelTransformer):
 
     Parameters
     ----------
-    r : :obj:`int`, optional
+    r : :obj:`int`, default=10
         Sphere radius, in mm.
-    value : :obj:`int`, optional
+    value : :obj:`int`, default=1
         Value for sphere.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
@@ -468,9 +468,9 @@ class MKDAKernel(KDAKernel):
 
     Parameters
     ----------
-    r : :obj:`int`, optional
+    r : :obj:`int`, default=10
         Sphere radius, in mm.
-    value : :obj:`int`, optional
+    value : :obj:`int`, default=1
         Value for sphere.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
