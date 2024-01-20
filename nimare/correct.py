@@ -261,7 +261,7 @@ class FWECorrector(Corrector):
 
     Parameters
     ----------
-    method : {'bonferoni', 'montecarlo'}
+    method : {'bonferroni', 'montecarlo'}
         The FWE correction to use. Note that the 'montecarlo' method is only available for
         a subset of Estimators. To determine what methods are available for the Estimator you're
         using, use :meth:`inspect`.
