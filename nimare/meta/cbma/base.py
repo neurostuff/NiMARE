@@ -402,7 +402,7 @@ class CBMAEstimator(Estimator):
 
         return ss
 
-    def _compute_null_reduced_montecarlo(self, ma_maps, n_iters=10000):
+    def _compute_null_reduced_montecarlo(self, ma_maps, n_iters=5000):
         """Compute uncorrected null distribution using the reduced montecarlo method.
 
         This method is much faster than the full montecarlo approach, but is still slower than the
@@ -617,9 +617,9 @@ class CBMAEstimator(Estimator):
             Result object from a CBMA meta-analysis.
         voxel_thresh : :obj:`float`, optional
             Cluster-defining p-value threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
+        n_iters : :obj:`int`, default=5000
             Number of iterations to build the voxel-level, cluster-size, and cluster-mass FWE
-            null distributions. Default is 10000.
+            null distributions. Default is 5000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is 1.

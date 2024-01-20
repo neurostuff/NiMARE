@@ -112,7 +112,7 @@ results = meta.fit(dset)
 ######################################################################################
 # Note that, to measure significance appropriately with the montecarlo method,
 # you need a lot more than 10 iterations.
-# We recommend 10000 (the default value).
+# We recommend 5000 (the default value).
 mc_meta = ALE(null_method="montecarlo", n_iters=10, n_cores=1)
 mc_results = mc_meta.fit(dset)
 

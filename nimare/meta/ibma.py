@@ -1321,7 +1321,7 @@ class PermutedOLS(IBMAEstimator):
 
         return maps, {}, description
 
-    def correct_fwe_montecarlo(self, result, n_iters=1000, n_cores=1):
+    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         .. versionchanged:: 0.0.8
@@ -1336,10 +1336,10 @@ class PermutedOLS(IBMAEstimator):
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result object from an ALE meta-analysis.
-        n_iters : :obj:`int`, optional
+        n_iters : :obj:`int`, default=5000
             The number of iterations to run in estimating the null distribution.
-            Default is 10000.
-        n_cores : :obj:`int`, optional
+            Default is 5000.
+        n_cores : :obj:`int`, default=1
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is 1.
 

@@ -61,7 +61,7 @@ class MKDADensity(CBMAEstimator):
     n_iters : int, optional
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
-        Default is 10000.
+        Default is 5000.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
         If a :obj:`str` is given, it is the path to the caching directory.
@@ -156,7 +156,7 @@ class MKDADensity(CBMAEstimator):
             **kwargs,
         )
         self.null_method = null_method
-        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
@@ -734,9 +734,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             Result object from a KDA meta-analysis.
         voxel_thresh : :obj:`float`, optional
             Voxel-level threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
+        n_iters : :obj:`int`, default=1000
             Number of iterations to build the vFWE null distribution.
-            Default is 5000.
+            Default is 1000.
         n_cores : :obj:`int`, optional
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is 1.
@@ -1057,10 +1057,10 @@ class KDA(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : int, default=5000
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
-        Default is 10000.
+        Default is 5000.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
         If a :obj:`str` is given, it is the path to the caching directory.
