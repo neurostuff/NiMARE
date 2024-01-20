@@ -135,7 +135,7 @@ class ALE(CBMAEstimator):
         self,
         kernel_transformer=ALEKernel,
         null_method="approximate",
-        n_iters=None,
+        n_iters=5000,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
@@ -356,7 +356,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
-    n_cores : :obj:`int`, optional
+    n_cores : :obj:`int`, default=1
         Number of processes to use for meta-analysis. If -1, use all available cores.
         Default is 1.
 
@@ -654,7 +654,7 @@ class SCALE(CBMAEstimator):
 
     n_iters : int, default=5000
         Number of iterations for statistical inference. Default: 5000
-    n_cores : int, optional
+    n_cores : int, default=1
         Number of processes to use for meta-analysis. If -1, use all available cores.
         Default: 1
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional

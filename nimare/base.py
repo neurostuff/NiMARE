@@ -101,7 +101,7 @@ class NiMAREBase(CacheMixin, metaclass=ABCMeta):
 
         Parameters
         ----------
-        deep : :obj:`bool`, optional
+        deep : :obj:`bool`, default=True
             If True, will return the parameters for this estimator and
             contained subobjects that are estimators.
 
@@ -183,7 +183,7 @@ class NiMAREBase(CacheMixin, metaclass=ABCMeta):
         ----------
         filename : :obj:`str`
             Name of file containing object.
-        compressed : :obj:`bool`, optional
+        compressed : :obj:`bool`, default=True
             If True, the file is assumed to be compressed and gzip will be used
             to load it. Otherwise, it will assume that the file is not
             compressed. Default = True.

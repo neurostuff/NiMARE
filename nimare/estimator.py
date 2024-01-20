@@ -38,7 +38,7 @@ class Estimator(NiMAREBase):
         Parameters
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
-        drop_invalid : :obj:`bool`, optional
+        drop_invalid : :obj:`bool`, default=True
             Whether to automatically drop any studies in the Dataset without valid data or not.
             Default is True.
 

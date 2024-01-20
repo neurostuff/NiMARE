@@ -27,14 +27,14 @@ class CBMAWorkflow(Workflow):
     Parameters
     ----------
     estimator : :class:`~nimare.meta.cbma.base.CBMAEstimator`, :obj:`str` {'ale', 'scale', \
-    'mkdadensity', 'kda'}, or optional
+    'mkdadensity', 'kda'}, optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.ale.ALE`.
     corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
-    'bonferroni'} or optional
+    'bonferroni'}, optional
         Meta-analysis corrector. Default is :class:`~nimare.correct.FWECorrector`.
     diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`, \
     :class:`~nimare.diagnostics.Diagnostics`, :obj:`str` {'jackknife', 'focuscounter'}, \
-    or optional
+    optional
         List of meta-analysis diagnostic classes. A single diagnostic class can also be passed.
         Default is :class:`~nimare.diagnostics.FocusCounter`.
     voxel_thresh : :obj:`float` or None, optional

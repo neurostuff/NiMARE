@@ -267,11 +267,11 @@ class FWECorrector(Corrector):
         using, use :meth:`inspect`.
     voxel_thresh : :obj:`float`, optional
         Only used if ``method='montecarlo'``. The uncorrected voxel-level threshold to use.
-    n_iters : :obj:`int`, optional
+    n_iters : :obj:`int`, default=5000
         Number of iterations to use for Monte Carlo correction.
         Default varies by Estimator.
         For publication-quality results, 5000 or more iterations are recommended.
-    n_cores : :obj:`int`, optional
+    n_cores : :obj:`int`, default=1
         Number of cores to use for Monte Carlo correction. Default is 1.
     **kwargs
         Keyword arguments to be used by the FWE correction implementation.
@@ -340,12 +340,12 @@ class FDRCorrector(Corrector):
 
     Parameters
     ----------
-    method : :obj:`str`, optional
+    method : :obj:`str`, default='indep'
         The FDR correction to use.
         Either 'indep' (for independent or positively correlated values) or 'negcorr'
         (for general or negatively correlated tests).
         Default is 'indep'.
-    alpha : :obj:`float`, optional
+    alpha : :obj:`float`, default=0.05
         The FDR correction rate to use. Default is 0.05.
 
     Notes
