@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pymare
 from joblib import Memory
-from nilearn._utils.niimg_conversions import _check_same_fov
+from nilearn._utils.niimg_conversions import check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 from nilearn.input_data import NiftiMasker
 from nilearn.mass_univariate import permuted_ols
@@ -103,7 +103,7 @@ class IBMAEstimator(Estimator):
                 # Resampling will only occur if shape/affines are different
                 imgs = [
                     nib.load(img)
-                    if _check_same_fov(nib.load(img), reference_masker=mask_img)
+                    if check_same_fov(nib.load(img), reference_masker=mask_img)
                     else resample_to_img(nib.load(img), mask_img, **self._resample_kwargs)
                     for img in self.inputs_[name]
                 ]
