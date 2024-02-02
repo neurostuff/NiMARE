@@ -544,8 +544,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
                     )
                     for i_voxel in range(n_voxels)
                 ),
-                total=self.n_iters,
-            )
+            ),
+            total=n_voxels,
         )
         # with tqdm_joblib(tqdm(total=n_voxels)):
         #     p_values, voxel_idx = zip(
@@ -913,9 +913,9 @@ class SCALE(CBMAEstimator):
                         i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
                     )
                     for i_voxel in range(n_voxels)
-                ),
-                total=self.n_voxels,
-            )
+                )
+            ),
+            total=n_voxels,
         )
         # with tqdm_joblib(tqdm(total=n_voxels)):
         #     p_values, voxel_idx = zip(
