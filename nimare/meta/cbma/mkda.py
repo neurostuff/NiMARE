@@ -849,18 +849,35 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Define connectivity matrix for cluster labeling
         conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
-        with tqdm_joblib(tqdm(total=n_iters)):
-            perm_results = Parallel(n_jobs=n_cores)(
-                delayed(self._run_fwe_permutation)(
-                    iter_xyz1=iter_xyzs1[i_iter],
-                    iter_xyz2=iter_xyzs2[i_iter],
-                    iter_df1=iter_df1,
-                    iter_df2=iter_df2,
-                    conn=conn,
-                    voxel_thresh=ss_thresh,
-                )
-                for i_iter in range(n_iters)
+        perm_results = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=n_cores)(
+                    delayed(self._run_fwe_permutation)(
+                        iter_xyz1=iter_xyzs1[i_iter],
+                        iter_xyz2=iter_xyzs2[i_iter],
+                        iter_df1=iter_df1,
+                        iter_df2=iter_df2,
+                        conn=conn,
+                        voxel_thresh=ss_thresh,
+                    )
+                    for i_iter in range(n_iters)
+                ),
+                total=n_iters,
             )
+        ]
+        # with tqdm_joblib(tqdm(total=n_iters)):
+        #     perm_results = Parallel(n_jobs=n_cores)(
+        #         delayed(self._run_fwe_permutation)(
+        #             iter_xyz1=iter_xyzs1[i_iter],
+        #             iter_xyz2=iter_xyzs2[i_iter],
+        #             iter_df1=iter_df1,
+        #             iter_df2=iter_df2,
+        #             conn=conn,
+        #             voxel_thresh=ss_thresh,
+        #         )
+        #         for i_iter in range(n_iters)
+        #     )
 
         del rand_idx1, rand_xyz1, iter_xyzs1
         del rand_idx2, rand_xyz2, iter_xyzs2

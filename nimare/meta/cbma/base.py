@@ -10,7 +10,7 @@ import sparse
 from joblib import Memory, Parallel, delayed
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from nimare.estimator import Estimator
 from nimare.meta.kernel import KernelTransformer
@@ -24,7 +24,6 @@ from nimare.utils import (
     _check_type,
     get_masker,
     mm2vox,
-    tqdm_joblib,
     vox2mm,
 )
 
@@ -518,13 +517,6 @@ class CBMAEstimator(Estimator):
                 total=n_iters,
             )
         ]
-        # with tqdm_joblib(tqdm(total=n_iters)):
-        #     perm_histograms = Parallel(n_jobs=n_cores)(
-        #         delayed(self._compute_null_montecarlo_permutation)(
-        #             iter_xyzs[i_iter], iter_df=iter_df
-        #         )
-        #         for i_iter in range(n_iters)
-        #     )
 
         perm_histograms = np.vstack(perm_histograms)
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
@@ -748,17 +740,6 @@ class CBMAEstimator(Estimator):
                     total=n_iters,
                 )
             ]
-            # with tqdm_joblib(tqdm(total=n_iters)):
-            #     perm_results = Parallel(n_jobs=n_cores)(
-            #         delayed(self._correct_fwe_montecarlo_permutation)(
-            #             iter_xyzs[i_iter],
-            #             iter_df=iter_df,
-            #             conn=conn,
-            #             voxel_thresh=ss_thresh,
-            #             vfwe_only=vfwe_only,
-            #         )
-            #         for i_iter in range(n_iters)
-            #     )
 
             fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
 

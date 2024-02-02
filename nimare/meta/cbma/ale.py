@@ -520,26 +520,44 @@ class ALESubtraction(PairwiseCBMAEstimator):
             shape=(self.n_iters, n_voxels),
         )
 
-        with tqdm_joblib(tqdm(total=self.n_iters)):
-            Parallel(n_jobs=self.n_cores)(
-                delayed(self._run_permutation)(i_iter, n_grp1, ma_arr, iter_diff_values)
-                for i_iter in range(self.n_iters)
+        _ = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=self.n_cores)(
+                    delayed(self._run_permutation)(i_iter, n_grp1, ma_arr, iter_diff_values)
+                    for i_iter in range(self.n_iters)
+                ),
+                total=self.n_iters,
             )
+        ]
 
         # Determine p-values based on voxel-wise null distributions
         # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
         # the iteration as well and sort the resulting p-value array based on that.
-        with tqdm_joblib(tqdm(total=n_voxels)):
-            p_values, voxel_idx = zip(
-                *Parallel(n_jobs=self.n_cores)(
+        p_values, voxel_idx = tqdm(
+            zip(
+                *Parallel(return_as="generator", n_jobs=self.n_cores)(
                     delayed(self._alediff_to_p_voxel)(
                         i_voxel,
                         diff_ale_values[i_voxel],
                         iter_diff_values[:, i_voxel],
                     )
                     for i_voxel in range(n_voxels)
-                )
+                ),
+                total=self.n_iters,
             )
+        )
+        # with tqdm_joblib(tqdm(total=n_voxels)):
+        #     p_values, voxel_idx = zip(
+        #         *Parallel(return_as="generator", n_jobs=self.n_cores)(
+        #             delayed(self._alediff_to_p_voxel)(
+        #                 i_voxel,
+        #                 diff_ale_values[i_voxel],
+        #                 iter_diff_values[:, i_voxel],
+        #             )
+        #             for i_voxel in range(n_voxels)
+        #         )
+        #     )
         # Convert to an array and sort the p-values array based on the voxel index.
         p_values = np.array(p_values)[np.array(voxel_idx)]
 
@@ -801,13 +819,25 @@ class SCALE(CBMAEstimator):
             mode="w+",
             shape=(self.n_iters, stat_values.shape[0]),
         )
-        with tqdm_joblib(tqdm(total=self.n_iters)):
-            Parallel(n_jobs=self.n_cores)(
-                delayed(self._run_permutation)(
-                    i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
-                )
-                for i_iter in range(self.n_iters)
+        _ = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=self.n_cores)(
+                    delayed(self._run_permutation)(
+                        i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
+                    )
+                    for i_iter in range(self.n_iters)
+                ),
+                total=self.n_iters,
             )
+        ]
+        # with tqdm_joblib(tqdm(total=self.n_iters)):
+        #     Parallel(n_jobs=self.n_cores)(
+        #         delayed(self._run_permutation)(
+        #             i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
+        #         )
+        #         for i_iter in range(self.n_iters)
+        #     )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
 
@@ -876,15 +906,26 @@ class SCALE(CBMAEstimator):
 
         # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
         # the iteration as well and sort the resulting p-value array based on that.
-        with tqdm_joblib(tqdm(total=n_voxels)):
-            p_values, voxel_idx = zip(
-                *Parallel(n_jobs=self.n_cores)(
+        p_values, voxel_idx = tqdm(
+            zip(
+                *Parallel(return_as="generator", n_jobs=self.n_cores)(
                     delayed(self._scale_to_p_voxel)(
                         i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
                     )
                     for i_voxel in range(n_voxels)
-                )
+                ),
+                total=self.n_voxels,
             )
+        )
+        # with tqdm_joblib(tqdm(total=n_voxels)):
+        #     p_values, voxel_idx = zip(
+        #         *Parallel(n_jobs=self.n_cores)(
+        #             delayed(self._scale_to_p_voxel)(
+        #                 i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
+        #             )
+        #             for i_voxel in range(n_voxels)
+        #         )
+        #     )
         # Convert to an array and sort the p-values array based on the voxel index.
         p_values = np.array(p_values)[np.array(voxel_idx)]
 
