@@ -50,6 +50,9 @@ jobs:
       - name: 'Install NiMARE'
         shell: bash {0}
         run: pip install -e .[tests]
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 55
       - name: 'Run linter'
         shell: bash {0}
         run: make lint
