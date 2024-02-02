@@ -17,7 +17,7 @@ from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, tqdm_joblib, vox2mm
+from nimare.utils import _check_ncores, vox2mm
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -866,18 +866,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 total=n_iters,
             )
         ]
-        # with tqdm_joblib(tqdm(total=n_iters)):
-        #     perm_results = Parallel(n_jobs=n_cores)(
-        #         delayed(self._run_fwe_permutation)(
-        #             iter_xyz1=iter_xyzs1[i_iter],
-        #             iter_xyz2=iter_xyzs2[i_iter],
-        #             iter_df1=iter_df1,
-        #             iter_df2=iter_df2,
-        #             conn=conn,
-        #             voxel_thresh=ss_thresh,
-        #         )
-        #         for i_iter in range(n_iters)
-        #     )
 
         del rand_idx1, rand_xyz1, iter_xyzs1
         del rand_idx2, rand_xyz2, iter_xyzs2

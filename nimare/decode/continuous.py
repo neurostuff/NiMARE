@@ -24,7 +24,6 @@ from nimare.utils import (
     _check_type,
     _safe_transform,
     get_masker,
-    tqdm_joblib,
 )
 
 LGR = logging.getLogger(__name__)
@@ -200,12 +199,15 @@ class CorrelationDecoder(Decoder):
             MetaResult with meta-analytic maps and masker added.
         """
         n_features = len(self.features_)
-        with tqdm_joblib(tqdm(total=n_features)):
-            maps = dict(
-                Parallel(n_jobs=self.n_cores)(
+        maps = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=self.n_cores)(
                     delayed(self._run_fit)(feature, dataset) for feature in self.features_
-                )
+                ),
+                total=n_features,
             )
+        ]
 
         self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 
@@ -390,12 +392,15 @@ class CorrelationDistributionDecoder(Decoder):
             MetaResult with meta-analytic maps and masker added.
         """
         n_features = len(self.features_)
-        with tqdm_joblib(tqdm(total=n_features)):
-            maps = dict(
-                Parallel(n_jobs=self.n_cores)(
+        maps = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=self.n_cores)(
                     delayed(self._run_fit)(feature, dataset) for feature in self.features_
-                )
+                ),
+                total=n_features,
             )
+        ]
 
         self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 

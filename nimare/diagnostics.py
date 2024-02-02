@@ -10,14 +10,12 @@ from joblib import Parallel, delayed
 from nilearn import input_data
 from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
-from tqdm import tqdm
-import joblib
-
+from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.meta.ibma import IBMAEstimator
-from nimare.utils import _check_ncores, get_masker, mm2vox, tqdm_joblib
+from nimare.utils import _check_ncores, get_masker, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -224,17 +222,13 @@ class Diagnostics(NiMAREBase):
             contributions = [
                 r
                 for r in tqdm(
-                    joblib.Parallel(return_as="generator", n_jobs=self.n_cores)(
-                        joblib.delayed(self._transform)(expid, label_map, sign, result)
+                    Parallel(return_as="generator", n_jobs=self.n_cores)(
+                        delayed(self._transform)(expid, label_map, sign, result)
                         for expid in meta_ids
                     ),
                     total=len(meta_ids),
                 )
             ]
-            # with tqdm_joblib(tqdm(total=len(meta_ids))):
-            #     contributions = Parallel(n_jobs=self.n_cores)(
-            #         delayed(self._transform)(expid, label_map, sign, result) for expid in meta_ids
-            #     )
 
             # Add results to table
             for expid, stat_prop_values in zip(meta_ids, contributions):

@@ -13,7 +13,7 @@ from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, tqdm_joblib, use_memmap
+from nimare.utils import _check_ncores, use_memmap
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -547,17 +547,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
             ),
             total=n_voxels,
         )
-        # with tqdm_joblib(tqdm(total=n_voxels)):
-        #     p_values, voxel_idx = zip(
-        #         *Parallel(return_as="generator", n_jobs=self.n_cores)(
-        #             delayed(self._alediff_to_p_voxel)(
-        #                 i_voxel,
-        #                 diff_ale_values[i_voxel],
-        #                 iter_diff_values[:, i_voxel],
-        #             )
-        #             for i_voxel in range(n_voxels)
-        #         )
-        #     )
+
         # Convert to an array and sort the p-values array based on the voxel index.
         p_values = np.array(p_values)[np.array(voxel_idx)]
 
@@ -831,13 +821,6 @@ class SCALE(CBMAEstimator):
                 total=self.n_iters,
             )
         ]
-        # with tqdm_joblib(tqdm(total=self.n_iters)):
-        #     Parallel(n_jobs=self.n_cores)(
-        #         delayed(self._run_permutation)(
-        #             i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
-        #         )
-        #         for i_iter in range(self.n_iters)
-        #     )
 
         p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
 
@@ -917,15 +900,7 @@ class SCALE(CBMAEstimator):
             ),
             total=n_voxels,
         )
-        # with tqdm_joblib(tqdm(total=n_voxels)):
-        #     p_values, voxel_idx = zip(
-        #         *Parallel(n_jobs=self.n_cores)(
-        #             delayed(self._scale_to_p_voxel)(
-        #                 i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
-        #             )
-        #             for i_voxel in range(n_voxels)
-        #         )
-        #     )
+
         # Convert to an array and sort the p-values array based on the voxel index.
         p_values = np.array(p_values)[np.array(voxel_idx)]
 
