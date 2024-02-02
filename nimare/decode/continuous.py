@@ -19,12 +19,7 @@ from nimare.meta.cbma.base import CBMAEstimator
 from nimare.meta.cbma.mkda import MKDAChi2
 from nimare.results import MetaResult
 from nimare.stats import pearson
-from nimare.utils import (
-    _check_ncores,
-    _check_type,
-    _safe_transform,
-    get_masker,
-)
+from nimare.utils import _check_ncores, _check_type, _safe_transform, get_masker
 
 LGR = logging.getLogger(__name__)
 
