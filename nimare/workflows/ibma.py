@@ -1,4 +1,5 @@
 """Workflow for running an image-based meta-analysis from a NiMARE database."""
+
 import logging
 
 from nimare.correct import FDRCorrector

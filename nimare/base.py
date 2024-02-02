@@ -1,4 +1,5 @@
 """Base classes for NiMARE."""
+
 import gzip
 import inspect
 import logging

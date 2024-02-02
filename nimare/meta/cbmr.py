@@ -835,12 +835,12 @@ class CBMRInference(object):
                     self.result.maps[
                         f"chiSquare_group-{self.t_con_groups_name[con_group_count]}"
                     ] = chi_sq_spatial
-                self.result.maps[
-                    f"p_group-{self.t_con_groups_name[con_group_count]}"
-                ] = p_vals_spatial
-                self.result.maps[
-                    f"z_group-{self.t_con_groups_name[con_group_count]}"
-                ] = z_stats_spatial
+                self.result.maps[f"p_group-{self.t_con_groups_name[con_group_count]}"] = (
+                    p_vals_spatial
+                )
+                self.result.maps[f"z_group-{self.t_con_groups_name[con_group_count]}"] = (
+                    z_stats_spatial
+                )
             else:
                 if m > 1:  # GLH tests (with multiple contrasts)
                     self.result.maps[f"chiSquare_GLH_groups_{con_group_count}"] = chi_sq_spatial
@@ -950,17 +950,17 @@ class CBMRInference(object):
                     self.result.tables[
                         f"chi_square_{self.t_con_moderators_name[con_moderator_count]}"
                     ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
-                self.result.tables[
-                    f"p_{self.t_con_moderators_name[con_moderator_count]}"
-                ] = pd.DataFrame(data=np.array(p_vals_moderator), columns=["p"])
-                self.result.tables[
-                    f"z_{self.t_con_moderators_name[con_moderator_count]}"
-                ] = pd.DataFrame(data=np.array(z_stats_moderator), columns=["z"])
+                self.result.tables[f"p_{self.t_con_moderators_name[con_moderator_count]}"] = (
+                    pd.DataFrame(data=np.array(p_vals_moderator), columns=["p"])
+                )
+                self.result.tables[f"z_{self.t_con_moderators_name[con_moderator_count]}"] = (
+                    pd.DataFrame(data=np.array(z_stats_moderator), columns=["z"])
+                )
             else:
                 if m_con_moderator > 1:
-                    self.result.tables[
-                        f"chi_square_GLH_moderators_{con_moderator_count}"
-                    ] = pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
+                    self.result.tables[f"chi_square_GLH_moderators_{con_moderator_count}"] = (
+                        pd.DataFrame(data=np.array(chi_sq_moderator), columns=["chi_square"])
+                    )
                 self.result.tables[f"p_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
                     data=np.array(p_vals_moderator), columns=["p"]
                 )

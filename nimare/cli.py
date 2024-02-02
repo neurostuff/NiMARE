@@ -1,4 +1,5 @@
 """Command-line interfaces for common workflows."""
+
 import argparse
 import os.path as op
 

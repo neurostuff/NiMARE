@@ -1,4 +1,5 @@
 """Methods for decoding unthresholded brain maps into text."""
+
 import inspect
 import logging
 import os

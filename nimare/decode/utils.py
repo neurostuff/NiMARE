@@ -1,4 +1,5 @@
 """Utility functions for decoding/encoding."""
+
 import numpy as np
 
 

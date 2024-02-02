@@ -1,4 +1,5 @@
 """Test nimare.meta.mkda (KDA-based meta-analytic algorithms)."""
+
 import logging
 
 import numpy as np

@@ -1,4 +1,5 @@
 """Multiple comparisons correction methods."""
+
 import inspect
 import logging
 from abc import abstractproperty
@@ -142,9 +143,9 @@ class Corrector(NiMAREBase):
         duplicate_methods = list(set(corr_methods) & set(est_methods))
         for duplicate_method in duplicate_methods:
             if duplicate_method in corr_methods:
-                corr_methods[
-                    corr_methods.index(duplicate_method)
-                ] = f"{duplicate_method} (overridden)"
+                corr_methods[corr_methods.index(duplicate_method)] = (
+                    f"{duplicate_method} (overridden)"
+                )
 
         LGR.info(
             f"Available non-specific methods: {', '.join(corr_methods)}\n"

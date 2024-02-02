@@ -1,4 +1,5 @@
 """Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms)."""
+
 import os
 import pickle
 

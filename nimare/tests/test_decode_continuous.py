@@ -2,6 +2,7 @@
 
 Tests for nimare.decode.continuous.gclda_decode_map are in test_annotate_gclda.
 """
+
 import os
 
 import numpy as np

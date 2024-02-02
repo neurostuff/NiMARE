@@ -1,4 +1,5 @@
 """Methods for diagnosing problems in meta-analytic datasets or analyses."""
+
 import copy
 import logging
 from abc import abstractmethod
@@ -154,9 +155,11 @@ class Diagnostics(NiMAREBase):
             clusters_table = clusters_table.astype({"Cluster ID": "str"})
             # Rename the clusters_table cluster IDs to match the contribution table columns
             clusters_table["Cluster ID"] = [
-                f"{POSTAIL_LBL} {row['Cluster ID']}"
-                if row["Peak Stat"] > 0
-                else f"{NEGTAIL_LBL} {row['Cluster ID']}"
+                (
+                    f"{POSTAIL_LBL} {row['Cluster ID']}"
+                    if row["Peak Stat"] > 0
+                    else f"{NEGTAIL_LBL} {row['Cluster ID']}"
+                )
                 for _, row in clusters_table.iterrows()
             ]
 

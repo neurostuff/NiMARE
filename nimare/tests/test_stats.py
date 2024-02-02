@@ -1,4 +1,5 @@
 """Test nimare.stats."""
+
 import math
 
 import numpy as np

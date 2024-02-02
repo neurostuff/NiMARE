@@ -1,4 +1,5 @@
 """Tests for the nimare.generate module."""
+
 from contextlib import ExitStack as does_not_raise
 
 import pytest

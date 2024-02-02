@@ -1,4 +1,5 @@
 """Perform MACM with ALE algorithm."""
+
 import logging
 import os
 import pathlib

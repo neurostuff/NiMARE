@@ -1,4 +1,5 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
+
 import logging
 
 import numpy as np

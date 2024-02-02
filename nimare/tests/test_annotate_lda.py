@@ -1,4 +1,5 @@
 """Test nimare.annotate.lda (LDA)."""
+
 import numpy as np
 import pandas as pd
 

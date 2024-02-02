@@ -1,4 +1,5 @@
 """Test nimare.meta.kernel (CBMA kernel estimators)."""
+
 import time
 
 import nibabel as nib
