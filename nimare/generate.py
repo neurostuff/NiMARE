@@ -1,4 +1,5 @@
 """Utilities for generating data for testing."""
+
 from itertools import zip_longest
 
 import numpy as np

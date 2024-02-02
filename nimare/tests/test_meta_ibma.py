@@ -1,4 +1,5 @@
 """Test nimare.meta.ibma (image-based meta-analytic estimators)."""
+
 import logging
 import os.path as op
 

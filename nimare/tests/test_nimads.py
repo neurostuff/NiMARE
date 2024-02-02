@@ -1,4 +1,5 @@
 """Test NiMADS functionality."""
+
 from nimare import nimads
 from nimare.dataset import Dataset
 

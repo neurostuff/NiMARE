@@ -2,6 +2,7 @@
 
 Tests for nimare.decode.discrete.gclda_decode_roi are in test_annotate_gclda.
 """
+
 import pandas as pd
 import pytest
 

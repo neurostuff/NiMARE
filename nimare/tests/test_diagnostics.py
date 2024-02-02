@@ -1,4 +1,5 @@
 """Tests for the nimare.diagnostics module."""
+
 import os.path as op
 
 import pytest

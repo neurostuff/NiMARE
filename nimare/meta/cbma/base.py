@@ -1,4 +1,5 @@
 """CBMA methods from the ALE and MKDA families."""
+
 import logging
 from abc import abstractmethod
 
@@ -523,9 +524,9 @@ class CBMAEstimator(Estimator):
         for perm in fwe_voxel_max:
             histweights[perm] += 1
 
-        self.null_distributions_[
-            "histweights_level-voxel_corr-fwe_method-montecarlo"
-        ] = histweights
+        self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"] = (
+            histweights
+        )
 
     def _correct_fwe_montecarlo_permutation(
         self,
@@ -793,9 +794,9 @@ class CBMAEstimator(Estimator):
             # Voxel-level FWE
             LGR.info("Using null distribution for voxel-level FWE correction.")
             p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
-            self.null_distributions_[
-                "values_level-voxel_corr-fwe_method-montecarlo"
-            ] = fwe_voxel_max
+            self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
+                fwe_voxel_max
+            )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)

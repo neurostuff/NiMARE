@@ -1,4 +1,5 @@
 """Utility functions for NiMARE."""
+
 import contextlib
 import datetime
 import inspect

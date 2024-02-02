@@ -1,4 +1,5 @@
 """Test estimator, kerneltransformer, and multiple comparisons corrector performance."""
+
 import os
 from contextlib import ExitStack as does_not_raise
 

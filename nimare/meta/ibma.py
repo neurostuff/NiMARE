@@ -1,4 +1,5 @@
 """Image-based meta-analysis estimators."""
+
 from __future__ import division
 
 import logging

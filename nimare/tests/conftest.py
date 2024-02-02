@@ -1,4 +1,5 @@
 """Generate fixtures for tests."""
+
 import json
 import os
 from shutil import copyfile
