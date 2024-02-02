@@ -1,4 +1,5 @@
 """Test nimare.annotate.gclda (GCLDA)."""
+
 import nibabel as nib
 import numpy as np
 import pandas as pd

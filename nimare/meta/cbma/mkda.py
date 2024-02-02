@@ -1,4 +1,5 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
+
 import logging
 
 import nibabel as nib
@@ -884,9 +885,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             cmfwe_null=pAgF_cmfwe_null,
         )
 
-        self.null_distributions_[
-            "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
-        ] = pAgF_vfwe_null
+        self.null_distributions_["values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"] = (
+            pAgF_vfwe_null
+        )
         self.null_distributions_[
             "values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo"
         ] = pAgF_csfwe_null
@@ -905,9 +906,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             cmfwe_null=pFgA_cmfwe_null,
         )
 
-        self.null_distributions_[
-            "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
-        ] = pFgA_vfwe_null
+        self.null_distributions_["values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"] = (
+            pFgA_vfwe_null
+        )
         self.null_distributions_[
             "values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo"
         ] = pFgA_csfwe_null

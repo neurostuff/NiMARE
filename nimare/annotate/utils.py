@@ -1,4 +1,5 @@
 """Utility functions for ontology tools."""
+
 import numpy as np
 import pandas as pd
 

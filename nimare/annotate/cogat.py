@@ -1,4 +1,5 @@
 """Automated annotation of Cognitive Atlas labels."""
+
 import logging
 import re
 

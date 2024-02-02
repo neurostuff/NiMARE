@@ -1,4 +1,5 @@
 """Test nimare.reports."""
+
 import os.path as op
 
 import pytest

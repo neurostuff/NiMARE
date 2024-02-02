@@ -1,4 +1,5 @@
 """Test nimare.dataset (Dataset IO/transformations)."""
+
 import copy
 import json
 import os.path as op
