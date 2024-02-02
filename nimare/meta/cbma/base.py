@@ -10,7 +10,7 @@ import sparse
 from joblib import Memory, Parallel, delayed
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 from nimare.estimator import Estimator
 from nimare.meta.kernel import KernelTransformer
@@ -506,13 +506,25 @@ class CBMAEstimator(Estimator):
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
 
-        with tqdm_joblib(tqdm(total=n_iters)):
-            perm_histograms = Parallel(n_jobs=n_cores)(
-                delayed(self._compute_null_montecarlo_permutation)(
-                    iter_xyzs[i_iter], iter_df=iter_df
-                )
-                for i_iter in range(n_iters)
+        perm_histograms = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=n_cores)(
+                    delayed(self._compute_null_montecarlo_permutation)(
+                        iter_xyzs[i_iter], iter_df=iter_df
+                    )
+                    for i_iter in range(n_iters)
+                ),
+                total=n_iters,
             )
+        ]
+        # with tqdm_joblib(tqdm(total=n_iters)):
+        #     perm_histograms = Parallel(n_jobs=n_cores)(
+        #         delayed(self._compute_null_montecarlo_permutation)(
+        #             iter_xyzs[i_iter], iter_df=iter_df
+        #         )
+        #         for i_iter in range(n_iters)
+        #     )
 
         perm_histograms = np.vstack(perm_histograms)
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(

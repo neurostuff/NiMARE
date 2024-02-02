@@ -10,7 +10,9 @@ from joblib import Parallel, delayed
 from nilearn import input_data
 from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
-from tqdm.auto import tqdm
+from tqdm import tqdm
+import joblib
+
 
 from nimare.base import NiMAREBase
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
@@ -219,10 +221,20 @@ class Diagnostics(NiMAREBase):
             contribution_table = pd.DataFrame(index=rows, columns=cols)
             contribution_table.index.name = "id"
 
-            with tqdm_joblib(tqdm(total=len(meta_ids))):
-                contributions = Parallel(n_jobs=self.n_cores)(
-                    delayed(self._transform)(expid, label_map, sign, result) for expid in meta_ids
+            contributions = [
+                r
+                for r in tqdm(
+                    joblib.Parallel(return_as="generator", n_jobs=self.n_cores)(
+                        joblib.delayed(self._transform)(expid, label_map, sign, result)
+                        for expid in meta_ids
+                    ),
+                    total=len(meta_ids),
                 )
+            ]
+            # with tqdm_joblib(tqdm(total=len(meta_ids))):
+            #     contributions = Parallel(n_jobs=self.n_cores)(
+            #         delayed(self._transform)(expid, label_map, sign, result) for expid in meta_ids
+            #     )
 
             # Add results to table
             for expid, stat_prop_values in zip(meta_ids, contributions):
