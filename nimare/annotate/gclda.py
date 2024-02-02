@@ -353,7 +353,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["total_n_word_tokens_by_topic"][0, topic] += 1
             self.topics["n_word_tokens_doc_by_topic"][doc, topic] += 1
 
-    def fit(self, n_iters=10000, loglikely_freq=10):
+    def fit(self, n_iters=5000, loglikely_freq=10):
         """Run multiple iterations.
 
         .. versionchanged:: 0.0.8
@@ -362,8 +362,8 @@ class GCLDAModel(NiMAREBase):
 
         Parameters
         ----------
-        n_iters : :obj:`int`, optional
-            Number of iterations to run. Default is 10000.
+        n_iters : :obj:`int`, default=5000
+            Number of iterations to run. Default is 5000.
         loglikely_freq : :obj:`int`, optional
             The frequency with which log-likelihood is updated. Default value
             is 1 (log-likelihood is updated every iteration).

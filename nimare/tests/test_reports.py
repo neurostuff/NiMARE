@@ -6,6 +6,7 @@ import pytest
 from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALESubtraction
+from nimare.meta.ibma import Stouffers
 from nimare.reports.base import run_reports
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
 
@@ -27,13 +28,11 @@ from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
             FocusCounter(voxel_thresh=0.01, display_second_group=True),
             "pairwise_cbma",
         ),
-        ("stouffers", "fdr", "jackknife", "ibma"),
     ],
 )
 def test_reports_function_smoke(
     tmp_path_factory,
     testdata_cbma_full,
-    testdata_ibma,
     estimator,
     corrector,
     diagnostics,
@@ -63,14 +62,26 @@ def test_reports_function_smoke(
         )
         results = workflow.fit(dset1, dset2)
 
-    elif meta_type == "ibma":
-        workflow = IBMAWorkflow(
-            estimator=estimator,
-            corrector=corrector,
-            diagnostics=diagnostics,
-            output_dir=tmpdir,
-        )
-        results = workflow.fit(testdata_ibma)
+    run_reports(results, tmpdir)
+
+    filename = "report.html"
+    outpath = op.join(tmpdir, filename)
+    assert op.isfile(outpath)
+
+
+@pytest.mark.parametrize("aggressive_mask", [True, False], ids=["aggressive", "liberal"])
+def test_reports_ibma_smoke(tmp_path_factory, testdata_ibma, aggressive_mask):
+    """Smoke test for IBMA reports."""
+    tmpdir = tmp_path_factory.mktemp("test_reports_ibma_smoke")
+
+    workflow = IBMAWorkflow(
+        estimator=Stouffers(aggressive_mask=aggressive_mask),
+        corrector="fdr",
+        diagnostics="jackknife",
+        voxel_thresh=3.2,
+        output_dir=tmpdir,
+    )
+    results = workflow.fit(testdata_ibma)
 
     run_reports(results, tmpdir)
 

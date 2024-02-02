@@ -4,7 +4,7 @@ import logging
 import nibabel as nib
 import numpy as np
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from pymare.stats import fdr
 from scipy import ndimage
 from scipy.stats import chi2
@@ -16,7 +16,7 @@ from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, tqdm_joblib, use_memmap, vox2mm
+from nimare.utils import _check_ncores, tqdm_joblib, vox2mm
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -26,6 +26,10 @@ class MKDADensity(CBMAEstimator):
     r"""Multilevel kernel density analysis- Density analysis.
 
     The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -54,10 +58,16 @@ class MKDADensity(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : int, default=5000
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
-        Default is 10000.
+        Default is 5000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
@@ -125,7 +135,9 @@ class MKDADensity(CBMAEstimator):
         self,
         kernel_transformer=MKDAKernel,
         null_method="approximate",
-        n_iters=None,
+        n_iters=5000,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -137,9 +149,14 @@ class MKDADensity(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
-        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 
@@ -283,6 +300,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
 
+    .. versionchanged:: 0.2.1
+
+        - Make `prior` parameter default to None, which controls if posterior probabilities
+            pFgA, pAgF_prior and pFgA_prior are calculated. This is useful because probability
+            maps are difficult to interpret and for speeding up the algorithm.
+        - Rename ``consistency`` to ``uniformity`` and ``specificity`` to ``association`` to match
+          Neurosynth's terminology
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
     .. versionchanged:: 0.0.12
 
         - Use a 4D sparse array for modeled activation maps.
@@ -296,9 +322,15 @@ class MKDAChi2(PairwiseCBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         :class:`~nimare.meta.kernel.MKDAKernel`.
-    prior : float, optional
+    prior : float, default=0.5
         Uniform prior probability of each feature being active in a map in
         the absence of evidence from the map. Default: 0.5
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -354,7 +386,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
-    def __init__(self, kernel_transformer=MKDAKernel, prior=0.5, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer=MKDAKernel(),
+        prior=0.5,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        **kwargs,
+    ):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
@@ -363,7 +402,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
 
         self.prior = prior
 
@@ -377,7 +421,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "kernel. "
             f"{self.kernel_transformer._generate_description()} "
             "This analysis calculated several measures. "
-            "The first dataset was evaluated for consistency of activation via a one-way "
+            "The first dataset was evaluated for uniformity of activation via a one-way "
             "chi-square test. "
             f"The first input dataset included {self.inputs_['coordinates1'].shape[0]} foci from "
             f"{len(self.inputs_['id1'])} experiments. "
@@ -387,7 +431,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         return description
 
-    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
@@ -395,35 +438,21 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.null_distributions_ = {}
 
         # Generate MA maps and calculate count variables for first dataset
-        ma_maps1 = self._collect_ma_maps(
+        n_selected_active_voxels = self._collect_ma_maps(
             maps_key="ma_maps1",
             coords_key="coordinates1",
+            return_type="summary_array",
         )
-        n_selected = ma_maps1.shape[0]
-        n_selected_active_voxels = ma_maps1.sum(axis=0)
 
-        if isinstance(n_selected_active_voxels, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
-
-            # Indexing the sparse array is slow, perform masking in the dense array
-            n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
-            n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
-
-        del ma_maps1
+        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
 
         # Generate MA maps and calculate count variables for second dataset
-        ma_maps2 = self._collect_ma_maps(
+        n_unselected_active_voxels = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
+            return_type="summary_array",
         )
-        n_unselected = ma_maps2.shape[0]
-        n_unselected_active_voxels = ma_maps2.sum(axis=0)
-        if isinstance(n_unselected_active_voxels, sparse._coo.core.COO):
-            n_unselected_active_voxels = n_unselected_active_voxels.todense().reshape(-1)
-            n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
-
-        del ma_maps2
+        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
 
         n_mappables = n_selected + n_unselected
 
@@ -438,18 +467,18 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del n_mappables
 
-        # Conditional probabilities
         pAgF = n_selected_active_voxels / n_selected
         pAgU = n_unselected_active_voxels / n_unselected
         pFgA = pAgF * pF / pA
 
         del pF
 
-        # Recompute conditionals with uniform prior
-        pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
-        pFgA_prior = pAgF * self.prior / pAgF_prior
+        if self.prior:
+            # Recompute conditionals with uniform prior
+            pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
+            pFgA_prior = pAgF * self.prior / pAgF_prior
 
-        # One-way chi-square test for consistency of activation
+        # One-way chi-square test for uniformity of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
         pAgF_p_vals = chi2.sf(pAgF_chi2_vals, 1)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
@@ -457,7 +486,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del pAgF_sign
 
-        # Two-way chi-square for specificity of activation
+        # Two-way chi-square for association of activation
         cells = np.squeeze(
             np.array(
                 [
@@ -485,20 +514,22 @@ class MKDAChi2(PairwiseCBMAEstimator):
         del pFgA_sign, pAgU
 
         maps = {
+            "z_desc-uniformity": pAgF_z,
+            "z_desc-association": pFgA_z,
+            "chi2_desc-uniformity": pAgF_chi2_vals,
+            "chi2_desc-association": pFgA_chi2_vals,
+            "p_desc-uniformity": pAgF_p_vals,
+            "p_desc-association": pFgA_p_vals,
             "prob_desc-A": pA,
             "prob_desc-AgF": pAgF,
             "prob_desc-FgA": pFgA,
-            ("prob_desc-AgF_given_pF=%0.2f" % self.prior): pAgF_prior,
-            ("prob_desc-FgA_given_pF=%0.2f" % self.prior): pFgA_prior,
-            "z_desc-consistency": pAgF_z,
-            "z_desc-specificity": pFgA_z,
-            "chi2_desc-consistency": pAgF_chi2_vals,
-            "chi2_desc-specificity": pFgA_chi2_vals,
-            "p_desc-consistency": pAgF_p_vals,
-            "p_desc-specificity": pFgA_p_vals,
         }
-        description = self._generate_description()
 
+        if self.prior:
+            maps["prob_desc-AgF_prior"] = pAgF_prior
+            maps["prob_desc-FgA_prior"] = pFgA_prior
+
+        description = self._generate_description()
         return maps, {}, description
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
@@ -542,39 +573,23 @@ class MKDAChi2(PairwiseCBMAEstimator):
         iter_df2[["x", "y", "z"]] = iter_xyz2
 
         # Generate MA maps and calculate count variables for first dataset
-        temp_ma_maps1 = self.kernel_transformer.transform(
-            iter_df1, self.masker, return_type="sparse"
+        n_selected_active_voxels = self.kernel_transformer.transform(
+            iter_df1, self.masker, return_type="summary_array"
         )
-        n_selected = temp_ma_maps1.shape[0]
-        n_selected_active_voxels = temp_ma_maps1.sum(axis=0)
 
-        if isinstance(n_selected_active_voxels, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
-
-            # Indexing the sparse array is slow, perform masking in the dense array
-            n_selected_active_voxels = n_selected_active_voxels.todense().reshape(-1)
-            n_selected_active_voxels = n_selected_active_voxels[mask_data.reshape(-1)]
-
-        del temp_ma_maps1
+        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
 
         # Generate MA maps and calculate count variables for second dataset
-        temp_ma_maps2 = self.kernel_transformer.transform(
-            iter_df2, self.masker, return_type="sparse"
+        n_unselected_active_voxels = self.kernel_transformer.transform(
+            iter_df2, self.masker, return_type="summary_array"
         )
-        n_unselected = temp_ma_maps2.shape[0]
-        n_unselected_active_voxels = temp_ma_maps2.sum(axis=0)
-        if isinstance(n_unselected_active_voxels, sparse._coo.core.COO):
-            n_unselected_active_voxels = n_unselected_active_voxels.todense().reshape(-1)
-            n_unselected_active_voxels = n_unselected_active_voxels[mask_data.reshape(-1)]
-
-        del temp_ma_maps2
+        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
 
         # Currently unused conditional probabilities
         # pAgF = n_selected_active_voxels / n_selected
         # pAgU = n_unselected_active_voxels / n_unselected
 
-        # One-way chi-square test for consistency of activation
+        # One-way chi-square test for uniformity of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
 
         # Voxel-level inference
@@ -586,7 +601,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgF_chi2_map, voxel_thresh, conn, tail="two"
         )
 
-        # Two-way chi-square for specificity of activation
+        # Two-way chi-square for association of activation
         cells = np.squeeze(
             np.array(
                 [
@@ -700,7 +715,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         return p_vfwe_values, p_csfwe_values, p_cmfwe_values
 
-    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=1000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
         Only call this method from within a Corrector.
@@ -717,10 +732,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result object from a KDA meta-analysis.
-        n_iters : :obj:`int`, optional
+        voxel_thresh : :obj:`float`, default=0.001
+            Voxel-level threshold. Default is 0.001.
+        n_iters : :obj:`int`, default=1000
             Number of iterations to build the vFWE null distribution.
-            Default is 5000.
-        n_cores : :obj:`int`, optional
+            Default is 1000.
+        n_cores : :obj:`int`, default=1
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is 1.
 
@@ -731,42 +748,42 @@ class MKDAChi2(PairwiseCBMAEstimator):
             the correction procedure. The following arrays are generated by
             this method:
 
-            -   ``p_desc-consistency_level-voxel``: Voxel-level FWE-corrected p-values from the
-                consistency/forward inference analysis.
-            -   ``z_desc-consistency_level-voxel``: Voxel-level FWE-corrected z-values from the
-                consistency/forward inference analysis.
-            -   ``logp_desc-consistency_level-voxel``: Voxel-level FWE-corrected -log10 p-values
-                from the consistency/forward inference analysis.
-            -   ``p_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected p-values
-                from the consistency/forward inference analysis, using cluster mass.
-            -   ``z_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected z-values
-                from the consistency/forward inference analysis, using cluster mass.
-            -   ``logp_desc-consistencyMass_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the consistency/forward inference analysis, using cluster mass.
-            -   ``p_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected p-values
-                from the consistency/forward inference analysis, using cluster size.
-            -   ``z_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected z-values
-                from the consistency/forward inference analysis, using cluster size.
-            -   ``logp_desc-consistencySize_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the consistency/forward inference analysis, using cluster size.
-            -   ``p_desc-specificity_level-voxel``: Voxel-level FWE-corrected p-values from the
-                specificity/reverse inference analysis.
-            -   ``z_desc-specificity_level-voxel``: Voxel-level FWE-corrected z-values from the
-                specificity/reverse inference analysis.
-            -   ``logp_desc-specificity_level-voxel``: Voxel-level FWE-corrected -log10 p-values
-                from the specificity/reverse inference analysis.
-            -   ``p_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected p-values
-                from the specificity/reverse inference analysis, using cluster mass.
-            -   ``z_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected z-values
-                from the specificity/reverse inference analysis, using cluster mass.
-            -   ``logp_desc-specificityMass_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the specificity/reverse inference analysis, using cluster mass.
-            -   ``p_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected p-values
-                from the specificity/reverse inference analysis, using cluster size.
-            -   ``z_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected z-values
-                from the specificity/reverse inference analysis, using cluster size.
-            -   ``logp_desc-specificitySize_level-cluster``: Cluster-level FWE-corrected -log10
-                p-values from the specificity/reverse inference analysis, using cluster size.
+            -   ``p_desc-uniformity_level-voxel``: Voxel-level FWE-corrected p-values from the
+                uniformity/forward inference analysis.
+            -   ``z_desc-uniformity_level-voxel``: Voxel-level FWE-corrected z-values from the
+                uniformity/forward inference analysis.
+            -   ``logp_desc-uniformity_level-voxel``: Voxel-level FWE-corrected -log10 p-values
+                from the uniformity/forward inference analysis.
+            -   ``p_desc-uniformityMass_level-cluster``: Cluster-level FWE-corrected p-values
+                from the uniformity/forward inference analysis, using cluster mass.
+            -   ``z_desc-uniformityMass_level-cluster``: Cluster-level FWE-corrected z-values
+                from the uniformity/forward inference analysis, using cluster mass.
+            -   ``logp_desc-uniformityMass_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the uniformity/forward inference analysis, using cluster mass.
+            -   ``p_desc-uniformitySize_level-cluster``: Cluster-level FWE-corrected p-values
+                from the uniformity/forward inference analysis, using cluster size.
+            -   ``z_desc-uniformitySize_level-cluster``: Cluster-level FWE-corrected z-values
+                from the uniformity/forward inference analysis, using cluster size.
+            -   ``logp_desc-uniformitySize_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the uniformity/forward inference analysis, using cluster size.
+            -   ``p_desc-association_level-voxel``: Voxel-level FWE-corrected p-values from the
+                association/reverse inference analysis.
+            -   ``z_desc-association_level-voxel``: Voxel-level FWE-corrected z-values from the
+                association/reverse inference analysis.
+            -   ``logp_desc-association_level-voxel``: Voxel-level FWE-corrected -log10 p-values
+                from the association/reverse inference analysis.
+            -   ``p_desc-associationMass_level-cluster``: Cluster-level FWE-corrected p-values
+                from the association/reverse inference analysis, using cluster mass.
+            -   ``z_desc-associationMass_level-cluster``: Cluster-level FWE-corrected z-values
+                from the association/reverse inference analysis, using cluster mass.
+            -   ``logp_desc-associationMass_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the association/reverse inference analysis, using cluster mass.
+            -   ``p_desc-associationSize_level-cluster``: Cluster-level FWE-corrected p-values
+                from the association/reverse inference analysis, using cluster size.
+            -   ``z_desc-associationSize_level-cluster``: Cluster-level FWE-corrected z-values
+                from the association/reverse inference analysis, using cluster size.
+            -   ``logp_desc-associationSize_level-cluster``: Cluster-level FWE-corrected -log10
+                p-values from the association/reverse inference analysis, using cluster size.
 
         Notes
         -----
@@ -806,10 +823,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
             self.masker.mask_img.affine,
         )
-        pAgF_chi2_vals = result.get_map("chi2_desc-consistency", return_type="array")
-        pFgA_chi2_vals = result.get_map("chi2_desc-specificity", return_type="array")
-        pAgF_z_vals = result.get_map("z_desc-consistency", return_type="array")
-        pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
+        pAgF_chi2_vals = result.get_map("chi2_desc-uniformity", return_type="array")
+        pFgA_chi2_vals = result.get_map("chi2_desc-association", return_type="array")
+        pAgF_z_vals = result.get_map("z_desc-uniformity", return_type="array")
+        pFgA_z_vals = result.get_map("z_desc-association", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
@@ -924,26 +941,26 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_logp_csfwe_vals[np.isinf(pFgA_logp_csfwe_vals)] = -np.log10(eps)
 
         maps = {
-            # Consistency analysis
-            "p_desc-consistency_level-voxel": pAgF_p_vfwe_vals,
-            "z_desc-consistency_level-voxel": pAgF_z_vfwe_vals,
-            "logp_desc-consistency_level-voxel": pAgF_logp_vfwe_vals,
-            "p_desc-consistencyMass_level-cluster": pAgF_p_cmfwe_vals,
-            "z_desc-consistencyMass_level-cluster": pAgF_z_cmfwe_vals,
-            "logp_desc-consistencyMass_level-cluster": pAgF_logp_cmfwe_vals,
-            "p_desc-consistencySize_level-cluster": pAgF_p_csfwe_vals,
-            "z_desc-consistencySize_level-cluster": pAgF_z_csfwe_vals,
-            "logp_desc-consistencySize_level-cluster": pAgF_logp_csfwe_vals,
-            # Specificity analysis
-            "p_desc-specificity_level-voxel": pFgA_p_vfwe_vals,
-            "z_desc-specificity_level-voxel": pFgA_z_vfwe_vals,
-            "logp_desc-specificity_level-voxel": pFgA_logp_vfwe_vals,
-            "p_desc-specificityMass_level-cluster": pFgA_p_cmfwe_vals,
-            "z_desc-specificityMass_level-cluster": pFgA_z_cmfwe_vals,
-            "logp_desc-specificityMass_level-cluster": pFgA_logp_cmfwe_vals,
-            "p_desc-specificitySize_level-cluster": pFgA_p_csfwe_vals,
-            "z_desc-specificitySize_level-cluster": pFgA_z_csfwe_vals,
-            "logp_desc-specificitySize_level-cluster": pFgA_logp_csfwe_vals,
+            # uniformity analysis
+            "p_desc-uniformity_level-voxel": pAgF_p_vfwe_vals,
+            "z_desc-uniformity_level-voxel": pAgF_z_vfwe_vals,
+            "logp_desc-uniformity_level-voxel": pAgF_logp_vfwe_vals,
+            "p_desc-uniformityMass_level-cluster": pAgF_p_cmfwe_vals,
+            "z_desc-uniformityMass_level-cluster": pAgF_z_cmfwe_vals,
+            "logp_desc-uniformityMass_level-cluster": pAgF_logp_cmfwe_vals,
+            "p_desc-uniformitySize_level-cluster": pAgF_p_csfwe_vals,
+            "z_desc-uniformitySize_level-cluster": pAgF_z_csfwe_vals,
+            "logp_desc-uniformitySize_level-cluster": pAgF_logp_csfwe_vals,
+            # association analysis
+            "p_desc-association_level-voxel": pFgA_p_vfwe_vals,
+            "z_desc-association_level-voxel": pFgA_z_vfwe_vals,
+            "logp_desc-association_level-voxel": pFgA_logp_vfwe_vals,
+            "p_desc-associationMass_level-cluster": pFgA_p_cmfwe_vals,
+            "z_desc-associationMass_level-cluster": pFgA_z_cmfwe_vals,
+            "logp_desc-associationMass_level-cluster": pFgA_logp_cmfwe_vals,
+            "p_desc-associationSize_level-cluster": pFgA_p_csfwe_vals,
+            "z_desc-associationSize_level-cluster": pFgA_z_csfwe_vals,
+            "logp_desc-associationSize_level-cluster": pFgA_logp_csfwe_vals,
         }
 
         description = ""
@@ -971,7 +988,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         maps : :obj:`dict`
             Dictionary of 1D arrays corresponding to masked maps generated by
             the correction procedure. The following arrays are generated by
-            this method: 'z_desc-consistency_level-voxel' and 'z_desc-specificity_level-voxel'.
+            this method: 'z_desc-uniformity_level-voxel' and 'z_desc-association_level-voxel'.
 
         See Also
         --------
@@ -984,10 +1001,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> corrector = FDRCorrector(method='indep', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
-        pAgF_p_vals = result.get_map("p_desc-consistency", return_type="array")
-        pFgA_p_vals = result.get_map("p_desc-specificity", return_type="array")
-        pAgF_z_vals = result.get_map("z_desc-consistency", return_type="array")
-        pFgA_z_vals = result.get_map("z_desc-specificity", return_type="array")
+        pAgF_p_vals = result.get_map("p_desc-uniformity", return_type="array")
+        pFgA_p_vals = result.get_map("p_desc-association", return_type="array")
+        pAgF_z_vals = result.get_map("z_desc-uniformity", return_type="array")
+        pFgA_z_vals = result.get_map("z_desc-association", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
         pAgF_p_FDR = fdr(pAgF_p_vals, q=alpha, method="bh")
@@ -997,8 +1014,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
         maps = {
-            "z_desc-consistency_level-voxel": pAgF_z_FDR,
-            "z_desc-specificity_level-voxel": pFgA_z_FDR,
+            "z_desc-uniformity_level-voxel": pAgF_z_FDR,
+            "z_desc-association_level-voxel": pFgA_z_FDR,
         }
 
         description = ""
@@ -1008,6 +1025,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
 class KDA(CBMAEstimator):
     r"""Kernel density analysis.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
 
     .. versionchanged:: 0.0.12
 
@@ -1036,11 +1057,17 @@ class KDA(CBMAEstimator):
                                 This method is must slower, and is only slightly more accurate.
         ======================= =================================================================
 
-    n_iters : int, optional
+    n_iters : int, default=5000
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
-        Default is 10000.
-    n_cores : :obj:`int`, optional
+        Default is 5000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+    n_cores : :obj:`int`, default=1
         Number of cores to use for parallelization.
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
@@ -1112,7 +1139,9 @@ class KDA(CBMAEstimator):
         self,
         kernel_transformer=KDAKernel,
         null_method="approximate",
-        n_iters=None,
+        n_iters=5000,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
         n_cores=1,
         **kwargs,
     ):
@@ -1130,9 +1159,14 @@ class KDA(CBMAEstimator):
             )
 
         # Add kernel transformer attribute and process keyword arguments
-        super().__init__(kernel_transformer=kernel_transformer, **kwargs)
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
         self.null_method = null_method
-        self.n_iters = None if null_method == "approximate" else n_iters or 10000
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
 

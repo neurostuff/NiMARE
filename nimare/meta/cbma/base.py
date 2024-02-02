@@ -6,7 +6,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 from nilearn.input_data import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
@@ -52,6 +52,12 @@ class CBMAEstimator(Estimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -64,9 +70,17 @@ class CBMAEstimator(Estimator):
     # An individual CBMAEstimator may override this.
     _required_inputs = {"coordinates": ("coordinates", None)}
 
-    def __init__(self, kernel_transformer, *, mask=None, **kwargs):
+    def __init__(
+        self,
+        kernel_transformer,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        *,
+        mask=None,
+        **kwargs,
+    ):
         if mask is not None:
-            mask = get_masker(mask)
+            mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
 
         # Identify any kwargs
@@ -79,8 +93,12 @@ class CBMAEstimator(Estimator):
 
         # Get kernel transformer
         kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
+        if "memory" not in kernel_args.keys() and "memory_level" not in kernel_args.keys():
+            kernel_args.update(memory=memory, memory_level=memory_level)
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
+
+        super().__init__(memory=memory, memory_level=memory_level)
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
@@ -187,7 +205,7 @@ class CBMAEstimator(Estimator):
         """
         return None
 
-    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps"):
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
         """Collect modeled activation maps from Estimator inputs.
 
         Parameters
@@ -213,7 +231,7 @@ class CBMAEstimator(Estimator):
         ma_maps = self.kernel_transformer.transform(
             self.inputs_[coords_key],
             masker=self.masker,
-            return_type="sparse",
+            return_type=return_type,
         )
 
         return ma_maps
@@ -354,7 +372,7 @@ class CBMAEstimator(Estimator):
             null_distribution /= np.max(null_distribution)
             null_distribution = np.squeeze(null_distribution)
 
-            # Desired bin is the first one _before_ the target p-value (for consistency
+            # Desired bin is the first one _before_ the target p-value (for uniformity
             # with the montecarlo null).
             ss_idx = np.maximum(0, np.where(null_distribution <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
@@ -364,7 +382,7 @@ class CBMAEstimator(Estimator):
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
 
             hist_weights = self.null_distributions_["histweights_corr-none_method-montecarlo"]
-            # Desired bin is the first one _before_ the target p-value (for consistency
+            # Desired bin is the first one _before_ the target p-value (for uniformity
             # with the montecarlo null).
             ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
             ss = self.null_distributions_["histogram_bins"][ss_idx]
@@ -384,7 +402,7 @@ class CBMAEstimator(Estimator):
 
         return ss
 
-    def _compute_null_reduced_montecarlo(self, ma_maps, n_iters=10000):
+    def _compute_null_reduced_montecarlo(self, ma_maps, n_iters=5000):
         """Compute uncorrected null distribution using the reduced montecarlo method.
 
         This method is much faster than the full montecarlo approach, but is still slower than the
@@ -572,7 +590,7 @@ class CBMAEstimator(Estimator):
         self,
         result,
         voxel_thresh=0.001,
-        n_iters=10000,
+        n_iters=5000,
         n_cores=1,
         vfwe_only=False,
     ):
@@ -597,15 +615,15 @@ class CBMAEstimator(Estimator):
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result object from a CBMA meta-analysis.
-        voxel_thresh : :obj:`float`, optional
+        voxel_thresh : :obj:`float`, default=0.001
             Cluster-defining p-value threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
+        n_iters : :obj:`int`, default=5000
             Number of iterations to build the voxel-level, cluster-size, and cluster-mass FWE
-            null distributions. Default is 10000.
-        n_cores : :obj:`int`, optional
+            null distributions. Default is 5000.
+        n_cores : :obj:`int`, default=1
             Number of cores to use for parallelization.
             If <=0, defaults to using all available cores. Default is 1.
-        vfwe_only : :obj:`bool`, optional
+        vfwe_only : :obj:`bool`, default=False
             If True, only calculate the voxel-level FWE-corrected maps. Voxel-level correction
             can be performed very quickly if the Estimator's ``null_method`` was "montecarlo".
             Default is False.
@@ -845,6 +863,12 @@ class PairwiseCBMAEstimator(CBMAEstimator):
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to convolve coordinates from dataset. Default is
         ALEKernel.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -903,7 +927,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
 
         # Now run the Estimator-specific _fit() method.
-        maps, tables, description = self._fit(dataset1, dataset2)
+        maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker

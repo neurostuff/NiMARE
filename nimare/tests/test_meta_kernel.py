@@ -1,4 +1,6 @@
 """Test nimare.meta.kernel (CBMA kernel estimators)."""
+import time
+
 import nibabel as nib
 import numpy as np
 import pytest
@@ -162,3 +164,54 @@ def test_ALEKernel_sample_size(testdata_cbma):
     max_idx = np.array(np.where(kern_data == np.max(kern_data))).T
     max_ijk = np.squeeze(max_idx)
     assert np.array_equal(ijk, max_ijk)
+
+
+def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
+    """Test ALEKernel with memory caching enable."""
+    cachedir = tmp_path_factory.mktemp("test_ALE_memory")
+
+    coord = testdata_cbma.coordinates.copy()
+
+    kern_cached = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=2)
+    ma_maps_cached = kern_cached.transform(coord, masker=testdata_cbma.masker, return_type="array")
+
+    kern = kernel.ALEKernel(sample_size=20, memory=None)
+    start = time.time()
+    ma_maps = kern.transform(coord, masker=testdata_cbma.masker, return_type="array")
+    done = time.time()
+    elapsed = done - start
+
+    assert np.array_equal(ma_maps_cached, ma_maps)
+
+    # Test that memory is actually used
+    kern_cached_fast = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=2)
+    start_chached = time.time()
+    ma_maps_cached_fast = kern_cached_fast.transform(
+        coord, masker=testdata_cbma.masker, return_type="array"
+    )
+    done_cached = time.time()
+    elapsed_cached = done_cached - start_chached
+
+    assert np.array_equal(ma_maps_cached_fast, ma_maps)
+    assert elapsed_cached < elapsed
+
+
+def test_MKDA_kernel_sum_across(testdata_cbma):
+    """Test if creating a summary array is equivalent to summing across the sparse array."""
+    kern = kernel.MKDAKernel(r=10, value=1)
+    coordinates = testdata_cbma.coordinates.copy()
+    sparse_ma_maps = kern.transform(coordinates, masker=testdata_cbma.masker, return_type="sparse")
+    summary_map = kern.transform(
+        coordinates, masker=testdata_cbma.masker, return_type="summary_array"
+    )
+
+    summary_sparse_ma_map = sparse_ma_maps.sum(axis=0)
+    mask_data = testdata_cbma.masker.mask_img.get_fdata().astype(bool)
+
+    # Indexing the sparse array is slow, perform masking in the dense array
+    summary_sparse_ma_map = summary_sparse_ma_map.todense().reshape(-1)
+    summary_sparse_ma_map = summary_sparse_ma_map[mask_data.reshape(-1)]
+
+    assert (
+        np.testing.assert_array_equal(summary_map, summary_sparse_ma_map.astype(np.int32)) is None
+    )

@@ -2,7 +2,38 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.2.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.2.1...HEAD)
+
+## [0.2.1](https://github.com/neurostuff/NiMARE/compare/0.2.0...0.2.1) - 2024-01-11
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* Implement caching for Estimators and Transformers by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/845
+* Add similarity correlation matrix figure to IBMA reports by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/852
+* Support liberal mask in IBMA estimators by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/848
+* Add DoF map to IBMA report by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/854
+
+#### 👎 Deprecations
+
+* Deprecate `ale_sleuth_workflow` in favor of `CBMAWorkflow` and `PairwiseCBMAWorkflow` by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/851
+
+#### Enhancements
+
+* Optimize compute_kda_ma for memory and speed by @adelavega in https://github.com/neurostuff/NiMARE/pull/857 :rocket:
+
+#### Fixes
+
+* [FIX] do not check id columns for image extensions by @jdkent in https://github.com/neurostuff/NiMARE/pull/860
+* [FIX] bump min numpy/seaborn versions by @jdkent in https://github.com/neurostuff/NiMARE/pull/861
+
+#### Other Changes
+
+* Disable computation of probabilities by default for MKDAChi2 by @adelavega in https://github.com/neurostuff/NiMARE/pull/856
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.2.0...0.2.1
 
 ## [0.2.0](https://github.com/neurostuff/NiMARE/compare/0.1.1...0.2.0) - 2023-11-02
 

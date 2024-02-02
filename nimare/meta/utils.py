@@ -1,14 +1,53 @@
 """Utilities for coordinate-based meta-analysis estimators."""
-import logging
 import warnings
 
 import numpy as np
 import sparse
+from numba import jit
 from scipy import ndimage
 
 from nimare.utils import unique_rows
 
-LGR = logging.getLogger(__name__)
+
+@jit(nopython=True, cache=True)
+def _convolve_sphere(kernel, ijks, index, max_shape):
+    """Convolve peaks with a spherical kernel.
+
+    Parameters
+    ----------
+    kernel : 2D numpy.ndarray
+        IJK coordinates of a sphere, relative to a central point
+        (not the brain template).
+    peaks : 2D numpy.ndarray
+        The IJK coordinates of peaks to convolve with the kernel.
+    max_shape: 1D numpy.ndarray
+        The maximum shape of the image volume.
+
+    Returns
+    -------
+    sphere_coords : 2D numpy.ndarray
+        All coordinates that fall within any sphere.ß∑
+        Coordinates from overlapping spheres will appear twice.
+    """
+
+    def np_all_axis1(x):
+        """Numba compatible version of np.all(x, axis=1)."""
+        out = np.ones(x.shape[0], dtype=np.bool8)
+        for i in range(x.shape[1]):
+            out = np.logical_and(out, x[:, i])
+        return out
+
+    peaks = ijks[index]
+    sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=np.int32)
+    chunk_idx = np.arange(0, (kernel.shape[1]), dtype=np.int64)
+    for peak in peaks:
+        sphere_coords[chunk_idx, :] = kernel.T + peak
+        chunk_idx = chunk_idx + kernel.shape[1]
+
+    # Mask coordinates beyond space
+    idx = np_all_axis1(np.logical_and(sphere_coords >= 0, np.less(sphere_coords, max_shape)))
+
+    return sphere_coords[idx, :]
 
 
 def compute_kda_ma(
@@ -18,6 +57,7 @@ def compute_kda_ma(
     value=1.0,
     exp_idx=None,
     sum_overlap=False,
+    sum_across_studies=False,
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
@@ -51,6 +91,8 @@ def compute_kda_ma(
         come from the same experiment.
     sum_overlap : :obj:`bool`
         Whether to sum voxel values in overlapping spheres.
+    sum_across_studies : :obj:`bool`
+        Whether to sum voxel values across studies.
 
     Returns
     -------
@@ -60,6 +102,11 @@ def compute_kda_ma(
         is returned, where the first dimension has size equal to the number of
         unique experiments, and the remaining 3 dimensions are equal to `shape`.
     """
+    if sum_overlap and sum_across_studies:
+        raise NotImplementedError("sum_overlap and sum_across_studies cannot both be True.")
+
+    # recast ijks to int32 to reduce memory footprint
+    ijks = ijks.astype(np.int32)
     shape = mask.shape
     vox_dims = mask.header.get_zooms()
 
@@ -75,77 +122,57 @@ def compute_kda_ma(
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
-    cube = np.vstack([row.ravel() for row in np.mgrid[xx, yy, zz]])
+    cube = np.vstack([row.ravel() for row in (np.mgrid[xx, yy, zz]).astype(np.int32)])
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
-    def _convolve_sphere(kernel, peaks):
-        """Convolve peaks with a spherical kernel.
+    if sum_across_studies:
+        all_values = np.zeros(shape, dtype=np.int32)
 
-        Parameters
-        ----------
-        kernel : 2D numpy.ndarray
-            IJK coordinates of a sphere, relative to a central point
-            (not the brain template).
-        peaks : 2D numpy.ndarray
-            The IJK coordinates of peaks to convolve with the kernel.
+        # Loop over experiments
+        for i_exp, _ in enumerate(exp_idx_uniq):
+            # Index peaks by experiment
+            curr_exp_idx = exp_idx == i_exp
+            sphere_coords = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
 
-        Returns
-        -------
-        sphere_coords : 2D numpy.ndarray
-            All coordinates that fall within any sphere.
-            Coordinates from overlapping spheres will appear twice.
-        """
-        # Convolve spheres
-        sphere_coords = np.zeros((kernel.shape[1] * len(peaks), 3), dtype=int)
-        chunk_idx = np.arange(0, (kernel.shape[1]), dtype=int)
-        for peak in peaks:
-            sphere_coords[chunk_idx, :] = kernel.T + peak
-            chunk_idx = chunk_idx + kernel.shape[1]
+            # preallocate array for current study
+            study_values = np.zeros(shape, dtype=np.int32)
+            study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
 
-        return sphere_coords
+            # Sum across studies
+            all_values += study_values
 
-    all_coords = []
-    all_exp = []
-    all_data = []
-    # Loop over experiments
-    for i_exp, _ in enumerate(exp_idx_uniq):
-        # Index peaks by experiment
-        curr_exp_idx = exp_idx == i_exp
-        peaks = ijks[curr_exp_idx]
+        # Only return values within the mask
+        all_values = all_values.reshape(-1)
+        kernel_data = all_values[mask_data.reshape(-1)]
 
-        all_spheres = _convolve_sphere(kernel, peaks)
+    else:
+        all_coords = []
+        # Loop over experiments
+        for i_exp, _ in enumerate(exp_idx_uniq):
+            curr_exp_idx = exp_idx == i_exp
+            # Convolve with sphere
+            all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
 
-        if sum_overlap:
-            all_spheres, counts = unique_rows(all_spheres, return_counts=True)
-            counts = counts * value
-        else:
-            all_spheres = unique_rows(all_spheres)
+            if not sum_overlap:
+                all_spheres = unique_rows(all_spheres)
 
-        # Mask coordinates beyond space
-        idx = np.all(
-            np.concatenate([all_spheres >= 0, np.less(all_spheres, shape)], axis=1), axis=1
+            # Apply mask
+            sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
+            all_spheres = all_spheres[sphere_idx_inside_mask, :]
+
+            # Combine experiment id with coordinates
+            all_coords.append(all_spheres)
+
+        # Add exp_idx to coordinates
+        exp_shapes = [coords.shape[0] for coords in all_coords]
+        exp_indicator = np.repeat(np.arange(len(exp_shapes)), exp_shapes)
+
+        all_coords = np.vstack(all_coords).T
+        all_coords = np.insert(all_coords, 0, exp_indicator, axis=0)
+
+        kernel_data = sparse.COO(
+            all_coords, data=value, has_duplicates=sum_overlap, shape=kernel_shape
         )
-
-        all_spheres = all_spheres[idx, :]
-
-        sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-        sphere_idx_filtered = all_spheres[sphere_idx_inside_mask, :].T
-        nonzero_idx = tuple(sphere_idx_filtered)
-
-        if sum_overlap:
-            nonzero_to_append = counts[idx][sphere_idx_inside_mask]
-        else:
-            nonzero_to_append = np.ones((len(sphere_idx_inside_mask),)) * value
-
-        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
-        all_coords.append(np.vstack(nonzero_idx))
-        all_data.append(nonzero_to_append)
-
-    exp = np.hstack(all_exp)
-    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
-
-    data = np.hstack(all_data).flatten().astype(np.int32)
-    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
 
     return kernel_data
 
@@ -387,3 +414,80 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
         max_size = 0
 
     return max_size, max_mass
+
+
+@jit(nopython=True, cache=True)
+def _apply_liberal_mask(data):
+    """Separate input image data in bags of voxels that have a valid value across the same studies.
+
+    Parameters
+    ----------
+    data : (S x V) :class:`numpy.ndarray`
+        2D numpy array (S x V) of images, where S is study and V is voxel.
+
+    Returns
+    -------
+    values_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 2D numpy arrays (s x v) of images, where the voxel v have a valid
+        value in study s.
+    voxel_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (v) of voxel indices for the corresponding bag.
+    study_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (s) of study indices for the corresponding bag.
+
+    Notes
+    -----
+    Parts of the function are implemented with nested for loops to
+    improve the speed with the numba compiler.
+
+    """
+    MIN_STUDY_THRESH = 2
+
+    n_voxels = data.shape[1]
+    # Get indices of non-nan and zero value of studies for each voxel
+    mask = ~np.isnan(data) & (data != 0)
+    study_by_voxels_idxs = [np.where(mask[:, i])[0] for i in range(n_voxels)]
+
+    # Group studies by the same number of non-nan voxels
+    matches = []
+    all_indices = []
+    for col_i in range(n_voxels):
+        if col_i in all_indices:
+            continue
+
+        vox_match = [col_i]
+        all_indices.append(col_i)
+        for col_j in range(col_i + 1, n_voxels):
+            if (
+                len(study_by_voxels_idxs[col_i]) == len(study_by_voxels_idxs[col_j])
+                and np.array_equal(study_by_voxels_idxs[col_i], study_by_voxels_idxs[col_j])
+                and col_j not in all_indices
+            ):
+                vox_match.append(col_j)
+                all_indices.append(col_j)
+
+        matches.append(np.array(vox_match))
+
+    values_lst, voxel_mask_lst, study_mask_lst = [], [], []
+    for voxel_mask in matches:
+        n_masked_voxels = len(voxel_mask)
+        # This is the same for all voxels in the match
+        study_mask = study_by_voxels_idxs[voxel_mask[0]]
+
+        if len(study_mask) < MIN_STUDY_THRESH:
+            # TODO: Figure out how raise a warning in numba
+            # warnings.warn(
+            #     f"Removing voxels: {voxel_mask} from the analysis. Not present in 2+ studies."
+            # )
+            continue
+
+        values = np.zeros((len(study_mask), n_masked_voxels))
+        for vox_i, vox in enumerate(voxel_mask):
+            for std_i, study in enumerate(study_mask):
+                values[std_i, vox_i] = data[study, vox]
+
+        values_lst.append(values)
+        voxel_mask_lst.append(voxel_mask)
+        study_mask_lst.append(study_mask)
+
+    return values_lst, voxel_mask_lst, study_mask_lst

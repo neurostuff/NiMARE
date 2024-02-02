@@ -16,7 +16,7 @@ def macm_workflow(
     mask_file,
     output_dir=None,
     prefix=None,
-    n_iters=10000,
+    n_iters=5000,
     v_thr=0.001,
     n_cores=1,
 ):

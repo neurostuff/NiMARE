@@ -27,12 +27,16 @@ from glob import glob
 from pathlib import Path
 
 import jinja2
+import pandas as pd
 from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.reports.figures import (
+    _plot_dof_map,
     _plot_relcov_map,
     _plot_ridgeplot,
+    _plot_sumstats,
+    _plot_true_voxels,
     gen_table,
     plot_clusters,
     plot_coordinates,
@@ -41,12 +45,18 @@ from nimare.reports.figures import (
     plot_mask,
     plot_static_brain,
 )
+from nimare.stats import pearson
 
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
     "kernel_transformer__sample_size": "Sample size",
     "kernel_transformer__r": "Sphere radius (mm)",
     "kernel_transformer__value": "Value for sphere",
+    "kernel_transformer__memory": "Memory",
+    "kernel_transformer__memory_level": "Memory level",
+    "kernel_transformer__sum_across_studies": "Sum Across Studies",
+    "memory": "Memory",
+    "memory_level": "Memory level",
     "null_method": "Null method",
     "n_iters": "Number of iterations",
     "n_cores": "Number of cores",
@@ -265,6 +275,13 @@ def _gen_fig_summary(img_key, threshold, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
+def _compute_similarities(maps_arr, ids_):
+    """Compute the similarity between maps."""
+    corrs = [pearson(img_map, maps_arr) for img_map in list(maps_arr)]
+
+    return pd.DataFrame(index=ids_, columns=ids_, data=corrs)
+
+
 def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     """Generate html and png objects for the report."""
     # Plot brain images if not empty
@@ -312,7 +329,7 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
 
         # Plot heatmaps
         [
-            plot_heatmap(contribution_table, fig_dir / heatmap_name)
+            plot_heatmap(contribution_table, fig_dir / heatmap_name, zmin=0)
             for heatmap_name, contribution_table in zip(heatmap_names, contribution_tables)
         ]
 
@@ -363,11 +380,17 @@ class Reportlet(Element):
             ext = "".join(src.suffixes)
             desc_text = config.get("caption")
             iframe = config.get("iframe", False)
+            dropdown = config.get("dropdown", False)
 
             contents = None
             html_anchor = src.relative_to(out_dir)
             if ext == ".html":
                 contents = IFRAME_SNIPPET.format(html_anchor) if iframe else src.read_text()
+                if dropdown:
+                    contents = (
+                        f"<details><summary>Advanced ({self.title})</summary>{contents}</details>"
+                    )
+                    self.title = ""
             elif ext == ".png":
                 contents = PNG_SNIPPET.format(html_anchor)
 
@@ -460,23 +483,56 @@ class Report:
                 )
             elif meta_type == "IBMA":
                 # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
-                key_maps = "z_maps" if "z_maps" in self.results.estimator.inputs_ else "beta_maps"
-                maps_arr = self.results.estimator.inputs_[key_maps]
+                key_maps = (
+                    "z_maps"
+                    if "z_maps" in self.results.estimator.inputs_["raw_data"]
+                    else "beta_maps"
+                )
+                maps_arr = self.results.estimator.inputs_["raw_data"][key_maps]
                 ids_ = self.results.estimator.inputs_["id"]
                 x_label = "Z" if key_maps == "z_maps" else "Beta"
 
-                _plot_relcov_map(
+                if self.results.estimator.aggressive_mask:
+                    _plot_relcov_map(
+                        maps_arr,
+                        self.results.estimator.masker,
+                        self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-relcov.png",
+                    )
+                else:
+                    dof_map = self.results.get_map("dof")
+                    _plot_dof_map(
+                        dof_map,
+                        self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-dof.png",
+                    )
+
+                _plot_true_voxels(
                     maps_arr,
-                    self.results.estimator.masker,
-                    self.results.estimator.inputs_["aggressive_mask"],
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-relcov.png",
+                    ids_,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-truevoxels.html",
                 )
 
                 _plot_ridgeplot(
                     maps_arr,
                     ids_,
                     x_label,
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.png",
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.html",
+                )
+
+                _plot_sumstats(
+                    maps_arr,
+                    ids_,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-summarystats.html",
+                )
+
+                similarity_table = _compute_similarities(maps_arr, ids_)
+
+                plot_heatmap(
+                    similarity_table,
+                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-similarity.html",
+                    symmetric=True,
+                    cmap="RdBu_r",
+                    zmin=-1,
+                    zmax=1,
                 )
 
         _gen_est_summary(self.results.estimator, self.fig_dir / "estimator_summary.html")
@@ -561,6 +617,10 @@ def run_reports(
     out_dir,
 ):
     """Run the reports.
+
+    .. versionchanged:: 0.2.1
+
+        * Add similarity matrix to summary for image-based meta-analyses.
 
     .. versionchanged:: 0.2.0
 

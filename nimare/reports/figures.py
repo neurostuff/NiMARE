@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import seaborn as sns
 from nilearn import datasets
 from nilearn.plotting import (
     plot_connectome,
@@ -15,9 +14,9 @@ from nilearn.plotting import (
     view_connectome,
     view_img,
 )
+from ridgeplot import ridgeplot
+from scipy import stats
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
-
-from nimare.utils import _boolean_unmask
 
 TABLE_STYLE = [
     dict(
@@ -34,6 +33,10 @@ TABLE_STYLE = [
 ]
 
 
+PXS_PER_STD = 30  # Number of pixels per study, control the size (height) of Plotly figures
+MAX_CHARS = 20  # Maximum number of characters for labels
+
+
 def _check_extention(filename, exts):
     if filename.suffix not in exts:
         raise ValueError(
@@ -42,7 +45,7 @@ def _check_extention(filename, exts):
         )
 
 
-def _reorder_matrix(mat, row_labels, col_labels, reorder):
+def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="single"):
     """Reorder a matrix.
 
     This function reorders the provided matrix. It was adaptes from
@@ -83,14 +86,20 @@ def _reorder_matrix(mat, row_labels, col_labels, reorder):
     row_ordered_linkage = optimal_leaf_ordering(row_linkage_matrix, mat)
     row_index = leaves_list(row_ordered_linkage)
 
-    # Order columns
-    col_linkage_matrix = linkage(mat.T, method=reorder)
-    col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat.T)
-    col_index = leaves_list(col_ordered_linkage)
-
     # Make sure labels is an ndarray and copy it
     row_labels = np.array(row_labels).copy()
-    col_labels = np.array(col_labels).copy()
+
+    if not symmetric:
+        # Order columns
+        col_linkage_matrix = linkage(mat.T, method=reorder)
+        col_ordered_linkage = optimal_leaf_ordering(col_linkage_matrix, mat.T)
+        col_index = leaves_list(col_ordered_linkage)
+
+        col_labels = np.array(col_labels).copy()
+    else:
+        col_index = row_index
+        col_labels = row_labels
+
     mat = mat.copy()
 
     # and reorder labels and matrix
@@ -264,42 +273,66 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
     html_view.save_as_html(out_filename)
 
 
-def plot_heatmap(contribution_table, out_filename):
+def plot_heatmap(
+    data_df,
+    out_filename,
+    symmetric=False,
+    reorder="single",
+    cmap="Reds",
+    zmin=None,
+    zmax=None,
+):
     """Plot heatmap.
 
     .. versionadded:: 0.1.0
 
     Parameters
     ----------
-    contribution_table : :obj:`pandas.DataFrame`
-        A DataFrame with information about relative contributions of each experiment to each
-        cluster in the thresholded map.
+    data_df : :obj:`pandas.DataFrame`
+        A DataFrame with the data for the heatmap. It could be a correlation matrix or
+        a contribution matrix with information about the relative contributions of
+        each experiment to each cluster in the thresholded map.
     out_filename : :obj:`pathlib.Path`
         The name of an image file to export the plot to.
         Valid extension is '.html'.
+    symmetric : :obj:`bool`, optional
+        Whether to reorder the matrix symmetrically. Use True if using a correlation matrix.
+        Default is False.
+    reorder : :obj:`str`, optional
+        The method to use for reordering the matrix. Default is 'average'.
+    cmap : :obj:`str`, optional
+        The colormap to use. Default is 'Reds'.
+    zmin : :obj:`float`, optional
+        The minimum value to use for the colormap. Default is None.
+    zmax : :obj:`float`, optional
+        The maximum value to use for the colormap. Default is None.
     """
     _check_extention(out_filename, [".html"])
 
-    n_studies, n_clusters = contribution_table.shape
+    n_studies, n_clusters = data_df.shape
     if (n_studies > 2) and (n_clusters > 2):
         # Reorder matrix only if more than 1 cluster/experiment
-        mat = contribution_table.to_numpy()
+        mat = data_df.to_numpy()
         row_labels, col_labels = (
-            contribution_table.index.to_list(),
-            contribution_table.columns.to_list(),
+            data_df.index.to_list(),
+            data_df.columns.to_list(),
         )
         new_mat, new_row_labels, new_col_labels = _reorder_matrix(
             mat,
             row_labels,
             col_labels,
-            "single",
+            symmetric=symmetric,
+            reorder=reorder,
         )
-        contribution_table = pd.DataFrame(new_mat, columns=new_col_labels, index=new_row_labels)
 
-    fig = px.imshow(contribution_table, color_continuous_scale="Reds", aspect="equal")
+        # Truncate labels to MAX_CHARS characters
+        x_labels = [label[:MAX_CHARS] for label in new_col_labels]
+        y_labels = [label[:MAX_CHARS] for label in new_row_labels]
+        data_df = pd.DataFrame(new_mat, columns=x_labels, index=y_labels)
 
-    pxs_per_sqr = 50  # Number of pixels per square in the heatmap
-    height = n_studies * pxs_per_sqr
+    fig = px.imshow(data_df, color_continuous_scale=cmap, zmin=zmin, zmax=zmax, aspect="equal")
+
+    height = n_studies * PXS_PER_STD
     fig.update_layout(autosize=True, height=height)
     fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
@@ -368,65 +401,186 @@ def plot_clusters(img, out_filename):
     fig.close()
 
 
+def _plot_true_voxels(maps_arr, ids_, out_filename):
+    """Plot percentage of valid voxels.
+
+    .. versionadded:: 0.2.2
+
+    """
+    n_studies, n_voxels = maps_arr.shape
+    mask = ~np.isnan(maps_arr) & (maps_arr != 0)
+
+    x_label, y_label = "Voxels Included", "ID"
+    perc_voxs = mask.sum(axis=1) / n_voxels
+    valid_df = pd.DataFrame({y_label: ids_, x_label: perc_voxs})
+    valid_sorted_df = valid_df.sort_values(x_label, ascending=True)
+
+    fig = px.bar(
+        valid_sorted_df,
+        x=x_label,
+        y=y_label,
+        orientation="h",
+        color=x_label,
+        color_continuous_scale="blues",
+        range_color=(0, 1),
+    )
+
+    fig.update_xaxes(
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        visible=True,
+        showticklabels=False,
+        title=None,
+    )
+    fig.update_yaxes(
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        visible=True,
+        ticktext=valid_sorted_df[y_label].str.slice(0, MAX_CHARS).tolist(),
+    )
+
+    height = n_studies * PXS_PER_STD
+    fig.update_layout(
+        height=height,
+        autosize=True,
+        font_size=14,
+        plot_bgcolor="white",
+        xaxis_gridcolor="white",
+        yaxis_gridcolor="white",
+        xaxis_gridwidth=2,
+        showlegend=False,
+    )
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
+
+
 def _plot_ridgeplot(maps_arr, ids_, x_label, out_filename):
     """Plot histograms of the images.
 
     .. versionadded:: 0.2.0
 
-    Base on: https://seaborn.pydata.org/examples/kde_ridgeplot.html
     """
-    # Create dataframe for seaborn
-    values = []
-    group = []
-    for img_i, img_map in enumerate(list(maps_arr)):
-        values.append(img_map)
-        group.append([ids_[img_i]] * len(img_map))
+    n_studies = len(ids_)
+    labels = [id_[:MAX_CHARS] for id_ in ids_]  # Truncate labels to MAX_CHARS characters
 
-    data = {x_label: np.hstack(values), "exp_id": np.hstack(group)}
-    df = pd.DataFrame(data)
+    mask = ~np.isnan(maps_arr) & (maps_arr != 0)
+    maps_lst = [maps_arr[i][mask[i]] for i in range(n_studies)]
 
-    sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+    N_KDE_POINTS = 100
+    max_val = 8 if x_label == "Z" else 1
+    kde_points = np.linspace(-max_val, max_val, N_KDE_POINTS)
+    bandwidth = 0.5 if x_label == "Z" else 0.1
 
-    # Initialize the FacetGrid object
-    pal = sns.cubehelix_palette(10, rot=-0.25, light=0.7)
-    g = sns.FacetGrid(df, row="exp_id", hue="exp_id", aspect=15, height=0.5, palette=pal)
+    fig = ridgeplot(
+        samples=maps_lst,
+        labels=labels,
+        coloralpha=0.98,
+        bandwidth=bandwidth,
+        kde_points=kde_points,
+        colorscale="Bluered",
+        colormode="mean-means",
+        spacing=PXS_PER_STD / 100,
+        linewidth=2,
+    )
 
-    # Draw the densities in a few steps
-    g.map(sns.kdeplot, x_label, bw_adjust=0.5, clip_on=False, fill=True, alpha=1, linewidth=1.5)
-    g.map(sns.kdeplot, x_label, clip_on=False, color="w", lw=2, bw_adjust=0.5)
+    height = n_studies * PXS_PER_STD
+    fig.update_layout(
+        height=height,
+        autosize=True,
+        font_size=14,
+        plot_bgcolor="white",
+        xaxis_gridcolor="white",
+        yaxis_gridcolor="white",
+        xaxis_gridwidth=2,
+        xaxis_title=x_label,
+        showlegend=False,
+    )
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
-    # passing color=None to refline() uses the hue mapping
-    g.refline(y=0, linewidth=2, linestyle="-", color=None, clip_on=False)
 
-    # Define and use a simple function to label the plot in axes coordinates
-    def label(values, color, label):
-        ax = plt.gca()
-        ax.text(
-            0,
-            0.2,
-            label[:20],  # Limit the number of characters in the label
-            fontweight="bold",
-            color=color,
-            fontsize=8,
-            ha="left",
-            va="center",
-            transform=ax.transAxes,
+def _plot_sumstats(maps_arr, ids_, out_filename):
+    """Plot summary statistics of the images.
+
+    .. versionadded:: 0.2.2
+
+    """
+    n_studies = len(ids_)
+    mask = ~np.isnan(maps_arr) & (maps_arr != 0)
+    maps_lst = [maps_arr[i][mask[i]] for i in range(n_studies)]
+
+    stats_lbls = [
+        "Mean",
+        "STD",
+        "Var",
+        "Median",
+        "Mode",
+        "Min",
+        "Max",
+        "Skew",
+        "Kurtosis",
+        "Range",
+        "Moment",
+        "IQR",
+    ]
+    scores, id_lst = [], []
+    for id_, map_ in zip(ids_, maps_lst):
+        scores.extend(
+            [
+                np.mean(map_),
+                np.std(map_),
+                np.var(map_),
+                np.median(map_),
+                stats.mode(map_)[0],
+                np.min(map_),
+                np.max(map_),
+                stats.skew(map_),
+                stats.kurtosis(map_),
+                np.max(map_) - np.min(map_),
+                stats.moment(map_, moment=4),
+                stats.iqr(map_),
+            ]
         )
+        id_lst.extend([id_] * len(stats_lbls))
 
-    g.map(label, x_label)
+    stats_labels = stats_lbls * n_studies
+    data_df = pd.DataFrame({"ID": id_lst, "Score": scores, "Stat": stats_labels})
 
-    # Set the subplots to overlap
-    g.figure.subplots_adjust(hspace=-0.25)
+    fig = px.strip(
+        data_df,
+        y="Score",
+        color="ID",
+        facet_col="Stat",
+        stripmode="group",
+        facet_col_wrap=4,
+        facet_col_spacing=0.08,
+    )
 
-    # Remove axes details that don't play well with overlap
-    g.set_titles("")
-    g.set(yticks=[], ylabel="")
-    g.despine(bottom=True, left=True)
-    g.savefig(out_filename, dpi=300)
-    plt.close()
+    fig.update_xaxes(showline=True, linewidth=2, linecolor="black", mirror=True)
+    fig.update_yaxes(
+        constrain="domain",
+        matches=None,
+        showline=True,
+        linewidth=2,
+        linecolor="black",
+        mirror=True,
+        title=None,
+    )
+    fig.update_layout(
+        height=900,
+        autosize=True,
+        font_size=14,
+        plot_bgcolor="white",
+        xaxis_gridcolor="white",
+        yaxis_gridcolor="white",
+        xaxis_gridwidth=2,
+        showlegend=False,
+    )
+    fig.for_each_yaxis(lambda yaxis: yaxis.update(showticklabels=True))
+    fig.write_html(out_filename, full_html=True, include_plotlyjs=True)
 
 
-def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
+def _plot_relcov_map(maps_arr, masker, out_filename):
     """Plot relative coverage map.
 
     .. versionadded:: 0.2.0
@@ -440,8 +594,6 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
     binary_maps_arr = np.where((-epsilon > maps_arr) | (maps_arr > epsilon), 1, 0)
     coverage_arr = np.sum(binary_maps_arr, axis=0) / binary_maps_arr.shape[0]
 
-    # Add bad voxels back to the arr to transform it back to an image
-    coverage_arr = _boolean_unmask(coverage_arr, aggressive_mask)
     coverage_img = masker.inverse_transform(coverage_arr)
 
     # Plot coverage map
@@ -457,6 +609,34 @@ def _plot_relcov_map(maps_arr, masker, aggressive_mask, out_filename):
         cmap="Blues",
         vmin=0,
         vmax=1,
+        display_mode="mosaic",
+    )
+    fig.savefig(out_filename, dpi=300)
+    fig.close()
+
+
+def _plot_dof_map(dof_map, out_filename):
+    """Plot DoF map.
+
+    .. versionadded:: 0.2.1
+
+    """
+    _check_extention(out_filename, [".png", ".pdf", ".svg"])
+
+    epsilon = 1e-05
+
+    # Plot coverage map
+    template = datasets.load_mni152_template(resolution=1)
+    fig = plot_img(
+        dof_map,
+        bg_img=template,
+        black_bg=False,
+        draw_cross=False,
+        threshold=epsilon,
+        alpha=0.7,
+        colorbar=True,
+        cmap="YlOrRd",
+        vmin=0,
         display_mode="mosaic",
     )
     fig.savefig(out_filename, dpi=300)
