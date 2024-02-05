@@ -24,7 +24,6 @@ from nimare.utils import (
     _check_type,
     get_masker,
     mm2vox,
-    tqdm_joblib,
     vox2mm,
 )
 
@@ -506,13 +505,18 @@ class CBMAEstimator(Estimator):
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
 
-        with tqdm_joblib(tqdm(total=n_iters)):
-            perm_histograms = Parallel(n_jobs=n_cores)(
-                delayed(self._compute_null_montecarlo_permutation)(
-                    iter_xyzs[i_iter], iter_df=iter_df
-                )
-                for i_iter in range(n_iters)
+        perm_histograms = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=n_cores)(
+                    delayed(self._compute_null_montecarlo_permutation)(
+                        iter_xyzs[i_iter], iter_df=iter_df
+                    )
+                    for i_iter in range(n_iters)
+                ),
+                total=n_iters,
             )
+        ]
 
         perm_histograms = np.vstack(perm_histograms)
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
@@ -720,17 +724,22 @@ class CBMAEstimator(Estimator):
             # Define connectivity matrix for cluster labeling
             conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
-            with tqdm_joblib(tqdm(total=n_iters)):
-                perm_results = Parallel(n_jobs=n_cores)(
-                    delayed(self._correct_fwe_montecarlo_permutation)(
-                        iter_xyzs[i_iter],
-                        iter_df=iter_df,
-                        conn=conn,
-                        voxel_thresh=ss_thresh,
-                        vfwe_only=vfwe_only,
-                    )
-                    for i_iter in range(n_iters)
+            perm_results = [
+                r
+                for r in tqdm(
+                    Parallel(return_as="generator", n_jobs=n_cores)(
+                        delayed(self._correct_fwe_montecarlo_permutation)(
+                            iter_xyzs[i_iter],
+                            iter_df=iter_df,
+                            conn=conn,
+                            voxel_thresh=ss_thresh,
+                            vfwe_only=vfwe_only,
+                        )
+                        for i_iter in range(n_iters)
+                    ),
+                    total=n_iters,
                 )
+            ]
 
             fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
 
