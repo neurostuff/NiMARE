@@ -194,15 +194,15 @@ class CorrelationDecoder(Decoder):
             MetaResult with meta-analytic maps and masker added.
         """
         n_features = len(self.features_)
-        maps = [
-            r
-            for r in tqdm(
+        maps = {
+            r: v
+            for r, v in tqdm(
                 Parallel(return_as="generator", n_jobs=self.n_cores)(
                     delayed(self._run_fit)(feature, dataset) for feature in self.features_
                 ),
                 total=n_features,
             )
-        ]
+        }
 
         self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 
@@ -387,15 +387,15 @@ class CorrelationDistributionDecoder(Decoder):
             MetaResult with meta-analytic maps and masker added.
         """
         n_features = len(self.features_)
-        maps = [
-            r
-            for r in tqdm(
+        maps = {
+            r: v
+            for r, v in tqdm(
                 Parallel(return_as="generator", n_jobs=self.n_cores)(
                     delayed(self._run_fit)(feature, dataset) for feature in self.features_
                 ),
                 total=n_features,
             )
-        ]
+        }
 
         self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 
