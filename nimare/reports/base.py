@@ -24,11 +24,11 @@
 """Reports builder for NiMARE's MetaResult object."""
 import textwrap
 from glob import glob
+from importlib.resources import files
 from pathlib import Path
 
 import jinja2
 import pandas as pd
-from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.reports.figures import (
@@ -547,8 +547,9 @@ class Report:
             _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
 
         # Default template from nimare
-        self.template_path = Path(pkgrf("nimare", "reports/report.tpl"))
-        self._load_config(Path(pkgrf("nimare", "reports/default.yml")))
+        nimare_path = files("nimare")
+        self.template_path = nimare_path / "reports" / "report.tpl"
+        self._load_config(nimare_path / "reports" / "default.yml")
         assert self.template_path.exists()
 
     def _load_config(self, config):
