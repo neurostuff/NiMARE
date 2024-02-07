@@ -1,4 +1,5 @@
 """Methods for decoding subsets of voxels or experiments into text."""
+
 import numpy as np
 import pandas as pd
 from nilearn._utils import load_niimg

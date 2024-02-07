@@ -1,4 +1,5 @@
 """Classes for representing datasets of images and/or coordinates."""
+
 import copy
 import inspect
 import json

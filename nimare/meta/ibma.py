@@ -1,4 +1,5 @@
 """Image-based meta-analysis estimators."""
+
 from __future__ import division
 
 import logging
@@ -102,9 +103,11 @@ class IBMAEstimator(Estimator):
             if type_ == "image":
                 # Resampling will only occur if shape/affines are different
                 imgs = [
-                    nib.load(img)
-                    if _check_same_fov(nib.load(img), reference_masker=mask_img)
-                    else resample_to_img(nib.load(img), mask_img, **self._resample_kwargs)
+                    (
+                        nib.load(img)
+                        if _check_same_fov(nib.load(img), reference_masker=mask_img)
+                        else resample_to_img(nib.load(img), mask_img, **self._resample_kwargs)
+                    )
                     for img in self.inputs_[name]
                 ]
 

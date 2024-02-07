@@ -1,4 +1,5 @@
 """CBMA methods from the multilevel kernel density analysis (MKDA) family."""
+
 import logging
 
 import nibabel as nib
@@ -16,7 +17,7 @@ from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, tqdm_joblib, vox2mm
+from nimare.utils import _check_ncores, vox2mm
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -848,18 +849,23 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Define connectivity matrix for cluster labeling
         conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
-        with tqdm_joblib(tqdm(total=n_iters)):
-            perm_results = Parallel(n_jobs=n_cores)(
-                delayed(self._run_fwe_permutation)(
-                    iter_xyz1=iter_xyzs1[i_iter],
-                    iter_xyz2=iter_xyzs2[i_iter],
-                    iter_df1=iter_df1,
-                    iter_df2=iter_df2,
-                    conn=conn,
-                    voxel_thresh=ss_thresh,
-                )
-                for i_iter in range(n_iters)
+        perm_results = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=n_cores)(
+                    delayed(self._run_fwe_permutation)(
+                        iter_xyz1=iter_xyzs1[i_iter],
+                        iter_xyz2=iter_xyzs2[i_iter],
+                        iter_df1=iter_df1,
+                        iter_df2=iter_df2,
+                        conn=conn,
+                        voxel_thresh=ss_thresh,
+                    )
+                    for i_iter in range(n_iters)
+                ),
+                total=n_iters,
             )
+        ]
 
         del rand_idx1, rand_xyz1, iter_xyzs1
         del rand_idx2, rand_xyz2, iter_xyzs2
@@ -884,9 +890,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             cmfwe_null=pAgF_cmfwe_null,
         )
 
-        self.null_distributions_[
-            "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
-        ] = pAgF_vfwe_null
+        self.null_distributions_["values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"] = (
+            pAgF_vfwe_null
+        )
         self.null_distributions_[
             "values_desc-pAgFsize_level-cluster_corr-fwe_method-montecarlo"
         ] = pAgF_csfwe_null
@@ -905,9 +911,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             cmfwe_null=pFgA_cmfwe_null,
         )
 
-        self.null_distributions_[
-            "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
-        ] = pFgA_vfwe_null
+        self.null_distributions_["values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"] = (
+            pFgA_vfwe_null
+        )
         self.null_distributions_[
             "values_desc-pFgAsize_level-cluster_corr-fwe_method-montecarlo"
         ] = pFgA_csfwe_null

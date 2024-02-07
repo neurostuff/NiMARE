@@ -1,4 +1,5 @@
 """Utility functions for the extract module."""
+
 from __future__ import division
 
 import logging

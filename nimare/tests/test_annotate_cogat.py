@@ -1,4 +1,5 @@
 """Test nimare.annotate.cogat (Cognitive Atlas extraction methods)."""
+
 import pandas as pd
 
 from nimare import annotate, extract, utils

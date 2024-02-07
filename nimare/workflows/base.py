@@ -1,4 +1,5 @@
 """Base class for workflow."""
+
 import copy
 import itertools
 import logging

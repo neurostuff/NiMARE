@@ -1,4 +1,5 @@
 """Base class for estimators."""
+
 from abc import abstractmethod
 
 from joblib import Memory

@@ -1,4 +1,5 @@
 """Utility functions for testing nimare."""
+
 import logging
 import os.path as op
 from contextlib import ExitStack as does_not_raise

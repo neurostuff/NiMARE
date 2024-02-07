@@ -1,4 +1,5 @@
 """Topic modeling with latent Dirichlet allocation."""
+
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import LatentDirichletAllocation

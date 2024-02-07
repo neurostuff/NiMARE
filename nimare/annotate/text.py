@@ -1,4 +1,5 @@
 """Text extraction tools."""
+
 import logging
 import os.path as op
 

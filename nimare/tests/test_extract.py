@@ -1,4 +1,5 @@
 """Test nimare.extract."""
+
 import os
 from glob import glob
 

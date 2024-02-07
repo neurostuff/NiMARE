@@ -1,4 +1,5 @@
 """Methods for encoding text into brain maps."""
+
 import numpy as np
 from nilearn.masking import unmask
 from sklearn.feature_extraction.text import CountVectorizer
