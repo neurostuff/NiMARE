@@ -281,6 +281,10 @@ class Stouffers(IBMAEstimator):
 
     This method is described in :footcite:t:`stouffer1949american`.
 
+    .. versionchanged:: 0.2.3
+
+        * Add correction for multiple contrasts within a study.
+
     .. versionchanged:: 0.2.1
 
         * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
@@ -371,13 +375,17 @@ class Stouffers(IBMAEstimator):
         if self.aggressive_mask:
             est = pymare.estimators.StoufferCombinationTest()
 
+            id_mask = self.dataset.images["id"].isin(self.inputs_["id"])
+            groups = self.dataset.images[id_mask]["study_id"].to_numpy()
+            group_maps = np.tile(groups, (self.inputs_["z_maps"].shape[1], 1)).T
+
             if self.use_sample_size:
                 sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
                 weights = np.sqrt(sample_sizes)
                 weight_maps = np.tile(weights, (self.inputs_["z_maps"].shape[1], 1)).T
-                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=weight_maps)
+                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], n=weight_maps, v=group_maps)
             else:
-                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
+                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=group_maps)
 
             est.fit_dataset(pymare_dset)
             est_summary = est.summary()
@@ -397,15 +405,20 @@ class Stouffers(IBMAEstimator):
             for bag in self.inputs_["data_bags"]["z_maps"]:
                 est = pymare.estimators.StoufferCombinationTest()
 
+                study_mask = bag["study_mask"]
+
+                # Normally, we expect studies from the same group to be in the same bag.
+                groups = self.dataset.images["study_id"].to_numpy()[study_mask]
+                group_maps = np.tile(groups, (bag["values"].shape[1], 1)).T
+
                 if self.use_sample_size:
-                    study_mask = bag["study_mask"]
                     sample_sizes_ex = [self.inputs_["sample_sizes"][study] for study in study_mask]
                     sample_sizes = np.array([np.mean(n) for n in sample_sizes_ex])
                     weights = np.sqrt(sample_sizes)
                     weight_maps = np.tile(weights, (bag["values"].shape[1], 1)).T
-                    pymare_dset = pymare.Dataset(y=bag["values"], v=weight_maps)
+                    pymare_dset = pymare.Dataset(y=bag["values"], n=weight_maps, v=group_maps)
                 else:
-                    pymare_dset = pymare.Dataset(y=bag["values"])
+                    pymare_dset = pymare.Dataset(y=bag["values"], v=group_maps)
 
                 est.fit_dataset(pymare_dset)
                 est_summary = est.summary()
