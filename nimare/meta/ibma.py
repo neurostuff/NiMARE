@@ -362,7 +362,7 @@ class Stouffers(IBMAEstimator):
         return description
 
     def _group_encoder(self, labels):
-        """Converts each group to a unique integer value."""
+        """Convert each group to a unique integer value."""
         label_to_int = {label: i for i, label in enumerate(set(labels))}
         return np.array([label_to_int[label] for label in labels])
 
