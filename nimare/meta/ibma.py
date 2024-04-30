@@ -379,9 +379,8 @@ class Stouffers(IBMAEstimator):
 
         groups = self._group_encoder(self.dataset.images["study_id"].to_list())
 
-        corr = None
-        group_maps = None
         _get_group_maps = False
+        corr, sub_corr, group_maps = None, None, None
         if groups.size != np.unique(groups).size:
             # If all studies are not unique, we will need to correct for multiple contrasts
             _get_group_maps = True
@@ -425,6 +424,7 @@ class Stouffers(IBMAEstimator):
                 if _get_group_maps:
                     # Normally, we expect studies from the same group to be in the same bag.
                     group_maps = np.tile(groups[study_mask], (bag["values"].shape[1], 1)).T
+                    sub_corr = corr[np.ix_(study_mask, study_mask)]
 
                 if self.use_sample_size:
                     sample_sizes_ex = [self.inputs_["sample_sizes"][study] for study in study_mask]
@@ -435,7 +435,7 @@ class Stouffers(IBMAEstimator):
                 else:
                     pymare_dset = pymare.Dataset(y=bag["values"], v=group_maps)
 
-                est.fit_dataset(pymare_dset, corr=corr)
+                est.fit_dataset(pymare_dset, corr=sub_corr)
                 est_summary = est.summary()
                 z_map[bag["voxel_mask"]] = est_summary.z.squeeze()
                 p_map[bag["voxel_mask"]] = est_summary.p.squeeze()
