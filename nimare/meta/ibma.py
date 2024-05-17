@@ -172,6 +172,10 @@ class Fishers(IBMAEstimator):
 
     This method is described in :footcite:t:`fisher1946statistical`.
 
+    .. versionchanged:: 0.2.3
+
+        * New parameter: ``two_sided``, to control the type of test to perform.
+
     .. versionchanged:: 0.2.1
 
         * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
@@ -183,6 +187,11 @@ class Fishers(IBMAEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
+        Default is True.
+    two_sided : :obj:`bool`, optional
+        If True, performs an unsigned t-test. Both positive and negative effects are considered;
+        the null hypothesis is that the effect is zero. If False, only positive effects are
+        considered as relevant. The null hypothesis is that the effect is zero or negative.
         Default is True.
 
     Notes
@@ -220,6 +229,11 @@ class Fishers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
+    def __init__(self, two_sided=True, **kwargs):
+        super().__init__(**kwargs)
+        self.two_sided = two_sided
+        self._mode = "concordant" if self.two_sided else "directed"
+
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
@@ -242,7 +256,7 @@ class Fishers(IBMAEstimator):
 
         if self.aggressive_mask:
             pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
-            est = pymare.estimators.FisherCombinationTest()
+            est = pymare.estimators.FisherCombinationTest(mode=self._mode)
             est.fit_dataset(pymare_dset)
             est_summary = est.summary()
 
@@ -261,7 +275,7 @@ class Fishers(IBMAEstimator):
             dof_map = np.zeros(n_total_voxels, dtype=np.int32)
             for bag in self.inputs_["data_bags"]["z_maps"]:
                 pymare_dset = pymare.Dataset(y=bag["values"])
-                est = pymare.estimators.FisherCombinationTest()
+                est = pymare.estimators.FisherCombinationTest(mode=self._mode)
                 est.fit_dataset(pymare_dset)
                 est_summary = est.summary()
                 z_map[bag["voxel_mask"]] = est_summary.z.squeeze()
@@ -281,6 +295,10 @@ class Stouffers(IBMAEstimator):
 
     This method is described in :footcite:t:`stouffer1949american`.
 
+    .. versionchanged:: 0.2.3
+
+        * New parameter: ``two_sided``, to control the type of test to perform.
+
     .. versionchanged:: 0.2.1
 
         * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
@@ -297,6 +315,11 @@ class Stouffers(IBMAEstimator):
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
         as described in :footcite:t:`zaykin2011optimally`.
         Default is False.
+    two_sided : :obj:`bool`, optional
+        If True, performs an unsigned t-test. Both positive and negative effects are considered;
+        the null hypothesis is that the effect is zero. If False, only positive effects are
+        considered as relevant. The null hypothesis is that the effect is zero or negative.
+        Default is True.
 
     Notes
     -----
@@ -333,11 +356,14 @@ class Stouffers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, use_sample_size=False, **kwargs):
+    def __init__(self, use_sample_size=False, two_sided=True, **kwargs):
         super().__init__(**kwargs)
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
+
+        self.two_sided = two_sided
+        self._mode = "concordant" if self.two_sided else "directed"
 
     def _generate_description(self):
         description = (
@@ -369,7 +395,7 @@ class Stouffers(IBMAEstimator):
             )
 
         if self.aggressive_mask:
-            est = pymare.estimators.StoufferCombinationTest()
+            est = pymare.estimators.StoufferCombinationTest(mode=self._mode)
 
             if self.use_sample_size:
                 sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
@@ -395,7 +421,7 @@ class Stouffers(IBMAEstimator):
             p_map = np.zeros(n_total_voxels, dtype=float)
             dof_map = np.zeros(n_total_voxels, dtype=np.int32)
             for bag in self.inputs_["data_bags"]["z_maps"]:
-                est = pymare.estimators.StoufferCombinationTest()
+                est = pymare.estimators.StoufferCombinationTest(mode=self._mode)
 
                 if self.use_sample_size:
                     study_mask = bag["study_mask"]
