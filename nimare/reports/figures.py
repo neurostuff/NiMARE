@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
-from matplotlib import colormaps
 from nilearn import datasets
 from nilearn.plotting import (
     plot_connectome,
