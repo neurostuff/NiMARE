@@ -298,6 +298,8 @@ class Stouffers(IBMAEstimator):
     .. versionchanged:: 0.2.3
 
         * New parameter: ``two_sided``, to control the type of test to perform.
+        * Add correction for multiple contrasts within a study.
+
 
     .. versionchanged:: 0.2.1
 
@@ -383,6 +385,11 @@ class Stouffers(IBMAEstimator):
 
         return description
 
+    def _group_encoder(self, labels):
+        """Convert each group to a unique integer value."""
+        label_to_int = {label: i for i, label in enumerate(set(labels))}
+        return np.array([label_to_int[label] for label in labels])
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -394,18 +401,31 @@ class Stouffers(IBMAEstimator):
                 "will produce invalid results."
             )
 
+        groups = self._group_encoder(self.dataset.images["study_id"].to_list())
+
+        _get_group_maps = False
+        corr, sub_corr, group_maps = None, None, None
+        if groups.size != np.unique(groups).size:
+            # If all studies are not unique, we will need to correct for multiple contrasts
+            _get_group_maps = True
+            corr = np.corrcoef(self.inputs_["raw_data"]["z_maps"], rowvar=True)
+
         if self.aggressive_mask:
             est = pymare.estimators.StoufferCombinationTest(mode=self._mode)
+
+            if _get_group_maps:
+                id_mask = self.dataset.images["id"].isin(self.inputs_["id"])
+                group_maps = np.tile(groups[id_mask], (self.inputs_["z_maps"].shape[1], 1)).T
 
             if self.use_sample_size:
                 sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
                 weights = np.sqrt(sample_sizes)
                 weight_maps = np.tile(weights, (self.inputs_["z_maps"].shape[1], 1)).T
-                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=weight_maps)
+                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], n=weight_maps, v=group_maps)
             else:
-                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"])
+                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=group_maps)
 
-            est.fit_dataset(pymare_dset)
+            est.fit_dataset(pymare_dset, corr=corr)
             est_summary = est.summary()
 
             z_map = _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"])
@@ -423,17 +443,23 @@ class Stouffers(IBMAEstimator):
             for bag in self.inputs_["data_bags"]["z_maps"]:
                 est = pymare.estimators.StoufferCombinationTest(mode=self._mode)
 
+                study_mask = bag["study_mask"]
+
+                if _get_group_maps:
+                    # Normally, we expect studies from the same group to be in the same bag.
+                    group_maps = np.tile(groups[study_mask], (bag["values"].shape[1], 1)).T
+                    sub_corr = corr[np.ix_(study_mask, study_mask)]
+
                 if self.use_sample_size:
-                    study_mask = bag["study_mask"]
                     sample_sizes_ex = [self.inputs_["sample_sizes"][study] for study in study_mask]
                     sample_sizes = np.array([np.mean(n) for n in sample_sizes_ex])
                     weights = np.sqrt(sample_sizes)
                     weight_maps = np.tile(weights, (bag["values"].shape[1], 1)).T
-                    pymare_dset = pymare.Dataset(y=bag["values"], v=weight_maps)
+                    pymare_dset = pymare.Dataset(y=bag["values"], n=weight_maps, v=group_maps)
                 else:
-                    pymare_dset = pymare.Dataset(y=bag["values"])
+                    pymare_dset = pymare.Dataset(y=bag["values"], v=group_maps)
 
-                est.fit_dataset(pymare_dset)
+                est.fit_dataset(pymare_dset, corr=sub_corr)
                 est_summary = est.summary()
                 z_map[bag["voxel_mask"]] = est_summary.z.squeeze()
                 p_map[bag["voxel_mask"]] = est_summary.p.squeeze()
