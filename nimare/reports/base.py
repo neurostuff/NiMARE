@@ -483,12 +483,8 @@ class Report:
                 )
             elif meta_type == "IBMA":
                 # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
-                key_maps = (
-                    "z_maps"
-                    if "z_maps" in self.results.estimator.inputs_["raw_data"]
-                    else "beta_maps"
-                )
-                maps_arr = self.results.estimator.inputs_["raw_data"][key_maps]
+                key_maps = "z_maps" if "z_maps" in self.results.estimator.inputs_ else "beta_maps"
+                maps_arr = self.results.estimator.inputs_[key_maps]
                 ids_ = self.results.estimator.inputs_["id"]
                 x_label = "Z" if key_maps == "z_maps" else "Beta"
 
