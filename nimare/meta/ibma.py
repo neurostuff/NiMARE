@@ -3,6 +3,7 @@
 from __future__ import division
 
 import logging
+from collections import Counter
 
 import nibabel as nib
 import numpy as np
@@ -104,8 +105,6 @@ class IBMAEstimator(Estimator):
             # A dictionary to collect data, to be further reduced by the liberal mask.
             self.inputs_["data_bags"] = {}
 
-        # A dictionary to collect masked image data, to be further reduced by the aggressive mask.
-        temp_image_inputs = {}
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
                 # Resampling will only occur if shape/affines are different
@@ -124,7 +123,8 @@ class IBMAEstimator(Estimator):
                 # Mask required input images using either the dataset's mask or the estimator's.
                 temp_arr = masker.transform(img4d)
 
-                temp_image_inputs[name] = temp_arr
+                # To save memory, we only save the original image array and perform masking later.
+                self.inputs_[name] = temp_arr
                 if self.aggressive_mask:
                     # An intermediate step to mask out bad voxels.
                     # Can be dropped once PyMARE is able to handle masked arrays or missing data.
@@ -141,7 +141,6 @@ class IBMAEstimator(Estimator):
                             good_voxels_bool,
                         )
                 else:
-                    self.inputs_[name] = temp_arr
                     data_bags = zip(*_apply_liberal_mask(temp_arr))
 
                     keys = ["values", "voxel_mask", "study_mask"]
@@ -150,19 +149,13 @@ class IBMAEstimator(Estimator):
         # Further reduce image-based inputs to remove "bad" voxels
         # (voxels with zeros or NaNs in any studies)
         if "aggressive_mask" in self.inputs_.keys():
-            n_bad_voxels = (
+            if n_bad_voxels := (
                 self.inputs_["aggressive_mask"].size - self.inputs_["aggressive_mask"].sum()
-            )
-            if n_bad_voxels:
+            ):
                 LGR.warning(
                     f"Masking out {n_bad_voxels} additional voxels. "
                     "The updated masker is available in the Estimator.masker attribute."
                 )
-
-            for name, raw_masked_data in temp_image_inputs.items():
-                self.inputs_[name] = raw_masked_data[:, self.inputs_["aggressive_mask"]]
-
-        self.inputs_["raw_data"] = temp_image_inputs  # This data is saved only to use in Reports
 
 
 class Fishers(IBMAEstimator):
@@ -301,6 +294,9 @@ class Stouffers(IBMAEstimator):
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
         as described in :footcite:t:`zaykin2011optimally`.
         Default is False.
+    use_group_size : :obj:`bool`, optional
+        Whether to use publication group sizes for weights or not.
+        Default is False.
 
     Notes
     -----
@@ -337,11 +333,23 @@ class Stouffers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, use_sample_size=False, **kwargs):
+    def __init__(self, use_sample_size=False, use_group_size=False, **kwargs):
         super().__init__(**kwargs)
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
+
+    def _preprocess_input(self, dataset):
+        """Preprocess additional inputs to the Estimator from the Dataset as needed."""
+        super()._preprocess_input(dataset)
+
+        # Convert each group to a unique integer value.
+        labels = self.dataset.images["study_id"].to_list()
+        label_to_int = {label: i for i, label in enumerate(set(labels))}
+        label_counts = Counter(labels)
+
+        self.inputs_["groups"] = np.array([label_to_int[label] for label in labels])
+        self.inputs_["group_counts"] = np.array([label_counts[label] for label in labels])
 
     def _generate_description(self):
         description = (
@@ -361,10 +369,38 @@ class Stouffers(IBMAEstimator):
 
         return description
 
-    def _group_encoder(self, labels):
-        """Convert each group to a unique integer value."""
-        label_to_int = {label: i for i, label in enumerate(set(labels))}
-        return np.array([label_to_int[label] for label in labels])
+    def _fit_model(self, stat_maps, study_mask, corr=None):
+        """Fit the model to the data."""
+        n_studies, n_voxels = stat_maps.shape
+
+        est = pymare.estimators.StoufferCombinationTest()
+
+        group_maps, sub_corr = None, None
+        if corr is not None:
+            group_maps = np.tile(self.inputs_["groups"][study_mask], (n_voxels, 1)).T
+            sub_corr = corr[np.ix_(study_mask, study_mask)]
+
+        weights = np.ones(n_studies)
+
+        if self.use_group_size:
+            weights *= 1 / self.inputs_["group_counts"][study_mask]
+
+        if self.use_sample_size:
+            sample_sizes = [self.inputs_["sample_sizes"][study] for study in study_mask]
+            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
+            weights *= np.sqrt(sample_sizes)
+
+        weight_maps = np.tile(weights, (n_voxels, 1)).T
+
+        pymare_dset = pymare.Dataset(y=stat_maps, n=weight_maps, v=group_maps)
+        est.fit_dataset(pymare_dset, corr=sub_corr)
+        est_summary = est.summary()
+
+        z_map = est_summary.z.squeeze()
+        p_map = est_summary.p.squeeze()
+        dof_map = np.tile(n_studies - 1, n_voxels).astype(np.int32)
+
+        return z_map, p_map, dof_map
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -377,69 +413,44 @@ class Stouffers(IBMAEstimator):
                 "will produce invalid results."
             )
 
-        groups = self._group_encoder(self.dataset.images["study_id"].to_list())
-
-        _get_group_maps = False
-        corr, sub_corr, group_maps = None, None, None
-        if groups.size != np.unique(groups).size:
+        corr = None
+        if self.inputs_["groups"].size != np.unique(self.inputs_["groups"]).size:
             # If all studies are not unique, we will need to correct for multiple contrasts
-            _get_group_maps = True
-            corr = np.corrcoef(self.inputs_["raw_data"]["z_maps"], rowvar=True)
+            corr = np.corrcoef(self.inputs_["z_maps"], rowvar=True)
 
         if self.aggressive_mask:
-            est = pymare.estimators.StoufferCombinationTest()
+            stat_maps = self.inputs_["z_maps"]
+            study_mask = self.dataset.images["id"].isin(self.inputs_["id"])
+            voxel_mask = self.inputs_["aggressive_mask"]
 
-            if _get_group_maps:
-                id_mask = self.dataset.images["id"].isin(self.inputs_["id"])
-                group_maps = np.tile(groups[id_mask], (self.inputs_["z_maps"].shape[1], 1)).T
+            z_map, p_map, dof_map = self._fit_model(
+                stat_maps[:, voxel_mask],
+                study_mask,
+                corr=corr,
+            )
 
-            if self.use_sample_size:
-                sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
-                weights = np.sqrt(sample_sizes)
-                weight_maps = np.tile(weights, (self.inputs_["z_maps"].shape[1], 1)).T
-                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], n=weight_maps, v=group_maps)
-            else:
-                pymare_dset = pymare.Dataset(y=self.inputs_["z_maps"], v=group_maps)
-
-            est.fit_dataset(pymare_dset, corr=corr)
-            est_summary = est.summary()
-
-            z_map = _boolean_unmask(est_summary.z.squeeze(), self.inputs_["aggressive_mask"])
-            p_map = _boolean_unmask(est_summary.p.squeeze(), self.inputs_["aggressive_mask"])
-            dof_map = np.tile(
-                self.inputs_["z_maps"].shape[0] - 1, self.inputs_["z_maps"].shape[1]
-            ).astype(np.int32)
-            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
+            z_map = _boolean_unmask(z_map, voxel_mask)
+            p_map = _boolean_unmask(p_map, voxel_mask)
+            dof_map = _boolean_unmask(dof_map, voxel_mask)
 
         else:
-            n_total_voxels = self.inputs_["z_maps"].shape[1]
-            z_map = np.zeros(n_total_voxels, dtype=float)
-            p_map = np.zeros(n_total_voxels, dtype=float)
-            dof_map = np.zeros(n_total_voxels, dtype=np.int32)
+            n_voxels = self.inputs_["z_maps"].shape[1]
+            z_map = np.zeros(n_voxels, dtype=float)
+            p_map = np.zeros(n_voxels, dtype=float)
+            dof_map = np.zeros(n_voxels, dtype=np.int32)
             for bag in self.inputs_["data_bags"]["z_maps"]:
-                est = pymare.estimators.StoufferCombinationTest()
-
                 study_mask = bag["study_mask"]
+                voxel_mask = bag["voxel_mask"]
 
-                if _get_group_maps:
-                    # Normally, we expect studies from the same group to be in the same bag.
-                    group_maps = np.tile(groups[study_mask], (bag["values"].shape[1], 1)).T
-                    sub_corr = corr[np.ix_(study_mask, study_mask)]
+                z_map_temp, p_map_temp, dof_map_temp = self._fit_model(
+                    bag["values"],
+                    study_mask,
+                    corr=corr,
+                )
 
-                if self.use_sample_size:
-                    sample_sizes_ex = [self.inputs_["sample_sizes"][study] for study in study_mask]
-                    sample_sizes = np.array([np.mean(n) for n in sample_sizes_ex])
-                    weights = np.sqrt(sample_sizes)
-                    weight_maps = np.tile(weights, (bag["values"].shape[1], 1)).T
-                    pymare_dset = pymare.Dataset(y=bag["values"], n=weight_maps, v=group_maps)
-                else:
-                    pymare_dset = pymare.Dataset(y=bag["values"], v=group_maps)
-
-                est.fit_dataset(pymare_dset, corr=sub_corr)
-                est_summary = est.summary()
-                z_map[bag["voxel_mask"]] = est_summary.z.squeeze()
-                p_map[bag["voxel_mask"]] = est_summary.p.squeeze()
-                dof_map[bag["voxel_mask"]] = bag["values"].shape[0] - 1
+                z_map[bag["voxel_mask"]] = z_map_temp
+                p_map[bag["voxel_mask"]] = p_map_temp
+                dof_map[bag["voxel_mask"]] = dof_map_temp
 
         maps = {"z": z_map, "p": p_map, "dof": dof_map}
         description = self._generate_description()
