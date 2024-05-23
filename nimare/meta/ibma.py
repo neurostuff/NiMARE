@@ -603,15 +603,13 @@ class WeightedLeastSquares(IBMAEstimator):
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
             for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
-                z_map_temp, p_map_temp, est_map_temp, se_map_temp, dof_map_temp = self._fit_model(
-                    beta_bag["values"], varcope_bag["values"]
-                )
-
-                z_map[beta_bag["voxel_mask"]] = z_map_temp
-                p_map[beta_bag["voxel_mask"]] = p_map_temp
-                est_map[beta_bag["voxel_mask"]] = est_map_temp
-                se_map[beta_bag["voxel_mask"]] = se_map_temp
-                dof_map[beta_bag["voxel_mask"]] = dof_map_temp
+                (
+                    z_map[beta_bag["voxel_mask"]],
+                    p_map[beta_bag["voxel_mask"]],
+                    est_map[beta_bag["voxel_mask"]],
+                    se_map[beta_bag["voxel_mask"]],
+                    dof_map[beta_bag["voxel_mask"]],
+                ) = self._fit_model(beta_bag["values"], varcope_bag["values"])
 
         # tau2 is a float, not a map, so it can't go into the results dictionary
         tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
