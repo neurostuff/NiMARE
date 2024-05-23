@@ -1020,61 +1020,63 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         )
         return description
 
+    def _fit_model(self, beta_maps, study_mask):
+        """Fit the model to the data."""
+        n_studies, n_voxels = beta_maps.shape
+
+        sample_sizes = [self.inputs_["sample_sizes"][study] for study in study_mask]
+        sample_sizes = np.array([np.mean(n) for n in sample_sizes])
+        n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
+
+        pymare_dset = pymare.Dataset(y=beta_maps, n=n_maps)
+        est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
+        est.fit_dataset(pymare_dset)
+        est_summary = est.summary()
+        fe_stats = est_summary.get_fe_stats()
+
+        z_map = fe_stats["z"].squeeze()
+        p_map = fe_stats["p"].squeeze()
+        est_map = fe_stats["est"].squeeze()
+        se_map = fe_stats["se"].squeeze()
+        tau2_map = est_summary.tau2.squeeze()
+        sigma2_map = est.params_["sigma2"].squeeze()
+        dof_map = np.tile(n_studies - 1, n_voxels).astype(np.int32)
+
+        return z_map, p_map, est_map, se_map, tau2_map, sigma2_map, dof_map
+
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
 
         if self.aggressive_mask:
-            sample_sizes = np.array([np.mean(n) for n in self.inputs_["sample_sizes"]])
-            n_maps = np.tile(sample_sizes, (self.inputs_["beta_maps"].shape[1], 1)).T
+            study_mask = self.dataset.images["id"].isin(self.inputs_["id"])
+            voxel_mask = self.inputs_["aggressive_mask"]
 
-            pymare_dset = pymare.Dataset(y=self.inputs_["beta_maps"], n=n_maps)
-            est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
-            est.fit_dataset(pymare_dset)
-            est_summary = est.summary()
-            fe_stats = est_summary.get_fe_stats()
-
-            z_map = _boolean_unmask(fe_stats["z"].squeeze(), self.inputs_["aggressive_mask"])
-            p_map = _boolean_unmask(fe_stats["p"].squeeze(), self.inputs_["aggressive_mask"])
-            est_map = _boolean_unmask(fe_stats["est"].squeeze(), self.inputs_["aggressive_mask"])
-            se_map = _boolean_unmask(fe_stats["se"].squeeze(), self.inputs_["aggressive_mask"])
-            tau2_map = _boolean_unmask(est_summary.tau2.squeeze(), self.inputs_["aggressive_mask"])
-            sigma2_map = _boolean_unmask(
-                est.params_["sigma2"].squeeze(), self.inputs_["aggressive_mask"]
+            z_map, p_map, est_map, se_map, tau2_map, sigma2_map, dof_map = self._fit_model(
+                self.inputs_["beta_maps"][:, voxel_mask],
+                study_mask,
             )
-            dof_map = np.tile(
-                self.inputs_["beta_maps"].shape[0] - 1, self.inputs_["beta_maps"].shape[1]
-            ).astype(np.int32)
-            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
 
         else:
-            n_total_voxels = self.inputs_["beta_maps"].shape[1]
-            z_map = np.zeros(n_total_voxels, dtype=float)
-            p_map = np.zeros(n_total_voxels, dtype=float)
-            est_map = np.zeros(n_total_voxels, dtype=float)
-            se_map = np.zeros(n_total_voxels, dtype=float)
-            tau2_map = np.zeros(n_total_voxels, dtype=float)
-            sigma2_map = np.zeros(n_total_voxels, dtype=float)
-            dof_map = np.zeros(n_total_voxels, dtype=np.int32)
+            n_voxels = self.inputs_["beta_maps"].shape[1]
+            z_map = np.zeros(n_voxels, dtype=float)
+            p_map = np.zeros(n_voxels, dtype=float)
+            est_map = np.zeros(n_voxels, dtype=float)
+            se_map = np.zeros(n_voxels, dtype=float)
+            tau2_map = np.zeros(n_voxels, dtype=float)
+            sigma2_map = np.zeros(n_voxels, dtype=float)
+            dof_map = np.zeros(n_voxels, dtype=np.int32)
+
             for bag in self.inputs_["data_bags"]["beta_maps"]:
-                study_mask = bag["study_mask"]
-                sample_sizes_ex = [self.inputs_["sample_sizes"][study] for study in study_mask]
-                sample_sizes = np.array([np.mean(n) for n in sample_sizes_ex])
-                n_maps = np.tile(sample_sizes, (bag["values"].shape[1], 1)).T
-
-                pymare_dset = pymare.Dataset(y=bag["values"], n=n_maps)
-                est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(method=self.method)
-                est.fit_dataset(pymare_dset)
-                est_summary = est.summary()
-                fe_stats = est_summary.get_fe_stats()
-
-                z_map[bag["voxel_mask"]] = fe_stats["z"].squeeze()
-                p_map[bag["voxel_mask"]] = fe_stats["p"].squeeze()
-                est_map[bag["voxel_mask"]] = fe_stats["est"].squeeze()
-                se_map[bag["voxel_mask"]] = fe_stats["se"].squeeze()
-                tau2_map[bag["voxel_mask"]] = est_summary.tau2.squeeze()
-                sigma2_map[bag["voxel_mask"]] = est.params_["sigma2"].squeeze()
-                dof_map[bag["voxel_mask"]] = bag["values"].shape[0] - 1
+                (
+                    z_map[bag["voxel_mask"]],
+                    p_map[bag["voxel_mask"]],
+                    est_map[bag["voxel_mask"]],
+                    se_map[bag["voxel_mask"]],
+                    tau2_map[bag["voxel_mask"]],
+                    sigma2_map[bag["voxel_mask"]],
+                    dof_map[bag["voxel_mask"]],
+                ) = self._fit_model(bag["values"], bag["study_mask"])
 
         maps = {
             "z": z_map,
