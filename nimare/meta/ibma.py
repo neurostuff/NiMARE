@@ -354,7 +354,7 @@ class Stouffers(IBMAEstimator):
         super()._preprocess_input(dataset)
 
         # Convert each group to a unique integer value.
-        labels = self.dataset.images["study_id"].to_list()
+        labels = dataset.images["study_id"].to_list()
         label_to_int = {label: i for i, label in enumerate(set(labels))}
         label_counts = Counter(labels)
 
