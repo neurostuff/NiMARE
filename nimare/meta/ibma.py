@@ -262,11 +262,11 @@ class Fishers(IBMAEstimator):
             p_map = np.zeros(n_voxels, dtype=float)
             dof_map = np.zeros(n_voxels, dtype=np.int32)
             for bag in self.inputs_["data_bags"]["z_maps"]:
-                z_map_temp, p_map_temp, dof_map_temp = self._fit_model(bag["values"])
-
-                z_map[bag["voxel_mask"]] = z_map_temp
-                p_map[bag["voxel_mask"]] = p_map_temp
-                dof_map[bag["voxel_mask"]] = dof_map_temp
+                (
+                    z_map[bag["voxel_mask"]],
+                    p_map[bag["voxel_mask"]],
+                    dof_map[bag["voxel_mask"]],
+                ) = self._fit_model(bag["values"])
 
         maps = {"z": z_map, "p": p_map, "dof": dof_map}
         description = self._generate_description()
@@ -448,15 +448,11 @@ class Stouffers(IBMAEstimator):
             p_map = np.zeros(n_voxels, dtype=float)
             dof_map = np.zeros(n_voxels, dtype=np.int32)
             for bag in self.inputs_["data_bags"]["z_maps"]:
-                z_map_temp, p_map_temp, dof_map_temp = self._fit_model(
-                    bag["values"],
-                    bag["study_mask"],
-                    corr=corr,
-                )
-
-                z_map[bag["voxel_mask"]] = z_map_temp
-                p_map[bag["voxel_mask"]] = p_map_temp
-                dof_map[bag["voxel_mask"]] = dof_map_temp
+                (
+                    z_map[bag["voxel_mask"]],
+                    p_map[bag["voxel_mask"]],
+                    dof_map[bag["voxel_mask"]],
+                ) = self._fit_model(bag["values"], bag["study_mask"], corr=corr)
 
         maps = {"z": z_map, "p": p_map, "dof": dof_map}
         description = self._generate_description()
