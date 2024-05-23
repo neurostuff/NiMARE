@@ -211,7 +211,7 @@ def plot_coordinates(
     # Generate dictionary and array of colors for each unique ID
     ids = coordinates_df["study_id"].to_list()
     unq_ids = np.unique(ids)
-    cmap = plt.get_cmap("tab20")
+    cmap = plt.colormaps["tab20"].resampled(len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
     colors = [colors_dict[id_] for id_ in ids]
 
@@ -383,7 +383,10 @@ def plot_clusters(img, out_filename):
     _check_extention(out_filename, [".png", ".pdf", ".svg"])
 
     template = datasets.load_mni152_template(resolution=1)
-    cmap = plt.get_cmap("tab20")
+
+    # Define cmap depending on the number of clusters
+    clust_ids = list(np.unique(img.get_fdata())[1:])
+    cmap = plt.colormaps["tab20"].resampled(len(clust_ids))
 
     fig = plot_roi(
         img,
