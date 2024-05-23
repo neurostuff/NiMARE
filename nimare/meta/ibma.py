@@ -1347,66 +1347,55 @@ class PermutedOLS(IBMAEstimator):
         )
         return description
 
+    def _fit_model(self, beta_maps):
+        """Fit the model to the data."""
+        n_studies, n_voxels = beta_maps.shape
+
+        # Use intercept as explanatory variable
+        tested_vars = np.ones((n_studies, 1))
+        confounding_vars = None
+
+        _, t_map, _ = permuted_ols(
+            tested_vars,
+            beta_maps,
+            confounding_vars=confounding_vars,
+            model_intercept=False,  # modeled by tested_vars
+            n_perm=0,
+            two_sided_test=self.two_sided,
+            random_state=42,
+            n_jobs=1,
+            verbose=0,
+        )
+
+        # Convert t to z, preserving signs
+        dof = tested_vars.shape[0] - tested_vars.shape[1]
+        z_map = t_to_z(t_map, dof)
+
+        return t_map, z_map, dof
+
     def _fit(self, dataset):
         self.dataset = dataset
 
         if self.aggressive_mask:
-            # Use intercept as explanatory variable
-            self.parameters_["tested_vars"] = np.ones((self.inputs_["beta_maps"].shape[0], 1))
-            self.parameters_["confounding_vars"] = None
+            voxel_mask = self.inputs_["aggressive_mask"]
+            t_map, z_map, dof = self._fit_model(self.inputs_["beta_maps"][:, voxel_mask])
 
-            _, t_map, _ = permuted_ols(
-                self.parameters_["tested_vars"],
-                self.inputs_["beta_maps"],
-                confounding_vars=self.parameters_["confounding_vars"],
-                model_intercept=False,  # modeled by tested_vars
-                n_perm=0,
-                two_sided_test=self.two_sided,
-                random_state=42,
-                n_jobs=1,
-                verbose=0,
-            )
-
-            # Convert t to z, preserving signs
-            dof = (
-                self.parameters_["tested_vars"].shape[0] - self.parameters_["tested_vars"].shape[1]
-            )
-            z_map = t_to_z(t_map, dof)
-
-            t_map = _boolean_unmask(t_map.squeeze(), self.inputs_["aggressive_mask"])
-            z_map = _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"])
-            dof_map = np.tile(dof, self.inputs_["beta_maps"].shape[1]).astype(np.int32)
-            dof_map = _boolean_unmask(dof_map, self.inputs_["aggressive_mask"])
+            t_map = _boolean_unmask(t_map, voxel_mask)
+            z_map = _boolean_unmask(z_map, voxel_mask)
+            dof = _boolean_unmask(dof, voxel_mask)
 
         else:
-            n_total_voxels = self.inputs_["beta_maps"].shape[1]
-            t_map = np.zeros(n_total_voxels, dtype=float)
-            z_map = np.zeros(n_total_voxels, dtype=float)
-            dof_map = np.zeros(n_total_voxels, dtype=np.int32)
+            n_voxels = self.inputs_["beta_maps"].shape[1]
+            t_map = np.zeros(n_voxels, dtype=float)
+            z_map = np.zeros(n_voxels, dtype=float)
+            dof_map = np.zeros(n_voxels, dtype=np.int32)
+
             for bag in self.inputs_["data_bags"]["beta_maps"]:
-                # Use intercept as explanatory variable
-                bag["tested_vars"] = np.ones((bag["values"].shape[0], 1))
-                bag["confounding_vars"] = None
-
-                _, t_map_tmp, _ = permuted_ols(
-                    bag["tested_vars"],
-                    bag["values"],
-                    confounding_vars=bag["confounding_vars"],
-                    model_intercept=False,  # modeled by tested_vars
-                    n_perm=0,
-                    two_sided_test=self.two_sided,
-                    random_state=42,
-                    n_jobs=1,
-                    verbose=0,
-                )
-
-                # Convert t to z, preserving signs
-                dof = bag["tested_vars"].shape[0] - bag["tested_vars"].shape[1]
-                z_map_tmp = t_to_z(t_map_tmp, dof)
-
-                t_map[bag["voxel_mask"]] = t_map_tmp.squeeze()
-                z_map[bag["voxel_mask"]] = z_map_tmp.squeeze()
-                dof_map[bag["voxel_mask"]] = dof
+                (
+                    t_map[bag["voxel_mask"]],
+                    z_map[bag["voxel_mask"]],
+                    dof_map[bag["voxel_mask"]],
+                ) = self._fit_model(bag["values"])
 
         maps = {"t": t_map, "z": z_map, "dof": dof_map}
         description = self._generate_description()
