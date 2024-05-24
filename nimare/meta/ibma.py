@@ -250,12 +250,11 @@ class Fishers(IBMAEstimator):
 
         if self.aggressive_mask:
             voxel_mask = self.inputs_["aggressive_mask"]
-            z_map, p_map, dof_map = self._fit_model(self.inputs_["z_maps"][:, voxel_mask])
+            result_maps = self._fit_model(self.inputs_["z_maps"][:, voxel_mask])
 
-            z_map = _boolean_unmask(z_map, voxel_mask)
-            p_map = _boolean_unmask(p_map, voxel_mask)
-            dof_map = _boolean_unmask(dof_map, voxel_mask)
-
+            z_map, p_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
         else:
             n_voxels = self.inputs_["z_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
@@ -353,8 +352,11 @@ class Stouffers(IBMAEstimator):
         """Preprocess additional inputs to the Estimator from the Dataset as needed."""
         super()._preprocess_input(dataset)
 
+        study_mask = dataset.images["id"].isin(self.inputs_["id"])
+        # self.inputs_["study_mask"] = np.where(study_mask)[0]
+
         # Convert each group to a unique integer value.
-        labels = dataset.images["study_id"].to_list()
+        labels = dataset.images["study_id"][study_mask].to_list()
         label_to_int = {label: i for i, label in enumerate(set(labels))}
         label_counts = Counter(labels)
 
@@ -379,9 +381,14 @@ class Stouffers(IBMAEstimator):
 
         return description
 
-    def _fit_model(self, stat_maps, study_mask, corr=None):
+    def _fit_model(self, stat_maps, study_mask=None, corr=None):
         """Fit the model to the data."""
         n_studies, n_voxels = stat_maps.shape
+
+        if study_mask is None:
+            # If no mask is provided, assume all studies are included. This is always the case
+            # when using the aggressive mask.
+            study_mask = np.arange(n_studies)
 
         est = pymare.estimators.StoufferCombinationTest()
 
@@ -396,8 +403,9 @@ class Stouffers(IBMAEstimator):
             weights *= 1 / self.inputs_["group_counts"][study_mask]
 
         if self.use_sample_size:
-            sample_sizes = [self.inputs_["sample_sizes"][study] for study in study_mask]
-            sample_sizes = np.array([np.mean(n) for n in sample_sizes])
+            sample_sizes = np.array(
+                [np.mean(self.inputs_["sample_sizes"][idx]) for idx in study_mask]
+            )
             weights *= np.sqrt(sample_sizes)
 
         weight_maps = np.tile(weights, (n_voxels, 1)).T
@@ -429,19 +437,16 @@ class Stouffers(IBMAEstimator):
             corr = np.corrcoef(self.inputs_["z_maps"], rowvar=True)
 
         if self.aggressive_mask:
-            study_mask = self.dataset.images["id"].isin(self.inputs_["id"])
             voxel_mask = self.inputs_["aggressive_mask"]
 
-            z_map, p_map, dof_map = self._fit_model(
+            result_maps = self._fit_model(
                 self.inputs_["z_maps"][:, voxel_mask],
-                study_mask,
                 corr=corr,
             )
 
-            z_map = _boolean_unmask(z_map, voxel_mask)
-            p_map = _boolean_unmask(p_map, voxel_mask)
-            dof_map = _boolean_unmask(dof_map, voxel_mask)
-
+            z_map, p_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
         else:
             n_voxels = self.inputs_["z_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
@@ -577,17 +582,14 @@ class WeightedLeastSquares(IBMAEstimator):
 
         if self.aggressive_mask:
             voxel_mask = self.inputs_["aggressive_mask"]
-            z_map, p_map, est_map, se_map, dof_map = self._fit_model(
+            result_maps = self._fit_model(
                 self.inputs_["beta_maps"][:, voxel_mask],
                 self.inputs_["varcope_maps"][:, voxel_mask],
             )
 
-            z_map = _boolean_unmask(z_map, voxel_mask)
-            p_map = _boolean_unmask(p_map, voxel_mask)
-            est_map = _boolean_unmask(est_map, voxel_mask)
-            se_map = _boolean_unmask(se_map, voxel_mask)
-            dof_map = _boolean_unmask(dof_map, voxel_mask)
-
+            z_map, p_map, est_map, se_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
@@ -725,18 +727,14 @@ class DerSimonianLaird(IBMAEstimator):
 
         if self.aggressive_mask:
             voxel_mask = self.inputs_["aggressive_mask"]
-            z_map, p_map, est_map, se_map, tau2_map, dof_map = self._fit_model(
+            result_maps = self._fit_model(
                 self.inputs_["beta_maps"][:, voxel_mask],
                 self.inputs_["varcope_maps"][:, voxel_mask],
             )
 
-            z_map = _boolean_unmask(z_map, voxel_mask)
-            p_map = _boolean_unmask(p_map, voxel_mask)
-            est_map = _boolean_unmask(est_map, voxel_mask)
-            se_map = _boolean_unmask(se_map, voxel_mask)
-            tau2_map = _boolean_unmask(tau2_map, voxel_mask)
-            dof_map = _boolean_unmask(dof_map, voxel_mask)
-
+            z_map, p_map, est_map, se_map, tau2_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
@@ -880,18 +878,14 @@ class Hedges(IBMAEstimator):
 
         if self.aggressive_mask:
             voxel_mask = self.inputs_["aggressive_mask"]
-            z_map, p_map, est_map, se_map, tau2_map, dof_map = self._fit_model(
+            result_maps = self._fit_model(
                 self.inputs_["beta_maps"][:, voxel_mask],
                 self.inputs_["varcope_maps"][:, voxel_mask],
             )
 
-            z_map = _boolean_unmask(z_map, voxel_mask)
-            p_map = _boolean_unmask(p_map, voxel_mask)
-            est_map = _boolean_unmask(est_map, voxel_mask)
-            se_map = _boolean_unmask(se_map, voxel_mask)
-            tau2_map = _boolean_unmask(tau2_map, voxel_mask)
-            dof_map = _boolean_unmask(dof_map, voxel_mask)
-
+            z_map, p_map, est_map, se_map, tau2_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
@@ -1020,12 +1014,16 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, study_mask):
+    def _fit_model(self, beta_maps, study_mask=None):
         """Fit the model to the data."""
         n_studies, n_voxels = beta_maps.shape
 
-        sample_sizes = [self.inputs_["sample_sizes"][study] for study in study_mask]
-        sample_sizes = np.array([np.mean(n) for n in sample_sizes])
+        if study_mask is None:
+            # If no mask is provided, assume all studies are included. This is always the case
+            # when using the aggressive mask.
+            study_mask = np.arange(n_studies)
+
+        sample_sizes = np.array([np.mean(self.inputs_["sample_sizes"][idx]) for idx in study_mask])
         n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
 
         pymare_dset = pymare.Dataset(y=beta_maps, n=n_maps)
@@ -1049,14 +1047,14 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
         self.masker = self.masker or dataset.masker
 
         if self.aggressive_mask:
-            study_mask = self.dataset.images["id"].isin(self.inputs_["id"])
             voxel_mask = self.inputs_["aggressive_mask"]
-
-            z_map, p_map, est_map, se_map, tau2_map, sigma2_map, dof_map = self._fit_model(
+            result_maps = self._fit_model(
                 self.inputs_["beta_maps"][:, voxel_mask],
-                study_mask,
             )
 
+            z_map, p_map, est_map, se_map, tau2_map, sigma2_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
@@ -1222,17 +1220,14 @@ class VarianceBasedLikelihood(IBMAEstimator):
 
         if self.aggressive_mask:
             voxel_mask = self.inputs_["aggressive_mask"]
-            z_map, p_map, est_map, se_map, tau2_map, dof_map = self._fit_model(
+            result_maps = self._fit_model(
                 self.inputs_["beta_maps"][:, voxel_mask],
                 self.inputs_["varcope_maps"][:, voxel_mask],
             )
 
-            z_map = _boolean_unmask(z_map, voxel_mask)
-            p_map = _boolean_unmask(p_map, voxel_mask)
-            est_map = _boolean_unmask(est_map, voxel_mask)
-            se_map = _boolean_unmask(se_map, voxel_mask)
-            tau2_map = _boolean_unmask(tau2_map, voxel_mask)
-            dof_map = _boolean_unmask(dof_map, voxel_mask)
+            z_map, p_map, est_map, se_map, tau2_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
@@ -1347,7 +1342,7 @@ class PermutedOLS(IBMAEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps):
+    def _fit_model(self, beta_maps, n_perm=0):
         """Fit the model to the data."""
         n_studies, n_voxels = beta_maps.shape
 
@@ -1355,12 +1350,12 @@ class PermutedOLS(IBMAEstimator):
         tested_vars = np.ones((n_studies, 1))
         confounding_vars = None
 
-        _, t_map, _ = permuted_ols(
+        log_p_map, t_map, _ = permuted_ols(
             tested_vars,
             beta_maps,
             confounding_vars=confounding_vars,
             model_intercept=False,  # modeled by tested_vars
-            n_perm=0,
+            n_perm=n_perm,
             two_sided_test=self.two_sided,
             random_state=42,
             n_jobs=1,
@@ -1368,22 +1363,24 @@ class PermutedOLS(IBMAEstimator):
         )
 
         # Convert t to z, preserving signs
-        dof = tested_vars.shape[0] - tested_vars.shape[1]
-        z_map = t_to_z(t_map, dof)
+        dof = n_studies - 1
 
-        return t_map, z_map, dof
+        z_map = t_to_z(t_map, dof)
+        dof_map = np.tile(dof, n_voxels).astype(np.int32)
+
+        return log_p_map.squeeze(), t_map.squeeze(), z_map.squeeze(), dof_map
 
     def _fit(self, dataset):
         self.dataset = dataset
 
         if self.aggressive_mask:
             voxel_mask = self.inputs_["aggressive_mask"]
-            t_map, z_map, dof = self._fit_model(self.inputs_["beta_maps"][:, voxel_mask])
+            result_maps = self._fit_model(self.inputs_["beta_maps"][:, voxel_mask])
 
-            t_map = _boolean_unmask(t_map, voxel_mask)
-            z_map = _boolean_unmask(z_map, voxel_mask)
-            dof = _boolean_unmask(dof, voxel_mask)
-
+            # Skip log_p_map
+            t_map, z_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps[1:])
+            )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
             t_map = np.zeros(n_voxels, dtype=float)
@@ -1392,6 +1389,7 @@ class PermutedOLS(IBMAEstimator):
 
             for bag in self.inputs_["data_bags"]["beta_maps"]:
                 (
+                    _,  # Skip log_p_map
                     t_map[bag["voxel_mask"]],
                     z_map[bag["voxel_mask"]],
                     dof_map[bag["voxel_mask"]],
@@ -1447,16 +1445,9 @@ class PermutedOLS(IBMAEstimator):
         n_cores = _check_ncores(n_cores)
 
         if self.aggressive_mask:
-            log_p_map, t_map, _ = permuted_ols(
-                self.parameters_["tested_vars"],
-                self.inputs_["beta_maps"],
-                confounding_vars=self.parameters_["confounding_vars"],
-                model_intercept=False,  # modeled by tested_vars
-                n_perm=n_iters,
-                two_sided_test=self.two_sided,
-                random_state=42,
-                n_jobs=n_cores,
-                verbose=0,
+            voxel_mask = self.inputs_["aggressive_mask"]
+            log_p_map, t_map, _, _ = self._fit_model(
+                self.inputs_["beta_maps"][:, voxel_mask], n_perm=n_iters
             )
 
             # Fill complete maps
@@ -1467,24 +1458,17 @@ class PermutedOLS(IBMAEstimator):
             sign[sign == 0] = 1
             z_map = p_to_z(p_map, tail="two") * sign
 
-            log_p_map = _boolean_unmask(log_p_map.squeeze(), self.inputs_["aggressive_mask"])
-            z_map = _boolean_unmask(z_map.squeeze(), self.inputs_["aggressive_mask"])
+            log_p_map = _boolean_unmask(log_p_map, voxel_mask)
+            z_map = _boolean_unmask(z_map, voxel_mask)
 
         else:
-            n_total_voxels = self.inputs_["beta_maps"].shape[1]
-            log_p_map = np.zeros(n_total_voxels, dtype=float)
-            z_map = np.zeros(n_total_voxels, dtype=float)
+            n_voxels = self.inputs_["beta_maps"].shape[1]
+            log_p_map = np.zeros(n_voxels, dtype=float)
+            z_map = np.zeros(n_voxels, dtype=float)
+
             for bag in self.inputs_["data_bags"]["beta_maps"]:
-                log_p_map_tmp, t_map_tmp, _ = permuted_ols(
-                    bag["tested_vars"],
-                    bag["values"],
-                    confounding_vars=bag["confounding_vars"],
-                    model_intercept=False,  # modeled by tested_vars
-                    n_perm=n_iters,
-                    two_sided_test=self.two_sided,
-                    random_state=42,
-                    n_jobs=n_cores,
-                    verbose=0,
+                log_p_map_tmp, t_map_tmp, _, _ = self._fit_model(
+                    self.inputs_["beta_maps"][:, bag["voxel_mask"]], n_perm=n_iters
                 )
 
                 # Fill complete maps
