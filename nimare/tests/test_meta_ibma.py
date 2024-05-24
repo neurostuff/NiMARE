@@ -217,3 +217,15 @@ def test_ibma_resampling(testdata_ibma_resample, resample_kwargs):
     results = meta.fit(testdata_ibma_resample)
 
     assert isinstance(results, nimare.results.MetaResult)
+
+
+def test_stouffers_multiple_contrasts(testdata_ibma_multiple_contrasts):
+    """Test Stouffer's correction with multiple contrasts."""
+    meta = ibma.Stouffers()
+    results = meta.fit(testdata_ibma_multiple_contrasts)
+
+    assert isinstance(results, nimare.results.MetaResult)
+    assert results.get_map("z", return_type="array").ndim == 1
+    z_img = results.get_map("z")
+    assert z_img.ndim == 3
+    assert z_img.shape == (10, 10, 10)
