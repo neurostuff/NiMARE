@@ -12,6 +12,7 @@ Meta-analytic coactivation modeling (MACM) is a common coordinate-based
 analysis in which task-independent "connectivity" is assessed by selecting
 studies within a larger database based on locations of report coordinates.
 """
+
 import nibabel as nib
 import numpy as np
 from nilearn import datasets, image, plotting
@@ -71,6 +72,7 @@ plotting.plot_stat_map(
     threshold=3.09,
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 ###############################################################################
@@ -85,4 +87,4 @@ plotting.plot_stat_map(
 xyz = dset.coordinates[["x", "y", "z"]].values
 scale = SCALE(xyz=xyz, n_iters=10000, n_cores=1, kernel__n=20)
 results = scale.fit(dset_sel)
-plotting.plot_stat_map(results.get_map("z"), draw_cross=False, cmap="RdBu_r")
+plotting.plot_stat_map(results.get_map("z"), draw_cross=False, cmap="RdBu_r", symmetric_cbar=True)

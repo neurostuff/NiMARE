@@ -15,6 +15,7 @@ Train a generalized correspondence latent Dirichlet allocation model using abstr
     If you are interested in using GCLDA, we recommend using a large dataset
     like Neurosynth, and training with at least 10k iterations.
 """
+
 import os
 
 import nibabel as nib
@@ -81,6 +82,7 @@ for i_topic in range(5):
         draw_cross=False,
         colorbar=False,
         annotate=False,
+        symmetric_cbar=True,
         title=f"Topic {i_topic + 1}",
     )
 
@@ -89,7 +91,7 @@ for i_topic in range(5):
 # -----------------------------------------------------------------------------
 text = "dorsal anterior cingulate cortex"
 encoded_img, _ = decode.encode.gclda_encode(model, text)
-plotting.plot_stat_map(encoded_img, draw_cross=False)
+plotting.plot_stat_map(encoded_img, draw_cross=False, symmetric_cbar=True)
 
 ###############################################################################
 #

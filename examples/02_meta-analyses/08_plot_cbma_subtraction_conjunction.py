@@ -19,6 +19,7 @@ A common project workflow with two meta-analytic samples involves the following:
 5. Compare the two samples with a subtraction analysis.
 6. Compare the two within-sample meta-analyses with a conjunction analysis.
 """
+
 import os
 from pathlib import Path
 
@@ -71,6 +72,7 @@ plot_stat_map(
     title="Semantic knowledge",
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
+    symmetric_cbar=True,
     vmax=4,
     axes=axes[0],
     figure=fig,
@@ -86,6 +88,7 @@ plot_stat_map(
     title="Semantic relatedness",
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
+    symmetric_cbar=True,
     vmax=4,
     axes=axes[1],
     figure=fig,
@@ -189,6 +192,7 @@ plot_stat_map(
     title="Conjunction",
     threshold=2.326,  # cluster-level p < .01, one-tailed
     cmap="RdBu_r",
+    symmetric_cbar=True,
     vmax=4,
 )
 

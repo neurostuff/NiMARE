@@ -11,6 +11,7 @@ Run IBMAs and CBMAs on a toy dataset, then compare the results qualitatively.
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
 """
+
 import os
 
 import pandas as pd
@@ -53,6 +54,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 ###############################################################################
@@ -65,6 +67,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 ###############################################################################
