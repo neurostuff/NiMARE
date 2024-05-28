@@ -11,6 +11,7 @@ Sometimes it's difficult to know where to start, especially if you're new to met
 This tutorial will walk you through using a IBMA workflow function which puts together
 the fundamental steps of a IBMA meta-analysis.
 """
+
 import os
 from pathlib import Path
 
@@ -64,6 +65,7 @@ plot_stat_map(
     display_mode="z",
     threshold=1.65,  # voxel_thresh p < .05, one-tailed
     cmap="RdBu_r",
+    symmetric_cbar=True,
     vmax=4,
 )
 plt.show()

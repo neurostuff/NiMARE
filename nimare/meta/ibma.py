@@ -165,6 +165,12 @@ class Fishers(IBMAEstimator):
 
     This method is described in :footcite:t:`fisher1946statistical`.
 
+    .. versionchanged:: 0.2.3
+
+        * New parameter: ``two_sided``, controls the type of test to be performed. In addition,
+        the default is now set to True (two-sided), which differs from previous versions
+        where only one-sided tests were performed.
+
     .. versionchanged:: 0.2.1
 
         * New parameter: ``aggressive_mask``, to control whether to use an aggressive mask.
@@ -176,6 +182,11 @@ class Fishers(IBMAEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
+        Default is True.
+    two_sided : :obj:`bool`, optional
+        If True, performs an unsigned t-test. Both positive and negative effects are considered;
+        the null hypothesis is that the effect is zero. If False, only positive effects are
+        considered as relevant. The null hypothesis is that the effect is zero or negative.
         Default is True.
 
     Notes
@@ -213,6 +224,11 @@ class Fishers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
+    def __init__(self, two_sided=True, **kwargs):
+        super().__init__(**kwargs)
+        self.two_sided = two_sided
+        self._mode = "concordant" if self.two_sided else "directed"
+
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
@@ -227,7 +243,7 @@ class Fishers(IBMAEstimator):
         n_studies, n_voxels = stat_maps.shape
 
         pymare_dset = pymare.Dataset(y=stat_maps)
-        est = pymare.estimators.FisherCombinationTest()
+        est = pymare.estimators.FisherCombinationTest(mode=self._mode)
         est.fit_dataset(pymare_dset)
         est_summary = est.summary()
 
@@ -282,6 +298,9 @@ class Stouffers(IBMAEstimator):
 
     .. versionchanged:: 0.2.3
 
+        * New parameter: ``two_sided``, controls the type of test to be performed. In addition,
+        the default is now set to True (two-sided), which differs from previous versions
+        where only one-sided tests were performed.
         * Add correction for multiple contrasts within a study.
         * New parameter: ``use_group_size`` to use publication group sizes for weights.
 
@@ -304,6 +323,11 @@ class Stouffers(IBMAEstimator):
     use_group_size : :obj:`bool`, optional
         Whether to use publication group sizes for weights or not.
         Default is False.
+    two_sided : :obj:`bool`, optional
+        If True, performs an unsigned t-test. Both positive and negative effects are considered;
+        the null hypothesis is that the effect is zero. If False, only positive effects are
+        considered as relevant. The null hypothesis is that the effect is zero or negative.
+        Default is True.
 
     Notes
     -----
@@ -340,13 +364,16 @@ class Stouffers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, use_sample_size=False, use_group_size=False, **kwargs):
+    def __init__(self, use_sample_size=False, use_group_size=False, two_sided=True, **kwargs):
         super().__init__(**kwargs)
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
-
+        
         self.use_group_size = use_group_size
+        
+        self.two_sided = two_sided
+        self._mode = "concordant" if self.two_sided else "directed"
 
     def _preprocess_input(self, dataset):
         """Preprocess additional inputs to the Estimator from the Dataset as needed."""
@@ -390,7 +417,7 @@ class Stouffers(IBMAEstimator):
             # when using the aggressive mask.
             study_mask = np.arange(n_studies)
 
-        est = pymare.estimators.StoufferCombinationTest()
+        est = pymare.estimators.StoufferCombinationTest(mode=self._mode)
 
         group_maps, sub_corr = None, None
         if corr is not None:

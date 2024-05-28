@@ -13,6 +13,7 @@ the CBMA algorithms implemented in NiMARE.
 For a more detailed introduction to the elements of a coordinate-based
 meta-analysis, see other stuff.
 """
+
 ###############################################################################
 # Load Dataset
 # -----------------------------------------------------------------------------
@@ -57,6 +58,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 plot_stat_map(
@@ -64,6 +66,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 
@@ -87,12 +90,14 @@ plot_stat_map(
     results.get_map("z_desc-uniformity"),
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 plot_stat_map(
     cres.get_map("z_desc-uniformitySize_level-cluster_corr-FWE_method-montecarlo"),
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 
@@ -117,6 +122,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 plot_stat_map(
@@ -124,6 +130,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 
@@ -148,6 +155,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 plot_stat_map(
@@ -155,6 +163,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 
@@ -200,6 +209,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.1,
 )
 

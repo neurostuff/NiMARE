@@ -67,6 +67,7 @@ PARAMETERS_DICT = {
     "prior": "Prior",
     "use_sample_size": "Use sample size for weights",
     "use_group_size": "Use group size for weights",
+    "two_sided": "Two-sided test",
     "beta": "Parameter estimate",
     "se": "Standard error of the parameter estimate",
     "varcope": "Variance of the parameter estimate",

@@ -137,7 +137,13 @@ class Diagnostics(NiMAREBase):
 
         # Get clusters table and label maps
         stat_threshold = self.voxel_thresh or 0
-        two_sided = (target_img.get_fdata() < 0).any()
+
+        if hasattr(result.estimator, "two_sided"):
+            # Only present in Fisher's and Stouffer's estimators
+            two_sided = getattr(result.estimator, "two_sided")
+        else:
+            two_sided = (target_img.get_fdata() < 0).any()
+
         clusters_table, label_maps = get_clusters_table(
             target_img,
             stat_threshold,
