@@ -302,7 +302,8 @@ class Stouffers(IBMAEstimator):
         the default is now set to True (two-sided), which differs from previous versions
         where only one-sided tests were performed.
         * Add correction for multiple contrasts within a study.
-        * New parameter: ``use_group_size`` to use publication group sizes for weights.
+        * New parameter: ``normalize_contrast_weights`` to normalized the weights by the
+        number of contrasts in each study.
 
     .. versionchanged:: 0.2.1
 
@@ -320,8 +321,8 @@ class Stouffers(IBMAEstimator):
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
         as described in :footcite:t:`zaykin2011optimally`.
         Default is False.
-    use_group_size : :obj:`bool`, optional
-        Whether to use publication group sizes for weights or not.
+    normalize_contrast_weights : :obj:`bool`, optional
+        Whether to use number of contrast per study to normalized the weights or not.
         Default is False.
     two_sided : :obj:`bool`, optional
         If True, performs an unsigned t-test. Both positive and negative effects are considered;
@@ -364,13 +365,19 @@ class Stouffers(IBMAEstimator):
 
     _required_inputs = {"z_maps": ("image", "z")}
 
-    def __init__(self, use_sample_size=False, use_group_size=False, two_sided=True, **kwargs):
+    def __init__(
+        self,
+        use_sample_size=False,
+        normalize_contrast_weights=False,
+        two_sided=True,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
 
-        self.use_group_size = use_group_size
+        self.normalize_contrast_weights = normalize_contrast_weights
 
         self.two_sided = two_sided
         self._mode = "concordant" if self.two_sided else "directed"
@@ -380,15 +387,14 @@ class Stouffers(IBMAEstimator):
         super()._preprocess_input(dataset)
 
         study_mask = dataset.images["id"].isin(self.inputs_["id"])
-        # self.inputs_["study_mask"] = np.where(study_mask)[0]
 
-        # Convert each group to a unique integer value.
+        # Convert each contrast name to a unique integer value.
         labels = dataset.images["study_id"][study_mask].to_list()
         label_to_int = {label: i for i, label in enumerate(set(labels))}
         label_counts = Counter(labels)
 
-        self.inputs_["groups"] = np.array([label_to_int[label] for label in labels])
-        self.inputs_["group_counts"] = np.array([label_counts[label] for label in labels])
+        self.inputs_["contrast_names"] = np.array([label_to_int[label] for label in labels])
+        self.inputs_["num_contrasts"] = np.array([label_counts[label] for label in labels])
 
     def _generate_description(self):
         description = (
@@ -419,15 +425,15 @@ class Stouffers(IBMAEstimator):
 
         est = pymare.estimators.StoufferCombinationTest(mode=self._mode)
 
-        group_maps, sub_corr = None, None
+        contrast_maps, sub_corr = None, None
         if corr is not None:
-            group_maps = np.tile(self.inputs_["groups"][study_mask], (n_voxels, 1)).T
+            contrast_maps = np.tile(self.inputs_["contrast_names"][study_mask], (n_voxels, 1)).T
             sub_corr = corr[np.ix_(study_mask, study_mask)]
 
         weights = np.ones(n_studies)
 
-        if self.use_group_size:
-            weights *= 1 / self.inputs_["group_counts"][study_mask]
+        if self.normalize_contrast_weights:
+            weights *= 1 / self.inputs_["num_contrasts"][study_mask]
 
         if self.use_sample_size:
             sample_sizes = np.array(
@@ -437,7 +443,7 @@ class Stouffers(IBMAEstimator):
 
         weight_maps = np.tile(weights, (n_voxels, 1)).T
 
-        pymare_dset = pymare.Dataset(y=stat_maps, n=weight_maps, v=group_maps)
+        pymare_dset = pymare.Dataset(y=stat_maps, n=weight_maps, v=contrast_maps)
         est.fit_dataset(pymare_dset, corr=sub_corr)
         est_summary = est.summary()
 
@@ -459,7 +465,7 @@ class Stouffers(IBMAEstimator):
             )
 
         corr = None
-        if self.inputs_["groups"].size != np.unique(self.inputs_["groups"]).size:
+        if self.inputs_["contrast_names"].size != np.unique(self.inputs_["contrast_names"]).size:
             # If all studies are not unique, we will need to correct for multiple contrasts
             corr = np.corrcoef(self.inputs_["z_maps"], rowvar=True)
 

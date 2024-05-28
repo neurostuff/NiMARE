@@ -26,7 +26,7 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
-            {"use_sample_size": False, "use_group_size": False},
+            {"use_sample_size": False, "normalize_contrast_weights": False},
             None,
             {},
             ("z", "p", "dof"),
@@ -34,7 +34,7 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
-            {"use_sample_size": True, "use_group_size": False},
+            {"use_sample_size": True, "normalize_contrast_weights": False},
             None,
             {},
             ("z", "p", "dof"),
@@ -42,19 +42,19 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
-            {"use_sample_size": False, "use_group_size": True},
+            {"use_sample_size": False, "normalize_contrast_weights": True},
             None,
             {},
             ("z", "p", "dof"),
-            id="Stouffers_group_weighted",
+            id="Stouffers_contrast_weighted",
         ),
         pytest.param(
             ibma.Stouffers,
-            {"use_sample_size": True, "use_group_size": True},
+            {"use_sample_size": True, "normalize_contrast_weights": True},
             None,
             {},
             ("z", "p", "dof"),
-            id="Stouffers_sample_group_weighted",
+            id="Stouffers_sample_contrast_weighted",
         ),
         pytest.param(
             ibma.WeightedLeastSquares,

@@ -66,7 +66,7 @@ PARAMETERS_DICT = {
     "alpha": "Alpha",
     "prior": "Prior",
     "use_sample_size": "Use sample size for weights",
-    "use_group_size": "Use group size for weights",
+    "normalize_contrast_weights": "Normalize by the number of contrasts",
     "two_sided": "Two-sided test",
     "beta": "Parameter estimate",
     "se": "Standard error of the parameter estimate",
