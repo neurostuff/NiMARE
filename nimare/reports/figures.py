@@ -139,6 +139,7 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
         draw_cross=False,
         threshold=threshold,
         display_mode="mosaic",
+        symmetric_cbar=True,
     )
     fig.savefig(out_filename, dpi=300)
     fig.close()
@@ -270,7 +271,13 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
     _check_extention(out_filename, [".html"])
 
     template = datasets.load_mni152_template(resolution=1)
-    html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold)
+    html_view = view_img(
+        img,
+        bg_img=template,
+        black_bg=False,
+        threshold=threshold,
+        symmetric_cmap=True,
+    )
     html_view.save_as_html(out_filename)
 
 
