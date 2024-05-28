@@ -369,9 +369,9 @@ class Stouffers(IBMAEstimator):
         self.use_sample_size = use_sample_size
         if self.use_sample_size:
             self._required_inputs["sample_sizes"] = ("metadata", "sample_sizes")
-        
+
         self.use_group_size = use_group_size
-        
+
         self.two_sided = two_sided
         self._mode = "concordant" if self.two_sided else "directed"
 
