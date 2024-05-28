@@ -297,9 +297,10 @@ class Stouffers(IBMAEstimator):
 
     .. versionchanged:: 0.2.3
 
-        * New parameter: ``two_sided``, to control the type of test to perform.
+        * New parameter: ``two_sided``, controls the type of test to be performed. In addition,
+            the default is now set to True (two-sided), which differs from previous versions
+            where only one-sided tests were performed.
         * Add correction for multiple contrasts within a study.
-
 
     .. versionchanged:: 0.2.1
 
