@@ -26,7 +26,7 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
-            {"use_sample_size": False},
+            {"use_sample_size": False, "normalize_contrast_weights": False},
             None,
             {},
             ("z", "p", "dof"),
@@ -34,11 +34,27 @@ from nimare.tests.utils import get_test_data_path
         ),
         pytest.param(
             ibma.Stouffers,
-            {"use_sample_size": True},
+            {"use_sample_size": True, "normalize_contrast_weights": False},
             None,
             {},
             ("z", "p", "dof"),
-            id="Stouffers_weighted",
+            id="Stouffers_sample_weighted",
+        ),
+        pytest.param(
+            ibma.Stouffers,
+            {"use_sample_size": False, "normalize_contrast_weights": True},
+            None,
+            {},
+            ("z", "p", "dof"),
+            id="Stouffers_contrast_weighted",
+        ),
+        pytest.param(
+            ibma.Stouffers,
+            {"use_sample_size": True, "normalize_contrast_weights": True},
+            None,
+            {},
+            ("z", "p", "dof"),
+            id="Stouffers_sample_contrast_weighted",
         ),
         pytest.param(
             ibma.WeightedLeastSquares,
@@ -201,3 +217,15 @@ def test_ibma_resampling(testdata_ibma_resample, resample_kwargs):
     results = meta.fit(testdata_ibma_resample)
 
     assert isinstance(results, nimare.results.MetaResult)
+
+
+def test_stouffers_multiple_contrasts(testdata_ibma_multiple_contrasts):
+    """Test Stouffer's correction with multiple contrasts."""
+    meta = ibma.Stouffers()
+    results = meta.fit(testdata_ibma_multiple_contrasts)
+
+    assert isinstance(results, nimare.results.MetaResult)
+    assert results.get_map("z", return_type="array").ndim == 1
+    z_img = results.get_map("z")
+    assert z_img.ndim == 3
+    assert z_img.shape == (10, 10, 10)

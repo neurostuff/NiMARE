@@ -66,6 +66,7 @@ PARAMETERS_DICT = {
     "alpha": "Alpha",
     "prior": "Prior",
     "use_sample_size": "Use sample size for weights",
+    "normalize_contrast_weights": "Normalize by the number of contrasts",
     "two_sided": "Two-sided test",
     "beta": "Parameter estimate",
     "se": "Standard error of the parameter estimate",
@@ -484,12 +485,8 @@ class Report:
                 )
             elif meta_type == "IBMA":
                 # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
-                key_maps = (
-                    "z_maps"
-                    if "z_maps" in self.results.estimator.inputs_["raw_data"]
-                    else "beta_maps"
-                )
-                maps_arr = self.results.estimator.inputs_["raw_data"][key_maps]
+                key_maps = "z_maps" if "z_maps" in self.results.estimator.inputs_ else "beta_maps"
+                maps_arr = self.results.estimator.inputs_[key_maps]
                 ids_ = self.results.estimator.inputs_["id"]
                 x_label = "Z" if key_maps == "z_maps" else "Beta"
 
