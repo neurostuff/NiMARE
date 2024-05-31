@@ -92,6 +92,9 @@ class IBMAEstimator(Estimator):
         if isinstance(mask_img, str):
             mask_img = nib.load(mask_img)
 
+        # Reserve the key for the correlation matrix
+        self.inputs_["corr_matrix"] = None
+
         if self.aggressive_mask:
             # Ensure that protected values are not included among _required_inputs
             assert (
@@ -123,24 +126,26 @@ class IBMAEstimator(Estimator):
                 # Mask required input images using either the dataset's mask or the estimator's.
                 temp_arr = masker.transform(img4d)
 
-                # To save memory, we only save the original image array and perform masking later.
+                # To save memory, we only save the original image array and perform masking later
+                # in the stimator if self.aggressive_mask is True.
                 self.inputs_[name] = temp_arr
-                if self.aggressive_mask:
-                    # An intermediate step to mask out bad voxels.
-                    # Can be dropped once PyMARE is able to handle masked arrays or missing data.
-                    nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
-                    nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
-                    good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
 
-                    if "aggressive_mask" not in self.inputs_.keys():
-                        self.inputs_["aggressive_mask"] = good_voxels_bool
-                    else:
-                        # Remove any voxels that are bad in any image-based inputs
-                        self.inputs_["aggressive_mask"] = np.logical_or(
-                            self.inputs_["aggressive_mask"],
-                            good_voxels_bool,
-                        )
+                # Regardless of the masking strategy, we need to determine the good voxels here
+                # to mask the bad ones later when calculating the correlation matrix.
+                nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
+                nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
+                good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
+
+                if "aggressive_mask" not in self.inputs_.keys():
+                    self.inputs_["aggressive_mask"] = good_voxels_bool
                 else:
+                    # Remove any voxels that are bad in any image-based inputs
+                    self.inputs_["aggressive_mask"] = np.logical_or(
+                        self.inputs_["aggressive_mask"],
+                        good_voxels_bool,
+                    )
+
+                if not self.aggressive_mask:
                     data_bags = zip(*_apply_liberal_mask(temp_arr))
 
                     keys = ["values", "voxel_mask", "study_mask"]
@@ -148,14 +153,11 @@ class IBMAEstimator(Estimator):
 
         # Further reduce image-based inputs to remove "bad" voxels
         # (voxels with zeros or NaNs in any studies)
-        if "aggressive_mask" in self.inputs_.keys():
+        if self.aggressive_mask:
             if n_bad_voxels := (
                 self.inputs_["aggressive_mask"].size - self.inputs_["aggressive_mask"].sum()
             ):
-                LGR.warning(
-                    f"Masking out {n_bad_voxels} additional voxels. "
-                    "The updated masker is available in the Estimator.masker attribute."
-                )
+                LGR.warning(f"Masking out {n_bad_voxels} additional voxels.")
 
 
 class Fishers(IBMAEstimator):
@@ -396,6 +398,14 @@ class Stouffers(IBMAEstimator):
         self.inputs_["contrast_names"] = np.array([label_to_int[label] for label in labels])
         self.inputs_["num_contrasts"] = np.array([label_counts[label] for label in labels])
 
+        if self.inputs_["contrast_names"].size != np.unique(self.inputs_["contrast_names"]).size:
+            # If all studies are not unique, we will need to correct for multiple contrasts
+            # Calculate correlation matrix on valid voxels
+            self.inputs_["corr_matrix"] = np.corrcoef(
+                self.inputs_["z_maps"][:, self.inputs_["aggressive_mask"]],
+                rowvar=True,
+            )
+
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
@@ -464,17 +474,12 @@ class Stouffers(IBMAEstimator):
                 "will produce invalid results."
             )
 
-        corr = None
-        if self.inputs_["contrast_names"].size != np.unique(self.inputs_["contrast_names"]).size:
-            # If all studies are not unique, we will need to correct for multiple contrasts
-            corr = np.corrcoef(self.inputs_["z_maps"], rowvar=True)
-
         if self.aggressive_mask:
             voxel_mask = self.inputs_["aggressive_mask"]
 
             result_maps = self._fit_model(
                 self.inputs_["z_maps"][:, voxel_mask],
-                corr=corr,
+                corr=self.inputs_["corr_matrix"],
             )
 
             z_map, p_map, dof_map = tuple(
@@ -490,7 +495,9 @@ class Stouffers(IBMAEstimator):
                     z_map[bag["voxel_mask"]],
                     p_map[bag["voxel_mask"]],
                     dof_map[bag["voxel_mask"]],
-                ) = self._fit_model(bag["values"], bag["study_mask"], corr=corr)
+                ) = self._fit_model(
+                    bag["values"], bag["study_mask"], corr=self.inputs_["corr_matrix"]
+                )
 
         maps = {"z": z_map, "p": p_map, "dof": dof_map}
         description = self._generate_description()
