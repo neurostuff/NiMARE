@@ -27,6 +27,7 @@ from glob import glob
 from pathlib import Path
 
 import jinja2
+import numpy as np
 import pandas as pd
 from pkg_resources import resource_filename as pkgrf
 
@@ -45,7 +46,6 @@ from nimare.reports.figures import (
     plot_mask,
     plot_static_brain,
 )
-from nimare.stats import pearson
 
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
@@ -275,13 +275,6 @@ def _gen_fig_summary(img_key, threshold, out_filename):
     </ul>
     """
     (out_filename).write_text(summary_text, encoding="UTF-8")
-
-
-def _compute_similarities(maps_arr, ids_):
-    """Compute the similarity between maps."""
-    corrs = [pearson(img_map, maps_arr) for img_map in list(maps_arr)]
-
-    return pd.DataFrame(index=ids_, columns=ids_, data=corrs)
 
 
 def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
@@ -522,7 +515,24 @@ class Report:
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-summarystats.html",
                 )
 
-                similarity_table = _compute_similarities(maps_arr, ids_)
+                # Compute similarity matrix
+                if self.results.estimator.inputs_["corr_matrix"] is None:
+                    aggressive_mask = self.results.estimator.inputs_["aggressive_mask"]
+                    corr = np.corrcoef(
+                        maps_arr[:, aggressive_mask],
+                        rowvar=True,
+                    )
+                    similarity_table = pd.DataFrame(
+                        index=ids_,
+                        columns=ids_,
+                        data=corr,
+                    )
+                else:
+                    similarity_table = pd.DataFrame(
+                        index=ids_,
+                        columns=ids_,
+                        data=self.inputs_["corr_matrix"],
+                    )
 
                 plot_heatmap(
                     similarity_table,
