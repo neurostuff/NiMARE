@@ -13,6 +13,7 @@ the IBMA algorithms implemented in NiMARE.
 For a more detailed introduction to the elements of an image-based
 meta-analysis, see other stuff.
 """
+
 from nilearn.plotting import plot_stat_map
 
 ###############################################################################
@@ -56,6 +57,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 print("Description:")
@@ -74,6 +76,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 print("Description:")
@@ -94,6 +97,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 print("Description:")
@@ -115,6 +119,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 corrector = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
@@ -125,6 +130,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 print("Description:")
@@ -145,6 +151,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 print("Description:")
@@ -165,6 +172,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 print("Description:")
@@ -185,6 +193,7 @@ plot_stat_map(
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 print("Description:")

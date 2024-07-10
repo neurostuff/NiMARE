@@ -2,7 +2,32 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.2.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.2.2...HEAD)
+
+## [0.2.2](https://github.com/neurostuff/NiMARE/compare/0.2.1...0.2.2) - 2024-02-07
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+This release changes the default behavior of the number of iterations chosen for the FWECorrector, we reduced the default number of montecarlo simulations from 10,000 to 5,000 as this allows for a more manageable runtime with limited impact on the stability of the results.
+
+#### 🎉 Exciting New Features
+
+* Add advanced plots to IBMA report by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/864
+
+#### 🐛 Bug Fixes
+
+* Fix ridgeline plot in IBMA report by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/863
+* [FIX] tqdm not displaying on notebooks by @jdkent in https://github.com/neurostuff/NiMARE/pull/878
+* [FIX] fwe docstrings by @jdkent in https://github.com/neurostuff/NiMARE/pull/868
+
+#### Other Changes
+
+* Clarify FWECorrector arguments by @adelavega in https://github.com/neurostuff/NiMARE/pull/865
+* [MAINT] limit version of nilearn to 0.10.2 by @jdkent in https://github.com/neurostuff/NiMARE/pull/877
+* [MAINT] use updated black by @jdkent in https://github.com/neurostuff/NiMARE/pull/876
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.2.1...0.2.2
 
 ## [0.2.1](https://github.com/neurostuff/NiMARE/compare/0.2.0...0.2.1) - 2024-01-11
 

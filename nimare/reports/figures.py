@@ -139,6 +139,7 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
         draw_cross=False,
         threshold=threshold,
         display_mode="mosaic",
+        symmetric_cbar=True,
     )
     fig.savefig(out_filename, dpi=300)
     fig.close()
@@ -211,7 +212,7 @@ def plot_coordinates(
     # Generate dictionary and array of colors for each unique ID
     ids = coordinates_df["study_id"].to_list()
     unq_ids = np.unique(ids)
-    cmap = plt.cm.get_cmap("tab20", len(unq_ids))
+    cmap = plt.colormaps["tab20"].resampled(len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
     colors = [colors_dict[id_] for id_ in ids]
 
@@ -270,7 +271,13 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
     _check_extention(out_filename, [".html"])
 
     template = datasets.load_mni152_template(resolution=1)
-    html_view = view_img(img, bg_img=template, black_bg=False, threshold=threshold)
+    html_view = view_img(
+        img,
+        bg_img=template,
+        black_bg=False,
+        threshold=threshold,
+        symmetric_cmap=True,
+    )
     html_view.save_as_html(out_filename)
 
 
@@ -386,7 +393,7 @@ def plot_clusters(img, out_filename):
 
     # Define cmap depending on the number of clusters
     clust_ids = list(np.unique(img.get_fdata())[1:])
-    cmap = plt.cm.get_cmap("tab20", len(clust_ids))
+    cmap = plt.colormaps["tab20"].resampled(len(clust_ids))
 
     fig = plot_roi(
         img,

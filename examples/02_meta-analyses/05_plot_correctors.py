@@ -8,6 +8,7 @@ The Corrector class
 
 Here we take a look at multiple comparisons correction in meta-analyses.
 """
+
 from pprint import pprint
 
 import matplotlib.pyplot as plt
@@ -119,6 +120,7 @@ for i_ax, map_name in enumerate(MAPS_TO_PLOT):
         cres.get_map(map_name),
         draw_cross=False,
         cmap="RdBu_r",
+        symmetric_cbar=True,
         threshold=0.5,
         cut_coords=[0, 0, -8],
         figure=fig,
@@ -157,6 +159,7 @@ plot_stat_map(
     cres.get_map("z"),
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.5,
     cut_coords=[0, 0, -8],
     figure=fig,
@@ -167,6 +170,7 @@ plot_stat_map(
     cres.get_map("z_corr-FDR_method-indep"),
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
     threshold=0.5,
     cut_coords=[0, 0, -8],
     figure=fig,
