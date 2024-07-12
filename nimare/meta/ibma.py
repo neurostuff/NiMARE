@@ -130,22 +130,21 @@ class IBMAEstimator(Estimator):
                 # in the stimator if self.aggressive_mask is True.
                 self.inputs_[name] = temp_arr
 
-                # Regardless of the masking strategy, we need to determine the good voxels here
-                # to mask the bad ones later when calculating the correlation matrix.
-                nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
-                nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
-                good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
+                if self.aggressive_mask:
+                    # Determine the good voxels here
+                    nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
+                    nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
+                    good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
 
-                if "aggressive_mask" not in self.inputs_.keys():
-                    self.inputs_["aggressive_mask"] = good_voxels_bool
+                    if "aggressive_mask" not in self.inputs_.keys():
+                        self.inputs_["aggressive_mask"] = good_voxels_bool
+                    else:
+                        # Remove any voxels that are bad in any image-based inputs
+                        self.inputs_["aggressive_mask"] = np.logical_or(
+                            self.inputs_["aggressive_mask"],
+                            good_voxels_bool,
+                        )
                 else:
-                    # Remove any voxels that are bad in any image-based inputs
-                    self.inputs_["aggressive_mask"] = np.logical_or(
-                        self.inputs_["aggressive_mask"],
-                        good_voxels_bool,
-                    )
-
-                if not self.aggressive_mask:
                     data_bags = zip(*_apply_liberal_mask(temp_arr))
 
                     keys = ["values", "voxel_mask", "study_mask"]
@@ -398,13 +397,24 @@ class Stouffers(IBMAEstimator):
         self.inputs_["contrast_names"] = np.array([label_to_int[label] for label in labels])
         self.inputs_["num_contrasts"] = np.array([label_counts[label] for label in labels])
 
-        if self.inputs_["contrast_names"].size != np.unique(self.inputs_["contrast_names"]).size:
+        n_studies = len(self.inputs_["id"])
+        if n_studies != np.unique(self.inputs_["contrast_names"]).size:
             # If all studies are not unique, we will need to correct for multiple contrasts
             # Calculate correlation matrix on valid voxels
-            self.inputs_["corr_matrix"] = np.corrcoef(
-                self.inputs_["z_maps"][:, self.inputs_["aggressive_mask"]],
-                rowvar=True,
-            )
+            if self.aggressive_mask:
+                voxel_mask = self.inputs_["aggressive_mask"]
+                self.inputs_["corr_matrix"] = np.corrcoef(
+                    self.inputs_["z_maps"][:, voxel_mask],
+                    rowvar=True,
+                )
+            else:
+                self.inputs_["corr_matrix"] = np.zeros((n_studies, n_studies), dtype=float)
+                for bag in self.inputs_["data_bags"]["z_maps"]:
+                    study_bag = bag["study_mask"]
+                    self.inputs_["corr_matrix"][np.ix_(study_bag, study_bag)] = np.corrcoef(
+                        bag["values"],
+                        rowvar=True,
+                    )
 
     def _generate_description(self):
         description = (
