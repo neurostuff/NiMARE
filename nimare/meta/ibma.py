@@ -165,7 +165,7 @@ class Fishers(IBMAEstimator):
 
     This method is described in :footcite:t:`fisher1946statistical`.
 
-    .. versionchanged:: 0.2.3
+    .. versionchanged:: 0.3.0
 
         * New parameter: ``two_sided``, controls the type of test to be performed. In addition,
         the default is now set to True (two-sided), which differs from previous versions
@@ -296,7 +296,7 @@ class Stouffers(IBMAEstimator):
 
     This method is described in :footcite:t:`stouffer1949american`.
 
-    .. versionchanged:: 0.2.3
+    .. versionchanged:: 0.3.0
 
         * New parameter: ``two_sided``, controls the type of test to be performed. In addition,
         the default is now set to True (two-sided), which differs from previous versions
