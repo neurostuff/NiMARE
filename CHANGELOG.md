@@ -2,7 +2,29 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.2.2...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.3.0...HEAD)
+
+## [0.3.0](https://github.com/neurostuff/NiMARE/compare/0.2.2...0.3.0) - 2024-07-16
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* Add correction for multiple contrasts within a study in Stouffer's IBMA by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/882
+* Add support for the `concordant` mode test in Fisher's and Stouffer's estimators by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/884
+* Add support for publication size weighting. General refactoring of IBMA estimators by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/887
+
+#### Other Changes
+
+* min joblib 1.3.0 by @jdkent in https://github.com/neurostuff/NiMARE/pull/880
+* Update Nilearn API _check_same_fov by @adelavega in https://github.com/neurostuff/NiMARE/pull/873
+* [FIX] update codecov by @jdkent in https://github.com/neurostuff/NiMARE/pull/883
+* [FIX] bump matplotlib version and update usage of get_cmap by @jdkent in https://github.com/neurostuff/NiMARE/pull/885
+* [MAINT] bump cognitiveatlas version by @jdkent in https://github.com/neurostuff/NiMARE/pull/890
+* Support Python 3.12 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/853
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.2.2...0.3.0
 
 ## [0.2.2](https://github.com/neurostuff/NiMARE/compare/0.2.1...0.2.2) - 2024-02-07
 
