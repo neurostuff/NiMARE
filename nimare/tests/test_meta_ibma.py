@@ -219,9 +219,10 @@ def test_ibma_resampling(testdata_ibma_resample, resample_kwargs):
     assert isinstance(results, nimare.results.MetaResult)
 
 
-def test_stouffers_multiple_contrasts(testdata_ibma_multiple_contrasts):
+@pytest.mark.parametrize("aggressive_mask", [True, False], ids=["aggressive", "liberal"])
+def test_stouffers_multiple_contrasts(testdata_ibma_multiple_contrasts, aggressive_mask):
     """Test Stouffer's correction with multiple contrasts."""
-    meta = ibma.Stouffers()
+    meta = ibma.Stouffers(aggressive_mask=aggressive_mask)
     results = meta.fit(testdata_ibma_multiple_contrasts)
 
     assert isinstance(results, nimare.results.MetaResult)
