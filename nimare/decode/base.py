@@ -21,6 +21,14 @@ class Decoder(NiMAREBase):
 
     __id_cols = ["id", "study_id", "contrast_id"]
 
+    def __init__(self):
+        self._required_inputs = None
+        self.inputs_ = {}
+        self.feature_group = None
+        self.features = None
+        self.features_ = []
+        self.frequency_threshold = 0.001
+
     def _collect_inputs(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary."""
         if not hasattr(dataset, "slice"):
@@ -53,34 +61,27 @@ class Decoder(NiMAREBase):
         This also takes into account which features have at least one study in the
         Dataset with the feature.
         """
-        # Reduce feature list as desired
         if self.feature_group is not None:
             if not self.feature_group.endswith("__"):
                 self.feature_group += "__"
             feature_names = self.inputs_["annotations"].columns.values
             feature_names = [f for f in feature_names if f.startswith(self.feature_group)]
-            if self.features is not None:
-                features = [f.split("__")[-1] for f in feature_names if f in self.features]
-            else:
-                features = feature_names
+            features = [
+                f.split("__")[-1] for f in feature_names if self.features and f in self.features
+            ]
         else:
-            if self.features is None:
-                features = self.inputs_["annotations"].columns.values
-            else:
-                features = self.features
+            features = self.features or self.inputs_["annotations"].columns.values
 
         features = [f for f in features if f not in self.__id_cols]
         n_features_orig = len(features)
 
         # At least one study in the dataset much have each label
         counts = (self.inputs_["annotations"][features] > self.frequency_threshold).sum(0)
-        features = counts[counts > 0].index.tolist()
-        if not len(features):
+        self.features_ = counts[counts > 0].index.tolist()
+        if not self.features_:
             raise Exception("No features identified in Dataset!")
-        elif len(features) < n_features_orig:
-            LGR.info(f"Retaining {len(features)}/{n_features_orig} features.")
-
-        self.features_ = features
+        elif len(self.features_) < n_features_orig:
+            LGR.info(f"Retaining {len(self.features_)}/{n_features_orig} features.")
 
     def fit(self, dataset, drop_invalid=True):
         """Fit Decoder to Dataset.
@@ -113,3 +114,4 @@ class Decoder(NiMAREBase):
 
         Must return a DataFrame, with one row for each feature.
         """
+        pass
