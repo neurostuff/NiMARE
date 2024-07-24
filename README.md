@@ -1,4 +1,4 @@
-# NiMARE: Neuroimaging Meta-Analysis Research Environment
+# NiMARE: Neuroimaging Meta-Analysis Research Environment (Yay!)
 A Python library for coordinate- and image-based meta-analysis.
 
 [![Latest Version](https://img.shields.io/pypi/v/nimare.svg)](https://pypi.python.org/pypi/nimare/)
