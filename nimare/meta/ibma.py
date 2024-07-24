@@ -127,7 +127,7 @@ class IBMAEstimator(Estimator):
                 temp_arr = masker.transform(img4d)
 
                 # To save memory, we only save the original image array and perform masking later
-                # in the stimator if self.aggressive_mask is True.
+                # in the estimator if self.aggressive_mask is True.
                 self.inputs_[name] = temp_arr
 
                 if self.aggressive_mask:
