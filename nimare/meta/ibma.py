@@ -1521,7 +1521,7 @@ class PermutedOLS(IBMAEstimator):
 
 
 class FixedEffectsHedges(IBMAEstimator):
-    """Fixed Effects Hedges meta-regression estimator
+    """Fixed Effects Hedges meta-regression estimator.
 
     .. versionadded:: 0.3.1
 
