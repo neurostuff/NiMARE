@@ -120,6 +120,14 @@ from nimare.tests.utils import get_test_data_path
             ("t", "z", "dof"),
             id="PermutedOLS",
         ),
+        pytest.param(
+            ibma.FixedEffectsHedges,
+            {"tau2": 0},
+            None,
+            {},
+            ("z", "p", "est", "se", "dof"),
+            id="FixedEffectsHedges",
+        ),
     ],
 )
 @pytest.mark.parametrize("aggressive_mask", [True, False], ids=["aggressive", "liberal"])

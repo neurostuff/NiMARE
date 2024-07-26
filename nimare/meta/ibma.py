@@ -25,7 +25,7 @@ from nilearn.mass_univariate import permuted_ols
 from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta.utils import _apply_liberal_mask
-from nimare.transforms import p_to_z, t_to_z
+from nimare.transforms import p_to_z, t_to_z, t_to_d, d_to_g
 from nimare.utils import _boolean_unmask, _check_ncores, get_masker
 
 LGR = logging.getLogger(__name__)
@@ -168,8 +168,8 @@ class Fishers(IBMAEstimator):
     .. versionchanged:: 0.3.0
 
         * New parameter: ``two_sided``, controls the type of test to be performed. In addition,
-        the default is now set to True (two-sided), which differs from previous versions
-        where only one-sided tests were performed.
+            the default is now set to True (two-sided), which differs from previous versions
+            where only one-sided tests were performed.
 
     .. versionchanged:: 0.2.1
 
@@ -299,11 +299,11 @@ class Stouffers(IBMAEstimator):
     .. versionchanged:: 0.3.0
 
         * New parameter: ``two_sided``, controls the type of test to be performed. In addition,
-        the default is now set to True (two-sided), which differs from previous versions
-        where only one-sided tests were performed.
+            the default is now set to True (two-sided), which differs from previous versions
+            where only one-sided tests were performed.
         * Add correction for multiple contrasts within a study.
         * New parameter: ``normalize_contrast_weights`` to normalized the weights by the
-        number of contrasts in each study.
+            number of contrasts in each study.
 
     .. versionchanged:: 0.2.1
 
@@ -625,10 +625,8 @@ class WeightedLeastSquares(IBMAEstimator):
             )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
-            z_map = np.zeros(n_voxels, dtype=float)
-            p_map = np.zeros(n_voxels, dtype=float)
-            est_map = np.zeros(n_voxels, dtype=float)
-            se_map = np.zeros(n_voxels, dtype=float)
+
+            z_map, p_map, est_map, se_map = [np.zeros(n_voxels, dtype=float) for _ in range(4)]
             dof_map = np.zeros(n_voxels, dtype=np.int32)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
@@ -770,11 +768,10 @@ class DerSimonianLaird(IBMAEstimator):
             )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
-            z_map = np.zeros(n_voxels, dtype=float)
-            p_map = np.zeros(n_voxels, dtype=float)
-            est_map = np.zeros(n_voxels, dtype=float)
-            se_map = np.zeros(n_voxels, dtype=float)
-            tau2_map = np.zeros(n_voxels, dtype=float)
+
+            z_map, p_map, est_map, se_map, tau2_map = [
+                np.zeros(n_voxels, dtype=float) for _ in range(5)
+            ]
             dof_map = np.zeros(n_voxels, dtype=np.int32)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
@@ -921,11 +918,10 @@ class Hedges(IBMAEstimator):
             )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
-            z_map = np.zeros(n_voxels, dtype=float)
-            p_map = np.zeros(n_voxels, dtype=float)
-            est_map = np.zeros(n_voxels, dtype=float)
-            se_map = np.zeros(n_voxels, dtype=float)
-            tau2_map = np.zeros(n_voxels, dtype=float)
+
+            z_map, p_map, est_map, se_map, tau2_map = [
+                np.zeros(n_voxels, dtype=float) for _ in range(5)
+            ]
             dof_map = np.zeros(n_voxels, dtype=np.int32)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
@@ -1090,12 +1086,10 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
             )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
-            z_map = np.zeros(n_voxels, dtype=float)
-            p_map = np.zeros(n_voxels, dtype=float)
-            est_map = np.zeros(n_voxels, dtype=float)
-            se_map = np.zeros(n_voxels, dtype=float)
-            tau2_map = np.zeros(n_voxels, dtype=float)
-            sigma2_map = np.zeros(n_voxels, dtype=float)
+
+            z_map, p_map, est_map, se_map, tau2_map, sigma2_map = [
+                np.zeros(n_voxels, dtype=float) for _ in range(6)
+            ]
             dof_map = np.zeros(n_voxels, dtype=np.int32)
 
             for bag in self.inputs_["data_bags"]["beta_maps"]:
@@ -1263,11 +1257,10 @@ class VarianceBasedLikelihood(IBMAEstimator):
             )
         else:
             n_voxels = self.inputs_["beta_maps"].shape[1]
-            z_map = np.zeros(n_voxels, dtype=float)
-            p_map = np.zeros(n_voxels, dtype=float)
-            est_map = np.zeros(n_voxels, dtype=float)
-            se_map = np.zeros(n_voxels, dtype=float)
-            tau2_map = np.zeros(n_voxels, dtype=float)
+
+            z_map, p_map, est_map, se_map, tau2_map = [
+                np.zeros(n_voxels, dtype=float) for _ in range(5)
+            ]
             dof_map = np.zeros(n_voxels, dtype=np.int32)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
@@ -1525,3 +1518,152 @@ class PermutedOLS(IBMAEstimator):
         )
 
         return maps, {}, description
+
+
+class FixedEffectsHedges(IBMAEstimator):
+    """Fixed Effects Hedges meta-regression estimator
+
+    .. versionadded:: 0.3.1
+
+    Provides the weighted least-squares estimate of the fixed effects using Hedge's g
+    as the point estimate and the variance of bias-corrected Cohen's d as the variance
+    estimate, and given known/assumed between-study variance tau^2.
+    When tau^2 = 0 (default), the model is the standard inverse-weighted
+    fixed-effects meta-regression.
+
+    This method was described in :footcite:t:`bossier2019`.
+
+    Parameters
+    ----------
+    aggressive_mask : :obj:`bool`, optional
+        Voxels with a value of zero of NaN in any of the input maps will be removed
+        from the analysis.
+        If False, all voxels are included by running a separate analysis on bags
+        of voxels that belong that have a valid value across the same studies.
+        Default is True.
+    tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
+        Assumed/known value of tau^2. Must be >= 0. Default is 0.
+
+    Notes
+    -----
+    Requires `t` images and sample size from metadata.
+
+    :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
+
+    ============== ===============================================================================
+    "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
+    "est"          Fixed effects estimate for intercept test.
+    "se"           Standard error of fixed effects estimate.
+    "dof"          Degrees of freedom map from one-sample test.
+    ============== ===============================================================================
+
+    Warnings
+    --------
+    Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
+    will likely result in biased results. The extent of this bias is currently
+    unknown.
+
+    By default, all image-based meta-analysis estimators adopt an aggressive masking
+    strategy, in which any voxels with a value of zero in any of the input maps
+    will be removed from the analysis. Setting ``aggressive_mask=False`` will
+    instead run tha analysis in bags of voxels that have a valid value across
+    the same studies.
+
+    References
+    ----------
+    .. footbibliography::
+
+    See Also
+    --------
+    :class:`pymare.estimators.WeightedLeastSquares`:
+        The PyMARE estimator called by this class.
+    """
+
+    _required_inputs = {"t_maps": ("image", "t"), "sample_sizes": ("metadata", "sample_sizes")}
+
+    def __init__(self, tau2=0, **kwargs):
+        super().__init__(**kwargs)
+        self.tau2 = tau2
+
+    def _generate_description(self):
+        description = (
+            f"An image-based meta-analysis was performed with NiMARE {__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), on "
+            f"{len(self.inputs_['id'])} t-statistic images using Heges' g as point estimates "
+            "and the variance of bias-corrected Cohen's in a Weighted Least Squares approach "
+            "\\citep{brockwell2001comparison,bossier2019}, "
+            f"with an a priori tau-squared value of {self.tau2} defined across all voxels."
+        )
+        return description
+
+    def _fit_model(self, t_maps, study_mask=None):
+        """Fit the model to the data."""
+        n_studies, n_voxels = t_maps.shape
+
+        if study_mask is None:
+            # If no mask is provided, assume all studies are included. This is always the case
+            # when using the aggressive mask.
+            study_mask = np.arange(n_studies)
+
+        sample_sizes = np.array([np.mean(self.inputs_["sample_sizes"][idx]) for idx in study_mask])
+        n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
+
+        # Calculate Hedge's g maps: Standardized mean
+        cohens_maps = t_to_d(t_maps, n_maps)
+        hedges_maps, var_hedges_maps = d_to_g(cohens_maps, n_maps, return_variance=True)
+
+        del n_maps, sample_sizes, cohens_maps
+
+        pymare_dset = pymare.Dataset(y=hedges_maps, v=var_hedges_maps)
+        est = pymare.estimators.WeightedLeastSquares(tau2=self.tau2)
+        est.fit_dataset(pymare_dset)
+        est_summary = est.summary()
+
+        fe_stats = est_summary.get_fe_stats()
+        z_map = fe_stats["z"].squeeze()
+        p_map = fe_stats["p"].squeeze()
+        est_map = fe_stats["est"].squeeze()
+        se_map = fe_stats["se"].squeeze()
+        dof_map = np.tile(n_studies - 1, n_voxels).astype(np.int32)
+
+        return z_map, p_map, est_map, se_map, dof_map
+
+    def _fit(self, dataset):
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        if not isinstance(self.masker, NiftiMasker):
+            LGR.warning(
+                f"A {type(self.masker)} mask has been detected. "
+                "Masks which average across voxels will likely produce biased results when used "
+                "with this Estimator."
+            )
+
+        if self.aggressive_mask:
+            voxel_mask = self.inputs_["aggressive_mask"]
+            result_maps = self._fit_model(self.inputs_["t_maps"][:, voxel_mask])
+
+            z_map, p_map, est_map, se_map, dof_map = tuple(
+                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
+            )
+        else:
+            n_voxels = self.inputs_["t_maps"].shape[1]
+
+            z_map, p_map, est_map, se_map = [np.zeros(n_voxels, dtype=float) for _ in range(4)]
+            dof_map = np.zeros(n_voxels, dtype=np.int32)
+
+            for bag in self.inputs_["data_bags"]["t_maps"]:
+                (
+                    z_map[bag["voxel_mask"]],
+                    p_map[bag["voxel_mask"]],
+                    est_map[bag["voxel_mask"]],
+                    se_map[bag["voxel_mask"]],
+                    dof_map[bag["voxel_mask"]],
+                ) = self._fit_model(bag["values"], bag["study_mask"])
+
+        # tau2 is a float, not a map, so it can't go into the results dictionary
+        tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
+        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "dof": dof_map}
+        description = self._generate_description()
+
+        return maps, tables, description
