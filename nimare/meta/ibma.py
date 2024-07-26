@@ -25,7 +25,7 @@ from nilearn.mass_univariate import permuted_ols
 from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta.utils import _apply_liberal_mask
-from nimare.transforms import p_to_z, t_to_z, t_to_d, d_to_g
+from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z
 from nimare.utils import _boolean_unmask, _check_ncores, get_masker
 
 LGR = logging.getLogger(__name__)
