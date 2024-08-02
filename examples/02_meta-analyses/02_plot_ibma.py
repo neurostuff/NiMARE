@@ -200,3 +200,25 @@ print("Description:")
 pprint(results.description_)
 print("References:")
 pprint(results.bibtex_)
+
+
+###############################################################################
+# Fixed Effects Meta-Analysis with Hedges’ g
+# -----------------------------------------------------------------------------
+from nimare.meta.ibma import FixedEffectsHedges
+
+meta = FixedEffectsHedges(tau2=0)
+results = meta.fit(dset)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+)
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
