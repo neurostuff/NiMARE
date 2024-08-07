@@ -30,6 +30,12 @@ def test_ImageTransformer(testdata_ibma):
     new_p_files = new_dset.images["p"].tolist()
     assert all([isinstance(pf, str) for pf in new_p_files])
 
+    t_files = dset.images["t"].tolist()
+    t_transformer = transforms.ImageTransformer(target="t")
+    new_dset = t_transformer.transform(dset)
+    new_t_files = new_dset.images["t"].tolist()
+    assert t_files[:-1] == new_t_files[:-1]
+
 
 def test_transform_images(testdata_ibma):
     """Smoke test on transforms.transform_images."""
