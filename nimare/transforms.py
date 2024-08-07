@@ -110,7 +110,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """
     new_images_df = images_df.copy()  # Work on a copy of the images_df
 
-    valid_targets = {"z", "p", "beta", "varcope"}
+    valid_targets = {"t", "z", "p", "beta", "varcope"}
     if target not in valid_targets:
         raise ValueError(
             f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
