@@ -30,6 +30,7 @@
     // "build_command": [
     //     "python -m pip install build",
     //     "python -m build",
+    //     "python -m pip install -e .[all]",
     //     "python -mpip wheel -w {build_cache_dir} {build_dir}"
     // ],
     // To build the package using setuptools and a setup.py file, uncomment the following lines
@@ -37,7 +38,13 @@
     //     "python setup.py build",
     //     "python -mpip wheel -w {build_cache_dir} {build_dir}"
     // ],
-
+    "matrix": {
+        "env": {
+            "dependencies": [
+                "pytest"
+            ]
+        }
+    },
     // Customizable commands for installing and uninstalling the project.
     // See asv.conf.json documentation.
     // "install_command": ["in-dir={env_dir} python -mpip install {wheel_file}"],
