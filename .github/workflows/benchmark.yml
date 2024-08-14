@@ -18,6 +18,6 @@ jobs:
           python-version: "3.10"
       - uses: actions/checkout@v3
       - run: git fetch origin $GITHUB_BASE_REF:base $GITHUB_REF:pr
-      - run: pip install asv virtualenv
+      - run: pip install asv==0.6.2 virtualenv
       - run: asv machine --yes
       - run: asv continuous base pr -e --show-stderr --verbose
