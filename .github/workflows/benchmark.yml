@@ -1,0 +1,23 @@
+name: Benchmark
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  benchmark:
+    name: benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+      - uses: actions/checkout@v3
+      - run: git fetch origin $GITHUB_BASE_REF:base $GITHUB_REF:pr
+      - run: pip install asv virtualenv
+      - run: asv machine --yes
+      - run: asv continuous base pr
