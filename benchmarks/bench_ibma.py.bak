@@ -1,0 +1,97 @@
+"""Benchmark the IBMA estimators."""
+from shutil import copyfile
+import os
+import tempfile
+
+import nimare
+from nimare.meta.ibma import Fishers, Stouffers, WeightedLeastSquares, DerSimonianLaird, Hedges
+from nimare.tests.utils import get_test_data_path
+
+
+class TimeIBMA:
+    """Time IBMA estimators."""
+
+    def setup(self):
+        """
+        Setup the data.
+
+        Creates a temporary directory, loads the dataset, and moves the image contents
+        of the dataset to the temporary directory.
+        """
+        self.tmpdir = tempfile.TemporaryDirectory()
+
+        # Load dataset
+        dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
+        dset_dir = os.path.join(get_test_data_path(), "test_pain_dataset")
+        mask_file = os.path.join(dset_dir, "mask.nii.gz")
+        dset = nimare.dataset.Dataset(dset_file, mask=mask_file)
+        dset.update_path(dset_dir)
+        # Move image contents of Dataset to temporary directory
+        for c in dset.images.columns:
+            if c.endswith("__relative"):
+                continue
+            for f in dset.images[c].values:
+                if (f is None) or not os.path.isfile(f):
+                    continue
+                new_f = f.replace(
+                    dset_dir.rstrip(os.path.sep), str(self.tmpdir.name).rstrip(os.path.sep)
+                )
+                dirname = os.path.dirname(new_f)
+                if not os.path.isdir(dirname):
+                    os.makedirs(dirname)
+                copyfile(f, new_f)
+        dset.update_path(self.tmpdir.name)
+        self.dataset = dset
+
+    def time_fishers(self):
+        """
+        Time the Fishers estimator.
+
+        Fits the Fishers estimator to the dataset and measures the time taken.
+        """
+        meta = Fishers()
+        meta.fit(self.dataset)
+
+    def time_stouffers(self):
+        """
+        Time the Stouffers estimator.
+
+        Fits the Stouffers estimator to the dataset and measures the time taken.
+        """
+        meta = Stouffers()
+        meta.fit(self.dataset)
+
+    def time_weighted_least_squares(self):
+        """
+        Time the Weighted Least Squares estimator.
+
+        Fits the Weighted Least Squares estimator to the dataset and measures the time taken.
+        """
+        meta = WeightedLeastSquares()
+        meta.fit(self.dataset)
+
+    def time_der_simonian_laird(self):
+        """
+        Time the DerSimonian-Laird estimator.
+
+        Fits the DerSimonian-Laird estimator to the dataset and measures the time taken.
+        """
+        meta = DerSimonianLaird()
+        meta.fit(self.dataset)
+
+    def time_hedges(self):
+        """
+        Time the Hedges estimator.
+
+        Fits the Hedges estimator to the dataset and measures the time taken.
+        """
+        meta = Hedges()
+        meta.fit(self.dataset)
+
+    def teardown(self):
+        """
+        Clean up the temporary directory.
+
+        Removes the temporary directory and its contents.
+        """
+        self.tmpdir.cleanup()
