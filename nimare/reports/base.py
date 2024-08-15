@@ -70,6 +70,7 @@ PARAMETERS_DICT = {
     "method": "Method",
     "alpha": "Alpha",
     "prior": "Prior",
+    "tau2": "Between-study variance",
     "use_sample_size": "Use sample size for weights",
     "normalize_contrast_weights": "Normalize by the number of contrasts",
     "two_sided": "Two-sided test",
@@ -483,10 +484,15 @@ class Report:
                 )
             elif meta_type == "IBMA":
                 # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
-                key_maps = "z_maps" if "z_maps" in self.results.estimator.inputs_ else "beta_maps"
+                INPUT_TYPE_LABELS = {"z_maps": "Z", "t_maps": "T", "beta_maps": "Beta"}
+                for key_maps, x_label in INPUT_TYPE_LABELS.items():
+                    if key_maps in self.results.estimator.inputs_:
+                        break
+                else:
+                    key_maps, x_label = "beta_maps", "Beta"
+
                 maps_arr = self.results.estimator.inputs_[key_maps]
                 ids_ = self.results.estimator.inputs_["id"]
-                x_label = "Z" if key_maps == "z_maps" else "Beta"
 
                 if self.results.estimator.aggressive_mask:
                     _plot_relcov_map(
@@ -526,12 +532,12 @@ class Report:
                     if self.results.estimator.aggressive_mask:
                         voxel_mask = self.results.estimator.inputs_["aggressive_mask"]
                         corr = np.corrcoef(
-                            self.results.estimator.inputs_["z_maps"][:, voxel_mask],
+                            self.results.estimator.inputs_[key_maps][:, voxel_mask],
                             rowvar=True,
                         )
                     else:
                         corr = np.zeros((n_studies, n_studies), dtype=float)
-                        for bag in self.results.estimator.inputs_["data_bags"]["z_maps"]:
+                        for bag in self.results.estimator.inputs_["data_bags"][key_maps]:
                             study_bag = bag["study_mask"]
                             corr[np.ix_(study_bag, study_bag)] = np.corrcoef(
                                 bag["values"],
