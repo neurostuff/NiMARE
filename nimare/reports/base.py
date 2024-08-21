@@ -528,7 +528,6 @@ class Report:
 
                 # Compute similarity matrix
                 if self.results.estimator.inputs_["corr_matrix"] is None:
-                    n_studies = len(ids_)
                     if self.results.estimator.aggressive_mask:
                         voxel_mask = self.results.estimator.inputs_["aggressive_mask"]
                         corr = np.corrcoef(
@@ -536,13 +535,10 @@ class Report:
                             rowvar=True,
                         )
                     else:
-                        corr = np.zeros((n_studies, n_studies), dtype=float)
-                        for bag in self.results.estimator.inputs_["data_bags"][key_maps]:
-                            study_bag = bag["study_mask"]
-                            corr[np.ix_(study_bag, study_bag)] = np.corrcoef(
-                                bag["values"],
-                                rowvar=True,
-                            )
+                        corr = np.corrcoef(
+                            self.results.estimator.inputs_[key_maps],
+                            rowvar=True,
+                        )
                 else:
                     corr = self.inputs_["corr_matrix"]
 

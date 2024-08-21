@@ -408,13 +408,10 @@ class Stouffers(IBMAEstimator):
                     rowvar=True,
                 )
             else:
-                self.inputs_["corr_matrix"] = np.zeros((n_studies, n_studies), dtype=float)
-                for bag in self.inputs_["data_bags"]["z_maps"]:
-                    study_bag = bag["study_mask"]
-                    self.inputs_["corr_matrix"][np.ix_(study_bag, study_bag)] = np.corrcoef(
-                        bag["values"],
-                        rowvar=True,
-                    )
+                self.inputs_["corr_matrix"] = np.corrcoef(
+                    self.inputs_["z_maps"],
+                    rowvar=True,
+                )
 
     def _generate_description(self):
         description = (
