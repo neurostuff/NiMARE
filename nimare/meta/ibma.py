@@ -481,6 +481,9 @@ class Stouffers(IBMAEstimator):
         pos_est.fit_dataset(pos_pymare_dset, corr=sub_corr)
         pos_est_summary = pos_est.summary()
 
+        z_map = pos_est_summary.z.squeeze()
+        p_map = pos_est_summary.p.squeeze()
+
         if self.two_sided:
             # Run Stouffers for left tail
             neg_est = pymare.estimators.StoufferCombinationTest(mode="directed")
@@ -489,17 +492,14 @@ class Stouffers(IBMAEstimator):
             neg_est_summary = neg_est.summary()
 
             # Find the minimum p-values
-            p_map = np.minimum(pos_est_summary.p.squeeze(), neg_est_summary.p.squeeze())
+            p_map = np.minimum(p_map, neg_est_summary.p.squeeze())
 
             # Create z_map based on which p-value is smaller
             z_map = np.where(
-                pos_est_summary.p.squeeze() <= neg_est_summary.p.squeeze(),
-                pos_est_summary.z.squeeze(),
+                p_map <= neg_est_summary.p.squeeze(),
+                z_map,
                 -neg_est_summary.z.squeeze(),
             )
-        else:
-            z_map = pos_est_summary.z.squeeze()
-            p_map = pos_est_summary.p.squeeze()
 
         dof_map = np.tile(n_studies - 1, n_voxels).astype(np.int32)
 
