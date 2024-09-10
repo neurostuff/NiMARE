@@ -228,7 +228,6 @@ class Fishers(IBMAEstimator):
     def __init__(self, two_sided=True, **kwargs):
         super().__init__(**kwargs)
         self.two_sided = two_sided
-        self._mode = "concordant" if self.two_sided else "directed"
 
     def _generate_description(self):
         description = (
@@ -243,13 +242,32 @@ class Fishers(IBMAEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = stat_maps.shape
 
-        pymare_dset = pymare.Dataset(y=stat_maps)
-        est = pymare.estimators.FisherCombinationTest(mode=self._mode)
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
+        # Run Stouffers for right tail
+        pos_est = pymare.estimators.FisherCombinationTest(mode="directed")
+        pos_pymare_dset = pymare.Dataset(y=stat_maps)
+        pos_est.fit_dataset(pos_pymare_dset)
+        pos_est_summary = pos_est.summary()
 
-        z_map = est_summary.z.squeeze()
-        p_map = est_summary.p.squeeze()
+        if self.two_sided:
+            # Run Stouffers for left tail
+            neg_est = pymare.estimators.FisherCombinationTest(mode="directed")
+            neg_pymare_dset = pymare.Dataset(y=-stat_maps)
+            neg_est.fit_dataset(neg_pymare_dset)
+            neg_est_summary = neg_est.summary()
+
+            # Find the minimum p-values
+            p_map = np.minimum(pos_est_summary.p.squeeze(), neg_est_summary.p.squeeze())
+
+            # Create z_map based on which p-value is smaller
+            z_map = np.where(
+                pos_est_summary.p.squeeze() <= neg_est_summary.p.squeeze(),
+                pos_est_summary.z.squeeze(),
+                -neg_est_summary.z.squeeze(),
+            )
+        else:
+            z_map = pos_est_summary.z.squeeze()
+            p_map = pos_est_summary.p.squeeze()
+
         dof_map = np.tile(n_studies - 1, n_voxels).astype(np.int32)
 
         return z_map, p_map, dof_map
@@ -381,7 +399,6 @@ class Stouffers(IBMAEstimator):
         self.normalize_contrast_weights = normalize_contrast_weights
 
         self.two_sided = two_sided
-        self._mode = "concordant" if self.two_sided else "directed"
 
     def _preprocess_input(self, dataset):
         """Preprocess additional inputs to the Estimator from the Dataset as needed."""
@@ -440,8 +457,6 @@ class Stouffers(IBMAEstimator):
             # when using the aggressive mask.
             study_mask = np.arange(n_studies)
 
-        est = pymare.estimators.StoufferCombinationTest(mode=self._mode)
-
         contrast_maps, sub_corr = None, None
         if corr is not None:
             contrast_maps = np.tile(self.inputs_["contrast_names"][study_mask], (n_voxels, 1)).T
@@ -460,12 +475,32 @@ class Stouffers(IBMAEstimator):
 
         weight_maps = np.tile(weights, (n_voxels, 1)).T
 
-        pymare_dset = pymare.Dataset(y=stat_maps, n=weight_maps, v=contrast_maps)
-        est.fit_dataset(pymare_dset, corr=sub_corr)
-        est_summary = est.summary()
+        # Run Stouffers for right tail
+        pos_est = pymare.estimators.StoufferCombinationTest(mode="directed")
+        pos_pymare_dset = pymare.Dataset(y=stat_maps, n=weight_maps, v=contrast_maps)
+        pos_est.fit_dataset(pos_pymare_dset, corr=sub_corr)
+        pos_est_summary = pos_est.summary()
 
-        z_map = est_summary.z.squeeze()
-        p_map = est_summary.p.squeeze()
+        if self.two_sided:
+            # Run Stouffers for left tail
+            neg_est = pymare.estimators.StoufferCombinationTest(mode="directed")
+            neg_pymare_dset = pymare.Dataset(y=-stat_maps, n=weight_maps, v=contrast_maps)
+            neg_est.fit_dataset(neg_pymare_dset, corr=sub_corr)
+            neg_est_summary = neg_est.summary()
+
+            # Find the minimum p-values
+            p_map = np.minimum(pos_est_summary.p.squeeze(), neg_est_summary.p.squeeze())
+
+            # Create z_map based on which p-value is smaller
+            z_map = np.where(
+                pos_est_summary.p.squeeze() <= neg_est_summary.p.squeeze(),
+                pos_est_summary.z.squeeze(),
+                -neg_est_summary.z.squeeze(),
+            )
+        else:
+            z_map = pos_est_summary.z.squeeze()
+            p_map = pos_est_summary.p.squeeze()
+
         dof_map = np.tile(n_studies - 1, n_voxels).astype(np.int32)
 
         return z_map, p_map, dof_map
