@@ -120,7 +120,7 @@ jobs:
         shell: bash {0}
         run: make test_performance_estimators
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: performance_estimator
           path: coverage.xml
@@ -152,7 +152,7 @@ jobs:
         shell: bash {0}
         run: make test_performance_correctors
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: performance_corrector
           path: coverage.xml
@@ -184,7 +184,7 @@ jobs:
         shell: bash {0}
         run: make test_performance_smoke
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: performance_smoke
           path: coverage.xml
@@ -216,7 +216,7 @@ jobs:
         shell: bash {0}
         run: make test_cbmr_importerror
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: cbmr_importerror
           path: coverage.xml
