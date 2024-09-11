@@ -2,7 +2,37 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.3.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.4.0...HEAD)
+
+## [0.4.0](https://github.com/neurostuff/NiMARE/compare/0.3.0...0.4.0) - 2024-09-11
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+This version adds a new fixed effects meta-analytic algorithm, Hedge's g, where one can estimate effect size.
+Also several semi-critical bug fixes for accurately reporting the z-values in the Stouffer's test.
+
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* [ENH] Add Fixed Effects Meta-Analysis with Hedges’ g by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/894
+* [ENH] Add t-statistic images as valid targets in ImageTransformer by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/895
+
+#### 🐛 Bug Fixes
+
+* [FIX] bump pymare for rounding issue by @jdkent in https://github.com/neurostuff/NiMARE/pull/897
+* [FIX] Add support for IBMA estimators with t-statistic images in Reports by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/896
+* [FIX] Fix the correlation matrix computation in Stouffers and Reports by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/901
+* [FIX] bump pymare version to fix z values by @jdkent in https://github.com/neurostuff/NiMARE/pull/904
+
+#### Other Changes
+
+* [REF] Compute correlation matrix in signal voxels by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/889
+* [REF] optimize `get_studies_by_mask` by @jdkent in https://github.com/neurostuff/NiMARE/pull/891
+* [MAINT] hyphen no longer supported by @jdkent in https://github.com/neurostuff/NiMARE/pull/899
+* [MAINT] run benchmarking on estimators by @jdkent in https://github.com/neurostuff/NiMARE/pull/900
+* [MAINT] update workflow and fix example by @jdkent in https://github.com/neurostuff/NiMARE/pull/905
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.3.0...0.4.0rc1
 
 ## [0.3.0](https://github.com/neurostuff/NiMARE/compare/0.2.2...0.3.0) - 2024-07-16
 
