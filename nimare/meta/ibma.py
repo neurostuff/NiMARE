@@ -1537,7 +1537,7 @@ class PermutedOLS(IBMAEstimator):
 class FixedEffectsHedges(IBMAEstimator):
     """Fixed Effects Hedges meta-regression estimator.
 
-    .. versionadded:: 0.3.1
+    .. versionadded:: 0.4.0
 
     Provides the weighted least-squares estimate of the fixed effects using Hedge's g
     as the point estimate and the variance of bias-corrected Cohen's d as the variance
