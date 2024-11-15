@@ -389,7 +389,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     def __init__(
         self,
-        kernel_transformer=MKDAKernel(),
+        kernel_transformer=MKDAKernel,
         prior=0.5,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
