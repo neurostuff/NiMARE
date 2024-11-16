@@ -22,7 +22,7 @@ from datetime import datetime
 from distutils.version import LooseVersion
 
 import sphinx
-from m2r import MdInclude
+from m2r2 import MdInclude
 from sphinx_gallery.sorting import FileNameSortKey
 
 sys.path.insert(0, os.path.abspath(os.path.pardir))
