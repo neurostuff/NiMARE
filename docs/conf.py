@@ -56,7 +56,6 @@ extensions = [
     "sphinxarg.ext",  # argparse
     "sphinxcontrib.bibtex",  # for foot-citations
     "recommonmark",  # markdown parser
-    "sphinx_build_compatibility.extension"  # compatibility until we adopt addon system
 ]
 
 if LooseVersion(sphinx.__version__) < LooseVersion("1.4"):
