@@ -55,6 +55,7 @@ extensions = [
     "sphinx_gallery.gen_gallery",  # example gallery
     "sphinxarg.ext",  # argparse
     "sphinxcontrib.bibtex",  # for foot-citations
+    "sphinxcontrib.mermaid",  # for mermaid diagrams
     "recommonmark",  # markdown parser
 ]
 
@@ -227,6 +228,7 @@ def setup(app):
     app.add_config_value("m2r_parse_relative_links", False, "env")
     app.add_config_value("m2r_anonymous_references", False, "env")
     app.add_config_value("m2r_disable_inline_math", False, "env")
+    app.add_config_value("m2r_use_mermaid", True, "env")
     app.add_directive("mdinclude", MdInclude)
 
 
