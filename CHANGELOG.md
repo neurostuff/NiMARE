@@ -2,7 +2,22 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.4.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.4.1...HEAD)
+
+## [0.4.1](https://github.com/neurostuff/NiMARE/compare/0.4.0...0.4.1) - 2024-11-19
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+Some maintenance to fix CodeCov and ReadTheDocs build, and fix a bug where the MKDAChi2 class initialized the kernel, not allowing users to pass arguments to the kernel upon initialization. see number #906
+
+#### Other Changes
+
+* [MAINT] change m2r to m2r2 by @jdkent in https://github.com/neurostuff/NiMARE/pull/909
+* [MAINT] bump codecov version by @jdkent in https://github.com/neurostuff/NiMARE/pull/908
+* [FIX] do not initialize kernel object by @jdkent in https://github.com/neurostuff/NiMARE/pull/907
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.4.0...0.4.1
 
 ## [0.4.0](https://github.com/neurostuff/NiMARE/compare/0.3.0...0.4.0) - 2024-09-11
 
