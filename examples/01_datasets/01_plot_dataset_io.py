@@ -23,7 +23,8 @@ from nimare.utils import get_resource_path
 # Datasets are stored as json or pkl[.gz] files
 # -----------------------------------------------------------------------------
 # Json files are used to create Datasets, while generated Datasets are saved
-# to, and loaded from, pkl[.gz] files.
+# to, and loaded from, pkl[.gz] files. Find more information on the JSON file format
+# here :ref:`datasets_json` section.
 # We use jsons because they are easy to edit, and thus build by hand, if
 # necessary.
 # We then store the generated Datasets as pkl.gz files because an initialized
