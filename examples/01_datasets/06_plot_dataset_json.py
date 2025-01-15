@@ -44,7 +44,7 @@ Here, we present the structure of the JSON/dict input format to create a
 #    }
 
 ###############################################################################
-# Contrast Level
+# Contrast Dictionary
 # -----------------------------------------------------------------------------
 # Each contrast contains five main dictionaries:
 
