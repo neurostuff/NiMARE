@@ -19,7 +19,7 @@ Here, we present the structure of the JSON/dict input format to create a
 # be mapped to five core DataFrames: annotations, coordinates, images, metadata, and texts.
 
 ###############################################################################
-# Study Level
+# Study Dictionary
 # -----------------------------------------------------------------------------
 # - Every study is assigned a unique identifier (study_id), which is defined by
 #   the user (e.g., "pain_01.nidm").
