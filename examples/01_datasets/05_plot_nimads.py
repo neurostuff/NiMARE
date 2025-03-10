@@ -34,7 +34,7 @@ nimads_annotation = download_file("https://neurostore.org/api/annotations/76PyNq
 # -----------------------------------------------------------------------------
 # Load the json files into a NiMADS Studyset object.
 
-studyset = Studyset(nimads_studyset, nimads_annotation)
+studyset = Studyset(nimads_studyset, annotations=nimads_annotation)
 
 
 ###############################################################################
