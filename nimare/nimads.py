@@ -35,10 +35,9 @@ class Studyset:
         self.id = source["id"]
         self.name = source["name"] or ""
         self.studies = [Study(s) for s in source["studies"]]
+        self._annotations = []
         if annotations:
             self.annotations = annotations
-        else:
-            self._annotations = []
 
     def __repr__(self):
         """My Simple representation."""
@@ -278,6 +277,8 @@ class Analysis:
         A dictionary of type: Image pairs.
     points : list of Point objects
         Any significant Points from the Analysis.
+    metadata: dict
+        A dictionary of metadata associated with the Analysis.
 
     Notes
     -----
@@ -292,6 +293,7 @@ class Analysis:
         ]
         self.images = [Image(i) for i in source["images"]]
         self.points = [Point(p) for p in source["points"]]
+        self.metadata = source.get("metadata", {}) or {}
         self.annotations = {}
 
     def __repr__(self):
