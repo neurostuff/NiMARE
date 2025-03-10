@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools==68.2.2", "wheel"]
+requires = ["setuptools==69.5.1", "wheel"]
 
 [tool.black]
 line-length = 99
