@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: "Set up python"
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: "Install NiMARE"
@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: "Set up python"
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
       - name: "Install NiMARE"
@@ -110,7 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: "Set up python"
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: "Install NiMARE"
@@ -142,7 +142,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: "Set up python"
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: "Install NiMARE"
@@ -174,7 +174,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: "Set up python"
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: "Install NiMARE"
@@ -206,7 +206,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: "Set up python"
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: "Install NiMARE"
