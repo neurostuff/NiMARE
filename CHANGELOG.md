@@ -2,7 +2,30 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.4.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.4.2...HEAD)
+
+## [0.4.2](https://github.com/neurostuff/NiMARE/compare/0.4.1...0.4.2) - 2025-03-11
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* Add example describing the structure of the JSON/dict input format for Dataset object by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/911
+* [ENH] convert sample sizes by @jdkent in https://github.com/neurostuff/NiMARE/pull/919
+
+#### 🐛 Bug Fixes
+
+* [FIX] read annotation into NIMADs by @jdkent in https://github.com/neurostuff/NiMARE/pull/914
+* [FIX] fix the compilation of the description on pypi by @jdkent in https://github.com/neurostuff/NiMARE/pull/915
+* [FIX] name of distribution conform to PEP 625 by @jdkent in https://github.com/neurostuff/NiMARE/pull/916
+* [FIX] fix name of nimare to be pep 625 compliant by @jdkent in https://github.com/neurostuff/NiMARE/pull/917
+
+#### Other Changes
+
+* [MAINT] upgrade setup-python to version 4 by @jdkent in https://github.com/neurostuff/NiMARE/pull/918
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.4.1...0.4.2
 
 ## [0.4.1](https://github.com/neurostuff/NiMARE/compare/0.4.0...0.4.1) - 2024-11-19
 
