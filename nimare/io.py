@@ -78,20 +78,16 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             if sample_size is None:
                 sample_size = study.metadata.get("sample_size")
 
-            # Validate single sample size if present    
+            # Validate single sample size if present
             if sample_size is not None and not isinstance(sample_size, (int, float)):
-                raise TypeError(
-                    f"Expected sample_size to be numeric, but got {type(sample_size)}"
-                )
+                raise TypeError(f"Expected sample_size to be numeric, but got {type(sample_size)}")
 
         # Add sample size info to result if available
         if sample_sizes or sample_size is not None:
             try:
                 result["metadata"]["sample_sizes"] = sample_sizes or [sample_size]
             except TypeError as e:
-                raise TypeError(
-                    f"Error converting sample size data to list: {str(e)}"
-                ) from e
+                raise TypeError(f"Error converting sample size data to list: {str(e)}") from e
 
         # Handle annotations if present
         if analysis.annotations:
@@ -104,9 +100,7 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                         )
                     result["labels"].update(annotation)
             except (TypeError, AttributeError) as e:
-                raise ValueError(
-                    f"Invalid annotation format: {str(e)}"
-                ) from e
+                raise ValueError(f"Invalid annotation format: {str(e)}") from e
 
         return result
 

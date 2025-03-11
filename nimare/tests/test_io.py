@@ -22,17 +22,20 @@ def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annot
     assert isinstance(dset2, nimare.dataset.Dataset)
 
 
-def test_convert_nimads_to_dataset_sample_sizes(example_nimads_studyset, example_nimads_annotation):
+def test_convert_nimads_to_dataset_sample_sizes(
+    example_nimads_studyset, example_nimads_annotation
+):
     """Conversion of nimads JSON to nimare dataset."""
     studyset = Studyset(example_nimads_studyset)
     for study in studyset.studies:
         for analysis in study.analyses:
-            analysis.metadata['sample_sizes'] = [2, 20]
+            analysis.metadata["sample_sizes"] = [2, 20]
 
     dset = io.convert_nimads_to_dataset(studyset)
 
     assert isinstance(dset, nimare.dataset.Dataset)
     assert "sample_sizes" in dset.metadata.columns
+
 
 def test_convert_sleuth_to_dataset_smoke():
     """Smoke test for Sleuth text file conversion."""
