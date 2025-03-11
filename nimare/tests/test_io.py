@@ -22,6 +22,60 @@ def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annot
     assert isinstance(dset2, nimare.dataset.Dataset)
 
 
+def test_convert_nimads_to_dataset_sample_sizes(
+    example_nimads_studyset, example_nimads_annotation
+):
+    """Conversion of nimads JSON to nimare dataset."""
+    studyset = Studyset(example_nimads_studyset)
+    for study in studyset.studies:
+        for analysis in study.analyses:
+            analysis.metadata["sample_sizes"] = [2, 20]
+
+    dset = io.convert_nimads_to_dataset(studyset)
+
+    assert isinstance(dset, nimare.dataset.Dataset)
+    assert "sample_sizes" in dset.metadata.columns
+
+
+def test_convert_nimads_to_dataset_single_sample_size(
+    example_nimads_studyset, example_nimads_annotation
+):
+    """Test conversion of nimads JSON to nimare dataset with a single sample size value."""
+    studyset = Studyset(example_nimads_studyset)
+    for study in studyset.studies:
+        for analysis in study.analyses:
+            analysis.metadata["sample_size"] = 20
+
+    dset = io.convert_nimads_to_dataset(studyset)
+
+    assert isinstance(dset, nimare.dataset.Dataset)
+    assert "sample_sizes" in dset.metadata.columns
+
+
+def test_analysis_to_dict_invalid_sample_sizes_type(example_nimads_studyset):
+    """Test _analysis_to_dict raises ValueError when sample_sizes is not a list/tuple."""
+    studyset = Studyset(example_nimads_studyset)
+    # Set sample_sizes to an int rather than list/tuple
+    for study in studyset.studies:
+        for analysis in study.analyses:
+            analysis.metadata["sample_sizes"] = 5
+    with pytest.raises(TypeError):
+        # Trigger conversion which internally calls _analysis_to_dict
+        io.convert_nimads_to_dataset(studyset)
+
+
+def test_analysis_to_dict_invalid_annotations_format(example_nimads_studyset):
+    """Test _analysis_to_dict raises ValueError when annotations are in an invalid format."""
+    studyset = Studyset(example_nimads_studyset)
+    # Here we assume that the annotation is expected to be a dict
+    # Set annotation to an invalid format (e.g., a string)
+    for study in studyset.studies:
+        for analysis in study.analyses:
+            analysis.metadata["annotations"] = "invalid_format"
+    with pytest.raises(TypeError):
+        io.convert_nimads_to_dataset(studyset)
+
+
 def test_convert_sleuth_to_dataset_smoke():
     """Smoke test for Sleuth text file conversion."""
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
