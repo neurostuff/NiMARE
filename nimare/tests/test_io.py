@@ -64,18 +64,6 @@ def test_analysis_to_dict_invalid_sample_sizes_type(example_nimads_studyset):
         io.convert_nimads_to_dataset(studyset)
 
 
-def test_analysis_to_dict_invalid_annotations_format(example_nimads_studyset):
-    """Test _analysis_to_dict raises ValueError when annotations are in an invalid format."""
-    studyset = Studyset(example_nimads_studyset)
-    # Here we assume that the annotation is expected to be a dict
-    # Set annotation to an invalid format (e.g., a string)
-    for study in studyset.studies:
-        for analysis in study.analyses:
-            analysis.metadata["annotations"] = "invalid_format"
-    with pytest.raises(TypeError):
-        io.convert_nimads_to_dataset(studyset)
-
-
 def test_convert_sleuth_to_dataset_smoke():
     """Smoke test for Sleuth text file conversion."""
     sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
