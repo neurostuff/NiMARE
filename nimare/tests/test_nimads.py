@@ -4,9 +4,7 @@ import json
 import os
 import tempfile
 
-import numpy as np
 import pytest
-from nilearn._utils import load_niimg
 
 from nimare import nimads
 from nimare.dataset import Dataset
