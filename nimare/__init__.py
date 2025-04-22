@@ -1,4 +1,5 @@
 """NiMARE: Neuroimaging Meta-Analysis Research Environment."""
+
 import logging
 import warnings
 

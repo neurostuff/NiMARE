@@ -2,7 +2,122 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.2.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.4.2...HEAD)
+
+## [0.4.2](https://github.com/neurostuff/NiMARE/compare/0.4.1...0.4.2) - 2025-03-11
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* Add example describing the structure of the JSON/dict input format for Dataset object by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/911
+* [ENH] convert sample sizes by @jdkent in https://github.com/neurostuff/NiMARE/pull/919
+
+#### 🐛 Bug Fixes
+
+* [FIX] read annotation into NIMADs by @jdkent in https://github.com/neurostuff/NiMARE/pull/914
+* [FIX] fix the compilation of the description on pypi by @jdkent in https://github.com/neurostuff/NiMARE/pull/915
+* [FIX] name of distribution conform to PEP 625 by @jdkent in https://github.com/neurostuff/NiMARE/pull/916
+* [FIX] fix name of nimare to be pep 625 compliant by @jdkent in https://github.com/neurostuff/NiMARE/pull/917
+
+#### Other Changes
+
+* [MAINT] upgrade setup-python to version 4 by @jdkent in https://github.com/neurostuff/NiMARE/pull/918
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.4.1...0.4.2
+
+## [0.4.1](https://github.com/neurostuff/NiMARE/compare/0.4.0...0.4.1) - 2024-11-19
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+Some maintenance to fix CodeCov and ReadTheDocs build, and fix a bug where the MKDAChi2 class initialized the kernel, not allowing users to pass arguments to the kernel upon initialization. see number #906
+
+#### Other Changes
+
+* [MAINT] change m2r to m2r2 by @jdkent in https://github.com/neurostuff/NiMARE/pull/909
+* [MAINT] bump codecov version by @jdkent in https://github.com/neurostuff/NiMARE/pull/908
+* [FIX] do not initialize kernel object by @jdkent in https://github.com/neurostuff/NiMARE/pull/907
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.4.0...0.4.1
+
+## [0.4.0](https://github.com/neurostuff/NiMARE/compare/0.3.0...0.4.0) - 2024-09-11
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+This version adds a new fixed effects meta-analytic algorithm, Hedge's g, where one can estimate effect size.
+Also several semi-critical bug fixes for accurately reporting the z-values in the Stouffer's test.
+
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* [ENH] Add Fixed Effects Meta-Analysis with Hedges’ g by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/894
+* [ENH] Add t-statistic images as valid targets in ImageTransformer by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/895
+
+#### 🐛 Bug Fixes
+
+* [FIX] bump pymare for rounding issue by @jdkent in https://github.com/neurostuff/NiMARE/pull/897
+* [FIX] Add support for IBMA estimators with t-statistic images in Reports by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/896
+* [FIX] Fix the correlation matrix computation in Stouffers and Reports by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/901
+* [FIX] bump pymare version to fix z values by @jdkent in https://github.com/neurostuff/NiMARE/pull/904
+
+#### Other Changes
+
+* [REF] Compute correlation matrix in signal voxels by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/889
+* [REF] optimize `get_studies_by_mask` by @jdkent in https://github.com/neurostuff/NiMARE/pull/891
+* [MAINT] hyphen no longer supported by @jdkent in https://github.com/neurostuff/NiMARE/pull/899
+* [MAINT] run benchmarking on estimators by @jdkent in https://github.com/neurostuff/NiMARE/pull/900
+* [MAINT] update workflow and fix example by @jdkent in https://github.com/neurostuff/NiMARE/pull/905
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.3.0...0.4.0rc1
+
+## [0.3.0](https://github.com/neurostuff/NiMARE/compare/0.2.2...0.3.0) - 2024-07-16
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* Add correction for multiple contrasts within a study in Stouffer's IBMA by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/882
+* Add support for the `concordant` mode test in Fisher's and Stouffer's estimators by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/884
+* Add support for publication size weighting. General refactoring of IBMA estimators by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/887
+
+#### Other Changes
+
+* min joblib 1.3.0 by @jdkent in https://github.com/neurostuff/NiMARE/pull/880
+* Update Nilearn API _check_same_fov by @adelavega in https://github.com/neurostuff/NiMARE/pull/873
+* [FIX] update codecov by @jdkent in https://github.com/neurostuff/NiMARE/pull/883
+* [FIX] bump matplotlib version and update usage of get_cmap by @jdkent in https://github.com/neurostuff/NiMARE/pull/885
+* [MAINT] bump cognitiveatlas version by @jdkent in https://github.com/neurostuff/NiMARE/pull/890
+* Support Python 3.12 by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/853
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.2.2...0.3.0
+
+## [0.2.2](https://github.com/neurostuff/NiMARE/compare/0.2.1...0.2.2) - 2024-02-07
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+This release changes the default behavior of the number of iterations chosen for the FWECorrector, we reduced the default number of montecarlo simulations from 10,000 to 5,000 as this allows for a more manageable runtime with limited impact on the stability of the results.
+
+#### 🎉 Exciting New Features
+
+* Add advanced plots to IBMA report by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/864
+
+#### 🐛 Bug Fixes
+
+* Fix ridgeline plot in IBMA report by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/863
+* [FIX] tqdm not displaying on notebooks by @jdkent in https://github.com/neurostuff/NiMARE/pull/878
+* [FIX] fwe docstrings by @jdkent in https://github.com/neurostuff/NiMARE/pull/868
+
+#### Other Changes
+
+* Clarify FWECorrector arguments by @adelavega in https://github.com/neurostuff/NiMARE/pull/865
+* [MAINT] limit version of nilearn to 0.10.2 by @jdkent in https://github.com/neurostuff/NiMARE/pull/877
+* [MAINT] use updated black by @jdkent in https://github.com/neurostuff/NiMARE/pull/876
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.2.1...0.2.2
 
 ## [0.2.1](https://github.com/neurostuff/NiMARE/compare/0.2.0...0.2.1) - 2024-01-11
 

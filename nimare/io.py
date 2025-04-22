@@ -1,4 +1,5 @@
 """Input/Output operations."""
+
 import json
 import logging
 import re
@@ -61,13 +62,45 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 "z": [p.z for p in analysis.points] or [None],
             },
         }
-        sample_size = study.metadata.get("sample_size")
-        if sample_size:
-            result["metadata"]["sample_sizes"] = [sample_size]
+
+        sample_sizes = analysis.metadata.get("sample_sizes")
+        sample_size = None
+
+        # Validate sample sizes if present
+        if sample_sizes is not None and not isinstance(sample_sizes, (list, tuple)):
+            raise TypeError(
+                f"Expected sample_sizes to be list or tuple, but got {type(sample_sizes)}"
+            )
+
+        if not sample_sizes:
+            # Try to get single sample size from analysis or study metadata
+            sample_size = analysis.metadata.get("sample_size")
+            if sample_size is None:
+                sample_size = study.metadata.get("sample_size")
+
+            # Validate single sample size if present
+            if sample_size is not None and not isinstance(sample_size, (int, float)):
+                raise TypeError(f"Expected sample_size to be numeric, but got {type(sample_size)}")
+
+        # Add sample size info to result if available
+        if sample_sizes or sample_size is not None:
+            try:
+                result["metadata"]["sample_sizes"] = sample_sizes or [sample_size]
+            except TypeError as e:
+                raise TypeError(f"Error converting sample size data to list: {str(e)}") from e
+
+        # Handle annotations if present
         if analysis.annotations:
             result["labels"] = {}
-            for annotation in analysis.annotations.values():
-                result["labels"].update(annotation)
+            try:
+                for annotation in analysis.annotations.values():
+                    if not isinstance(annotation, dict):
+                        raise TypeError(
+                            f"Expected annotation to be dict, but got {type(annotation)}"
+                        )
+                    result["labels"].update(annotation)
+            except (TypeError, AttributeError) as e:
+                raise ValueError(f"Invalid annotation format: {str(e)}") from e
 
         return result
 

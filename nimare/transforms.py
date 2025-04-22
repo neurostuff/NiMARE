@@ -110,7 +110,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """
     new_images_df = images_df.copy()  # Work on a copy of the images_df
 
-    valid_targets = {"z", "p", "beta", "varcope"}
+    valid_targets = {"t", "z", "p", "beta", "varcope"}
     if target not in valid_targets:
         raise ValueError(
             f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
@@ -860,3 +860,48 @@ def z_to_t(z_values, dof):
     t_values = np.zeros(z_values.shape)
     t_values[z_values != 0] = t_values_nonzero
     return t_values
+
+
+def t_to_d(t_values, sample_sizes):
+    """Convert t-statistics to Cohen's d.
+
+    Parameters
+    ----------
+    t_values : array_like
+        T-statistics
+    sample_sizes : array_like
+        Sample sizes
+
+    Returns
+    -------
+    d_values : array_like
+        Cohen's d
+    """
+    d_values = t_values / np.sqrt(sample_sizes)
+    return d_values
+
+
+def d_to_g(d, N, return_variance=False):
+    """Convert Cohen's d to Hedges' g.
+
+    Parameters
+    ----------
+    d : array_like
+        Cohen's d
+    N : array_like
+        Sample sizes
+    return_variance : bool, optional
+        Whether to return the variance of Hedges' g. Default is False.
+
+    Returns
+    -------
+    g_values : array_like
+        Hedges' g
+    """
+    # Calculate bias correction h(N)
+    h = 1 - (3 / (4 * (N - 1) - 1))
+
+    if return_variance:
+        return d * h, ((N - 1) * (1 + N * d**2) * (h**2) / (N * (N - 3))) - d**2
+
+    return d * h

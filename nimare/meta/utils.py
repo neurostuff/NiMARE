@@ -1,4 +1,5 @@
 """Utilities for coordinate-based meta-analysis estimators."""
+
 import warnings
 
 import numpy as np

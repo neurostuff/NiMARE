@@ -26,9 +26,15 @@ import textwrap
 from glob import glob
 from pathlib import Path
 
+try:
+    from importlib.resources import files
+except ImportError:
+    # Python < 3.9
+    from importlib_resources import files
+
 import jinja2
+import numpy as np
 import pandas as pd
-from pkg_resources import resource_filename as pkgrf
 
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.reports.figures import (
@@ -45,7 +51,6 @@ from nimare.reports.figures import (
     plot_mask,
     plot_static_brain,
 )
-from nimare.stats import pearson
 
 PARAMETERS_DICT = {
     "kernel_transformer__fwhm": "FWHM",
@@ -65,7 +70,10 @@ PARAMETERS_DICT = {
     "method": "Method",
     "alpha": "Alpha",
     "prior": "Prior",
+    "tau2": "Between-study variance",
     "use_sample_size": "Use sample size for weights",
+    "normalize_contrast_weights": "Normalize by the number of contrasts",
+    "two_sided": "Two-sided test",
     "beta": "Parameter estimate",
     "se": "Standard error of the parameter estimate",
     "varcope": "Variance of the parameter estimate",
@@ -275,13 +283,6 @@ def _gen_fig_summary(img_key, threshold, out_filename):
     (out_filename).write_text(summary_text, encoding="UTF-8")
 
 
-def _compute_similarities(maps_arr, ids_):
-    """Compute the similarity between maps."""
-    corrs = [pearson(img_map, maps_arr) for img_map in list(maps_arr)]
-
-    return pd.DataFrame(index=ids_, columns=ids_, data=corrs)
-
-
 def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     """Generate html and png objects for the report."""
     # Plot brain images if not empty
@@ -483,14 +484,15 @@ class Report:
                 )
             elif meta_type == "IBMA":
                 # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
-                key_maps = (
-                    "z_maps"
-                    if "z_maps" in self.results.estimator.inputs_["raw_data"]
-                    else "beta_maps"
-                )
-                maps_arr = self.results.estimator.inputs_["raw_data"][key_maps]
+                INPUT_TYPE_LABELS = {"z_maps": "Z", "t_maps": "T", "beta_maps": "Beta"}
+                for key_maps, x_label in INPUT_TYPE_LABELS.items():
+                    if key_maps in self.results.estimator.inputs_:
+                        break
+                else:
+                    key_maps, x_label = "beta_maps", "Beta"
+
+                maps_arr = self.results.estimator.inputs_[key_maps]
                 ids_ = self.results.estimator.inputs_["id"]
-                x_label = "Z" if key_maps == "z_maps" else "Beta"
 
                 if self.results.estimator.aggressive_mask:
                     _plot_relcov_map(
@@ -524,7 +526,27 @@ class Report:
                     self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-summarystats.html",
                 )
 
-                similarity_table = _compute_similarities(maps_arr, ids_)
+                # Compute similarity matrix
+                if self.results.estimator.inputs_["corr_matrix"] is None:
+                    if self.results.estimator.aggressive_mask:
+                        voxel_mask = self.results.estimator.inputs_["aggressive_mask"]
+                        corr = np.corrcoef(
+                            self.results.estimator.inputs_[key_maps][:, voxel_mask],
+                            rowvar=True,
+                        )
+                    else:
+                        corr = np.corrcoef(
+                            self.results.estimator.inputs_[key_maps],
+                            rowvar=True,
+                        )
+                else:
+                    corr = self.inputs_["corr_matrix"]
+
+                similarity_table = pd.DataFrame(
+                    index=ids_,
+                    columns=ids_,
+                    data=corr,
+                )
 
                 plot_heatmap(
                     similarity_table,
@@ -547,8 +569,9 @@ class Report:
             _gen_figures(self.results, img_key, diag_name, threshold, self.fig_dir)
 
         # Default template from nimare
-        self.template_path = Path(pkgrf("nimare", "reports/report.tpl"))
-        self._load_config(Path(pkgrf("nimare", "reports/default.yml")))
+        nimare_path = files("nimare")
+        self.template_path = nimare_path / "reports" / "report.tpl"
+        self._load_config(nimare_path / "reports" / "default.yml")
         assert self.template_path.exists()
 
     def _load_config(self, config):

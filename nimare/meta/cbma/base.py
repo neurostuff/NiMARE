@@ -1,4 +1,5 @@
 """CBMA methods from the ALE and MKDA families."""
+
 import logging
 from abc import abstractmethod
 
@@ -23,7 +24,6 @@ from nimare.utils import (
     _check_type,
     get_masker,
     mm2vox,
-    tqdm_joblib,
     vox2mm,
 )
 
@@ -505,13 +505,18 @@ class CBMAEstimator(Estimator):
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
 
-        with tqdm_joblib(tqdm(total=n_iters)):
-            perm_histograms = Parallel(n_jobs=n_cores)(
-                delayed(self._compute_null_montecarlo_permutation)(
-                    iter_xyzs[i_iter], iter_df=iter_df
-                )
-                for i_iter in range(n_iters)
+        perm_histograms = [
+            r
+            for r in tqdm(
+                Parallel(return_as="generator", n_jobs=n_cores)(
+                    delayed(self._compute_null_montecarlo_permutation)(
+                        iter_xyzs[i_iter], iter_df=iter_df
+                    )
+                    for i_iter in range(n_iters)
+                ),
+                total=n_iters,
             )
+        ]
 
         perm_histograms = np.vstack(perm_histograms)
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
@@ -523,9 +528,9 @@ class CBMAEstimator(Estimator):
         for perm in fwe_voxel_max:
             histweights[perm] += 1
 
-        self.null_distributions_[
-            "histweights_level-voxel_corr-fwe_method-montecarlo"
-        ] = histweights
+        self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"] = (
+            histweights
+        )
 
     def _correct_fwe_montecarlo_permutation(
         self,
@@ -719,17 +724,22 @@ class CBMAEstimator(Estimator):
             # Define connectivity matrix for cluster labeling
             conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
-            with tqdm_joblib(tqdm(total=n_iters)):
-                perm_results = Parallel(n_jobs=n_cores)(
-                    delayed(self._correct_fwe_montecarlo_permutation)(
-                        iter_xyzs[i_iter],
-                        iter_df=iter_df,
-                        conn=conn,
-                        voxel_thresh=ss_thresh,
-                        vfwe_only=vfwe_only,
-                    )
-                    for i_iter in range(n_iters)
+            perm_results = [
+                r
+                for r in tqdm(
+                    Parallel(return_as="generator", n_jobs=n_cores)(
+                        delayed(self._correct_fwe_montecarlo_permutation)(
+                            iter_xyzs[i_iter],
+                            iter_df=iter_df,
+                            conn=conn,
+                            voxel_thresh=ss_thresh,
+                            vfwe_only=vfwe_only,
+                        )
+                        for i_iter in range(n_iters)
+                    ),
+                    total=n_iters,
                 )
+            ]
 
             fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
 
@@ -793,9 +803,9 @@ class CBMAEstimator(Estimator):
             # Voxel-level FWE
             LGR.info("Using null distribution for voxel-level FWE correction.")
             p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
-            self.null_distributions_[
-                "values_level-voxel_corr-fwe_method-montecarlo"
-            ] = fwe_voxel_max
+            self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
+                fwe_voxel_max
+            )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
         logp_vfwe_values = -np.log10(p_vfwe_values)

@@ -1,4 +1,5 @@
 """Classes for representing datasets of images and/or coordinates."""
+
 import copy
 import inspect
 import json
@@ -642,19 +643,20 @@ class Dataset(NiMAREBase):
         found_ids : :obj:`list`
             A list of IDs from the Dataset with at least one focus in the mask.
         """
-        from scipy.spatial.distance import cdist
-
         mask = load_niimg(mask)
-
         dset_mask = self.masker.mask_img
+
         if not np.array_equal(dset_mask.affine, mask.affine):
             LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
 
         dset_ijk = mm2vox(self.coordinates[["x", "y", "z"]].values, mask.affine)
-        mask_ijk = np.vstack(np.where(mask.get_fdata())).T
-        distances = cdist(mask_ijk, dset_ijk)
-        distances = np.any(distances == 0, axis=0)
-        found_ids = list(self.coordinates.loc[distances, "id"].unique())
+        mask_data = mask.get_fdata()
+        mask_coords = np.vstack(np.where(mask_data)).T
+
+        # Check for presence of coordinates in mask
+        in_mask = np.any(np.all(dset_ijk[:, None] == mask_coords[None, :], axis=-1), axis=-1)
+        found_ids = list(self.coordinates.loc[in_mask, "id"].unique())
+
         return found_ids
 
     def get_studies_by_coordinate(self, xyz, r=20):

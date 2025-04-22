@@ -1,4 +1,5 @@
 """Test nimare.workflows."""
+
 import os.path as op
 
 import nibabel as nib

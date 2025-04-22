@@ -1,4 +1,5 @@
 """CBMR Models."""
+
 import abc
 import logging
 
@@ -290,9 +291,9 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             group_spatial_intensity_estimation = np.exp(
                 np.matmul(coef_spline_bases, group_spatial_coef_linear_weight)
             )
-            spatial_intensity_estimation[
-                "spatialIntensity_group-" + group
-            ] = group_spatial_intensity_estimation
+            spatial_intensity_estimation["spatialIntensity_group-" + group] = (
+                group_spatial_intensity_estimation
+            )
 
         # Extract optimized regression coefficient of study-level moderators from the model
         if self.moderators_coef_dim:
@@ -913,12 +914,7 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
             ).reshape((-1, 1))
             mu_moderators = torch.exp(log_mu_moderators)
         # parameter of a NB variable to approximate a sum of NB variables
-        r = (
-            1
-            / group_overdispersion
-            * torch.sum(mu_moderators) ** 2
-            / torch.sum(mu_moderators**2)
-        )
+        r = 1 / group_overdispersion * torch.sum(mu_moderators) ** 2 / torch.sum(mu_moderators**2)
         p = 1 / (
             1
             + torch.sum(mu_moderators)

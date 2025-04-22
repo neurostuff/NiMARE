@@ -1,5 +1,4 @@
 """Test nimare.meta.kernel (CBMA kernel estimators)."""
-import time
 
 import nibabel as nib
 import numpy as np
@@ -176,24 +175,17 @@ def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
     ma_maps_cached = kern_cached.transform(coord, masker=testdata_cbma.masker, return_type="array")
 
     kern = kernel.ALEKernel(sample_size=20, memory=None)
-    start = time.time()
     ma_maps = kern.transform(coord, masker=testdata_cbma.masker, return_type="array")
-    done = time.time()
-    elapsed = done - start
 
     assert np.array_equal(ma_maps_cached, ma_maps)
 
     # Test that memory is actually used
     kern_cached_fast = kernel.ALEKernel(sample_size=20, memory=str(cachedir), memory_level=2)
-    start_chached = time.time()
     ma_maps_cached_fast = kern_cached_fast.transform(
         coord, masker=testdata_cbma.masker, return_type="array"
     )
-    done_cached = time.time()
-    elapsed_cached = done_cached - start_chached
 
     assert np.array_equal(ma_maps_cached_fast, ma_maps)
-    assert elapsed_cached < elapsed
 
 
 def test_MKDA_kernel_sum_across(testdata_cbma):

@@ -1,4 +1,5 @@
 """Base classes for the decode module."""
+
 import logging
 from abc import abstractmethod
 

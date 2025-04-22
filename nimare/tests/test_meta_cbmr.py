@@ -1,4 +1,5 @@
 """Tests for CBMR meta-analytic methods."""
+
 import logging
 import warnings
 

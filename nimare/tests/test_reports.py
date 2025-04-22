@@ -1,4 +1,5 @@
 """Test nimare.reports."""
+
 import os.path as op
 
 import pytest
@@ -6,7 +7,7 @@ import pytest
 from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALESubtraction
-from nimare.meta.ibma import Stouffers
+from nimare.meta.ibma import FixedEffectsHedges, Stouffers
 from nimare.reports.base import run_reports
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
 
@@ -74,17 +75,36 @@ def test_reports_ibma_smoke(tmp_path_factory, testdata_ibma, aggressive_mask):
     """Smoke test for IBMA reports."""
     tmpdir = tmp_path_factory.mktemp("test_reports_ibma_smoke")
 
+    # Generate a report with z maps as inputs
+    stouffers_dir = op.join(tmpdir, "stouffers")
     workflow = IBMAWorkflow(
         estimator=Stouffers(aggressive_mask=aggressive_mask),
         corrector="fdr",
         diagnostics="jackknife",
         voxel_thresh=3.2,
-        output_dir=tmpdir,
+        output_dir=stouffers_dir,
     )
     results = workflow.fit(testdata_ibma)
 
-    run_reports(results, tmpdir)
+    run_reports(results, stouffers_dir)
 
     filename = "report.html"
-    outpath = op.join(tmpdir, filename)
+    outpath = op.join(stouffers_dir, filename)
+    assert op.isfile(outpath)
+
+    # Generate a report with t maps as inputs
+    hedges_dir = op.join(tmpdir, "hedges")
+    workflow = IBMAWorkflow(
+        estimator=FixedEffectsHedges(aggressive_mask=aggressive_mask),
+        corrector="fdr",
+        diagnostics="jackknife",
+        voxel_thresh=3.2,
+        output_dir=hedges_dir,
+    )
+    results = workflow.fit(testdata_ibma)
+
+    run_reports(results, hedges_dir)
+
+    filename = "report.html"
+    outpath = op.join(hedges_dir, filename)
     assert op.isfile(outpath)

@@ -1,4 +1,5 @@
 """Topic modeling with generalized correspondence latent Dirichlet allocation."""
+
 import logging
 import os.path as op
 

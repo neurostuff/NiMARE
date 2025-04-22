@@ -17,6 +17,7 @@ used to generate the MA maps differs by algorithm.
 This example provides an introduction to the ``KernelTransformer`` class and
 a tour of available types.
 """
+
 # sphinx_gallery_thumbnail_number = 2
 import os
 
@@ -99,6 +100,7 @@ for i, radius in enumerate(RADIUS_VALUES):
         annotate=False,
         colorbar=False,
         cmap="RdBu_r",
+        symmetric_cbar=True,
     )
 
 ###############################################################################
@@ -115,6 +117,7 @@ plot_stat_map(
     title="MKDA",
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 ###############################################################################
@@ -131,6 +134,7 @@ plot_stat_map(
     title="KDA",
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
 
 ###############################################################################
@@ -150,4 +154,5 @@ plot_stat_map(
     title="ALE",
     draw_cross=False,
     cmap="RdBu_r",
+    symmetric_cbar=True,
 )
