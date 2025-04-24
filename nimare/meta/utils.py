@@ -33,7 +33,7 @@ def _convolve_sphere(kernel, ijks, index, max_shape):
 
     def np_all_axis1(x):
         """Numba compatible version of np.all(x, axis=1)."""
-        out = np.ones(x.shape[0], dtype=np.bool8)
+        out = np.ones(x.shape[0], dtype=np.bool_)
         for i in range(x.shape[1]):
             out = np.logical_and(out, x[:, i])
         return out
