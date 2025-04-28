@@ -2,7 +2,24 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.4.2...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.0...HEAD)
+
+## [0.5.0](https://github.com/neurostuff/NiMARE/compare/0.4.2...0.5.0) - 2025-04-25
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+Implemented more methods to work with nimads datasets, and fix code to work with newer python environments and maintain compatibility with numpy 2.0.
+
+#### 🎉 Exciting New Features
+
+* [ENH] implement methods and test the nimads methods by @jdkent in https://github.com/neurostuff/NiMARE/pull/921
+
+#### 🐛 Bug Fixes
+
+* [FIX] change bool8->bool_ by @jdkent in https://github.com/neurostuff/NiMARE/pull/923
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.4.2...0.5.0
 
 ## [0.4.2](https://github.com/neurostuff/NiMARE/compare/0.4.1...0.4.2) - 2025-03-11
 
