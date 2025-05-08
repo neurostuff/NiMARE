@@ -540,7 +540,7 @@ class Report:
                             rowvar=True,
                         )
                 else:
-                    corr = self.inputs_["corr_matrix"]
+                    corr = self.results.estimator.inputs_["corr_matrix"]
 
                 similarity_table = pd.DataFrame(
                     index=ids_,
