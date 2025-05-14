@@ -9,8 +9,17 @@ import nimare
 
 
 def mock_urlopen(url):
-    """Mock URL opener that returns fake data."""
-    mock_data = b"Mock file content"
+    """Mock URL opener that returns appropriate mock data based on file type."""
+    if "coordinates.tsv.gz" in url:
+        mock_data = b"x\ty\tz\n1\t2\t3\n4\t5\t6"
+    elif "metadata.tsv.gz" in url:
+        mock_data = b"id\ttitle\n1\tStudy 1\n2\tStudy 2"
+    elif "features.npz" in url:
+        mock_data = b"mock npz content"
+    elif "vocabulary.txt" in url:
+        mock_data = b"term1\nterm2\nterm3"
+    else:
+        mock_data = b"Mock file content"
     return BytesIO(mock_data)
 
 
@@ -28,12 +37,16 @@ def test_fetch_neurosynth(tmp_path_factory):
         source="abstract",
         vocab="terms",
     )
-    files = glob(os.path.join(tmpdir, "neurosynth", "*"))
-    assert len(files) == 4
-
-    # One set of files found
+    # Check data_files structure
     assert isinstance(data_files, list)
     assert len(data_files) == 1
+
+    # Verify expected files in data_files
+    files_dict = data_files[0]
+    assert "coordinates" in files_dict
+    assert "metadata" in files_dict
+    assert "features" in files_dict
+    assert len(files_dict["features"]) == 1
 
 
 @patch("nimare.extract.extract.urlopen", side_effect=mock_urlopen)
