@@ -108,3 +108,25 @@ def test_reports_ibma_smoke(tmp_path_factory, testdata_ibma, aggressive_mask):
     filename = "report.html"
     outpath = op.join(hedges_dir, filename)
     assert op.isfile(outpath)
+
+
+def test_reports_ibma_multiple_contrasts_smoke(tmp_path_factory, testdata_ibma_multiple_contrasts):
+    """Smoke test for IBMA reports for multiple contrasts."""
+    tmpdir = tmp_path_factory.mktemp("test_reports_ibma_smoke")
+
+    # Generate a report with z maps as inputs
+    stouffers_dir = op.join(tmpdir, "stouffers")
+    workflow = IBMAWorkflow(
+        estimator=Stouffers(aggressive_mask=True),
+        corrector="fdr",
+        diagnostics="jackknife",
+        voxel_thresh=3.2,
+        output_dir=stouffers_dir,
+    )
+    results = workflow.fit(testdata_ibma_multiple_contrasts)
+
+    run_reports(results, stouffers_dir)
+
+    filename = "report.html"
+    outpath = op.join(stouffers_dir, filename)
+    assert op.isfile(outpath)
