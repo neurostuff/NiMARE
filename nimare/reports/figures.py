@@ -251,7 +251,7 @@ def plot_coordinates(
     html_view.save_as_html(out_interactive_filename)
 
 
-def plot_interactive_brain(img, out_filename, threshold=1e-06):
+def plot_interactive_brain(img, out_filename, threshold=1e-06, quality="low"):
     """Plot interactive brain image.
 
     .. versionadded:: 0.1.0
@@ -267,18 +267,33 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
         used to threshold the image: values below the threshold (in absolute value)
         are plotted as transparent. If 'auto' is given, the threshold is determined
         magically by analysis of the image. Default=1e-6.
+    quality: str, optional
+        Quality setting for the visualization. Options are:
+        - 'low': Uses 3mm resolution template, best for memory efficiency
+        - 'medium': Uses 2mm resolution template
+        - 'high': Uses 1mm resolution template (memory intensive)
+        Default is 'low' for memory efficiency.
     """
     _check_extention(out_filename, [".html"])
 
-    template = datasets.load_mni152_template(resolution=1)
-    html_view = view_img(
-        img,
-        bg_img=template,
-        black_bg=False,
-        threshold=threshold,
-        symmetric_cmap=True,
-    )
-    html_view.save_as_html(out_filename)
+    # Set template resolution based on quality
+    resolution_map = {"low": 4, "medium": 2, "high": 1}
+    resolution = resolution_map.get(quality, 4)  # Default to low if invalid quality
+
+    try:
+        template = datasets.load_mni152_template(resolution=resolution)
+        html_view = view_img(
+            img,
+            bg_img=template,
+            black_bg=False,
+            threshold=threshold,
+            symmetric_cmap=True,
+        )
+        html_view.save_as_html(out_filename)
+    finally:
+        # Cleanup resources
+        if 'html_view' in locals():
+            del html_view
 
 
 def plot_heatmap(
