@@ -13,8 +13,8 @@ from nilearn.plotting import (
     plot_img,
     plot_roi,
     plot_stat_map,
-    view_markers,
     view_img,
+    view_markers,
 )
 from ridgeplot import ridgeplot
 from scipy import stats
