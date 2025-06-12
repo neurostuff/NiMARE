@@ -228,13 +228,11 @@ def plot_coordinates(
         coordinates_df = coordinates_df.sample(n=max_coordinates, random_state=42)
 
     # Generate categorical colors for each study
-    unq_ids = coordinates_df[
-        "study_id"
-    ].unique() 
+    unq_ids = coordinates_df["study_id"].unique()
     n_studies = len(unq_ids)
 
     # Use tab20 colormap with modulo for studies > 20
-    cmap = plt.colormaps["tab20"].resampled(20)  
+    cmap = plt.colormaps["tab20"].resampled(20)
     colors = [cmap(i % 20) for i in range(n_studies)]
     colors_dict = {id_: mcolors.to_hex(color) for id_, color in zip(unq_ids, colors)}
 
