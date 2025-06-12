@@ -196,7 +196,7 @@ def plot_coordinates(
     out_static_filename,
     out_interactive_filename,
     out_legend_filename,
-    max_coordinates=2000,  # Add parameter to limit number of coordinates
+    max_coordinates=2000,
 ):
     """Plot static and interactive coordinates.
 
@@ -230,12 +230,12 @@ def plot_coordinates(
     # Generate categorical colors for each study
     unq_ids = coordinates_df[
         "study_id"
-    ].unique()  # pandas unique() is faster than np.unique for strings
+    ].unique() 
     n_studies = len(unq_ids)
 
     # Use tab20 colormap with modulo for studies > 20
-    cmap = plt.colormaps["tab20"].resampled(20)  # tab20 has 20 distinct colors
-    colors = [cmap(i % 20) for i in range(n_studies)]  # Cycle colors if more than 20 studies
+    cmap = plt.colormaps["tab20"].resampled(20)  
+    colors = [cmap(i % 20) for i in range(n_studies)]
     colors_dict = {id_: mcolors.to_hex(color) for id_, color in zip(unq_ids, colors)}
 
     # Create glass brain plot
