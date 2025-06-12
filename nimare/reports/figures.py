@@ -8,11 +8,11 @@ import pandas as pd
 import plotly.express as px
 from nilearn import datasets
 from nilearn.plotting import (
-    plot_connectome,
+    plot_glass_brain,
     plot_img,
     plot_roi,
     plot_stat_map,
-    view_connectome,
+    view_markers,
     view_img,
 )
 from ridgeplot import ridgeplot
@@ -111,6 +111,14 @@ def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="singl
     return mat, row_labels, col_labels
 
 
+_mni_template_cache = {}
+
+def _get_cached_template(resolution):
+    """Get cached MNI template or load if not cached."""
+    if resolution not in _mni_template_cache:
+        _mni_template_cache[resolution] = datasets.load_mni152_template(resolution=resolution)
+    return _mni_template_cache[resolution]
+
 def plot_static_brain(img, out_filename, threshold=1e-06):
     """Plot static brain image.
 
@@ -131,7 +139,7 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
     """
     _check_extention(out_filename, [".png", ".pdf", ".svg"])
 
-    template = datasets.load_mni152_template(resolution=1)
+    template = _get_cached_template(resolution=1)
     fig = plot_stat_map(
         img,
         bg_img=template,
@@ -182,6 +190,7 @@ def plot_coordinates(
     out_static_filename,
     out_interactive_filename,
     out_legend_filename,
+    max_coordinates=5000,  # Add parameter to limit number of coordinates
 ):
     """Plot static and interactive coordinates.
 
@@ -200,25 +209,43 @@ def plot_coordinates(
     out_legend_filename : :obj:`pathlib.Path`
         The name of an image file to export the legend plot to.
         Valid extensions are '.png', '.pdf', '.svg'.
+    max_coordinates : :obj:`int`, optional
+        Maximum number of coordinates to plot. If there are more coordinates,
+        they will be randomly sampled. Default is 5000.
     """
     _check_extention(out_static_filename, [".png", ".pdf", ".svg"])
     _check_extention(out_interactive_filename, [".html"])
     _check_extention(out_legend_filename, [".png", ".pdf", ".svg"])
 
-    node_coords = coordinates_df[["x", "y", "z"]].to_numpy()
-    n_coords = len(node_coords)
-    adjacency_matrix = np.zeros((n_coords, n_coords))
+    # If there are too many coordinates, randomly sample them
+    if len(coordinates_df) > max_coordinates:
+        coordinates_df = coordinates_df.sample(n=max_coordinates, random_state=42)
 
-    # Generate dictionary and array of colors for each unique ID
+    # Generate colors for each study
     ids = coordinates_df["study_id"].to_list()
     unq_ids = np.unique(ids)
     cmap = plt.colormaps["tab20"].resampled(len(unq_ids))
     colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
-    colors = [colors_dict[id_] for id_ in ids]
 
-    fig = plot_connectome(adjacency_matrix, node_coords, node_color=colors)
-    fig.savefig(out_static_filename, dpi=300)
-    fig.close()
+    # Create glass brain plot
+    glass_brain = plot_glass_brain(
+        None,
+        display_mode='lyrz',
+        plot_abs=False,
+        alpha=0.1
+    )
+
+    # Add coordinates by study
+    for study_id in unq_ids:
+        study_coords = coordinates_df[coordinates_df["study_id"] == study_id][["x", "y", "z"]].values
+        glass_brain.add_markers(
+            study_coords,
+            marker_color=colors_dict[study_id],
+            marker_size=3
+        )
+
+    glass_brain.savefig(out_static_filename, dpi=300)
+    glass_brain.close()
 
     # Generate legend
     patches_lst = [
@@ -240,18 +267,17 @@ def plot_coordinates(
     labl_fig.savefig(out_legend_filename, bbox_inches="tight", dpi=300)
     plt.close()
 
-    # Plot interactive connectome
-    html_view = view_connectome(
-        adjacency_matrix,
-        node_coords,
-        node_size=10,
-        colorbar=False,
-        node_color=colors,
+    # Create interactive view with markers
+    interactive_view = view_markers(
+        coordinates_df[["x", "y", "z"]].values,
+        marker_color=[colors_dict[id_] for id_ in coordinates_df["study_id"]],
+        marker_size=3
     )
-    html_view.save_as_html(out_interactive_filename)
+    interactive_view.save_as_html(out_interactive_filename)
+    del interactive_view  # Clean up
 
 
-def plot_interactive_brain(img, out_filename, threshold=1e-06, quality="low"):
+def plot_interactive_brain(img, out_filename, threshold=1e-06, quality="medium"):
     """Plot interactive brain image.
 
     .. versionadded:: 0.1.0
@@ -620,7 +646,7 @@ def _plot_relcov_map(maps_arr, masker, out_filename):
     coverage_img = masker.inverse_transform(coverage_arr)
 
     # Plot coverage map
-    template = datasets.load_mni152_template(resolution=1)
+    template = datasets.load_mni152_template(resolution=2)
     fig = plot_img(
         coverage_img,
         bg_img=template,
