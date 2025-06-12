@@ -1,5 +1,6 @@
 """Plot figures for report."""
 
+import matplotlib as mpl
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -33,6 +34,9 @@ TABLE_STYLE = [
     ),
 ]
 
+# Configure matplotlib for faster image saving
+mpl.rcParams["savefig.bbox"] = "tight"  # Only save actual plot content
+mpl.rcParams["savefig.dpi"] = 100  # Lower DPI for faster encoding
 
 PXS_PER_STD = 30  # Number of pixels per study, control the size (height) of Plotly figures
 MAX_CHARS = 20  # Maximum number of characters for labels
@@ -113,11 +117,13 @@ def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="singl
 
 _mni_template_cache = {}
 
+
 def _get_cached_template(resolution):
     """Get cached MNI template or load if not cached."""
     if resolution not in _mni_template_cache:
         _mni_template_cache[resolution] = datasets.load_mni152_template(resolution=resolution)
     return _mni_template_cache[resolution]
+
 
 def plot_static_brain(img, out_filename, threshold=1e-06):
     """Plot static brain image.
@@ -149,7 +155,7 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
         display_mode="mosaic",
         symmetric_cbar=True,
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -181,7 +187,7 @@ def plot_mask(mask, out_filename):
         alpha=0.7,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -190,7 +196,7 @@ def plot_coordinates(
     out_static_filename,
     out_interactive_filename,
     out_legend_filename,
-    max_coordinates=5000,  # Add parameter to limit number of coordinates
+    max_coordinates=2000,  # Add parameter to limit number of coordinates
 ):
     """Plot static and interactive coordinates.
 
@@ -221,58 +227,56 @@ def plot_coordinates(
     if len(coordinates_df) > max_coordinates:
         coordinates_df = coordinates_df.sample(n=max_coordinates, random_state=42)
 
-    # Generate colors for each study
-    ids = coordinates_df["study_id"].to_list()
-    unq_ids = np.unique(ids)
-    cmap = plt.colormaps["tab20"].resampled(len(unq_ids))
-    colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
+    # Generate categorical colors for each study
+    unq_ids = coordinates_df[
+        "study_id"
+    ].unique()  # pandas unique() is faster than np.unique for strings
+    n_studies = len(unq_ids)
+
+    # Use tab20 colormap with modulo for studies > 20
+    cmap = plt.colormaps["tab20"].resampled(20)  # tab20 has 20 distinct colors
+    colors = [cmap(i % 20) for i in range(n_studies)]  # Cycle colors if more than 20 studies
+    colors_dict = {id_: mcolors.to_hex(color) for id_, color in zip(unq_ids, colors)}
 
     # Create glass brain plot
-    glass_brain = plot_glass_brain(
-        None,
-        display_mode='lyrz',
-        plot_abs=False,
-        alpha=0.1
-    )
+    glass_brain = plot_glass_brain(None, display_mode="lyrz", plot_abs=False, alpha=0.1)
 
-    # Add coordinates by study
-    for study_id in unq_ids:
-        study_coords = coordinates_df[coordinates_df["study_id"] == study_id][["x", "y", "z"]].values
-        glass_brain.add_markers(
-            study_coords,
-            marker_color=colors_dict[study_id],
-            marker_size=3
-        )
+    # Process all coordinates at once
+    all_coords = coordinates_df[["x", "y", "z"]].values
+    all_colors = np.array([colors_dict[id_] for id_ in coordinates_df["study_id"]])
 
-    glass_brain.savefig(out_static_filename, dpi=300)
+    # Add all coordinates in one call
+    glass_brain.add_markers(all_coords, marker_color=all_colors, marker_size=3)
+
+    glass_brain.savefig(out_static_filename, dpi=100)
     glass_brain.close()
 
-    # Generate legend
-    patches_lst = [
-        mpatches.Patch(color=color, label=label) for label, color in colors_dict.items()
-    ]
+    # Generate legend more efficiently using pre-computed values
+    patches_lst = [mpatches.Patch(color=color, label=id_) for id_, color in zip(unq_ids, colors)]
 
-    # Plot legeng
-    max_len_per_page = 200
-    max_legend_len = max(len(id_) for id_ in unq_ids)
-    ncol = 1 if max_legend_len > max_len_per_page else int(max_len_per_page / max_legend_len)
-    labl_fig, ax = plt.subplots(1, 1)
-    labl_fig.legend(
+    # Use already computed n_studies
+    ncol = max(1, min(8, n_studies // 10))  # Cap columns at 8
+
+    # Create minimal figure with appropriate size
+    figsize = (8, max(1, int(n_studies / ncol / 3)))  # Scale height by entries per column
+    fig = plt.figure(figsize=figsize)
+    fig.legend(
         handles=patches_lst,
         ncol=ncol,
         fontsize=10,
         loc="center",
+        frameon=False,  # Remove frame for cleaner look
     )
-    ax.axis("off")
-    labl_fig.savefig(out_legend_filename, bbox_inches="tight", dpi=300)
-    plt.close()
+    fig.savefig(
+        out_legend_filename,
+        dpi=100,
+        bbox_inches="tight",
+        pil_kwargs={"optimize": True, "quality": 85},
+    )
+    plt.close(fig)
 
-    # Create interactive view with markers
-    interactive_view = view_markers(
-        coordinates_df[["x", "y", "z"]].values,
-        marker_color=[colors_dict[id_] for id_ in coordinates_df["study_id"]],
-        marker_size=3
-    )
+    # Create interactive view with markers using pre-computed coordinates and colors
+    interactive_view = view_markers(all_coords, marker_color=all_colors, marker_size=3)
     interactive_view.save_as_html(out_interactive_filename)
     del interactive_view  # Clean up
 
@@ -318,7 +322,7 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06, quality="medium")
         html_view.save_as_html(out_filename)
     finally:
         # Cleanup resources
-        if 'html_view' in locals():
+        if "html_view" in locals():
             del html_view
 
 
@@ -446,7 +450,7 @@ def plot_clusters(img, out_filename):
         colorbar=True,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -660,7 +664,7 @@ def _plot_relcov_map(maps_arr, masker, out_filename):
         vmax=1,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -688,5 +692,5 @@ def _plot_dof_map(dof_map, out_filename):
         vmin=0,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
