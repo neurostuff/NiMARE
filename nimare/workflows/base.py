@@ -116,12 +116,10 @@ class Workflow(NiMAREBase):
             "voxel_thresh": self.voxel_thresh,
             "cluster_threshold": self.cluster_threshold,
         }
+        diag_kwargs["n_cores"] = self.n_cores
         if diagnostics is None:
-            diag_kwargs["n_cores"] = self.n_cores
             diagnostics = [self._diag_default(**diag_kwargs)]
         else:
-            # Pass n_cores for all non-initialized diagnostics
-            diag_kwargs["n_cores"] = self.n_cores
             diagnostics = [
                 _check_input(diagnostic, Diagnostics, self._diag_options, **diag_kwargs)
                 for diagnostic in diagnostics
