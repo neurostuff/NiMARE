@@ -2,7 +2,24 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.1...HEAD)
+
+## [0.5.1](https://github.com/neurostuff/NiMARE/compare/0.5.0...0.5.1) - 2025-06-13
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🐛 Bug Fixes
+
+* Fix the use correlation matrix from the results object when available for Reports by @JulioAPeraza in https://github.com/neurostuff/NiMARE/pull/925
+* [FIX] reduce memory/time for running reports by @jdkent in https://github.com/neurostuff/NiMARE/pull/929
+* [FIX] do not try to set n_cores on initialized objects by @jdkent in https://github.com/neurostuff/NiMARE/pull/930
+
+#### Other Changes
+
+* [TST] patch url calls to not fetch contents by @jdkent in https://github.com/neurostuff/NiMARE/pull/926
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.5.0...0.5.1
 
 ## [0.5.0](https://github.com/neurostuff/NiMARE/compare/0.4.2...0.5.0) - 2025-04-25
 
