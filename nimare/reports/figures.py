@@ -217,7 +217,7 @@ def plot_coordinates(
         Valid extensions are '.png', '.pdf', '.svg'.
     max_coordinates : :obj:`int`, optional
         Maximum number of coordinates to plot. If there are more coordinates,
-        they will be randomly sampled. Default is 5000.
+        they will be randomly sampled. Default is 2000.
     """
     _check_extention(out_static_filename, [".png", ".pdf", ".svg"])
     _check_extention(out_interactive_filename, [".html"])
