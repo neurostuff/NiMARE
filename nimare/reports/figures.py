@@ -1,5 +1,6 @@
 """Plot figures for report."""
 
+import matplotlib as mpl
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -8,12 +9,12 @@ import pandas as pd
 import plotly.express as px
 from nilearn import datasets
 from nilearn.plotting import (
-    plot_connectome,
+    plot_glass_brain,
     plot_img,
     plot_roi,
     plot_stat_map,
-    view_connectome,
     view_img,
+    view_markers,
 )
 from ridgeplot import ridgeplot
 from scipy import stats
@@ -33,6 +34,9 @@ TABLE_STYLE = [
     ),
 ]
 
+# Configure matplotlib for faster image saving
+mpl.rcParams["savefig.bbox"] = "tight"  # Only save actual plot content
+mpl.rcParams["savefig.dpi"] = 100  # Lower DPI for faster encoding
 
 PXS_PER_STD = 30  # Number of pixels per study, control the size (height) of Plotly figures
 MAX_CHARS = 20  # Maximum number of characters for labels
@@ -111,6 +115,16 @@ def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="singl
     return mat, row_labels, col_labels
 
 
+_mni_template_cache = {}
+
+
+def _get_cached_template(resolution):
+    """Get cached MNI template or load if not cached."""
+    if resolution not in _mni_template_cache:
+        _mni_template_cache[resolution] = datasets.load_mni152_template(resolution=resolution)
+    return _mni_template_cache[resolution]
+
+
 def plot_static_brain(img, out_filename, threshold=1e-06):
     """Plot static brain image.
 
@@ -131,7 +145,7 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
     """
     _check_extention(out_filename, [".png", ".pdf", ".svg"])
 
-    template = datasets.load_mni152_template(resolution=1)
+    template = _get_cached_template(resolution=1)
     fig = plot_stat_map(
         img,
         bg_img=template,
@@ -141,7 +155,7 @@ def plot_static_brain(img, out_filename, threshold=1e-06):
         display_mode="mosaic",
         symmetric_cbar=True,
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -173,7 +187,7 @@ def plot_mask(mask, out_filename):
         alpha=0.7,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -182,6 +196,7 @@ def plot_coordinates(
     out_static_filename,
     out_interactive_filename,
     out_legend_filename,
+    max_coordinates=2000,
 ):
     """Plot static and interactive coordinates.
 
@@ -200,58 +215,71 @@ def plot_coordinates(
     out_legend_filename : :obj:`pathlib.Path`
         The name of an image file to export the legend plot to.
         Valid extensions are '.png', '.pdf', '.svg'.
+    max_coordinates : :obj:`int`, optional
+        Maximum number of coordinates to plot. If there are more coordinates,
+        they will be randomly sampled. Default is 2000.
     """
     _check_extention(out_static_filename, [".png", ".pdf", ".svg"])
     _check_extention(out_interactive_filename, [".html"])
     _check_extention(out_legend_filename, [".png", ".pdf", ".svg"])
 
-    node_coords = coordinates_df[["x", "y", "z"]].to_numpy()
-    n_coords = len(node_coords)
-    adjacency_matrix = np.zeros((n_coords, n_coords))
+    # If there are too many coordinates, randomly sample them
+    if len(coordinates_df) > max_coordinates:
+        coordinates_df = coordinates_df.sample(n=max_coordinates, random_state=42)
 
-    # Generate dictionary and array of colors for each unique ID
-    ids = coordinates_df["study_id"].to_list()
-    unq_ids = np.unique(ids)
-    cmap = plt.colormaps["tab20"].resampled(len(unq_ids))
-    colors_dict = {unq_id: mcolors.to_hex(cmap(i)) for i, unq_id in enumerate(unq_ids)}
-    colors = [colors_dict[id_] for id_ in ids]
+    # Generate categorical colors for each study
+    unq_ids = coordinates_df["study_id"].unique()
+    n_studies = len(unq_ids)
 
-    fig = plot_connectome(adjacency_matrix, node_coords, node_color=colors)
-    fig.savefig(out_static_filename, dpi=300)
-    fig.close()
+    # Use tab20 colormap with modulo for studies > 20
+    cmap = plt.colormaps["tab20"].resampled(20)
+    colors = [cmap(i % 20) for i in range(n_studies)]
+    colors_dict = {id_: mcolors.to_hex(color) for id_, color in zip(unq_ids, colors)}
 
-    # Generate legend
-    patches_lst = [
-        mpatches.Patch(color=color, label=label) for label, color in colors_dict.items()
-    ]
+    # Create glass brain plot
+    glass_brain = plot_glass_brain(None, display_mode="lyrz", plot_abs=False, alpha=0.1)
 
-    # Plot legeng
-    max_len_per_page = 200
-    max_legend_len = max(len(id_) for id_ in unq_ids)
-    ncol = 1 if max_legend_len > max_len_per_page else int(max_len_per_page / max_legend_len)
-    labl_fig, ax = plt.subplots(1, 1)
-    labl_fig.legend(
+    # Process all coordinates at once
+    all_coords = coordinates_df[["x", "y", "z"]].values
+    all_colors = np.array([colors_dict[id_] for id_ in coordinates_df["study_id"]])
+
+    # Add all coordinates in one call
+    glass_brain.add_markers(all_coords, marker_color=all_colors, marker_size=3)
+
+    glass_brain.savefig(out_static_filename, dpi=100)
+    glass_brain.close()
+
+    # Generate legend more efficiently using pre-computed values
+    patches_lst = [mpatches.Patch(color=color, label=id_) for id_, color in zip(unq_ids, colors)]
+
+    # Use already computed n_studies
+    ncol = max(1, min(8, n_studies // 10))  # Cap columns at 8
+
+    # Create minimal figure with appropriate size
+    figsize = (8, max(1, int(n_studies / ncol / 3)))  # Scale height by entries per column
+    fig = plt.figure(figsize=figsize)
+    fig.legend(
         handles=patches_lst,
         ncol=ncol,
         fontsize=10,
         loc="center",
+        frameon=False,  # Remove frame for cleaner look
     )
-    ax.axis("off")
-    labl_fig.savefig(out_legend_filename, bbox_inches="tight", dpi=300)
-    plt.close()
-
-    # Plot interactive connectome
-    html_view = view_connectome(
-        adjacency_matrix,
-        node_coords,
-        node_size=10,
-        colorbar=False,
-        node_color=colors,
+    fig.savefig(
+        out_legend_filename,
+        dpi=100,
+        bbox_inches="tight",
+        pil_kwargs={"optimize": True, "quality": 85},
     )
-    html_view.save_as_html(out_interactive_filename)
+    plt.close(fig)
+
+    # Create interactive view with markers using pre-computed coordinates and colors
+    interactive_view = view_markers(all_coords, marker_color=all_colors, marker_size=3)
+    interactive_view.save_as_html(out_interactive_filename)
+    del interactive_view  # Clean up
 
 
-def plot_interactive_brain(img, out_filename, threshold=1e-06):
+def plot_interactive_brain(img, out_filename, threshold=1e-06, quality="medium"):
     """Plot interactive brain image.
 
     .. versionadded:: 0.1.0
@@ -267,18 +295,33 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06):
         used to threshold the image: values below the threshold (in absolute value)
         are plotted as transparent. If 'auto' is given, the threshold is determined
         magically by analysis of the image. Default=1e-6.
+    quality: str, optional
+        Quality setting for the visualization. Options are:
+        - 'low': Uses 4mm resolution template, best for memory efficiency
+        - 'medium': Uses 2mm resolution template
+        - 'high': Uses 1mm resolution template (memory intensive)
+        Default is 'low' for memory efficiency.
     """
     _check_extention(out_filename, [".html"])
 
-    template = datasets.load_mni152_template(resolution=1)
-    html_view = view_img(
-        img,
-        bg_img=template,
-        black_bg=False,
-        threshold=threshold,
-        symmetric_cmap=True,
-    )
-    html_view.save_as_html(out_filename)
+    # Set template resolution based on quality
+    resolution_map = {"low": 4, "medium": 2, "high": 1}
+    resolution = resolution_map.get(quality, 4)  # Default to low if invalid quality
+
+    try:
+        template = datasets.load_mni152_template(resolution=resolution)
+        html_view = view_img(
+            img,
+            bg_img=template,
+            black_bg=False,
+            threshold=threshold,
+            symmetric_cmap=True,
+        )
+        html_view.save_as_html(out_filename)
+    finally:
+        # Cleanup resources
+        if "html_view" in locals():
+            del html_view
 
 
 def plot_heatmap(
@@ -405,7 +448,7 @@ def plot_clusters(img, out_filename):
         colorbar=True,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -605,7 +648,7 @@ def _plot_relcov_map(maps_arr, masker, out_filename):
     coverage_img = masker.inverse_transform(coverage_arr)
 
     # Plot coverage map
-    template = datasets.load_mni152_template(resolution=1)
+    template = datasets.load_mni152_template(resolution=2)
     fig = plot_img(
         coverage_img,
         bg_img=template,
@@ -619,7 +662,7 @@ def _plot_relcov_map(maps_arr, masker, out_filename):
         vmax=1,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()
 
 
@@ -647,5 +690,5 @@ def _plot_dof_map(dof_map, out_filename):
         vmin=0,
         display_mode="mosaic",
     )
-    fig.savefig(out_filename, dpi=300)
+    fig.savefig(out_filename, dpi=100)
     fig.close()

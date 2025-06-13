@@ -631,12 +631,12 @@ class Dataset(NiMAREBase):
         return found_ids
 
     def get_studies_by_mask(self, mask):
-        """Extract list of studies with at least one coordinate in mask.
+        """Extract list of studies with at least one focus in mask.
 
         Parameters
         ----------
-        mask : img_like
-            Mask across which to search for coordinates.
+        mask : :obj:`~nibabel.nifti1.Nifti1Image`
+            Mask with which to evaluate coordinates for inclusion.
 
         Returns
         -------
@@ -649,12 +649,16 @@ class Dataset(NiMAREBase):
         if not np.array_equal(dset_mask.affine, mask.affine):
             LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
 
+        # Convert coordinates to voxel indices
         dset_ijk = mm2vox(self.coordinates[["x", "y", "z"]].values, mask.affine)
         mask_data = mask.get_fdata()
-        mask_coords = np.vstack(np.where(mask_data)).T
 
-        # Check for presence of coordinates in mask
-        in_mask = np.any(np.all(dset_ijk[:, None] == mask_coords[None, :], axis=-1), axis=-1)
+        # Clip coordinates to be within mask dimensions
+        shape = mask_data.shape
+        dset_ijk = np.clip(dset_ijk, 0, np.array(shape) - 1)
+
+        # Simply index into mask using voxel coordinates
+        in_mask = mask_data[dset_ijk[:, 0], dset_ijk[:, 1], dset_ijk[:, 2]] > 0
         found_ids = list(self.coordinates.loc[in_mask, "id"].unique())
 
         return found_ids

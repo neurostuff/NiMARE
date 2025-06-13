@@ -288,7 +288,9 @@ def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     # Plot brain images if not empty
     if (results.maps[img_key] > threshold).any():
         img = results.get_map(img_key)
-        plot_interactive_brain(img, fig_dir / "corrector_figure-interactive.html", threshold)
+        plot_interactive_brain(
+            img, fig_dir / "corrector_figure-interactive.html", threshold, quality="low"
+        )
         plot_static_brain(img, fig_dir / "corrector_figure-static.png", threshold)
     else:
         _no_maps_found(fig_dir / "corrector_figure-non.html")
