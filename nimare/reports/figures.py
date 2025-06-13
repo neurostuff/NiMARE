@@ -297,7 +297,7 @@ def plot_interactive_brain(img, out_filename, threshold=1e-06, quality="medium")
         magically by analysis of the image. Default=1e-6.
     quality: str, optional
         Quality setting for the visualization. Options are:
-        - 'low': Uses 3mm resolution template, best for memory efficiency
+        - 'low': Uses 4mm resolution template, best for memory efficiency
         - 'medium': Uses 2mm resolution template
         - 'high': Uses 1mm resolution template (memory intensive)
         Default is 'low' for memory efficiency.
