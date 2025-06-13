@@ -63,7 +63,12 @@ def _check_input(obj, clss, options, **kwargs):
         if obj == FWECorrector:
             kwargs["method"] = obj_str
 
-    return _check_type(obj, clss, **kwargs)
+    # Apply kwargs (including n_cores) when obj is a class or string
+    if isinstance(obj, (str, type)):
+        return _check_type(obj, clss, **kwargs)
+
+    # If object is already instantiated, return it as-is
+    return _check_type(obj, clss)
 
 
 class Workflow(NiMAREBase):
@@ -93,23 +98,25 @@ class Workflow(NiMAREBase):
             diagnostics = [diagnostics]
 
         # Check inputs and set defaults if input is None
-        estimator = (
-            self._estm_default(n_cores=self.n_cores)
-            if estimator is None
-            else _check_input(estimator, self._estm_base, self._estm_options, n_cores=self.n_cores)
-        )
+        if estimator is None:
+            estimator = self._estm_default(n_cores=self.n_cores)
+        else:
+            estimator = _check_input(
+                estimator, self._estm_base, self._estm_options, n_cores=self.n_cores
+            )
 
-        corrector = (
-            self._corr_default(method=self._mcc_method, n_cores=self.n_cores)
-            if corrector is None
-            else _check_input(corrector, Corrector, self._corr_options, n_cores=self.n_cores)
-        )
+        if corrector is None:
+            corrector = self._corr_default(method=self._mcc_method, n_cores=self.n_cores)
+        else:
+            corrector = _check_input(
+                corrector, Corrector, self._corr_options, n_cores=self.n_cores
+            )
 
         diag_kwargs = {
             "voxel_thresh": self.voxel_thresh,
             "cluster_threshold": self.cluster_threshold,
-            "n_cores": self.n_cores,
         }
+        diag_kwargs["n_cores"] = self.n_cores
         if diagnostics is None:
             diagnostics = [self._diag_default(**diag_kwargs)]
         else:
