@@ -2,7 +2,18 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.2...HEAD)
+
+## [0.5.2](https://github.com/neurostuff/NiMARE/compare/0.5.1...0.5.2) - 2025-06-13
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🐛 Bug Fixes
+
+* [FIX] supress cluttering warning by @jdkent in https://github.com/neurostuff/NiMARE/pull/931
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.5.1...0.5.2
 
 ## [0.5.1](https://github.com/neurostuff/NiMARE/compare/0.5.0...0.5.1) - 2025-06-13
 
