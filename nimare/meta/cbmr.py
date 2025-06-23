@@ -20,7 +20,13 @@ from nimare import _version
 from nimare.diagnostics import FocusFilter
 from nimare.estimator import Estimator
 from nimare.meta import models
-from nimare.utils import b_spline_bases, dummy_encoding_moderators, robust_inverse, get_masker, mm2vox
+from nimare.utils import (
+    b_spline_bases,
+    dummy_encoding_moderators,
+    get_masker,
+    mm2vox,
+    robust_inverse,
+)
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]

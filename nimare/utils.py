@@ -207,7 +207,7 @@ def mm2vox(xyz, affine):
     From here:
     http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
     """
-    with np.errstate(invalid='ignore'):
+    with np.errstate(invalid="ignore"):
         ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz).astype(int)
     return ijk
 
@@ -1367,13 +1367,15 @@ def dummy_encoding_moderators(dataset_annotations, moderators):
             new_moderators.append(moderator)
     return dataset_annotations, new_moderators
 
+
 def robust_inverse(FI, eps=1e-8):
     """
     Compute the robust inverse of a Fisher information matrix.
+
     This function computes the inverse of a Fisher information matrix (FI) using
     Singular Value Decomposition (SVD) and a thresholding approach to handle
     small singular values, which can lead to numerical instability.
-    
+
     Parameters
     ----------
     FI : :obj:`numpy.ndarray`
@@ -1390,8 +1392,8 @@ def robust_inverse(FI, eps=1e-8):
     """
     FI = (FI + FI.T) / 2
     U, S, VT = np.linalg.svd(FI, full_matrices=False)
-    M = (S > eps)
-    S_inv = S ** -1
+    M = S > eps
+    S_inv = S**-1
     U = ((U + VT.T) / 2) * M[None, :]
     FI_inv = U @ np.diag(S_inv) @ U.T
     return FI_inv
