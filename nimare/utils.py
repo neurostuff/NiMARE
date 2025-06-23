@@ -1390,10 +1390,15 @@ def robust_inverse(FI, eps=1e-8):
     FI_inv : :obj:`numpy.ndarray`
         The robust inverse of the Fisher information matrix.
     """
+    # Improve numerical stability of FI by symmetrizing it
     FI = (FI + FI.T) / 2
+    # Perform Singular Value Decomposition
+    # and compute the inverse using a threshold on singular values
+    # to avoid division by zero or very small values
     U, S, VT = np.linalg.svd(FI, full_matrices=False)
     M = S > eps
     S_inv = S**-1
     U = ((U + VT.T) / 2) * M[None, :]
+    # Set small singular values to zero in the inverse
     FI_inv = U @ np.diag(S_inv) @ U.T
     return FI_inv
