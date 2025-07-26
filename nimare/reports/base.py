@@ -202,7 +202,9 @@ def _get_kernel_summary(params_dict):
     kernel_transformer = str(params_dict["kernel_transformer"])
     ker_params = {k: v for k, v in params_dict.items() if k.startswith("kernel_transformer__")}
     ker_params_text = ["<ul>"]
-    ker_params_text.extend(f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in ker_params.items())
+    ker_params_text.extend(
+        f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in ker_params.items()
+    )
     ker_params_text.append("</ul>")
     ker_params_text = "".join(ker_params_text)
 
@@ -234,7 +236,9 @@ def _gen_cor_summary(obj, out_filename):
     """Generate html with parameter use in obj (e.g., corrector)."""
     params_dict = obj.get_params()
 
-    cor_params_text = [f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in params_dict.items()]
+    cor_params_text = [
+        f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in params_dict.items()
+    ]
     cor_params_text = "".join(cor_params_text)
 
     ext_params_text = ["<ul>"]
