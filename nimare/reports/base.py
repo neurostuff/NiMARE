@@ -79,6 +79,7 @@ PARAMETERS_DICT = {
     "varcope": "Variance of the parameter estimate",
     "t": "T-statistic",
     "z": "Z-statistic",
+    "vfwe_only": "Voxel-level FWE only",
 }
 
 PNG_SNIPPET = """\
@@ -172,7 +173,7 @@ def _get_ibma_summary(dset, sel_ids):
     ]
 
     maptype_text = ["<li>Available maps: ", "<ul>"]
-    maptype_text.extend(f"<li>{PARAMETERS_DICT[m]} ({m})</li>" for m in map_type)
+    maptype_text.extend(f"<li>{PARAMETERS_DICT.get(m, m)} ({m})</li>" for m in map_type)
     maptype_text.extend(["</ul>", "</li>"])
 
     ibma_text.extend(maptype_text)
@@ -201,7 +202,7 @@ def _get_kernel_summary(params_dict):
     kernel_transformer = str(params_dict["kernel_transformer"])
     ker_params = {k: v for k, v in params_dict.items() if k.startswith("kernel_transformer__")}
     ker_params_text = ["<ul>"]
-    ker_params_text.extend(f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in ker_params.items())
+    ker_params_text.extend(f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in ker_params.items())
     ker_params_text.append("</ul>")
     ker_params_text = "".join(ker_params_text)
 
@@ -216,7 +217,7 @@ def _gen_est_summary(obj, out_filename):
     ker_text = _get_kernel_summary(params_dict) if isinstance(obj, CBMAEstimator) else ""
 
     est_params = {k: v for k, v in params_dict.items() if not k.startswith("kernel_transformer")}
-    est_params_text = [f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in est_params.items()]
+    est_params_text = [f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in est_params.items()]
     est_params_text = "".join(est_params_text)
 
     est_name = obj.__class__.__name__
@@ -233,12 +234,12 @@ def _gen_cor_summary(obj, out_filename):
     """Generate html with parameter use in obj (e.g., corrector)."""
     params_dict = obj.get_params()
 
-    cor_params_text = [f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in params_dict.items()]
+    cor_params_text = [f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in params_dict.items()]
     cor_params_text = "".join(cor_params_text)
 
     ext_params_text = ["<ul>"]
     ext_params_text.extend(
-        f"<li>{PARAMETERS_DICT[k]}: {v}</li>" for k, v in obj.parameters.items()
+        f"<li>{PARAMETERS_DICT.get(k, k)}: {v}</li>" for k, v in obj.parameters.items()
     )
     ext_params_text.append("</ul>")
     ext_params_text = "".join(ext_params_text)
