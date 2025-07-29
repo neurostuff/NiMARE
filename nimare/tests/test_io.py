@@ -58,17 +58,19 @@ def test_convert_nimads_to_dataset_single_sample_size(
         # Add a new note for an existing analysis (use the first analysis id)
         (
             {"sample_sizes": [10, 15]},
-            lambda ann: ann["notes"].append({
-                "analysis_name": "Extra analysis",
-                "publication": "Test Journal",
-                "study": ann["notes"][0]["study"],
-                "study_year": 2025,
-                "analysis": ann["notes"][0]["analysis"],
-                "authors": "Doe J.",
-                "note": {"include": False},
-                "study_name": "Test study"
-            }),
-            True
+            lambda ann: ann["notes"].append(
+                {
+                    "analysis_name": "Extra analysis",
+                    "publication": "Test Journal",
+                    "study": ann["notes"][0]["study"],
+                    "study_year": 2025,
+                    "analysis": ann["notes"][0]["analysis"],
+                    "authors": "Doe J.",
+                    "note": {"include": False},
+                    "study_name": "Test study",
+                }
+            ),
+            True,
         ),
         # Remove all notes
         ({"sample_size": 25}, lambda ann: ann.update({"notes": []}), True),
@@ -82,13 +84,18 @@ def test_convert_nimads_to_dataset_single_sample_size(
         # ({"sample_size": -5}, lambda ann: ann.pop("notes", None), True),
         # No annotation modification (use as-is)
         ({"sample_sizes": [20, None]}, None, True),
-    ]
+    ],
 )
 def test_convert_nimads_to_dataset_variants(
-    example_nimads_studyset, example_nimads_annotation, sample_size_variant, annotation_mod, expect_sample_sizes
+    example_nimads_studyset,
+    example_nimads_annotation,
+    sample_size_variant,
+    annotation_mod,
+    expect_sample_sizes,
 ):
     """
-    Test convert_nimads_to_dataset with realistic annotation variants based on example_nimads_annotation.
+    Test convert_nimads_to_dataset with realistic annotation variants
+    based on example_nimads_annotation.
     """
     import copy
 
@@ -120,7 +127,10 @@ def test_analysis_to_dict_invalid_sample_sizes_type_logs_warning(example_nimads_
 
     with caplog.at_level("WARNING"):
         io.convert_nimads_to_dataset(studyset)
-    assert any("sample_sizes" in record.message and "list or tuple" in record.message for record in caplog.records)
+    assert any(
+        "sample_sizes" in record.message and "list or tuple" in record.message
+        for record in caplog.records
+    )
 
 
 def test_convert_sleuth_to_dataset_smoke():
