@@ -93,7 +93,8 @@ def test_convert_nimads_to_dataset_variants(
     annotation_mod,
     expect_sample_sizes,
 ):
-    """
+    """Test variants of samples sizes and annotations.
+
     Test convert_nimads_to_dataset with realistic annotation variants
     based on example_nimads_annotation.
     """
