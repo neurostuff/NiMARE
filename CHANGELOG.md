@@ -2,7 +2,19 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.2...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.3...HEAD)
+
+## [0.5.3](https://github.com/neurostuff/NiMARE/compare/0.5.2...0.5.3) - 2025-07-26
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🐛 Bug Fixes
+
+* [FIX] tests failing by @jdkent in https://github.com/neurostuff/NiMARE/pull/936
+* [FIX] vfwe only param by @jdkent in https://github.com/neurostuff/NiMARE/pull/934
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.5.2...0.5.3
 
 ## [0.5.2](https://github.com/neurostuff/NiMARE/compare/0.5.1...0.5.2) - 2025-06-13
 
