@@ -72,10 +72,27 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 f"Expected sample_sizes to be list or tuple, but got {type(sample_sizes)}."
             )
             sample_sizes = None
+        elif sample_sizes is not None:
+            # Validate each sample size in the list
+            for i, ss in enumerate(sample_sizes):
+                if not isinstance(ss, (int, float)):
+                    LGR.warning(
+                        f"Expected sample_sizes[{i}] to be numeric, but got {type(ss)}."
+                        " Attempting to convert to numeric."
+                    )
+                try:
+                    sample_sizes[i] = int(ss)
+                except (ValueError, TypeError):
+                    try:
+                        sample_sizes[i] = float(ss)
+                    except (ValueError, TypeError):
+                        LGR.warning(f"Could not convert {ss} to numeric from type {type(ss)}.")
+                        sample_sizes = None
+                        break
 
         if not sample_sizes and sample_size:
             # Validate single sample size if present
-            if isinstance(sample_size, (int, float)):
+            if not isinstance(sample_size, (int, float)):
                 LGR.warning(
                     f"Expected sample_size to be numeric, but got {type(sample_size)}."
                     " Attempting to convert to numeric."
@@ -83,11 +100,14 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             try:
                 sample_sizes = [int(sample_size)]
             except (ValueError, TypeError):
-                sample_sizes = [float(sample_size)]
-            except (ValueError, TypeError):
-                LGR.warning(
-                    f"Could not convert {sample_size} to numeric from type {type(sample_size)}."
-                )
+                try:
+                    sample_sizes = [float(sample_size)]
+                except (ValueError, TypeError):
+                    LGR.warning(
+                        f"Could not convert {sample_size} to"
+                        f" numeric from type {type(sample_size)}."
+                    )
+                    sample_sizes = None
         if sample_sizes:
             result["metadata"]["sample_sizes"] = sample_sizes
 

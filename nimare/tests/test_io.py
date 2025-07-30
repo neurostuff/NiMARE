@@ -1,5 +1,6 @@
 """Test nimare.io (Dataset IO/transformations)."""
 
+import copy
 import os
 
 import pytest
@@ -53,85 +54,105 @@ def test_convert_nimads_to_dataset_single_sample_size(
 
 
 @pytest.mark.parametrize(
-    "sample_size_variant,annotation_mod,expect_sample_sizes",
+    "sample_sizes_val,sample_size_val,expect_col,expect_warning",
     [
-        # Add a new note for an existing analysis (use the first analysis id)
-        (
-            {"sample_sizes": [10, 15]},
-            lambda ann: ann["notes"].append(
-                {
-                    "analysis_name": "Extra analysis",
-                    "publication": "Test Journal",
-                    "study": ann["notes"][0]["study"],
-                    "study_year": 2025,
-                    "analysis": ann["notes"][0]["analysis"],
-                    "authors": "Doe J.",
-                    "note": {"include": False},
-                    "study_name": "Test study",
-                }
-            ),
-            True,
-        ),
-        # Remove all notes
-        ({"sample_size": 25}, lambda ann: ann.update({"notes": []}), True),
-        # Change note_keys to an empty dict
-        ({}, lambda ann: ann.update({"note_keys": {}}), False),
-        # Remove the description field if present
-        ({"sample_sizes": []}, lambda ann: ann.pop("description", None), False),
-        # Set source_id to a new value
-        ({"sample_size": 0}, lambda ann: ann.update({"source_id": "newsourceid"}), False),
-        # Remove the notes key entirely (skip this test, not supported)
-        # ({"sample_size": -5}, lambda ann: ann.pop("notes", None), True),
-        # No annotation modification (use as-is)
-        ({"sample_sizes": [20, None]}, None, True),
+        (5, None, False, True),
+        (None, 10, True, False),
+        (None, 10.5, True, False),
+        (None, "12", True, True),
+        (None, "13.5", True, True),
+        (None, "not_a_number", False, True),
+        (None, None, False, False),
+        ([], 7, True, False),
+        ([], None, False, False),
     ],
 )
-def test_convert_nimads_to_dataset_variants(
-    example_nimads_studyset,
-    example_nimads_annotation,
-    sample_size_variant,
-    annotation_mod,
-    expect_sample_sizes,
+def test_analysis_to_dict_sample_size(
+    example_nimads_studyset, sample_sizes_val, sample_size_val, expect_col, expect_warning, caplog
 ):
-    """Test variants of samples sizes and annotations.
-
-    Test convert_nimads_to_dataset with realistic annotation variants
-    based on example_nimads_annotation.
-    """
-    import copy
-
+    """Test conversion of nimads JSON to nimare dataset with different sample_size(s) values."""
     studyset = Studyset(example_nimads_studyset)
     for study in studyset.studies:
         for analysis in study.analyses:
             analysis.metadata.clear()
-            analysis.metadata.update(sample_size_variant)
-    if annotation_mod is not None:
-        annotation = copy.deepcopy(example_nimads_annotation)
-        annotation_mod(annotation)
-        studyset.annotations = annotation
-    else:
-        studyset.annotations = example_nimads_annotation
-    dset = io.convert_nimads_to_dataset(studyset)
+            if sample_sizes_val is not None:
+                analysis.metadata["sample_sizes"] = sample_sizes_val
+            if sample_size_val is not None:
+                analysis.metadata["sample_size"] = sample_size_val
+
+    with caplog.at_level("WARNING"):
+        dset = io.convert_nimads_to_dataset(studyset)
     assert isinstance(dset, nimare.dataset.Dataset)
-    if expect_sample_sizes:
+    if expect_col:
         assert "sample_sizes" in dset.metadata.columns
     else:
         assert "sample_sizes" not in dset.metadata.columns
+    if expect_warning:
+        assert any(
+            "sample_size" in record.message or "sample_sizes" in record.message
+            for record in caplog.records
+        )
+    else:
+        assert not any(
+            "sample_size" in record.message or "sample_sizes" in record.message
+            for record in caplog.records
+        )
 
 
-def test_analysis_to_dict_invalid_sample_sizes_type_logs_warning(example_nimads_studyset, caplog):
-    """Test _analysis_to_dict logs a warning when sample_sizes is not a list/tuple."""
+@pytest.mark.parametrize(
+    "annotation_mod,expect_success,expect_typeerror",
+    [
+        # No annotation at all
+        (None, True, False),
+        # Annotation with empty notes
+        (lambda ann: ann.update({"notes": []}), True, False),
+        # Annotation with extra irrelevant key
+        (lambda ann: ann.update({"extra_key": 123}), True, False),
+        # Annotation with missing 'notes' key (should fail)
+        (lambda ann: ann.pop("notes", None), False, True),
+        # Annotation with mismatched analysis id in notes (should warn/fail)
+        (
+            lambda ann: ann["notes"].append(
+                {
+                    "analysis_name": "Fake",
+                    "publication": "Fake",
+                    "study": ann["notes"][0]["study"],
+                    "study_year": 2025,
+                    "analysis": "not_in_studyset",
+                    "authors": "Nobody",
+                    "note": {"include": False},
+                    "study_name": "Fake",
+                }
+            ),
+            True,
+            True,
+        ),
+    ],
+)
+def test_analysis_to_dict_annotation(
+    example_nimads_studyset,
+    example_nimads_annotation,
+    annotation_mod,
+    expect_success,
+    expect_typeerror,
+):
+    """Test conversion of nimads JSON to nimare dataset with various annotation modifications."""
     studyset = Studyset(example_nimads_studyset)
-    for study in studyset.studies:
-        for analysis in study.analyses:
-            analysis.metadata["sample_sizes"] = 5  # Invalid type
-
-    with caplog.at_level("WARNING"):
-        io.convert_nimads_to_dataset(studyset)
-    assert any(
-        "sample_sizes" in record.message and "list or tuple" in record.message
-        for record in caplog.records
-    )
+    if annotation_mod is not None:
+        annotation = copy.deepcopy(example_nimads_annotation)
+        annotation_mod(annotation)
+        if expect_typeerror:
+            with pytest.raises((TypeError, ValueError, KeyError)):
+                studyset.annotations = annotation
+                io.convert_nimads_to_dataset(studyset)
+        else:
+            studyset.annotations = annotation
+            dset = io.convert_nimads_to_dataset(studyset)
+            assert expect_success
+    else:
+        # No annotation
+        dset = io.convert_nimads_to_dataset(studyset)
+        assert isinstance(dset, nimare.dataset.Dataset)
 
 
 def test_convert_sleuth_to_dataset_smoke():
