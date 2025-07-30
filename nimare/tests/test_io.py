@@ -57,7 +57,7 @@ def test_convert_nimads_to_dataset_single_sample_size(
     "sample_sizes_val,sample_size_val,expect_col,expect_warning",
     [
         (5, None, False, True),
-        ([5, '6', '7.3', 'not_a_number'], None, False, True),
+        ([5, "6", "7.3", "not_a_number"], None, False, True),
         (None, 10, True, False),
         (None, 10.5, True, False),
         (None, "12", True, True),
