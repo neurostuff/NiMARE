@@ -1,5 +1,6 @@
 """Test nimare.io (Dataset IO/transformations)."""
 
+import copy
 import os
 
 import pytest
@@ -52,16 +53,107 @@ def test_convert_nimads_to_dataset_single_sample_size(
     assert "sample_sizes" in dset.metadata.columns
 
 
-def test_analysis_to_dict_invalid_sample_sizes_type(example_nimads_studyset):
-    """Test _analysis_to_dict raises ValueError when sample_sizes is not a list/tuple."""
+@pytest.mark.parametrize(
+    "sample_sizes_val,sample_size_val,expect_col,expect_warning",
+    [
+        (5, None, False, True),
+        ([5, "6", "7.3", "not_a_number"], None, False, True),
+        (None, 10, True, False),
+        (None, 10.5, True, False),
+        (None, "12", True, True),
+        (None, "13.5", True, True),
+        (None, "not_a_number", False, True),
+        (None, None, False, False),
+        ([], 7, True, False),
+        ([], None, False, False),
+    ],
+)
+def test_analysis_to_dict_sample_size(
+    example_nimads_studyset, sample_sizes_val, sample_size_val, expect_col, expect_warning, caplog
+):
+    """Test conversion of nimads JSON to nimare dataset with different sample_size(s) values."""
     studyset = Studyset(example_nimads_studyset)
-    # Set sample_sizes to an int rather than list/tuple
     for study in studyset.studies:
         for analysis in study.analyses:
-            analysis.metadata["sample_sizes"] = 5
-    with pytest.raises(TypeError):
-        # Trigger conversion which internally calls _analysis_to_dict
-        io.convert_nimads_to_dataset(studyset)
+            analysis.metadata.clear()
+            if sample_sizes_val is not None:
+                analysis.metadata["sample_sizes"] = sample_sizes_val
+            if sample_size_val is not None:
+                analysis.metadata["sample_size"] = sample_size_val
+
+    with caplog.at_level("WARNING"):
+        dset = io.convert_nimads_to_dataset(studyset)
+    assert isinstance(dset, nimare.dataset.Dataset)
+    if expect_col:
+        assert "sample_sizes" in dset.metadata.columns
+    else:
+        assert "sample_sizes" not in dset.metadata.columns
+    if expect_warning:
+        assert any(
+            "sample_size" in record.message or "sample_sizes" in record.message
+            for record in caplog.records
+        )
+    else:
+        assert not any(
+            "sample_size" in record.message or "sample_sizes" in record.message
+            for record in caplog.records
+        )
+
+
+@pytest.mark.parametrize(
+    "annotation_mod,expect_success,expect_typeerror",
+    [
+        # No annotation at all
+        (None, True, False),
+        # Annotation with empty notes
+        (lambda ann: ann.update({"notes": []}), True, False),
+        # Annotation with extra irrelevant key
+        (lambda ann: ann.update({"extra_key": 123}), True, False),
+        # Annotation with missing 'notes' key (should fail)
+        (lambda ann: ann.pop("notes", None), False, True),
+        # Annotation with mismatched analysis id in notes (should warn/fail)
+        (
+            lambda ann: ann["notes"].append(
+                {
+                    "analysis_name": "Fake",
+                    "publication": "Fake",
+                    "study": ann["notes"][0]["study"],
+                    "study_year": 2025,
+                    "analysis": "not_in_studyset",
+                    "authors": "Nobody",
+                    "note": {"include": False},
+                    "study_name": "Fake",
+                }
+            ),
+            True,
+            True,
+        ),
+    ],
+)
+def test_analysis_to_dict_annotation(
+    example_nimads_studyset,
+    example_nimads_annotation,
+    annotation_mod,
+    expect_success,
+    expect_typeerror,
+):
+    """Test conversion of nimads JSON to nimare dataset with various annotation modifications."""
+    studyset = Studyset(example_nimads_studyset)
+    if annotation_mod is not None:
+        annotation = copy.deepcopy(example_nimads_annotation)
+        annotation_mod(annotation)
+        if expect_typeerror:
+            with pytest.raises((TypeError, ValueError, KeyError)):
+                studyset.annotations = annotation
+                io.convert_nimads_to_dataset(studyset)
+        else:
+            studyset.annotations = annotation
+            dset = io.convert_nimads_to_dataset(studyset)
+            assert expect_success
+    else:
+        # No annotation
+        dset = io.convert_nimads_to_dataset(studyset)
+        assert isinstance(dset, nimare.dataset.Dataset)
 
 
 def test_convert_sleuth_to_dataset_smoke():

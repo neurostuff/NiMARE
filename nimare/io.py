@@ -63,31 +63,53 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             },
         }
 
-        sample_sizes = analysis.metadata.get("sample_sizes")
-        sample_size = None
+        sample_sizes = analysis.metadata.get("sample_sizes", None)
+        sample_size = analysis.metadata.get("sample_size", None)
 
         # Validate sample sizes if present
         if sample_sizes is not None and not isinstance(sample_sizes, (list, tuple)):
-            raise TypeError(
-                f"Expected sample_sizes to be list or tuple, but got {type(sample_sizes)}"
+            LGR.warning(
+                f"Expected sample_sizes to be list or tuple, but got {type(sample_sizes)}."
             )
+            sample_sizes = None
+        elif sample_sizes is not None:
+            # Validate each sample size in the list
+            for i, ss in enumerate(sample_sizes):
+                if not isinstance(ss, (int, float)):
+                    LGR.warning(
+                        f"Expected sample_sizes[{i}] to be numeric, but got {type(ss)}."
+                        " Attempting to convert to numeric."
+                    )
+                try:
+                    sample_sizes[i] = int(ss)
+                except (ValueError, TypeError):
+                    try:
+                        sample_sizes[i] = float(ss)
+                    except (ValueError, TypeError):
+                        LGR.warning(f"Could not convert {ss} to numeric from type {type(ss)}.")
+                        sample_sizes = None
+                        break
 
-        if not sample_sizes:
-            # Try to get single sample size from analysis or study metadata
-            sample_size = analysis.metadata.get("sample_size")
-            if sample_size is None:
-                sample_size = study.metadata.get("sample_size")
-
+        if not sample_sizes and sample_size:
             # Validate single sample size if present
-            if sample_size is not None and not isinstance(sample_size, (int, float)):
-                raise TypeError(f"Expected sample_size to be numeric, but got {type(sample_size)}")
-
-        # Add sample size info to result if available
-        if sample_sizes or sample_size is not None:
+            if not isinstance(sample_size, (int, float)):
+                LGR.warning(
+                    f"Expected sample_size to be numeric, but got {type(sample_size)}."
+                    " Attempting to convert to numeric."
+                )
             try:
-                result["metadata"]["sample_sizes"] = sample_sizes or [sample_size]
-            except TypeError as e:
-                raise TypeError(f"Error converting sample size data to list: {str(e)}") from e
+                sample_sizes = [int(sample_size)]
+            except (ValueError, TypeError):
+                try:
+                    sample_sizes = [float(sample_size)]
+                except (ValueError, TypeError):
+                    LGR.warning(
+                        f"Could not convert {sample_size} to"
+                        f" numeric from type {type(sample_size)}."
+                    )
+                    sample_sizes = None
+        if sample_sizes:
+            result["metadata"]["sample_sizes"] = sample_sizes
 
         # Handle annotations if present
         if analysis.annotations:
