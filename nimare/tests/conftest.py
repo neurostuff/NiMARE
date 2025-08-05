@@ -185,6 +185,7 @@ def sample_size_nimads_studyset():
         studyset = json.load(f)
     return studyset
 
+
 @pytest.fixture(scope="session")
 def example_nimads_studyset():
     """Download/lookup example NiMADS studyset."""

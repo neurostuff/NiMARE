@@ -38,9 +38,7 @@ def test_convert_nimads_to_dataset_sample_sizes(
     assert "sample_sizes" in dset.metadata.columns
 
 
-def test_convert_nimads_to_dataset_single_sample_size(
-    example_nimads_studyset
-):
+def test_convert_nimads_to_dataset_single_sample_size(example_nimads_studyset):
     """Test conversion of nimads JSON to nimare dataset with a single sample size value."""
     studyset = Studyset(example_nimads_studyset)
     for study in studyset.studies:
@@ -53,9 +51,7 @@ def test_convert_nimads_to_dataset_single_sample_size(
     assert "sample_sizes" in dset.metadata.columns
 
 
-def test_convert_nimads_to_dataset_wonky_sample_size(
-    sample_size_nimads_studyset
-):
+def test_convert_nimads_to_dataset_wonky_sample_size(sample_size_nimads_studyset):
     """Test conversion of nimads JSON to nimare dataset with a single sample size value."""
     studyset = Studyset(sample_size_nimads_studyset)
 
