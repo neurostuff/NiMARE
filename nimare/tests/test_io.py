@@ -82,6 +82,11 @@ def test_analysis_to_dict_sample_size(
     """Test conversion of nimads JSON to nimare dataset with different sample_size(s) values."""
     studyset = Studyset(example_nimads_studyset)
     for study in studyset.studies:
+        study.metadata.clear()
+        if sample_sizes_val is not None:
+            study.metadata["sample_sizes"] = sample_sizes_val
+        if sample_size_val is not None:
+            study.metadata["sample_size"] = sample_size_val
         for analysis in study.analyses:
             analysis.metadata.clear()
             if sample_sizes_val is not None:
