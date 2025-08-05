@@ -2,7 +2,18 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.4...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.5...HEAD)
+
+## [0.5.5](https://github.com/neurostuff/NiMARE/compare/0.5.4...0.5.5) - 2025-08-05
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### 🐛 Bug Fixes
+
+* [FIX] pull sample_size metadata from study if not in analysis by @jdkent in https://github.com/neurostuff/NiMARE/pull/939
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.5.4...0.5.5
 
 ## [0.5.4](https://github.com/neurostuff/NiMARE/compare/0.5.3...0.5.4) - 2025-07-30
 
