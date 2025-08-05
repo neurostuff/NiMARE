@@ -39,13 +39,25 @@ def test_convert_nimads_to_dataset_sample_sizes(
 
 
 def test_convert_nimads_to_dataset_single_sample_size(
-    example_nimads_studyset, example_nimads_annotation
+    example_nimads_studyset
 ):
     """Test conversion of nimads JSON to nimare dataset with a single sample size value."""
     studyset = Studyset(example_nimads_studyset)
     for study in studyset.studies:
         for analysis in study.analyses:
             analysis.metadata["sample_size"] = 20
+
+    dset = io.convert_nimads_to_dataset(studyset)
+
+    assert isinstance(dset, nimare.dataset.Dataset)
+    assert "sample_sizes" in dset.metadata.columns
+
+
+def test_convert_nimads_to_dataset_wonky_sample_size(
+    sample_size_nimads_studyset
+):
+    """Test conversion of nimads JSON to nimare dataset with a single sample size value."""
+    studyset = Studyset(sample_size_nimads_studyset)
 
     dset = io.convert_nimads_to_dataset(studyset)
 

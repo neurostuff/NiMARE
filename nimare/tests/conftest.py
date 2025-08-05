@@ -173,6 +173,19 @@ def testdata_ibma_resample(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
+def sample_size_nimads_studyset():
+    """Download/lookup example NiMADS studyset."""
+    out_file = os.path.join(get_test_data_path(), "sample_size_nimads_studyset.json")
+    if not os.path.isfile(out_file):
+        url = "https://neurostore.org/api/studysets/zvE8LEQHAJxV?nested=true"
+        response = request("GET", url)
+        with open(out_file, "wb") as f:
+            f.write(response.content)
+    with open(out_file, "r") as f:
+        studyset = json.load(f)
+    return studyset
+
+@pytest.fixture(scope="session")
 def example_nimads_studyset():
     """Download/lookup example NiMADS studyset."""
     out_file = os.path.join(get_test_data_path(), "nimads_studyset.json")

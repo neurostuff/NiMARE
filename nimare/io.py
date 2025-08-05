@@ -63,8 +63,8 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             },
         }
 
-        sample_sizes = analysis.metadata.get("sample_sizes", None)
-        sample_size = analysis.metadata.get("sample_size", None)
+        sample_sizes = analysis.metadata.get("sample_sizes", None) or study.metadata.get("sample_sizes", None)
+        sample_size = analysis.metadata.get("sample_size", None) or study.metadata.get("sample_size", None)
 
         # Validate sample sizes if present
         if sample_sizes is not None and not isinstance(sample_sizes, (list, tuple)):
