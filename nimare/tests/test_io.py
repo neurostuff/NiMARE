@@ -52,7 +52,7 @@ def test_convert_nimads_to_dataset_single_sample_size(example_nimads_studyset):
 
 
 def test_convert_nimads_to_dataset_wonky_sample_size(sample_size_nimads_studyset):
-    """Test conversion of nimads JSON to nimare dataset with a single sample size value."""
+    """Test conversion of nimads JSON to nimare dataset with wonky sample size values."""
     studyset = Studyset(sample_size_nimads_studyset)
 
     dset = io.convert_nimads_to_dataset(studyset)
