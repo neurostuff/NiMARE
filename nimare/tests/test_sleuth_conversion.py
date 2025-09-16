@@ -7,10 +7,11 @@ import pytest
 
 from nimare.exceptions import InvalidStudysetError
 from nimare.io import (
-    convert_dataset_to_nimads,
+    convert_dataset_to_nimads_dict,
+    convert_dataset_to_studyset,
     convert_nimads_to_sleuth,
     convert_sleuth_to_dataset,
-    convert_sleuth_to_nimads,
+    convert_sleuth_to_nimads_dict,
 )
 
 
@@ -78,7 +79,7 @@ def test_idempotency_sleuth_to_nimads():
     """Test Sleuth -> Dataset -> NIMADS path produces a valid Studyset."""
     sleuth_file = "nimare/tests/data/test_sleuth_file.txt"
     dset = convert_sleuth_to_dataset(sleuth_file)
-    nimads_dict = convert_dataset_to_nimads(dset)
+    nimads_dict = convert_dataset_to_nimads_dict(dset)
     assert isinstance(nimads_dict, dict)
     assert "studies" in nimads_dict and len(nimads_dict["studies"]) > 0
 
@@ -117,7 +118,7 @@ def test_round_trip_sleuth_nimads_sleuth_content_equivalence():
 
         # First pass: sleuth -> dataset -> nimads -> sleuth
         dset1 = convert_sleuth_to_dataset(str(sleuth_file))
-        nimads1 = convert_dataset_to_nimads(dset1, studyset_id="rt1")
+        nimads1 = convert_dataset_to_nimads_dict(dset1, studyset_id="rt1")
         convert_nimads_to_sleuth(nimads1, out1)
         s1 = next(out1.glob("*.txt"))
 
@@ -322,9 +323,9 @@ def test_studyset_with_no_points(example_nimads_studyset):
 def test_convert_sleuth_to_nimads_equivalence():
     """Ensure convert_sleuth_to_nimads matches two-step conversion via Dataset."""
     sleuth_file = "nimare/tests/data/test_sleuth_file.txt"
-    nimads_direct = convert_sleuth_to_nimads(sleuth_file, studyset_id="csn")
+    nimads_direct = convert_sleuth_to_nimads_dict(sleuth_file, studyset_id="csn")
     dset = convert_sleuth_to_dataset(sleuth_file)
-    nimads_from_dset = convert_dataset_to_nimads(dset, studyset_id="csn")
+    nimads_from_dset = convert_dataset_to_nimads_dict(dset, studyset_id="csn")
     assert nimads_direct == nimads_from_dset
 
 
@@ -361,9 +362,11 @@ def test_convert_sleuth_to_nimads_target_variants_equivalent():
     variants = ["TAL", "Talairach", "Talaraich", "tal"]
     canonical = "mni152_2mm"
     results = [
-        convert_sleuth_to_nimads(sleuth_file, target=v, studyset_id="csn") for v in variants
+        convert_sleuth_to_nimads_dict(sleuth_file, target=v, studyset_id="csn") for v in variants
     ]
-    canonical_result = convert_sleuth_to_nimads(sleuth_file, target=canonical, studyset_id="csn")
+    canonical_result = convert_sleuth_to_nimads_dict(
+        sleuth_file, target=canonical, studyset_id="csn"
+    )
     for r in results:
         assert r == canonical_result
 
@@ -371,10 +374,23 @@ def test_convert_sleuth_to_nimads_target_variants_equivalent():
     ale_variants = ["ale_2mm", "ALE", "ale"]
     canonical_ale = "ale_2mm"
     results_ale = [
-        convert_sleuth_to_nimads(sleuth_file, target=v, studyset_id="csn") for v in ale_variants
+        convert_sleuth_to_nimads_dict(sleuth_file, target=v, studyset_id="csn")
+        for v in ale_variants
     ]
-    canonical_ale_result = convert_sleuth_to_nimads(
+    canonical_ale_result = convert_sleuth_to_nimads_dict(
         sleuth_file, target=canonical_ale, studyset_id="csn"
     )
     for r in results_ale:
         assert r == canonical_ale_result
+
+
+def test_convert_dataset_to_studyset_returns_object():
+    """Convert Dataset to a nimads.Studyset object via convenience wrapper."""
+    sleuth_file = "nimare/tests/data/test_sleuth_file.txt"
+    dset = convert_sleuth_to_dataset(sleuth_file)
+    studyset = convert_dataset_to_studyset(dset, studyset_id="cdts", studyset_name="From Dataset")
+    from nimare.nimads import Studyset
+
+    assert isinstance(studyset, Studyset)
+    assert studyset.id == "cdts"
+    assert studyset.name == "From Dataset"

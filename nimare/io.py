@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Sequence, Union
+from typing import Any, Dict, List, Literal, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,6 @@ from scipy import sparse
 from nimare.dataset import Dataset
 from nimare.exceptions import InvalidStudysetError
 from nimare.extract.utils import _get_dataset_dir
-from nimare.nimads import Studyset
 from nimare.utils import _create_name, load_nimads, mni2tal, tal2mni
 
 LGR = logging.getLogger(__name__)
@@ -412,7 +411,7 @@ def convert_nimads_to_sleuth(
     decimal_precision: Optional[int] = 2,
     annotation: Optional[Union[str, Dict[str, Any], Any]] = None,
     export_metadata: Optional[
-        list[Literal["authors", "publication", "year", "doi", "pmid", "affiliations"]]
+        List[Literal["authors", "publication", "year", "doi", "pmid", "affiliations"]]
     ] = None,
     *,
     annotation_columns: Optional[Sequence[str]] = None,
@@ -473,7 +472,10 @@ def convert_nimads_to_sleuth(
 
     # Load studyset object and dict for validation
     try:
-        studyset_obj = studyset if isinstance(studyset, Studyset) else Studyset(studyset)
+        # Local import to avoid circular import at module import time.
+        from nimare.nimads import Studyset as _Studyset
+
+        studyset_obj = studyset if isinstance(studyset, _Studyset) else _Studyset(studyset)
     except Exception as e:
         raise InvalidStudysetError(f"Failed to load studyset: {e}") from e
 
@@ -933,7 +935,7 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     return Dataset(dset_dict, target=target)
 
 
-def convert_dataset_to_nimads(
+def convert_dataset_to_nimads_dict(
     dataset: Dataset,
     *,
     studyset_id: str = "nimads_from_dataset",
@@ -1049,7 +1051,46 @@ def convert_dataset_to_nimads(
     return studyset
 
 
-def convert_sleuth_to_nimads(
+def convert_dataset_to_studyset(
+    dataset: Dataset,
+    *,
+    studyset_id: str = "nimads_from_dataset",
+    studyset_name: str = "",
+    out_file: Optional[Union[str, Path]] = None,
+):
+    """Convert a NiMARE Dataset into a nimads.Studyset object.
+
+    This is a convenience wrapper around :func:`convert_dataset_to_nimads_dict` that
+    returns a fully-constructed :class:`nimare.nimads.Studyset` instance instead of a
+    plain dictionary. If ``out_file`` is provided, the underlying NIMADS dictionary will
+    also be written to disk (same behavior as :func:`convert_dataset_to_nimads_dict`).
+
+    Parameters
+    ----------
+    dataset
+        NiMARE Dataset to convert.
+    studyset_id
+        Identifier for the resulting Studyset.
+    studyset_name
+        Human-readable name for the Studyset.
+    out_file
+        Optional path to write the intermediate Studyset JSON.
+
+    Returns
+    -------
+    nimads.Studyset
+        Constructed Studyset object.
+    """
+    nimads_dict = convert_dataset_to_nimads_dict(
+        dataset, studyset_id=studyset_id, studyset_name=studyset_name, out_file=out_file
+    )
+    # Local import to avoid circular import at module import time.
+    from nimare.nimads import Studyset as _Studyset
+
+    return _Studyset(nimads_dict)
+
+
+def convert_sleuth_to_nimads_dict(
     text_file: Union[str, Path, Sequence[Union[str, Path]]],
     *,
     target: str = "MNI",
@@ -1098,7 +1139,9 @@ def convert_sleuth_to_nimads(
         ds_target = "ale_2mm"
 
     dset = convert_sleuth_to_dataset(text_file, target=ds_target)
-    return convert_dataset_to_nimads(dset, studyset_id=studyset_id, studyset_name=studyset_name)
+    return convert_dataset_to_nimads_dict(
+        dset, studyset_id=studyset_id, studyset_name=studyset_name
+    )
 
 
 def convert_neurovault_to_dataset(

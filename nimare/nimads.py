@@ -82,6 +82,22 @@ class Studyset:
 
         return cls(nimads)
 
+    @classmethod
+    def from_dataset(cls, dataset):
+        """Create a Studyset from a NiMARE Dataset."""
+        from nimare.io import convert_dataset_to_nimads_dict
+
+        nimads = convert_dataset_to_nimads_dict(dataset)
+        return cls(nimads)
+
+    @classmethod
+    def from_sleuth(cls, sleuth_file):
+        """Create a Studyset from a Sleuth text file."""
+        from nimare.io import convert_sleuth_to_nimads_dict
+
+        nimads = convert_sleuth_to_nimads_dict(sleuth_file)
+        return cls(nimads)
+
     def combine_analyses(self):
         """Combine analyses in Studyset."""
         studyset = self.copy()
@@ -457,7 +473,7 @@ class Study:
         self.authors = source.get("authors", "")
         self.publication = source.get("publication", "")
         self.year = source.get("year", None)
-        self.metadata = source.get("metadata", {})
+        self.metadata = source.get("metadata", {}) or {}
         self.analyses = [Analysis(a, study=self) for a in source.get("analyses", [])]
 
     def __repr__(self):
