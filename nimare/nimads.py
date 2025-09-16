@@ -30,7 +30,7 @@ class Studyset:
         The Study objects comprising the Studyset.
     """
 
-    def __init__(self, source, target_space=None, mask=None, annotations=None):
+    def __init__(self, source, target=None, mask=None, annotations=None):
         # load source as json
         if isinstance(source, str):
             with open(source, "r+") as f:
@@ -450,11 +450,15 @@ class Study:
 
     def __init__(self, source):
         self.id = source["id"]
-        self.name = source["name"] or ""
-        self.authors = source["authors"] or ""
-        self.publication = source["publication"] or ""
-        self.metadata = source.get("metadata", {}) or {}
-        self.analyses = [Analysis(a, study=self) for a in source["analyses"]]
+        self.name = source.get("name", "")
+        self.description = source.get("description", "")
+        self.doi = source.get("doi", "")
+        self.pmid = source.get("pmid", "")
+        self.authors = source.get("authors", "")
+        self.publication = source.get("publication", "")
+        self.year = source.get("year", None)
+        self.metadata = source.get("metadata", {})
+        self.analyses = [Analysis(a, study=self) for a in source.get("analyses", [])]
 
     def __repr__(self):
         """My Simple representation."""
