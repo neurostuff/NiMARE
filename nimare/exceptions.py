@@ -7,7 +7,3 @@ class NiMAREError(Exception):
 
 class InvalidStudysetError(NiMAREError):
     """Exception raised when a studyset is invalid or malformed."""
-
-
-class ConversionWarning(UserWarning):
-    """Warning raised during data conversion processes."""
