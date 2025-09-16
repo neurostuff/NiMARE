@@ -735,19 +735,18 @@ def _generate_metadata_comments(study, export_metadata):
     # Collect metadata from Study object and any top-level attributes that may
     # have been provided in the original JSON but not stored in study.metadata.
     md = getattr(study, "metadata", {}) or {}
-    raw = getattr(study, "__dict__", {})
 
-    # Year may exist as a top-level attribute, in study.__dict__, or inside metadata
-    year = raw.get("year") or getattr(study, "year", None) or md.get("year")
+    # Year may exist as a top-level attribute or inside metadata
+    year = getattr(study, "year", None) or md.get("year")
     if year and "year" in export_metadata:
         comments.append(f"Year={year}")
 
     # DOI and PMID may also be top-level, in __dict__, or in metadata
-    doi = raw.get("doi") or getattr(study, "doi", None) or md.get("doi")
+    doi = getattr(study, "doi", None) or md.get("doi")
     if doi and "doi" in export_metadata:
         comments.append(f"DOI={doi}")
 
-    pmid = raw.get("pmid") or getattr(study, "pmid", None) or md.get("pmid")
+    pmid = getattr(study, "pmid", None) or md.get("pmid")
     if pmid and "pmid" in export_metadata:
         comments.append(f"PubMedId={pmid}")
 
@@ -756,7 +755,6 @@ def _generate_metadata_comments(study, export_metadata):
         md.get("affiliations")
         or md.get("institutions")
         or md.get("institution")
-        or raw.get("affiliations")
         or getattr(study, "affiliations", None)
     )
     if aff and "affiliations" in export_metadata:
