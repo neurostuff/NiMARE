@@ -1,5 +1,6 @@
 """Generate fixtures for tests."""
 
+import copy
 import json
 import os
 from shutil import copyfile
@@ -187,7 +188,7 @@ def sample_size_nimads_studyset():
 
 
 @pytest.fixture(scope="session")
-def example_nimads_studyset():
+def _example_nimads_studyset_data():
     """Download/lookup example NiMADS studyset."""
     out_file = os.path.join(get_test_data_path(), "nimads_studyset.json")
     if not os.path.isfile(out_file):
@@ -198,6 +199,12 @@ def example_nimads_studyset():
     with open(out_file, "r") as f:
         studyset = json.load(f)
     return studyset
+
+
+@pytest.fixture(scope="function")
+def example_nimads_studyset(_example_nimads_studyset_data):
+    """Provide an isolated copy of the example NiMADS studyset per test."""
+    return copy.deepcopy(_example_nimads_studyset_data)
 
 
 @pytest.fixture(scope="session")
