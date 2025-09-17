@@ -30,7 +30,7 @@ class Studyset:
         The Study objects comprising the Studyset.
     """
 
-    def __init__(self, source, target_space=None, mask=None, annotations=None):
+    def __init__(self, source, target=None, mask=None, annotations=None):
         # load source as json
         if isinstance(source, str):
             with open(source, "r+") as f:
@@ -80,6 +80,22 @@ class Studyset:
         with open(filename, "r+") as fn:
             nimads = json.load(fn)
 
+        return cls(nimads)
+
+    @classmethod
+    def from_dataset(cls, dataset):
+        """Create a Studyset from a NiMARE Dataset."""
+        from nimare.io import convert_dataset_to_nimads_dict
+
+        nimads = convert_dataset_to_nimads_dict(dataset)
+        return cls(nimads)
+
+    @classmethod
+    def from_sleuth(cls, sleuth_file):
+        """Create a Studyset from a Sleuth text file."""
+        from nimare.io import convert_sleuth_to_nimads_dict
+
+        nimads = convert_sleuth_to_nimads_dict(sleuth_file)
         return cls(nimads)
 
     def combine_analyses(self):
@@ -450,11 +466,15 @@ class Study:
 
     def __init__(self, source):
         self.id = source["id"]
-        self.name = source["name"] or ""
-        self.authors = source["authors"] or ""
-        self.publication = source["publication"] or ""
+        self.name = source.get("name", "")
+        self.description = source.get("description", "")
+        self.doi = source.get("doi", "")
+        self.pmid = source.get("pmid", "")
+        self.authors = source.get("authors", "")
+        self.publication = source.get("publication", "")
+        self.year = source.get("year", None)
         self.metadata = source.get("metadata", {}) or {}
-        self.analyses = [Analysis(a, study=self) for a in source["analyses"]]
+        self.analyses = [Analysis(a, study=self) for a in source.get("analyses", [])]
 
     def __repr__(self):
         """My Simple representation."""

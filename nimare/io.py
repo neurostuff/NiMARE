@@ -3,10 +3,11 @@
 import json
 import logging
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -14,8 +15,9 @@ import requests
 from scipy import sparse
 
 from nimare.dataset import Dataset
+from nimare.exceptions import InvalidStudysetError
 from nimare.extract.utils import _get_dataset_dir
-from nimare.utils import _create_name, load_nimads
+from nimare.utils import _create_name, load_nimads, mni2tal, tal2mni
 
 LGR = logging.getLogger(__name__)
 
@@ -402,6 +404,388 @@ def convert_neurosynth_to_dataset(
     return Dataset(dset_dict, target=target)
 
 
+def convert_nimads_to_sleuth(
+    studyset: Union[str, Dict[str, Any], Any],
+    output_dir: Union[str, Path],
+    target: Union[Literal["MNI", "TAL"], str] = "MNI",
+    decimal_precision: Optional[int] = 2,
+    annotation: Optional[Union[str, Dict[str, Any], Any]] = None,
+    export_metadata: Optional[
+        List[Literal["authors", "publication", "year", "doi", "pmid", "affiliations"]]
+    ] = None,
+    *,
+    annotation_columns: Optional[Sequence[str]] = None,
+    annotation_values: Optional[Dict[str, Sequence[Any]]] = None,
+    split_booleans: Optional[bool] = True,
+):
+    """Convert a NIMADS Studyset to Sleuth text file(s).
+
+    Parameters
+    ----------
+    studyset : :obj:`str` or :obj:`dict` or :obj:`nimare.nimads.Studyset`
+        Path to a Studyset JSON, a Studyset-like dictionary, or a Studyset object.
+    output_dir : :obj:`str` or :obj:`pathlib.Path`
+        Directory for Sleuth output. Created if missing.
+    target : str, optional
+        Target space for coordinates. Accepts "MNI" or "TAL", but also commonly-used
+        dataset target strings such as "ale_2mm" or "mni152_2mm". These are normalized
+        to either "MNI" or "TAL" internally. Default is "MNI".
+    decimal_precision : :obj:`int`, optional
+        Decimal places for output coordinates. Default is 2.
+    annotation : :obj:`str` or :obj:`dict` or :obj:`nimare.nimads.Annotation`, optional
+        Optional annotation to split output files by annotation values.
+    export_metadata : :obj:`list` of {"authors", "publication", "year", "doi",
+        "pmid", "affiliations"}, optional
+        Metadata fields to export as comments. Default is ["doi", "pmid"].
+    annotation_columns : :obj:`list` of :obj:`str`, optional
+        Restrict splitting to these annotation keys.
+    annotation_values : :obj:`dict`, optional
+        Filter annotation splits to these values per key.
+    split_booleans : :obj:`bool`, optional
+        When True, boolean columns produce ``_true``/``_false`` files. Default is True.
+
+    Raises
+    ------
+    InvalidStudysetError
+        On invalid inputs or schema/structure mismatch.
+    """
+    if export_metadata is None:
+        export_metadata = ["doi", "pmid"]
+    if decimal_precision < 0:
+        raise InvalidStudysetError("decimal_precision must be non-negative")
+
+    # Normalize target string to canonical Sleuth reference-space ("MNI" or "TAL")
+    try:
+        tgt_str = str(target).lower()
+    except Exception:
+        tgt_str = "mni"
+    if tgt_str in ("mni", "mni152_2mm", "ale_2mm", "mni152"):
+        target_norm = "MNI"
+    elif "tal" in tgt_str:
+        target_norm = "TAL"
+    else:
+        # Fallback to MNI for unknown values
+        target_norm = "MNI"
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load studyset object and dict for validation
+    try:
+        # Local import to avoid circular import at module import time.
+        from nimare.nimads import Studyset as _Studyset
+
+        studyset_obj = studyset if isinstance(studyset, _Studyset) else _Studyset(studyset)
+    except Exception as e:
+        raise InvalidStudysetError(f"Failed to load studyset: {e}") from e
+
+    if annotation is not None:
+        try:
+            studyset_obj.annotations = annotation
+        except Exception as e:
+            raise InvalidStudysetError(f"Failed to load annotation: {e}") from e
+
+    # Handle annotations
+    if studyset_obj.annotations:
+        # Process with annotations - create separate files
+        _process_with_annotations(
+            studyset_obj,
+            output_dir,
+            target_norm,
+            decimal_precision,
+            export_metadata,
+            annotation_columns,
+            annotation_values,
+            split_booleans,
+        )
+    else:
+        # Process without annotations - single file
+        _process_without_annotations(
+            studyset_obj,
+            output_dir,
+            target_norm,
+            decimal_precision,
+            export_metadata,
+        )
+
+
+def _write_analysis(
+    f,
+    study,
+    analysis,
+    target: str,
+    decimal_precision: int,
+    export_metadata,
+):
+    """Write a single analysis block (header, metadata, coordinates) to an open file handle.
+
+    This centralizes the previously duplicated code for writing study/analysis headers,
+    sample sizes, metadata comment lines, and coordinates (including named-space transforms).
+    """
+    # Validate points
+    if not hasattr(analysis, "points"):
+        raise InvalidStudysetError(f"Analysis {analysis.id} is missing points")
+    if not analysis.points:
+        return
+
+    for point in analysis.points:
+        if not (hasattr(point, "x") and hasattr(point, "y") and hasattr(point, "z")):
+            raise InvalidStudysetError(f"Point in analysis {analysis.id} is missing coordinates")
+
+    # Generate hierarchical label with metadata
+    study_name = study.name or f"Study_{study.id}"
+    analysis_name = analysis.name or f"Analysis_{analysis.id}"
+
+    if getattr(study, "authors", ""):
+        label = f"{study.authors} ({study_name}): {analysis_name}"
+    else:
+        label = f"{study_name}: {analysis_name}"
+
+    # Write study header
+    f.write(f"//{label}\n")
+
+    # Write sample size if available
+    sample_size = _get_sample_size(analysis, study)
+    if sample_size:
+        f.write(f"//Subjects={sample_size}\n")
+
+    # Write additional metadata as comments
+    metadata_lines = _generate_metadata_comments(study, export_metadata)
+    for line in metadata_lines:
+        f.write(f"//{line}\n")
+
+    # Transform and write coordinates
+    coords = []
+    source_space = None
+    for point in analysis.points:
+        if source_space is None:
+            source_space = getattr(point, "space", None) or "UNKNOWN"
+        coords.append([point.x, point.y, point.z])
+
+    if coords:
+        coords = np.array(coords)
+        # Validate coordinates are numeric
+        if not np.issubdtype(coords.dtype, np.number):
+            raise InvalidStudysetError("Coordinates must be numeric")
+        # Apply named-space normalization if requested
+        if target == "MNI" and source_space == "TAL":
+            coords = tal2mni(coords)
+        elif target == "TAL" and source_space == "MNI":
+            coords = mni2tal(coords)
+
+        # Write coordinates with specified precision
+        for coord in coords:
+            f.write(
+                f"{coord[0]:.{decimal_precision}f}\t"
+                f"{coord[1]:.{decimal_precision}f}\t"
+                f"{coord[2]:.{decimal_precision}f}\n"
+            )
+
+    f.write("\n")  # Empty line between analyses
+
+
+def _process_without_annotations(
+    studyset,
+    output_dir,
+    target,
+    decimal_precision,
+    export_metadata,
+):
+    """Process studyset without annotations (single Sleuth file)."""
+    output_file = output_dir / "nimads_sleuth_file.txt"
+
+    with open(output_file, "w") as f:
+        f.write(f"//Reference={target}\n")
+
+        # If no studies, leave just the header
+        if not studyset.studies:
+            return
+
+        # Iterate deterministically and use helper to write each analysis
+        for study in sorted(studyset.studies, key=lambda s: s.id):
+            if not hasattr(study, "analyses"):
+                raise InvalidStudysetError(f"Study {study.id} is missing analyses")
+
+            for analysis in sorted(study.analyses, key=lambda a: a.id):
+                if not hasattr(analysis, "points"):
+                    raise InvalidStudysetError(f"Analysis {analysis.id} is missing points")
+                if not analysis.points:
+                    continue
+
+                _write_analysis(
+                    f,
+                    study,
+                    analysis,
+                    target=target,
+                    decimal_precision=decimal_precision,
+                    export_metadata=export_metadata,
+                )
+
+
+def _process_with_annotations(
+    studyset,
+    output_dir,
+    target,
+    decimal_precision,
+    export_metadata,
+    annotation_columns,
+    annotation_values,
+    split_booleans,
+):
+    """Process studyset with annotations, creating multiple files."""
+    annotation = studyset.annotations[0]  # Use first annotation
+
+    # Validate annotation
+    if not hasattr(annotation, "notes"):
+        raise InvalidStudysetError("Annotation is missing notes")
+
+    # Group analyses by annotation values
+    analysis_groups = defaultdict(list)
+
+    # Process each analysis and group by annotation values
+    for study in sorted(studyset.studies, key=lambda s: s.id):
+        # Validate study
+        if not hasattr(study, "analyses"):
+            raise InvalidStudysetError(f"Study {study.id} is missing analyses")
+
+        for analysis in sorted(study.analyses, key=lambda a: a.id):
+            # Validate analysis
+            if not hasattr(analysis, "points"):
+                raise InvalidStudysetError(f"Analysis {analysis.id} is missing points")
+
+            # Lookup this annotation's note (annotation.id -> note dict) on the analysis
+            note = None
+            if getattr(analysis, "annotations", None):
+                note = analysis.annotations.get(annotation.id)
+
+            if note:
+                # Group by annotation values (restricted and filtered if requested)
+                keyvals = list(note.items())
+                if annotation_columns is not None:
+                    keyvals = [(k, v) for k, v in keyvals if k in set(annotation_columns)]
+                for key, value in sorted(keyvals, key=lambda kv: (kv[0], str(kv[1]))):
+                    if (
+                        annotation_values
+                        and key in annotation_values
+                        and value not in annotation_values[key]
+                    ):
+                        continue
+                    if isinstance(value, bool) and split_booleans:
+                        group_name = f"{key}_{str(value).lower()}"
+                    else:
+                        group_name = f"{key}_{value}"
+                    analysis_groups[group_name].append((study, analysis))
+            else:
+                # Add to default group if no annotation for this analysis
+                analysis_groups["default"].append((study, analysis))
+
+    # Create separate files for each group (sorted deterministically)
+    for group_name in sorted(analysis_groups.keys()):
+        analyses = analysis_groups[group_name]
+        # Sanitize filename
+        safe_name = "".join(c for c in group_name if c.isalnum() or c in "._-").rstrip()
+        if not safe_name:
+            safe_name = "unnamed_group"
+
+        output_file = output_dir / f"{safe_name}.txt"
+
+        with open(output_file, "w") as f:
+            f.write(f"//Reference={target}\n")
+
+            # Process each analysis in this group
+            for study, analysis in analyses:
+                # Validate analysis
+                if not hasattr(analysis, "points"):
+                    raise InvalidStudysetError(f"Analysis {analysis.id} is missing points")
+
+                if not analysis.points:
+                    continue
+
+                # Validate points
+                for point in analysis.points:
+                    if (
+                        not hasattr(point, "x")
+                        or not hasattr(point, "y")
+                        or not hasattr(point, "z")
+                    ):
+                        raise InvalidStudysetError(
+                            f"Point in analysis {analysis.id} is missing coordinates"
+                        )
+
+                _write_analysis(
+                    f,
+                    study,
+                    analysis,
+                    target=target,
+                    decimal_precision=decimal_precision,
+                    export_metadata=export_metadata,
+                )
+
+
+def _generate_metadata_comments(study, export_metadata):
+    """Generate metadata comment lines for Sleuth file."""
+    comments = []
+
+    # Authors and publication info (prefer top-level attributes)
+    if getattr(study, "authors", "") and "authors" in export_metadata:
+        comments.append(f"Authors={study.authors}")
+    if getattr(study, "publication", "") and "publication" in export_metadata:
+        comments.append(f"Publication={study.publication}")
+
+    # Collect metadata from Study object and any top-level attributes that may
+    # have been provided in the original JSON but not stored in study.metadata.
+    md = getattr(study, "metadata", {}) or {}
+
+    # Year may exist as a top-level attribute or inside metadata
+    year = getattr(study, "year", None) or md.get("year")
+    if year and "year" in export_metadata:
+        comments.append(f"Year={year}")
+
+    # DOI and PMID may also be top-level, in __dict__, or in metadata
+    doi = getattr(study, "doi", None) or md.get("doi")
+    if doi and "doi" in export_metadata:
+        comments.append(f"DOI={doi}")
+
+    pmid = getattr(study, "pmid", None) or md.get("pmid")
+    if pmid and "pmid" in export_metadata:
+        comments.append(f"PubMedId={pmid}")
+
+    # Affiliations/institutions may be in metadata or as a top-level attribute
+    aff = (
+        md.get("affiliations")
+        or md.get("institutions")
+        or md.get("institution")
+        or getattr(study, "affiliations", None)
+    )
+    if aff and "affiliations" in export_metadata:
+        comments.append(f"Affiliations={aff}")
+
+    return comments
+
+
+def _get_sample_size(analysis, study):
+    """Extract sample size from analysis or study metadata."""
+    # Check analysis metadata first
+    sample_sizes = analysis.metadata.get("sample_sizes")
+    sample_size = analysis.metadata.get("sample_size")
+
+    # Fall back to study metadata
+    if not sample_sizes and not sample_size:
+        sample_sizes = study.metadata.get("sample_sizes")
+        sample_size = study.metadata.get("sample_size")
+
+    # Return appropriate sample size value
+    if sample_sizes:
+        if isinstance(sample_sizes, (list, tuple)):
+            return min(sample_sizes) if sample_sizes else None
+        else:
+            return sample_sizes
+    elif sample_size:
+        return sample_size
+
+    return None
+
+
 def convert_sleuth_to_dict(text_file):
     """Convert Sleuth text file to a dictionary.
 
@@ -547,6 +931,215 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
         raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
     dset_dict = convert_sleuth_to_dict(text_file)
     return Dataset(dset_dict, target=target)
+
+
+def convert_dataset_to_nimads_dict(
+    dataset: Dataset,
+    *,
+    studyset_id: str = "nimads_from_dataset",
+    studyset_name: str = "",
+    out_file: Optional[Union[str, Path]] = None,
+) -> Dict[str, Any]:
+    """Convert a NiMARE Dataset to a NIMADS Studyset dictionary.
+
+    Parameters
+    ----------
+    dataset : :obj:`~nimare.dataset.Dataset`
+        Dataset instance derived from Sleuth or other sources.
+    studyset_id : :obj:`str`, optional
+        Identifier for the resulting Studyset. Default is 'nimads_from_dataset'.
+    studyset_name : :obj:`str`, optional
+        Human-readable name for the Studyset. Default is ''.
+    out_file : :obj:`str` or :obj:`pathlib.Path`, optional
+        Optional path to write the Studyset JSON. Default is None.
+
+    Returns
+    -------
+    dict
+        NIMADS Studyset dictionary.
+    """
+    # Build studies in the deterministic order of dataset.ids (sorted in Dataset)
+    studies: Dict[str, Dict[str, Any]] = {}
+
+    # Prepare lookups
+    md = dataset.metadata
+    coords = dataset.coordinates
+
+    # Ensure minimal required columns exist even if empty
+    if md is None or md.empty:
+        md = md if md is not None else pd.DataFrame(columns=["id", "study_id", "contrast_id"])
+    if coords is None or coords.empty:
+        coords = (
+            coords
+            if coords is not None
+            else pd.DataFrame(columns=["id", "study_id", "contrast_id", "x", "y", "z", "space"])
+        )
+
+    for id_ in dataset.ids:
+        # Pull identifiers
+        row = md.loc[md["id"] == id_]
+        if row.empty:
+            # Fall back to coordinates to get identifiers
+            row = coords.loc[coords["id"] == id_]
+        if row.empty:
+            # Skip if completely missing
+            continue
+        study_id = str(row["study_id"].iloc[0])
+        contrast_id = str(row["contrast_id"].iloc[0])
+
+        # Study object (create if needed)
+        if study_id not in studies:
+            studies[study_id] = {
+                "id": study_id,
+                "name": study_id,
+                "authors": "",
+                "publication": "",
+                "metadata": {},
+                "analyses": [],
+            }
+
+        # Analysis object
+        analysis: Dict[str, Any] = {
+            "id": contrast_id,
+            "name": contrast_id,
+            "conditions": [{"name": "default", "description": ""}],
+            "weights": [1.0],
+            "images": [],
+            "points": [],
+            "metadata": {},
+        }
+
+        # Sample size metadata if available
+        if "sample_sizes" in row.columns and pd.notnull(row["sample_sizes"].iloc[0]):
+            analysis["metadata"]["sample_sizes"] = row["sample_sizes"].iloc[0]
+        elif "sample_size" in row.columns and pd.notnull(row["sample_size"].iloc[0]):
+            analysis["metadata"]["sample_size"] = row["sample_size"].iloc[0]
+
+        # Collect points for this analysis in order of appearance
+        crows = coords.loc[coords["id"] == id_]
+        for _, crow in crows.iterrows():
+            sp = crow.get("space", None)
+            if isinstance(sp, str):
+                spl = sp.lower()
+                if "mni" in spl or "ale" in spl:
+                    sp = "MNI"
+                elif "tal" in spl:
+                    sp = "TAL"
+            analysis["points"].append(
+                {
+                    "space": sp,
+                    "coordinates": [float(crow["x"]), float(crow["y"]), float(crow["z"])],
+                }
+            )
+
+        studies[study_id]["analyses"].append(analysis)
+
+    studyset: Dict[str, Any] = {
+        "id": studyset_id,
+        "name": studyset_name,
+        "studies": list(studies.values()),
+    }
+
+    if out_file is not None:
+        out_path = Path(out_file)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            json.dump(studyset, f, indent=2, sort_keys=False)
+
+    return studyset
+
+
+def convert_dataset_to_studyset(
+    dataset: Dataset,
+    *,
+    studyset_id: str = "nimads_from_dataset",
+    studyset_name: str = "",
+    out_file: Optional[Union[str, Path]] = None,
+):
+    """Convert a NiMARE Dataset into a nimads.Studyset object.
+
+    This is a convenience wrapper around :func:`convert_dataset_to_nimads_dict` that
+    returns a fully-constructed :class:`nimare.nimads.Studyset` instance instead of a
+    plain dictionary. If ``out_file`` is provided, the underlying NIMADS dictionary will
+    also be written to disk (same behavior as :func:`convert_dataset_to_nimads_dict`).
+
+    Parameters
+    ----------
+    dataset
+        NiMARE Dataset to convert.
+    studyset_id
+        Identifier for the resulting Studyset.
+    studyset_name
+        Human-readable name for the Studyset.
+    out_file
+        Optional path to write the intermediate Studyset JSON.
+
+    Returns
+    -------
+    nimads.Studyset
+        Constructed Studyset object.
+    """
+    nimads_dict = convert_dataset_to_nimads_dict(
+        dataset, studyset_id=studyset_id, studyset_name=studyset_name, out_file=out_file
+    )
+    # Local import to avoid circular import at module import time.
+    from nimare.nimads import Studyset as _Studyset
+
+    return _Studyset(nimads_dict)
+
+
+def convert_sleuth_to_nimads_dict(
+    text_file: Union[str, Path, Sequence[Union[str, Path]]],
+    *,
+    target: str = "MNI",
+    studyset_id: str = None,
+    studyset_name: str = "",
+) -> Dict[str, Any]:
+    """Convert Sleuth text file(s) to a NIMADS Studyset dictionary.
+
+    Parameters
+    ----------
+    text_file : :obj:`str`, :obj:`pathlib.Path`, or sequence of such
+        Path(s) to Sleuth text file(s).
+    target : :obj:`str`, optional
+        Target space for Dataset loader. Accepts common dataset targets
+        (e.g., "ale_2mm", "mni152_2mm") but also user-friendly strings like
+        "MNI", "TAL", or variants such as "Talaraich". These are
+        normalized to a Dataset-supported template string internally.
+    studyset_id : :obj:`str`, optional
+        Identifier for the resulting Studyset. Default is 'nimads_from_sleuth'.
+    studyset_name : :obj:`str`, optional
+        Human-readable name for the Studyset. Default is ''.
+
+    Returns
+    -------
+    dict
+        NIMADS Studyset dictionary.
+    """
+    # Normalize incoming target string to dataset template keys accepted by
+    # Dataset (mni152_2mm or ale_2mm). Accept common variants including misspellings.
+    try:
+        tgt_str = str(target).lower()
+    except Exception:
+        tgt_str = "mni"
+
+    # Map common/variant user inputs to Dataset-supported template keys.
+    if "tal" in tgt_str:
+        # Represent Talairach-like Sleuth targets using the MNI template
+        # when converting Sleuth -> Dataset (Dataset expects 'mni152_2mm' or 'ale_2mm').
+        ds_target = "mni152_2mm"
+    elif "ale" in tgt_str:
+        ds_target = "ale_2mm"
+    elif "mni" in tgt_str:
+        ds_target = "mni152_2mm"
+    else:
+        # Fallback to ALE 2mm when unknown
+        ds_target = "ale_2mm"
+
+    dset = convert_sleuth_to_dataset(text_file, target=ds_target)
+    return convert_dataset_to_nimads_dict(
+        dset, studyset_id=studyset_id, studyset_name=studyset_name
+    )
 
 
 def convert_neurovault_to_dataset(
