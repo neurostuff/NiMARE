@@ -9,7 +9,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from nilearn._utils import load_niimg
+from nilearn._utils.niimg import load_niimg
 
 from nimare.base import NiMAREBase
 from nimare.utils import (

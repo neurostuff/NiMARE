@@ -3,7 +3,7 @@
 import logging
 
 import nibabel as nib
-from nilearn._utils import check_niimg_3d
+from nilearn._utils.niimg_conversions import check_niimg_3d
 from nilearn.image import math_img
 
 LGR = logging.getLogger(__name__)

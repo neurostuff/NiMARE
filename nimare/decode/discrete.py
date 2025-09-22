@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from nilearn._utils import load_niimg
+from nilearn._utils.niimg import load_niimg
 from pymare.stats import bonferroni, fdr
 from scipy import special
 from scipy.stats import binom
