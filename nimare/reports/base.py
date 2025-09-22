@@ -472,22 +472,22 @@ class Report:
                 dataset,
                 sel_id,
                 meta_type,
-                self.fig_dir / f"preliminary_dset-{dset_i+1}_summary.html",
+                self.fig_dir / f"preliminary_dset-{dset_i + 1}_summary.html",
             )
 
             # Plot mask
             plot_mask(
                 dataset.masker.mask_img,
-                self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-mask.png",
+                self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-mask.png",
             )
 
             if meta_type == "CBMA":
                 # Plot coordinates for CBMA estimators
                 plot_coordinates(
                     dataset.coordinates,
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-static.png",
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-interactive.html",
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-legend.png",
+                    self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-static.png",
+                    self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-interactive.html",
+                    self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-legend.png",
                 )
             elif meta_type == "IBMA":
                 # Use "z_maps", for Fishers, and Stouffers; otherwise use "beta_maps".
@@ -505,32 +505,32 @@ class Report:
                     _plot_relcov_map(
                         maps_arr,
                         self.results.estimator.masker,
-                        self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-relcov.png",
+                        self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-relcov.png",
                     )
                 else:
                     dof_map = self.results.get_map("dof")
                     _plot_dof_map(
                         dof_map,
-                        self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-dof.png",
+                        self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-dof.png",
                     )
 
                 _plot_true_voxels(
                     maps_arr,
                     ids_,
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-truevoxels.html",
+                    self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-truevoxels.html",
                 )
 
                 _plot_ridgeplot(
                     maps_arr,
                     ids_,
                     x_label,
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-ridgeplot.html",
+                    self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-ridgeplot.html",
                 )
 
                 _plot_sumstats(
                     maps_arr,
                     ids_,
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-summarystats.html",
+                    self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-summarystats.html",
                 )
 
                 # Compute similarity matrix
@@ -557,7 +557,7 @@ class Report:
 
                 plot_heatmap(
                     similarity_table,
-                    self.fig_dir / f"preliminary_dset-{dset_i+1}_figure-similarity.html",
+                    self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-similarity.html",
                     symmetric=True,
                     cmap="RdBu_r",
                     zmin=-1,
