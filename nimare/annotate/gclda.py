@@ -183,7 +183,7 @@ class GCLDAModel(NiMAREBase):
         if n_terms_in_corpus != n_terms:
             LGR.warning(
                 "Some terms in count_df do not appear in corpus. "
-                f"Retaining {n_terms_in_corpus/n_terms} terms."
+                f"Retaining {n_terms_in_corpus / n_terms} terms."
             )
 
         # Get updated vocabulary
