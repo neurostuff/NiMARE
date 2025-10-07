@@ -15,17 +15,26 @@ from nimare.utils import get_template
 def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):
     """Conversion of nimads JSON to nimare dataset."""
     studyset = Studyset(example_nimads_studyset)
+    first_study_with_analyses = next(study for study in studyset.studies if study.analyses)
+    first_analysis = first_study_with_analyses.analyses[0]
+    expected_id = f"{first_study_with_analyses.id}-{first_analysis.id}"
+
     dset1 = io.convert_nimads_to_dataset(studyset)
     studyset.annotations = example_nimads_annotation
     dset2 = io.convert_nimads_to_dataset(studyset)
 
     assert isinstance(dset1, nimare.dataset.Dataset)
     assert isinstance(dset2, nimare.dataset.Dataset)
+    assert expected_id in dset1.ids
+    assert "analysis_name" in dset1.metadata.columns
+    assert "study_name" in dset1.metadata.columns
+
+    md_row = dset1.metadata.loc[dset1.metadata["id"] == expected_id].iloc[0]
+    assert md_row["study_name"] == (first_study_with_analyses.name or first_study_with_analyses.id)
+    assert md_row["analysis_name"] == (first_analysis.name or first_analysis.id)
 
 
-def test_convert_nimads_to_dataset_sample_sizes(
-    example_nimads_studyset, example_nimads_annotation
-):
+def test_convert_nimads_to_dataset_sample_sizes(example_nimads_studyset):
     """Conversion of nimads JSON to nimare dataset."""
     studyset = Studyset(example_nimads_studyset)
     for study in studyset.studies:
