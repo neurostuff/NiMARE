@@ -131,6 +131,51 @@ DIAGNOSTIC_TEMPLATE = """\
 """
 
 
+def _map_ids_to_display_names(dataset, ids_):
+    """Return mapping from dataset ids to human-readable labels when available."""
+    if dataset is None or not ids_:
+        return {}
+
+    metadata = getattr(dataset, "metadata", None)
+    if metadata is not None and not metadata.empty and "id" in metadata.columns:
+        # Ensure unique id index for lookup
+        md = metadata.drop_duplicates(subset="id").set_index("id", drop=False)
+    else:
+        md = None
+
+    preferred_columns = [
+        "name",
+        "title",
+        "study_name",
+        "analysis_name",
+        "contrast_name",
+    ]
+
+    raw_labels = []
+    for id_ in ids_:
+        label = None
+        if md is not None and id_ in md.index:
+            row = md.loc[id_]
+            for col in preferred_columns:
+                if col in row.index:
+                    value = row[col]
+                    if isinstance(value, str) and value.strip():
+                        label = value.strip()
+                        break
+        if not label:
+            label = id_
+        raw_labels.append((id_, label))
+
+    counts = {}
+    label_map = {}
+    for id_, label in raw_labels:
+        count = counts.get(label, 0) + 1
+        counts[label] = count
+        label_map[id_] = f"{label} ({id_})" if count > 1 else label
+
+    return label_map
+
+
 def _get_cbma_summary(dset, sel_ids):
     n_studies = len(dset.coordinates["study_id"].unique())
 
@@ -499,7 +544,9 @@ class Report:
                     key_maps, x_label = "beta_maps", "Beta"
 
                 maps_arr = self.results.estimator.inputs_[key_maps]
-                ids_ = self.results.estimator.inputs_["id"]
+                ids_ = list(self.results.estimator.inputs_["id"])
+                label_map = _map_ids_to_display_names(dataset, ids_)
+                display_ids = [label_map.get(id_, id_) for id_ in ids_]
 
                 if self.results.estimator.aggressive_mask:
                     _plot_relcov_map(
@@ -516,20 +563,20 @@ class Report:
 
                 _plot_true_voxels(
                     maps_arr,
-                    ids_,
+                    display_ids,
                     self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-truevoxels.html",
                 )
 
                 _plot_ridgeplot(
                     maps_arr,
-                    ids_,
+                    display_ids,
                     x_label,
                     self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-ridgeplot.html",
                 )
 
                 _plot_sumstats(
                     maps_arr,
-                    ids_,
+                    display_ids,
                     self.fig_dir / f"preliminary_dset-{dset_i + 1}_figure-summarystats.html",
                 )
 
@@ -554,6 +601,9 @@ class Report:
                     columns=ids_,
                     data=corr,
                 )
+
+                if label_map:
+                    similarity_table = similarity_table.rename(index=label_map, columns=label_map)
 
                 plot_heatmap(
                     similarity_table,
