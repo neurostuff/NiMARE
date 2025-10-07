@@ -17,7 +17,7 @@ from scipy import sparse
 from nimare.dataset import Dataset
 from nimare.exceptions import InvalidStudysetError
 from nimare.extract.utils import _get_dataset_dir
-from nimare.utils import _create_name, load_nimads, mni2tal, tal2mni
+from nimare.utils import load_nimads, mni2tal, tal2mni
 
 LGR = logging.getLogger(__name__)
 
@@ -51,11 +51,16 @@ def convert_nimads_to_dataset(studyset, annotation=None):
     """
 
     def _analysis_to_dict(study, analysis):
+        study_name = study.name or study.id
+        analysis_name = analysis.name or analysis.id
+
         result = {
             "metadata": {
-                "authors": study.name,
+                "authors": study.authors,
                 "journal": study.publication,
-                "title": study.name,
+                "study_name": study_name,
+                "analysis_name": analysis_name,
+                "name": f"{study_name}-{analysis_name}",
             },
             "coords": {
                 "space": analysis.points[0].space if analysis.points else "UNKNOWN",
@@ -133,18 +138,20 @@ def convert_nimads_to_dataset(studyset, annotation=None):
         return result
 
     def _study_to_dict(study):
+        study_name = study.name or study.id
         return {
             "metadata": {
                 "authors": study.authors,
                 "journal": study.publication,
-                "title": study.name,
+                "title": study_name,
+                "study_name": study_name,
             },
-            "contrasts": {_create_name(a): _analysis_to_dict(study, a) for a in study.analyses},
+            "contrasts": {a.id: _analysis_to_dict(study, a) for a in study.analyses},
         }
 
     # load nimads studyset
     studyset = load_nimads(studyset, annotation)
-    return Dataset({_create_name(s): _study_to_dict(s) for s in list(studyset.studies)})
+    return Dataset({s.id: _study_to_dict(s) for s in list(studyset.studies)})
 
 
 def convert_neurosynth_to_dict(
