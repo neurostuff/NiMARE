@@ -772,9 +772,15 @@ def _generate_metadata_comments(study, export_metadata):
 
 def _get_sample_size(analysis, study):
     """Extract sample size from analysis or study metadata."""
-    # Check analysis metadata first
-    sample_sizes = analysis.metadata.get("sample_sizes")
-    sample_size = analysis.metadata.get("sample_size")
+
+    # Check analysis annotations first
+    sample_sizes = analysis.annotations.get("sample_sizes")
+    sample_size = analysis.annotations.get("sample_size")
+
+    # Fall back to analysis metadata
+    if not sample_sizes and not sample_size:
+        sample_sizes = analysis.metadata.get("sample_sizes")
+        sample_size = analysis.metadata.get("sample_size")
 
     # Fall back to study metadata
     if not sample_sizes and not sample_size:
