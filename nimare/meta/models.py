@@ -79,6 +79,15 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         self.spatial_intensity_se = None
         self.se_moderators = None
 
+    @staticmethod
+    def _flatten_tensor(tensor):
+        """Return a 1D view of the provided tensor."""
+        if tensor is None:
+            return None
+        if not torch.is_tensor(tensor):
+            return torch.as_tensor(tensor).reshape(-1)
+        return tensor.reshape(-1)
+
     @abc.abstractmethod
     def _log_likelihood_single_group(self, **kwargs):
         """Log-likelihood of a single group.
@@ -756,20 +765,19 @@ class PoissonEstimator(GeneralLinearModelEstimator):
         group_foci_per_study,
         device="cpu",
     ):
-        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
+        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T).reshape(-1)
+        group_foci_per_voxel = self._flatten_tensor(group_foci_per_voxel)
         mu_spatial = torch.exp(log_mu_spatial)
+        group_foci_per_study = self._flatten_tensor(group_foci_per_study)
         if moderators_coef is None:
-            n_study, _ = group_foci_per_study.shape
-            log_mu_moderators = torch.tensor(
-                [0] * n_study, dtype=torch.float64, device=device
-            ).reshape((-1, 1))
+            log_mu_moderators = torch.zeros_like(group_foci_per_study, dtype=torch.float64)
             mu_moderators = torch.exp(log_mu_moderators)
         else:
-            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
+            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T).reshape(-1)
             mu_moderators = torch.exp(log_mu_moderators)
         log_l = (
-            torch.sum(torch.mul(group_foci_per_voxel, log_mu_spatial))
-            + torch.sum(torch.mul(group_foci_per_study, log_mu_moderators))
+            torch.dot(group_foci_per_voxel, log_mu_spatial)
+            + torch.dot(group_foci_per_study, log_mu_moderators)
             - torch.sum(mu_spatial) * torch.sum(mu_moderators)
         )
         return log_l
@@ -786,7 +794,8 @@ class PoissonEstimator(GeneralLinearModelEstimator):
     ):
         n_groups = len(spatial_coef)
         log_spatial_intensity = [
-            torch.matmul(coef_spline_bases, spatial_coef[i, :, :]) for i in range(n_groups)
+            torch.matmul(coef_spline_bases, spatial_coef[i, :, :]).reshape(-1)
+            for i in range(n_groups)
         ]
         spatial_intensity = [
             torch.exp(group_log_spatial_intensity)
@@ -794,28 +803,28 @@ class PoissonEstimator(GeneralLinearModelEstimator):
         ]
         if moderator_coef is not None:
             log_moderator_effect = [
-                torch.matmul(group_moderator, moderator_coef) for group_moderator in moderators
+                torch.matmul(group_moderator, moderator_coef).reshape(-1)
+                for group_moderator in moderators
             ]
             moderator_effect = [
                 torch.exp(group_log_moderator_effect)
                 for group_log_moderator_effect in log_moderator_effect
             ]
         else:
-            log_moderator_effect = [
-                torch.tensor(
-                    [0] * foci_per_study_i.shape[0], dtype=torch.float64, device=device
-                ).reshape((-1, 1))
-                for foci_per_study_i in foci_per_study
-            ]
-            moderator_effect = [
-                torch.exp(group_log_moderator_effect)
-                for group_log_moderator_effect in log_moderator_effect
-            ]
+            log_moderator_effect = []
+            moderator_effect = []
+            for foci_per_study_i in foci_per_study:
+                foci_per_study_flat = self._flatten_tensor(foci_per_study_i)
+                log_me = torch.zeros_like(foci_per_study_flat, dtype=torch.float64)
+                log_moderator_effect.append(log_me)
+                moderator_effect.append(torch.exp(log_me))
         log_l = 0
         for i in range(n_groups):
+            foci_per_voxel_flat = self._flatten_tensor(foci_per_voxel[i])
+            foci_per_study_flat = self._flatten_tensor(foci_per_study[i])
             log_l += (
-                torch.sum(foci_per_voxel[i] * log_spatial_intensity[i])
-                + torch.sum(foci_per_study[i] * log_moderator_effect[i])
+                torch.dot(foci_per_voxel_flat, log_spatial_intensity[i])
+                + torch.dot(foci_per_study_flat, log_moderator_effect[i])
                 - torch.sum(spatial_intensity[i]) * torch.sum(moderator_effect[i])
             )
         return log_l
@@ -902,16 +911,15 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         group_foci_per_study,
         device="cpu",
     ):
-        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
+        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T).reshape(-1)
+        group_foci_per_voxel = self._flatten_tensor(group_foci_per_voxel)
         mu_spatial = torch.exp(log_mu_spatial)
+        group_foci_per_study = self._flatten_tensor(group_foci_per_study)
         if moderators_coef is not None:
-            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
+            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T).reshape(-1)
             mu_moderators = torch.exp(log_mu_moderators)
         else:
-            n_study, _ = group_foci_per_study.shape
-            log_mu_moderators = torch.tensor(
-                [0] * n_study, dtype=torch.float64, device=device
-            ).reshape((-1, 1))
+            log_mu_moderators = torch.zeros_like(group_foci_per_study, dtype=torch.float64)
             mu_moderators = torch.exp(log_mu_moderators)
         # parameter of a NB variable to approximate a sum of NB variables
         r = 1 / group_overdispersion * torch.sum(mu_moderators) ** 2 / torch.sum(mu_moderators**2)
@@ -943,32 +951,28 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         device="cpu",
     ):
         n_groups = len(foci_per_voxel)
-        log_spatial_intensity = [
-            torch.matmul(coef_spline_bases, spatial_coef[i, :, :]) for i in range(n_groups)
-        ]
-        spatial_intensity = [
-            torch.exp(group_log_spatial_intensity)
-            for group_log_spatial_intensity in log_spatial_intensity
-        ]
+        flattened_foci_per_voxel = [self._flatten_tensor(f) for f in foci_per_voxel]
+        flattened_foci_per_study = [self._flatten_tensor(f) for f in foci_per_study]
+        log_spatial_intensity = []
+        spatial_intensity = []
+        for i in range(n_groups):
+            log_si = torch.matmul(coef_spline_bases, spatial_coef[i, :, :]).reshape(-1)
+            log_spatial_intensity.append(log_si)
+            spatial_intensity.append(torch.exp(log_si))
         if moderator_coef is not None:
-            log_moderator_effect = [
-                torch.matmul(group_moderator, moderator_coef) for group_moderator in moderators
-            ]
-            moderator_effect = [
-                torch.exp(group_log_moderator_effect)
-                for group_log_moderator_effect in log_moderator_effect
-            ]
+            log_moderator_effect = []
+            moderator_effect = []
+            for group_moderator in moderators:
+                log_me = torch.matmul(group_moderator, moderator_coef).reshape(-1)
+                log_moderator_effect.append(log_me)
+                moderator_effect.append(torch.exp(log_me))
         else:
-            log_moderator_effect = [
-                torch.tensor(
-                    [0] * foci_per_study.shape[0], dtype=torch.float64, device=device
-                ).reshape((-1, 1))
-                for foci_per_study in foci_per_study
-            ]
-            moderator_effect = [
-                torch.exp(group_log_moderator_effect)
-                for group_log_moderator_effect in log_moderator_effect
-            ]
+            log_moderator_effect = []
+            moderator_effect = []
+            for fps_flat in flattened_foci_per_study:
+                log_me = torch.zeros_like(fps_flat, dtype=torch.float64)
+                log_moderator_effect.append(log_me)
+                moderator_effect.append(torch.exp(log_me))
         # After similification, we have:
         # r' = 1/alpha * sum(mu^Z_i)^2 / sum((mu^Z_i)^2)
         # p'_j = 1 / (1 + sum(mu^Z_i) / (alpha * mu^X_j * sum((mu^Z_i)^2)
@@ -989,11 +993,11 @@ class NegativeBinomialEstimator(OverdispersionModelEstimator):
         log_l = 0
         for i in range(n_groups):
             group_log_l = torch.sum(
-                torch.lgamma(foci_per_voxel[i] + r[i])
-                - torch.lgamma(foci_per_voxel[i] + 1)
+                torch.lgamma(flattened_foci_per_voxel[i] + r[i])
+                - torch.lgamma(flattened_foci_per_voxel[i] + 1)
                 - torch.lgamma(r[i])
                 + r[i] * torch.log(1 - p[i])
-                + foci_per_voxel[i] * torch.log(p[i])
+                + flattened_foci_per_voxel[i] * torch.log(p[i])
             )
             log_l += group_log_l
 
@@ -1071,27 +1075,25 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
         device="cpu",
     ):
         v = 1 / group_overdispersion
-        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T)
+        log_mu_spatial = torch.matmul(coef_spline_bases, group_spatial_coef.T).reshape(-1)
+        group_foci_per_voxel = self._flatten_tensor(group_foci_per_voxel)
         mu_spatial = torch.exp(log_mu_spatial)
+        group_foci_per_study = self._flatten_tensor(group_foci_per_study)
         if moderators_coef is not None:
-            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T)
-            mu_moderators = torch.exp(log_mu_moderators)
+            log_mu_moderators = torch.matmul(group_moderators, moderators_coef.T).reshape(-1)
         else:
-            n_study, _ = group_foci_per_study.shape
-            log_mu_moderators = torch.tensor(
-                [0] * n_study, dtype=torch.float64, device=device
-            ).reshape((-1, 1))
-            mu_moderators = torch.exp(log_mu_moderators)
+            log_mu_moderators = torch.zeros_like(group_foci_per_study, dtype=torch.float64)
+        mu_moderators = torch.exp(log_mu_moderators)
         mu_sum_per_study = torch.sum(mu_spatial) * mu_moderators
-        group_n_study, _ = group_foci_per_study.shape
+        group_n_study = group_foci_per_study.shape[0]
 
         log_l = (
             group_n_study * v * torch.log(v)
             - group_n_study * torch.lgamma(v)
             + torch.sum(torch.lgamma(group_foci_per_study + v))
             - torch.sum((group_foci_per_study + v) * torch.log(mu_sum_per_study + v))
-            + torch.sum(group_foci_per_voxel * log_mu_spatial)
-            + torch.sum(group_foci_per_study * log_mu_moderators)
+            + torch.dot(group_foci_per_voxel, log_mu_spatial)
+            + torch.dot(group_foci_per_study, log_mu_moderators)
         )
 
         return log_l
@@ -1110,46 +1112,46 @@ class ClusteredNegativeBinomialEstimator(OverdispersionModelEstimator):
         n_groups = len(foci_per_voxel)
         v = [1 / group_overdispersion_coef for group_overdispersion_coef in overdispersion_coef]
         # estimated intensity and log estimated intensity
-        log_spatial_intensity = [
-            torch.matmul(coef_spline_bases, spatial_coef[i, :, :]) for i in range(n_groups)
-        ]
-        spatial_intensity = [
-            torch.exp(group_log_spatial_intensity)
-            for group_log_spatial_intensity in log_spatial_intensity
-        ]
+        flattened_foci_per_voxel = [self._flatten_tensor(f) for f in foci_per_voxel]
+        flattened_foci_per_study = [self._flatten_tensor(f) for f in foci_per_study]
+        log_spatial_intensity = []
+        spatial_intensity = []
+        for i in range(n_groups):
+            log_si = torch.matmul(coef_spline_bases, spatial_coef[i, :, :]).reshape(-1)
+            log_spatial_intensity.append(log_si)
+            spatial_intensity.append(torch.exp(log_si))
         if moderator_coef is not None:
-            log_moderator_effect = [
-                torch.matmul(group_moderator, moderator_coef) for group_moderator in moderators
-            ]
-            moderator_effect = [
-                torch.exp(group_log_moderator_effect)
-                for group_log_moderator_effect in log_moderator_effect
-            ]
+            log_moderator_effect = []
+            moderator_effect = []
+            for group_moderator in moderators:
+                log_me = torch.matmul(group_moderator, moderator_coef).reshape(-1)
+                log_moderator_effect.append(log_me)
+                moderator_effect.append(torch.exp(log_me))
         else:
-            log_moderator_effect = [
-                torch.tensor(
-                    [0] * foci_per_study.shape[0], dtype=torch.float64, device=device
-                ).reshape((-1, 1))
-                for foci_per_study in foci_per_study
-            ]
-            moderator_effect = [
-                torch.exp(group_log_moderator_effect)
-                for group_log_moderator_effect in log_moderator_effect
-            ]
+            log_moderator_effect = []
+            moderator_effect = []
+            for fps_flat in flattened_foci_per_study:
+                log_me = torch.zeros_like(fps_flat, dtype=torch.float64)
+                log_moderator_effect.append(log_me)
+                moderator_effect.append(torch.exp(log_me))
         mu_sum_per_study = [
             torch.sum(spatial_intensity[i]) * moderator_effect[i] for i in range(n_groups)
         ]
-        n_study_list = [group_foci_per_study.shape[0] for group_foci_per_study in foci_per_study]
+        n_study_list = [
+            group_foci_per_study.shape[0] for group_foci_per_study in flattened_foci_per_study
+        ]
 
         log_l = 0
         for i in range(n_groups):
             log_l += (
                 n_study_list[i] * v[i] * torch.log(v[i])
                 - n_study_list[i] * torch.lgamma(v[i])
-                + torch.sum(torch.lgamma(foci_per_study[i] + v[i]))
-                - torch.sum((foci_per_study[i] + v[i]) * torch.log(mu_sum_per_study[i] + v[i]))
-                + torch.sum(foci_per_voxel[i] * log_spatial_intensity[i])
-                + torch.sum(foci_per_study[i] * log_moderator_effect[i])
+                + torch.sum(torch.lgamma(flattened_foci_per_study[i] + v[i]))
+                - torch.sum(
+                    (flattened_foci_per_study[i] + v[i]) * torch.log(mu_sum_per_study[i] + v[i])
+                )
+                + torch.dot(flattened_foci_per_voxel[i], log_spatial_intensity[i])
+                + torch.dot(flattened_foci_per_study[i], log_moderator_effect[i])
             )
 
         return log_l
