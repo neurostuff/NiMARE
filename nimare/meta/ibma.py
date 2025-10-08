@@ -10,11 +10,16 @@ import numpy as np
 import pandas as pd
 import pymare
 from joblib import Memory
-
-from nilearn._utils.niimg_conversions import check_same_fov
 from nilearn.image import concat_imgs, resample_to_img
 from nilearn.input_data import NiftiMasker
 from nilearn.mass_univariate import permuted_ols
+
+try:
+    # nilearn>0.10.3
+    from nilearn._utils.niimg_conversions import check_same_fov
+except ImportError:
+    # nilearn < 0.10.3
+    from nilearn._utils.niimg_conversions import _check_same_fov as check_same_fov
 
 from nimare import _version
 from nimare.estimator import Estimator
