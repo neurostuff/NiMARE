@@ -2,7 +2,31 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.5.5...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.6.1...HEAD)
+
+## [0.6.1](https://github.com/neurostuff/NiMARE/compare/0.5.5...0.6.1) - 2025-10-08
+
+### What's Changed
+
+#### 🎉 Exciting New Features
+
+* ENH: allow conversions between NIMADS <--> SLEUTH by @jdkent in https://github.com/neurostuff/NiMARE/pull/942
+
+#### 🐛 Bug Fixes
+
+* [FIX] sample_size tests by @jdkent in https://github.com/neurostuff/NiMARE/pull/941
+* [FIX] use display_ids for plotting, but nimads ids for dataset creation by @jdkent in https://github.com/neurostuff/NiMARE/pull/947
+
+#### Other Changes
+
+* [MNT] drop python 3.8; support 3.13 by @jdkent in https://github.com/neurostuff/NiMARE/pull/945
+* [MAINT] bump to nilearn >= 0.12.1 by @Remi-Gau in https://github.com/neurostuff/NiMARE/pull/944
+
+### New Contributors
+
+* @Remi-Gau made their first contribution in https://github.com/neurostuff/NiMARE/pull/944
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.5.5...0.6.1
 
 ## [0.5.5](https://github.com/neurostuff/NiMARE/compare/0.5.4...0.5.5) - 2025-08-05
 
