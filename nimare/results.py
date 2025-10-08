@@ -131,6 +131,10 @@ class MetaResult(NiMAREBase):
         if m is None:
             raise ValueError(f"No map with name '{name}' found.")
         if return_type == "image":
+            # NiftiLabelsMasker (and other scikit-learn-based maskers) do not accept NaNs.
+            # Replace NaNs with zeros when converting to images to keep transforms stable.
+            if np.issubdtype(m.dtype, np.floating):
+                m = np.nan_to_num(m)
             # pending resolution of https://github.com/nilearn/nilearn/issues/2724
             try:
                 return self.masker.inverse_transform(m)

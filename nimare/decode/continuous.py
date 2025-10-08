@@ -9,7 +9,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from nilearn._utils import load_niimg
+from nilearn._utils.niimg import load_niimg
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 

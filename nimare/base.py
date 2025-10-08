@@ -7,7 +7,7 @@ import pickle
 from abc import ABCMeta
 from collections import defaultdict
 
-from nilearn._utils import CacheMixin
+from nilearn._utils.cache_mixin import CacheMixin
 
 LGR = logging.getLogger(__name__)
 
