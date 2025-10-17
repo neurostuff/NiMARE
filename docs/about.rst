@@ -6,7 +6,7 @@ About NiMARE
 NiMARE is a Python package for performing meta-analyses, and derivative analyses using meta-analytic data, of the neuroimaging literature.
 While meta-analytic packages exist which implement one or two algorithms each,
 NiMARE provides a standard syntax for performing a wide range of analyses and for interacting with databases of coordinates and images
-from fMRI studies (e.g., brainspell, Neurosynth, and NeuroVault).
+from fMRI studies (e.g., `Neurosynth-Compose`_, Neurosynth, and NeuroVault).
 
 NiMARE joins a growing Python ecosystem for neuroimaging research, which includes such tools as `Nipype`_, `Nibabel`_, and `Nilearn`_.
 As with these other tools, NiMARE is open source, collaboratively developed, and built with ease of use in mind.
@@ -33,6 +33,13 @@ NiMARE's Role in a Proposed Meta-Analytic Ecosystem
   For more up-to-date information and for information about other elements in the ecosystem,
   please see `neurostuff.github.io <https://neurostuff.github.io>`_.
 
+.. tip::
+  If you are interested in using a GUI to curate and perform large-scale meta-analyses along the lines of Neurosynth,
+  we recommend checking out `Neurosynth-Compose`_.
+  Neurosynth-Compose is a web application that takes over for Neurosynth,
+  allowing users to search across the literature and build large meta-analytic datasets,
+  which can then be analyzed with NiMARE.
+
 .. image:: _static/ecosystem.png
   :align: center
 
@@ -41,7 +48,8 @@ The goal of NiMARE is to collect a wide range of meta-analytic tools in one Pyth
 Currently, those methods are spread out across a range of programming languages and user interfaces,
 or are never even translated from the original papers into useable tools.
 NiMARE operates on NIMADS-format datasets, which users will be able to compile by searching the NeuroStore database with the pyNIMADS library.
-A number of other services in the ecosystem will then use NiMARE functions to perform meta-analyses, including Neurosynth 2.0 and `NeuroVault`_.
+A number of other services in the ecosystem will then use NiMARE functions to perform meta-analyses,
+including `Neurosynth-Compose`_ and `NeuroVault`_.
 
 Other Meta-Analytic Tools
 -------------------------

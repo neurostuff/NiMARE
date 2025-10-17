@@ -44,9 +44,9 @@
 
 .. _NeuroStore: https://github.com/neurostuff/neurostore
 
-.. _NeuroSynth 1.0: http://neurosynth.org/
+.. _NeuroSynth: http://neurosynth.org/
 
-.. _NeuroSynth 2.0: https://github.com/neurostuff/neurosynth-frontend
+.. _Neurosynth-Compose: https://compose.neurosynth.org/
 
 .. _Neurosynth Python package: https://github.com/neurosynth/neurosynth
 
