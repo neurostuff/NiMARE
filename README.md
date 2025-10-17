@@ -21,7 +21,7 @@ as well as several methods for advanced meta-analytic methods,
 like automated annotation and functional decoding.
 
 If you are interested in using a GUI to curate and perform large-scale meta-analyses along the lines of Neurosynth,
-we recommend checking out[Neurosynth-Compose](https://compose.neurosynth.org/).
+we recommend checking out [Neurosynth-Compose](https://compose.neurosynth.org/).
 Neurosynth-Compose is a web application that takes over for Neurosynth,
 allowing users to search across the literature and build large meta-analytic datasets,
 which can then be analyzed with NiMARE.
