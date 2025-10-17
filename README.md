@@ -1,4 +1,5 @@
 # NiMARE: Neuroimaging Meta-Analysis Research Environment
+
 A Python library for coordinate- and image-based meta-analysis.
 
 [![Latest Version](https://img.shields.io/pypi/v/nimare.svg)](https://pypi.python.org/pypi/nimare/)
@@ -15,7 +16,15 @@ A Python library for coordinate- and image-based meta-analysis.
 [![Paper](https://img.shields.io/badge/Aperture-10.52294/001c.87681-darkblue.svg)](https://doi.org/10.52294/001c.87681)
 [![Preprint](https://neurolibre.org/papers/10.55458/neurolibre.00007/status.svg)](https://doi.org/10.55458/neurolibre.00007)
 
-Currently, NiMARE implements a range of image- and coordinate-based meta-analytic algorithms, as well as several methods for advanced meta-analytic methods, like automated annotation and functional decoding.
+Currently, NiMARE implements a range of image- and coordinate-based meta-analytic algorithms,
+as well as several methods for advanced meta-analytic methods,
+like automated annotation and functional decoding.
+
+If you are interested in using a GUI to curate and perform large-scale meta-analyses along the lines of Neurosynth,
+we recommend checking out[Neurosynth-Compose](https://compose.neurosynth.org/).
+Neurosynth-Compose is a web application that takes over for Neurosynth,
+allowing users to search across the literature and build large meta-analytic datasets,
+which can then be analyzed with NiMARE.
 
 ## Installation
 
