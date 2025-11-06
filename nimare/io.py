@@ -858,6 +858,7 @@ def convert_sleuth_to_dict(text_file):
     if space not in SPACE_OPTS:
         raise ValueError(f"Space {space} unknown. Options supported: {', '.join(SPACE_OPTS)}.")
 
+
     # Split into experiments
     data = data[1:]
     exp_idx = []
@@ -962,7 +963,7 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     if not isinstance(text_file, str) and not isinstance(text_file, list):
         raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
     dset_dict = convert_sleuth_to_dict(text_file)
-    return Dataset(dset_dict, target=target)
+    return Dataset(dset_dict, target=None)
 
 
 def convert_dataset_to_nimads_dict(
@@ -1123,7 +1124,7 @@ def convert_dataset_to_studyset(
 def convert_sleuth_to_nimads_dict(
     text_file: Union[str, Path, Sequence[Union[str, Path]]],
     *,
-    target: str = "MNI",
+    target: str = None,
     studyset_id: str = None,
     studyset_name: str = "",
 ) -> Dict[str, Any]:
@@ -1134,10 +1135,12 @@ def convert_sleuth_to_nimads_dict(
     text_file : :obj:`str`, :obj:`pathlib.Path`, or sequence of such
         Path(s) to Sleuth text file(s).
     target : :obj:`str`, optional
-        Target space for Dataset loader. Accepts common dataset targets
-        (e.g., "ale_2mm", "mni152_2mm") but also user-friendly strings like
-        "MNI", "TAL", or variants such as "Talaraich". These are
-        normalized to a Dataset-supported template string internally.
+        Target space for Dataset loader. If None (default), uses the space
+        specified in the Sleuth file's //Reference= tag without conversion.
+        Accepts common dataset targets (e.g., "ale_2mm", "mni152_2mm") or
+        user-friendly strings like "MNI", "TAL", or variants such as
+        "Talairach". These are normalized to a Dataset-supported template
+        string internally. Default is None.
     studyset_id : :obj:`str`, optional
         Identifier for the resulting Studyset. Default is 'nimads_from_sleuth'.
     studyset_name : :obj:`str`, optional
@@ -1148,6 +1151,7 @@ def convert_sleuth_to_nimads_dict(
     dict
         NIMADS Studyset dictionary.
     """
+    # Original behavior when target is specified
     # Normalize incoming target string to dataset template keys accepted by
     # Dataset (mni152_2mm or ale_2mm). Accept common variants including misspellings.
     try:
@@ -1165,8 +1169,7 @@ def convert_sleuth_to_nimads_dict(
     elif "mni" in tgt_str:
         ds_target = "mni152_2mm"
     else:
-        # Fallback to ALE 2mm when unknown
-        ds_target = "ale_2mm"
+        ds_target = None
 
     dset = convert_sleuth_to_dataset(text_file, target=ds_target)
     return convert_dataset_to_nimads_dict(

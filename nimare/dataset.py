@@ -55,6 +55,9 @@ class Dataset(NiMAREBase):
         Mask(er) to use. If None, uses the target space image, with all
         non-zero voxels included in the mask.
 
+    transform_coordinates : :obj:`bool`, optional
+        Whether to transform coordinates to the target space. Default is True.
+
     Attributes
     ----------
     space : :obj:`str`
@@ -93,13 +96,13 @@ class Dataset(NiMAREBase):
         self._ids = id_df.index.values
 
         # Set up Masker
-        if mask is None:
+        if mask is None and target is not None:
             mask = get_template(target, mask="brain")
         self.masker = mask
         self.space = target
 
         self.annotations = _dict_to_df(id_df, data, key="labels")
-        self.coordinates = _dict_to_coordinates(data, masker=self.masker, space=self.space)
+        self.coordinates = _dict_to_coordinates(data, space=self.space)
         self.images = _dict_to_df(id_df, data, key="images")
         self.metadata = _dict_to_df(id_df, data, key="metadata")
         self.texts = _dict_to_df(id_df, data, key="text")
