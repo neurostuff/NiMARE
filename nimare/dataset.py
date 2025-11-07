@@ -55,9 +55,6 @@ class Dataset(NiMAREBase):
         Mask(er) to use. If None, uses the target space image, with all
         non-zero voxels included in the mask.
 
-    transform_coordinates : :obj:`bool`, optional
-        Whether to transform coordinates to the target space. Default is True.
-
     Attributes
     ----------
     space : :obj:`str`
