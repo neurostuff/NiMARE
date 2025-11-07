@@ -97,6 +97,11 @@ class Dataset(NiMAREBase):
             mask = get_template(target, mask="brain")
         if mask is not None:
             self.masker = mask
+        if mask is None and target is None:
+            warnings.warn(
+                "No mask or target space specified. Masker will be None, "
+                "and Dataset space will be undefined."
+            )
         self.space = target
 
         self.annotations = _dict_to_df(id_df, data, key="labels")
